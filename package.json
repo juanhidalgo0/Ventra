@@ -1,0 +1,32 @@
+{
+  "name": "godelivery-pos",
+  "private": true,
+  "version": "1.0.0",
+  "description": "GO! Portal POS - Sistema POS",
+  "scripts": {
+    "predev": "npx kill-port 3001 5173 5180",
+    "predesktop": "npx kill-port 3001 5173 5180",
+    "dev:backend": "cd apps/backend && npm run dev",
+    "dev:frontend": "cd apps/frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend": "cd apps/backend && npm run build && npx @vercel/ncc build dist/main.js -o dist/ncc --minify",
+    "build:frontend": "cd apps/frontend && npm run build",
+    "db:migrate": "cd apps/backend && npm run db:migrate",
+    "db:seed": "cd apps/backend && npm run db:seed",
+    "db:reset": "cd apps/backend && npm run db:reset",
+    "setup": "npm install && cd apps/backend && npm install && npx prisma generate && npx prisma migrate dev --name init && npm run db:seed && cd ../frontend && npm install && cd ../desktop && npm install",
+    "desktop": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"cd apps/desktop && npm start\"",
+    "build:desktop": "npm run build:frontend && npm run build:backend && node copy-frontend.js && node copy-backend.js && cd apps/desktop && npm run build",
+    "tauri": "tauri",
+    "tauri:dev": "concurrently \"npm run dev:backend\" \"tauri dev\"",
+    "tauri:dev:full": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"tauri dev\"",
+    "tauri:build": "npm run build:frontend && npm run build:backend && tauri build",
+    "license:reset": "node clear_license.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@tauri-apps/cli": "^2.11.2"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "godelivery-pos-desktop",
+  "version": "1.0.0",
+  "description": "GoDelivery POS Desktop",
+  "main": "main.js",
+  "author": "Antigravity",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "electron ."
+  },
+  "build": {
+    "appId": "com.godelivery.pos",
+    "productName": "GoDelivery POS",
+    "compression": "normal",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "node_modules/**/*",
+      "frontend/**/*",
+      "apps/backend/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "allowElevation": true,
+      "deleteAppDataOnUninstall": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_GITHUB_USER",
+        "repo": "YOUR_REPO_NAME"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-is-dev": "^2.0.0",
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  }
+}

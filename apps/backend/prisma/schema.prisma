@@ -1,0 +1,423 @@
+// ============================================
+// Maxikiosco Paulos POS - Prisma Schema
+// Database: SQLite
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Users & Auth ----
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         String   @default("CASHIER") // ADMIN | SUPERVISOR | CASHIER
+  isActive     Boolean  @default(true) @map("is_active")
+  avatarUrl    String?  @map("avatar_url")
+  lastLogin    DateTime? @map("last_login")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sessions     CashRegisterSession[]
+  sales        Sale[]
+  auditLogs    AuditLog[]
+  inventoryMovements InventoryMovement[]
+  cashMovements      CashMovement[]
+  priceChanges       PriceHistory[]
+  accountMovements   AccountMovement[]
+  purchases          Purchase[]
+  supplierPayments   SupplierPayment[]
+
+  @@map("users")
+}
+
+// ---- Cash Register ----
+model CashRegisterSession {
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  terminalName          String   @map("terminal_name")
+  openingAmount         Float    @map("opening_amount")
+  closingAmountExpected Float?   @map("closing_amount_expected")
+  closingAmountCounted  Float?   @map("closing_amount_counted")
+  difference            Float?
+  openingNotes          String?  @map("opening_notes")
+  closingNotes          String?  @map("closing_notes")
+  status                String   @default("OPEN") // OPEN | CLOSED
+  closingSummary        String?  @map("closing_summary") // JSON string
+  openedAt              DateTime @default(now()) @map("opened_at")
+  closedAt              DateTime? @map("closed_at")
+
+  user          User           @relation(fields: [userId], references: [id])
+  sales         Sale[]
+  cashMovements CashMovement[]
+
+  @@map("cash_register_sessions")
+}
+
+// ---- Sales ----
+model Sale {
+  id                   String   @id @default(uuid())
+  saleNumber           Int      @unique @map("sale_number")
+  userId               String   @map("user_id")
+  sessionId            String   @map("session_id")
+  subtotal             Float
+  taxAmount            Float    @default(0) @map("tax_amount")
+  discountAmount       Float    @default(0) @map("discount_amount")
+  total                Float
+  paymentMethodSummary String   @map("payment_method_summary") // CASH | CLOVER | MERCADOPAGO | MIXED
+  status               String   @default("COMPLETED") // COMPLETED | CANCELLED | REFUNDED
+  notes                String?
+  clientId             String?  @map("client_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user     User                @relation(fields: [userId], references: [id])
+  session  CashRegisterSession @relation(fields: [sessionId], references: [id])
+  client   Client?             @relation(fields: [clientId], references: [id])
+  items    SaleItem[]
+  payments Payment[]
+  accountMovements AccountMovement[]
+
+  @@index([createdAt])
+  @@index([sessionId])
+  @@map("sales")
+}
+
+// ---- Promotions ----
+model Promotion {
+  id                 String             @id @default(uuid())
+  name               String
+  code               String?            @unique
+  type               String             // NX_M | FIXED_COMBO | DISCOUNT_PERCENT
+  nValue             Int?               @map("n_value") // For NX_M
+  mValue             Int?               @map("m_value") // For NX_M
+  fixedPrice         Float?             @map("fixed_price") // For FIXED_COMBO
+  discountPercentage Float?             @map("discount_percentage") // For DISCOUNT_PERCENT
+  isActive           Boolean            @default(true) @map("is_active")
+  limitType          String             @default("NONE") @map("limit_type") // NONE | STOCK | DATE
+  limitStock         Float?             @map("limit_stock") // Max items sold under promo
+  soldStock          Float              @default(0) @map("sold_stock") // Quantity sold under promo
+  startDate          DateTime?          @map("start_date")
+  endDate            DateTime?          @map("end_date")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  products           PromotionProduct[]
+
+  @@map("promotions")
+}
+
+model PromotionProduct {
+  id          String    @id @default(uuid())
+  promotionId String    @map("promotion_id")
+  productId   String    @map("product_id")
+  quantity    Int       @default(1)
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@map("promotion_products")
+}
+
+
+model SaleItem {
+  id          String @id @default(uuid())
+  saleId      String @map("sale_id")
+  productId   String @map("product_id")
+  productName String @map("product_name")
+  unitPrice   Float  @map("unit_price")
+  quantity    Float
+  subtotal    Float
+  discount    Float  @default(0)
+  total       Float
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+// ---- Payments (1:N with Sale for mixed payments) ----
+model Payment {
+  id        String   @id @default(uuid())
+  saleId    String   @map("sale_id")
+  method    String   // CASH | CLOVER | MERCADOPAGO
+  amount    Float
+  reference String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("payments")
+}
+
+// ---- Products ----
+model Product {
+  id          String  @id @default(uuid())
+  barcode     String? @unique
+  sku         String? @unique
+  name        String
+  categoryId  String? @map("category_id")
+  brandId     String? @map("brand_id")
+  supplierId  String? @map("supplier_id")
+  description String?
+  imageUrl    String? @map("image_url")
+  costPrice   Float   @default(0) @map("cost_price")
+  salePrice   Float   @map("sale_price")
+  stock       Float   @default(0)
+  minStock    Float   @default(0) @map("min_stock")
+  unit             String  @default("UNIT") // UNIT | KG | L | PACK
+  presentationType String  @default("UNIT") @map("presentation_type")
+  unitsPerPack     Int     @default(1) @map("units_per_pack")
+  taxRate          Float   @default(0) @map("tax_rate")
+  isActive    Boolean @default(true) @map("is_active")
+  isFavorite  Boolean @default(false) @map("is_favorite")
+  allowCustomPrice Boolean @default(false) @map("allow_custom_price")
+  unlimitedStock   Boolean @default(false) @map("unlimited_stock")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  category  Category?  @relation(fields: [categoryId], references: [id])
+  brand     Brand?     @relation(fields: [brandId], references: [id])
+  supplier  Supplier?  @relation(fields: [supplierId], references: [id])
+  saleItems SaleItem[]
+  inventoryMovements InventoryMovement[]
+  priceHistory       PriceHistory[]
+  purchaseItems      PurchaseItem[]
+  additionalBarcodes ProductBarcode[]
+  promotions        PromotionProduct[]
+
+  @@index([name])
+  @@index([barcode])
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([supplierId])
+  @@map("products")
+}
+
+model ProductBarcode {
+  id        String  @id @default(uuid())
+  barcode   String  @unique
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_barcodes")
+}
+
+model Category {
+  id           String  @id @default(uuid())
+  name         String  @unique
+  color        String  @default("#6366f1")
+  icon         String  @default("Package")
+  displayOrder Int     @default(0) @map("display_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Brand {
+  id   String @id @default(uuid())
+  name String @unique
+
+  products Product[]
+
+  @@map("brands")
+}
+
+model Supplier {
+  id      String  @id @default(uuid())
+  name    String
+  contact String?
+  phone   String?
+  email   String?
+
+  products  Product[]
+  purchases Purchase[]
+  payments  SupplierPayment[]
+
+  @@map("suppliers")
+}
+
+// ---- Inventory ----
+model InventoryMovement {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  userId      String   @map("user_id")
+  type        String   // ENTRY | EXIT | ADJUSTMENT | SALE | RETURN
+  quantity    Float
+  stockBefore Float    @map("stock_before")
+  stockAfter  Float    @map("stock_after")
+  reason      String?
+  reference   String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+// ---- Purchases ----
+model Purchase {
+  id           String   @id @default(uuid())
+  supplierId   String   @map("supplier_id")
+  userId       String   @map("user_id")
+  invoiceNumber String? @map("invoice_number")
+  total        Float
+  status       String   @default("COMPLETED") // COMPLETED | PENDING | CANCELLED
+  paymentStatus String  @default("PAID") // PAID | OWED
+  paymentMethod String? @map("payment_method") // CASH | TRANSFER | etc
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  items    PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String   @id @default(uuid())
+  purchaseId  String   @map("purchase_id")
+  productId   String   @map("product_id")
+  productName String   @map("product_name")
+  quantity    Float
+  cost        Float
+  total       Float
+  buyFormat   String   @default("UNIT") @map("buy_format")
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model SupplierPayment {
+  id          String   @id @default(uuid())
+  supplierId  String   @map("supplier_id")
+  userId      String   @map("user_id")
+  amount      Float
+  method      String   // CASH | TRANSFER | etc
+  reference   String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("supplier_payments")
+}
+
+// ---- Cash Movements ----
+model CashMovement {
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  userId      String   @map("user_id")
+  type        String   // INCOME | EXPENSE | WITHDRAWAL
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session CashRegisterSession @relation(fields: [sessionId], references: [id])
+  user    User                @relation(fields: [userId], references: [id])
+
+  @@map("cash_movements")
+}
+
+// ---- Price History ----
+model PriceHistory {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  userId    String   @map("user_id")
+  oldPrice  Float    @map("old_price")
+  newPrice  Float    @map("new_price")
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("price_history")
+}
+
+// ---- Audit Log ----
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  action     String
+  oldValues  String?  @map("old_values")
+  newValues  String?  @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  terminal   String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+// ---- Clients & Accounts (Cuentas Corrientes) ----
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  dni       String?  @unique
+  phone     String?
+  address   String?
+  email     String?
+  balance   Float    @default(0) // Positive means they owe us
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sales     Sale[]
+  movements AccountMovement[]
+
+  @@map("clients")
+}
+
+model AccountMovement {
+  id          String   @id @default(uuid())
+  clientId    String   @map("client_id")
+  saleId      String?  @map("sale_id")
+  userId      String   @map("user_id")
+  type        String   // DEBT (Purchase) | PAYMENT (Abono)
+  amount      Float
+  balanceBefore Float   @map("balance_before")
+  balanceAfter  Float   @map("balance_after")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id])
+  sale   Sale?  @relation(fields: [saleId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("account_movements")
+}
+
+// ---- App Licensing ----
+model AppLicense {
+  id            String   @id @default("license_config")
+  licenseKey    String   @default("")
+  machineUuid   String   @default("")
+  expiresAt     DateTime @default(now())
+  lastCheckedAt DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("app_licenses")
+}

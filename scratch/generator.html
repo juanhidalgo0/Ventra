@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Control - Licencias y Clientes GoDelivery POS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #070b13;
+      --card-dark: #0f1524;
+      --card-inner: #151e33;
+      --border-color: #222e4c;
+      --border-focus: #e11d48;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --rose: #e11d48;
+      --rose-hover: #f43f5e;
+      --rose-glow: rgba(225, 29, 72, 0.15);
+      --indigo: #6366f1;
+      --indigo-glow: rgba(99, 102, 241, 0.15);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Glow Backgrounds */
+    .glow {
+      position: absolute;
+      width: 700px;
+      height: 700px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(225, 29, 72, 0.06) 0%, transparent 70%);
+      top: -250px;
+      right: -200px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .glow-2 {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, transparent 70%);
+      bottom: -150px;
+      left: -150px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      width: 100%;
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .logo-icon {
+      background: linear-gradient(135deg, var(--rose), #ff4b72);
+      color: white;
+      font-weight: 900;
+      width: 3rem;
+      height: 3rem;
+      border-radius: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 8px 20px var(--rose-glow);
+    }
+
+    .logo-title h1 {
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-title p {
+      font-size: 0.8rem;
+      color: var(--rose);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .secret-key-section {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 0.6rem 1.2rem;
+      border-radius: 1.25rem;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.02);
+    }
+
+    .secret-key-section label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .secret-key-section input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 700;
+      width: 280px;
+      border-bottom: 1.5px dashed var(--rose);
+      padding: 0.2rem 0;
+      font-family: monospace;
+    }
+
+    /* Stats Dashboard */
+    .stats-dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .stat-card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 1.5rem;
+      padding: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+
+    .stat-info h3 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: white;
+    }
+
+    .stat-icon {
+      width: 3rem;
+      height: 3rem;
+      border-radius: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .icon-total { background: var(--indigo-glow); color: var(--indigo); }
+    .icon-active { background: var(--emerald-glow); color: var(--emerald); }
+    .icon-expired { background: var(--rose-glow); color: var(--rose); }
+    .icon-trials { background: rgba(245, 158, 11, 0.1); color: var(--amber); }
+
+    /* Layout Sections */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1.7fr;
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 2rem;
+      padding: 2rem;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .card-title span {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    /* Tabs Nav */
+    .tabs-nav {
+      display: flex;
+      background: var(--bg-dark);
+      padding: 0.35rem;
+      border-radius: 1rem;
+      border: 1px solid var(--border-color);
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.6rem 1rem;
+      border-radius: 0.75rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--card-inner);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    /* Forms */
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .form-group input, .form-group select {
+      background: var(--card-inner);
+      border: 1px solid var(--border-color);
+      border-radius: 0.85rem;
+      padding: 0.8rem 1rem;
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 600;
+      outline: none;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--rose);
+      box-shadow: 0 0 10px rgba(225, 29, 72, 0.1);
+    }
+
+    .btn {
+      padding: 0.85rem 1.5rem;
+      border-radius: 0.85rem;
+      font-weight: 800;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      outline: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--rose), #ff4b72);
+      color: white;
+      box-shadow: 0 4px 15px var(--rose-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(225, 29, 72, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--card-inner);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border-color);
+    }
+
+    .btn-danger {
+      background: rgba(225, 29, 72, 0.1);
+      border: 1px solid rgba(225, 29, 72, 0.2);
+      color: var(--rose);
+    }
+
+    .btn-danger:hover {
+      background: var(--rose);
+      color: white;
+    }
+
+    /* Customer List styling */
+    .customer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 480px;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+
+    .customer-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 1.25rem;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      transition: all 0.25s;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .customer-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: transparent;
+      transition: all 0.2s;
+    }
+
+    .customer-item:hover {
+      border-color: var(--indigo);
+      background: rgba(99, 102, 241, 0.03);
+    }
+
+    .customer-item.selected {
+      border-color: var(--rose);
+      background: rgba(225, 29, 72, 0.03);
+    }
+
+    .customer-item.selected::before {
+      background: var(--rose);
+    }
+
+    .customer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    .customer-info h4 {
+      font-size: 1rem;
+      font-weight: 800;
+    }
+
+    .customer-info p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .status-badge {
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 0.25rem 0.6rem;
+      border-radius: 2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .status-active {
+      background: var(--emerald-glow);
+      color: var(--emerald);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-expired {
+      background: var(--rose-glow);
+      color: var(--rose);
+      border: 1px solid rgba(225, 29, 72, 0.2);
+    }
+
+    .status-expiring {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .status-never {
+      background: var(--indigo-glow);
+      color: var(--indigo);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .status-trial {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* Progress Bar */
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: var(--bg-dark);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 0.2rem;
+    }
+
+    .progress-bar {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-bar-active { background: var(--emerald); }
+    .progress-bar-expired { background: var(--rose); }
+    .progress-bar-expiring { background: var(--amber); }
+    .progress-bar-trial { background: var(--amber); }
+
+    .customer-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .customer-actions {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .icon-btn {
+      background: var(--card-inner);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.35rem;
+      border-radius: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+      color: var(--rose);
+      border-color: rgba(225, 29, 72, 0.4);
+      background: var(--rose-glow);
+    }
+
+    /* Code Generator & Display Card */
+    .code-display {
+      background: var(--bg-dark);
+      border: 1.5px dashed var(--border-color);
+      border-radius: 1.5rem;
+      padding: 2rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .code-display h3 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+    }
+
+    .code-value {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--rose);
+      letter-spacing: 0.08em;
+      font-family: monospace;
+      text-shadow: 0 4px 15px rgba(225,29,72,0.15);
+      word-break: break-all;
+    }
+
+    .code-placeholder {
+      color: #1e293b;
+      font-style: italic;
+      font-size: 1.25rem;
+    }
+
+    .actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .whatsapp-template {
+      background: #061510;
+      border: 1px solid #0f3625;
+      border-radius: 1.25rem;
+      padding: 1.25rem;
+      font-size: 0.85rem;
+      color: #a7f3d0;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .whatsapp-template h4 {
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--emerald);
+      text-transform: uppercase;
+      margin-bottom: 0.65rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* Universal Trial Panel Styles */
+    .trial-keys-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .trial-key-item {
+      background: var(--card-inner);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .trial-key-item code {
+      font-size: 1.1rem;
+      font-weight: 850;
+      color: var(--amber);
+      font-family: monospace;
+      letter-spacing: 0.05em;
+    }
+
+    .trial-key-info {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-style: italic;
+      border: 1px dashed var(--border-color);
+      border-radius: 1rem;
+    }
+
+    /* --- MOBILE RESPONSIVE MEDIA QUERIES --- */
+    @media (max-width: 1024px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .logo-container {
+        justify-content: center;
+      }
+
+      .secret-key-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+      }
+
+      .secret-key-section input {
+        width: 100%;
+      }
+
+      .card {
+        padding: 1.5rem;
+        border-radius: 1.5rem;
+      }
+
+      .code-value {
+        font-size: 1.8rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .actions-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .logo-title h1 {
+        font-size: 1.25rem;
+      }
+
+      .stat-card {
+        padding: 1.2rem;
+      }
+
+      .stat-value {
+        font-size: 1.6rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="glow-2"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-container">
+        <div class="logo-icon">🔒</div>
+        <div class="logo-title">
+          <h1>Control de Suscripciones</h1>
+          <p>Licenciamiento GoDelivery POS</p>
+        </div>
+      </div>
+
+      <div class="secret-key-section">
+        <label for="secret-key">Palabra Secreta:</label>
+        <input type="text" id="secret-key" value="paulos-pos-license-key-lock-2026" onchange="saveConfig()">
+      </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-dashboard">
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Total Clientes</h3>
+          <div class="stat-value" id="stat-total">0</div>
+        </div>
+        <div class="stat-icon icon-total">👥</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Activos</h3>
+          <div class="stat-value" id="stat-active" style="color: var(--emerald);">0</div>
+        </div>
+        <div class="stat-icon icon-active">🟢</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Vencidos / Inactivos</h3>
+          <div class="stat-value" id="stat-expired" style="color: var(--rose);">0</div>
+        </div>
+        <div class="stat-icon icon-expired">🔴</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Pruebas Generadas</h3>
+          <div class="stat-value" id="stat-trials" style="color: var(--amber);">0</div>
+        </div>
+        <div class="stat-icon icon-trials">⚡</div>
+      </div>
+    </div>
+
+    <!-- Main Workspace Grid -->
+    <div class="dashboard-grid">
+      <!-- Columna Izquierda: Listado de Clientes -->
+      <div class="card">
+        <div class="card-title">
+          <span>👥 Mis Clientes</span>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-radius: 0.5rem;" onclick="toggleAddForm()">
+              + Nuevo
+            </button>
+            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-radius: 0.5rem;" onclick="resetAllLicenses()">
+              Quitar Licencias
+            </button>
+          </div>
+        </div>
+
+        <!-- Add Customer Form -->
+        <form id="customer-form" onsubmit="addCustomer(event)" style="display: none; background: var(--card-inner); padding: 1.25rem; border-radius: 1.25rem; border: 1px solid var(--border-color);">
+          <h4 style="font-size: 0.9rem; margin-bottom: 1rem; color: white;">Registrar Nuevo Comercio</h4>
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="form-group">
+              <label>Nombre del Comercio</label>
+              <input type="text" id="cust-name" placeholder="Ej: Maxikiosco Paulos" required>
+            </div>
+            <div class="form-group">
+              <label>ID de Computadora (UUID)</label>
+              <input type="text" id="cust-uuid" placeholder="Ej: 5A92-F19C-B244" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Teléfono (Con cod de país)</label>
+                <input type="text" id="cust-phone" placeholder="Ej: 5493415555555">
+              </div>
+              <div class="form-group">
+                <label>Vencimiento Inicial (Opcional)</label>
+                <input type="date" id="cust-expiry">
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+              <button type="submit" class="btn btn-primary" style="flex: 2;">Guardar Cliente</button>
+              <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="toggleAddForm(false)">Cancelar</button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Search Bar -->
+        <div class="form-group">
+          <input type="text" id="search-input" placeholder="🔍 Buscar cliente por nombre o UUID..." oninput="renderCustomers()" style="background: var(--card-inner); border-radius: 1rem;">
+        </div>
+
+        <div class="customer-list" id="customers-container">
+          <!-- Generado dinámicamente -->
+        </div>
+      </div>
+
+      <!-- Columna Derecha: Generador y Claves de Prueba -->
+      <div class="card generator-card">
+        <div class="tabs-nav">
+          <button class="tab-btn active" id="tab-monthly" onclick="switchTab('monthly')">Licencia Mensual</button>
+          <button class="tab-btn" id="tab-universal" onclick="switchTab('universal')">Pruebas Universales</button>
+        </div>
+
+        <!-- Contenedor Tab 1: Mensuales / Semanales -->
+        <div id="panel-monthly" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Duración</label>
+              <select id="select-duration" onchange="changeDuration()">
+                <option value="1M">1 Mes</option>
+                <option value="1W">1 Semana</option>
+              </select>
+            </div>
+            <div class="form-group" id="group-period">
+              <label>Período a Habilitar</label>
+              <select id="select-period" onchange="updateGeneratedCode()">
+                <!-- Rellenado dinámicamente -->
+              </select>
+            </div>
+          </div>
+
+          <div class="code-display">
+            <h3>Código de Activación</h3>
+            <div class="code-value" id="output-code">
+              <span class="code-placeholder">Selecciona un cliente...</span>
+            </div>
+          </div>
+
+          <div class="actions-grid">
+            <button class="btn btn-secondary" onclick="copyCode()">Copiar Código</button>
+            <button class="btn btn-primary" onclick="copyWhatsAppMessage()" style="background: var(--emerald); box-shadow: 0 4px 15px var(--emerald-glow);">
+              💬 Copiar y WhatsApp
+            </button>
+          </div>
+
+          <div class="whatsapp-template" id="wa-preview" style="display: none;">
+            <h4>Mensaje a Enviar:</h4>
+            <p id="wa-text-preview" style="white-space: pre-wrap; font-family: sans-serif; font-size: 0.8rem;"></p>
+          </div>
+        </div>
+
+        <!-- Contenedor Tab 2: Universales -->
+        <div id="panel-universal" style="display: none; flex-direction: column; gap: 1.5rem;">
+          <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 1.25rem; padding: 1.25rem;">
+            <p style="font-size: 0.85rem; line-height: 1.5; color: #fef3c7;">
+              ⚠️ <strong>Clave Universal:</strong> Activación temporal (de 1 semana o 1 mes). Funciona en cualquier computadora, pero el sistema del cliente la registrará como usada para evitar que la vuelva a activar.
+            </p>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Duración</label>
+              <select id="select-universal-duration" style="background: var(--card-inner); border-radius: 0.85rem;">
+                <option value="1M">1 Mes (30 días)</option>
+                <option value="1W">1 Semana (7 días)</option>
+                <option value="DEMO">Licencia DEMO (7 días)</option>
+              </select>
+            </div>
+            <!-- Select Client Dropdown for Universal Key -->
+            <div class="form-group">
+              <label>Asignar Prueba a Cliente (Opcional)</label>
+              <select id="select-trial-client" style="background: var(--card-inner); border-radius: 0.85rem;">
+                <option value="">-- Sin asignar (Clave libre) --</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" onclick="generateUniversalKey()" style="background: linear-gradient(135deg, var(--indigo), #818cf8); box-shadow: 0 4px 15px var(--indigo-glow); height: 3.5rem;">
+            ⚡ Generar Clave Universal
+          </button>
+
+          <div id="universal-display" class="code-display" style="display: none;">
+            <h3>Nueva Clave Universal Generada</h3>
+            <div class="code-value" id="universal-code-value" style="color: var(--amber);">UXXXX-XXXX-XXXX</div>
+            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.75rem; margin-top: 0.5rem;" onclick="copyUniversalCode()">Copiar Clave</button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
+            <h4 style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; font-weight: 700;">Historial de Claves Generadas</h4>
+            <div class="trial-keys-container" id="trial-keys-list">
+              <!-- Cargado dinámicamente -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let customers = JSON.parse(localStorage.getItem('license_customers')) || [
+      { id: '1', name: 'Maxikiosco Paulos POS', uuid: '2E454AAD-4A14-3567-FC69-5811220645E0', phone: '5491111111111', expiresAt: null }
+    ];
+    let universalKeys = JSON.parse(localStorage.getItem('license_universal_keys')) || [];
+    let selectedCustomerId = null;
+    let activeTab = 'monthly';
+
+    // USER REQUESTED RESET: Reset all clients' licenses (set expiresAt to null) on initial load
+    customers.forEach(c => {
+      c.expiresAt = null;
+    });
+    localStorage.setItem('license_customers', JSON.stringify(customers));
+
+    function getYearWeek(date) {
+      const target = new Date(date.valueOf());
+      const dayNr = (date.getDay() + 6) % 7;
+      target.setDate(target.getDate() - dayNr + 3);
+      const firstThursday = target.valueOf();
+      target.setMonth(0, 1);
+      if (target.getDay() !== 4) {
+        target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+      }
+      const weekNum = 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+      return `${target.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    }
+
+    function changeDuration() {
+      const groupPeriod = document.getElementById('group-period');
+      groupPeriod.style.display = 'flex';
+      initPeriods();
+      updateGeneratedCode();
+    }
+
+    // Initialize periods list (Months or Weeks)
+    function initPeriods() {
+      const select = document.getElementById('select-period');
+      select.innerHTML = '';
+      const duration = document.getElementById('select-duration').value;
+      const today = new Date();
+      
+      if (duration === '1M') {
+        for (let i = 0; i < 12; i++) {
+          const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+          const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }).toUpperCase();
+          select.appendChild(option);
+        }
+      } else {
+        // 10 Weeks ahead
+        for (let i = 0; i < 10; i++) {
+          const d = new Date();
+          d.setDate(today.getDate() + i * 7);
+          const value = getYearWeek(d);
+          const option = document.createElement('option');
+          option.value = value;
+          
+          // Get range label for week
+          const tempDate = new Date();
+          tempDate.setDate(today.getDate() + i * 7);
+          const day = tempDate.getDay();
+          const diffToMon = tempDate.getDate() - day + (day === 0 ? -6 : 1);
+          const mon = new Date(tempDate.setDate(diffToMon));
+          const sun = new Date(tempDate.setDate(diffToMon + 6));
+          const label = `SEMANA ${value.split('-W')[1]} (${mon.getDate()}/${mon.getMonth()+1} al ${sun.getDate()}/${sun.getMonth()+1})`;
+          
+          option.textContent = label;
+          select.appendChild(option);
+        }
+      }
+    }
+
+    function saveConfig() {
+      localStorage.setItem('license_secret_word', document.getElementById('secret-key').value);
+      updateGeneratedCode();
+    }
+
+    function loadConfig() {
+      const saved = localStorage.getItem('license_secret_word');
+      if (saved) {
+        document.getElementById('secret-key').value = saved;
+      }
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.getElementById('tab-monthly').classList.toggle('active', tab === 'monthly');
+      document.getElementById('tab-universal').classList.toggle('active', tab === 'universal');
+      
+      document.getElementById('panel-monthly').style.display = tab === 'monthly' ? 'flex' : 'none';
+      document.getElementById('panel-universal').style.display = tab === 'universal' ? 'flex' : 'none';
+    }
+
+    function toggleAddForm(show) {
+      const form = document.getElementById('customer-form');
+      if (show === undefined) {
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      } else {
+        form.style.display = show ? 'block' : 'none';
+      }
+    }
+
+    function getDaysRemaining(cust) {
+      if (!cust || !cust.expiresAt) return { label: 'Sin activación', class: 'status-never', days: -1, percent: 0 };
+      const expiry = new Date(cust.expiresAt);
+      const today = new Date();
+      expiry.setHours(23, 59, 59, 999);
+      today.setHours(0, 0, 0, 0);
+      
+      const diffTime = expiry - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) {
+        return { label: 'Vencido', class: 'status-expired', days: diffDays, percent: 0 };
+      } else if (cust.isTrial) {
+        const percent = Math.min(100, (diffDays / 30) * 100);
+        return { label: `Prueba: ${diffDays} d`, class: 'status-trial', days: diffDays, percent };
+      } else if (cust.isDemo) {
+        const percent = Math.min(100, (diffDays / 7) * 100);
+        return { label: `DEMO: ${diffDays} d`, class: 'status-trial', days: diffDays, percent };
+      } else if (diffDays === 0) {
+        return { label: 'Vence hoy', class: 'status-expiring', days: 0, percent: 10 };
+      } else if (diffDays <= 7) {
+        const percent = Math.max(5, (diffDays / 30) * 100);
+        return { label: `${diffDays} d restantes`, class: 'status-expiring', days: diffDays, percent };
+      } else {
+        const percent = Math.min(100, (diffDays / 30) * 100);
+        return { label: `${diffDays} d restantes`, class: 'status-active', days: diffDays, percent };
+      }
+    }
+
+    function calculateStats() {
+      let total = customers.length;
+      let active = 0;
+      let expired = 0;
+      let activeTrials = 0;
+
+      customers.forEach(cust => {
+        if (!cust.expiresAt) {
+          expired++;
+        } else {
+          const rem = getDaysRemaining(cust);
+          if (rem.days >= 0) {
+            active++;
+            if (cust.isTrial) {
+              activeTrials++;
+            }
+          } else {
+            expired++;
+          }
+        }
+      });
+
+      document.getElementById('stat-total').innerText = total;
+      document.getElementById('stat-active').innerText = active;
+      document.getElementById('stat-expired').innerText = expired;
+      document.getElementById('stat-trials').innerText = activeTrials + ` (${universalKeys.length} tot)`;
+    }
+
+    function renderCustomers() {
+      const container = document.getElementById('customers-container');
+      container.innerHTML = '';
+      const searchQuery = document.getElementById('search-input').value.toLowerCase();
+      
+      const filtered = customers.filter(cust => 
+        cust.name.toLowerCase().includes(searchQuery) || 
+        cust.uuid.toLowerCase().includes(searchQuery)
+      );
+
+      // Populate select-trial-client dropdown dynamically
+      const trialClientSelect = document.getElementById('select-trial-client');
+      if (trialClientSelect) {
+        const savedVal = trialClientSelect.value;
+        trialClientSelect.innerHTML = '<option value="">-- Sin asignar (Clave libre) --</option>';
+        customers.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          trialClientSelect.appendChild(opt);
+        });
+        trialClientSelect.value = savedVal;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">No se encontraron clientes</div>';
+        return;
+      }
+      
+      filtered.forEach(cust => {
+        const statusInfo = getDaysRemaining(cust);
+        const div = document.createElement('div');
+        div.className = `customer-item ${selectedCustomerId === cust.id ? 'selected' : ''}`;
+        div.onclick = () => selectCustomer(cust.id);
+
+        let formattedExpiry = 'Nunca';
+        if (cust.expiresAt) {
+          const date = new Date(cust.expiresAt);
+          formattedExpiry = date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        const pbClass = statusInfo.class === 'status-active' ? 'progress-bar-active' : 
+                        statusInfo.class === 'status-expiring' ? 'progress-bar-expiring' : 
+                        statusInfo.class === 'status-trial' ? 'progress-bar-trial' : 'progress-bar-expired';
+
+        div.innerHTML = `
+          <div class="customer-header">
+            <div class="customer-info">
+              <h4>${cust.name}</h4>
+              <p>${cust.uuid}</p>
+            </div>
+            <span class="status-badge ${statusInfo.class}">${statusInfo.label}</span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.1rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);">
+              <span>Progreso de licencia</span>
+              <span>Exp: ${formattedExpiry}</span>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar ${pbClass}" style="width: ${statusInfo.percent}%;"></div>
+            </div>
+          </div>
+
+          <div class="customer-footer">
+            <span>📞 ${cust.phone || 'Sin teléfono'}</span>
+            <div class="customer-actions">
+              <button class="icon-btn" onclick="deleteCustomer(event, '${cust.id}')" title="Eliminar Cliente">🗑️</button>
+            </div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      calculateStats();
+    }
+
+    function selectCustomer(id) {
+      selectedCustomerId = id;
+      updateGeneratedCode();
+    }
+
+    function addCustomer(e) {
+      e.preventDefault();
+      const name = document.getElementById('cust-name').value;
+      const uuid = document.getElementById('cust-uuid').value.trim();
+      const phone = document.getElementById('cust-phone').value.trim();
+      const expiryVal = document.getElementById('cust-expiry').value;
+
+      let expiresAt = null;
+      if (expiryVal) {
+        expiresAt = new Date(expiryVal).toISOString();
+      }
+
+      const newCustomer = {
+        id: Date.now().toString(),
+        name,
+        uuid,
+        phone,
+        expiresAt
+      };
+
+      customers.push(newCustomer);
+      localStorage.setItem('license_customers', JSON.stringify(customers));
+      
+      document.getElementById('customer-form').reset();
+      toggleAddForm(false);
+      renderCustomers();
+      selectCustomer(newCustomer.id);
+    }
+
+    function deleteCustomer(e, id) {
+      e.stopPropagation();
+      if (!confirm('¿Seguro que deseas eliminar este cliente de la base de datos?')) return;
+      
+      customers = customers.filter(c => c.id !== id);
+      localStorage.setItem('license_customers', JSON.stringify(customers));
+      
+      if (selectedCustomerId === id) {
+        selectedCustomerId = null;
+      }
+      renderCustomers();
+      updateGeneratedCode();
+    }
+
+    // Manual client reset
+    function resetAllLicenses() {
+      if (!confirm('¿Seguro que deseas quitarle la licencia a TODOS los clientes?')) return;
+      customers.forEach(c => {
+        c.expiresAt = null;
+      });
+      localStorage.setItem('license_customers', JSON.stringify(customers));
+      selectedCustomerId = null;
+      renderCustomers();
+      const output = document.getElementById('output-code');
+      output.innerHTML = '<span class="code-placeholder">Selecciona un cliente...</span>';
+      document.getElementById('wa-preview').style.display = 'none';
+      alert('🔒 Se han removido las licencias de todos los clientes.');
+    }
+
+    // SHA256 Generator natively in JavaScript
+    async function sha256(message) {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+
+    async function updateGeneratedCode() {
+      const output = document.getElementById('output-code');
+      const waPreview = document.getElementById('wa-preview');
+      
+      if (!selectedCustomerId) {
+        output.innerHTML = '<span class="code-placeholder">Selecciona un cliente...</span>';
+        waPreview.style.display = 'none';
+        return;
+      }
+
+      const client = customers.find(c => c.id === selectedCustomerId);
+      const duration = document.getElementById('select-duration').value;
+      const period = document.getElementById('select-period').value;
+      const secret = document.getElementById('secret-key').value;
+
+      // Hashing format matching backend key structure:
+      // ${machineUuid}-${type}-${period}-${SECRET_WORD}
+      const input = `${client.uuid.trim().toUpperCase()}-${duration}-${period}-${secret}`;
+      const hash = await sha256(input);
+
+      const part1 = hash.substring(0, 4);
+      const part2 = hash.substring(4, 8);
+      const part3 = hash.substring(8, 12);
+      const code = `${part1}-${part2}-${part3}`;
+
+      output.innerText = code;
+
+      // Automatically update the client's local expiresAt for preview
+      let expiryDate = new Date();
+      if (duration === '1M') {
+        expiryDate.setDate(expiryDate.getDate() + 30);
+      } else {
+        expiryDate.setDate(expiryDate.getDate() + 7);
+      }
+      expiryDate.setHours(23, 59, 59, 999);
+      client.expiresAt = expiryDate.toISOString();
+      client.isDemo = (duration === 'DEMO');
+      localStorage.setItem('license_customers', JSON.stringify(customers));
+
+      // Re-render customer list (keeps current selection highlight)
+      const container = document.getElementById('customers-container');
+      const searchQuery = document.getElementById('search-input').value.toLowerCase();
+      
+      const filtered = customers.filter(cust => 
+        cust.name.toLowerCase().includes(searchQuery) || 
+        cust.uuid.toLowerCase().includes(searchQuery)
+      );
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">No se encontraron clientes</div>';
+      } else {
+        container.innerHTML = '';
+        filtered.forEach(cust => {
+          const statusInfo = getDaysRemaining(cust);
+          const div = document.createElement('div');
+          div.className = `customer-item ${selectedCustomerId === cust.id ? 'selected' : ''}`;
+          div.onclick = () => selectCustomer(cust.id);
+
+          let formattedExpiry = 'Nunca';
+          if (cust.expiresAt) {
+            const date = new Date(cust.expiresAt);
+            formattedExpiry = date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          }
+
+          const pbClass = statusInfo.class === 'status-active' ? 'progress-bar-active' : 
+                          statusInfo.class === 'status-expiring' ? 'progress-bar-expiring' : 'progress-bar-expired';
+
+          div.innerHTML = `
+            <div class="customer-header">
+              <div class="customer-info">
+                <h4>${cust.name}</h4>
+                <p>${cust.uuid}</p>
+              </div>
+              <span class="status-badge ${statusInfo.class}">${statusInfo.label}</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.1rem;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);">
+                <span>Progreso de licencia</span>
+                <span>Exp: ${formattedExpiry}</span>
+              </div>
+              <div class="progress-container">
+                <div class="progress-bar ${pbClass}" style="width: ${statusInfo.percent}%;"></div>
+              </div>
+            </div>
+
+            <div class="customer-footer">
+              <span>📞 ${cust.phone || 'Sin teléfono'}</span>
+              <div class="customer-actions">
+                <button class="icon-btn" onclick="deleteCustomer(event, '${cust.id}')" title="Eliminar Cliente">🗑️</button>
+              </div>
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      }
+
+      calculateStats();
+
+      // Update WhatsApp text preview
+      const periodLabel = document.getElementById('select-period').selectedOptions[0].textContent;
+      const message = `Hola *${client.name}*! Acá tenés tu código de activación para el POS correspondientes al período de *${periodLabel}*:\n\n🔑 *Código de Activación:* \n\`${code}\`\n\nMuchas gracias por tu pago!`;
+      
+      document.getElementById('wa-text-preview').innerText = message;
+      waPreview.style.display = 'block';
+    }
+
+    function copyCode() {
+      const code = document.getElementById('output-code').innerText;
+      if (code.includes('Selecciona')) return;
+      navigator.clipboard.writeText(code);
+      alert('📋 Código de activación copiado al portapapeles!');
+    }
+
+    function copyWhatsAppMessage() {
+      const message = document.getElementById('wa-text-preview').innerText;
+      if (!message) return;
+      navigator.clipboard.writeText(message);
+
+      const client = customers.find(c => c.id === selectedCustomerId);
+      if (client && client.phone) {
+        const url = `https://wa.me/${client.phone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+      } else {
+        alert('📋 Mensaje copiado al portapapeles! (No posee teléfono guardado para envío directo por WhatsApp)');
+      }
+    }
+
+    // Universal Trial Key Logic
+    async function generateUniversalKey() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let keyId = '';
+      for (let i = 0; i < 5; i++) {
+        keyId += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      const secret = document.getElementById('secret-key').value;
+      const duration = document.getElementById('select-universal-duration').value;
+      const prefix = duration === 'DEMO' ? 'D' : (duration === '1W' ? 'W' : 'U');
+
+      // Signature input matches backend universal key format:
+      // UNIVERSAL-${typeStr}-${keyId}-${SECRET_WORD}
+      const input = `UNIVERSAL-${duration}-${keyId}-${secret}`;
+      const hash = await sha256(input);
+      const signature = hash.substring(0, 6).toUpperCase();
+      
+      const rawCode = `${prefix}${keyId}${signature}`;
+      const formatted = `${rawCode.substring(0, 4)}-${rawCode.substring(4, 8)}-${rawCode.substring(8, 12)}`;
+
+      const newKey = {
+        code: formatted,
+        createdAt: new Date().toISOString()
+      };
+
+      // Assign to client if selected
+      const selectedTrialClientId = document.getElementById('select-trial-client').value;
+      if (selectedTrialClientId) {
+        const client = customers.find(c => c.id === selectedTrialClientId);
+        if (client) {
+          const days = (duration === '1W' || duration === 'DEMO') ? 7 : 30;
+          const expiryDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+          client.expiresAt = expiryDate.toISOString();
+          client.isTrial = (duration !== 'DEMO');
+          client.isDemo = (duration === 'DEMO');
+          localStorage.setItem('license_customers', JSON.stringify(customers));
+          renderCustomers();
+        }
+      }
+
+      universalKeys.unshift(newKey);
+      localStorage.setItem('license_universal_keys', JSON.stringify(universalKeys));
+
+      document.getElementById('universal-code-value').innerText = formatted;
+      document.getElementById('universal-display').style.display = 'flex';
+
+      renderUniversalKeys();
+      calculateStats();
+    }
+
+    function renderUniversalKeys() {
+      const container = document.getElementById('trial-keys-list');
+      container.innerHTML = '';
+
+      if (universalKeys.length === 0) {
+        container.innerHTML = '<div class="empty-state">No se han generado claves de prueba aún</div>';
+        return;
+      }
+
+      universalKeys.forEach((k, idx) => {
+        const date = new Date(k.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const div = document.createElement('div');
+        div.className = 'trial-key-item';
+        div.innerHTML = `
+          <div>
+            <code>${k.code}</code>
+            <div class="trial-key-info">Generada: ${date}</div>
+          </div>
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="icon-btn" onclick="copySpecificKey('${k.code}')" title="Copiar Clave">📋</button>
+            <button class="icon-btn" onclick="deleteUniversalKey('${idx}')" title="Eliminar del historial">🗑️</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function copyUniversalCode() {
+      const code = document.getElementById('universal-code-value').innerText;
+      navigator.clipboard.writeText(code);
+      alert('📋 Clave universal de prueba copiada!');
+    }
+
+    function copySpecificKey(code) {
+      navigator.clipboard.writeText(code);
+      alert('📋 Clave de prueba copiada!');
+    }
+
+    function deleteUniversalKey(index) {
+      if (!confirm('¿Eliminar esta clave del historial? (Nota: si ya fue activada en la PC del cliente seguirá activa)')) return;
+      universalKeys.splice(index, 1);
+      localStorage.setItem('license_universal_keys', JSON.stringify(universalKeys));
+      renderUniversalKeys();
+      calculateStats();
+    }
+
+    // Init App
+    loadConfig();
+    initPeriods();
+    renderCustomers();
+    renderUniversalKeys();
+  </script>
+</body>
+</html>

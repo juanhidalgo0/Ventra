@@ -1,0 +1,13 @@
+node_modules
+dist
+*.db
+*.db-journal
+.env
+.DS_Store
+*.rar
+*.exe
+*.zip
+firebase-credentials.json
+*credentials.json
+*.pem
+*.key

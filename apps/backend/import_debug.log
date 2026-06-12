@@ -1,0 +1,14 @@
+--- SERVER BOOTED AT 2026-05-14T06:05:19.611Z ---
+--- Controller: Received import request: undefined, size: undefined
+--- Controller: No file received!
+--- SERVER BOOTED AT 2026-05-14T06:06:13.801Z ---
+--- Controller: Received import request: undefined, size: undefined
+--- Controller: No file received!
+--- SERVER BOOTED AT 2026-05-14T06:06:50.458Z ---
+--- SERVER BOOTED AT 2026-05-14T06:07:02.267Z ---
+--- Controller: Received request ---
+Headers: {"host":"localhost:3001","connection":"close","content-length":"11","sec-ch-ua-platform":"\"Android\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhYzU0NWUwYy1lODFmLTRlZTgtODc1Yi03YTZlODBlNjczYTciLCJ1c2VybmFtZSI6ImFkbWluIiwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzc4NzM4MjMzLCJleHAiOjE3Nzg3MzkxMzN9.zKcfiwyrEM0hAWyYbK5-GLqSKf_vz9yXl5uQOt45PBc","user-agent":"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Chromium\";v=\"148\", \"Google Chrome\";v=\"148\", \"Not/A)Brand\";v=\"99\"","content-type":"application/json","sec-ch-ua-mobile":"?1","origin":"http://localhost:5173","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/inventory","accept-encoding":"gzip, deflate, br, zstd","accept-language":"es-ES,es;q=0.9"}
+Body keys: ["file"]
+File: UNDEFINED
+--- Controller: No file received!
+--- SERVER BOOTED AT 2026-05-14T06:08:09.642Z ---

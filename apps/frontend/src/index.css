@@ -1,0 +1,235 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ======================================================
+   KIOSCO POS — Professional Light Mode Design System
+   Inspired by PedidosYa / GoDelivery aesthetic
+   ====================================================== */
+
+@layer base {
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden !important;
+  }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f1f5f9;
+    color: #1e293b;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.97); }
+  }
+}
+
+@layer components {
+  /* ── Card ────────────────────────────────── */
+  .card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    transition: all 0.2s ease;
+  }
+  .card:hover {
+    border-color: #cbd5e1;
+  }
+
+  /* ── Buttons ─────────────────────────────── */
+  .btn-primary {
+    @apply bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+  }
+
+  .btn-success {
+    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+  }
+
+  .btn-danger {
+    background-color: #fef2f2;
+    color: #dc2626;
+    font-weight: 600;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.75rem;
+    transition: all 0.2s ease;
+    border: 1px solid #fecaca;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .btn-danger:hover {
+    background-color: #fee2e2;
+    border-color: #fca5a5;
+  }
+  .btn-danger:active {
+    transform: scale(0.97);
+  }
+
+  .btn-secondary {
+    background-color: #ffffff;
+    color: #334155;
+    font-weight: 600;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.75rem;
+    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .btn-secondary:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+  }
+  .btn-secondary:active {
+    transform: scale(0.97);
+  }
+
+  /* ── Inputs ──────────────────────────────── */
+  .input-field {
+    width: 100%;
+    background-color: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1rem;
+    outline: none;
+    color: #0f172a;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+  .input-field:focus {
+    border-color: #e11d48;
+    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.08);
+  }
+  .input-field::placeholder {
+    color: #94a3b8;
+  }
+
+  /* ── Nav Buttons ─────────────────────────── */
+  .nav-btn {
+    @apply flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap active:scale-[0.97];
+  }
+}
+
+/* ── Number input spinners removal ─────── */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+/* ── Performance Mode Rules (Ultra-flat layout) ──────────────── */
+body[data-performance-mode="true"]:not(.on-auth-screen) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  background-color: #e2e8f0 !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .card,
+body[data-performance-mode="true"]:not(.on-auth-screen) button,
+body[data-performance-mode="true"]:not(.on-auth-screen) input,
+body[data-performance-mode="true"]:not(.on-auth-screen) select,
+body[data-performance-mode="true"]:not(.on-auth-screen) textarea,
+body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar),
+body[data-performance-mode="true"]:not(.on-auth-screen) header,
+body[data-performance-mode="true"]:not(.on-auth-screen) main,
+body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar),
+body[data-performance-mode="true"]:not(.on-auth-screen) span,
+body[data-performance-mode="true"]:not(.on-auth-screen) svg,
+body[data-performance-mode="true"]:not(.on-auth-screen) img {
+  transition: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: none !important;
+  will-change: auto !important;
+  filter: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* Bypass gradients and transparencias to avoid alpha blending GPU lag */
+body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-tr,
+body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-br,
+body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-r {
+  background-image: none !important;
+  background-color: #334155 !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary {
+  background: #e11d48 !important;
+  color: #ffffff !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success {
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #dc2626 !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Disable Hover scaling and elevation layout recalculations */
+body[data-performance-mode="true"]:not(.on-auth-screen) .card:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) button:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .nav-btn:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: #cbd5e1 !important;
+  scale: 1 !important;
+}
+
+/* Custom CSS class for mobile sidebar to ensure it transitions and hides properly without depending on Tailwind's dynamic compilation */
+@media (max-width: 767px) {
+  .mobile-sidebar {
+    transform: translateX(-100%) !important;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .mobile-sidebar.open {
+    transform: translateX(0) !important;
+  }
+}
+
+/* Keep Google session status banners light even in performance mode */
+body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-pending {
+  background-color: #fffbeb !important; /* light amber */
+  border-color: #fde68a !important;
+}
+body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
+  background-color: #ecfdf5 !important; /* light emerald */
+  border-color: #a7f3d0 !important;
+}
+
