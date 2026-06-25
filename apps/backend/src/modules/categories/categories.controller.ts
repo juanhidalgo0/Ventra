@@ -10,18 +10,30 @@ export class CategoriesController {
   @Get()
   async findAll() {
     return this.prisma.category.findMany({
-      include: { _count: { select: { products: true } } },
+      include: { 
+        _count: { select: { products: true } },
+        parentCategory: { select: { id: true, name: true } }
+      },
       orderBy: { displayOrder: 'asc' },
     });
   }
 
   @Post()
-  async create(@Body() data: { name: string; color?: string; icon?: string }) {
-    return this.prisma.category.create({ data });
+  async create(@Body() data: { name: string; color?: string; icon?: string; parentCategoryId?: string }) {
+    const createData: any = {
+      name: data.name,
+      color: data.color || '#6366f1',
+      icon: data.icon || 'Package',
+      parentCategoryId: data.parentCategoryId || null,
+    };
+    return this.prisma.category.create({ data: createData });
   }
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() data: any) {
+    if (data.parentCategoryId === id) {
+      data.parentCategoryId = null;
+    }
     return this.prisma.category.update({ where: { id }, data });
   }
 

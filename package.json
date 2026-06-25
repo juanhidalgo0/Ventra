@@ -1,7 +1,7 @@
 {
   "name": "godelivery-pos",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GO! Portal POS - Sistema POS",
   "scripts": {
     "predev": "npx kill-port 3001 5173 5180",
@@ -18,13 +18,14 @@
     "desktop": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"cd apps/desktop && npm start\"",
     "build:desktop": "npm run build:frontend && npm run build:backend && node copy-frontend.js && node copy-backend.js && cd apps/desktop && npm run build",
     "tauri": "tauri",
-    "tauri:dev": "concurrently \"npm run dev:backend\" \"tauri dev\"",
-    "tauri:dev:full": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"tauri dev\"",
+    "tauri:dev": "npm run build:backend && tauri dev",
+    "tauri:dev:full": "npm run build:backend && concurrently \"npm run dev:frontend\" \"tauri dev\"",
     "tauri:build": "npm run build:frontend && npm run build:backend && tauri build",
     "license:reset": "node clear_license.js"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "shelljs": "^0.10.0"
   },
   "dependencies": {
     "@tauri-apps/cli": "^2.11.2"

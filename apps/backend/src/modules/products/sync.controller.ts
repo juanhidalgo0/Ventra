@@ -26,12 +26,7 @@ export class SyncController {
     @Headers('x-sync-token') token: string,
     @Body() body: any,
   ) {
-    this.validateToken(token);
-
-    const { barcode, name, salePrice, stock, costPrice, sku, description } = body;
-    if (!barcode) {
-      throw new BadRequestException('El campo barcode es obligatorio.');
-    }
+    const { barcode, name, salePrice, stock, costPrice, sku, description, godeliveryId } = body;
     if (!name) {
       throw new BadRequestException('El campo name es obligatorio para crear/actualizar.');
     }
@@ -39,10 +34,35 @@ export class SyncController {
       throw new BadRequestException('El campo salePrice es obligatorio.');
     }
 
-    // Find if product exists by barcode
-    const existing = await this.prisma.product.findUnique({
-      where: { barcode },
-    });
+    let existing = null;
+    const hasValidBarcode = barcode && barcode.trim() !== '' && barcode.toLowerCase() !== 'sin código' && barcode.toLowerCase() !== 'sin codigo';
+
+    if (hasValidBarcode) {
+      existing = await this.prisma.product.findUnique({
+        where: { barcode },
+      });
+    }
+
+    // Buscar por ID de GoDelivery (guardado en ID local o en SKU)
+    if (!existing && godeliveryId) {
+      existing = await this.prisma.product.findFirst({
+        where: {
+          OR: [
+            { id: godeliveryId },
+            { sku: godeliveryId }
+          ],
+          isActive: true
+        }
+      });
+    }
+
+    if (!existing) {
+      const cleanName = name.trim().toUpperCase();
+      const allActive = await this.prisma.product.findMany({
+        where: { isActive: true }
+      });
+      existing = allActive.find(p => p.name.trim().toUpperCase() === cleanName) || null;
+    }
 
     let product;
 
@@ -54,9 +74,9 @@ export class SyncController {
           salePrice: parseFloat(salePrice),
           stock: stock !== undefined ? parseFloat(stock) : existing.stock,
           costPrice: costPrice !== undefined ? parseFloat(costPrice) : existing.costPrice,
-          sku: sku || existing.sku,
+          sku: sku || godeliveryId || existing.sku,
           description: description !== undefined ? description : existing.description,
-          isActive: true, // Reactivate if it was deactivated
+          isActive: true,
           updatedAt: new Date(),
         },
       });
@@ -64,8 +84,9 @@ export class SyncController {
     } else {
       product = await this.prisma.product.create({
         data: {
+          id: godeliveryId || undefined,
           barcode,
-          sku: sku || barcode,
+          sku: sku || godeliveryId || barcode,
           name,
           salePrice: parseFloat(salePrice),
           costPrice: costPrice !== undefined ? parseFloat(costPrice) : 0,
@@ -74,7 +95,7 @@ export class SyncController {
           isActive: true,
         },
       });
-      console.log(`[LocalSync] Producto [${barcode}] creado desde GoDelivery.`);
+      console.log(`[LocalSync] Producto [${barcode || godeliveryId}] creado desde GoDelivery.`);
     }
 
     // Emit event to notify POS frontend in real-time

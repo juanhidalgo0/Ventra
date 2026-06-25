@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { 
   Package, 
@@ -18,7 +19,9 @@ import {
   Tag,
   Loader2,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Bookmark,
+  Megaphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
@@ -26,11 +29,13 @@ import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
 
 export default function ProductsScreen() {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [importStatus, setImportStatus] = useState<{
     show: boolean;
@@ -61,23 +66,6 @@ export default function ProductsScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [syncStepText, setSyncStepText] = useState('Iniciando sincronización...');
-  const [syncStatus, setSyncStatus] = useState<{
-    progress: number;
-    total: number;
-    current: number;
-    status: string;
-    isComplete: boolean;
-    error: string | null;
-  }>({
-    progress: 0,
-    total: 0,
-    current: 0,
-    status: 'Iniciando sincronización...',
-    isComplete: false,
-    error: null
-  });
   const take = 50;
 
   // New States for AI Image search and Bulk actions
@@ -95,6 +83,8 @@ export default function ProductsScreen() {
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkAction, setBulkAction] = useState<'reset' | 'delete' | 'remove_images' | 'delete_zero_negative' | null>(null);
   const [confirmInput, setConfirmInput] = useState('');
+  const [showBulkCategoryModal, setShowBulkCategoryModal] = useState(false);
+  const [selectedBulkCategory, setSelectedBulkCategory] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isLoadingRef = useRef(false);
@@ -270,71 +260,7 @@ export default function ProductsScreen() {
     }
   };
 
-  const handleSyncAll = async () => {
-    setIsSyncingAll(true);
-    setSyncStepText('Iniciando sincronización...');
-    setSyncStatus({
-      progress: 0,
-      total: 0,
-      current: 0,
-      status: 'Conectando con GoDelivery...',
-      isComplete: false,
-      error: null
-    });
-    
-    const loadingToast = toast.loading('Sincronizando inventario con GoDelivery...');
 
-    const handleProgress = (data: any) => {
-      setSyncStatus({
-        progress: data.progress || 0,
-        total: data.total || 0,
-        current: data.current || 0,
-        status: data.status || 'Sincronizando...',
-        isComplete: !!data.isComplete,
-        error: data.error || null
-      });
-
-      if (data.status) {
-        setSyncStepText(data.status);
-      }
-
-      if (data.isComplete) {
-        wsService.off('sync:progress', handleProgress);
-        
-        if (data.error) {
-          toast.error(`Error al sincronizar con GoDelivery: ${data.error}`, { id: loadingToast, duration: 6000 });
-          setIsSyncingAll(false);
-        } else {
-          toast.success(
-            `🚀 Sincronización masiva finalizada con éxito:\n` +
-            `• Sincronizados: ${data.current || 0} productos\n` +
-            `• Omitidos (sin código de barras): ${data.omittedCount || 0}\n` +
-            `• Fallidos: ${data.failedCount || 0}`,
-            { id: loadingToast, duration: 6000 }
-          );
-          loadProducts(true);
-          setTimeout(() => {
-            setIsSyncingAll(false);
-          }, 1500);
-        }
-      }
-    };
-
-    wsService.on('sync:progress', handleProgress);
-
-    try {
-      const googleUserStr = localStorage.getItem('google_authenticated_user');
-      const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
-      const email = googleUser?.email;
-
-      await api.post('/products/sync-all', { googleEmail: email });
-    } catch (err: any) {
-      wsService.off('sync:progress', handleProgress);
-      const errMsg = err.response?.data?.message || 'Error al iniciar sincronización.';
-      toast.error(errMsg, { id: loadingToast });
-      setIsSyncingAll(false);
-    }
-  };
 
   const handleAssignImages = async () => {
     setIsAssigningImages(true);
@@ -414,6 +340,86 @@ export default function ProductsScreen() {
     }
   };
 
+  const handleRemoveImagesForSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`¿Estás seguro de eliminar las imágenes de los ${selectedIds.length} productos seleccionados?`)) return;
+
+    const loadingToast = toast.loading('Eliminando imágenes de seleccionados...');
+    try {
+      await api.post('/products/bulk-remove-images-subset', { ids: selectedIds });
+      toast.success('Imágenes eliminadas correctamente', { id: loadingToast });
+      setSelectedIds([]);
+      loadProducts(true);
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || 'Error al eliminar imágenes.';
+      toast.error(errMsg, { id: loadingToast });
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`¿Estás seguro de eliminar los ${selectedIds.length} productos seleccionados?`)) return;
+
+    const loadingToast = toast.loading('Eliminando productos seleccionados...');
+    try {
+      await api.post('/products/bulk-delete-subset', { ids: selectedIds });
+      toast.success('Productos eliminados correctamente', { id: loadingToast });
+      setSelectedIds([]);
+      loadProducts(true);
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || 'Error al eliminar productos.';
+      toast.error(errMsg, { id: loadingToast });
+    }
+  };
+
+  const handleBulkUpdateCategory = async () => {
+    if (selectedIds.length === 0) return;
+    if (!selectedBulkCategory) {
+      toast.error('Por favor, selecciona una categoría');
+      return;
+    }
+
+    const loadingToast = toast.loading('Actualizando categoría de productos seleccionados...');
+    try {
+      await api.post('/products/bulk-update-category-subset', { 
+        ids: selectedIds, 
+        categoryId: selectedBulkCategory 
+      });
+      toast.success('Categoría actualizada correctamente', { id: loadingToast });
+      setSelectedIds([]);
+      setShowBulkCategoryModal(false);
+      setSelectedBulkCategory('');
+      loadProducts(true);
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || 'Error al actualizar categoría.';
+      toast.error(errMsg, { id: loadingToast });
+    }
+  };
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllVisible = () => {
+    const visibleIds = visibleProducts.map(p => p.id);
+    const allSelected = visibleIds.every(id => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedIds(prev => {
+        const newSelection = [...prev];
+        visibleIds.forEach(id => {
+          if (!newSelection.includes(id)) {
+            newSelection.push(id);
+          }
+        });
+        return newSelection;
+      });
+    }
+  };
+
   const filteredProducts = products; // Already filtered by server
 
   // Deduplicate products to prevent warning of duplicate keys
@@ -424,10 +430,10 @@ export default function ProductsScreen() {
   return (
     <div className="h-full flex flex-col gap-4 p-2 overflow-hidden">
       {/* Search and Global Filters */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+      <div className="bg-white p-5 rounded-xl border border-slate-400 space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
             <input 
               type="text" 
               placeholder="Nombre o código... (Enter para editar)" 
@@ -450,12 +456,12 @@ export default function ProductsScreen() {
                   }
                 }
               }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none"
+              className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-600 focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none"
             />
           </div>
           <div className="flex items-center justify-between md:justify-start gap-2">
-            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200">
-               <Filter className="w-4 h-4 text-slate-400 ml-2" />
+            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-400">
+               <Filter className="w-4 h-4 text-slate-600 ml-2" />
                <select 
                  value={selectedCategory || ''}
                  onChange={(e) => setSelectedCategory(e.target.value || null)}
@@ -473,17 +479,17 @@ export default function ProductsScreen() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-slate-100 pt-4 gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-slate-300 pt-4 gap-3">
            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg shrink-0 w-fit">
               <button 
                 onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-600 hover:text-slate-600'}`}
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => setViewMode('list')}
-                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-600 hover:text-slate-600'}`}
               >
                 <ListIcon className="w-4 h-4" />
               </button>
@@ -502,37 +508,32 @@ export default function ProductsScreen() {
               >
                   <Plus className="w-3.5 h-3.5" /> <span>Nuevo Producto</span>
               </button>
-
               <button 
-                onClick={handleSyncAll}
-                disabled={isSyncingAll}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                onClick={() => { navigate('/marketing'); }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[11px] font-bold hover:from-purple-700 hover:to-indigo-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
               >
-                  {isSyncingAll ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  )}
-                  <span>Sincronizar</span>
+                  <Megaphone className="w-3.5 h-3.5" /> <span>Marketing & Etiquetas</span>
               </button>
 
-              <div className="col-span-2 flex items-center justify-between gap-1 w-full sm:w-auto mt-1 sm:mt-0 pt-2 sm:pt-0 border-t border-slate-100 sm:border-t-0">
+
+
+              <div className="col-span-2 flex items-center justify-between gap-1 w-full sm:w-auto mt-1 sm:mt-0 pt-2 sm:pt-0 border-t border-slate-300 sm:border-t-0">
                 <div className="flex items-center gap-1">
                   <button 
                     onClick={handleImportClick}
-                    className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
+                    className="p-2 rounded-lg bg-slate-50 border border-slate-400 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
                     title="Importar"
                   >
                       <Upload className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={handleExportClick}
-                    className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
+                    className="p-2 rounded-lg bg-slate-50 border border-slate-400 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
                     title="Exportar"
                   >
                       <Download className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => loadProducts(true)} className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-450 hover:text-rose-500 hover:bg-slate-100 transition-all cursor-pointer">
+                  <button onClick={() => loadProducts(true)} className="p-2 rounded-lg border border-slate-400 bg-slate-50 text-slate-450 hover:text-rose-500 hover:bg-slate-100 transition-all cursor-pointer">
                     <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
@@ -564,12 +565,12 @@ export default function ProductsScreen() {
       </div>
 
       {/* Table Area */}
-      <div className="flex-1 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden relative">
+      <div className="flex-1 bg-white rounded-xl border border-slate-400 flex flex-col overflow-hidden relative">
         {isLoading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] z-10 flex items-center justify-center">
              <div className="flex flex-col items-center gap-3">
                 <RefreshCw className="w-6 h-6 text-rose-500 animate-spin" />
-                <p className="text-xs font-medium text-slate-400">Cargando inventario...</p>
+                <p className="text-xs font-medium text-slate-600">Cargando inventario...</p>
              </div>
           </div>
         )}
@@ -577,24 +578,46 @@ export default function ProductsScreen() {
         <div className="flex-1 overflow-auto custom-scrollbar">
           {filteredProducts.length > 0 ? (
             <table className="w-full min-w-[850px] text-left table-fixed">
-              <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-20">
+              <thead className="sticky top-0 bg-slate-50 border-b border-slate-400 z-20">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-[35%]">Producto</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-[15%]">Categoría</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-center w-[12%]">Stock</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-center w-[12%]">Costo</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-center w-[12%]">Venta</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-center w-[14%]">Margen</th>
+                  <th className="px-3 py-3 text-center w-[5%] z-20">
+                    <input 
+                      type="checkbox" 
+                      checked={visibleProducts.length > 0 && visibleProducts.every(p => selectedIds.includes(p.id))} 
+                      onChange={handleSelectAllVisible}
+                      className="w-4 h-4 rounded text-rose-600 border-slate-300 focus:ring-rose-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="px-4 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[27%]">Producto</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Categoría</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Marca</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Stock</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Costo</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Venta</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[11%]">Margen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleProducts.map((p) => {
                   const margin = p.costPrice > 0 ? (((p.salePrice / p.costPrice) - 1) * 100).toFixed(1) : '---';
+                  const isSelected = selectedIds.includes(p.id);
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                    <tr 
+                      key={p.id} 
+                      onClick={() => toggleSelectProduct(p.id)}
+                      className={`hover:bg-slate-50 transition-colors group cursor-pointer ${isSelected ? 'bg-rose-50/30' : ''}`}
+                    >
+                      <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={() => toggleSelectProduct(p.id)}
+                          className="w-4 h-4 rounded text-rose-600 border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        />
+                      </td>
                        <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5 overflow-hidden">
-                           <div className="w-8 h-8 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 overflow-hidden border border-slate-200">
+                           <div className="w-8 h-8 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 overflow-hidden border border-slate-400">
                               <img 
                                 src={p.imageUrl || './product-placeholder.png'} 
                                 alt="" 
@@ -606,13 +629,18 @@ export default function ProductsScreen() {
                            </div>
                            <div className="min-w-0">
                              <p className="text-sm font-semibold text-slate-800 truncate">{p.name}</p>
-                             <p className="text-[10px] text-slate-400 font-medium truncate">{p.barcode || 'Sin código'}</p>
+                             <p className="text-[10px] text-slate-600 font-medium truncate">{p.barcode || 'Sin código'}</p>
                            </div>
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">
-                           <Tag className="w-3 h-3 text-rose-400 shrink-0" /> {p.category?.name || 'Varios'}
+                         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis">
+                           <Tag className="w-3 h-3 text-rose-400 shrink-0" /> {p.category ? (p.category.parentCategory ? `${p.category.parentCategory.name} > ${p.category.name}` : p.category.name) : 'Varios'}
+                         </span>
+                      </td>
+                      <td className="px-3 py-3">
+                         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis">
+                           <Bookmark className="w-3 h-3 text-slate-600 shrink-0" /> {p.brand?.name || 'Varios'}
                          </span>
                       </td>
                       <td className="px-3 py-3 text-center">
@@ -620,10 +648,10 @@ export default function ProductsScreen() {
                             <span className={`text-sm font-bold ${p.stock <= p.minStock ? 'text-red-600' : 'text-slate-800'}`}>
                                {p.stock}
                             </span>
-                            <span className="text-[9px] font-medium text-slate-400">Min: {p.minStock}</span>
+                            <span className="text-[9px] font-medium text-slate-600">Min: {p.minStock}</span>
                          </div>
                       </td>
-                      <td className="px-3 py-3 text-center text-sm font-medium text-slate-500 whitespace-nowrap">
+                      <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
                          $ {p.costPrice.toLocaleString()}
                       </td>
                       <td className="px-3 py-3 text-center">
@@ -636,14 +664,14 @@ export default function ProductsScreen() {
                             </span>
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                <button 
-                                  onClick={() => { setSelectedProduct(p); setShowModal(true); }}
-                                  className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowModal(true); }}
+                                  className="p-1.5 rounded-md text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-all"
                                >
                                   <Edit2 className="w-3.5 h-3.5" />
                                </button>
                                <button 
-                                  onClick={() => handleDelete(p.id)}
-                                  className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                                  className="p-1.5 rounded-md text-slate-600 hover:text-red-600 hover:bg-red-50 transition-all"
                                >
                                   <Trash2 className="w-3.5 h-3.5" />
                                </button>
@@ -665,7 +693,7 @@ export default function ProductsScreen() {
                     observer.observe(el);
                   }}>
                     <td colSpan={6} className="py-8 text-center">
-                       <div className="flex items-center justify-center gap-2 text-slate-400 text-xs">
+                       <div className="flex items-center justify-center gap-2 text-slate-600 text-xs">
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-500" /> {isLoadingMore ? 'Cargando más productos...' : 'Desliza para cargar más'}
                        </div>
                     </td>
@@ -675,11 +703,11 @@ export default function ProductsScreen() {
             </table>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center py-32">
-              <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-6">
-                <Package className="w-8 h-8 text-slate-400" />
+              <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-400 flex items-center justify-center mb-6">
+                <Package className="w-8 h-8 text-slate-600" />
               </div>
               <h3 className="text-base font-bold text-slate-600 mb-2">No hay productos encontrados</h3>
-              <p className="text-sm text-slate-400 max-w-[300px]">
+              <p className="text-sm text-slate-600 max-w-[300px]">
                 Utilizá el botón "Nuevo Producto" para cargar tu primer artículo al inventario.
               </p>
               <button 
@@ -717,7 +745,7 @@ export default function ProductsScreen() {
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-xl bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200"
+              className="w-full max-w-xl bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-400"
             >
               <div className="relative h-1.5 bg-slate-100 overflow-hidden">
                 <motion.div 
@@ -733,7 +761,7 @@ export default function ProductsScreen() {
                     <h3 className="text-xl font-bold text-slate-800">
                       {importStatus.isComplete ? '¡Misión Cumplida!' : importStatus.error ? 'Ocurrió un problema' : 'Sincronizando Inventario'}
                     </h3>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-700">
                       {importStatus.current} de {importStatus.total} productos procesados
                     </p>
                   </div>
@@ -764,8 +792,8 @@ export default function ProductsScreen() {
                       </p>
                     </div>
                     
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2">Últimos artículos:</p>
+                    <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-2">
+                      <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-300 pb-2">Últimos artículos:</p>
                       <div className="space-y-1.5">
                         {importStatus.recentItems.map((item, idx) => (
                           <motion.div 
@@ -814,100 +842,13 @@ export default function ProductsScreen() {
                   className={`w-full py-3 rounded-lg text-sm font-semibold transition-all
                     ${(importStatus.isComplete || importStatus.error) 
                       ? 'bg-rose-600 hover:bg-rose-700 text-white' 
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                      : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
                 >
                   {importStatus.isComplete ? 'Finalizar' : importStatus.error ? 'Cerrar y Reintentar' : 'Procesando...'}
                 </button>
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* GoDelivery Sync Progress Modal */}
-      <AnimatePresence>
-        {isSyncingAll && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200 p-8 text-center space-y-6"
-            >
-              {/* Animated Sync Icon */}
-              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border-2 border-dashed border-rose-300 animate-spin [animation-duration:8s]"></div>
-                <div className="absolute inset-2 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
-                  <RefreshCw className="w-8 h-8 animate-spin [animation-duration:3s]" />
-                </div>
-              </div>
-
-              {/* Text Header */}
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-800">Sincronizando Omnicanal</h3>
-                <p className="text-xs text-slate-500">Kiosco POS <span className="text-rose-500 font-bold">↔</span> GoDelivery</p>
-              </div>
-
-              {/* Animated Progress Bar */}
-              <div className="space-y-2">
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${syncStatus.progress}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>{syncStatus.current} de {syncStatus.total} productos</span>
-                  <span className="text-rose-600 font-semibold">{syncStatus.progress}%</span>
-                </div>
-                <div className="flex items-center justify-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                  <p className="text-xs font-medium text-rose-600 truncate max-w-full">
-                    {syncStatus.status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Status checklist */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-2.5">
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 5 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 5 ? 'text-slate-600' : 'text-slate-400'}`}>Conexión establecida con Firestore</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 10 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 10 ? 'text-slate-600' : 'text-slate-400'}`}>Sincronizando categorías del POS</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 100 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 100 ? 'text-slate-600' : 'text-slate-400'}`}>Cargando catálogo online...</span>
-                </div>
-              </div>
-
-              {/* Warning tag */}
-              <p className="text-[10px] text-slate-400">
-                Por favor, no cierres la aplicación hasta finalizar la operación.
-              </p>
-            </motion.div>
+        
           </motion.div>
         )}
       </AnimatePresence>
@@ -925,7 +866,7 @@ export default function ProductsScreen() {
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200 p-8 text-center space-y-6"
+              className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-400 p-8 text-center space-y-6"
             >
               <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
                 <div className="absolute inset-0 rounded-full border-2 border-dashed border-indigo-300 animate-spin [animation-duration:8s]"></div>
@@ -936,7 +877,7 @@ export default function ProductsScreen() {
 
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-slate-800">Buscador de Fotos por IA</h3>
-                <p className="text-xs text-slate-500">Asignando imágenes de alta precisión <span className="text-indigo-500 font-bold">en base blanca</span></p>
+                <p className="text-xs text-slate-700">Asignando imágenes de alta precisión <span className="text-indigo-500 font-bold">en base blanca</span></p>
               </div>
 
               <div className="space-y-2">
@@ -948,7 +889,7 @@ export default function ProductsScreen() {
                     transition={{ duration: 0.3 }}
                   />
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+                <div className="flex items-center justify-between text-xs text-slate-700 font-semibold">
                   <span>{imageSyncStatus.current} de {imageSyncStatus.total} productos</span>
                   <span className="text-indigo-650 font-bold">{imageSyncStatus.progress}%</span>
                 </div>
@@ -965,14 +906,14 @@ export default function ProductsScreen() {
                     <p className="text-xl font-extrabold text-emerald-700">{imageSyncStatus.successCount || 0}</p>
                     <p className="text-[10px] font-bold text-emerald-600 mt-0.5 uppercase tracking-wider">Exitosas</p>
                   </div>
-                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                  <div className="bg-slate-50 border border-slate-400 p-4 rounded-xl text-center">
                     <p className="text-xl font-extrabold text-slate-700">{imageSyncStatus.noMatchCount || 0}</p>
-                    <p className="text-[10px] font-bold text-slate-500 mt-0.5 uppercase tracking-wider">Sin Coincidencia</p>
+                    <p className="text-[10px] font-bold text-slate-700 mt-0.5 uppercase tracking-wider">Sin Coincidencia</p>
                   </div>
                 </div>
               </div>
 
-              <p className="text-[10px] text-slate-400 font-medium">
+              <p className="text-[10px] text-slate-600 font-medium">
                 🔒 Buscando en base de Open Food Facts Argentina y portales retail asociados (Carrefour, Coto, Día).
               </p>
 
@@ -1007,8 +948,8 @@ export default function ProductsScreen() {
           </div>
           <div className="text-left pr-2">
             <p className="text-xs font-bold text-slate-800">Cargando fotos con IA...</p>
-            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">{imageSyncStatus.current} / {imageSyncStatus.total} ({imageSyncStatus.progress}%)</p>
-            <p className="text-[9px] font-bold text-slate-400 mt-0.5">🟢 {imageSyncStatus.successCount || 0} exitosas | ⚪ {imageSyncStatus.noMatchCount || 0} sin coincidencia</p>
+            <p className="text-[10px] text-slate-700 font-semibold mt-0.5">{imageSyncStatus.current} / {imageSyncStatus.total} ({imageSyncStatus.progress}%)</p>
+            <p className="text-[9px] font-bold text-slate-600 mt-0.5">🟢 {imageSyncStatus.successCount || 0} exitosas | ⚪ {imageSyncStatus.noMatchCount || 0} sin coincidencia</p>
           </div>
         </div>
       )}
@@ -1028,18 +969,18 @@ export default function ProductsScreen() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 p-6 space-y-5 overflow-hidden"
+              className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-400 p-6 space-y-5 overflow-hidden"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" /> Acciones de Limpieza Crítica
                 </h3>
-                <button onClick={() => { setShowBulkModal(false); setBulkAction(null); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400"><XCircle className="w-5 h-5" /></button>
+                <button onClick={() => { setShowBulkModal(false); setBulkAction(null); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><XCircle className="w-5 h-5" /></button>
               </div>
 
               {!bulkAction ? (
                 <div className="space-y-3">
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">
                     Seleccioná la operación de lote que deseas realizar. Estas acciones **no se pueden deshacer**.
                   </p>
                   <button 
@@ -1090,7 +1031,7 @@ export default function ProductsScreen() {
                       type="text" 
                       value={confirmInput} 
                       onChange={(e) => setConfirmInput(e.target.value)} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all shadow-inner uppercase" 
+                      className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all shadow-inner uppercase" 
                       placeholder={`Escribe aquí en mayúsculas...`} 
                       autoFocus 
                     />
@@ -1106,7 +1047,7 @@ export default function ProductsScreen() {
                     </button>
                     <button 
                       onClick={() => setBulkAction(null)}
-                      className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                      className="px-5 py-3 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                     >
                       Volver
                     </button>
@@ -1114,6 +1055,109 @@ export default function ProductsScreen() {
                 </div>
               )}
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Modal for Bulk Category Change */}
+      <AnimatePresence>
+        {showBulkCategoryModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.95, opacity: 0 }} 
+              className="bg-white rounded-2xl w-full max-w-md p-6 border border-slate-300 shadow-2xl space-y-4 relative animate-in zoom-in-95 duration-200"
+            >
+              <div>
+                <h3 className="text-sm font-bold text-slate-850 uppercase tracking-wider">Cambiar Categoría en Lote</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">
+                  Se modificará la categoría de {selectedIds.length} productos seleccionados.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider">Selecciona la Nueva Categoría</label>
+                <select 
+                  value={selectedBulkCategory} 
+                  onChange={(e) => setSelectedBulkCategory(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-rose-500 transition-all cursor-pointer"
+                >
+                  <option value="">Selecciona una categoría...</option>
+                  {categories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex gap-3">
+                <button 
+                  onClick={handleBulkUpdateCategory}
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all cursor-pointer"
+                >
+                  Aplicar Cambios
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowBulkCategoryModal(false);
+                    setSelectedBulkCategory('');
+                  }}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs uppercase tracking-wider rounded-xl active:scale-95 transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating bulk actions for selected items */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div 
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 rounded-xl py-3 px-5 shadow-2xl flex items-center gap-4 z-[120] select-none"
+          >
+            <div className="text-xs font-bold text-white whitespace-nowrap">
+              <span className="text-rose-500 font-extrabold text-sm mr-1">{selectedIds.length}</span> seleccionados
+            </div>
+            <div className="w-[1px] h-6 bg-slate-800" />
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={handleRemoveImagesForSelected}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-650 hover:bg-indigo-700 active:scale-95 text-[11px] font-bold text-white transition-all cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Quitar Imágenes</span>
+              </button>
+              <button 
+                onClick={() => setShowBulkCategoryModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-650 hover:bg-emerald-700 active:scale-95 text-[11px] font-bold text-white transition-all cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Cambiar Categoría</span>
+              </button>
+              <button 
+                onClick={handleDeleteSelected}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-655 hover:bg-red-700 active:scale-95 text-[11px] font-bold text-white transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-300" />
+                <span>Eliminar Productos</span>
+              </button>
+              <button 
+                onClick={() => setSelectedIds([])}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-350 hover:bg-slate-800 active:scale-95 text-[11px] font-bold transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

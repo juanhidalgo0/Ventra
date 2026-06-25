@@ -5,6 +5,45 @@
 @tailwind utilities;
 
 /* ======================================================
+   Midnight Retail Theme (POS Screen)
+   ====================================================== */
+.pos-theme {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+}
+.pos-theme .pos-card {
+    background-color: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+.pos-theme .pos-input {
+    background-color: #0f172a;
+    border: 2px solid #334155;
+    color: #f8fafc;
+    transition: all 0.2s;
+}
+.pos-theme .pos-input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+.pos-theme .pos-btn-secondary {
+    background-color: #334155;
+    color: #f8fafc;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s;
+}
+.pos-theme .pos-btn-secondary:hover {
+    background-color: #475569;
+}
+.pos-theme .digital-display {
+    background: #020617;
+    border: 2px solid #334155;
+    border-radius: 1rem;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+}
+
+/* ======================================================
    KIOSCO POS — Professional Light Mode Design System
    Inspired by PedidosYa / GoDelivery aesthetic
    ====================================================== */
@@ -20,8 +59,13 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f1f5f9;
-    color: #1e293b;
+    @apply bg-slate-200 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  }
+  
+  /* Fallback to ensure dark mode background is applied if Tailwind @apply fails */
+  html.dark body, html.dark main {
+    background-color: #020617 !important; /* slate-950 */
+    color: #f1f5f9 !important; /* slate-100 */
   }
 }
 
@@ -44,16 +88,19 @@
   }
 }
 
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
 @layer components {
   /* ── Card ────────────────────────────────── */
   .card {
-    background-color: #ffffff;
-    border: 1px solid #e2e8f0;
+    @apply bg-white dark:bg-slate-900 border-[1.5px] border-slate-300 dark:border-slate-700 shadow-sm dark:shadow-none transition-all duration-200 ease-in-out;
     border-radius: 1rem;
-    transition: all 0.2s ease;
   }
   .card:hover {
-    border-color: #cbd5e1;
+    @apply border-slate-400 dark:border-slate-500;
   }
 
   /* ── Buttons ─────────────────────────────── */
@@ -111,20 +158,22 @@
   .input-field {
     width: 100%;
     background-color: #ffffff;
-    border: 1.5px solid #e2e8f0;
+    border: 2px solid #cbd5e1; /* Thicker, darker border */
     border-radius: 0.75rem;
     padding: 0.625rem 1rem;
     outline: none;
-    color: #0f172a;
+    color: #020617; /* Slate 950, almost pure black */
+    font-weight: 600; /* Bolder text in inputs */
     font-size: 0.875rem;
     transition: all 0.2s ease;
   }
   .input-field:focus {
     border-color: #e11d48;
-    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.08);
+    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.2); /* Stronger focus ring */
   }
   .input-field::placeholder {
-    color: #94a3b8;
+    color: #64748b; /* Darker placeholder */
+    font-weight: 500;
   }
 
   /* ── Nav Buttons ─────────────────────────── */
@@ -138,34 +187,70 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
 
-/* ── Performance Mode Rules (Ultra-flat layout) ──────────────── */
+/* ── Performance Mode Rules (Ultra-flat, Ultra-contrast layout) ──────────────── */
 body[data-performance-mode="true"]:not(.on-auth-screen) {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-  background-color: #e2e8f0 !important;
+  background-color: #cbd5e1 !important; /* Darker background for max contrast */
+  color: #000000 !important; /* Pure black text */
+}
+
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) {
+  background-color: #0f172a !important; /* Slate 900 */
+  color: #f1f5f9 !important; /* Slate 100 */
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .card,
-body[data-performance-mode="true"]:not(.on-auth-screen) button,
+body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.keep-style),
 body[data-performance-mode="true"]:not(.on-auth-screen) input,
 body[data-performance-mode="true"]:not(.on-auth-screen) select,
 body[data-performance-mode="true"]:not(.on-auth-screen) textarea,
-body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar),
+body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style),
 body[data-performance-mode="true"]:not(.on-auth-screen) header,
 body[data-performance-mode="true"]:not(.on-auth-screen) main,
 body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar),
-body[data-performance-mode="true"]:not(.on-auth-screen) span,
-body[data-performance-mode="true"]:not(.on-auth-screen) svg,
+body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated),
+body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated),
 body[data-performance-mode="true"]:not(.on-auth-screen) img {
   transition: none !important;
   animation: none !important;
   box-shadow: none !important;
-  border-radius: 4px !important;
+  border-radius: 0px !important; /* Absolute square corners in perf mode */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   transform: none !important;
   will-change: auto !important;
   filter: none !important;
   scroll-behavior: auto !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) .card {
+  border: 2px solid #64748b !important; /* Strong dark border for cards */
+}
+
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card {
+  border: 2px solid #334155 !important;
+  background-color: #1e293b !important; /* Slate 800 */
+}
+
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) img {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+body[data-performance-mode="true"]:not(.on-auth-screen) input,
+body[data-performance-mode="true"]:not(.on-auth-screen) select,
+body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
+  border: 2px solid #334155 !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  font-weight: bold !important;
+}
+
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) input,
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) select,
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
+  border: 2px solid #475569 !important;
+  background-color: #0f172a !important; /* Slate 900 */
+  color: #ffffff !important;
 }
 
 /* Bypass gradients and transparencias to avoid alpha blending GPU lag */
@@ -177,25 +262,31 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-r {
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary {
-  background: #e11d48 !important;
+  background: #be123c !important; /* Darker red */
   color: #ffffff !important;
+  border: 2px solid #881337 !important;
+  font-weight: bold !important;
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success {
-  background: #059669 !important;
+  background: #047857 !important; /* Darker green */
   color: #ffffff !important;
+  border: 2px solid #064e3b !important;
+  font-weight: bold !important;
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger {
-  background: #dc2626 !important;
+  background: #b91c1c !important; /* Darker red */
   color: #ffffff !important;
-  border-color: #dc2626 !important;
+  border: 2px solid #7f1d1d !important;
+  font-weight: bold !important;
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary {
-  background: #f1f5f9 !important;
-  color: #334155 !important;
-  border-color: #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #0f172a !important; /* Almost black */
+  border: 2px solid #475569 !important; /* Dark grey border */
+  font-weight: bold !important;
 }
 
 /* Disable Hover scaling and elevation layout recalculations */
@@ -232,4 +323,3 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
   background-color: #ecfdf5 !important; /* light emerald */
   border-color: #a7f3d0 !important;
 }
-

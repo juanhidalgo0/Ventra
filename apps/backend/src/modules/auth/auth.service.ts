@@ -82,6 +82,28 @@ export class AuthService {
     return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, avatarUrl: user.avatarUrl };
   }
 
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Usuario no válido');
+    
+    const passwordValid = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!passwordValid) {
+      throw new BadRequestException('La contraseña actual es incorrecta');
+    }
+
+    if (!/^\d+$/.test(newPassword)) {
+      throw new BadRequestException('La nueva contraseña debe contener solo números');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return { success: true };
+  }
+
   async getInitStatus() {
     const userCount = await this.prisma.user.count();
     return { initialized: userCount > 0 };

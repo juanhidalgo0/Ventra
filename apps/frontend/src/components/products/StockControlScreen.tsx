@@ -94,16 +94,16 @@ export default function StockControlScreen() {
   return (
     <div className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-y-auto custom-scrollbar">
       {/* Tab Selector */}
-      <div className="bg-white rounded-xl p-1 flex items-center gap-1 shrink-0 border border-slate-200">
+      <div className="bg-white rounded-xl p-1 flex items-center gap-1 shrink-0 border border-slate-400">
         <button 
           onClick={() => setActiveTab('register')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'register' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'register' ? 'bg-slate-800 text-white' : 'text-slate-700 hover:text-slate-700 hover:bg-slate-50'}`}
         >
           <ArrowRightLeft className="w-4 h-4" /> Registrar Movimiento
         </button>
         <button 
           onClick={() => setActiveTab('history')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-700 hover:text-slate-700 hover:bg-slate-50'}`}
         >
           <History className="w-4 h-4" /> Historial de Movimientos
         </button>
@@ -119,29 +119,29 @@ export default function StockControlScreen() {
             className="grid grid-cols-1 lg:grid-cols-4 gap-6"
           >
             {/* Main Form Column */}
-            <div className="lg:col-span-3 bg-white p-8 rounded-xl border border-slate-200 space-y-8">
+            <div className="lg:col-span-3 bg-white p-8 rounded-xl border border-slate-400 space-y-8">
               
               <div className="space-y-4">
                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Tipo de Movimiento</h4>
                  <div className="grid grid-cols-2 gap-4">
                    <button 
                      onClick={() => setMovementType('ENTRY')}
-                      className={`flex items-center justify-center gap-3 p-6 rounded-xl border transition-all ${movementType === 'ENTRY' ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-slate-200 group hover:border-emerald-200'}`}
+                      className={`flex items-center justify-center gap-3 p-6 rounded-xl border transition-all ${movementType === 'ENTRY' ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-slate-400 group hover:border-emerald-200'}`}
                    >
                        <ArrowUpRight className={`w-5 h-5 ${movementType === 'ENTRY' ? 'text-emerald-500' : 'text-slate-300'}`} />
                       <div className="text-left">
-                         <p className={`text-sm font-bold ${movementType === 'ENTRY' ? 'text-emerald-700' : 'text-slate-400'}`}>Ingreso</p>
-                         <p className="text-[10px] text-slate-400">Entrada de stock</p>
+                         <p className={`text-sm font-bold ${movementType === 'ENTRY' ? 'text-emerald-700' : 'text-slate-600'}`}>Ingreso</p>
+                         <p className="text-[10px] text-slate-600">Entrada de stock</p>
                       </div>
                    </button>
                    <button 
                      onClick={() => setMovementType('EXIT')}
-                      className={`flex items-center justify-center gap-3 p-6 rounded-xl border transition-all ${movementType === 'EXIT' ? 'bg-rose-50 border-rose-400' : 'bg-white border-slate-200 group hover:border-rose-200'}`}
+                      className={`flex items-center justify-center gap-3 p-6 rounded-xl border transition-all ${movementType === 'EXIT' ? 'bg-rose-50 border-rose-400' : 'bg-white border-slate-400 group hover:border-rose-200'}`}
                    >
                        <ArrowDownRight className={`w-5 h-5 ${movementType === 'EXIT' ? 'text-rose-500' : 'text-slate-300'}`} />
                       <div className="text-left">
-                         <p className={`text-sm font-bold ${movementType === 'EXIT' ? 'text-rose-700' : 'text-slate-400'}`}>Egreso</p>
-                         <p className="text-[10px] text-slate-400">Salida de stock</p>
+                         <p className={`text-sm font-bold ${movementType === 'EXIT' ? 'text-rose-700' : 'text-slate-600'}`}>Egreso</p>
+                         <p className="text-[10px] text-slate-600">Salida de stock</p>
                       </div>
                    </button>
                  </div>
@@ -150,19 +150,19 @@ export default function StockControlScreen() {
               <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <label className="block">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Producto *</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Producto *</span>
                     <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
                       <input 
                         type="text" 
                         value={selectedProduct ? selectedProduct.name : searchQuery}
                         onChange={(e) => handleSearch(e.target.value)}
                         onFocus={() => selectedProduct && setSelectedProduct(null)}
                         placeholder="Escribe nombre o código..." 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium placeholder:text-slate-400" 
+                        className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium placeholder:text-slate-600" 
                       />
                       {searchResults.length > 0 && !selectedProduct && (
-                        <div className="absolute top-full left-0 w-full mt-1 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                        <div className="absolute top-full left-0 w-full mt-1 bg-white rounded-lg shadow-lg border border-slate-400 z-50 overflow-hidden">
                           {searchResults.map((p) => (
                             <button 
                               key={p.id}
@@ -171,7 +171,7 @@ export default function StockControlScreen() {
                             >
                                <div className="text-left">
                                   <p className="text-xs font-bold text-slate-800">{p.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase">{p.barcode}</p>
+                                  <p className="text-[10px] text-slate-600 font-bold uppercase">{p.barcode}</p>
                                </div>
                                <span className="text-[10px] font-bold text-indigo-500">Stock: {p.stock}</span>
                             </button>
@@ -182,22 +182,22 @@ export default function StockControlScreen() {
                   </label>
 
                   <label className="block">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Cantidad *</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Cantidad *</span>
                     <input 
                       type="number" 
                       value={quantity}
                       onChange={(e) => setQuantity(parseFloat(e.target.value))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium" 
+                      className="w-full bg-slate-50 border border-slate-400 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium" 
                     />
                   </label>
 
                   <label className="block opacity-50">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Proveedor (Opcional)</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Proveedor (Opcional)</span>
                     <div className="relative">
-                       <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none font-bold appearance-none cursor-not-allowed" disabled>
+                       <select className="w-full bg-slate-50 border border-slate-400 rounded-lg px-4 py-2.5 text-sm outline-none font-bold appearance-none cursor-not-allowed" disabled>
                           <option>Seleccionar...</option>
                        </select>
-                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
                     </div>
                   </label>
                 </div>
@@ -205,38 +205,38 @@ export default function StockControlScreen() {
                 <div className="space-y-6">
                   <div className="h-[92px]" />
                   <label className="block">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Motivo *</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Motivo *</span>
                     <div className="relative">
                        <select 
                          value={reason}
                          onChange={(e) => setReason(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium appearance-none cursor-pointer"
+                          className="w-full bg-slate-50 border border-slate-400 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium appearance-none cursor-pointer"
                        >
                           <option value="">Seleccionar motivo...</option>
                           {motives.map(m => <option key={m} value={m}>{m}</option>)}
                        </select>
-                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
                     </div>
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Nota (Opcional)</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Nota (Opcional)</span>
                     <textarea 
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="Detalle adicional..." 
-                      className="w-full h-28 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium resize-none"
+                      className="w-full h-28 bg-slate-50 border border-slate-400 rounded-lg px-3.5 py-2.5 text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium resize-none"
                     ></textarea>
                   </label>
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-slate-100 flex justify-end">
+              <div className="pt-6 border-t border-slate-300 flex justify-end">
                  <button 
                    onClick={handleSubmit}
                    disabled={!selectedProduct || !quantity || !reason || isSubmitting}
                    className={`px-8 py-3 rounded-lg font-semibold text-sm transition-all ${
                      (!selectedProduct || !quantity || !reason || isSubmitting) 
-                       ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                       ? 'bg-slate-100 text-slate-600 cursor-not-allowed' 
                        : (movementType === 'ENTRY' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-rose-600 text-white hover:bg-rose-700')
                    }`}
                  >
@@ -247,7 +247,7 @@ export default function StockControlScreen() {
 
             {/* Info Column */}
             <div className="space-y-6">
-               <div className="bg-white p-6 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center min-h-[280px]">
+               <div className="bg-white p-6 rounded-xl border border-slate-400 flex flex-col items-center justify-center text-center min-h-[280px]">
                   {selectedProduct ? (
                     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full space-y-6">
                        <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto text-indigo-500">
@@ -310,7 +310,7 @@ export default function StockControlScreen() {
             className="flex-1 flex flex-col gap-4 overflow-hidden"
           >
             {/* AUDITORIA DE MOVIMIENTOS HEADER */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-5">
+            <div className="bg-white p-5 rounded-xl border border-slate-400 space-y-5">
                <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-gray-800 tracking-tight">Auditoría de Movimientos</h3>
                   <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all">
@@ -322,7 +322,7 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Mes</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
+                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
                            <option>Mayo</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
@@ -331,7 +331,7 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Año</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
+                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
                            <option>2026</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
@@ -340,7 +340,7 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Tipo de Movimiento</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
+                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
                            <option>Todos</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
@@ -349,7 +349,7 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Buscar Producto</label>
                      <div className="relative">
-                        <input type="text" placeholder="Nombre o código..." className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none placeholder:text-slate-300" />
+                        <input type="text" placeholder="Nombre o código..." className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none placeholder:text-slate-300" />
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
                      </div>
                   </div>
@@ -357,7 +357,7 @@ export default function StockControlScreen() {
             </div>
 
             {/* TABLE */}
-            <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] custom-scrollbar">
+            <div className="flex-1 bg-white rounded-xl border border-slate-400 overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] custom-scrollbar">
                <table className="w-full text-left">
                   <thead className="bg-slate-50/50 border-b border-gray-50">
                      <tr>

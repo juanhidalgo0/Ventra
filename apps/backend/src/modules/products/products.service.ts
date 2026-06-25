@@ -38,7 +38,7 @@ export class ProductsService {
 
       const selectOrInclude = {
         include: {
-          category: { select: { id: true, name: true, color: true, icon: true } }, 
+          category: { select: { id: true, name: true, color: true, icon: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } }, 
           supplier: { select: { id: true, name: true } },
           additionalBarcodes: true
@@ -49,7 +49,10 @@ export class ProductsService {
         const products = await this.prisma.product.findMany({
           where: { isActive: true },
           ...selectOrInclude,
-          orderBy: { name: 'asc' },
+          orderBy: [
+            { saleItems: { _count: 'desc' } },
+            { name: 'asc' }
+          ],
         });
         return products.filter((p) => p.stock <= p.minStock);
       }
@@ -57,7 +60,10 @@ export class ProductsService {
       const results = await this.prisma.product.findMany({
         where,
         ...selectOrInclude,
-        orderBy: { name: 'asc' },
+        orderBy: [
+          { saleItems: { _count: 'desc' } },
+          { name: 'asc' }
+        ],
         skip: params?.skip || 0,
         take: params?.take || 50,
       });
@@ -107,7 +113,7 @@ export class ProductsService {
     const productData: any = {};
     for (const key of validFields) {
       if (data[key] !== undefined) {
-        if (['categoryId', 'brandId', 'supplierId'].includes(key) && data[key] === '') {
+        if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           productData[key] = null;
         } else if (key === 'name' && typeof data[key] === 'string') {
           productData[key] = data[key].toUpperCase();
@@ -131,7 +137,7 @@ export class ProductsService {
           } : undefined
         },
         include: { 
-          category: { select: { id: true, name: true, color: true } }, 
+          category: { select: { id: true, name: true, color: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } },
           additionalBarcodes: true
         }
@@ -144,22 +150,21 @@ export class ProductsService {
       throw err;
     }
 
-    if (product.barcode) {
-      this.firebaseSync.syncProductToFirestore(
-        product.barcode, 
-        product.stock, 
-        product.salePrice,
-        {
-          name: product.name,
-          description: product.description || '',
-          categoryName: product.category?.name || 'Varios',
-          minStock: product.minStock,
-          imageUrl: product.imageUrl || ''
-        }
-      ).catch(err => {
-        console.error('Error syncing new product to Firestore:', err);
-      });
-    }
+    const syncBarcode = product.barcode || product.id;
+    this.firebaseSync.syncProductToFirestore(
+      syncBarcode, 
+      product.stock, 
+      product.salePrice,
+      {
+        name: product.name,
+        description: product.description || '',
+        categoryName: product.category?.name || 'Varios',
+        minStock: product.minStock,
+        imageUrl: product.imageUrl || ''
+      }
+    ).catch(err => {
+      console.error('Error syncing new product to Firestore:', err);
+    });
 
     return product;
   }
@@ -180,7 +185,7 @@ export class ProductsService {
     for (const key of validFields) {
       if (data[key] !== undefined) {
         // Handle empty strings for optional relations
-        if (['categoryId', 'brandId', 'supplierId'].includes(key) && data[key] === '') {
+        if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           updateData[key] = null;
         } else if (key === 'name' && typeof data[key] === 'string') {
           updateData[key] = data[key].toUpperCase();
@@ -218,29 +223,28 @@ export class ProductsService {
         where: { id }, 
         data: updateData, 
         include: { 
-          category: { select: { id: true, name: true, color: true } }, 
+          category: { select: { id: true, name: true, color: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } },
           additionalBarcodes: true
         } 
       });
     });
 
-    if (updatedProduct.barcode) {
-      this.firebaseSync.syncProductToFirestore(
-        updatedProduct.barcode, 
-        updatedProduct.stock, 
-        updatedProduct.salePrice,
-        {
-          name: updatedProduct.name,
-          description: updatedProduct.description || '',
-          categoryName: updatedProduct.category?.name || 'Varios',
-          minStock: updatedProduct.minStock,
-          imageUrl: updatedProduct.imageUrl || ''
-        }
-      ).catch(err => {
-        console.error('Error syncing updated product to Firestore:', err);
-      });
-    }
+    const syncBarcode = updatedProduct.barcode || updatedProduct.id;
+    this.firebaseSync.syncProductToFirestore(
+      syncBarcode, 
+      updatedProduct.stock, 
+      updatedProduct.salePrice,
+      {
+        name: updatedProduct.name,
+        description: updatedProduct.description || '',
+        categoryName: updatedProduct.category?.name || 'Varios',
+        minStock: updatedProduct.minStock,
+        imageUrl: updatedProduct.imageUrl || ''
+      }
+    ).catch(err => {
+      console.error('Error syncing updated product to Firestore:', err);
+    });
 
     return updatedProduct;
   }
@@ -250,11 +254,10 @@ export class ProductsService {
     if (!product) throw new NotFoundException('Producto no encontrado');
     const updated = await this.prisma.product.update({ where: { id }, data: { isActive: false } });
 
-    if (updated.barcode) {
-      this.firebaseSync.syncProductDeletion(updated.barcode).catch(err => {
-        console.error('Error syncing deleted product to Firestore:', err);
-      });
-    }
+    const syncBarcode = updated.barcode || updated.id;
+    this.firebaseSync.syncProductDeletion(syncBarcode).catch(err => {
+      console.error('Error syncing deleted product to Firestore:', err);
+    });
 
     return updated;
   }
@@ -297,11 +300,10 @@ export class ProductsService {
       return m;
     });
 
-    if (product.barcode) {
-      this.firebaseSync.syncProductToFirestore(product.barcode, stockAfter, product.salePrice).catch(err => {
-        console.error('Error syncing adjusted product to Firestore:', err);
-      });
-    }
+    const syncBarcode = product.barcode || product.id;
+    this.firebaseSync.syncProductToFirestore(syncBarcode, stockAfter, product.salePrice).catch(err => {
+      console.error('Error syncing adjusted product to Firestore:', err);
+    });
 
     return movement;
   }
@@ -318,11 +320,23 @@ export class ProductsService {
   async importFromLocalDbf() {
     const dbfPath = path.join(process.cwd(), '..', '..', 'ARTICULO.DBF');
     try {
-      const dbf = await DBFFile.open(dbfPath);
+      const dbf = await DBFFile.open(dbfPath, { readMode: 'loose' });
       console.log(`Importing ${dbf.recordCount} products from DBF...`);
 
       let importedCount = 0;
       let updatedCount = 0;
+
+      // Helper for case-insensitive lookup
+      const getDbfFieldValue = (rec: any, name: string) => {
+        if (!rec) return undefined;
+        const target = name.toUpperCase();
+        if (rec[target] !== undefined) return rec[target];
+        if (rec[name] !== undefined) return rec[name];
+        for (const key of Object.keys(rec)) {
+          if (key.toUpperCase() === target) return rec[key];
+        }
+        return undefined;
+      };
 
       // Read records in batches of 500
       const batchSize = 500;
@@ -331,14 +345,17 @@ export class ProductsService {
         
         await this.prisma.$transaction(async (tx) => {
           for (const record of records as any[]) {
-            const sku = record.NUM_ART.trim();
+            const rawSku = getDbfFieldValue(record, 'NUM_ART');
+            const sku = typeof rawSku === 'string' ? rawSku.trim() : String(rawSku || '').trim();
             if (!sku) continue;
 
-            const name = record.DESC.trim().toUpperCase();
-            const stock = record.EXISTENCIA || 0;
-            const paquete = record.PAQUETE || 1;
-            const costPrice = record.COSTO / paquete;
-            const salePrice = record.PRECIOA || 0;
+            const rawName = getDbfFieldValue(record, 'DESC');
+            const name = (typeof rawName === 'string' ? rawName.trim() : String(rawName || '').trim()).toUpperCase() || 'SIN NOMBRE';
+            const stock = parseFloat(getDbfFieldValue(record, 'EXISTENCIA')) || 0;
+            const paquete = parseFloat(getDbfFieldValue(record, 'PAQUETE')) || 1;
+            const costo = parseFloat(getDbfFieldValue(record, 'COSTO')) || 0;
+            const costPrice = costo / (paquete || 1);
+            const salePrice = parseFloat(getDbfFieldValue(record, 'PRECIOA')) || 0;
 
             const existing = await tx.product.findUnique({
               where: { sku },
@@ -348,6 +365,7 @@ export class ProductsService {
               await tx.product.update({
                 where: { id: existing.id },
                 data: {
+                  barcode: sku,
                   stock,
                   costPrice,
                   salePrice,
@@ -359,6 +377,7 @@ export class ProductsService {
               await tx.product.create({
                 data: {
                   sku,
+                  barcode: sku,
                   name,
                   stock,
                   costPrice,
@@ -391,26 +410,62 @@ export class ProductsService {
     const extension = path.extname(file.originalname).toLowerCase();
     let records: any[] = [];
 
+    // Helper for case-insensitive lookup
+    const getDbfFieldValue = (rec: any, name: string) => {
+      if (!rec) return undefined;
+      const target = name.toUpperCase();
+      if (rec[target] !== undefined) return rec[target];
+      if (rec[name] !== undefined) return rec[name];
+      for (const key of Object.keys(rec)) {
+        if (key.toUpperCase() === target) return rec[key];
+      }
+      return undefined;
+    };
+
     try {
       console.log(`--- Starting import of ${file.originalname} ---`);
       if (extension === '.dbf') {
-        const dbf = await DBFFile.open(file.path);
+        const dbf = await DBFFile.open(file.path, { readMode: 'loose' });
         console.log(`DBF opened, record count: ${dbf.recordCount}`);
         records = await dbf.readRecords();
         console.log(`Read ${records.length} records`);
-        // Convert DBF records to common format
         console.log(`Parsed ${records.length} records from DBF`);
         records = records.map((r: any) => {
-          const paquete = parseFloat(r.PAQUETE) || 1;
-          const costo = parseFloat(r.COSTO) || 0;
-          const barcode = String(r.NUM_ART || '').trim();
+          const rawSku = getDbfFieldValue(r, 'NUM_ART');
+          const barcode = typeof rawSku === 'string' ? rawSku.trim() : String(rawSku || '').trim();
+          const rawName = getDbfFieldValue(r, 'DESC');
+          const name = (typeof rawName === 'string' ? rawName.trim() : String(rawName || '').trim()).toUpperCase() || 'SIN NOMBRE';
+          const stock = parseFloat(getDbfFieldValue(r, 'EXISTENCIA')) || 0;
+          const paquete = parseFloat(getDbfFieldValue(r, 'PAQUETE')) || 1;
+          const costo = parseFloat(getDbfFieldValue(r, 'COSTO')) || 0;
+          const costPrice = costo / (paquete || 1);
+          const salePrice = parseFloat(getDbfFieldValue(r, 'PRECIOA')) || 0;
           return {
             sku: barcode,
             barcode: barcode,
-            name: String(r.DESC || '').trim().toUpperCase(),
-            stock: parseFloat(r.EXISTENCIA) || 0,
-            costPrice: costo / (paquete || 1),
-            salePrice: parseFloat(r.PRECIOA) || 0
+            name,
+            stock,
+            costPrice,
+            salePrice
+          };
+        });
+      } else if (extension === '.json') {
+        console.log(`Parsing JSON file...`);
+        const content = fs.readFileSync(file.path, 'utf-8');
+        const data = JSON.parse(content);
+        console.log(`Parsed ${data.length} records from JSON.`);
+        records = data.map((r: any) => {
+          const barcode = String(r.barcode || r.codigo_barra || '').trim();
+          return {
+            sku: String(r.sku || r.codigo || barcode || '').trim(),
+            barcode: barcode,
+            name: String(r.name || r.nombre || r.descripcion || '').trim().toUpperCase(),
+            stock: parseFloat(r.stock || '0'),
+            costPrice: parseFloat(r.costPrice || r.costo || '0'),
+            salePrice: parseFloat(r.salePrice || r.precio || r.price || '0'),
+            description: String(r.description || '').trim(),
+            imageUrl: String(r.imageUrl || r.image || '').trim(),
+            categoryName: String(r.category || r.categoria || '').trim()
           };
         });
       } else if (extension === '.csv') {
@@ -430,7 +485,10 @@ export class ProductsService {
             name: String(r.name || r.nombre || r.descripcion || r.DESC || '').trim().toUpperCase(),
             stock: parseFloat(r.stock || r.existencia || r.EXISTENCIA || '0'),
             costPrice: parseFloat(r.costPrice || r.costo || r.COSTO || '0'),
-            salePrice: parseFloat(r.salePrice || r.precio || r.PRECIOA || '0')
+            salePrice: parseFloat(r.salePrice || r.precio || r.PRECIOA || '0'),
+            description: String(r.description || r.descripcion || '').trim(),
+            imageUrl: String(r.imageUrl || r.image || r.imagen || '').trim(),
+            categoryName: String(r.category || r.categoria || '').trim()
           };
         });
       } else if (extension === '.xlsx' || extension === '.xls') {
@@ -448,12 +506,18 @@ export class ProductsService {
             name: String(r.name || r.nombre || r.descripcion || r.DESC || '').trim().toUpperCase(),
             stock: parseFloat(r.stock || r.existencia || r.EXISTENCIA || '0'),
             costPrice: parseFloat(r.costPrice || r.costo || r.COSTO || '0'),
-            salePrice: parseFloat(r.salePrice || r.precio || r.PRECIOA || '0')
+            salePrice: parseFloat(r.salePrice || r.precio || r.PRECIOA || '0'),
+            description: String(r.description || r.descripcion || '').trim(),
+            imageUrl: String(r.imageUrl || r.image || r.imagen || '').trim(),
+            categoryName: String(r.category || r.categoria || '').trim()
           };
         });
       } else {
         throw new Error(`Formato de archivo no soportado: ${extension}`);
       }
+
+      // Filtrar registros sin SKU válido para evitar que la importación aborte
+      records = records.filter((r) => r.sku && r.sku.trim() !== '');
 
       const total = records.length;
       console.log(`Beginning processing of ${total} records in batches of 100...`);
@@ -471,15 +535,52 @@ export class ProductsService {
             if (!record.sku) continue;
             lastItemName = record.name;
 
-            const existing = await tx.product.findUnique({ where: { sku: record.sku } });
+            // Normalize barcode to null if it's empty, invalid, or placeholder to avoid unique constraint violations on empty strings
+            let finalBarcode = null;
+            if (record.barcode && typeof record.barcode === 'string') {
+              const cleaned = record.barcode.trim();
+              const lower = cleaned.toLowerCase();
+              if (cleaned !== '' && lower !== 'sin código' && lower !== 'sin codigo' && lower !== 'null' && lower !== 'undefined') {
+                finalBarcode = cleaned;
+              }
+            }
+
+            // Find existing product by SKU or by Barcode to prevent unique constraint failures
+            let existing = await tx.product.findUnique({ where: { sku: record.sku } });
+            if (!existing && finalBarcode) {
+              existing = await tx.product.findUnique({ where: { barcode: finalBarcode } });
+            }
+
+            let categoryId = undefined;
+            if (record.categoryName) {
+              const catName = record.categoryName.trim();
+              if (catName !== '') {
+                let category = await tx.category.findFirst({
+                  where: { name: { equals: catName } }
+                });
+                if (!category) {
+                  category = await tx.category.create({
+                    data: {
+                      name: catName,
+                      color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
+                    }
+                  });
+                }
+                categoryId = category.id;
+              }
+            }
 
             if (existing) {
               await tx.product.update({
                 where: { id: existing.id },
                 data: {
+                  barcode: finalBarcode || existing.barcode,
                   stock: isNaN(record.stock) ? 0 : record.stock,
                   costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
                   salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
+                  description: record.description !== undefined ? record.description : existing.description,
+                  imageUrl: record.imageUrl !== undefined ? record.imageUrl : existing.imageUrl,
+                  categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
                   updatedAt: new Date(),
                 }
               });
@@ -488,11 +589,14 @@ export class ProductsService {
               await tx.product.create({
                 data: {
                   sku: record.sku,
-                  barcode: record.barcode,
+                  barcode: finalBarcode,
                   name: record.name ? record.name.toUpperCase() : 'SIN NOMBRE',
                   stock: isNaN(record.stock) ? 0 : record.stock,
                   costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
                   salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
+                  description: record.description || '',
+                  imageUrl: record.imageUrl || '',
+                  categoryId: categoryId,
                 }
               });
               imported++;
@@ -615,10 +719,13 @@ export class ProductsService {
         }
       });
       
-      // Filtrar aquellos que realmente tienen código de barra no vacío
-      const validProducts = products.filter(p => p.barcode && p.barcode.trim() !== '');
+      // Mapear productos. Si no tienen código de barras, usamos su ID como código de barras en GoDelivery
+      const validProducts = products.map(p => ({
+        ...p,
+        barcode: (p.barcode && p.barcode.trim() !== '') ? p.barcode.trim() : p.id
+      }));
       const totalProducts = validProducts.length;
-      const omittedCount = allActiveProductsCount - totalProducts;
+      const omittedCount = 0; // Ya no se omite ningún producto activo
 
       // 1. Clear all old categories in GoDelivery first to ensure a clean sync
       this.eventsGateway.emitSyncProgress({
@@ -792,6 +899,97 @@ export class ProductsService {
       data: { imageUrl: '' }
     });
     
+    return { count: result.count };
+  }
+
+  async bulkRemoveImagesSubset(ids: string[]) {
+    console.log(`[ProductsService] Resetting product images to placeholder for subset of ${ids.length} products...`);
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: ids } },
+      data: { imageUrl: '' }
+    });
+
+    // Sync image removal to GoDelivery Firestore in background
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: { category: true }
+    });
+    
+    // We execute them sequentially/concurrently to avoid blocking the main thread
+    Promise.all(products.map(p => {
+      const syncBarcode = p.barcode || p.id;
+      return this.firebaseSync.syncProductToFirestore(
+        syncBarcode,
+        p.stock,
+        p.salePrice,
+        {
+          name: p.name,
+          description: p.description || '',
+          categoryName: p.category?.name || 'Varios',
+          minStock: p.minStock,
+          imageUrl: ''
+        }
+      ).catch(err => {
+        console.error(`Error syncing image removal for ${syncBarcode}:`, err.message);
+      });
+    })).catch(err => console.error('Error in subset image sync:', err));
+
+    return { count: result.count };
+  }
+
+  async bulkDeleteSubset(ids: string[]) {
+    console.log(`[ProductsService] Soft-deleting subset of ${ids.length} products...`);
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: ids } },
+      data: { isActive: false }
+    });
+
+    // Sync product deletion to GoDelivery Firestore in background
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } }
+    });
+
+    Promise.all(products.map(p => {
+      const syncBarcode = p.barcode || p.id;
+      return this.firebaseSync.syncProductDeletion(syncBarcode).catch(err => {
+        console.error(`Error syncing deletion for ${syncBarcode}:`, err.message);
+      });
+    })).catch(err => console.error('Error in subset deletion sync:', err));
+
+    return { count: result.count };
+  }
+
+  async bulkUpdateCategorySubset(ids: string[], categoryId: string) {
+    console.log(`[ProductsService] Updating category for subset of ${ids.length} products to ${categoryId}...`);
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: ids } },
+      data: { categoryId }
+    });
+
+    // Sync product updates to GoDelivery Firestore in background
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: { category: true }
+    });
+
+    Promise.all(products.map(p => {
+      const syncBarcode = p.barcode || p.id;
+      return this.firebaseSync.syncProductToFirestore(
+        syncBarcode,
+        p.stock,
+        p.salePrice,
+        {
+          name: p.name,
+          description: p.description || '',
+          categoryName: p.category?.name || 'Varios',
+          minStock: p.minStock,
+          imageUrl: p.imageUrl || ''
+        }
+      ).catch(err => {
+        console.error(`Error syncing category change for product: ${p.sku}`, err.message);
+      });
+    })).catch(err => console.error('Error in subset category sync:', err));
+
     return { count: result.count };
   }
 

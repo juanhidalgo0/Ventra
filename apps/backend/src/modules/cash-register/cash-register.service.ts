@@ -231,9 +231,9 @@ export class CashRegisterService {
   }
 
   async getCurrentSession(userId: string, terminalName?: string) {
-    // Return any open session in the database so that all connected devices share the same active cash register session
+    // Return the open session for the current user to support multi-caja environment
     return this.prisma.cashRegisterSession.findFirst({
-      where: { status: 'OPEN' },
+      where: { userId, status: 'OPEN' },
       include: { 
         user: { select: { fullName: true, username: true } }, 
         sales: { where: { status: 'COMPLETED' }, include: { payments: true }, orderBy: { createdAt: 'desc' } }, 
@@ -250,7 +250,15 @@ export class CashRegisterService {
     const where: any = { status: 'CLOSED' };
     if (params?.userId) where.userId = params.userId;
     if (params?.from || params?.to) { where.closedAt = {}; if (params.from) where.closedAt.gte = new Date(params.from); if (params.to) where.closedAt.lte = new Date(params.to); }
-    return this.prisma.cashRegisterSession.findMany({ where, include: { user: { select: { fullName: true, username: true } } }, orderBy: { closedAt: 'desc' }, take: params?.limit || 50 });
+    return this.prisma.cashRegisterSession.findMany({ 
+      where, 
+      include: { 
+        user: { select: { fullName: true, username: true } },
+        cashMovements: true 
+      }, 
+      orderBy: { closedAt: 'desc' }, 
+      take: params?.limit || 50 
+    });
   }
 
   async addCashMovement(sessionId: string, userId: string, data: { type: string; amount: number; description?: string }) {
@@ -289,6 +297,134 @@ export class CashRegisterService {
     }
 
     return this.prisma.cashMovement.delete({ where: { id } });
+  }
+
+  async getPendingZReportSummary() {
+    const sessions = await this.prisma.cashRegisterSession.findMany({
+      where: { status: 'CLOSED', zReportId: null },
+      include: {
+        user: { select: { fullName: true, username: true } },
+        cashMovements: { include: { user: { select: { fullName: true } } } },
+        sales: { include: { payments: true } }
+      },
+      orderBy: { openedAt: 'asc' }
+    });
+
+    if (sessions.length === 0) return null;
+
+    let totalExpected = 0;
+    let totalDeclared = 0;
+    let differenceTotal = 0;
+    const paymentBreakdown: Record<string, number> = { CASH: 0, DEBT: 0 };
+    const posnetDeclarations: Record<string, number> = {};
+    const cashMovements: any[] = [];
+    let cashIncome = 0;
+    let cashExpense = 0;
+    let cashWithdrawal = 0;
+    let openingAmount = sessions[0].openingAmount;
+
+    for (const s of sessions) {
+      totalExpected += s.closingAmountExpected || 0;
+      totalDeclared += s.closingAmountCounted || 0;
+      differenceTotal += s.difference || 0;
+      cashMovements.push(...s.cashMovements);
+
+      if (s.closingSummary) {
+        try {
+          const sum = JSON.parse(s.closingSummary);
+          cashIncome += sum.cashIncome || 0;
+          cashExpense += sum.cashExpense || 0;
+          cashWithdrawal += sum.cashWithdrawal || 0;
+
+          if (sum.paymentBreakdown) {
+            for (const [k, v] of Object.entries(sum.paymentBreakdown)) {
+              if (!paymentBreakdown[k]) paymentBreakdown[k] = 0;
+              paymentBreakdown[k] += Number(v) || 0;
+            }
+          }
+          if (sum.posnetDeclarations) {
+            for (const [k, v] of Object.entries(sum.posnetDeclarations)) {
+              if (!posnetDeclarations[k]) posnetDeclarations[k] = 0;
+              posnetDeclarations[k] += Number(v) || 0;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    return {
+      sessionCount: sessions.length,
+      sessions,
+      totalExpected,
+      totalDeclared,
+      differenceTotal,
+      cashIncome,
+      cashExpense,
+      cashWithdrawal,
+      paymentBreakdown,
+      posnetDeclarations,
+      cashMovements,
+      openingAmount
+    };
+  }
+
+  async generateZReport(userId: string) {
+    const summaryData = await this.getPendingZReportSummary();
+    if (!summaryData) {
+      throw new BadRequestException('No hay turnos pendientes de liquidar (Reportes X huérfanos).');
+    }
+
+    // Double check that all pending sessions are actually CLOSED and COUNTED
+    const hasUncounted = summaryData.sessions.some(s => s.closingAmountCounted === null);
+    if (hasUncounted) {
+      throw new BadRequestException('Hay turnos cerrados pendientes de arqueo. Todos los turnos deben estar arqueados antes de generar el Reporte Z.');
+    }
+
+    const { sessions, sessionCount, totalExpected, totalDeclared, differenceTotal, ...summaryJson } = summaryData;
+
+    const sessionsSummary = sessions.map(s => ({
+      id: s.id,
+      terminalName: s.terminalName,
+      openedAt: s.openedAt,
+      closedAt: s.closedAt,
+      closingAmountCounted: s.closingAmountCounted,
+      difference: s.difference,
+      user: { fullName: s.user?.fullName }
+    }));
+
+    const zReport = await this.prisma.dailyZReport.create({
+      data: {
+        generatedById: userId,
+        totalExpected,
+        totalDeclared,
+        differenceTotal,
+        summary: JSON.stringify({
+          ...summaryJson,
+          sessionCount,
+          sessions: sessionsSummary
+        }),
+        sessions: {
+          connect: sessions.map(s => ({ id: s.id }))
+        }
+      }
+    });
+
+    return zReport;
+  }
+
+  async getZReportsHistory() {
+    return this.prisma.dailyZReport.findMany({
+      include: {
+        generatedBy: { select: { fullName: true, username: true } },
+        sessions: {
+          include: {
+            user: { select: { fullName: true, username: true } }
+          }
+        }
+      },
+      orderBy: { generatedAt: 'desc' },
+      take: 50
+    });
   }
 
   async resetAllCajas() {

@@ -5,13 +5,14 @@ import { useAuthStore } from '../../stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, Package, RefreshCw, CornerDownLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, Package, RefreshCw, CornerDownLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import GastosModal from './GastosModal';
 import ProveedoresModal from './ProveedoresModal';
 import PaymentModal from './PaymentModal';
 import CierreCajaModal from './CierreCajaModal';
 import HistorialModal from './HistorialModal';
+import CierreDiaModal from '../cash-register/CierreDiaModal';
 import CajaInfoModal from './CajaInfoModal';
 import AbrirCajaModal from './AbrirCajaModal';
 
@@ -24,7 +25,7 @@ const playBeep = () => { try { const ctx = new AudioContext(); const o = ctx.cre
 export default function POSScreen() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, getCartItemsWithDiscounts } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
-  const { user, logout, setUser } = useAuthStore();
+  const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -39,7 +40,34 @@ export default function POSScreen() {
   const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
   const [isPending, startTransition] = useTransition();
   const [perfMode] = useState(() => localStorage.getItem('performance_mode') === 'true');
+  
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+  const [generateZAfterArqueo, setGenerateZAfterArqueo] = useState(false);
+  const [zReportData, setZReportData] = useState<any>(null);
+  const [adminUsername, setAdminUsername] = useState('admin');
+  const [adminPassword, setAdminPassword] = useState('');
+
   const [activeMobileTab, setActiveMobileTab] = useState<'products' | 'cart'>('products');
+
+  // --- Dark Mode State ---
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved !== null ? saved === 'dark' : true;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+    return () => {
+      document.documentElement.classList.remove('dark');
+    };
+  }, [isDarkMode]);
+  // -----------------------
 
   const categories = cachedCategories;
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,35 +96,39 @@ export default function POSScreen() {
     terminalNameRef.current = terminalName;
   }, [terminalName]);
   const [isOpeningCaja, setIsOpeningCaja] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    return usePOSStore.getState().products.length === 0;
+  });
 
   // Profile Edit States
   const [showProfile, setShowProfile] = useState(false);
-  const [profileUsername, setProfileUsername] = useState(user?.username || '');
-  const [profilePassword, setProfilePassword] = useState('');
+  const [profileOldPassword, setProfileOldPassword] = useState('');
+  const [profileNewPassword, setProfileNewPassword] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profileUsername) {
-      toast.error('Nombre de usuario obligatorio');
+    if (!profileOldPassword || !profileNewPassword) {
+      toast.error('Ambas contraseñas son obligatorias');
+      return;
+    }
+    if (!/^\d+$/.test(profileNewPassword)) {
+      toast.error('La contraseña debe ser numérica');
       return;
     }
     setIsSavingProfile(true);
     try {
-      const payload: any = {
-        username: profileUsername.toUpperCase().replace(/\s+/g, '')
-      };
-      if (profilePassword) {
-        payload.password = profilePassword;
-      }
-      const { data } = await api.patch('/users/profile/me', payload);
-      setUser({ ...user, id: user?.id || '', username: data.username, fullName: data.fullName, role: data.role });
-      toast.success('✅ Tu perfil ha sido actualizado con éxito');
+      await api.post('/auth/change-password', {
+        oldPassword: profileOldPassword,
+        newPassword: profileNewPassword
+      });
+      toast.success('✅ Contraseña actualizada con éxito');
       setShowProfile(false);
-      setProfilePassword('');
+      setProfileOldPassword('');
+      setProfileNewPassword('');
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al actualizar perfil');
+      toast.error(err.response?.data?.message || 'Error al actualizar contraseña');
     } finally {
       setIsSavingProfile(false);
     }
@@ -166,9 +198,12 @@ export default function POSScreen() {
     if (product.allowCustomPrice) {
       setPricePromptProduct(product);
       setPromptPriceValue('');
+      setSearchQuery('');
     } else {
       addToCart(product);
+      setSearchQuery('');
       playBeep();
+      focusSearch();
     }
   };
 
@@ -187,7 +222,7 @@ export default function POSScreen() {
         setShowCajaInfo(false);
         setShowAbrirCaja(false);
         setSearchQuery(''); 
-        focusConfirmBtn();
+        focusSearch();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -199,9 +234,7 @@ export default function POSScreen() {
     const handleGlobalKeyDown = async (e: KeyboardEvent) => {
       const activeElement = document.activeElement;
       const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
-      const isPOSSearch = activeElement?.id === 'pos-search';
-      
-      if (isInput && !isPOSSearch) {
+      if (isInput) {
         return;
       }
       
@@ -209,9 +242,9 @@ export default function POSScreen() {
       const timeDiff = now - lastKeyTime;
       lastKeyTime = now;
 
-      // A hardware scanner emits sequential numeric keystrokes in extremely rapid intervals (<50ms).
-      // Manual typing typically takes >100ms. Reset buffer if latency is too long.
-      const isScannerFast = timeDiff <= 50;
+      // A hardware scanner emits sequential numeric keystrokes in extremely rapid intervals (<25ms).
+      // Manual typing typically takes >80ms. Reset buffer if latency is too long.
+      const isScannerFast = timeDiff <= 25;
 
       if (isScannerFast) {
         // If it's a numeric key, intercept and prevent default to avoid typing it in the search box
@@ -292,7 +325,11 @@ export default function POSScreen() {
     }
   }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile]);
 
-  const loadProducts = async () => {
+  const loadProducts = async (force = false) => {
+    if (!force && cachedProducts.length > 0) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const { data } = await api.get('/products', { params: { take: 100000 } });
       const processedProducts = data.map((p: any) => {
@@ -344,13 +381,21 @@ export default function POSScreen() {
       console.error('Error loading pending arqueos', err);
     }
   };
-  const handleInstantClose = async (sessionId: string) => {
+  const handleInstantClose = async (sessionId: string, doZ: boolean = false) => {
     try {
       await api.post(`/cash/${sessionId}/close`, {});
       toast.success('✅ Caja cerrada correctamente. Arqueo pendiente.');
       setCurrentSession(null);
-      loadPendingArqueos();
-      setShowAbrirCaja(true);
+      const { data } = await api.get('/cash/pending-arqueos');
+      setPendingArqueos(data);
+      const sessionToArqueo = data.find((a: any) => a.id === sessionId);
+      if (sessionToArqueo) {
+        setSessionToArqueo(sessionToArqueo);
+        setGenerateZAfterArqueo(doZ);
+        setShowCierre(true);
+      } else {
+        setShowAbrirCaja(true);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al cerrar caja');
     }
@@ -382,8 +427,24 @@ export default function POSScreen() {
     });
   }, [debouncedSearchQuery, selectedCategory, cachedProducts, perfMode]);
 
+  const focusSearch = () => {
+    setTimeout(() => {
+      if (searchRef.current) {
+        searchRef.current.focus();
+      }
+    }, 50);
+  };
+
   const handleBarcodeSearch = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && searchQuery) {
+    if (e.key === 'Enter') {
+      if (!searchQuery) {
+        // If search is empty and cart has items, open payment modal
+        if (cart.length > 0) {
+          setShowPayment(true);
+        }
+        return;
+      }
+      
       const codeClean = searchQuery.trim();
       
       // 1. Check if it's a promotion code
@@ -392,7 +453,7 @@ export default function POSScreen() {
         addPromoToCart(matchingPromo, cachedProducts);
         setSearchQuery('');
         playBeep();
-        setTimeout(() => searchRef.current?.focus(), 50);
+        focusSearch();
         return;
       }
 
@@ -408,12 +469,12 @@ export default function POSScreen() {
           addToCart(data);
           setSearchQuery('');
           playBeep();
-          setTimeout(() => searchRef.current?.focus(), 50);
+          focusSearch();
         }
       } catch {
         toast.error(`⚠️ Código no registrado: ${codeClean}`, { id: codeClean });
         setSearchQuery('');
-        setTimeout(() => searchRef.current?.focus(), 50);
+        focusSearch();
       }
     }
   };
@@ -490,7 +551,7 @@ export default function POSScreen() {
           </button>
 
           {/* 2. Gastos */}
-          <button onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-1 min-w-[110px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white text-slate-800 border border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+          <button onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-1 min-w-[110px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600 font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95 shadow-sm">
             <Receipt className="w-4 h-4" /> Gastos
           </button>
 
@@ -500,14 +561,37 @@ export default function POSScreen() {
           </button>
 
           {/* 4. Historial */}
-          <button onClick={() => setShowHistorial(true)} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white text-slate-800 border border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+          <button onClick={() => setShowHistorial(true)} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600 font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95 shadow-sm">
             <History className="w-4 h-4" /> Historial
           </button>
 
 
           {/* 6. Cerrar Sesión */}
-          <button onClick={() => logout()} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white hover:bg-rose-550 hover:text-rose-600 text-slate-700 font-bold text-sm transition-all active:scale-95 border border-slate-200 shadow-sm">
+          <button onClick={() => logout()} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-550 dark:hover:bg-rose-900/30 hover:text-rose-600 dark:hover:text-rose-400 text-slate-700 dark:text-slate-300 font-bold text-sm transition-all active:scale-95 border border-slate-400 dark:border-slate-600 shadow-sm">
             <LogOut className="w-4 h-4" /> Cerrar Sesión
+          </button>
+
+          {/* 6.5 Account Menu Button */}
+          <button 
+            onClick={() => {
+              setProfileOldPassword('');
+              setProfileNewPassword('');
+              setShowPasswords(false);
+              setShowProfile(true);
+            }} 
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm transition-all active:scale-95 border border-slate-400 dark:border-slate-600 shadow-sm shrink-0"
+            title="Cuenta de Usuario"
+          >
+            <User className="w-4 h-4" /> {user?.username || 'Usuario'}
+          </button>
+
+          {/* 6.6 Dark Mode Toggle */}
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)} 
+            className="w-12 h-12 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all active:scale-95 border border-slate-400 dark:border-slate-600 shadow-sm shrink-0"
+            title="Alternar Modo Oscuro"
+          >
+            {isDarkMode ? <Moon className="w-5 h-5 text-indigo-400" /> : <Sun className="w-5 h-5 text-amber-500" />}
           </button>
 
           {/* 7. Dashboard (Configuration Icon) */}
@@ -516,15 +600,27 @@ export default function POSScreen() {
               if (isAdmin) {
                 navigate('/dashboard');
               } else {
-                setProfileUsername(user?.username || '');
-                setProfilePassword('');
-                setShowProfile(true);
+                setShowAdminPrompt(true);
               }
             }} 
             className="w-12 h-12 flex items-center justify-center rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-all active:scale-95 shadow-md border border-rose-500/10 shrink-0"
-            title={isAdmin ? "Configuración / Dashboard" : "Configuración de Perfil"}
+            title="Configuración / Dashboard"
           >
             <Settings className="w-5 h-5 animate-pulse-soft" />
+          </button>
+
+          {/* 8. Server Selection Button */}
+          <button 
+            onClick={() => {
+              localStorage.removeItem('server_ip');
+              localStorage.removeItem('connection_mode');
+              logout();
+              navigate('/setup');
+            }} 
+            className="w-12 h-12 flex items-center justify-center rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition-all active:scale-95 border border-slate-400 dark:border-slate-600 shadow-sm shrink-0"
+            title="Seleccionar Servidor"
+          >
+            <Server className="w-5 h-5" />
           </button>
         </div>
 
@@ -532,62 +628,62 @@ export default function POSScreen() {
           {currentSession ? (
             <>
               {/* LEFT: Products Panel */}
-              <div className={`flex-1 min-w-0 card flex flex-col overflow-hidden bg-white border border-slate-200/80 shadow-md ${activeMobileTab === 'products' ? 'flex' : 'hidden md:flex'}`}>
-            <div className="px-5 pt-4 pb-3 flex items-center gap-3 bg-slate-50/50 backdrop-blur-sm z-10 border-b border-slate-100">
+              <div className={`flex-1 min-w-0 card flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-400/80 dark:border-slate-700 shadow-md ${activeMobileTab === 'products' ? 'flex' : 'hidden md:flex'}`}>
+            <div className="px-5 pt-4 pb-3 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm z-10 border-b border-slate-300 dark:border-slate-700">
               <div className="flex-1 relative flex items-center">
-                <Search className="absolute left-4 w-4 h-4 text-slate-400 pointer-events-none" />
-                <input ref={searchRef} type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSearch} placeholder="Buscar por nombre o código..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-10 py-2.5 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold uppercase" id="pos-search" autoFocus />
-                {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}
+                <Search className="absolute left-4 w-4 h-4 text-slate-600 dark:text-slate-400 pointer-events-none" />
+                <input ref={searchRef} type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSearch} placeholder="Buscar por nombre o código..." className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-2xl pl-11 pr-10 py-2.5 text-sm focus:bg-slate-100 dark:focus:bg-slate-900 focus:border-rose-500 outline-none text-slate-800 dark:text-slate-100 transition-all font-semibold uppercase" id="pos-search" autoFocus autoComplete="off" />
+                {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"><X className="w-4 h-4" /></button>}
               </div>
-              <button onClick={() => loadProducts()} className="p-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-500 transition-all active:scale-95 border border-slate-200" title="Refrescar"><RefreshCw className="w-4 h-4" /></button>
+              <button onClick={() => loadProducts(true)} className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all active:scale-95 border border-slate-400 dark:border-slate-600" title="Refrescar"><RefreshCw className="w-4 h-4" /></button>
             </div>
 
-            <div className="px-5 pb-3 flex gap-2 overflow-x-auto scrollbar-hide border-b border-slate-100">
-              <button onClick={() => { setSelectedCategory(null); setShowPromosOnly(false); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${!selectedCategory && !showPromosOnly ? 'bg-rose-600 text-white shadow-md border border-rose-500/10' : 'bg-slate-100 text-slate-650 hover:bg-slate-200 border border-slate-200'}`}>
+            <div className="px-5 pb-3 flex flex-wrap gap-2 border-b border-slate-300 dark:border-slate-700">
+              <button onClick={() => { setSelectedCategory(null); setShowPromosOnly(false); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${!selectedCategory && !showPromosOnly ? 'bg-rose-600 text-white shadow-md border border-rose-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-400 dark:border-slate-600'}`}>
                 Todos
               </button>
-              <button onClick={() => { setShowPromosOnly(true); setSelectedCategory(null); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${showPromosOnly ? 'bg-emerald-500 text-white shadow-md border border-emerald-500/10' : 'bg-emerald-50 text-emerald-700 border border-emerald-250 hover:bg-emerald-100/55'}`}>
+              <button onClick={() => { setShowPromosOnly(true); setSelectedCategory(null); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${showPromosOnly ? 'bg-emerald-500 text-white shadow-md border border-emerald-500/10' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-700 hover:bg-emerald-100/55'}`}>
                 <Tag className="w-3.5 h-3.5" /> Promos
               </button>
-              {categories.map((cat) => (
-                <button key={cat.id} onClick={() => { setSelectedCategory(cat.id); setShowPromosOnly(false); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === cat.id ? 'text-white shadow-md' : 'bg-slate-100 text-slate-650 hover:bg-slate-200 border border-slate-200'}`} style={selectedCategory === cat.id ? { backgroundColor: cat.color } : {}}>
+              {categories.filter(cat => cachedProducts.some(p => p.categoryId === cat.id)).map((cat) => (
+                <button key={cat.id} onClick={() => { setSelectedCategory(cat.id); setShowPromosOnly(false); }} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === cat.id ? 'text-white shadow-md border-transparent' : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-400 dark:border-slate-600'}`} style={selectedCategory === cat.id ? { backgroundColor: cat.color, borderColor: cat.color } : {}}>
                   {cat.name}
                 </button>
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 custom-scrollbar bg-slate-50/30">
+            <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 custom-scrollbar bg-slate-50/30 dark:bg-slate-900/30">
               {!currentSession ? (
                 <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto py-8">
-                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white border border-slate-200/80 rounded-2xl p-8 shadow-2xl w-full text-slate-800">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-slate-800 border border-slate-400/80 dark:border-slate-700 rounded-2xl p-8 shadow-2xl w-full text-slate-800 dark:text-slate-200">
                     <div className="w-16 h-16 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-5 border border-rose-500/20">
                       <Lock className="w-8 h-8" />
                     </div>
                     
-                    <h3 className="text-xl font-bold text-slate-800 tracking-tight mb-1">Apertura de Caja</h3>
-                    <p className="text-slate-500 text-xs font-semibold max-w-[280px] mx-auto mb-6 leading-relaxed">Iniciá tu turno en el Punto de Venta completando los datos de la terminal.</p>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight mb-1">Apertura de Caja</h3>
+                    <p className="text-slate-700 dark:text-slate-400 text-xs font-semibold max-w-[280px] mx-auto mb-6 leading-relaxed">Iniciá tu turno en el Punto de Venta completando los datos de la terminal.</p>
                     
                     <div className="space-y-4 text-left">
                       <div>
                         <label className="block text-[9px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Nombre de Terminal</label>
                         <div className="relative">
-                          <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 dark:text-slate-400" />
                           <input 
                             type="text" 
                             value={terminalName} 
                             readOnly
-                            className="w-full bg-slate-100 border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 text-sm font-bold text-slate-500 outline-none select-none cursor-not-allowed transition-all" 
+                            className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-400 dark:border-slate-600 rounded-2xl pl-11 pr-4 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300 outline-none select-none cursor-not-allowed transition-all" 
                             placeholder="Terminal 1" 
                           />
                         </div>
-                        <p className="text-[9.5px] text-slate-400 font-semibold mt-2 ml-1 leading-relaxed">
+                        <p className="text-[9.5px] text-slate-600 font-semibold mt-2 ml-1 leading-relaxed">
                           🔒 El nombre de la terminal se autodetecta por hardware para prevenir modificaciones no autorizadas.
                         </p>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100/50 flex items-start gap-2.5">
+                      <div className="p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100/50 dark:border-indigo-800/30 flex items-start gap-2.5">
                         <span className="text-sm mt-0.5">🖥️</span>
-                        <p className="text-[10px] text-indigo-750 font-semibold leading-relaxed">
+                        <p className="text-[10px] text-indigo-750 dark:text-indigo-300 font-semibold leading-relaxed">
                           La caja se inicializará automáticamente con **monto inicial cero ($0)**. Toda venta o movimiento de efectivo de este turno será registrado e integrado a las estadísticas.
                         </p>
                       </div>
@@ -615,7 +711,7 @@ export default function POSScreen() {
               ) : (displayedProducts.length === 0 && !showPromosOnly) ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-20">
                   <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4"><Package className="w-8 h-8 text-slate-350" /></div>
-                  <p className="text-slate-400 font-bold">No se encontraron productos.</p>
+                  <p className="text-slate-600 font-bold">No se encontraron productos.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
@@ -683,18 +779,18 @@ export default function POSScreen() {
                           handleProductAdd(product);
                         }}
                         style={{ contain: 'content', contentVisibility: 'auto' }}
-                        className="group bg-white border border-slate-200/80 rounded-2xl p-2.5 text-left hover:border-red-500 hover:shadow-xl hover:shadow-red-500/5 transition-all duration-305 active:scale-[0.97] select-none relative overflow-hidden flex flex-col h-[234px] shadow-sm"
+                        className="group bg-white dark:bg-slate-800 border border-slate-400/80 dark:border-slate-700 rounded-2xl p-2.5 text-left hover:border-red-500 dark:hover:border-red-500/80 hover:shadow-xl hover:shadow-red-500/5 transition-all duration-305 active:scale-[0.97] select-none relative overflow-hidden flex flex-col h-[234px] shadow-sm"
                       >
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-red-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-bl-full pointer-events-none z-0" />
                         
                         {/* Top: Large Image Container */}
-                        <div className="w-full h-[120px] rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center relative group-hover:border-red-350 transition-all shadow-inner bg-white mb-2 z-10">
+                        <div className="w-full h-[120px] rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700 overflow-hidden flex-shrink-0 flex items-center justify-center relative group-hover:border-red-350 dark:group-hover:border-red-500/50 transition-all shadow-inner mb-2 z-10">
                           <img 
                             src={product.imageUrl || './product-placeholder.png'} 
                             alt={product.name} 
                             loading="lazy"
                             decoding="async"
-                            className="w-full h-full object-contain p-1.5 group-hover:scale-108 transition-transform duration-500"
+                            className="w-full h-full object-contain p-1.5 group-hover:scale-108 transition-transform duration-500 mix-blend-multiply dark:mix-blend-normal dark:invert dark:hue-rotate-180"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = './product-placeholder.png';
                             }}
@@ -729,15 +825,20 @@ export default function POSScreen() {
 
                         {/* Bottom: Info Area */}
                         <div className="flex-1 flex flex-col justify-start min-w-0 z-10">
-                          <h3 className="text-xs font-bold text-slate-850 group-hover:text-red-650 transition-colors line-clamp-2 leading-tight h-8 overflow-hidden mb-1 pr-1">
+                          <h3 className="text-xs font-bold text-slate-850 dark:text-slate-200 group-hover:text-red-650 dark:group-hover:text-red-400 transition-colors line-clamp-2 leading-tight max-h-8 overflow-hidden mb-1 pr-1">
                             {product.name}
                           </h3>
+                          {product.barcode && (
+                            <p className="text-[9px] font-mono font-medium text-slate-600 dark:text-slate-400 leading-none line-clamp-1">
+                              {product.barcode}
+                            </p>
+                          )}
                         </div>
 
                         {/* Locked Bottom Info Row (always exactly in same position) */}
                         <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between z-15">
-                          <div className="bg-red-50 border border-red-100/60 px-2.5 py-1.5 rounded-xl shadow-inner-sm transition-colors group-hover:bg-red-100/40">
-                            <p className="text-xs sm:text-sm font-black text-red-600 leading-none">
+                          <div className="bg-red-50 dark:bg-red-900/20 border border-red-100/60 dark:border-red-800/30 px-2.5 py-1.5 rounded-xl shadow-inner-sm transition-colors group-hover:bg-red-100/40 dark:group-hover:bg-red-900/40">
+                            <p className="text-xs sm:text-sm font-black text-red-600 dark:text-red-400 leading-none">
                               {formatPrice(product.salePrice)}
                             </p>
                           </div>
@@ -756,20 +857,20 @@ export default function POSScreen() {
           </div>
 
           {/* RIGHT: Cart Panel - Widened for better layout */}
-          <div className={`w-full md:w-[480px] flex-shrink-0 card flex flex-col overflow-hidden bg-white border-l border-slate-200/80 shadow-2xl ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
-            <div className="px-6 pt-5 pb-4 flex items-center justify-between bg-slate-50/50 border-b border-slate-100">
+          <div className={`w-full md:w-[350px] lg:w-[400px] xl:w-[480px] flex-shrink-0 card flex flex-col overflow-hidden bg-white dark:bg-slate-900 border-l border-slate-400/80 dark:border-slate-700 shadow-2xl ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
+            <div className="px-6 pt-5 pb-4 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-300 dark:border-slate-700">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-[0.2em]">Ticket en curso</span>
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.2em]">Ticket en curso</span>
               </div>
-              <button onClick={() => clearCart()} className="text-[10px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-wider transition-colors">Vaciar Carrito</button>
+              <button onClick={() => clearCart()} className="text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 uppercase tracking-wider transition-colors">Vaciar Carrito</button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
               {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center text-slate-450 py-10 opacity-60">
+                <div className="flex flex-col items-center justify-center h-full text-center text-slate-450 dark:text-slate-500 py-10 opacity-60">
                   <ShoppingCart className="w-16 h-16 mb-4 stroke-[1]" />
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Escaneá o seleccioná productos</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Escaneá o seleccioná productos</p>
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
@@ -795,37 +896,37 @@ export default function POSScreen() {
                         initial={{ opacity: 0, x: -10 }} 
                         animate={{ opacity: 1, x: 0 }} 
                         exit={{ opacity: 0, x: -10, height: 0 }} 
-                        className="py-3 border-b border-slate-100 last:border-0 group flex items-center gap-4"
+                        className="py-3 border-b border-slate-300 dark:border-slate-700/50 last:border-0 group flex items-center gap-4"
                       >
                         {/* Product Name - Flexible */}
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-bold text-slate-800 leading-tight line-clamp-2 pr-2">{item.name}</h4>
+                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-tight line-clamp-2 pr-2">{item.name}</h4>
                           {item.isPromo && item.productsMetadata && (
-                            <p className="text-[10px] font-semibold text-emerald-600 mt-0.5 tracking-tight leading-relaxed">
+                            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5 tracking-tight leading-relaxed">
                               {item.productsMetadata.map(pm => `${pm.quantity}x ${pm.name}`).join(' + ')}
                             </p>
                           )}
-                          {item.quantity > 1 && <p className="text-[9px] font-bold text-slate-400 mt-0.5">{formatPrice(item.price)} c/u</p>}
+                          {item.quantity > 1 && <p className="text-[9px] font-bold text-slate-600 dark:text-slate-400 mt-0.5">{formatPrice(item.price)} c/u</p>}
                         </div>
 
                         {/* Quantity Selector - Compact Horizontal */}
-                        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-150 shrink-0">
-                          <button onClick={() => updateQuantity(item.cartKey, item.quantity - 1)} className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 border border-slate-200 transition-all shadow-sm active:scale-90"><Minus className="w-2.5 h-2.5" /></button>
-                          <span className="w-8 text-center text-xs font-bold text-slate-800">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.cartKey, item.quantity + 1)} className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 border border-slate-200 transition-all shadow-sm active:scale-90"><Plus className="w-2.5 h-2.5" /></button>
+                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-150 dark:border-slate-700 shrink-0">
+                          <button onClick={() => updateQuantity(item.cartKey, item.quantity - 1)} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-300 border border-slate-400 dark:border-slate-600 transition-all shadow-sm active:scale-90"><Minus className="w-2.5 h-2.5" /></button>
+                          <span className="w-8 text-center text-xs font-bold text-slate-800 dark:text-slate-200">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.cartKey, item.quantity + 1)} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-300 border border-slate-400 dark:border-slate-600 transition-all shadow-sm active:scale-90"><Plus className="w-2.5 h-2.5" /></button>
                         </div>
 
                         {/* Total Price & Delete */}
                         <div className="flex items-center gap-3 shrink-0">
                           <div className="text-right min-w-[70px]">
                             {hasDiscount && (
-                              <span className="text-[10px] text-slate-400 line-through font-bold block leading-none mb-0.5">
+                              <span className="text-[10px] text-slate-600 line-through font-bold block leading-none mb-0.5">
                                 {formatPrice(originalTotal)}
                               </span>
                             )}
                             <p className="text-sm font-bold text-rose-600 leading-none">{formatPrice(promoTotal)}</p>
                           </div>
-                          <button onClick={() => removeFromCart(item.cartKey)} className="text-slate-400 hover:text-rose-650 transition-all p-1.5 hover:bg-rose-50 rounded-lg active:scale-90">
+                          <button onClick={() => removeFromCart(item.cartKey)} className="text-slate-600 hover:text-rose-650 transition-all p-1.5 hover:bg-rose-50 rounded-lg active:scale-90">
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -837,25 +938,25 @@ export default function POSScreen() {
               )}
             </div>
 
-            <div className="bg-slate-50/70 backdrop-blur-md px-5 py-5 border-t border-slate-200/80 space-y-3">
+            <div className="bg-slate-50/70 dark:bg-slate-900/70 backdrop-blur-md px-5 py-5 border-t border-slate-400/80 dark:border-slate-700 space-y-3">
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Items / Cantidad</span>
-                  <span className="text-slate-800">{getItemCount()}</span>
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Items / Cantidad</span>
+                  <span className="text-slate-800 dark:text-slate-200">{getItemCount()}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs font-bold text-slate-550">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-550 dark:text-slate-400">
                   <span>Subtotal</span>
                   <span>{formatPrice(getTotal())}</span>
                 </div>
                 {getAppliedPromotions().map((promo, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs font-bold text-emerald-600 animate-in slide-in-from-bottom-1">
+                  <div key={idx} className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in slide-in-from-bottom-1">
                     <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> {promo.name}</span>
                     <span>-{formatPrice(promo.discount)}</span>
                   </div>
                 ))}
-                <div className="flex items-center justify-between text-xl font-bold text-slate-850 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between text-xl font-bold text-slate-850 dark:text-slate-100 pt-2 border-t border-slate-400 dark:border-slate-700">
                   <span>Total</span>
-                  <span className="text-2xl font-bold text-rose-600">{formatPrice(getFinalTotal())}</span>
+                  <span className="text-2xl font-bold text-rose-600 dark:text-rose-500">{formatPrice(getFinalTotal())}</span>
                 </div>
               </div>
               <button
@@ -871,18 +972,18 @@ export default function POSScreen() {
           </div>
         </>
         ) : (
-            <div className="flex-1 flex items-center justify-center bg-slate-50/50 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 p-8 shadow-sm">
+            <div className="flex-1 flex items-center justify-center bg-slate-50/50 dark:bg-slate-950/40 backdrop-blur-sm rounded-2xl border border-dashed border-slate-400 dark:border-slate-700 p-8 shadow-sm">
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }} 
                 animate={{ opacity: 1, scale: 1 }} 
-                className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-100 shadow-xl text-center space-y-6"
+                className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-300 dark:border-slate-800 shadow-xl text-center space-y-6"
               >
-                <div className="w-20 h-20 bg-rose-550/10 text-rose-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
+                <div className="w-20 h-20 bg-rose-550/10 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-3xl flex items-center justify-center mx-auto shadow-md">
                   <Lock className="w-10 h-10" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-800">Caja Registradora Cerrada</h3>
-                  <p className="text-sm text-slate-400 mt-2">Para comenzar a vender y utilizar las funciones del Punto de Venta (POS), debés abrir una sesión de caja.</p>
+                  <h3 className="text-xl font-bold text-slate-850 dark:text-slate-100">Caja Registradora Cerrada</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">Para comenzar a vender y utilizar las funciones del Punto de Venta (POS), debés abrir una sesión de caja.</p>
                 </div>
                 <button
                   onClick={() => setShowAbrirCaja(true)}
@@ -897,11 +998,11 @@ export default function POSScreen() {
 
         {/* Mobile Tab Bar */}
         {currentSession && (
-          <div className="md:hidden flex bg-white border-t border-slate-200 shrink-0 h-16 relative z-30">
+          <div className="md:hidden flex bg-white border-t border-slate-400 shrink-0 h-16 relative z-30">
             <button
               onClick={() => setActiveMobileTab('products')}
               className={`flex-1 flex flex-col items-center justify-center gap-1 ${
-                activeMobileTab === 'products' ? 'text-rose-600 font-extrabold' : 'text-slate-500'
+                activeMobileTab === 'products' ? 'text-rose-600 font-extrabold' : 'text-slate-700'
               }`}
             >
               <Package className="w-5 h-5" />
@@ -910,7 +1011,7 @@ export default function POSScreen() {
             <button
               onClick={() => setActiveMobileTab('cart')}
               className={`flex-1 flex flex-col items-center justify-center gap-1 relative ${
-                activeMobileTab === 'cart' ? 'text-rose-600 font-extrabold' : 'text-slate-500'
+                activeMobileTab === 'cart' ? 'text-rose-600 font-extrabold' : 'text-slate-700'
               }`}
             >
               <div className="relative">
@@ -928,9 +1029,70 @@ export default function POSScreen() {
       </div>
 
       <AnimatePresence>
-        {showPayment && <PaymentModal key="payment-modal" total={getFinalTotal()} sessionId={currentSession?.id} onClose={() => setShowPayment(false)} onSuccess={() => { clearCart(); setShowPayment(false); loadProducts(); }} />}
-        {showGastos && <GastosModal key="gastos-modal" sessionId={currentSession?.id} terminalName={terminalName} onClose={() => setShowGastos(false)} />}
-        {showProveedores && <ProveedoresModal key="proveedores-modal" sessionId={currentSession?.id} onClose={() => setShowProveedores(false)} />}
+        {showPayment && <PaymentModal key="payment-modal" total={getFinalTotal()} sessionId={currentSession?.id} onClose={() => { setShowPayment(false); focusSearch(); }} onSuccess={() => { clearCart(); setShowPayment(false); loadProducts(true); loadCurrentSession(); focusSearch(); }} />}
+        {showGastos && <GastosModal key="gastos-modal" sessionId={currentSession?.id} terminalName={terminalName} onClose={() => { setShowGastos(false); loadCurrentSession(); focusSearch(); }} />}
+        {showProveedores && <ProveedoresModal key="proveedores-modal" sessionId={currentSession?.id} onClose={() => { setShowProveedores(false); loadCurrentSession(); focusSearch(); }} />}
+        {showAdminPrompt && (
+          <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl border border-slate-400">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 leading-none">Acceso Admin</h3>
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mt-1">Autorización Requerida</p>
+                </div>
+              </div>
+              <input
+                type="text"
+                value={adminUsername}
+                onChange={(e) => setAdminUsername(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-3 outline-none focus:border-rose-500 mb-3 text-sm font-semibold"
+                placeholder="Usuario (ej. admin)"
+              />
+              <input
+                type="password"
+                autoFocus
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter') {
+                    try {
+                      await login(adminUsername, adminPassword);
+                      setShowAdminPrompt(false);
+                      setAdminPassword('');
+                      navigate('/dashboard');
+                    } catch (err) {
+                      toast.error('Credenciales incorrectas');
+                    }
+                  }
+                  if (e.key === 'Escape') setShowAdminPrompt(false);
+                }}
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-3 outline-none focus:border-rose-500 mb-6 text-sm font-semibold"
+                placeholder="Contraseña"
+              />
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setShowAdminPrompt(false)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-medium text-sm">Cancelar</button>
+                <button 
+                  onClick={async () => {
+                    try {
+                      await login(adminUsername, adminPassword);
+                      setShowAdminPrompt(false);
+                      setAdminPassword('');
+                      navigate('/dashboard');
+                    } catch (err) {
+                      toast.error('Credenciales incorrectas');
+                    }
+                  }} 
+                  className="px-4 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700 font-medium text-sm"
+                >
+                  Acceder
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {showCierre && (
           <CierreCajaModal 
             key="cierre-modal"
@@ -938,6 +1100,7 @@ export default function POSScreen() {
             onClose={() => {
               setShowCierre(false);
               setSessionToArqueo(null);
+              focusSearch();
             }} 
             onConfirm={async (data) => {
               try {
@@ -949,7 +1112,7 @@ export default function POSScreen() {
                 const serializedNotes = (data.notes || '') + " [METADATA]" + JSON.stringify(metadata);
                 
                 const posnetDeclaredSum = Object.values(data.posnetDeclarations || {}).reduce((a: any, b: any) => a + Number(b), 0);
-                const closingAmountCounted = data.cashToWithdraw + posnetDeclaredSum;
+                const closingAmountCounted = data.cashToWithdraw; // Only send physical cash for backend difference calculation
 
                 if (sessionToArqueo) {
                   await api.post(`/cash/${sessionToArqueo.id}/arqueo`, {
@@ -963,39 +1126,65 @@ export default function POSScreen() {
                 } else {
                   await api.post(`/cash/${currentSession.id}/close`, {
                     closingAmountCounted,
-                    closingNotes: serializedNotes
+                    closingNotes: serializedNotes,
+                    posnetDeclarations: data.posnetDeclarations
                   });
                   toast.success('Caja cerrada correctamente');
                   setCurrentSession(null);
                   setShowAbrirCaja(true);
                 }
-                setShowCierre(false);
+
+                if (generateZAfterArqueo) {
+                  setGenerateZAfterArqueo(false);
+                  setTimeout(async () => {
+                    setShowCierre(false);
+                    try {
+                      const res = await api.post('/cash/z-report/generate');
+                      setZReportData(res.data);
+                    } catch (err: any) {
+                      toast.error('Error al generar cierre Z');
+                    }
+                  }, 2500);
+                }
               } catch (err: any) {
-                toast.error(err.response?.data?.message || 'Error al procesar el arqueo');
+                toast.error(err.response?.data?.message || 'Error al completar arqueo');
+                throw err;
               }
             }} 
           />
         )}
-        {showHistorial && <HistorialModal key="historial-modal" sessionId={currentSession?.id} onClose={() => setShowHistorial(false)} />}
+        {zReportData && (
+          <CierreDiaModal
+            zReport={zReportData}
+            onClose={() => setZReportData(null)}
+          />
+        )}
+        {showHistorial && <HistorialModal key="historial-modal" sessionId={currentSession?.id} onClose={() => { setShowHistorial(false); focusSearch(); }} />}
         {showCajaInfo && (
           <CajaInfoModal 
             key="caja-info-modal" 
             sessionId={currentSession?.id} 
             terminalName={terminalName}
-            onClose={() => setShowCajaInfo(false)} 
+            onClose={() => { setShowCajaInfo(false); focusSearch(); }} 
             onTriggerClose={() => {
               setShowCajaInfo(false);
               if (currentSession) {
-                handleInstantClose(currentSession.id);
+                handleInstantClose(currentSession.id, false);
               }
-            }} 
+            }}
+            onTriggerCloseAndZ={() => {
+              setShowCajaInfo(false);
+              if (currentSession) {
+                handleInstantClose(currentSession.id, true);
+              }
+            }}
           />
         )}
         {showAbrirCaja && (
           <AbrirCajaModal 
             key="abrir-caja-modal" 
             terminalName={terminalName} 
-            onClose={() => setShowAbrirCaja(false)} 
+            onClose={() => { setShowAbrirCaja(false); focusSearch(); }} 
             onSuccess={(session) => {
               setCurrentSession(session);
               setShowAbrirCaja(false);
@@ -1016,39 +1205,45 @@ export default function POSScreen() {
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }} 
               onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 flex flex-col p-6 space-y-4 font-sans text-slate-800"
+              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4 font-sans text-slate-800"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-rose-600 animate-spin-slow" /> Configuración de Perfil
+                  <User className="w-5 h-5 text-rose-600" /> Cambiar Contraseña
                 </h3>
-                <button onClick={() => setShowProfile(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400"><X className="w-5 h-5" /></button>
+                <button onClick={() => setShowProfile(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
               </div>
 
               <form onSubmit={handleUpdateProfile} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre de Usuario</label>
-                  <input 
-                    type="text" 
-                    value={profileUsername} 
-                    onChange={(e) => setProfileUsername(e.target.value.toUpperCase().replace(/\s+/g, ''))} 
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                    placeholder="Ej: MARCOS" 
-                    required 
-                  />
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Contraseña Actual</label>
+                  <div className="relative">
+                    <input 
+                      type={showPasswords ? "text" : "password"} 
+                      value={profileOldPassword} 
+                      onChange={(e) => setProfileOldPassword(e.target.value)} 
+                      className="w-full bg-slate-50 border border-slate-205 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
+                      placeholder="Ingresá tu contraseña actual..." 
+                      required
+                    />
+                    <button type="button" onClick={() => setShowPasswords(!showPasswords)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-600">
+                      {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nueva Contraseña (Dejar vacío para mantener la actual)</label>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Nueva Contraseña</label>
                   <div className="relative">
                     <input 
-                      type="password" 
-                      value={profilePassword} 
-                      onChange={(e) => setProfilePassword(e.target.value)} 
+                      type={showPasswords ? "text" : "password"} 
+                      value={profileNewPassword} 
+                      onChange={(e) => setProfileNewPassword(e.target.value)} 
                       className="w-full bg-slate-50 border border-slate-205 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                       placeholder="Nueva contraseña numérica..." 
+                      required
                     />
-                    <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
                   </div>
                   <p className="text-[9px] text-slate-450 mt-1">Por razones de seguridad, la contraseña debe ser puramente numérica.</p>
                 </div>
@@ -1061,7 +1256,7 @@ export default function POSScreen() {
                   >
                     <Check className="w-4.5 h-4.5" /> {isSavingProfile ? 'Guardando...' : 'Actualizar Datos'}
                   </button>
-                  <button type="button" onClick={() => setShowProfile(false)} className="px-5 py-3.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
+                  <button type="button" onClick={() => setShowProfile(false)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
                     Cancelar
                   </button>
                 </div>
@@ -1083,24 +1278,24 @@ export default function POSScreen() {
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }} 
               onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 flex flex-col p-6 space-y-4 font-sans text-slate-800"
+              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4 font-sans text-slate-800"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-rose-600" /> Precio Personalizado
                 </h3>
-                <button onClick={() => setPricePromptProduct(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400"><X className="w-5 h-5" /></button>
+                <button onClick={() => setPricePromptProduct(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="space-y-2">
                 <p className="text-sm font-bold text-slate-700">{pricePromptProduct.name}</p>
-                <p className="text-[10px] text-slate-400">Ingrese el precio para este producto en esta venta.</p>
+                <p className="text-[10px] text-slate-600">Ingrese el precio para este producto en esta venta.</p>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Monto ($)</label>
-                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:bg-white focus-within:border-rose-500 focus-within:ring-1 focus-within:ring-rose-500 transition-all shadow-inner overflow-hidden">
-                  <span className="flex items-center justify-center w-12 h-full text-xl font-bold text-rose-500 border-r border-slate-200 select-none flex-shrink-0 py-3.5">$</span>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Monto ($)</label>
+                <div className="flex items-center bg-slate-50 border border-slate-400 rounded-xl focus-within:bg-white focus-within:border-rose-500 focus-within:ring-1 focus-within:ring-rose-500 transition-all shadow-inner overflow-hidden">
+                  <span className="flex items-center justify-center w-12 h-full text-xl font-bold text-rose-500 border-r border-slate-400 select-none flex-shrink-0 py-3.5">$</span>
                   <input 
                     type="number" 
                     step="0.01"
@@ -1140,7 +1335,7 @@ export default function POSScreen() {
                 >
                   <Check className="w-4.5 h-4.5" /> Agregar al Carrito
                 </button>
-                <button onClick={() => setPricePromptProduct(null)} className="px-5 py-3.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
+                <button onClick={() => setPricePromptProduct(null)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
                   Cancelar
                 </button>
               </div>

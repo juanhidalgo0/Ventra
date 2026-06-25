@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProductsModule } from './modules/products/products.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { BrandsModule } from './modules/brands/brands.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { SystemModule } from './modules/system/system.module';
@@ -16,6 +17,9 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { APP_GUARD } from '@nestjs/core';
 import { LicenseGuard } from './common/guards/license.guard';
 
+import { MarketingModule } from './modules/marketing/marketing.module';
+import { SurchargesModule } from './modules/surcharges/surcharges.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,6 +27,7 @@ import { LicenseGuard } from './common/guards/license.guard';
       envFilePath: ['.env', '../../.env'],
     }),
     AuthModule,
+    BrandsModule,
     CashRegisterModule,
     CategoriesModule,
     ClientsModule,
@@ -35,6 +40,8 @@ import { LicenseGuard } from './common/guards/license.guard';
     UsersModule,
     WebsocketModule,
     PromotionsModule,
+    MarketingModule,
+    SurchargesModule,
   ],
   providers: [
     {

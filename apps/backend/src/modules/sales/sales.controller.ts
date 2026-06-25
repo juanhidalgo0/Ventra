@@ -32,9 +32,32 @@ export class SalesController {
     return this.salesService.getDashboardData(period, from, to);
   }
 
+  @Get('godelivery/metrics')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getGoDeliveryMetrics(
+    @Query('email') email: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string
+  ) {
+    return this.salesService.getGoDeliveryMetrics(email, from, to);
+  }
+
+  @Get('consolidated-metrics')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getConsolidatedMetrics(
+    @Query('email') email: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string
+  ) {
+    return this.salesService.getConsolidatedMetrics(email, from, to);
+  }
+
   @Get(':id')
   findById(@Param('id') id: string) { return this.salesService.findById(id); }
 
   @Post(':id/cancel')
   cancel(@Param('id') id: string, @Request() req) { return this.salesService.cancel(id, req.user.sub); }
 }
+

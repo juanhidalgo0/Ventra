@@ -64,8 +64,8 @@ const DailyRevenueChart = ({ dailyData }: { dailyData: any[] }) => {
   const costAreaPath = `${costPath} L ${getX(days - 1)},${height - paddingY} L ${getX(0)},${height - paddingY} Z`;
 
   return (
-    <div className="p-6 bg-white border border-slate-100 rounded-3xl shadow-sm mb-6">
-      <h4 className="text-[11px] font-bold uppercase text-slate-400 tracking-wider mb-4">Curva Diaria de Rendimiento (Facturación vs Costos)</h4>
+    <div className="p-6 bg-white border border-slate-300 rounded-3xl shadow-sm mb-6">
+      <h4 className="text-[11px] font-bold uppercase text-slate-600 tracking-wider mb-4">Curva Diaria de Rendimiento (Facturación vs Costos)</h4>
       
       <div className="relative w-full overflow-x-auto">
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[700px] h-auto overflow-visible">
@@ -133,7 +133,7 @@ const DailyRevenueChart = ({ dailyData }: { dailyData: any[] }) => {
         </svg>
       </div>
 
-      <div className="flex gap-5 mt-3 justify-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
+      <div className="flex gap-5 mt-3 justify-center text-[10px] font-bold uppercase tracking-wider text-slate-700">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-1 bg-emerald-500 rounded-full" />
           <span>Facturación</span>
@@ -157,7 +157,7 @@ const DonutChart = ({ data }: { data: any[] }) => {
   const circ = 2 * Math.PI * radius; // ~377
 
   return (
-    <div className="flex flex-col md:flex-row items-center justify-center gap-10 p-6 bg-white border border-slate-100 rounded-3xl shadow-sm mb-6">
+    <div className="flex flex-col md:flex-row items-center justify-center gap-10 p-6 bg-white border border-slate-300 rounded-3xl shadow-sm mb-6">
       <div className="relative w-48 h-48 flex-shrink-0">
         <svg viewBox="0 0 200 200" className="w-full h-full">
           <circle cx="100" cy="100" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="16" />
@@ -200,14 +200,14 @@ const DonutChart = ({ data }: { data: any[] }) => {
           const percent = total > 0 ? (item.sales / total) * 100 : 0;
           if (item.sales === 0) return null;
           return (
-            <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+            <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-300">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                 <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{item.name}</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold text-slate-800 block">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(item.sales)}</span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{percent.toFixed(1)}%</span>
+                <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider block">{percent.toFixed(1)}%</span>
               </div>
             </div>
           );
@@ -226,17 +226,17 @@ const CostVsSaleBar = ({ cost, sale }: { cost: number; sale: number }) => {
   const salePercent = (safeSale / max) * 100;
 
   return (
-    <div className="p-6 bg-white border border-slate-100 rounded-3xl shadow-sm mb-6 space-y-5">
-      <h4 className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Comparativa de Capital: Costo de Adquisición vs. Retorno Potencial</h4>
+    <div className="p-6 bg-white border border-slate-300 rounded-3xl shadow-sm mb-6 space-y-5">
+      <h4 className="text-[11px] font-bold uppercase text-slate-600 tracking-wider">Comparativa de Capital: Costo de Adquisición vs. Retorno Potencial</h4>
       
       <div className="space-y-4">
         {/* Cost Bar */}
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs font-bold text-slate-500">
+          <div className="flex justify-between text-xs font-bold text-slate-700">
             <span>Capital a Costo</span>
             <span className="text-indigo-600 font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(cost)}</span>
           </div>
-          <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-100 flex">
+          <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-300 flex">
             <motion.div 
               initial={{ width: 0 }} 
               animate={{ width: `${costPercent}%` }} 
@@ -248,11 +248,11 @@ const CostVsSaleBar = ({ cost, sale }: { cost: number; sale: number }) => {
 
         {/* Sale Bar */}
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs font-bold text-slate-500">
+          <div className="flex justify-between text-xs font-bold text-slate-700">
             <span>Valor de Venta Estimado</span>
             <span className="text-emerald-600 font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(sale)}</span>
           </div>
-          <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-100 flex">
+          <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-300 flex">
             <motion.div 
               initial={{ width: 0 }} 
               animate={{ width: `${salePercent}%` }} 
@@ -289,7 +289,7 @@ const ABCProgressChart = ({ data }: { data: any[] }) => {
       {[
         { cls: 'A', count: aItems.length, rev: aRevenue, percent: aPercentRev, color: 'bg-emerald-500 border-emerald-100 text-emerald-600 bg-emerald-50' },
         { cls: 'B', count: bItems.length, rev: bRevenue, percent: bPercentRev, color: 'bg-blue-500 border-blue-100 text-blue-600 bg-blue-50' },
-        { cls: 'C', count: cItems.length, rev: cRevenue, percent: cPercentRev, color: 'bg-slate-400 border-slate-100 text-slate-500 bg-slate-50' }
+        { cls: 'C', count: cItems.length, rev: cRevenue, percent: cPercentRev, color: 'bg-slate-400 border-slate-300 text-slate-700 bg-slate-50' }
       ].map((item) => (
         <div key={item.cls} className="p-5 rounded-3xl border-2 bg-white flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full blur-xl opacity-60" />
@@ -297,19 +297,19 @@ const ABCProgressChart = ({ data }: { data: any[] }) => {
           <div>
             <div className="flex justify-between items-center mb-3">
               <span className={`text-xs font-bold px-3 py-1 rounded-xl uppercase tracking-wider ${item.color.split(' ')[2]} ${item.color.split(' ')[3]}`}>Clase {item.cls}</span>
-              <span className="text-xs font-bold text-slate-400">{item.count} Prods</span>
+              <span className="text-xs font-bold text-slate-600">{item.count} Prods</span>
             </div>
             
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Aporte de Ingresos</p>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Aporte de Ingresos</p>
             <p className="text-2xl font-bold text-slate-800">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(item.rev)}</p>
           </div>
 
           <div className="mt-5 space-y-1.5">
-            <div className="flex justify-between text-[10px] font-bold uppercase text-slate-400">
+            <div className="flex justify-between text-[10px] font-bold uppercase text-slate-600">
               <span>Porcentaje de ventas</span>
               <span>{item.percent.toFixed(1)}%</span>
             </div>
-            <div className="h-2 bg-slate-50 rounded-full overflow-hidden border border-slate-100 flex">
+            <div className="h-2 bg-slate-50 rounded-full overflow-hidden border border-slate-300 flex">
               <motion.div 
                 initial={{ width: 0 }} 
                 animate={{ width: `${item.percent}%` }} 
@@ -1003,18 +1003,18 @@ export default function ReportsScreen() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <BarChart3 className="w-7 h-7 text-emerald-500" /> Analítica y Reportes
           </h1>
-          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Análisis y estadísticas de tu negocio</p>
+          <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Análisis y estadísticas de tu negocio</p>
         </div>
 
         {/* Search */}
         <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
           <input 
             type="text" 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
             placeholder="Buscar reportes..." 
-            className="w-full bg-white border border-slate-100 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-emerald-500 transition-all placeholder:text-slate-400"
+            className="w-full bg-white border border-slate-300 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-emerald-500 transition-all placeholder:text-slate-600"
           />
         </div>
       </div>
@@ -1029,20 +1029,20 @@ export default function ReportsScreen() {
                 setReportData(null);
                 setActiveReport(report.id);
               }}
-              className="card p-6 flex flex-col items-start text-left border border-slate-100 hover:border-slate-300 hover:shadow-xl hover:shadow-slate-500/5 transition-all duration-300 group select-none cursor-pointer relative overflow-hidden"
+              className="card p-6 flex flex-col items-start text-left border border-slate-300 hover:border-slate-300 hover:shadow-xl hover:shadow-slate-500/5 transition-all duration-300 group select-none cursor-pointer relative overflow-hidden"
             >
               <div className="flex items-center justify-between w-full">
-                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-300 flex items-center justify-center shrink-0">
                   <report.icon className={`w-6 h-6 ${report.color.split(' ')[2]}`} />
                 </div>
               </div>
               <h3 className="text-sm font-bold text-slate-800 tracking-tight mt-5 group-hover:text-emerald-600 transition-colors">
                 {report.title}
               </h3>
-              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">
+              <p className="text-[11px] text-slate-600 font-bold uppercase tracking-wider mt-1">
                 {report.category}
               </p>
-              <p className="text-[11px] text-slate-400/80 font-medium leading-relaxed mt-2.5">
+              <p className="text-[11px] text-slate-600/80 font-medium leading-relaxed mt-2.5">
                 {report.description}
               </p>
             </button>
@@ -1069,12 +1069,12 @@ export default function ReportsScreen() {
               className="bg-white rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[90vh]"
             >
               {/* Modal Header */}
-              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <div className="px-8 py-6 border-b border-slate-300 flex items-center justify-between bg-white shrink-0">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800 tracking-tight">
                     {reportCards.find(r => r.id === activeReport)?.title}
                   </h2>
-                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Reportes & Estadísticas en Vivo</p>
+                  <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Reportes & Estadísticas en Vivo</p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1084,7 +1084,7 @@ export default function ReportsScreen() {
                       <select 
                         value={selectedMonth} 
                         onChange={(e) => setSelectedMonth(Number(e.target.value))} 
-                        className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-[10px] font-bold text-slate-700 outline-none capitalize"
+                        className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-[10px] font-bold text-slate-700 outline-none capitalize"
                       >
                         {months.map((m, i) => (
                           <option key={m} value={i}>{m}</option>
@@ -1093,7 +1093,7 @@ export default function ReportsScreen() {
                       <select 
                         value={selectedYear} 
                         onChange={(e) => setSelectedYear(Number(e.target.value))} 
-                        className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-[10px] font-bold text-slate-700 outline-none"
+                        className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-[10px] font-bold text-slate-700 outline-none"
                       >
                         {years.map(y => (
                           <option key={y} value={y}>{y}</option>
@@ -1103,10 +1103,10 @@ export default function ReportsScreen() {
                   )}
 
                   {reportData && (
-                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-100 pl-3">
+                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-300 pl-3">
                       <button
                         onClick={handleExportExcel}
-                        className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-[10px] shadow-sm flex items-center gap-1 cursor-pointer active:scale-95"
+                        className="px-3 py-1.5 rounded-xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-[10px] shadow-sm flex items-center gap-1 cursor-pointer active:scale-95"
                         title="Descargar Excel"
                       >
                         <Download className="w-3.5 h-3.5 text-emerald-600" />
@@ -1125,7 +1125,7 @@ export default function ReportsScreen() {
 
                   <button 
                     onClick={() => setActiveReport(null)} 
-                    className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                    className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 hover:text-slate-600 transition-all cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1135,11 +1135,11 @@ export default function ReportsScreen() {
               {/* Modal Body */}
               <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/20">
                 {isLoading ? (
-                  <div className="h-full flex items-center justify-center text-slate-400 font-medium">
+                  <div className="h-full flex items-center justify-center text-slate-600 font-medium">
                     Calculando y cargando estadísticas...
                   </div>
                 ) : !reportData ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
                     <Info className="w-8 h-8 text-slate-300 animate-pulse" />
                     <p className="text-xs">No se pudieron cargar los datos.</p>
                   </div>
@@ -1151,38 +1151,38 @@ export default function ReportsScreen() {
                     {activeReport === 'stock_actual' && (
                       <div className="space-y-4">
                         {/* Summary Header */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border border-slate-300 p-4 rounded-2xl shadow-sm">
                           <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Productos Activos</span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase">Productos Activos</span>
                             <p className="text-lg font-bold text-slate-700 mt-0.5">{reportData.length}</p>
                           </div>
                           <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Stock Total</span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase">Stock Total</span>
                             <p className="text-lg font-bold text-slate-700 mt-0.5">{reportData.reduce((s: number, p: any) => s + p.stock, 0)} u.</p>
                           </div>
                           <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Valor a Costo</span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase">Valor a Costo</span>
                             <p className="text-lg font-bold text-indigo-600 mt-0.5">{fmt(reportData.reduce((s: number, p: any) => s + (p.costPrice * p.stock), 0))}</p>
                           </div>
                           <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Valor a Venta</span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase">Valor a Venta</span>
                             <p className="text-lg font-bold text-emerald-600 mt-0.5">{fmt(reportData.reduce((s: number, p: any) => s + (p.salePrice * p.stock), 0))}</p>
                           </div>
                         </div>
 
                         {/* List */}
-                        <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                        <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                           <table className="w-full min-w-[650px] text-xs text-left border-collapse">
                             <thead>
-                              <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">SKU</th><th className="p-3 text-right">Stock</th><th className="p-3 text-right">P. Costo</th><th className="p-3 text-right">P. Venta</th><th className="p-3 text-right pr-4">Total Costo</th></tr>
+                              <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">SKU</th><th className="p-3 text-right">Stock</th><th className="p-3 text-right">P. Costo</th><th className="p-3 text-right">P. Venta</th><th className="p-3 text-right pr-4">Total Costo</th></tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                               {reportData.map((p: any) => (
                                 <tr key={p.id} className="hover:bg-slate-50/40 text-slate-700">
                                   <td className="p-3 pl-4 font-bold text-slate-800">{p.name}</td>
-                                  <td className="p-3 text-slate-400 font-semibold">{p.sku || 'N/A'}</td>
+                                  <td className="p-3 text-slate-600 font-semibold">{p.sku || 'N/A'}</td>
                                   <td className="p-3 text-right font-bold text-slate-600">{p.stock}</td>
-                                  <td className="p-3 text-right font-medium text-slate-500">{fmt(p.costPrice)}</td>
+                                  <td className="p-3 text-right font-medium text-slate-700">{fmt(p.costPrice)}</td>
                                   <td className="p-3 text-right font-bold text-slate-700">{fmt(p.salePrice)}</td>
                                   <td className="p-3 text-right pr-4 font-bold text-slate-900">{fmt(p.costPrice * p.stock)}</td>
                                 </tr>
@@ -1197,7 +1197,7 @@ export default function ReportsScreen() {
                     {activeReport === 'stock_bajo' && (
                       <div className="space-y-4">
                         {reportData.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm text-slate-400">
+                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-300 shadow-sm text-slate-600">
                             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                             <p className="text-sm font-semibold">Excelente! No hay productos con stock bajo en este momento.</p>
                           </div>
@@ -1207,18 +1207,18 @@ export default function ReportsScreen() {
                               <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
                               <p className="text-xs font-semibold text-rose-700">Se encontraron {reportData.length} productos con existencias iguales o inferiores a su mínimo establecido.</p>
                             </div>
-                            <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                            <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                               <table className="w-full min-w-[600px] text-xs text-left border-collapse">
                                 <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">SKU</th><th className="p-3 text-right">Stock Actual</th><th className="p-3 text-right pr-4">Mínimo</th></tr>
+                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">SKU</th><th className="p-3 text-right">Stock Actual</th><th className="p-3 text-right pr-4">Mínimo</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                   {reportData.map((p: any) => (
                                     <tr key={p.id} className="hover:bg-slate-50/40 text-slate-700">
                                       <td className="p-3 pl-4 font-bold text-slate-800">{p.name}</td>
-                                      <td className="p-3 text-slate-400 font-semibold">{p.sku || 'N/A'}</td>
+                                      <td className="p-3 text-slate-600 font-semibold">{p.sku || 'N/A'}</td>
                                       <td className="p-3 text-right font-bold text-rose-600">{p.stock}</td>
-                                      <td className="p-3 text-right pr-4 font-bold text-slate-500">{p.minStock}</td>
+                                      <td className="p-3 text-right pr-4 font-bold text-slate-700">{p.minStock}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -1234,12 +1234,12 @@ export default function ReportsScreen() {
                       <div className="space-y-6">
                         {/* 4 Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Facturación</span>
+                          <div className="p-4 rounded-2xl bg-white border border-slate-300 shadow-sm">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase block">Facturación</span>
                             <span className="text-xl font-bold text-slate-800 mt-1 block">{fmt(reportData.totalSales)}</span>
                           </div>
-                          <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Costo de Ventas</span>
+                          <div className="p-4 rounded-2xl bg-white border border-slate-300 shadow-sm">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase block">Costo de Ventas</span>
                             <span className="text-xl font-bold text-slate-800 mt-1 block">{fmt(reportData.totalCost)}</span>
                           </div>
                           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 shadow-sm">
@@ -1257,19 +1257,19 @@ export default function ReportsScreen() {
 
                         {/* Top Most Profitable Products */}
                         <div>
-                          <h4 className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-3">Top 10 Productos Más Rentables</h4>
-                          <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                          <h4 className="text-xs font-bold uppercase text-slate-600 tracking-wider mb-3">Top 10 Productos Más Rentables</h4>
+                          <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                             <table className="w-full min-w-[650px] text-xs text-left border-collapse">
                               <thead>
-                                <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3 text-right">Cant. Vendida</th><th className="p-3 text-right">Ingresos</th><th className="p-3 text-right">Costo</th><th className="p-3 text-right pr-4">Ganancia</th></tr>
+                                <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3 text-right">Cant. Vendida</th><th className="p-3 text-right">Ingresos</th><th className="p-3 text-right">Costo</th><th className="p-3 text-right pr-4">Ganancia</th></tr>
                               </thead>
                               <tbody className="divide-y divide-slate-50">
                                 {reportData.topProfitable.map((p: any, i: number) => (
                                   <tr key={i} className="hover:bg-slate-50/40 text-slate-700">
                                     <td className="p-3 pl-4 font-bold text-slate-800">{p.name}</td>
-                                    <td className="p-3 text-right text-slate-500 font-semibold">{p.qty}</td>
+                                    <td className="p-3 text-right text-slate-700 font-semibold">{p.qty}</td>
                                     <td className="p-3 text-right text-slate-600 font-bold">{fmt(p.revenue)}</td>
-                                    <td className="p-3 text-right text-slate-400 font-medium">{fmt(p.cost)}</td>
+                                    <td className="p-3 text-right text-slate-600 font-medium">{fmt(p.cost)}</td>
                                     <td className="p-3 text-right pr-4 font-bold text-emerald-600">{fmt(p.profit)}</td>
                                   </tr>
                                 ))}
@@ -1284,16 +1284,16 @@ export default function ReportsScreen() {
                     {activeReport === 'rentabilidad_categoria' && (
                       <div className="space-y-4">
                         {reportData.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-10">No se registraron ventas en este período.</p>
+                          <p className="text-xs text-slate-600 text-center py-10">No se registraron ventas en este período.</p>
                         ) : (
                           <>
                             {/* Premium SVG Donut Chart */}
                             <DonutChart data={reportData} />
                             
-                            <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                            <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                               <table className="w-full min-w-[650px] text-xs text-left border-collapse">
                                 <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Categoría</th><th className="p-3 text-right">Ventas Totales</th><th className="p-3 text-right">Costos</th><th className="p-3 text-right">Ganancia</th><th className="p-3 text-right pr-4">Margen %</th></tr>
+                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Categoría</th><th className="p-3 text-right">Ventas Totales</th><th className="p-3 text-right">Costos</th><th className="p-3 text-right">Ganancia</th><th className="p-3 text-right pr-4">Margen %</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                   {reportData.map((c: any, i: number) => (
@@ -1303,7 +1303,7 @@ export default function ReportsScreen() {
                                         {c.name}
                                       </td>
                                       <td className="p-3 text-right font-semibold text-slate-600">{fmt(c.sales)}</td>
-                                      <td className="p-3 text-right text-slate-400 font-medium">{fmt(c.cost)}</td>
+                                      <td className="p-3 text-right text-slate-600 font-medium">{fmt(c.cost)}</td>
                                       <td className="p-3 text-right font-bold text-slate-800">{fmt(c.profit)}</td>
                                       <td className="p-3 text-right pr-4 font-bold text-emerald-600">{c.sales > 0 ? ((c.profit / c.sales) * 100).toFixed(1) : 0}%</td>
                                     </tr>
@@ -1328,7 +1328,7 @@ export default function ReportsScreen() {
                         </div>
 
                         {reportData.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-10">No se registraron ventas en este período.</p>
+                          <p className="text-xs text-slate-600 text-center py-10">No se registraron ventas en este período.</p>
                         ) : (
                           <>
                             {/* Premium SVG ABC Classification cards */}
@@ -1336,7 +1336,7 @@ export default function ReportsScreen() {
 
                             {/* Filtro ABC */}
                             <div className="flex items-center justify-between bg-slate-50 border border-slate-150 p-4 rounded-2xl shadow-sm">
-                              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Filtrar por clasificación:</span>
+                              <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider">Filtrar por clasificación:</span>
                               <div className="flex gap-2">
                                 {(['ALL', 'A', 'B', 'C'] as const).map((type) => (
                                   <button
@@ -1346,7 +1346,7 @@ export default function ReportsScreen() {
                                     className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                                       abcFilter === type
                                         ? 'bg-indigo-600 text-white shadow-md active:scale-95'
-                                        : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 active:scale-95'
+                                        : 'bg-white border border-slate-400 text-slate-700 hover:bg-slate-100 hover:text-slate-700 active:scale-95'
                                     }`}
                                   >
                                     {type === 'ALL' ? 'Todos' : `Clase ${type}`}
@@ -1355,10 +1355,10 @@ export default function ReportsScreen() {
                               </div>
                             </div>
                             
-                            <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                            <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                               <table className="w-full min-w-[650px] text-xs text-left border-collapse">
                                 <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3 text-right">U. Vendidas</th><th className="p-3 text-right">Facturación</th><th className="p-3 text-right pr-4">Clasificación</th></tr>
+                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3 text-right">U. Vendidas</th><th className="p-3 text-right">Facturación</th><th className="p-3 text-right pr-4">Clasificación</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                   {reportData
@@ -1366,10 +1366,10 @@ export default function ReportsScreen() {
                                     .map((p: any, i: number) => (
                                       <tr key={i} className="hover:bg-slate-50/40 text-slate-700">
                                         <td className="p-3 pl-4 font-bold text-slate-800">{p.name}</td>
-                                        <td className="p-3 text-right text-slate-500 font-semibold">{p.qty}</td>
+                                        <td className="p-3 text-right text-slate-700 font-semibold">{p.qty}</td>
                                         <td className="p-3 text-right font-bold text-slate-700">{fmt(p.revenue)}</td>
                                         <td className="p-3 text-right pr-4">
-                                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border uppercase tracking-wider ${p.classification === 'A' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : p.classification === 'B' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border uppercase tracking-wider ${p.classification === 'A' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : p.classification === 'B' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-300'}`}>
                                             Clase {p.classification}
                                           </span>
                                         </td>
@@ -1388,8 +1388,8 @@ export default function ReportsScreen() {
                       <div className="space-y-6">
                         {/* 4 Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Existencias Totales</span>
+                          <div className="p-4 rounded-2xl bg-white border border-slate-300 shadow-sm">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase block">Existencias Totales</span>
                             <span className="text-xl font-bold text-slate-800 mt-1 block">{reportData.itemCount} u.</span>
                           </div>
                           <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-sm">
@@ -1400,8 +1400,8 @@ export default function ReportsScreen() {
                             <span className="text-[9px] font-bold text-emerald-600 uppercase block">Valor a Venta</span>
                             <span className="text-xl font-bold text-emerald-700 mt-1 block">{fmt(reportData.totalSale)}</span>
                           </div>
-                          <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Markup / Retorno Potencial</span>
+                          <div className="p-4 rounded-2xl bg-white border border-slate-300 shadow-sm">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase block">Markup / Retorno Potencial</span>
                             <span className="text-xl font-bold text-slate-800 mt-1 block">{reportData.margin.toFixed(1)}%</span>
                           </div>
                         </div>
@@ -1424,21 +1424,21 @@ export default function ReportsScreen() {
                     {activeReport === 'perdidas' && (
                       <div className="space-y-4">
                         {reportData.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm text-slate-400">
+                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-300 shadow-sm text-slate-600">
                             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                             <p className="text-sm font-semibold">Sin pérdidas operativas registradas por merma en este mes.</p>
                           </div>
                         ) : (
-                          <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                          <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                             <table className="w-full min-w-[600px] text-xs text-left border-collapse">
                               <thead>
-                                <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">Fecha</th><th className="p-3 text-right">Cant. Mermada</th><th className="p-3 pr-4">Motivo</th></tr>
+                                <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">Fecha</th><th className="p-3 text-right">Cant. Mermada</th><th className="p-3 pr-4">Motivo</th></tr>
                               </thead>
                               <tbody className="divide-y divide-slate-50">
                                 {reportData.map((m: any) => (
                                   <tr key={m.id} className="hover:bg-slate-50/40 text-slate-700">
                                     <td className="p-3 pl-4 font-bold text-slate-800">{m.product?.name}</td>
-                                    <td className="p-3 text-slate-400 font-medium">{fmtDate(m.createdAt)}</td>
+                                    <td className="p-3 text-slate-600 font-medium">{fmtDate(m.createdAt)}</td>
                                     <td className="p-3 text-right font-bold text-red-600">{m.quantity}</td>
                                     <td className="p-3 pr-4 text-slate-600 font-semibold">{m.reason || 'No especificado'}</td>
                                   </tr>
@@ -1453,10 +1453,10 @@ export default function ReportsScreen() {
                     {/* H. MOVIMIENTOS */}
                     {activeReport === 'movimientos' && (
                       <div className="space-y-4">
-                        <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                        <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                           <table className="w-full min-w-[650px] text-xs text-left border-collapse">
                             <thead>
-                              <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">Tipo</th><th className="p-3 text-right">Cantidad</th><th className="p-3">Fecha/Hora</th><th className="p-3 pr-4">Detalle / Referencia</th></tr>
+                              <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Producto</th><th className="p-3">Tipo</th><th className="p-3 text-right">Cantidad</th><th className="p-3">Fecha/Hora</th><th className="p-3 pr-4">Detalle / Referencia</th></tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                               {reportData.map((m: any) => (
@@ -1468,8 +1468,8 @@ export default function ReportsScreen() {
                                     </span>
                                   </td>
                                   <td className={`p-3 text-right font-bold ${m.quantity > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>{m.quantity}</td>
-                                  <td className="p-3 text-slate-400 font-medium">{fmtDate(m.createdAt)}</td>
-                                  <td className="p-3 pr-4 text-slate-500 font-semibold">{m.reference || m.reason || 'N/A'}</td>
+                                  <td className="p-3 text-slate-600 font-medium">{fmtDate(m.createdAt)}</td>
+                                  <td className="p-3 pr-4 text-slate-700 font-semibold">{m.reference || m.reason || 'N/A'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1482,7 +1482,7 @@ export default function ReportsScreen() {
                     {activeReport === 'devoluciones' && (
                       <div className="space-y-4">
                         {reportData.list.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm text-slate-400">
+                          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white rounded-2xl border border-slate-300 shadow-sm text-slate-600">
                             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                             <p className="text-sm font-semibold">Excelente! No se registraron cancelaciones o devoluciones en este período.</p>
                           </div>
@@ -1493,17 +1493,17 @@ export default function ReportsScreen() {
                               <span className="text-base font-bold text-rose-600">{fmt(reportData.totalRefunded)}</span>
                             </div>
 
-                            <div className="bg-white border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                            <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
                               <table className="w-full min-w-[600px] text-xs text-left border-collapse">
                                 <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest"><th className="p-3 pl-4">Ticket</th><th className="p-3">Fecha</th><th className="p-3">Cajero</th><th className="p-3 text-right pr-4">Total Devuelto</th></tr>
+                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Ticket</th><th className="p-3">Fecha</th><th className="p-3">Cajero</th><th className="p-3 text-right pr-4">Total Devuelto</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                   {reportData.list.map((sale: any) => (
                                     <tr key={sale.id} className="hover:bg-slate-50/40 text-slate-700">
                                       <td className="p-3 pl-4 font-bold text-slate-800">#{sale.saleNumber}</td>
-                                      <td className="p-3 text-slate-400 font-medium">{fmtDate(sale.createdAt)}</td>
-                                      <td className="p-3 text-slate-500 font-semibold">{sale.user?.fullName}</td>
+                                      <td className="p-3 text-slate-600 font-medium">{fmtDate(sale.createdAt)}</td>
+                                      <td className="p-3 text-slate-700 font-semibold">{sale.user?.fullName}</td>
                                       <td className="p-3 text-right pr-4 font-bold text-rose-600">-{fmt(sale.total)}</td>
                                     </tr>
                                   ))}

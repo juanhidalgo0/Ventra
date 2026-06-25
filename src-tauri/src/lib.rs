@@ -108,8 +108,10 @@ pub fn run() {
 
     let child_process: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
     let child_process_clone = Arc::clone(&child_process);
+    let child_process_exit = Arc::clone(&child_process);
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).ok();
@@ -125,6 +127,24 @@ pub fn run() {
                 }
             }
 
+            // Copy .env to AppData to make sure spawned backend can access keys (e.g. GEMINI_API_KEY)
+            let env_path = app_data_dir.join(".env");
+            let possible_paths = [
+                "../.env",
+                "../../.env",
+                ".env",
+                "apps/backend/.env",
+            ];
+            for rel_path in &possible_paths {
+                let check_path = std::path::Path::new(rel_path);
+                if check_path.exists() {
+                    if std::fs::copy(check_path, &env_path).is_ok() {
+                        println!("[Tauri] Env file copied successfully to AppData from: {:?}", check_path);
+                        break;
+                    }
+                }
+            }
+
             let backend_path = app.path().resolve("_up_/apps/backend/dist/ncc/index.js", tauri::path::BaseDirectory::Resource).expect("failed to resolve backend path");
             let backend_path_clean = clean_unc_path(backend_path);
             let database_url = format!("file:{}", db_path_clean.replace('\\', "/"));
@@ -133,13 +153,16 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 use std::os::windows::process::CommandExt;
-                std::process::Command::new("cmd")
+                if let Ok(mut child) = std::process::Command::new("cmd")
                     .args(&["/C", "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :3001') do taskkill /F /PID %a"])
                     .creation_flags(0x08000000)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
-                    .status()
-                    .ok();
+                    .spawn()
+                {
+                    child.wait().ok();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
 
             // Determine active port
@@ -200,6 +223,30 @@ pub fn run() {
                 String::from_utf8(decrypted).unwrap_or_default()
             };
 
+            let gemini_api_key = std::env::var("GEMINI_API_KEY").unwrap_or_else(|_| {
+                // Try to find it in the local .env file in the current directory
+                if let Ok(content) = std::fs::read_to_string(".env") {
+                    for line in content.lines() {
+                        if line.starts_with("GEMINI_API_KEY=") {
+                            return line.split('=').nth(1)
+                                .map(|s| s.trim_matches('"').trim_matches('\'').trim().to_string())
+                                .unwrap_or_default();
+                        }
+                    }
+                }
+                // Try to find it in the local .env file in the app_data_dir
+                if let Ok(content) = std::fs::read_to_string(app_data_dir.join(".env")) {
+                    for line in content.lines() {
+                        if line.starts_with("GEMINI_API_KEY=") {
+                            return line.split('=').nth(1)
+                                .map(|s| s.trim_matches('"').trim_matches('\'').trim().to_string())
+                                .unwrap_or_default();
+                        }
+                    }
+                }
+                "".to_string()
+            });
+
             println!("[Tauri] Spawning Node backend using: {:?}", node_path_clean);
             let mut cmd = std::process::Command::new(node_path_clean);
             cmd.arg("--max-old-space-size=256")
@@ -210,6 +257,7 @@ pub fn run() {
                 .env("FIREBASE_CREDENTIALS_JSON", credentials_json)
                 .env("GODELIVERY_COMERCIO_ID", "7mdgE7txSCQqWQl1Hzrqa5PCo8C2")
                 .env("LOCAL_SYNC_TOKEN", "paulos-local-sync-token-secret-2026")
+                .env("GEMINI_API_KEY", gemini_api_key)
                 .current_dir(&app_data_dir);
 
             #[cfg(target_os = "windows")]
@@ -226,21 +274,33 @@ pub fn run() {
             }
 
             let child = cmd.spawn().expect("failed to start backend process");
+ 
+             *child_process.lock().unwrap() = Some(child);
+ 
+             Ok(())
+         })
+         .on_window_event(move |_window, event| {
+             if let tauri::WindowEvent::Destroyed = event {
+                 let mut lock = child_process_clone.lock().unwrap();
+                 if let Some(mut child) = lock.take() {
+                     println!("[Tauri] Window destroyed: Killing Node backend process...");
+                     child.kill().ok();
+                 }
+             }
+         })
+         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser]);
 
-            *child_process.lock().unwrap() = Some(child);
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
 
-            Ok(())
-        })
-        .on_window_event(move |_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                let mut lock = child_process_clone.lock().unwrap();
-                if let Some(mut child) = lock.take() {
-                    println!("[Tauri] Killing Node backend process...");
-                    child.kill().ok();
-                }
+    app.run(move |_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let mut lock = child_process_exit.lock().unwrap();
+            if let Some(mut child) = lock.take() {
+                println!("[Tauri] Exit event: Killing Node backend process...");
+                child.kill().ok();
             }
-        })
-        .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        }
+    });
 }

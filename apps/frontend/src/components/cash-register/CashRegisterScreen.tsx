@@ -93,8 +93,8 @@ export default function CashRegisterScreen() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-500 mb-1">Terminal</label>
-              <input value={terminalName} disabled={true} className="input-field bg-slate-100 text-slate-500 font-bold select-none cursor-not-allowed" placeholder="Terminal 1" />
-              <p className="text-[9px] text-slate-400 font-semibold mt-1">🖥️ Dispositivo detectado localmente.</p>
+              <input value={terminalName} disabled={true} className="input-field bg-slate-100 text-slate-700 font-bold select-none cursor-not-allowed" placeholder="Terminal 1" />
+              <p className="text-[9px] text-slate-600 font-semibold mt-1">🖥️ Dispositivo detectado localmente.</p>
             </div>
             <div>
               <label className="block text-sm text-gray-500 mb-1">Monto inicial ($)</label>
@@ -103,7 +103,7 @@ export default function CashRegisterScreen() {
                 value={openingAmount || ''} 
                 onChange={(e) => setOpeningAmount(Number(e.target.value))} 
                 disabled={true}
-                className="input-field text-xl font-bold bg-slate-100 text-slate-400 cursor-not-allowed select-none"
+                className="input-field text-xl font-bold bg-slate-100 text-slate-600 cursor-not-allowed select-none"
                 placeholder="30000" 
               />
               <p className="text-[10px] text-amber-500 font-bold mt-1.5 ml-1">🔒 Monto bloqueado. Configurado por el Administrador desde el panel general.</p>
@@ -151,8 +151,8 @@ export default function CashRegisterScreen() {
               <p className="text-[9px] text-indigo-400 mb-0.5 uppercase tracking-wider font-bold">Efectivo esperado</p>
               <p className="text-base font-bold text-indigo-700 leading-none">{fmt(expectedCash)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center shadow-sm">
-              <p className="text-[9px] text-slate-400 mb-0.5 uppercase tracking-wider font-bold">Terminal</p>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-300 text-center shadow-sm">
+              <p className="text-[9px] text-slate-600 mb-0.5 uppercase tracking-wider font-bold">Terminal</p>
               <p className="text-base font-bold text-slate-700 leading-none truncate">{session.terminalName}</p>
             </div>
           </div>
@@ -176,19 +176,19 @@ export default function CashRegisterScreen() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={handleClose} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"><CheckCircle2 className="w-5 h-5" />Confirmar Cierre</button>
-                <button onClick={() => setShowCloseConfirm(false)} className="px-5 py-3.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 font-bold text-xs uppercase tracking-wider transition-all active:scale-95">Cancelar</button>
+                <button onClick={() => setShowCloseConfirm(false)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-100 font-bold text-xs uppercase tracking-wider transition-all active:scale-95">Cancelar</button>
               </div>
             </div>
           )}
 
           {/* Detailed expenses view of the current shift */}
           {session.cashMovements && session.cashMovements.length > 0 && (
-            <div className="mt-8 border-t border-slate-200/60 pt-6">
+            <div className="mt-8 border-t border-slate-400/60 pt-6">
               <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Detalle de Gastos y Egresos del Turno</h3>
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm max-h-[300px] custom-scrollbar">
+              <div className="overflow-x-auto rounded-2xl border border-slate-400 bg-white shadow-sm max-h-[300px] custom-scrollbar">
                 <table className="w-full text-left text-xs font-semibold text-slate-600 border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] uppercase text-slate-400 tracking-wider">
+                    <tr className="border-b border-slate-400 bg-slate-50/50 text-[10px] uppercase text-slate-600 tracking-wider">
                       <th className="py-3.5 px-4 text-left">Categoría</th>
                       <th className="py-3.5 px-4 text-left">Descripción</th>
                       <th className="py-3.5 px-4 text-left">Hora</th>
@@ -215,14 +215,14 @@ export default function CashRegisterScreen() {
                       };
 
                       return (
-                        <tr key={mov.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/40 transition-colors">
+                        <tr key={mov.id} className="border-b border-slate-300 last:border-0 hover:bg-slate-50/40 transition-colors">
                           <td className="py-3 px-4">
                             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase ${getCatStyles(category)}`}>
                               {category}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-slate-700 font-bold">{cleanDescription || 'Gasto operativo'}</td>
-                          <td className="py-3 px-4 text-slate-400 font-medium">{new Date(mov.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="py-3 px-4 text-slate-600 font-medium">{new Date(mov.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="py-3 px-4 text-right font-black text-rose-600">
                             - {fmt(mov.amount)}
                           </td>

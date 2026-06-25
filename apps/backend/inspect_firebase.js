@@ -10,12 +10,9 @@ admin.initializeApp({
 const db = admin.firestore();
 
 async function run() {
-  console.log("--- Users ---");
-  const usersSnap = await db.collection('users').get();
-  for (const doc of usersSnap.docs) {
-    const data = doc.data();
-    console.log(`ID: ${doc.id} | Email: ${data.email} | Name: ${data.name}`);
-  }
+  console.log("--- User Roles ---");
+  const doc = await db.collection('users').doc('7Sq9bA7OGuegcowu2ASktLm05og2').get();
+  console.log(doc.id, doc.data());
 }
 
 run().catch(console.error);

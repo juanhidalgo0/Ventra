@@ -23,6 +23,11 @@ class RegisterFirstAdminDto {
   @IsString() @IsNotEmpty() password: string;
 }
 
+class ChangePasswordDto {
+  @IsString() @IsNotEmpty() oldPassword: string;
+  @IsString() @IsNotEmpty() newPassword: string;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -280,6 +285,12 @@ export class AuthController {
   @Get('me')
   async me(@Request() req) {
     return this.authService.validateUser(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.sub, dto.oldPassword, dto.newPassword);
   }
 
   @Get('license/status')

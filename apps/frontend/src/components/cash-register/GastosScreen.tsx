@@ -39,6 +39,10 @@ export default function GastosScreen() {
 
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all');
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+
   // Month & Year list for selectors
   const months = [
     'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -49,6 +53,7 @@ export default function GastosScreen() {
   useEffect(() => {
     loadCurrentSession();
     loadMovements();
+    api.get('/users').then(res => setAllUsers(res.data || [])).catch(() => {});
     
     // Check if redirect wants to open the modal immediately
     const modalParam = searchParams.get('modal');
@@ -106,12 +111,15 @@ export default function GastosScreen() {
     }
   };
 
-  // Parsing category and description from NestJS CashMovement `description`
-  // Format stored is: `[Category] Description`
   const parseMovement = (mov: any) => {
     const desc = mov.description || '';
     const categoryMatch = desc.match(/^\[(.*?)\]/);
-    const category = categoryMatch ? categoryMatch[1] : 'Otro';
+    let category = categoryMatch ? categoryMatch[1] : 'Otro';
+    
+    if (!categoryMatch && (desc.toLowerCase().includes('liquidación de sueldo') || desc.toLowerCase().includes('liquidacion de sueldo'))) {
+      category = 'Sueldos / Adelantos';
+    }
+    
     const cleanDescription = desc.replace(/^\[.*?\]/, '').trim();
     
     // Determine Fijos vs Variables
@@ -129,16 +137,45 @@ export default function GastosScreen() {
 
   const parsedMovements = movements.map(parseMovement);
 
+  const categories = [
+    'Otro',
+    'Mercadería / Insumos',
+    'Servicios (Luz, Agua, etc)',
+    'Sueldos / Adelantos',
+    'Mantenimiento',
+    'Impuestos'
+  ];
+
   // Filters
   const filteredMovements = parsedMovements.filter((mov) => {
     const matchesSearch = 
       mov.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       mov.category.toLowerCase().includes(searchQuery.toLowerCase());
     
-    if (selectedTab === 'FIXED') return matchesSearch && mov.isFixed;
-    if (selectedTab === 'VARIABLE') return matchesSearch && !mov.isFixed;
-    return matchesSearch;
+    const matchesTab = 
+      selectedTab === 'ALL' ||
+      (selectedTab === 'FIXED' && mov.isFixed) ||
+      (selectedTab === 'VARIABLE' && !mov.isFixed);
+
+    const matchesCategory = 
+      selectedCategoryFilter === 'all' || 
+      mov.category === selectedCategoryFilter;
+
+    const selectedUserObj = allUsers.find(u => u.id === selectedEmployeeFilter);
+    const matchesEmployee = 
+      selectedEmployeeFilter === 'all' ||
+      mov.userId === selectedEmployeeFilter ||
+      mov.user?.id === selectedEmployeeFilter ||
+      (selectedUserObj && (
+        mov.description.toLowerCase().includes(selectedUserObj.username?.toLowerCase()) ||
+        mov.description.toLowerCase().includes(selectedUserObj.fullName?.toLowerCase())
+      ));
+
+    return matchesSearch && matchesTab && matchesCategory && matchesEmployee;
   });
+
+  const filteredTotalAmount = filteredMovements.reduce((sum, m) => sum + m.amount, 0);
+  const isFiltered = searchQuery !== '' || selectedCategoryFilter !== 'all' || selectedEmployeeFilter !== 'all' || selectedTab !== 'ALL';
 
   // Calculate totals
   const totalAmount = parsedMovements.reduce((sum, m) => sum + m.amount, 0);
@@ -155,14 +192,14 @@ export default function GastosScreen() {
 
   const getCategoryStyles = (cat: string) => {
     const map: any = {
-      'Otro': 'bg-slate-50 text-slate-600 border-slate-100',
+      'Otro': 'bg-slate-50 text-slate-600 border-slate-300',
       'Mercadería / Insumos': 'bg-emerald-50 text-emerald-600 border-emerald-100',
       'Servicios (Luz, Agua, etc)': 'bg-blue-50 text-blue-600 border-blue-100',
       'Sueldos / Adelantos': 'bg-indigo-50 text-indigo-600 border-indigo-100',
       'Mantenimiento': 'bg-amber-50 text-amber-600 border-amber-100',
       'Impuestos': 'bg-rose-50 text-rose-600 border-rose-100'
     };
-    return map[cat] || 'bg-slate-50 text-slate-600 border-slate-100';
+    return map[cat] || 'bg-slate-50 text-slate-600 border-slate-300';
   };
 
   return (
@@ -173,7 +210,7 @@ export default function GastosScreen() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <Receipt className="w-7 h-7 text-rose-500" /> Gastos
           </h1>
-          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Control de gastos operativos</p>
+          <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Control de gastos operativos</p>
         </div>
       </div>
 
@@ -198,11 +235,11 @@ export default function GastosScreen() {
           initial={{ opacity: 0, y: 15 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.05 }}
-          className="p-6 rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col relative overflow-hidden"
+          className="p-6 rounded-2xl bg-white border border-slate-300 shadow-sm flex flex-col relative overflow-hidden"
         >
-          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">FIJOS</span>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">FIJOS</span>
           <span className="text-3xl font-bold mt-1 text-slate-800 leading-none">{formatPrice(fixedAmount)}</span>
-          <span className="text-[11px] font-bold text-slate-400 mt-2 flex items-center gap-1">
+          <span className="text-[11px] font-bold text-slate-600 mt-2 flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-blue-500" /> {fixedCount} gastos fijos (Servicios, Sueldos, Impuestos)
           </span>
         </motion.div>
@@ -212,11 +249,11 @@ export default function GastosScreen() {
           initial={{ opacity: 0, y: 15 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.1 }}
-          className="p-6 rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col relative overflow-hidden"
+          className="p-6 rounded-2xl bg-white border border-slate-300 shadow-sm flex flex-col relative overflow-hidden"
         >
-          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">VARIABLES</span>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">VARIABLES</span>
           <span className="text-3xl font-bold mt-1 text-slate-800 leading-none">{formatPrice(variableAmount)}</span>
-          <span className="text-[11px] font-bold text-slate-400 mt-2 flex items-center gap-1">
+          <span className="text-[11px] font-bold text-slate-600 mt-2 flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-amber-500" /> {variableCount} variables (Insumos, Mantenimiento)
           </span>
         </motion.div>
@@ -225,22 +262,46 @@ export default function GastosScreen() {
       {/* Filter and controls bar */}
       <div className="card px-6 py-4 flex flex-col md:flex-row items-center gap-4 shrink-0 justify-between">
         <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
           <input 
             type="text" 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
             placeholder="Buscar gasto..." 
-            className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-400"
+            className="w-full bg-slate-50/50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-600"
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0 justify-end">
+          {/* Category selector */}
+          <select 
+            value={selectedCategoryFilter} 
+            onChange={(e) => setSelectedCategoryFilter(e.target.value)} 
+            className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
+          >
+            <option value="all">Todas las categorías</option>
+            {categories.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+
+          {/* Employee selector */}
+          <select 
+            value={selectedEmployeeFilter} 
+            onChange={(e) => setSelectedEmployeeFilter(e.target.value)} 
+            className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
+          >
+            <option value="all">Todos los empleados</option>
+            {allUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+            ))}
+          </select>
+
           {/* Month selector */}
           <select 
             value={selectedMonth} 
             onChange={(e) => setSelectedMonth(Number(e.target.value))} 
-            className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer capitalize min-w-[120px]"
+            className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer capitalize min-w-[120px]"
           >
             {months.map((m, i) => (
               <option key={m} value={i}>{m}</option>
@@ -251,12 +312,26 @@ export default function GastosScreen() {
           <select 
             value={selectedYear} 
             onChange={(e) => setSelectedYear(Number(e.target.value))} 
-            className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
+            className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
           >
             {years.map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+
+          {isFiltered && (
+            <button 
+              onClick={() => {
+                setSelectedCategoryFilter('all');
+                setSelectedEmployeeFilter('all');
+                setSearchQuery('');
+                setSelectedTab('ALL');
+              }}
+              className="px-3.5 py-2.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
+            >
+              Limpiar Filtros
+            </button>
+          )}
 
           {/* New Expense button */}
           <button 
@@ -277,26 +352,33 @@ export default function GastosScreen() {
       {/* Tabs and Data Table */}
       <div className="flex-1 card flex flex-col overflow-hidden p-6 gap-5">
         {/* Navigation Tabs */}
-        <div className="flex items-center justify-between w-full shrink-0 gap-4">
-          <div className="flex gap-2 p-1.5 rounded-2xl bg-slate-50 border border-slate-100/60 overflow-x-auto max-w-[calc(100%-110px)] md:max-w-none custom-scrollbar">
-            <button 
-              onClick={() => setSelectedTab('ALL')} 
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              Todos ({totalCount})
-            </button>
-            <button 
-              onClick={() => setSelectedTab('FIXED')} 
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'FIXED' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              Fijos ({fixedCount})
-            </button>
-            <button 
-              onClick={() => setSelectedTab('VARIABLE')} 
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'VARIABLE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              Variables ({variableCount})
-            </button>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full shrink-0 gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex gap-2 p-1.5 rounded-2xl bg-slate-50 border border-slate-300/60 overflow-x-auto custom-scrollbar">
+              <button 
+                onClick={() => setSelectedTab('ALL')} 
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+              >
+                Todos ({totalCount})
+              </button>
+              <button 
+                onClick={() => setSelectedTab('FIXED')} 
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'FIXED' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+              >
+                Fijos ({fixedCount})
+              </button>
+              <button 
+                onClick={() => setSelectedTab('VARIABLE')} 
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${selectedTab === 'VARIABLE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+              >
+                Variables ({variableCount})
+              </button>
+            </div>
+            {isFiltered && (
+              <div className="px-4 py-2 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-2xl text-xs font-bold shrink-0">
+                Monto Filtrado: <span className="text-indigo-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
+              </div>
+            )}
           </div>
 
           <button 
@@ -312,24 +394,24 @@ export default function GastosScreen() {
         {/* List of movements */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {isLoading ? (
-            <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium">
+            <div className="h-full flex items-center justify-center text-slate-600 text-sm font-medium">
               Cargando movimientos...
             </div>
           ) : filteredMovements.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 gap-4">
-              <div className="w-16 h-16 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+              <div className="w-16 h-16 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-300">
                 <Wallet className="w-8 h-8 text-slate-300" />
               </div>
               <div>
                 <p className="text-sm font-bold text-slate-600">No hay gastos en este período.</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Registrá un egreso usando el botón "Nuevo Gasto"</p>
+                <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-1">Registrá un egreso usando el botón "Nuevo Gasto"</p>
               </div>
             </div>
           ) : (
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full min-w-[700px] text-left border-collapse">
                 <thead>
-                  <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">
+                  <tr className="text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-300 pb-3">
                     <th className="pb-3 text-left pl-2">Categoría</th>
                     <th className="pb-3 text-left">Descripción</th>
                     <th className="pb-3 text-left">Fecha/Hora</th>
@@ -349,10 +431,10 @@ export default function GastosScreen() {
                       <td className="py-4 text-left text-xs font-bold text-slate-700">
                         {mov.description}
                       </td>
-                      <td className="py-4 text-left text-xs font-medium text-slate-400">
+                      <td className="py-4 text-left text-xs font-medium text-slate-600">
                         {formatDate(mov.createdAt)}
                       </td>
-                      <td className="py-4 text-left text-xs font-semibold text-slate-500">
+                      <td className="py-4 text-left text-xs font-semibold text-slate-700">
                         {mov.user?.fullName || 'Desconocido'}
                       </td>
                       <td className="py-4 text-right text-xs font-bold text-slate-800">
@@ -364,7 +446,7 @@ export default function GastosScreen() {
                             e.stopPropagation();
                             handleDelete(mov.id);
                           }} 
-                          className="p-2 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                          className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                           title="Eliminar gasto"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -408,53 +490,53 @@ export default function GastosScreen() {
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }} 
               onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl border border-slate-200 p-6 space-y-5"
+              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl border border-slate-400 p-6 space-y-5"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Detalle del Gasto</h3>
-                  <p className="text-[9px] text-slate-400 font-semibold tracking-widest mt-0.5">COMPROBANTE OPERATIVO</p>
+                  <p className="text-[9px] text-slate-600 font-semibold tracking-widest mt-0.5">COMPROBANTE OPERATIVO</p>
                 </div>
-                <button onClick={() => setSelectedMovement(null)} className="p-1.5 hover:bg-slate-150 rounded-lg text-slate-400"><X className="w-5 h-5" /></button>
+                <button onClick={() => setSelectedMovement(null)} className="p-1.5 hover:bg-slate-150 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="space-y-4 text-xs font-semibold text-slate-600">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Categoría</span>
+                  <span className="text-[10px] text-slate-600 uppercase font-bold tracking-wider">Categoría</span>
                   <span className={`text-[10px] font-bold px-3 py-1 rounded-xl border uppercase tracking-tight ${getCategoryStyles(selectedMovement.category)}`}>
                     {selectedMovement.category}
                   </span>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-1.5">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Descripción</span>
+                  <span className="text-[9px] text-slate-600 uppercase font-bold tracking-wider block">Descripción</span>
                   <p className="text-slate-800 font-bold leading-relaxed">{selectedMovement.description || 'Gasto general de caja registradora'}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50/50 border border-slate-100 p-3 rounded-xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Fecha / Hora</span>
+                  <div className="bg-slate-50/50 border border-slate-300 p-3 rounded-xl">
+                    <span className="text-[9px] text-slate-600 uppercase font-bold tracking-wider block mb-1">Fecha / Hora</span>
                     <span className="text-slate-700 text-[11px] font-bold">{new Date(selectedMovement.createdAt).toLocaleString('es-AR')}</span>
                   </div>
-                  <div className="bg-slate-50/50 border border-slate-100 p-3 rounded-xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Usuario</span>
+                  <div className="bg-slate-50/50 border border-slate-300 p-3 rounded-xl">
+                    <span className="text-[9px] text-slate-600 uppercase font-bold tracking-wider block mb-1">Usuario</span>
                     <span className="text-slate-700 text-[11px] font-bold">{selectedMovement.user?.fullName || 'Desconocido'}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50/50 border border-slate-100 p-3 rounded-xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Terminal</span>
+                  <div className="bg-slate-50/50 border border-slate-300 p-3 rounded-xl">
+                    <span className="text-[9px] text-slate-600 uppercase font-bold tracking-wider block mb-1">Terminal</span>
                     <span className="text-slate-700 text-[11px] font-bold uppercase">{selectedMovement.session?.terminalName || 'Terminal Principal'}</span>
                   </div>
-                  <div className="bg-slate-50/50 border border-slate-100 p-3 rounded-xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Medio de Pago</span>
+                  <div className="bg-slate-50/50 border border-slate-300 p-3 rounded-xl">
+                    <span className="text-[9px] text-slate-600 uppercase font-bold tracking-wider block mb-1">Medio de Pago</span>
                     <span className="text-slate-700 text-[11px] font-bold">💵 Efectivo de Caja</span>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Egresado</span>
+                <div className="pt-3 border-t border-slate-300 flex justify-between items-center">
+                  <span className="text-xs text-slate-700 font-bold uppercase tracking-wider">Total Egresado</span>
                   <span className="text-2xl font-black text-rose-600 tracking-tight">{formatPrice(selectedMovement.amount)}</span>
                 </div>
               </div>
@@ -477,12 +559,12 @@ export default function GastosScreen() {
             className="fixed inset-0 z-[80] bg-slate-50 flex flex-col p-4 overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm shrink-0">
+            <div className="flex items-center justify-between mb-4 bg-white p-4 rounded-2xl border border-slate-300 shadow-sm shrink-0">
               <div>
                 <h3 className="text-sm font-bold text-slate-850 flex items-center gap-2 uppercase tracking-wider">
                   <Receipt className="w-5 h-5 text-rose-500" /> Historial de Gastos Completo
                 </h3>
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Vista ampliada del período seleccionado</p>
+                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-wider mt-0.5">Vista ampliada del período seleccionado</p>
               </div>
               <button 
                 onClick={() => setIsExpanded(false)}
@@ -493,51 +575,98 @@ export default function GastosScreen() {
             </div>
 
             {/* Content box */}
-            <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden p-4 gap-4">
+            <div className="flex-1 bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden p-4 gap-4">
               {/* Filters inside Expanded view */}
               <div className="flex flex-col gap-3 shrink-0">
-                <div className="relative w-full">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text" 
-                    value={searchQuery} 
-                    onChange={(e) => setSearchQuery(e.target.value)} 
-                    placeholder="Buscar gasto..." 
-                    className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-400"
-                  />
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                    <input 
+                      type="text" 
+                      value={searchQuery} 
+                      onChange={(e) => setSearchQuery(e.target.value)} 
+                      placeholder="Buscar gasto..." 
+                      className="w-full bg-slate-50/50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-600"
+                    />
+                  </div>
+
+                  {/* Category selector */}
+                  <select 
+                    value={selectedCategoryFilter} 
+                    onChange={(e) => setSelectedCategoryFilter(e.target.value)} 
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="all">Todas las categorías</option>
+                    {categories.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+
+                  {/* Employee selector */}
+                  <select 
+                    value={selectedEmployeeFilter} 
+                    onChange={(e) => setSelectedEmployeeFilter(e.target.value)} 
+                    className="bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="all">Todos los empleados</option>
+                    {allUsers.map(u => (
+                      <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="flex gap-2 p-1.5 rounded-2xl bg-slate-50 border border-slate-100/60 overflow-x-auto self-start custom-scrollbar">
-                  <button 
-                    onClick={() => setSelectedTab('ALL')} 
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    Todos ({totalCount})
-                  </button>
-                  <button 
-                    onClick={() => setSelectedTab('FIXED')} 
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'FIXED' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    Fijos ({fixedCount})
-                  </button>
-                  <button 
-                    onClick={() => setSelectedTab('VARIABLE')} 
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'VARIABLE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    Variables ({variableCount})
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex gap-2 p-1.5 rounded-2xl bg-slate-50 border border-slate-300/60 overflow-x-auto custom-scrollbar">
+                    <button 
+                      onClick={() => setSelectedTab('ALL')} 
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+                    >
+                      Todos ({totalCount})
+                    </button>
+                    <button 
+                      onClick={() => setSelectedTab('FIXED')} 
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'FIXED' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+                    >
+                      Fijos ({fixedCount})
+                    </button>
+                    <button 
+                      onClick={() => setSelectedTab('VARIABLE')} 
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedTab === 'VARIABLE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+                    >
+                      Variables ({variableCount})
+                    </button>
+                  </div>
+
+                  {isFiltered && (
+                    <div className="flex items-center gap-3">
+                      <div className="px-4 py-1.5 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-xl text-xs font-bold">
+                        Monto Filtrado: <span className="text-indigo-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setSelectedCategoryFilter('all');
+                          setSelectedEmployeeFilter('all');
+                          setSearchQuery('');
+                          setSelectedTab('ALL');
+                        }}
+                        className="px-3.5 py-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
+                      >
+                        Limpiar Filtros
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Table */}
               <div className="flex-1 overflow-auto custom-scrollbar">
                 {isLoading ? (
-                  <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium">
+                  <div className="h-full flex items-center justify-center text-slate-600 text-sm font-medium">
                     Cargando movimientos...
                   </div>
                 ) : filteredMovements.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8 gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                    <div className="w-16 h-16 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-300">
                       <Wallet className="w-8 h-8 text-slate-300" />
                     </div>
                     <p className="text-sm font-bold text-slate-600">No hay gastos en este período.</p>
@@ -546,7 +675,7 @@ export default function GastosScreen() {
                   <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full min-w-[750px] text-left border-collapse">
                       <thead>
-                        <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">
+                        <tr className="text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-300 pb-3">
                           <th className="pb-3 text-left pl-2">Categoría</th>
                           <th className="pb-3 text-left">Descripción</th>
                           <th className="pb-3 text-left">Fecha/Hora</th>
@@ -566,10 +695,10 @@ export default function GastosScreen() {
                             <td className="py-4 text-left text-xs font-bold text-slate-700">
                               {mov.description}
                             </td>
-                            <td className="py-4 text-left text-xs font-medium text-slate-400">
+                            <td className="py-4 text-left text-xs font-medium text-slate-600">
                               {formatDate(mov.createdAt)}
                             </td>
-                            <td className="py-4 text-left text-xs font-semibold text-slate-500">
+                            <td className="py-4 text-left text-xs font-semibold text-slate-700">
                               {mov.user?.fullName || 'Desconocido'}
                             </td>
                             <td className="py-4 text-right text-xs font-bold text-slate-800">
@@ -581,7 +710,7 @@ export default function GastosScreen() {
                                   e.stopPropagation();
                                   handleDelete(mov.id);
                                 }} 
-                                className="p-2 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 opacity-100 transition-all cursor-pointer"
+                                className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 transition-all cursor-pointer"
                                 title="Eliminar gasto"
                               >
                                 <Trash2 className="w-4 h-4" />

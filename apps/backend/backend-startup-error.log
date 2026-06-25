@@ -16,3 +16,49 @@ Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
     at listenInCluster (node:net:2065:12)
     at node:net:2274:7
     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[FATAL] Backend failed to start at 2026-06-14T09:38:45.701Z
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[FATAL] Backend failed to start at 2026-06-16T03:03:30.513Z
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.appLicense.findUnique()` invocation in
+C:\Users\PC\Desktop\Kiosco\apps\backend\src\modules\auth\license.service.ts:88:50
+
+  85 }
+  86 
+  87 async syncLicenseEntry() {
+→ 88   const license = await this.prisma.appLicense.findUnique(
+The table `main.app_licenses` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async LicenseService.syncLicenseEntry (C:\Users\PC\Desktop\Kiosco\apps\backend\src\modules\auth\license.service.ts:88:21)
+    at async LicenseService.onModuleInit (C:\Users\PC\Desktop\Kiosco\apps\backend\src\modules\auth\license.service.ts:21:5)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\nest-application-context.js:234:13)
+    at async NestApplication.init (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\nest-application.js:100:9)
+[FATAL] Backend failed to start at 2026-06-16T03:05:29.753Z
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.appLicense.findUnique()` invocation in
+C:\Users\PC\Desktop\Kiosco\apps\backend\dist\modules\auth\license.service.js:121:54
+
+  118     }
+  119 }
+  120 async syncLicenseEntry() {
+→ 121     const license = await this.prisma.appLicense.findUnique(
+The table `main.app_licenses` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async LicenseService.syncLicenseEntry (C:\Users\PC\Desktop\Kiosco\apps\backend\dist\modules\auth\license.service.js:121:25)
+    at async LicenseService.onModuleInit (C:\Users\PC\Desktop\Kiosco\apps\backend\dist\modules\auth\license.service.js:64:9)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\nest-application-context.js:234:13)
+    at async NestApplication.init (C:\Users\PC\Desktop\Kiosco\apps\backend\node_modules\@nestjs\core\nest-application.js:100:9)

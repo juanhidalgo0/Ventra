@@ -31,7 +31,8 @@ import {
   Wifi,
   ShoppingBag,
   Sliders,
-  ChevronLeft
+  ChevronLeft,
+  Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -45,6 +46,7 @@ export default function OnlineStoreScreen() {
   const [whatsapp, setWhatsapp] = useState(() => localStorage.getItem('gd_whatsapp') || '5491123456789');
   const accentColor = '#e11d48'; // GoDelivery Cherry Red
   const [isStoreActive, setIsStoreActive] = useState(() => (localStorage.getItem('gd_store_active') || 'true') === 'true');
+  const [bidirectionalSyncEnabled, setBidirectionalSyncEnabled] = useState(() => (localStorage.getItem('gd_bidirectional_sync') || 'true') === 'true');
   const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>(() => (localStorage.getItem('gd_view_mode') || 'GRID') as 'GRID' | 'LIST');
   const [deliveryMode, setDeliveryMode] = useState<'BOTH' | 'PICKUP' | 'DELIVERY'>(() => (localStorage.getItem('gd_delivery_mode') || 'BOTH') as 'BOTH' | 'PICKUP' | 'DELIVERY');
   const [deliveryFee, setDeliveryFee] = useState(() => Number(localStorage.getItem('gd_delivery_fee') || 800));
@@ -65,7 +67,16 @@ export default function OnlineStoreScreen() {
   const [address, setAddress] = useState(() => localStorage.getItem('gd_address') || 'Av. Rivadavia 1234, CABA');
 
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncStepText, setSyncStepText] = useState('Iniciando sincronización...');
+  const [syncStatus, setSyncStatus] = useState<any>({
+    progress: 0,
+    total: 0,
+    current: 0,
+    status: 'Iniciando sincronización...',
+    isComplete: false,
+    error: null
+  });
 
   // GoDelivery Stats and Orders States
   const [statsData, setStatsData] = useState<any>(null);
@@ -101,6 +112,9 @@ export default function OnlineStoreScreen() {
         if (data.commerce.instagram) setInstagram(data.commerce.instagram);
         if (data.commerce.facebook) setFacebook(data.commerce.facebook);
         if (data.commerce.schedules) setSchedules(data.commerce.schedules);
+        if (data.commerce.bidirectionalSyncEnabled !== undefined) {
+          setBidirectionalSyncEnabled(data.commerce.bidirectionalSyncEnabled);
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -126,46 +140,71 @@ export default function OnlineStoreScreen() {
 
   useEffect(() => {
     wsService.connect();
+  }, []);
+
+  const handleSyncAll = async () => {
+    setIsSyncingAll(true);
+    setSyncStepText('Iniciando sincronización...');
+    setSyncStatus({
+      progress: 0,
+      total: 0,
+      current: 0,
+      status: 'Conectando con GoDelivery...',
+      isComplete: false,
+      error: null
+    });
     
-    const handleSyncProgress = (data: any) => {
+    const loadingToast = toast.loading('Sincronizando inventario con GoDelivery...');
+
+    const handleProgress = (data: any) => {
+      setSyncStatus({
+        progress: data.progress || 0,
+        total: data.total || 0,
+        current: data.current || 0,
+        status: data.status || 'Sincronizando...',
+        isComplete: !!data.isComplete,
+        error: data.error || null
+      });
+
+      if (data.status) {
+        setSyncStepText(data.status);
+      }
+
       if (data.isComplete) {
-        setIsSyncing(false);
+        wsService.off('sync:progress', handleProgress);
+        
         if (data.error) {
-          toast.error(`❌ Error en la sincronización: ${data.error}`);
+          toast.error(`Error al sincronizar con GoDelivery: ${data.error}`, { id: loadingToast, duration: 6000 });
+          setIsSyncingAll(false);
         } else {
           toast.success(
             `🚀 Sincronización masiva finalizada con éxito:\n` +
             `• Sincronizados: ${data.current || 0} productos\n` +
             `• Omitidos (sin código de barras): ${data.omittedCount || 0}\n` +
             `• Fallidos: ${data.failedCount || 0}`,
-            { duration: 6000 }
+            { id: loadingToast, duration: 6000 }
           );
+          loadStats();
+          setTimeout(() => {
+            setIsSyncingAll(false);
+          }, 1500);
         }
-      } else {
-        setIsSyncing(true);
       }
     };
 
-    wsService.on('sync:progress', handleSyncProgress);
-    return () => {
-      wsService.off('sync:progress', handleSyncProgress);
-    };
-  }, []);
+    wsService.on('sync:progress', handleProgress);
 
-  // Sync handler calling backend API
-  const handleForceSync = async () => {
-    setIsSyncing(true);
     try {
       const googleUserStr = localStorage.getItem('google_authenticated_user');
       const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
       const email = googleUser?.email;
 
       await api.post('/products/sync-all', { googleEmail: email });
-      toast.success('🚀 Proceso de sincronización iniciado...');
     } catch (err: any) {
-      setIsSyncing(false);
-      const errMsg = err.response?.data?.message || 'Error al iniciar la sincronización';
-      toast.error(`❌ ${errMsg}`);
+      wsService.off('sync:progress', handleProgress);
+      const errMsg = err.response?.data?.message || 'Error al iniciar la sincronización.';
+      toast.error(errMsg, { id: loadingToast });
+      setIsSyncingAll(false);
     }
   };
 
@@ -189,7 +228,8 @@ export default function OnlineStoreScreen() {
         facebook,
         isActive: isStoreActive,
         viewMode,
-        schedules
+        schedules,
+        bidirectionalSyncEnabled
       });
 
       // Save to local storage as local backup
@@ -198,6 +238,7 @@ export default function OnlineStoreScreen() {
       localStorage.setItem('gd_whatsapp', whatsapp);
       localStorage.setItem('gd_accent_color', accentColor);
       localStorage.setItem('gd_store_active', String(isStoreActive));
+      localStorage.setItem('gd_bidirectional_sync', String(bidirectionalSyncEnabled));
       localStorage.setItem('gd_view_mode', viewMode);
       localStorage.setItem('gd_instagram', instagram);
       localStorage.setItem('gd_facebook', facebook);
@@ -254,7 +295,7 @@ export default function OnlineStoreScreen() {
         </div>
         <div className="text-center">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Cargando Tienda Online</h3>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Estableciendo conexión segura con GoDelivery Cloud...</p>
+          <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-1">Estableciendo conexión segura con GoDelivery Cloud...</p>
         </div>
       </div>
     );
@@ -263,7 +304,7 @@ export default function OnlineStoreScreen() {
   return (
     <div className="h-full flex flex-col gap-6 bg-[#f8fafc] p-6 overflow-y-auto custom-scrollbar pb-16">
       {/* Header Info */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between shrink-0">
+      <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
            <div className="w-12 h-12 rounded-2xl bg-rose-55 flex items-center justify-center text-rose-600 shadow-inner">
               <Globe className="w-6 h-6 animate-pulse-soft" />
@@ -276,17 +317,17 @@ export default function OnlineStoreScreen() {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
               </div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] mt-1">Sincronización en tiempo real y portal web autogestionado</p>
+              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] mt-1">Sincronización en tiempo real y portal web autogestionado</p>
            </div>
         </div>
         
         <div className="flex items-center gap-3 shrink-0">
           <button 
-            onClick={handleForceSync}
-            disabled={isSyncing}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50"
+            onClick={handleSyncAll}
+            disabled={isSyncingAll}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-400 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 text-slate-500 ${isSyncing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-slate-700 ${isSyncingAll ? 'animate-spin' : ''}`} />
             <span>Sincronizar</span>
           </button>
           
@@ -294,9 +335,9 @@ export default function OnlineStoreScreen() {
             href={`https://godelivery-magdalena.web.app/#/comercio/${subdomain}`}
             target="_blank" 
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-400 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer"
           >
-            <ExternalLink className="w-4 h-4 text-slate-500" />
+            <ExternalLink className="w-4 h-4 text-slate-700" />
             <span>Ver Web</span>
           </a>
 
@@ -317,9 +358,9 @@ export default function OnlineStoreScreen() {
           
           {/* Cloud Sync & GoDelivery Stats Status */}
           {isLoadingStats ? (
-            <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-3">
+            <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm flex flex-col items-center justify-center gap-3">
               <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Cargando métricas de GoDelivery...</p>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-600">Cargando métricas de GoDelivery...</p>
             </div>
           ) : statsError ? (
             <div className="bg-white p-6 rounded-2xl border border-rose-100 shadow-sm flex items-start gap-4">
@@ -328,12 +369,12 @@ export default function OnlineStoreScreen() {
               </div>
               <div className="flex-1">
                 <h4 className="text-xs font-black text-rose-800 uppercase tracking-wider">Estado Offline — Tienda Desconectada</h4>
-                <p className="text-xs text-slate-500 font-bold mt-1.5">{statsError}</p>
+                <p className="text-xs text-slate-700 font-bold mt-1.5">{statsError}</p>
                 <button
                   onClick={loadStats}
-                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[9px] font-extrabold uppercase tracking-wider text-slate-650 transition-all cursor-pointer shadow-sm active:scale-95"
+                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-400 bg-slate-50 hover:bg-slate-100 text-[9px] font-extrabold uppercase tracking-wider text-slate-650 transition-all cursor-pointer shadow-sm active:scale-95"
                 >
-                  <RefreshCw className="w-3 h-3 text-slate-500" />
+                  <RefreshCw className="w-3 h-3 text-slate-700" />
                   Reintentar Conexión
                 </button>
               </div>
@@ -341,29 +382,29 @@ export default function OnlineStoreScreen() {
           ) : statsData ? (
             <div className="space-y-6">
               {/* Stats Grid */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center justify-between gap-2">
+              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm">
+                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-4 flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2">
                     <Wifi className="w-4 h-4 text-rose-500 animate-pulse-soft" /> Métricas Reales de Tienda Online (GoDelivery)
                   </span>
-                  <button onClick={loadStats} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all">
+                  <button onClick={loadStats} className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-600 transition-all">
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 </h4>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Ventas Online</span>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
+                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Ventas Online</span>
                     <span className="text-lg font-black text-emerald-600">
                       {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(statsData.stats?.totalRevenue || 0)}
                     </span>
                   </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Pedidos Totales</span>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
+                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Pedidos Totales</span>
                     <span className="text-lg font-black text-slate-800">{statsData.stats?.totalOrders || 0}</span>
                   </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Pedidos Pendientes</span>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
+                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Pedidos Pendientes</span>
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-black text-slate-800">{statsData.stats?.pendingOrders || 0}</span>
                       {(statsData.stats?.pendingOrders || 0) > 0 && (
@@ -371,28 +412,28 @@ export default function OnlineStoreScreen() {
                       )}
                     </div>
                   </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Productos en Nube</span>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
+                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Productos en Nube</span>
                     <span className="text-lg font-black text-slate-800">{statsData.stats?.totalProducts || 0}</span>
                   </div>
                 </div>
               </div>
 
               {/* Pedidos Recientes */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-100 pb-3">
+              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
+                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
                   <ShoppingBag className="w-4 h-4 text-rose-500" /> Últimos Pedidos Recibidos (Tienda Online)
                 </h4>
                 
                 {statsData.recentOrders?.length === 0 ? (
-                  <div className="text-center py-6 text-slate-400 font-bold uppercase text-[9.5px]">
+                  <div className="text-center py-6 text-slate-600 font-bold uppercase text-[9.5px]">
                     No se han registrado pedidos online todavía
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <div className="overflow-x-auto rounded-xl border border-slate-300">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 text-[9px] uppercase text-slate-400 font-bold tracking-wider font-sans">
+                        <tr className="bg-slate-50 border-b border-slate-300 text-[9px] uppercase text-slate-600 font-bold tracking-wider font-sans">
                           <th className="py-2.5 px-4 font-black">Código / Cliente</th>
                           <th className="py-2.5 px-4 font-black">Fecha</th>
                           <th className="py-2.5 px-4 text-right font-black">Total</th>
@@ -408,7 +449,7 @@ export default function OnlineStoreScreen() {
                                 <span className="text-xs mt-0.5">{o.clientName}</span>
                               </div>
                             </td>
-                            <td className="py-3 px-4 text-slate-500 font-semibold">
+                            <td className="py-3 px-4 text-slate-700 font-semibold">
                               {o.createdAt ? new Date(o.createdAt).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Reciente'}
                             </td>
                             <td className="py-3 px-4 text-slate-800 font-extrabold text-right">
@@ -432,43 +473,82 @@ export default function OnlineStoreScreen() {
                   </div>
                 )}
               </div>
+
+              {/* Sincronización Bidireccional */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-5">
+                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
+                   <Sliders className="w-4 h-4 text-rose-500" /> Sincronización Bidireccional de Stock
+                </h4>
+                
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-150 shadow-inner">
+                  <div className="flex-1 pr-4">
+                    <span className="block text-xs font-black text-slate-700 uppercase">Descontar stock al retirar pedidos online</span>
+                    <span className="block text-[10px] text-slate-450 font-bold uppercase mt-1 leading-normal">
+                      Si se activa, cuando un repartidor retire un pedido de la tienda online (estado 'En entrega' o 'Entregado'), se descontará automáticamente el stock del inventario local de Kiosco POS.
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <span className={`keep-style text-[9px] font-black uppercase tracking-wider select-none px-2 py-0.5 rounded-md transition-colors duration-200 border ${
+                      bidirectionalSyncEnabled ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-100 text-slate-600 border-slate-400'
+                    }`}>
+                      {bidirectionalSyncEnabled ? 'Activo' : 'Inactivo'}
+                    </span>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setBidirectionalSyncEnabled(!bidirectionalSyncEnabled)}
+                      className={`keep-style relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-rose-500/30 ${
+                        bidirectionalSyncEnabled ? 'bg-rose-500' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`keep-style pointer-events-none block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                          bidirectionalSyncEnabled ? 'translate-x-7' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
             </div>
           ) : (
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center p-8 gap-3">
+            <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm flex flex-col items-center justify-center text-center p-8 gap-3">
               <Globe className="w-8 h-8 text-slate-300 animate-pulse" />
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conexión con GoDelivery pendiente de vinculación</p>
+              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Conexión con GoDelivery pendiente de vinculación</p>
             </div>
           )}
 
           {/* Identidad Digital */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-5">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-5">
+            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
                <Sparkles className="w-4 h-4 text-indigo-500" /> Identidad Digital de la Tienda
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre Comercial Web</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Nombre Comercial Web</label>
                 <input 
                   type="text" 
                   value={storeName} 
                   onChange={(e) => setStoreName(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-slate-350 transition-all shadow-inner" 
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-slate-350 transition-all shadow-inner" 
                   placeholder="GO! TIENDA ONLINE" 
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Subdominio Público GoDelivery</label>
-                <div className="flex flex-col sm:flex-row sm:items-stretch gap-2 sm:gap-0 sm:border sm:border-slate-200 sm:rounded-xl sm:overflow-hidden bg-slate-50 focus-within:bg-white focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-slate-350 transition-all sm:shadow-inner">
-                  <div className="bg-slate-100 sm:bg-slate-150 px-3 py-2.5 flex items-center justify-center text-[9px] sm:text-[9.5px] font-bold sm:font-extrabold text-slate-500 tracking-wider border border-slate-200 sm:border-0 rounded-xl sm:rounded-none select-none">
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Subdominio Público GoDelivery</label>
+                <div className="flex flex-col sm:flex-row sm:items-stretch gap-2 sm:gap-0 sm:border sm:border-slate-400 sm:rounded-xl sm:overflow-hidden bg-slate-50 focus-within:bg-white focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-slate-350 transition-all sm:shadow-inner">
+                  <div className="bg-slate-100 sm:bg-slate-150 px-3 py-2.5 flex items-center justify-center text-[9px] sm:text-[9.5px] font-bold sm:font-extrabold text-slate-700 tracking-wider border border-slate-400 sm:border-0 rounded-xl sm:rounded-none select-none">
                     godelivery-magdalena.web.app/#/comercio/
                   </div>
                   <input 
                     type="text" 
                     value={subdomain} 
                     onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                    className="w-full sm:flex-1 bg-slate-50 sm:bg-transparent border border-slate-200 sm:border-0 rounded-xl sm:rounded-none px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white sm:focus:bg-transparent transition-all shadow-inner sm:shadow-none" 
+                    className="w-full sm:flex-1 bg-slate-50 sm:bg-transparent border border-slate-400 sm:border-0 rounded-xl sm:rounded-none px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white sm:focus:bg-transparent transition-all shadow-inner sm:shadow-none" 
                     placeholder="go-kiosco"
                   />
                 </div>
@@ -477,9 +557,9 @@ export default function OnlineStoreScreen() {
           </div>
 
           {/* Horarios de Atención (Interactive Time Slots - Up to 3) */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-300 pb-3">
+              <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2">
                  <Clock className="w-4 h-4 text-indigo-500 self-center" /> Horarios de Atención Web
               </h4>
               <button 
@@ -502,21 +582,21 @@ export default function OnlineStoreScreen() {
                   
                   <div className="flex-1 grid grid-cols-2 gap-4">
                     <div>
-                      <span className="block text-[8px] font-black text-slate-400 uppercase tracking-wider mb-1">Apertura (Desde)</span>
+                      <span className="block text-[8px] font-black text-slate-600 uppercase tracking-wider mb-1">Apertura (Desde)</span>
                       <input 
                         type="time" 
                         value={schedule.open} 
                         onChange={(e) => handleUpdateSchedule(index, 'open', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
+                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
                       />
                     </div>
                     <div>
-                      <span className="block text-[8px] font-black text-slate-400 uppercase tracking-wider mb-1">Cierre (Hasta)</span>
+                      <span className="block text-[8px] font-black text-slate-600 uppercase tracking-wider mb-1">Cierre (Hasta)</span>
                       <input 
                         type="time" 
                         value={schedule.close} 
                         onChange={(e) => handleUpdateSchedule(index, 'close', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
+                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
                       />
                     </div>
                   </div>
@@ -535,48 +615,48 @@ export default function OnlineStoreScreen() {
           </div>
 
           {/* Apariencia y Colores */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-6">
+            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
                <Palette className="w-4 h-4 text-indigo-500" /> Apariencia y Diseño Web
             </h4>
             
             <div className="space-y-3">
-               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Diseño de Catálogo Web</span>
+               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Diseño de Catálogo Web</span>
                <div className="grid grid-cols-2 gap-3">
                   <button 
                     onClick={() => setViewMode('GRID')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'GRID' ? 'border-slate-400 bg-slate-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}
+                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'GRID' ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-white hover:border-slate-400'}`}
                   >
                      <Layout className="w-4 h-4 text-slate-650" />
                      <div className="text-left leading-none">
                        <p className="text-[10px] font-bold text-slate-800 uppercase">Grilla</p>
-                       <p className="text-[8px] text-slate-400 font-bold uppercase mt-1">2 Columnas</p>
+                       <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">2 Columnas</p>
                      </div>
                   </button>
                   <button 
                     onClick={() => setViewMode('LIST')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'LIST' ? 'border-slate-400 bg-slate-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}
+                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'LIST' ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-white hover:border-slate-400'}`}
                   >
                      <Sliders className="w-4 h-4 text-slate-650" />
                      <div className="text-left leading-none">
                        <p className="text-[10px] font-bold text-slate-800 uppercase">Lista</p>
-                       <p className="text-[8px] text-slate-400 font-bold uppercase mt-1">Compacto</p>
+                       <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Compacto</p>
                      </div>
                   </button>
                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-300">
                <div className="space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Logo de Kiosco</span>
-                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Logo de Kiosco</span>
+                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-400 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
                      <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
                      <span className="text-[9px] font-bold uppercase">Subir Logo PNG</span>
                   </div>
                </div>
                <div className="space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Banner de Portada</span>
-                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Banner de Portada</span>
+                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-400 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
                      <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
                      <span className="text-[9px] font-bold uppercase">Subir Banner Web</span>
                   </div>
@@ -585,46 +665,46 @@ export default function OnlineStoreScreen() {
           </div>
 
           {/* Redes Sociales, Localización y Whatsapp */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-6">
+            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
                <MessageSquare className="w-4 h-4 text-indigo-500" /> Redes Sociales y Localización
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Instagram</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Instagram</label>
                 <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-400">
+                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
                     <Instagram className="w-4 h-4" />
                   </div>
                   <input 
                     type="text" 
                     value={instagram} 
                     onChange={(e) => setInstagram(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
                     placeholder="@usuario" 
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Facebook</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Facebook</label>
                 <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-400">
+                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
                     <Facebook className="w-4 h-4" />
                   </div>
                   <input 
                     type="text" 
                     value={facebook} 
                     onChange={(e) => setFacebook(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
                     placeholder="nombre_pagina" 
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">WhatsApp</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">WhatsApp</label>
                 <div className="relative flex items-center">
                   <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-emerald-600 font-extrabold text-xs">
                     +
@@ -633,31 +713,118 @@ export default function OnlineStoreScreen() {
                     type="text" 
                     value={whatsapp} 
                     onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
                     placeholder="5491123456789" 
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Dirección Física</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Dirección Física</label>
                 <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-400">
+                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
                     <MapPin className="w-4 h-4" />
                   </div>
                   <input 
                     type="text" 
                     value={address} 
                     onChange={(e) => setAddress(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
                     placeholder="Av. Rivadavia 1234" 
                   />
                 </div>
               </div>
             </div>
-          </div>
+      {/* GoDelivery Sync Progress Modal */}
+      <AnimatePresence>
+        {isSyncingAll && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-400 p-8 text-center space-y-6"
+            >
+              {/* Animated Sync Icon */}
+              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-2 border-dashed border-rose-300 animate-spin [animation-duration:8s]"></div>
+                <div className="absolute inset-2 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
+                  <RefreshCw className="w-8 h-8 animate-spin [animation-duration:3s]" />
+                </div>
+              </div>
+
+              {/* Text Header */}
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-800">Sincronizando Omnicanal</h3>
+                <p className="text-xs text-slate-700">Kiosco POS <span className="text-rose-500 font-bold">↔</span> GoDelivery</p>
+              </div>
+
+              {/* Animated Progress Bar */}
+              <div className="space-y-2">
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${syncStatus.progress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-700">
+                  <span>{syncStatus.current} de {syncStatus.total} productos</span>
+                  <span className="text-rose-600 font-semibold">{syncStatus.progress}%</span>
+                </div>
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  <p className="text-xs font-medium text-rose-600 truncate max-w-full">
+                    {syncStatus.status}
+                  </p>
+                </div>
+              </div>
+
+              {/* Status checklist */}
+              <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 text-left space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  {syncStatus.progress >= 5 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
+                  )}
+                  <span className={`text-xs ${syncStatus.progress >= 5 ? 'text-slate-600' : 'text-slate-600'}`}>Conexión establecida con Firestore</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {syncStatus.progress >= 10 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
+                  )}
+                  <span className={`text-xs ${syncStatus.progress >= 10 ? 'text-slate-600' : 'text-slate-600'}`}>Sincronizando categorías del POS</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {syncStatus.progress >= 100 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
+                  )}
+                  <span className={`text-xs ${syncStatus.progress >= 100 ? 'text-slate-600' : 'text-slate-600'}`}>Cargando catálogo online...</span>
+                </div>
+              </div>
+
+              {/* Warning tag */}
+              <p className="text-[10px] text-slate-600">
+                Por favor, no cierres la aplicación hasta finalizar la operación.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
         </div>
       </div>
     </div>
+  </div>
   );
 }

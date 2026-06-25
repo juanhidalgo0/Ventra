@@ -66,4 +66,12 @@ if (fs.existsSync(pkgSrc)) {
   fs.copyFileSync(pkgSrc, pkgDest);
 }
 
+// Copy root .env to apps/desktop/.env
+const envSrc = path.join(__dirname, '.env');
+const envDest = path.join(__dirname, 'apps/desktop/.env');
+if (fs.existsSync(envSrc)) {
+  console.log(`[Copy] Copying .env config to desktop directory...`);
+  fs.copyFileSync(envSrc, envDest);
+}
+
 console.log('[Copy] Backend assets copied successfully! Reduced to a few files for instant startup.');

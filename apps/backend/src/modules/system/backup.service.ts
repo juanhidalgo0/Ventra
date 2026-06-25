@@ -138,7 +138,15 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   /**
    * Crea una copia física de la base de datos local SQLite de forma limpia y segura.
    */
-  async createBackup(type: 'MANUAL' | 'AUTOMATIC' = 'MANUAL'): Promise<{ filename: string; path: string; size: number }> {
+  async createBackup(type: 'MANUAL' | 'AUTOMATIC' | 'SAFETY' = 'MANUAL'): Promise<{ filename: string; path: string; size: number }> {
+    // Checkpoint SQLite WAL first to merge all pending transactions into the main database file
+    try {
+      console.log('[BackupService] Ejecutando checkpoint de SQLite para consolidar el archivo WAL...');
+      await this.prismaService.$executeRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (err: any) {
+      console.warn('[BackupService] No se pudo hacer checkpoint de WAL:', err.message);
+    }
+
     const dbPath = this.getDbPath();
     
     if (!fs.existsSync(dbPath)) {
@@ -152,18 +160,51 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     const filename = `backup_${type.toLowerCase()}_${timestamp}.db`;
     const destPath = path.join(this.backupDir, filename);
 
-    // Copiado físico binario directo
+    // Copiado físico binario directo al directorio local por defecto
     fs.copyFileSync(dbPath, destPath);
+
+    let finalPath = destPath;
+
+    // Si es un backup manual y estamos corriendo dentro del proceso fork de Electron
+    if (type === 'MANUAL' && process.send) {
+      const chosenPath = await new Promise<string | null>((resolve) => {
+        const handler = (msg: any) => {
+          if (msg && msg.type === 'SELECT_SAVE_PATH_RESPONSE') {
+            process.off('message', handler);
+            resolve(msg.path);
+          }
+        };
+        process.on('message', handler);
+        process.send!({ type: 'SELECT_SAVE_PATH', defaultName: filename });
+        // Cancelar por timeout a los 60 segundos
+        setTimeout(() => {
+          process.off('message', handler);
+          resolve(null);
+        }, 60000);
+      });
+
+      if (!chosenPath) {
+        // Eliminar la copia local generada por defecto si el usuario canceló el diálogo
+        try { fs.unlinkSync(destPath); } catch {}
+        throw new Error('Copia de seguridad cancelada por el usuario.');
+      }
+
+      // Guardar copia física en la ruta externa seleccionada
+      fs.copyFileSync(dbPath, chosenPath);
+      finalPath = chosenPath;
+    }
     
     const stats = fs.statSync(destPath);
-    console.log(`[BackupService] [${type}] Copia de seguridad guardada con éxito en: ${destPath} (Tamaño: ${stats.size} bytes)`);
+    console.log(`[BackupService] [${type}] Copia de seguridad guardada con éxito en: ${finalPath} (Tamaño: ${stats.size} bytes)`);
 
     // Mantener sólo los últimos 15 backups automáticos para optimizar almacenamiento local
-    this.cleanupOldAutomaticBackups();
+    if (type === 'AUTOMATIC') {
+      this.cleanupOldAutomaticBackups();
+    }
 
     return {
       filename,
-      path: destPath,
+      path: finalPath,
       size: stats.size,
     };
   }
@@ -180,11 +221,15 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       .map((file) => {
         const filePath = path.join(this.backupDir, file);
         const stats = fs.statSync(filePath);
+        let typeStr = 'AUTOMÁTICO';
+        if (file.includes('_manual_')) typeStr = 'MANUAL';
+        else if (file.includes('_safety_')) typeStr = 'SEGURIDAD (PRE-RESTORE)';
+        else if (file.includes('_uploaded_')) typeStr = 'SUBIDO';
         return {
           filename: file,
           size: stats.size,
           createdAt: stats.birthtime,
-          type: file.includes('_manual_') ? 'MANUAL' : 'AUTOMÁTICO',
+          type: typeStr,
         };
       });
 
@@ -269,7 +314,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
     // 1. Create a safety backup of the active database before overwriting
     try {
-      await this.createBackup('AUTOMATIC'); // Save current state as safety backup
+      await this.createBackup('SAFETY'); // Save current state as safety backup
     } catch (err: any) {
       console.warn('[BackupService] No se pudo crear backup de seguridad previo al restore:', err.message);
     }
@@ -284,6 +329,21 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
       // 4. Overwrite active database file
       console.log(`[BackupService] Restaurando base de datos desde ${backupFilePath} hacia ${dbPath}...`);
+      
+      // Clean up SQLite WAL and journal files to prevent database corruption on replace
+      const walPath = `${dbPath}-wal`;
+      const shmPath = `${dbPath}-shm`;
+      const journalPath = `${dbPath}-journal`;
+      if (fs.existsSync(walPath)) {
+        try { fs.unlinkSync(walPath); } catch {}
+      }
+      if (fs.existsSync(shmPath)) {
+        try { fs.unlinkSync(shmPath); } catch {}
+      }
+      if (fs.existsSync(journalPath)) {
+        try { fs.unlinkSync(journalPath); } catch {}
+      }
+
       fs.copyFileSync(backupFilePath, dbPath);
 
       // 5. Reconnect Prisma

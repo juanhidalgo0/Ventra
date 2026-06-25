@@ -7,10 +7,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="GO! Portal" />
     <script>
       (function() {
         const theme = localStorage.getItem('theme') || 'dark';
-        if (theme === 'dark') {
+        const isPOS = window.location.hash.includes('/pos') || window.location.pathname.includes('/pos');
+        if (theme === 'dark' && isPOS) {
           document.documentElement.classList.add('dark');
         } else {
           document.documentElement.classList.remove('dark');
@@ -19,8 +24,17 @@
     </script>
     <title>GO! Portal — POS</title>
   </head>
-  <body>
+  <body class="bg-slate-200 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.error('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

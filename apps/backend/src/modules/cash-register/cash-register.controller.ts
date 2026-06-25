@@ -47,6 +47,21 @@ export class CashRegisterController {
     return this.cashService.resetAllCajas();
   }
 
+  @Get('z-report/pending')
+  getPendingZReportSummary() {
+    return this.cashService.getPendingZReportSummary();
+  }
+
+  @Get('z-reports')
+  getZReportsHistory() {
+    return this.cashService.getZReportsHistory();
+  }
+
+  @Post('z-report/generate')
+  generateZReport(@Request() req) {
+    return this.cashService.generateZReport(req.user.sub);
+  }
+
   @Get('movements')
   getMovements(@Query('type') type?: string, @Query('from') from?: string, @Query('to') to?: string) {
     return this.cashService.getMovements({ type, from, to });

@@ -5,7 +5,8 @@ const getBaseUrl = () => {
   const savedIp = localStorage.getItem('server_ip');
   const activePort = sessionStorage.getItem('active_backend_port') || '3001';
   if (savedIp && savedIp !== 'localhost' && savedIp !== '127.0.0.1') {
-    return `http://${savedIp}:3001/api`;
+    const hasPort = savedIp.includes(':');
+    return `http://${savedIp}${hasPort ? '' : ':3001'}/api`;
   }
   if (window.location.protocol === 'file:' || window.location.protocol.startsWith('tauri') || window.location.hostname.includes('tauri')) {
     return `http://127.0.0.1:${activePort}/api`;
@@ -41,11 +42,22 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
           return api(originalRequest);
         } catch {
-          localStorage.clear();
-          window.location.hash = '#/login';
+          import('../stores/authStore').then(({ useAuthStore }) => {
+            useAuthStore.getState().logout();
+          }).catch(() => {
+            localStorage.clear();
+          }).finally(() => {
+            window.location.hash = '#/login';
+          });
         }
       } else {
-        window.location.hash = '#/login';
+        import('../stores/authStore').then(({ useAuthStore }) => {
+          useAuthStore.getState().logout();
+        }).catch(() => {
+          localStorage.clear();
+        }).finally(() => {
+          window.location.hash = '#/login';
+        });
       }
     }
     return Promise.reject(error);

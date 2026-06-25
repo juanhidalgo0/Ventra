@@ -96,7 +96,7 @@ export default function TreasuryScreen() {
            <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center mb-4">
               <Clock className="w-6 h-6 text-slate-300" />
            </div>
-           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sin movimientos manuales en este período</p>
+           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Sin movimientos manuales en este período</p>
            <p className="text-[9px] text-slate-300 font-bold mt-1">Podés cambiar los filtros del mes</p>
         </div>
       </div>
@@ -107,7 +107,7 @@ export default function TreasuryScreen() {
         <div className="grid grid-cols-2 gap-4">
           {[
             { label: 'Motivos de Caja', desc: 'Personalizá tus motivos de ingresos y egresos manuales.', icon: Settings2, badge: 'Disponible' },
-            { label: 'PIN de Cierre / Retiros', desc: 'Protegé acciones críticas (cierre, retiro, gastos virtuales).', icon: Lock, badge: 'Inactivo', badgeColor: 'bg-slate-100 text-slate-400' },
+            { label: 'PIN de Cierre / Retiros', desc: 'Protegé acciones críticas (cierre, retiro, gastos virtuales).', icon: Lock, badge: 'Inactivo', badgeColor: 'bg-slate-100 text-slate-600' },
             { label: 'Destino del Cierre', desc: 'Indicá a dónde va el efectivo al cerrar caja.', icon: ArrowRightLeft, badge: 'Próximamente', badgeColor: 'bg-indigo-50 text-indigo-400' },
             { label: 'Cuentas Bancarias', desc: 'Cargá tus cuentas (Banco, Mercado Pago, etc.) y conciliá movimientos.', icon: Building2, badge: 'Próximamente', badgeColor: 'bg-indigo-50 text-indigo-400' }
           ].map((cfg) => (

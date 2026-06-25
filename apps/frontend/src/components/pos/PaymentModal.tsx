@@ -3,12 +3,12 @@ import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode } from 'lucide-react';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 
-export default function PaymentModal({ total, sessionId, onClose, onSuccess }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void }) {
+export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any }) {
   const storeName = (localStorage.getItem('gd_store_name') || 'GO! Punto de Venta').toUpperCase();
-  const { cart, getCartItemsWithDiscounts, getCheckoutPayload } = usePOSStore();
+  const { cart, getCartItemsWithDiscounts, getCheckoutPayload, products } = usePOSStore();
   const posnets = (() => {
     const stored = localStorage.getItem('posnet_configs');
     if (stored) {
@@ -38,22 +38,97 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
    const [createdSale, setCreatedSale] = useState<any>(null);
    const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
-  const change = paymentType === 'CASH' ? Math.max(0, cashReceived - total) : 0;
+  const [surcharges, setSurcharges] = useState<any[]>([]);
+  useEffect(() => {
+    api.get('/surcharges').then(res => setSurcharges(res.data)).catch(() => {});
+  }, []);
+
+  const getSurchargeForCategory = (categoryId: string, method: string) => {
+    if (!method || method === 'CASH') return 0;
+    const match = surcharges.find(s => s.categoryId === categoryId && s.paymentMethods.includes(method));
+    return match ? match.percentage : 0;
+  };
+
+  const getAdjustedTotalAndItems = () => {
+    let totalSurcharge = 0;
+    const surchargedProductsList: { name: string; originalPrice: number; newPrice: number; percentage: number }[] = [];
+    
+    const baseItems = getCheckoutPayload();
+    
+    const adjustedItems = baseItems.map(item => {
+      const product = products?.find((p: any) => p.id === item.productId);
+      const categoryId = product?.categoryId;
+      
+      if (!categoryId) return { ...item };
+      
+      let percentage = 0;
+      if (paymentType === 'MIXED') {
+        const p1 = getSurchargeForCategory(categoryId, mixedMethod1);
+        const p2 = getSurchargeForCategory(categoryId, mixedMethod2);
+        
+        const totalPay = mixedAmount1 + mixedAmount2;
+        if (totalPay > 0) {
+          const weight1 = mixedAmount1 / totalPay;
+          const weight2 = mixedAmount2 / totalPay;
+          percentage = (p1 * weight1) + (p2 * weight2);
+        } else {
+          percentage = Math.max(p1, p2);
+        }
+      } else if (paymentType) {
+        percentage = getSurchargeForCategory(categoryId, paymentType);
+      }
+      
+      if (percentage > 0) {
+        const originalPrice = item.price ?? product.salePrice;
+        const surchargePerUnit = originalPrice * (percentage / 100);
+        const newPrice = originalPrice + surchargePerUnit;
+        
+        totalSurcharge += surchargePerUnit * item.quantity;
+        
+        surchargedProductsList.push({
+          name: product.name,
+          originalPrice,
+          newPrice,
+          percentage
+        });
+        
+        return {
+          ...item,
+          price: newPrice
+        };
+      }
+      
+      return { ...item };
+    });
+    
+    const finalTotal = total + totalSurcharge;
+    
+    return {
+      adjustedItems,
+      finalTotal,
+      totalSurcharge,
+      surchargedProductsList
+    };
+  };
+
+  const { adjustedItems, finalTotal, totalSurcharge, surchargedProductsList } = getAdjustedTotalAndItems();
+
+  const change = paymentType === 'CASH' ? Math.max(0, cashReceived - finalTotal) : 0;
   const mixedTotal = mixedAmount1 + mixedAmount2;
-  const mixedValid = Math.abs(mixedTotal - total) < 0.01 && mixedMethod1 !== mixedMethod2;
+  const mixedValid = Math.abs(mixedTotal - finalTotal) < 0.01 && mixedMethod1 !== mixedMethod2;
 
   const formatPrice = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p);
 
-  useEffect(() => { if (paymentType === 'MIXED') setMixedAmount2(Math.max(0, total - mixedAmount1)); }, [mixedAmount1, total, paymentType]);
+  useEffect(() => { if (paymentType === 'MIXED') setMixedAmount2(Math.max(0, finalTotal - mixedAmount1)); }, [mixedAmount1, finalTotal, paymentType]);
   
   const input1Ref = useRef<HTMLInputElement>(null);
   const input2Ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (paymentType === 'DEBT') {
+    if (paymentType === 'DEBT' && !isDebtPayment) {
       api.get('/clients').then(res => setClients(res.data)).catch(() => {});
     }
-  }, [paymentType]);
+  }, [paymentType, isDebtPayment]);
 
   // Main input keyboard shortcut listener (1-5 for payment types)
   useEffect(() => {
@@ -71,17 +146,18 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
       if (!isInput) {
         if (['1', '2', '3', '4', '5'].includes(e.key)) {
           if (paymentType === null) {
+            e.preventDefault(); // Prevent typing the number into the input when it focuses
             if (e.key === '1') setPaymentType('CASH');
             posnets.forEach((p, idx) => {
               if (e.key === String(idx + 2)) setPaymentType(p.id);
             });
             if (e.key === String(posnets.length + 2)) setPaymentType('MIXED');
-            if (e.key === '5') setPaymentType('DEBT');
+            if (e.key === '5' && !isDebtPayment) setPaymentType('DEBT');
           }
         } else if (e.key === 'Enter') {
           // If a payment type is already chosen (except CASH and MIXED which require custom input focus first, or DEBT without client selected), let Enter confirm!
           if (paymentType && paymentType !== 'CASH' && paymentType !== 'MIXED') {
-            if (paymentType === 'DEBT' && !selectedClientId) return;
+            if (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment) return;
             e.preventDefault();
             handleConfirm();
           }
@@ -90,7 +166,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isProcessing, showSuccess, paymentType, selectedClientId, onClose]);
+  }, [isProcessing, showSuccess, paymentType, selectedClientId, onClose, isDebtPayment]);
 
   // Success screen keyboard shortcut listener (F9 to print, Enter for new sale)
   useEffect(() => {
@@ -117,7 +193,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
   };
 
   const handleConfirm = async () => {
-    if (paymentType === 'DEBT' && !selectedClientId) {
+    if (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment) {
       toast.error('Seleccioná un cliente para la cuenta corriente');
       return;
     }
@@ -125,22 +201,55 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
     setIsProcessing(true);
     try {
       const payments = paymentType === 'MIXED'
-        ? [{ method: mixedMethod1, amount: mixedAmount1 }, { method: mixedMethod2, amount: mixedAmount2 }]
-        : [{ method: paymentType as string, amount: total }];
-      
-      const { appliedPromosInfo } = getCartItemsWithDiscounts();
-      const response = await api.post('/sales', { 
-        sessionId, 
-        items: getCheckoutPayload(), 
-        payments,
-        clientId: paymentType === 'DEBT' ? selectedClientId : undefined,
-        appliedPromotions: appliedPromosInfo
-      });
-      setCreatedSale(response.data);
+        ? [
+            { method: mixedMethod1, amount: mixedAmount1 },
+            { method: mixedMethod2, amount: mixedAmount2 }
+          ].filter(p => p.amount > 0)
+        : [{ method: paymentType, amount: finalTotal }];
+      let saleData: any = null;
+      if (isDebtPayment && debtClient) {
+        // Register client payment
+        await api.post(`/clients/${debtClient.id}/movements`, {
+          type: 'PAYMENT',
+          amount: finalTotal,
+          description: `Abono registrado (Método: ${paymentType})`
+        });
+        
+        // Add to cash register
+        await api.post('/cash/movements', {
+          sessionId,
+          type: 'INCOME',
+          amount: finalTotal,
+          description: `Pago de Cuenta Corriente: ${debtClient.name || 'Cliente'}`
+        });
+
+        // Fake a sale for the ticket
+        saleData = {
+          saleNumber: 'ABONO',
+          createdAt: new Date().toISOString(),
+          total: finalTotal,
+          items: [{ productName: 'Abono a Cuenta Corriente', quantity: 1, total: finalTotal, product: { category: { name: 'Servicios' } } }],
+          payments: payments,
+          client: debtClient,
+          isAbono: true
+        };
+        setCreatedSale(saleData);
+      } else {
+        const { appliedPromosInfo } = getCartItemsWithDiscounts();
+        const response = await api.post('/sales', { 
+          sessionId, 
+          items: adjustedItems, 
+          payments,
+          clientId: paymentType === 'DEBT' ? selectedClientId : undefined,
+          appliedPromotions: appliedPromosInfo
+        });
+        saleData = response.data;
+        setCreatedSale(saleData);
+      }
       
       // Generate offline QR code dynamically
       try {
-        const qrData = `https://www.afip.gob.ar/fe/qr/?cuit=20359874529&tipoComprobante=11&puntoVenta=4&numeroComprobante=${response.data.saleNumber}&importe=${response.data.total}&cae=8372432392218`;
+        const qrData = `https://www.afip.gob.ar/fe/qr/?cuit=20359874529&tipoComprobante=11&puntoVenta=4&numeroComprobante=${saleData.saleNumber}&importe=${saleData.total}&cae=8372432392218`;
         const dataUrl = await QRCode.toDataURL(qrData, { margin: 1, width: 200 });
         setQrCodeUrl(dataUrl);
       } catch (qrErr) {
@@ -177,7 +286,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
     return (
       <>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="card w-full max-w-xl p-8 text-center bg-white shadow-2xl relative overflow-hidden rounded-3xl border border-slate-100">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="card w-full max-w-xl p-8 text-center bg-white dark:bg-slate-900 shadow-2xl relative overflow-hidden rounded-3xl border border-slate-300 dark:border-slate-700">
             <style>{`
               @media print {
                 @page {
@@ -222,46 +331,46 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
           <div className="absolute top-0 left-0 w-full h-2.5 bg-gradient-to-r from-emerald-400 to-teal-500" />
           
           <div className="flex justify-center mb-6">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ duration: 0.5 }} className="w-20 h-20 rounded-full bg-emerald-50 border-4 border-emerald-100 flex items-center justify-center text-emerald-500 shadow-lg shadow-emerald-50">
+            <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ duration: 0.5 }} className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border-4 border-emerald-100 dark:border-emerald-800 flex items-center justify-center text-emerald-500 shadow-lg shadow-emerald-50 dark:shadow-none">
               <Check className="w-10 h-10 stroke-[4]" />
             </motion.div>
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">¡Venta Registrada!</h2>
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Ticket N° #{createdSale.saleNumber.toString().padStart(6, '0')}</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">¡Venta Registrada!</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider mb-6">Ticket N° #{createdSale.saleNumber.toString().padStart(6, '0')}</p>
 
           {/* Change Display */}
           {paymentType === 'CASH' && (
-            <div className="mb-6 p-5 rounded-3xl bg-emerald-50/50 border border-emerald-100/50 max-w-sm mx-auto shadow-sm">
-              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-1">Vuelto a entregar</span>
-              <span className="text-4xl font-bold text-emerald-600 tracking-tight">{formatPrice(change)}</span>
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-emerald-100/50 text-[10px] text-slate-400 font-bold uppercase">
+            <div className="mb-6 p-5 rounded-3xl bg-emerald-50/50 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-800/50 max-w-sm mx-auto shadow-sm">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-1">Vuelto a entregar</span>
+              <span className="text-4xl font-bold text-emerald-600 dark:text-emerald-500 tracking-tight">{formatPrice(change)}</span>
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-emerald-100/50 dark:border-emerald-800/50 text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase">
                 <span>Cobrado: {formatPrice(cashReceived)}</span>
-                <span>Total: {formatPrice(total)}</span>
+                <span>Total: {formatPrice(finalTotal)}</span>
               </div>
             </div>
           )}
 
           {/* Normal Confirmation display for other methods */}
           {paymentType !== 'CASH' && (
-            <div className="mb-6 p-5 rounded-3xl bg-slate-50 border border-slate-100 max-w-sm mx-auto text-left space-y-2">
-              <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+            <div className="mb-6 p-5 rounded-3xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 max-w-sm mx-auto text-left space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700 dark:text-slate-300">
                 <span>Método de cobro</span>
-                <span className="text-indigo-600 uppercase font-bold tracking-wider">{paymentType}</span>
+                <span className="text-indigo-600 dark:text-indigo-400 uppercase font-bold tracking-wider">{paymentType}</span>
               </div>
-              <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700 dark:text-slate-300">
                 <span>Total facturado</span>
-                <span className="text-slate-800 font-bold">{formatPrice(total)}</span>
+                <span className="text-slate-800 dark:text-slate-100 font-bold">{formatPrice(finalTotal)}</span>
               </div>
             </div>
           )}
 
           {/* Action buttons */}
           <div className="grid grid-cols-2 gap-4 max-w-md mx-auto mb-2">
-            <button onClick={handlePrint} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-indigo-600 bg-indigo-50/50 text-indigo-700 hover:bg-indigo-50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md shadow-indigo-100">
+            <button onClick={handlePrint} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md shadow-indigo-100 dark:shadow-none">
               <Printer className="w-6 h-6 stroke-[2.5]" />
               <span className="text-[10px] uppercase tracking-widest">Imprimir Ticket</span>
-              <span className="text-[8px] font-bold text-indigo-400 opacity-80 uppercase tracking-wider bg-white border border-indigo-100 px-2 py-0.5 rounded-md mt-1 shadow-sm">[F9]</span>
+              <span className="text-[8px] font-bold text-indigo-400 dark:text-indigo-300 opacity-80 uppercase tracking-wider bg-white dark:bg-indigo-950 border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-md mt-1 shadow-sm">[F9]</span>
             </button>
 
             <button onClick={handleNewSale} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-emerald-600 bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-emerald-200">
@@ -392,63 +501,71 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
         animate={{ scale: 1, opacity: 1 }} 
         exit={{ scale: 0.95, opacity: 0 }} 
         onClick={(e) => e.stopPropagation()} 
-        className="card bg-white w-full max-w-2xl p-6 max-h-[95vh] overflow-y-auto shadow-xl rounded-2xl border border-slate-200"
+        className="card bg-white dark:bg-slate-900 w-full max-w-2xl p-6 max-h-[95vh] overflow-y-auto shadow-xl rounded-2xl border border-slate-400 dark:border-slate-700 outline-none"
+        tabIndex={-1}
+        ref={(el) => {
+          if (el && !isProcessing && !showSuccess && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
+            el.focus();
+          }
+        }}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-bold text-gray-800">Confirmar Pago</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-slate-100 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-slate-100">Confirmar Pago</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="text-center mb-5 py-4 rounded-xl bg-slate-50 border border-slate-100">
-          <p className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Total a cobrar</p>
-          <p className="text-4xl font-extrabold text-slate-900 tracking-tight">{formatPrice(total)}</p>
+        <div className="text-center mb-5 py-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700">
+          <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-widest">Total a cobrar</p>
+          <p className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">{formatPrice(finalTotal)}</p>
         </div>
 
         <div className="space-y-4 mb-5">
           <div className="grid grid-cols-4 gap-2">
             {mainMethods.map((pm) => (
               <button key={pm.key} onClick={() => setPaymentType(pm.key)}
-                className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-200 cursor-pointer select-none hover:scale-[1.02] active:scale-[0.98] ${paymentType === pm.key ? 'shadow-lg' : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'}`}
-                style={paymentType === pm.key ? { borderColor: pm.color, backgroundColor: `${pm.color}05`, color: pm.color } : {}}>
-                <span className="absolute top-1.5 right-1.5 text-[8px] font-bold opacity-40 bg-slate-200 text-slate-600 w-4 h-4 flex items-center justify-center rounded-md">{pm.num}</span>
+                className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-200 cursor-pointer select-none hover:scale-[1.02] active:scale-[0.98] ${paymentType === pm.key ? 'shadow-lg dark:shadow-none' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-600'}`}
+                style={paymentType === pm.key ? { borderColor: pm.color, backgroundColor: `${pm.color}10`, color: pm.color } : {}}>
+                <span className="absolute top-1.5 right-1.5 text-[8px] font-bold opacity-40 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-4 h-4 flex items-center justify-center rounded-md">{pm.num}</span>
                 <pm.icon className="w-6 h-6" style={paymentType === pm.key ? { color: pm.color } : {}} />
                 <span className="text-[10px] font-bold text-center leading-tight uppercase tracking-widest">{pm.label}</span>
               </button>
             ))}
           </div>
 
-          <button onClick={() => setPaymentType('DEBT')}
-            className={`relative w-full flex items-center justify-center gap-3 p-3.5 rounded-2xl border-2 transition-all duration-200 cursor-pointer select-none ${paymentType === 'DEBT' ? 'shadow-lg border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 bg-white text-slate-400 hover:border-pink-100'}`}>
-            <span className="absolute top-2.5 right-4 text-[9px] font-bold opacity-40 bg-pink-200 text-pink-700 px-2 py-0.5 rounded-md">5</span>
-            <Shuffle className="w-5 h-5" />
-            <span className="text-xs font-bold uppercase tracking-[0.2em]">Cuenta Corriente (Cliente)</span>
-          </button>
+          {!isDebtPayment && (
+            <button onClick={() => setPaymentType('DEBT')}
+              className={`relative w-full flex items-center justify-center gap-3 p-3.5 rounded-2xl border-2 transition-all duration-200 cursor-pointer select-none ${paymentType === 'DEBT' ? 'shadow-lg dark:shadow-none border-pink-500 bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-pink-100 dark:hover:border-pink-900/30'}`}>
+              <span className="absolute top-2.5 right-4 text-[9px] font-bold opacity-40 bg-pink-200 dark:bg-pink-900/50 text-pink-700 dark:text-pink-300 px-2 py-0.5 rounded-md">5</span>
+              <Shuffle className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase tracking-[0.2em]">Cuenta Corriente (Cliente)</span>
+            </button>
+          )}
         </div>
 
         {/* Payment Fields - Always rendered but only active based on paymentType */}
         <div className="space-y-4 mb-6">
           {paymentType === 'CASH' && (
             <div className="animate-in slide-in-from-top-2 duration-200">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Monto recibido</label>
+              <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-2">Monto recibido</label>
               <input 
                 type="number" 
                 value={cashReceived || ''} 
                 onChange={(e) => setCashReceived(Number(e.target.value))} 
-                onKeyDown={(e) => { if (e.key === 'Enter' && cashReceived >= total) handleConfirm(); }}
-                className="input-field text-3xl font-bold text-center py-5 h-20" 
+                onKeyDown={(e) => { if (e.key === 'Enter' && cashReceived >= finalTotal) handleConfirm(); }}
+                className="input-field text-3xl font-bold text-center py-5 h-20 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:border-indigo-500" 
                 autoFocus 
                 placeholder="0" 
               />
-              <p className="text-[9px] text-slate-400 text-center mt-2 font-bold uppercase tracking-tight">Presioná ENTER para confirmar la venta</p>
-              {cashReceived >= total && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-4 rounded-2xl bg-emerald-50 border border-emerald-100 mt-4">
-                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Vuelto a entregar</p>
-                  <p className="text-4xl font-bold text-emerald-600">{formatPrice(change)}</p>
+              <p className="text-[9px] text-slate-600 dark:text-slate-400 text-center mt-2 font-bold uppercase tracking-tight">Presioná ENTER para confirmar la venta</p>
+              {cashReceived >= finalTotal && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 mt-4">
+                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Vuelto a entregar</p>
+                  <p className="text-4xl font-bold text-emerald-600 dark:text-emerald-500">{formatPrice(change)}</p>
                 </motion.div>
               )}
               <div className="grid grid-cols-4 gap-2 mt-4">
                 {[1000, 2000, 5000, 10000].map((amount) => (
-                  <button key={amount} onClick={() => setCashReceived(amount)} className="py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition-all active:scale-95">{formatPrice(amount)}</button>
+                  <button key={amount} onClick={() => setCashReceived(amount)} className="py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 transition-all active:scale-95 border border-transparent dark:border-slate-700">{formatPrice(amount)}</button>
                 ))}
               </div>
             </div>
@@ -456,19 +573,19 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
 
           {paymentType === 'DEBT' && (
             <div className="animate-in slide-in-from-top-2 duration-200">
-              <div className="p-5 rounded-2xl bg-pink-50 border border-pink-100 space-y-4">
-                <span className="text-[10px] font-bold text-pink-500 uppercase tracking-widest block">Seleccionar Cliente</span>
-                <input type="text" value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="input-field py-3 text-sm" placeholder="Buscar cliente por nombre o DNI..." />
+              <div className="p-5 rounded-2xl bg-pink-50 dark:bg-pink-900/10 border border-pink-100 dark:border-pink-800/50 space-y-4">
+                <span className="text-[10px] font-bold text-pink-500 dark:text-pink-400 uppercase tracking-widest block">Seleccionar Cliente</span>
+                <input type="text" value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="input-field py-3 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600" placeholder="Buscar cliente por nombre o DNI..." autoFocus />
                 <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                   {filteredClients.map(client => (
-                    <button key={client.id} onClick={() => setSelectedClientId(client.id)} className={`w-full text-left p-4 rounded-xl text-sm transition-all shadow-sm ${selectedClientId === client.id ? 'bg-pink-500 text-white font-bold' : 'bg-white text-slate-600 border border-slate-100 hover:border-pink-300'}`}>
+                    <button key={client.id} onClick={() => setSelectedClientId(client.id)} className={`w-full text-left p-4 rounded-xl text-sm transition-all shadow-sm ${selectedClientId === client.id ? 'bg-pink-500 text-white font-bold' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-pink-300 dark:hover:border-pink-700'}`}>
                       <div className="flex justify-between items-center">
                         <span className="font-bold">{client.name}</span>
                         <span className="text-[10px] opacity-70">DNI: {client.dni || 'N/A'}</span>
                       </div>
                     </button>
                   ))}
-                  {filteredClients.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No se encontraron clientes</p>}
+                  {filteredClients.length === 0 && <p className="text-xs text-slate-600 dark:text-slate-400 text-center py-4">No se encontraron clientes</p>}
                 </div>
               </div>
             </div>
@@ -476,14 +593,14 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
 
           {paymentType === 'MIXED' && (
             <div className="animate-in slide-in-from-top-2 duration-200 space-y-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Dividí el pago en dos partes</p>
+              <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest text-center">Dividí el pago en dos partes</p>
               
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Primer Pago</span>
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 space-y-3">
+                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Primer Pago</span>
                   <div className="flex gap-1">
                     {['CASH', ...posnets.map(p => p.id)].map((mt) => (
-                      <button key={mt} onClick={() => setMixedMethod1(mt)} className={`flex-1 py-1.5 rounded-lg text-[8px] font-bold uppercase transition-all ${mixedMethod1 === mt ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                      <button key={mt} onClick={() => setMixedMethod1(mt)} className={`flex-1 py-1.5 rounded-lg text-[8px] font-bold uppercase transition-all ${mixedMethod1 === mt ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600'}`}>
                         {mt === 'CASH' ? 'Efect.' : (posnets.find(p => p.id === mt)?.name || mt)}
                       </button>
                     ))}
@@ -494,17 +611,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
                     value={mixedAmount1 || ''} 
                     onChange={(e) => setMixedAmount1(Number(e.target.value))} 
                     onKeyDown={(e) => { if (e.key === 'Enter') input2Ref.current?.focus(); }}
-                    className="input-field text-lg font-bold" 
+                    className="input-field text-lg font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600" 
                     placeholder="0.00" 
                     autoFocus 
                   />
                 </div>
 
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Segundo Pago</span>
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 space-y-3">
+                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Segundo Pago</span>
                   <div className="flex gap-1">
                     {['CASH', ...posnets.map(p => p.id)].map((mt) => (
-                      <button key={mt} onClick={() => setMixedMethod2(mt)} className={`flex-1 py-1.5 rounded-lg text-[8px] font-bold uppercase transition-all ${mixedMethod2 === mt ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                      <button key={mt} onClick={() => setMixedMethod2(mt)} className={`flex-1 py-1.5 rounded-lg text-[8px] font-bold uppercase transition-all ${mixedMethod2 === mt ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600'}`}>
                         {mt === 'CASH' ? 'Efect.' : (posnets.find(p => p.id === mt)?.name || mt)}
                       </button>
                     ))}
@@ -515,21 +632,41 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess }: {
                     value={mixedAmount2 || ''} 
                     onChange={(e) => setMixedAmount2(Number(e.target.value))} 
                     onKeyDown={(e) => { if (e.key === 'Enter' && mixedValid) handleConfirm(); }}
-                    className="input-field text-lg font-bold" 
+                    className="input-field text-lg font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600" 
                     placeholder="0.00" 
                   />
                 </div>
               </div>
 
-              <div className={`text-center py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest ${mixedMethod1 === mixedMethod2 ? 'bg-rose-50 text-rose-500' : mixedValid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                {mixedMethod1 === mixedMethod2 ? '⚠️ Métodos duplicados' : mixedValid ? `✅ Total Completo` : `⚠️ Faltan ${formatPrice(total - mixedTotal)}`}
+              <div className={`text-center py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest ${mixedMethod1 === mixedMethod2 ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-500 dark:text-rose-400' : mixedValid ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>
+                {mixedMethod1 === mixedMethod2 ? '⚠️ Métodos duplicados' : mixedValid ? `✅ Total Completo` : `⚠️ Faltan ${formatPrice(finalTotal - mixedTotal)}`}
               </div>
             </div>
           )}
         </div>
 
+        {totalSurcharge > 0 && (
+          <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+              <span>Se aplicará un recargo por método de pago:</span>
+            </div>
+            <div className="text-[10px] space-y-1 font-semibold pl-6">
+              {surchargedProductsList.map((item, idx) => (
+                <div key={idx}>
+                  • {item.name}: <span className="line-through opacity-70">{formatPrice(item.originalPrice)}</span> → <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{formatPrice(item.newPrice)}</span> (+{item.percentage}%)
+                </div>
+              ))}
+              <div className="border-t border-amber-200 dark:border-amber-900 pt-1.5 mt-1.5 flex justify-between font-bold text-xs text-amber-900 dark:text-amber-200">
+                <span>Total Recargo:</span>
+                <span>+{formatPrice(totalSurcharge)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <button onClick={handleConfirm}
-          disabled={isProcessing || (paymentType === 'CASH' && cashReceived < total) || (paymentType === 'MIXED' && !mixedValid) || (paymentType === 'DEBT' && !selectedClientId)}
+          disabled={isProcessing || (paymentType === 'CASH' && cashReceived < finalTotal) || (paymentType === 'MIXED' && !mixedValid) || (paymentType === 'DEBT' && !selectedClientId)}
           className="w-full btn-success py-4 text-base flex items-center justify-center gap-3 disabled:opacity-30 disabled:grayscale shadow-md cursor-pointer transition-all active:scale-[0.97]" id="confirm-payment-btn">
           {isProcessing ? <span className="animate-spin text-xl">⏳</span> : <Check className="w-5 h-5 stroke-[3]" />}
           <span className="font-bold uppercase tracking-wider">{isProcessing ? 'Procesando...' : 'Finalizar Venta'}</span>

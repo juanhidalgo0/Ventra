@@ -24,6 +24,7 @@
     "files": [
       "main.js",
       "package.json",
+      ".env",
       "node_modules/**/*",
       "frontend/**/*",
       "apps/backend/**/*"

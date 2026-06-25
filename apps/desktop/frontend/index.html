@@ -7,6 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="GO! Portal" />
     <script>
       (function() {
         const theme = localStorage.getItem('theme') || 'dark';
@@ -18,10 +22,19 @@
       })();
     </script>
     <title>GO! Portal — POS</title>
-    <script type="module" crossorigin src="./assets/index-D7jEshpT.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-I0ZcKHjz.css">
+    <script type="module" crossorigin src="./assets/index-BTpE35gN.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BmoguQpE.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.error('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

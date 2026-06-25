@@ -15,11 +15,15 @@ import ReportsScreen from './components/dashboard/ReportsScreen';
 import { MotionConfig } from 'framer-motion';
 import api from './services/api';
 import LicenseBlockScreen from './components/auth/LicenseBlockScreen';
+import { wsService } from './services/websocket';
+import Updater from './components/updater/Updater';
 
 import CuentasCorrientesScreen from './components/clients/CuentasCorrientesScreen';
 import CashControlScreen from './components/cash-register/CashControlScreen';
 import TreasuryScreen from './components/pos/TreasuryScreen';
 import OnlineStoreScreen from './components/settings/OnlineStoreScreen';
+import OnlineStoreMetricsScreen from './components/settings/OnlineStoreMetricsScreen';
+import EarningsDivisionScreen from './components/settings/EarningsDivisionScreen';
 import SettingsScreen from './components/settings/SettingsScreen';
 import StockAuditScreen from './components/products/StockAuditScreen';
 import PromosScreen from './components/products/PromosScreen';
@@ -27,6 +31,8 @@ import PurchasesScreen from './components/products/PurchasesScreen';
 import StockControlScreen from './components/products/StockControlScreen';
 import SuppliersScreen from './components/suppliers/SuppliersScreen';
 import FiscalScreen from './components/dashboard/FiscalScreen';
+import RemoteAccessScreen from './components/settings/RemoteAccessScreen';
+import MarketingScreen from './components/marketing/MarketingScreen';
 
 function ConnectionGuard({ children }: { children: React.ReactNode }) {
   const hasConnection = !!localStorage.getItem('server_ip');
@@ -184,6 +190,30 @@ export default function App() {
     }, 60000); // verify every 60 seconds in background
     return () => clearInterval(interval);
   }, [isAuthenticated]);
+ 
+  // Listen for real-time product updates from the backend via WebSockets
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    wsService.connect();
+
+    const handleProductUpdated = (updatedProd: any) => {
+      console.log('📡 Real-time product update received via WS:', updatedProd);
+      const barcodeList = [updatedProd.barcode, ...(updatedProd.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
+      const processed = {
+        ...updatedProd,
+        _searchToken: `${updatedProd.name.toLowerCase()} ${updatedProd.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim()
+      };
+
+      setProducts(usePOSStore.getState().products.map(p => p.id === updatedProd.id ? processed : p));
+    };
+
+    wsService.on('product:updated', handleProductUpdated);
+
+    return () => {
+      wsService.off('product:updated', handleProductUpdated);
+    };
+  }, [isAuthenticated, setProducts]);
 
   // Cache Warming useEffect
   useEffect(() => {
@@ -279,23 +309,35 @@ export default function App() {
     );
   }
 
+  if (licenseStatus && !licenseStatus.isActive) {
+    return (
+      <LicenseBlockScreen 
+        statusData={licenseStatus} 
+        onActivated={() => {
+          setCheckingLicense(true);
+          checkLicense();
+        }} 
+      />
+    );
+  }
+
   if (isAuthenticated && !isWarmed) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-white px-6 z-50">
-        <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl p-8 rounded-2xl border border-white/5 shadow-[0_0_50px_rgba(0,0,0,0.3)] flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-rose-500 to-indigo-500 text-white flex items-center justify-center mb-6 shadow-lg shadow-rose-500/20">
+      <div className="fixed inset-0 bg-slate-50/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50">
+        <div className="w-full max-w-[400px] bg-white p-8 rounded-3xl border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-indigo-600 mb-6 shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
           
-          <h2 className="text-2xl font-black tracking-tight mb-2 bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-200 to-slate-400">GO! Punto de Venta</h2>
-          <p className="text-indigo-400 text-xs font-black uppercase tracking-widest mb-6">Precalentando base de datos</p>
+          <h2 className="text-xl font-bold tracking-tight mb-2 text-slate-900">GO! Punto de Venta</h2>
+          <p className="text-indigo-600 text-[11px] font-bold uppercase tracking-wider mb-6">Precalentando entorno...</p>
           
-          <div className="w-full h-2 bg-slate-800/80 rounded-full overflow-hidden mb-4 border border-white/5 p-[1px]">
-            <div className="h-full bg-gradient-to-r from-rose-500 via-purple-500 to-indigo-500 rounded-full transition-all duration-300" style={{ width: `${warmingProgress}%` }} />
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4">
+            <div className="h-full bg-indigo-600 rounded-full transition-all duration-300" style={{ width: `${warmingProgress}%` }} />
           </div>
           
-          <p className="text-xs font-bold text-slate-400 mb-1">{warmingStatus}</p>
-          {warmingError && <p className="text-[11px] font-bold text-amber-500 mt-2 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 animate-pulse">{warmingError}</p>}
+          <p className="text-[13px] font-semibold text-slate-500 mb-1">{warmingStatus}</p>
+          {warmingError && <p className="text-[11px] font-bold text-rose-600 mt-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">{warmingError}</p>}
         </div>
       </div>
     );
@@ -303,15 +345,6 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={perfMode ? "always" : "user"}>
-      {licenseStatus && !licenseStatus.isActive && (
-        <LicenseBlockScreen 
-          statusData={licenseStatus} 
-          onActivated={() => {
-            setCheckingLicense(true);
-            checkLicense();
-          }} 
-        />
-      )}
       <Routes>
         <Route path="/setup" element={<ConnectionScreen />} />
         <Route path="/login" element={<ConnectionGuard><LoginPage /></ConnectionGuard>} />
@@ -335,15 +368,19 @@ export default function App() {
                 <Route path="/promos" element={<PromosScreen />} />
                 <Route path="/purchases" element={<PurchasesScreen />} />
                 <Route path="/stock-control" element={<StockControlScreen />} />
+                <Route path="/marketing" element={<MarketingScreen />} />
                 
                 {/* New Routes from Images */}
                 <Route path="/cash-control" element={<CashControlScreen />} />
                 <Route path="/treasury" element={<TreasuryScreen />} />
                 <Route path="/online-store" element={<OnlineStoreScreen />} />
+                <Route path="/online-store/metrics" element={<AdminRoute><OnlineStoreMetricsScreen /></AdminRoute>} />
+                <Route path="/earnings-division" element={<AdminRoute><EarningsDivisionScreen /></AdminRoute>} />
                 <Route path="/stock-audit" element={<StockAuditScreen />} />
                 <Route path="/suppliers" element={<SuppliersScreen />} />
                 <Route path="/fiscal" element={<FiscalScreen />} />
                 <Route path="/settings" element={<AdminRoute><SettingsScreen /></AdminRoute>} />
+                <Route path="/remote-access" element={<AdminRoute><RemoteAccessScreen /></AdminRoute>} />
 
                 {/* Fallback for other routes */}
                 <Route path="*" element={<div className="h-full flex flex-col items-center justify-center text-slate-300 gap-4">
@@ -358,6 +395,7 @@ export default function App() {
         }
       />
     </Routes>
+    <Updater />
     </MotionConfig>
   );
 }

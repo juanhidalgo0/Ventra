@@ -219,6 +219,10 @@ model Category {
   displayOrder Int     @default(0) @map("display_order")
   isActive     Boolean @default(true) @map("is_active")
 
+  parentCategoryId String?   @map("parent_category_id")
+  parentCategory   Category? @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subcategories    Category[] @relation("CategoryHierarchy")
+
   products Product[]
 
   @@map("categories")

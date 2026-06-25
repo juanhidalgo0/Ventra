@@ -12,12 +12,41 @@ import {
   Calculator,
   Tag,
   Plus,
-  Check
+  Check,
+  Bookmark
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
+
+function buildCategoryTree(cats: any[]) {
+  const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
+  const children = cats.filter(c => c.parentCategory || c.parentCategoryId);
+  
+  const result: any[] = [];
+  parents.forEach(parent => {
+    result.push(parent);
+    const subcats = children.filter(c => c.parentCategoryId === parent.id || c.parentCategory?.id === parent.id);
+    subcats.forEach(sub => {
+      result.push({
+        ...sub,
+        name: `   └ ${sub.name}`, // Indented subcategory
+        isSubcategory: true
+      });
+    });
+  });
+  
+  // Add any orphaned children at the end
+  const addedIds = new Set(result.map(r => r.id));
+  cats.forEach(c => {
+    if (!addedIds.has(c.id)) {
+      result.push(c);
+    }
+  });
+  
+  return result;
+}
 
 interface ProductModalProps {
   onClose: () => void;
@@ -29,8 +58,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const [formData, setFormData] = useState({
     name: product?.name || '',
     barcode: product?.barcode || '',
+    sku: product?.sku || '',
     additionalBarcodes: product?.additionalBarcodes?.map((b: any) => b.barcode) || [],
     categoryId: product?.categoryId || '',
+    brandId: product?.brandId || '',
     costPrice: parseFloat((product?.costPrice || 0).toFixed(2)),
     salePrice: parseFloat((product?.salePrice || 0).toFixed(2)),
     stock: product?.stock || 0,
@@ -47,11 +78,16 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
   const [newBarcode, setNewBarcode] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#6366f1');
+  const [newCategoryParentId, setNewCategoryParentId] = useState('');
+  
+  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [newBrandName, setNewBrandName] = useState('');
 
   // Similar product merge states
   const [similarProduct, setSimilarProduct] = useState<any>(null);
@@ -61,6 +97,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
   useEffect(() => {
     loadCategories();
+    loadBrands();
     loadSuppliers();
     if (formData.costPrice && formData.salePrice) {
       const margin = ((formData.salePrice / formData.costPrice) - 1) * 100;
@@ -78,6 +115,13 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     try {
       const { data } = await api.get('/suppliers');
       setSuppliers(data);
+    } catch {}
+  };
+
+  const loadBrands = async () => {
+    try {
+      const { data } = await api.get('/brands');
+      setBrands(data);
     } catch {}
   };
 
@@ -134,15 +178,31 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     try {
       const { data } = await api.post('/categories', { 
         name: newCategoryName, 
-        color: newCategoryColor 
+        color: newCategoryColor,
+        parentCategoryId: newCategoryParentId || null
       });
       setCategories([...categories, data]);
       setFormData({ ...formData, categoryId: data.id });
       setIsCreatingCategory(false);
       setNewCategoryName('');
+      setNewCategoryParentId('');
       toast.success('Categoría creada');
     } catch {
       toast.error('Error al crear categoría');
+    }
+  };
+
+  const handleCreateBrand = async () => {
+    if (!newBrandName) return;
+    try {
+      const { data } = await api.post('/brands', { name: newBrandName });
+      setBrands([...brands, data]);
+      setFormData({ ...formData, brandId: data.id });
+      setIsCreatingBrand(false);
+      setNewBrandName('');
+      toast.success('Marca creada');
+    } catch {
+      toast.error('Error al crear marca');
     }
   };
 
@@ -176,11 +236,14 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const handleMarginChange = (margin: number) => {
     const validMargin = isNaN(margin) ? 0 : margin;
     const validCost = parseFloat(formData.costPrice as any) || 0;
-    const sale = validCost * (1 + validMargin / 100);
+    let sale = validCost * (1 + validMargin / 100);
+    if (!isNaN(sale) && sale > 0) {
+      sale = Math.ceil(sale / 10) * 10;
+    }
     setFormData(prev => ({ 
       ...prev, 
       margin: isNaN(margin) ? '' as any : margin, 
-      salePrice: isNaN(margin) ? '' as any : parseFloat(sale.toFixed(2)) 
+      salePrice: isNaN(margin) ? '' as any : sale 
     }));
   };
 
@@ -309,8 +372,49 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const saveProduct = async (bypassSimilarity: boolean = false) => {
     setIsSubmitting(true);
     try {
+      let activeCategoryId = formData.categoryId;
+      let activeBrandId = formData.brandId;
+
+      if (isCreatingCategory && newCategoryName.trim()) {
+        try {
+          const { data: newCat } = await api.post('/categories', { 
+            name: newCategoryName.trim(), 
+            color: newCategoryColor,
+            parentCategoryId: newCategoryParentId || null
+          });
+          activeCategoryId = newCat.id;
+          setCategories([...categories, newCat]);
+          setIsCreatingCategory(false);
+          setNewCategoryName('');
+          setNewCategoryParentId('');
+        } catch (catErr) {
+          toast.error('Error al crear la nueva categoría');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      if (isCreatingBrand && newBrandName.trim()) {
+        try {
+          const { data: newBrand } = await api.post('/brands', { 
+            name: newBrandName.trim()
+          });
+          activeBrandId = newBrand.id;
+          setBrands([...brands, newBrand]);
+          setIsCreatingBrand(false);
+          setNewBrandName('');
+        } catch (brandErr) {
+          toast.error('Error al crear la nueva marca');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const sanitizedData = {
         ...formData,
+        categoryId: activeCategoryId,
+        brandId: activeBrandId || null,
+        sku: formData.sku || null,
         stock: parseInt(formData.stock as any) || 0,
         minStock: parseInt(formData.minStock as any) || 0,
         costPrice: parseFloat(formData.costPrice as any) || 0,
@@ -371,37 +475,37 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="relative bg-white border border-slate-200 w-full max-w-4xl rounded-2xl shadow-xl flex flex-col overflow-hidden"
+        className="relative bg-white border border-slate-400 w-full max-w-6xl rounded-2xl shadow-xl flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-300 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 border border-rose-200">
               <Package className="w-5 h-5" />
             </div>
             <h2 className="text-base font-bold text-slate-800">{product ? 'Editar Producto' : 'Nuevo Producto'}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 md:p-6 grid grid-cols-12 gap-4 md:gap-6 overflow-y-auto max-h-[calc(100vh-160px)]">
           {/* Main Info (Left) */}
           <div className="col-span-12 lg:col-span-7 space-y-4">
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Nombre del producto *</span>
+              <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Nombre del producto *</span>
               <input 
                 ref={nameInputRef}
                 type="text" 
                 value={formData.name}
                 onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
                 placeholder="Ej: COCA COLA ZERO 2.25L"
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none transition-all"
+                className="w-full bg-white border border-slate-400 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-600 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none transition-all"
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Imagen del Producto</span>
+                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Imagen del Producto</span>
                 <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">💡 Recomendado: Carga local</span>
               </div>
               
@@ -429,7 +533,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
                     disabled={formData.imageUrl.startsWith('data:')}
                     placeholder="O pegar URL de imagen externa..."
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-rose-400 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
+                    className="w-full bg-white border border-slate-400 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-600 focus:border-rose-400 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
                   />
                   {formData.imageUrl.startsWith('data:') && (
                     <button
@@ -443,7 +547,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 </div>
 
                 {/* Preview Box */}
-                <div className="w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center text-slate-400 flex-shrink-0 self-center">
+                <div className="w-20 h-20 rounded-xl bg-slate-50 border border-slate-400 overflow-hidden flex items-center justify-center text-slate-600 flex-shrink-0 self-center">
                   <img 
                     src={formData.imageUrl || './product-placeholder.png'} 
                     alt="Preview" 
@@ -454,27 +558,37 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 italic leading-tight">
+              <p className="text-[10px] text-slate-600 italic leading-tight">
                 * Las imágenes cargadas localmente son comprimidas de forma ultra-liviana para no saturar tu web.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Código Principal</span>
+                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Cód. Barras</span>
                 <div className="relative flex items-center">
-                  <Barcode className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input 
                     type="text" 
                     value={formData.barcode}
                     onChange={e => setFormData({ ...formData, barcode: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none"
+                    className="w-full bg-white border border-slate-400 rounded-lg px-2.5 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">SKU</span>
+                <div className="relative flex items-center">
+                  <input 
+                    type="text" 
+                    value={formData.sku}
+                    onChange={e => setFormData({ ...formData, sku: e.target.value })}
+                    className="w-full bg-white border border-slate-400 rounded-lg px-2.5 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none"
                   />
                 </div>
               </div>
                <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Categoría</span>
+                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Categoría</span>
                   <button 
                     type="button" 
                     onClick={() => setIsCreatingCategory(!isCreatingCategory)}
@@ -485,66 +599,123 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 </div>
                 <div className="relative flex items-center">
                   {isCreatingCategory ? (
-                    <div className="flex gap-1 w-full">
-                      <input 
-                        type="text"
-                        autoFocus
-                        placeholder="Nombre..."
-                        value={newCategoryName}
-                        onChange={e => setNewCategoryName(e.target.value)}
-                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-rose-400"
-                      />
-                      <input 
-                        type="color"
-                        value={newCategoryColor}
-                        onChange={e => setNewCategoryColor(e.target.value)}
-                        className="w-9 h-9 p-0.5 bg-white border border-slate-200 rounded-lg cursor-pointer"
-                      />
-                      <button 
-                        type="button"
-                        onClick={handleCreateCategory}
-                        className="p-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all active:scale-[0.97] flex items-center justify-center"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
+                    <div className="flex flex-col gap-1.5 w-full bg-slate-50 border border-slate-400 rounded-lg p-2 z-10">
+                      <div className="flex gap-1 w-full">
+                        <input 
+                          type="text"
+                          autoFocus
+                          placeholder="Nombre..."
+                          value={newCategoryName}
+                          onChange={e => setNewCategoryName(e.target.value)}
+                          className="flex-1 bg-white border border-slate-400 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
+                        />
+                        <input 
+                          type="color"
+                          value={newCategoryColor}
+                          onChange={e => setNewCategoryColor(e.target.value)}
+                          className="w-8 h-7 p-0.5 bg-white border border-slate-400 rounded cursor-pointer"
+                        />
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        <select
+                          value={newCategoryParentId}
+                          onChange={e => setNewCategoryParentId(e.target.value)}
+                          className="flex-1 bg-white border border-slate-400 rounded px-1 py-0.5 text-[9px] text-slate-600 outline-none"
+                        >
+                          <option value="">Sin Padre (Principal)</option>
+                          {categories.filter(c => !c.parentCategory && !c.parentCategoryId).map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                        <button 
+                          type="button"
+                          onClick={handleCreateCategory}
+                          className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-all active:scale-[0.97] flex items-center justify-center"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <>
-                      <Tag className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
                       <select 
                         value={formData.categoryId || ''}
                         onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                        className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer"
+                        className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
                       >
                         <option value="">Sin categoría</option>
-                        {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                        {buildCategoryTree(categories).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                       </select>
-                      <ChevronDown className="absolute right-3 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
                     </>
                   )}
                 </div>
               </div>
               <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Proveedor</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Marca</span>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsCreatingBrand(!isCreatingBrand)}
+                    className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition-colors"
+                  >
+                    {isCreatingBrand ? 'Cancelar' : '+ Nueva'}
+                  </button>
+                </div>
                 <div className="relative flex items-center">
-                  <Package className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  {isCreatingBrand ? (
+                    <div className="flex gap-1 w-full bg-slate-50 border border-slate-400 rounded-lg p-1.5 z-10">
+                      <input 
+                        type="text"
+                        autoFocus
+                        placeholder="Marca..."
+                        value={newBrandName}
+                        onChange={e => setNewBrandName(e.target.value)}
+                        className="flex-1 bg-white border border-slate-400 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
+                      />
+                      <button 
+                        type="button"
+                        onClick={handleCreateBrand}
+                        className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-all active:scale-[0.97] flex items-center justify-center"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <select 
+                        value={formData.brandId || ''}
+                        onChange={e => setFormData({ ...formData, brandId: e.target.value })}
+                        className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
+                      >
+                        <option value="">Sin marca</option>
+                        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
+                    </>
+                  )}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Proveedor</span>
+                <div className="relative flex items-center">
                   <select 
                     value={formData.supplierId || ''}
                     onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer"
+                    className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
                   >
                     <option value="">Sin proveedor</option>
                     {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                   </select>
-                  <ChevronDown className="absolute right-3 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
                 </div>
               </div>
             </div>
 
             {/* Additional Barcodes */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-3">
                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Códigos Adicionales</span>
+                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Códigos Adicionales</span>
                   <span className="text-[10px] font-medium text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">{formData.additionalBarcodes.length} registrados</span>
                </div>
                <div className="flex gap-2">
@@ -554,7 +725,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     onChange={e => setNewBarcode(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddBarcode())}
                     placeholder="Escanear otro..."
-                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-rose-400"
+                    className="flex-1 bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder:text-slate-600 outline-none focus:border-rose-400"
                   />
                   <button 
                     type="button" 
@@ -566,9 +737,9 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                </div>
                <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto custom-scrollbar">
                   {formData.additionalBarcodes.map(b => (
-                    <div key={b} className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-md">
+                    <div key={b} className="flex items-center gap-1.5 bg-white border border-slate-400 px-2 py-1 rounded-md">
                        <span className="text-[10px] font-medium text-slate-600">{b}</span>
-                       <button type="button" onClick={() => handleRemoveBarcode(b)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                       <button type="button" onClick={() => handleRemoveBarcode(b)} className="text-slate-600 hover:text-red-500"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
                </div>
@@ -576,9 +747,9 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
             {/* Inventory Management */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+               <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Control de Stock</span>
+                    <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider block">Control de Stock</span>
                   </div>
                   <div className="flex items-center gap-2 mb-1">
                     <input 
@@ -603,7 +774,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                         type="number" 
                         value={formData.stock}
                         onChange={e => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-lg font-bold text-slate-800 outline-none focus:border-rose-400"
+                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2.5 text-lg font-bold text-slate-800 outline-none focus:border-rose-400"
                       />
                       <div className="grid grid-cols-4 gap-1">
                         {[1, 5, 10, 24].map(val => (
@@ -611,7 +782,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                             key={val}
                             type="button"
                             onClick={() => setFormData({ ...formData, stock: formData.stock + val })}
-                            className="py-1.5 bg-white border border-slate-200 rounded-md text-[10px] font-semibold text-slate-500 hover:text-rose-600 hover:border-rose-200 transition-all active:scale-[0.95]"
+                            className="py-1.5 bg-white border border-slate-400 rounded-md text-[10px] font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200 transition-all active:scale-[0.95]"
                           >
                             +{val}
                           </button>
@@ -621,8 +792,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   )}
                </div>
 
-               <div className={`rounded-xl p-4 space-y-2 ${formData.unlimitedStock ? 'bg-slate-50 border border-slate-200 opacity-50 pointer-events-none' : 'bg-amber-50 border border-amber-200'}`}>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider block ${formData.unlimitedStock ? 'text-slate-400' : 'text-amber-700'}`}>Alerta Bajo Stock</span>
+               <div className={`rounded-xl p-4 space-y-2 ${formData.unlimitedStock ? 'bg-slate-50 border border-slate-400 opacity-50 pointer-events-none' : 'bg-amber-50 border border-amber-200'}`}>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider block ${formData.unlimitedStock ? 'text-slate-600' : 'text-amber-700'}`}>Alerta Bajo Stock</span>
                   <div className="relative">
                     <Package className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${formData.unlimitedStock ? 'text-slate-300' : 'text-amber-400'}`} />
                     <input 
@@ -631,10 +802,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       onChange={e => setFormData({ ...formData, minStock: parseInt(e.target.value) || 0 })}
                       placeholder="Mínimo..."
                       disabled={formData.unlimitedStock}
-                      className={`w-full bg-white border rounded-lg pl-9 pr-3 py-2.5 text-lg font-bold text-slate-800 outline-none ${formData.unlimitedStock ? 'border-slate-200' : 'border-amber-200 focus:border-amber-400'}`}
+                      className={`w-full bg-white border rounded-lg pl-9 pr-3 py-2.5 text-lg font-bold text-slate-800 outline-none ${formData.unlimitedStock ? 'border-slate-400' : 'border-amber-200 focus:border-amber-400'}`}
                     />
                   </div>
-                  <p className={`text-[10px] italic ${formData.unlimitedStock ? 'text-slate-400' : 'text-amber-600'}`}>{formData.unlimitedStock ? 'No aplica con stock ilimitado' : 'El sistema te avisará al llegar a este número'}</p>
+                  <p className={`text-[10px] italic ${formData.unlimitedStock ? 'text-slate-600' : 'text-amber-600'}`}>{formData.unlimitedStock ? 'No aplica con stock ilimitado' : 'El sistema te avisará al llegar a este número'}</p>
                </div>
             </div>
 
@@ -643,15 +814,15 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           {/* Right Column (Presentation & Pricing) */}
           <div className="col-span-12 lg:col-span-5 space-y-4">
             {/* Presentación & Packaging */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Presentación del Producto</span>
+            <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-3">
+              <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider block">Presentación del Producto</span>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[9px] font-medium text-slate-400 uppercase tracking-wider mb-1 block">Tipo de Presentación</label>
+                  <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">Tipo de Presentación</label>
                   <select 
                     value={formData.presentationType}
                     onChange={e => setFormData({ ...formData, presentationType: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-850 outline-none focus:border-rose-450 cursor-pointer"
+                    className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-semibold text-slate-850 outline-none focus:border-rose-450 cursor-pointer"
                   >
                     <option value="UNIT">Unidad Simple (Suelta)</option>
                     <option value="PACK">Paquete (Multi-unidad / Pack)</option>
@@ -659,7 +830,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 </div>
                 {formData.presentationType === 'PACK' && (
                   <div>
-                    <label className="text-[9px] font-medium text-slate-400 uppercase tracking-wider mb-1 block">Unidades por Paquete</label>
+                    <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">Unidades por Paquete</label>
                     <input 
                       type="number"
                       min={1}
@@ -668,7 +839,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                         const val = parseInt(e.target.value);
                         setFormData({ ...formData, unitsPerPack: isNaN(val) ? '' as any : val });
                       }}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-450"
+                      className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-450"
                     />
                   </div>
                 )}
@@ -684,28 +855,28 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
                <div className="space-y-3">
                   <div>
-                     <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1 block">Costo Unitario</label>
+                     <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Costo Unitario</label>
                      <div className="relative flex items-center">
-                        <span className="absolute left-3 text-slate-400 font-bold pointer-events-none">$</span>
+                        <span className="absolute left-3 text-slate-600 font-bold pointer-events-none">$</span>
                         <input 
                           type="number" 
                           step="0.01"
                           value={formData.costPrice === 0 && formData.costPrice !== '' as any ? 0 : formData.costPrice || ''}
                           onChange={e => handleCostChange(parseFloat(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
+                          className="w-full bg-white border border-slate-400 rounded-lg pl-7 pr-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
                         />
                      </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                      <div>
-                        <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1 block">Margen %</label>
+                        <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Margen %</label>
                         <input 
                           type="number" 
                           step="0.1"
                           value={formData.margin === 0 && formData.margin !== '' as any ? 0 : formData.margin || ''}
                           onChange={e => handleMarginChange(parseFloat(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
+                          className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
                         />
                      </div>
                      <div className="flex flex-col justify-end">
@@ -748,8 +919,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
-          <button onClick={onClose} type="button" className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">Cancelar</button>
+        <div className="px-6 py-4 border-t border-slate-300 bg-slate-50 flex items-center justify-end gap-3">
+          <button onClick={onClose} type="button" className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-700 transition-colors">Cancelar</button>
           <button 
             onClick={handleSubmit}
             disabled={isSubmitting}
@@ -768,7 +939,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="relative bg-white border border-slate-200 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-6 z-10 text-center"
+            className="relative bg-white border border-slate-400 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-6 z-10 text-center"
           >
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20 shadow-md">
               <Info className="w-8 h-8" />
@@ -776,10 +947,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
             <div>
               <h3 className="text-lg font-bold text-slate-800 tracking-tight">¿Vincular como código alternativo?</h3>
-              <p className="text-xs text-slate-500 leading-relaxed mt-2.5">
+              <p className="text-xs text-slate-700 leading-relaxed mt-2.5">
                 Hemos detectado un producto muy similar ya registrado en tu inventario:
               </p>
-              <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left space-y-1">
+              <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-400 text-left space-y-1">
                 <p className="text-sm font-bold text-slate-700">{similarProduct.name}</p>
                 <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Código principal: {similarProduct.barcode || 'N/A'}</p>
                 {similarProduct.category?.name && (
@@ -788,7 +959,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed mt-4">
+              <p className="text-[11px] text-slate-600 leading-relaxed mt-4">
                 ¿Deseas agregar el código de barra <b>"{formData.barcode}"</b> como un código adicional para este producto existente?
               </p>
             </div>
@@ -807,7 +978,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 type="button"
                 onClick={() => saveProduct(true)}
                 disabled={isSubmitting}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-200"
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-400"
               >
                 <Plus className="w-4 h-4" /> No, crear producto nuevo
               </button>
@@ -815,7 +986,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
               <button
                 type="button"
                 onClick={() => setShowMergeModal(false)}
-                className="w-full py-2.5 text-xs text-slate-400 font-bold hover:text-slate-600 transition-colors uppercase tracking-wider cursor-pointer"
+                className="w-full py-2.5 text-xs text-slate-600 font-bold hover:text-slate-600 transition-colors uppercase tracking-wider cursor-pointer"
               >
                 Volver a editar
               </button>

@@ -178,7 +178,7 @@ export default function SuppliersScreen() {
           <h2 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2 md:gap-3">
             <Truck className="w-6 h-6 md:w-8 md:h-8 text-indigo-500" /> Proveedores
           </h2>
-          <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Gestión integral de abastecimiento</p>
+          <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">Gestión integral de abastecimiento</p>
         </div>
         <div className="flex items-center gap-2">
            <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
@@ -213,8 +213,8 @@ export default function SuppliersScreen() {
           <p className="text-[9px] md:text-[10px] font-bold text-emerald-500/60 mt-4 uppercase tracking-widest">0 proveedores</p>
         </div>
 
-        <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 relative overflow-hidden">
-          <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Al Día</p>
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-400 relative overflow-hidden">
+          <p className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-2">Al Día</p>
           <p className="text-xl md:text-3xl font-bold text-slate-800">{upToDateCount}</p>
           <div className="mt-4 flex items-center gap-1.5 text-[9px] font-bold text-emerald-500 uppercase tracking-widest">
             <CheckCircle2 className="w-3 h-3" /> <span>Sin deudas</span>
@@ -229,15 +229,15 @@ export default function SuppliersScreen() {
       </div>
 
       {/* Filters & Content */}
-      <div className="bg-white rounded-xl border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[500px]">
+      <div className="bg-white rounded-xl border border-slate-400 flex-1 flex flex-col overflow-hidden min-h-[500px]">
         <div className="p-4 md:p-8 border-b border-slate-50 flex flex-col xl:flex-row gap-4 items-stretch xl:items-center justify-between">
            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
-              <div className="flex p-1 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="flex p-1 bg-slate-50 rounded-xl border border-slate-300">
                 <button className="px-4 py-1.5 rounded-lg bg-white shadow-sm text-[10px] font-bold uppercase tracking-widest text-slate-800">Activos ({suppliers.length})</button>
-                <button className="px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">Archivados</button>
+                <button className="px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:text-slate-600 transition-colors">Archivados</button>
               </div>
-              <div className="relative w-full sm:w-80">
-                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+              <div className="relative w-full sm:w-80 flex items-center">
+                 <Search className="absolute left-4 w-4 h-4 text-slate-300 pointer-events-none" />
                  <input 
                    type="text" 
                    value={search}
@@ -248,7 +248,7 @@ export default function SuppliersScreen() {
               </div>
            </div>
            <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between xl:justify-end">
-              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-400">
                   <Calendar className="w-4 h-4 text-indigo-500" />
                   <select 
                     value={filterType} 
@@ -267,19 +267,19 @@ export default function SuppliersScreen() {
                     type="date" 
                     value={startDate} 
                     onChange={e => setStartDate(e.target.value)} 
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-[9px] font-bold text-slate-650 outline-none"
+                    className="bg-slate-50 border border-slate-400 rounded-xl px-2 py-1 text-[9px] font-bold text-slate-650 outline-none"
                   />
-                  <span className="text-slate-400 text-xs">-</span>
+                  <span className="text-slate-600 text-xs">-</span>
                   <input 
                     type="date" 
                     value={endDate} 
                     onChange={e => setEndDate(e.target.value)} 
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-[9px] font-bold text-slate-650 outline-none"
+                    className="bg-slate-50 border border-slate-400 rounded-xl px-2 py-1 text-[9px] font-bold text-slate-650 outline-none"
                   />
                 </div>
               )}
               <div className="relative">
-                 <select className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-600 uppercase tracking-widest outline-none appearance-none pr-10">
+                 <select className="bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-600 uppercase tracking-widest outline-none appearance-none pr-10">
                     <option>Mayor deuda primero</option>
                  </select>
                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" />
@@ -308,11 +308,11 @@ export default function SuppliersScreen() {
                             {debt > 0 && <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-500 text-[8px] font-bold uppercase">Deuda</span>}
                          </div>
                          <div className="flex items-center gap-3 mb-4">
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
                                <Phone className="w-3 h-3" /> {s.phone || '---'}
                             </div>
                             <div className="w-1 h-1 rounded-full bg-slate-200" />
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 truncate">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate">
                                <Mail className="w-3 h-3" /> {s.email || '---'}
                             </div>
                           </div>
@@ -346,7 +346,7 @@ export default function SuppliersScreen() {
                       <div className="flex items-center gap-3">
                         <button 
                           onClick={() => setSelectedSupplier(null)} 
-                          className="lg:hidden p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition-all shadow-sm shrink-0 cursor-pointer"
+                          className="lg:hidden p-2 rounded-xl bg-white border border-slate-400 text-slate-700 hover:bg-slate-50 transition-all shadow-sm shrink-0 cursor-pointer"
                         >
                            <ChevronDown className="w-4 h-4 rotate-90" />
                         </button>
@@ -355,22 +355,22 @@ export default function SuppliersScreen() {
                         </div>
                         <div>
                            <h3 className="text-lg md:text-2xl font-bold text-slate-800 uppercase leading-snug">{selectedSupplier.name}</h3>
-                           <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">{selectedSupplier.contact || 'Sin contacto'}</p>
+                           <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-widest leading-none mt-0.5">{selectedSupplier.contact || 'Sin contacto'}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                         <a href={`tel:${selectedSupplier.phone}`} className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-650 transition-all shadow-sm"><Phone className="w-4.5 h-4.5" /></a>
-                         <a href={`mailto:${selectedSupplier.email}`} className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-655 transition-all shadow-sm"><Mail className="w-4.5 h-4.5" /></a>
+                         <a href={`tel:${selectedSupplier.phone}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-indigo-650 transition-all shadow-sm"><Phone className="w-4.5 h-4.5" /></a>
+                         <a href={`mailto:${selectedSupplier.email}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-indigo-655 transition-all shadow-sm"><Mail className="w-4.5 h-4.5" /></a>
                       </div>
                    </div>
 
                     <div className="grid grid-cols-2 gap-6">
-                       <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo Pendiente</p>
+                       <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
+                          <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Saldo Pendiente</p>
                           <p className="text-4xl font-bold text-rose-500">$ {calculateDebt(selectedSupplier.id).toLocaleString()}</p>
                        </div>
-                       <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Última Compra</p>
+                       <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
+                          <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Última Compra</p>
                           <p className="text-xl font-bold text-slate-800">
                             {purchases.filter(p => p.supplierId === selectedSupplier.id).length > 0 
                               ? new Date(Math.max(...purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => new Date(p.createdAt).getTime()))).toLocaleDateString()
@@ -385,19 +385,19 @@ export default function SuppliersScreen() {
                           <DollarSign className="w-5 h-5 text-emerald-500" /> Rendimiento y Ventas
                        </h4>
                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:grid-cols-3">
-                          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
-                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Productos Vendidos</p>
+                          <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
+                             <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Productos Vendidos</p>
                              <p className="text-xl md:text-2xl font-black text-indigo-600">{(selectedSupplier.stats?.productsSold || 0).toLocaleString()} u.</p>
                           </div>
-                          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total Facturado</p>
+                          <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
+                              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Total Facturado</p>
                               <p className="text-xl md:text-2xl font-black text-slate-800 whitespace-nowrap">
                                  <span className="text-slate-450 mr-1 font-semibold text-base">$</span>
                                  {(selectedSupplier.stats?.totalSales || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 })}
                               </p>
                            </div>
-                           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ganancia Neta</p>
+                           <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
+                              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Ganancia Neta</p>
                               <p className="text-xl md:text-2xl font-black text-emerald-600 whitespace-nowrap">
                                  <span className="text-emerald-500/70 mr-1 font-semibold text-base">$</span>
                                  {(selectedSupplier.stats?.netProfit || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 })}
@@ -410,19 +410,19 @@ export default function SuppliersScreen() {
                       <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                          <FileText className="w-5 h-5 text-indigo-500" /> Movimientos de Cuenta
                       </h4>
-                      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+                      <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-x-auto">
                          <table className="w-full min-w-[450px] text-left">
                             <thead>
-                               <tr className="bg-slate-50/50 border-b border-slate-100">
-                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha</th>
-                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Concepto</th>
-                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Monto</th>
+                               <tr className="bg-slate-50/50 border-b border-slate-300">
+                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Fecha</th>
+                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Concepto</th>
+                                  <th className="px-6 py-4 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-right">Monto</th>
                                </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                {purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => (
                                  <tr key={p.id}>
-                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{new Date(p.createdAt).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 text-[11px] font-bold text-slate-700">Compra #{p.invoiceNumber || p.id.slice(0,8)}</td>
                                     <td className="px-6 py-4 text-right text-[11px] font-bold text-rose-500">$ {p.total.toLocaleString()}</td>
                                  </tr>
@@ -440,7 +440,7 @@ export default function SuppliersScreen() {
                    <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center mx-auto mb-6">
                       <Wallet className="w-8 h-8 text-slate-200" />
                    </div>
-                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em]">Selecciona un proveedor para ver su historial.</p>
+                   <p className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.3em]">Selecciona un proveedor para ver su historial.</p>
                 </div>
               )}
            </div>
@@ -452,35 +452,35 @@ export default function SuppliersScreen() {
         {showModal && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-slate-400 overflow-hidden">
                <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                      <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white"><Truck className="w-5 h-5" /></div>
                      <h3 className="text-lg font-bold text-slate-800">Nuevo Proveedor</h3>
                   </div>
-                  <button onClick={() => setShowModal(false)} className="p-2 text-slate-400 hover:text-slate-800"><X className="w-5 h-5" /></button>
+                  <button onClick={() => setShowModal(false)} className="p-2 text-slate-600 hover:text-slate-800"><X className="w-5 h-5" /></button>
                </div>
                <form onSubmit={handleCreate} className="p-8 space-y-6">
                   <div className="group">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1 group-focus-within:text-indigo-500 transition-colors">Razón Social / Nombre *</span>
-                    <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Distribuidora Coca-Cola S.A." className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1 group-focus-within:text-indigo-500 transition-colors">Razón Social / Nombre *</span>
+                    <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Distribuidora Coca-Cola S.A." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Teléfono de Contacto</span>
-                        <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+54 11 ..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Teléfono de Contacto</span>
+                        <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+54 11 ..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
                      </div>
                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Correo Electrónico</span>
-                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="admin@distribuidora.com" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Correo Electrónico</span>
+                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="admin@distribuidora.com" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
                      </div>
                   </div>
                   <div className="group">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Persona de Contacto</span>
-                    <input type="text" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="Nombre del vendedor..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Persona de Contacto</span>
+                    <input type="text" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="Nombre del vendedor..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
                   </div>
                   <div className="flex justify-end gap-4 pt-4">
-                     <button type="button" onClick={() => setShowModal(false)} className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Cancelar</button>
+                     <button type="button" onClick={() => setShowModal(false)} className="px-8 py-4 text-[11px] font-bold text-slate-600 uppercase tracking-widest">Cancelar</button>
                      <button type="submit" className="px-10 py-4 bg-emerald-500 text-white rounded-2xl text-[11px] font-bold uppercase tracking-widest shadow-xl shadow-emerald-100 hover:scale-105 active:scale-95 transition-all">Crear Proveedor</button>
                   </div>
                </form>
@@ -494,7 +494,7 @@ export default function SuppliersScreen() {
         {showPaymentModal && selectedSupplier && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPaymentModal(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-slate-400 overflow-hidden">
                <div className="px-8 py-6 border-b border-slate-50 bg-emerald-50/50 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                      <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-100"><Wallet className="w-5 h-5" /></div>
@@ -503,11 +503,11 @@ export default function SuppliersScreen() {
                         <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Proveedor: {selectedSupplier.name}</p>
                      </div>
                   </div>
-                  <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-400 hover:text-slate-800"><X className="w-5 h-5" /></button>
+                  <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-600 hover:text-slate-800"><X className="w-5 h-5" /></button>
                </div>
                <form onSubmit={handlePayment} className="p-8 space-y-6">
                   <div className="group">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Monto a Pagar *</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Monto a Pagar *</span>
                     <div className="relative">
                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-bold text-slate-300">$</span>
                        <input 
@@ -516,18 +516,18 @@ export default function SuppliersScreen() {
                          autoFocus
                          value={paymentData.amount} 
                          onChange={e => setPaymentData({...paymentData, amount: parseFloat(e.target.value)})} 
-                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl pl-12 pr-6 py-5 text-3xl font-bold text-slate-800 outline-none focus:bg-white focus:border-emerald-500/50 transition-all shadow-sm" 
+                         className="w-full bg-slate-50 border-2 border-slate-300 rounded-3xl pl-12 pr-6 py-5 text-3xl font-bold text-slate-800 outline-none focus:bg-white focus:border-emerald-500/50 transition-all shadow-sm" 
                        />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Método de Pago</span>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Método de Pago</span>
                         <select 
                           value={paymentData.method} 
                           onChange={e => setPaymentData({...paymentData, method: e.target.value})} 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all appearance-none cursor-pointer"
+                          className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all appearance-none cursor-pointer"
                         >
                            <option>Efectivo</option>
                            <option>Transferencia</option>
@@ -536,18 +536,18 @@ export default function SuppliersScreen() {
                         </select>
                      </div>
                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Referencia / N° Op.</span>
-                        <input type="text" value={paymentData.reference} onChange={e => setPaymentData({...paymentData, reference: e.target.value})} placeholder="Ej: 00012345" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all" />
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Referencia / N° Op.</span>
+                        <input type="text" value={paymentData.reference} onChange={e => setPaymentData({...paymentData, reference: e.target.value})} placeholder="Ej: 00012345" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all" />
                      </div>
                   </div>
 
                   <div className="group">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block ml-1">Notas Internas</span>
-                    <textarea value={paymentData.notes} onChange={e => setPaymentData({...paymentData, notes: e.target.value})} placeholder="Descripción opcional..." className="w-full h-24 bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all resize-none" />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Notas Internas</span>
+                    <textarea value={paymentData.notes} onChange={e => setPaymentData({...paymentData, notes: e.target.value})} placeholder="Descripción opcional..." className="w-full h-24 bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all resize-none" />
                   </div>
 
                   <div className="flex justify-end gap-4 pt-4">
-                     <button type="button" onClick={() => setShowPaymentModal(false)} className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Cancelar</button>
+                     <button type="button" onClick={() => setShowPaymentModal(false)} className="px-8 py-4 text-[11px] font-bold text-slate-600 uppercase tracking-widest">Cancelar</button>
                      <button type="submit" className="px-10 py-4 bg-emerald-500 text-white rounded-2xl text-[11px] font-bold uppercase tracking-widest shadow-xl shadow-emerald-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" /> Confirmar Pago
                      </button>

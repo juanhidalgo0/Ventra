@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
-import { Calendar, User, Search, Wallet, RefreshCw, XCircle, Clock, History, TrendingUp, ArrowDownRight, LayoutDashboard, AlertCircle, ChevronRight, Filter, DollarSign, Lock, X, Printer, Package, CheckCircle2, Smartphone, CreditCard, Play, Download, FileText } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronRight, DollarSign, Download, Search, Users, Copy, Wallet, CheckCircle2, TrendingDown, Receipt, ChevronUp, Clock, AlertCircle, RefreshCw, FileText, Printer, FileOutput, User, XCircle, History, TrendingUp, ArrowDownRight, LayoutDashboard, Lock, X, Package, Smartphone, CreditCard, Play, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
+import CierreDiaModal from './CierreDiaModal';
 
 export default function CashControlScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -18,6 +19,16 @@ export default function CashControlScreen() {
   const [sellerFilter, setSellerFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [isGeneratingZ, setIsGeneratingZ] = useState(false);
+  const [zReportData, setZReportData] = useState<any>(null);
+  const [isHistoryZReport, setIsHistoryZReport] = useState(false);
+  const [zReports, setZReports] = useState<any[]>([]);
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'X' | 'Z'>('X');
+  const [showFilters, setShowFilters] = useState(true);
+  const [showLocalFilters, setShowLocalFilters] = useState(false);
+  const [localDay, setLocalDay] = useState('');
+  const [localCashier, setLocalCashier] = useState('all');
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   
   // States for live monitoring and closing
   const [monitoringSession, setMonitoringSession] = useState<any>(null);
@@ -111,6 +122,20 @@ export default function CashControlScreen() {
     toast.success('Excel exportado correctamente');
   };
 
+  const handleGenerateZReport = async () => {
+    try {
+      setIsGeneratingZ(true);
+      const { data } = await api.post('/cash/z-report/generate');
+      setZReportData(data);
+      setIsHistoryZReport(false);
+      loadSessions();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al generar Reporte Z. Recuerda que todos los turnos deben estar arqueados primero.');
+    } finally {
+      setIsGeneratingZ(false);
+    }
+  };
+
   const handleExportPDF = () => {
     const rowsHtml = closedSessions.map((s: any) => {
       const salesTotal = s.sales?.reduce((sum: number, v: any) => sum + v.total, 0) || 0;
@@ -188,8 +213,8 @@ export default function CashControlScreen() {
         const parsed = JSON.parse(parts[1]);
         metadata = {
           bills: parsed.bills || {},
-          virtualClover: parsed.virtualClover || 0,
-          virtualMP1: parsed.virtualMP1 || 0,
+          virtualClover: parsed.posnetDeclarations?.CLOVER || parsed.virtualClover || 0,
+          virtualMP1: parsed.posnetDeclarations?.MERCADOPAGO || parsed.virtualMP1 || 0,
           virtualMP2: parsed.virtualMP2 || 0,
           closedBy: parsed.closedBy || ''
         };
@@ -198,13 +223,32 @@ export default function CashControlScreen() {
       }
     }
 
-    const cashSales = selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'CASH').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0;
-    const cloverSales = selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'CLOVER').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0;
-    const mpSales = selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'MERCADOPAGO').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0;
-    const debtSales = selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'DEBT').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0;
-    const expenses = selectedSession.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0;
+    let closingSummaryParsed: any = null;
+    if (selectedSession.closingSummary) {
+      try {
+        closingSummaryParsed = JSON.parse(selectedSession.closingSummary);
+        if (closingSummaryParsed.posnetDeclarations) {
+          if (closingSummaryParsed.posnetDeclarations.CLOVER !== undefined) {
+            metadata.virtualClover = closingSummaryParsed.posnetDeclarations.CLOVER;
+          }
+          if (closingSummaryParsed.posnetDeclarations.MERCADOPAGO !== undefined) {
+            metadata.virtualMP1 = closingSummaryParsed.posnetDeclarations.MERCADOPAGO;
+            metadata.virtualMP2 = 0;
+          }
+        }
+      } catch (err) {
+        console.error("Error parsing closingSummary from session", err);
+      }
+    }
 
-    const countedCash = Object.entries(metadata.bills).reduce((acc, [den, qty]) => acc + (Number(den) * qty), 0);
+    const cashSales = closingSummaryParsed?.paymentBreakdown?.CASH ?? (selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'CASH').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0);
+    const cloverSales = closingSummaryParsed?.paymentBreakdown?.CLOVER ?? (selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'CLOVER').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0);
+    const mpSales = closingSummaryParsed?.paymentBreakdown?.MERCADOPAGO ?? (selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'MERCADOPAGO').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0);
+    const debtSales = closingSummaryParsed?.paymentBreakdown?.DEBT ?? (selectedSession.sales?.reduce((s: number, v: any) => s + (v.payments?.filter((p: any) => p.method === 'DEBT').reduce((a: number, p: any) => a + p.amount, 0) || 0), 0) || 0);
+    const expenses = closingSummaryParsed?.cashExpense ?? (selectedSession.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0);
+    const withdrawals = closingSummaryParsed?.cashWithdrawal ?? (selectedSession.cashMovements?.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0);
+
+    const countedCash = closingSummaryParsed?.countedCash ?? Object.entries(metadata.bills).reduce((acc, [den, qty]) => acc + (Number(den) * qty), 0);
 
     const summary = {
       paymentBreakdown: {
@@ -214,6 +258,7 @@ export default function CashControlScreen() {
         DEBT: debtSales
       },
       cashExpense: expenses,
+      cashWithdrawal: withdrawals,
       countedCash: countedCash
     };
 
@@ -228,9 +273,9 @@ export default function CashControlScreen() {
     loadSessions();
     wsService.connect();
     const handleUpdate = () => {
-      // Reload active and history in background without setting full screen loader for a seamless feel!
       api.get('/cash/history').then(res => setSessions(res.data || [])).catch(() => {});
       api.get('/cash/active').then(res => setActiveSessions(res.data || [])).catch(() => {});
+      api.get('/cash/z-reports').then(res => setZReports(res.data || [])).catch(() => {});
     };
     wsService.on('cash:updated', handleUpdate);
     wsService.on('sale:created', handleUpdate);
@@ -243,12 +288,16 @@ export default function CashControlScreen() {
   const loadSessions = async () => {
     setIsLoading(true);
     try {
-      const [resHistory, resActive] = await Promise.all([
+      const [resHistory, resActive, resZReports, resUsers] = await Promise.all([
         api.get('/cash/history'),
-        api.get('/cash/active')
+        api.get('/cash/active'),
+        api.get('/cash/z-reports').catch(() => ({ data: [] })),
+        api.get('/users').catch(() => ({ data: [] }))
       ]);
       setSessions(resHistory.data || []);
       setActiveSessions(resActive.data || []);
+      setZReports(resZReports.data || []);
+      setAllUsers(resUsers.data || []);
     } catch {
       toast.error('Error al sincronizar las cajas');
     } finally { setIsLoading(false); }
@@ -258,7 +307,6 @@ export default function CashControlScreen() {
 
   const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-  // Filter sessions
   const filteredSessions = sessions.filter(s => {
     const date = new Date(s.openedAt);
     let matchesDate = false;
@@ -274,26 +322,88 @@ export default function CashControlScreen() {
     }
 
     const matchesSeller = sellerFilter === 'all' || s.user?.id === sellerFilter;
+    const timeStrOpened = new Date(s.openedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+    const timeStrClosed = s.closedAt ? new Date(s.closedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }).toLowerCase() : '';
     const matchesSearch = searchQuery === '' || 
       s.terminalName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      s.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase());
+      s.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      timeStrOpened.includes(searchQuery.toLowerCase()) ||
+      timeStrClosed.includes(searchQuery.toLowerCase());
     return matchesDate && matchesSeller && matchesSearch;
   });
 
+  const filteredZReports = zReports.filter(z => {
+    const date = new Date(z.generatedAt);
+    let matchesDate = false;
+    
+    if (filterMode === 'month') {
+      matchesDate = date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
+    } else if (filterMode === 'day') {
+      const dayStr = date.toISOString().split('T')[0];
+      matchesDate = dayStr === selectedDay;
+    } else if (filterMode === 'range') {
+      const dayStr = date.toISOString().split('T')[0];
+      matchesDate = dayStr >= startDate && dayStr <= endDate;
+    }
+
+    const matchesSeller = sellerFilter === 'all' || z.generatedBy?.id === sellerFilter || z.generatedById === sellerFilter;
+    const timeStr = new Date(z.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+    const matchesSearch = searchQuery === '' || 
+      z.generatedBy?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      z.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      timeStr.includes(searchQuery.toLowerCase());
+    return matchesDate && matchesSeller && matchesSearch;
+  });
+
+  const locallyFilteredSessions = useMemo(() => {
+    return filteredSessions.filter(s => {
+      if (localCashier !== 'all' && s.user?.id !== localCashier) return false;
+      if (localDay) {
+        const openedDay = new Date(s.openedAt).toISOString().split('T')[0];
+        if (openedDay !== localDay) return false;
+      }
+      return true;
+    });
+  }, [filteredSessions, localCashier, localDay]);
+
+  const locallyFilteredClosedSessions = useMemo(() => {
+    return locallyFilteredSessions.filter(s => s.closedAt);
+  }, [locallyFilteredSessions]);
+
+  const locallyFilteredZReports = useMemo(() => {
+    return filteredZReports.filter(z => {
+      if (localCashier !== 'all' && z.generatedBy?.id !== localCashier && z.generatedById !== localCashier) return false;
+      if (localDay) {
+        const generatedDay = new Date(z.generatedAt).toISOString().split('T')[0];
+        if (generatedDay !== localDay) return false;
+      }
+      return true;
+    });
+  }, [filteredZReports, localCashier, localDay]);
+
   const closedSessions = filteredSessions.filter(s => s.closedAt);
 
-  // Stats Calculations
   const totalSales = closedSessions.reduce((acc, s) => acc + (s.sales?.reduce((sum: number, v: any) => sum + v.total, 0) || 0), 0);
   const totalExpenses = closedSessions.reduce((acc, s) => acc + (s.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((sum: number, m: any) => sum + m.amount, 0) || 0), 0);
-  const totalDebtCollection = 0; // To be implemented with payments
+  const totalDebtCollection = 0; 
   const totalDifferences = closedSessions.reduce((acc, s) => acc + (s.difference || 0), 0);
   const balance = totalSales - totalExpenses;
 
-  const users = Array.from(new Set(sessions.map(s => JSON.stringify(s.user)))).map(s => JSON.parse(s)).filter(u => u);
+  const users = useMemo(() => {
+    if (allUsers && allUsers.length > 0) {
+      return allUsers;
+    }
+    const allUsersStr = [
+      ...sessions.map(s => JSON.stringify(s.user)),
+      ...zReports.map(z => JSON.stringify(z.generatedBy))
+    ];
+    return Array.from(new Set(allUsersStr)).map(s => {
+      try { return JSON.parse(s); } catch { return null; }
+    }).filter(u => u && u.id);
+  }, [allUsers, sessions, zReports]);
 
   return (
     <div className="h-full flex flex-col gap-6 bg-[#f8fafc] p-6 overflow-y-auto custom-scrollbar">
-      {/* Header & Filters */}
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -301,6 +411,9 @@ export default function CashControlScreen() {
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em] mt-1">Historial completo de cierres por turno</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 md:gap-3">
+             <button disabled={isGeneratingZ} onClick={handleGenerateZReport} className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all text-[10px] font-bold uppercase tracking-widest shadow-sm active:scale-95 cursor-pointer disabled:opacity-50">
+                <FileOutput className="w-3.5 h-3.5" /> {isGeneratingZ ? 'Generando...' : 'Generar Cierre Z'}
+             </button>
              <button onClick={handleExportExcel} className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 cursor-pointer">
                 <Download className="w-3.5 h-3.5 text-emerald-600" /> Descargar Excel
              </button>
@@ -313,92 +426,89 @@ export default function CashControlScreen() {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Modo de filtro */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-              {[
-                { id: 'month', label: 'Por Mes' },
-                { id: 'day', label: 'Por Día' },
-                { id: 'range', label: 'Rango' }
-              ].map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => setFilterMode(mode.id as any)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    filterMode === mode.id 
-                      ? 'bg-indigo-600 text-white shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
+        {showFilters && (
+          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all duration-300">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                {[
+                  { id: 'month', label: 'Por Mes' },
+                  { id: 'day', label: 'Por Día' },
+                  { id: 'range', label: 'Rango' }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setFilterMode(mode.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                      filterMode === mode.id 
+                        ? 'bg-indigo-600 text-white shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              {filterMode === 'month' && (
+                <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-150 animate-in fade-in slide-in-from-left-2 duration-200">
+                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="bg-transparent px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer">
+                    {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
+                  </select>
+                  <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-white shadow-sm rounded-lg text-[10px] font-bold text-slate-800 uppercase tracking-widest border border-slate-100 px-3 py-1.5 outline-none cursor-pointer">
+                    {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {filterMode === 'day' && (
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+                  <input
+                    type="date"
+                    value={selectedDay}
+                    onChange={(e) => setSelectedDay(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              {filterMode === 'range' && (
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Desde</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hasta</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+              
+              <div className="h-8 w-px bg-slate-100" />
+              
+              <div className="flex items-center gap-2 text-slate-400">
+                <User className="w-4 h-4" />
+                <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="bg-transparent text-[10px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer">
+                  <option value="all">Todos los vendedores</option>
+                  {users.map((u: any, idx: number) => <option key={u.id || `seller-${idx}`} value={u.id}>{u.fullName}</option>)}
+                </select>
+              </div>
             </div>
 
-            {/* Selector de Mes */}
-            {filterMode === 'month' && (
-              <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-150 animate-in fade-in slide-in-from-left-2 duration-200">
-                <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="bg-transparent px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer">
-                  {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
-                </select>
-                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-white shadow-sm rounded-lg text-[10px] font-bold text-slate-800 uppercase tracking-widest border border-slate-100 px-3 py-1.5 outline-none cursor-pointer">
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-            )}
-
-            {/* Selector de Día */}
-            {filterMode === 'day' && (
-              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                <input
-                  type="date"
-                  value={selectedDay}
-                  onChange={(e) => setSelectedDay(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
-                />
-              </div>
-            )}
-
-            {/* Selector de Rango */}
-            {filterMode === 'range' && (
-              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Desde</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
-                />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hasta</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
-                />
-              </div>
-            )}
-            
-            <div className="h-8 w-px bg-slate-100" />
-            
-            <div className="flex items-center gap-2 text-slate-400">
-              <User className="w-4 h-4" />
-              <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="bg-transparent text-[10px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer">
-                <option value="all">Todos los vendedores</option>
-                {users.map((u: any, idx: number) => <option key={u.id || `seller-${idx}`} value={u.id}>{u.fullName}</option>)}
-              </select>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar por terminal o responsable..." className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl pl-11 pr-4 py-3 text-[11px] font-bold text-slate-600 outline-none focus:bg-white focus:border-indigo-200 transition-all shadow-inner" />
             </div>
           </div>
-
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar por terminal o responsable..." className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl pl-11 pr-4 py-3 text-[11px] font-bold text-slate-600 outline-none focus:bg-white focus:border-indigo-200 transition-all shadow-inner" />
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Stats Summary Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
           { label: 'Ventas Totales', val: fmt(totalSales), sub: 'Ingresos del mes', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
@@ -423,7 +533,6 @@ export default function CashControlScreen() {
         ))}
       </div>
 
-      {/* Active Sessions Panel */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between px-2">
           <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -494,7 +603,6 @@ export default function CashControlScreen() {
         )}
       </div>
 
-      {/* Historial Section */}
       <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col p-10 min-h-[500px]">
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-4">
@@ -507,64 +615,191 @@ export default function CashControlScreen() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <button className="p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all text-slate-400">
-                <Filter className="w-5 h-5" />
-             </button>
+            <button 
+              onClick={() => setShowLocalFilters(!showLocalFilters)} 
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl border transition-all text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                showLocalFilters 
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-650' 
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              {showLocalFilters ? 'Ocultar Filtros Locales' : 'Filtrar Historial'}
+            </button>
           </div>
         </div>
-        
-        {closedSessions.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-            <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm">
-              <Search className="w-8 h-8 text-slate-200" />
+
+        {showLocalFilters && (
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 mb-6 flex flex-wrap gap-4 items-center animate-in fade-in slide-in-from-top-2 duration-200 text-slate-700">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Filtrar por Día (Local)</span>
+              <input 
+                type="date" 
+                value={localDay} 
+                onChange={(e) => setLocalDay(e.target.value)} 
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+              />
             </div>
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] mb-3">Sin cierres registrados</p>
-            <p className="text-[11px] text-slate-300 font-bold max-w-xs leading-relaxed">No hay movimientos de cierre para los filtros seleccionados actualmente.</p>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Filtrar por Cajero (Local)</span>
+              <select 
+                value={localCashier} 
+                onChange={(e) => setLocalCashier(e.target.value)} 
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="all">Todos los cajeros</option>
+                {users.map((u: any, idx: number) => <option key={u.id || `local-seller-${idx}`} value={u.id}>{u.fullName}</option>)}
+              </select>
+            </div>
+            {(localDay || localCashier !== 'all') && (
+              <button 
+                onClick={() => {
+                  setLocalDay('');
+                  setLocalCashier('all');
+                }}
+                className="mt-5 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
+              >
+                Limpiar Filtros
+              </button>
+            )}
           </div>
-        ) : (
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full min-w-[650px] text-left">
-              <thead>
-                <tr className="border-b border-slate-50">
-                  <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Terminal / Responsable</th>
-                  <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Apertura</th>
-                  <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Efectivo</th>
-                  <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Diferencia</th>
-                  <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-center">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {closedSessions.map((s) => (
-                  <tr key={s.id} onClick={() => setSelectedSession(s)} className="border-b border-slate-50/50 hover:bg-slate-50/50 transition-colors group cursor-pointer">
-                    <td className="py-5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">{s.terminalName?.[0]}</div>
-                        <div>
-                          <p className="text-[11px] font-bold text-slate-700">{s.terminalName}</p>
-                          <p className="text-[9px] font-bold text-slate-400">{s.user?.fullName}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-5 px-4">
-                      <p className="text-[11px] font-bold text-slate-700">{new Date(s.openedAt).toLocaleDateString()}</p>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(s.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    </td>
-                    <td className="py-5 px-4 text-right">
-                      <p className="text-[11px] font-bold text-slate-700">{fmt(s.closingAmountCounted || 0)}</p>
-                    </td>
-                    <td className="py-5 px-4 text-right">
-                      <span className={`text-[11px] font-bold ${s.difference >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        {s.difference > 0 && '+'}{fmt(s.difference || 0)}
-                      </span>
-                    </td>
-                    <td className="py-5 px-4 text-center">
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-widest border border-slate-200">Finalizada</span>
-                    </td>
+        )}
+        
+        <div className="flex border-b border-slate-100 mb-6 gap-6">
+          <button 
+            onClick={() => setActiveHistoryTab('X')}
+            className={`pb-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeHistoryTab === 'X' ? 'border-indigo-600 text-indigo-650' : 'border-transparent text-slate-400 hover:text-slate-650'}`}
+          >
+            Reportes de Turno (X)
+          </button>
+          <button 
+            onClick={() => setActiveHistoryTab('Z')}
+            className={`pb-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeHistoryTab === 'Z' ? 'border-indigo-600 text-indigo-650' : 'border-transparent text-slate-400 hover:text-slate-650'}`}
+          >
+            Reportes Diarios (Z)
+          </button>
+        </div>
+
+        {activeHistoryTab === 'X' ? (
+          locallyFilteredClosedSessions.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+              <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm">
+                <Search className="w-8 h-8 text-slate-200" />
+              </div>
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] mb-3">Sin cierres registrados</p>
+              <p className="text-[11px] text-slate-300 font-bold max-w-xs leading-relaxed">No hay movimientos de cierre locales para los filtros seleccionados actualmente.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[650px] text-left">
+                <thead>
+                  <tr className="border-b border-slate-50">
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Terminal / Responsable</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Apertura</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Total Bruto</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Diferencia</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-center">Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {locallyFilteredClosedSessions.map((s) => (
+                    <tr key={s.id} onClick={() => setSelectedSession(s)} className="border-b border-slate-50/50 hover:bg-slate-50/50 transition-colors group cursor-pointer">
+                      <td className="py-5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">{s.terminalName?.[0]}</div>
+                          <div>
+                            <p className="text-[11px] font-bold text-slate-700">{s.terminalName}</p>
+                            <p className="text-[9px] font-bold text-slate-400">{s.user?.fullName}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-5 px-4">
+                        <p className="text-[11px] font-bold text-slate-700">{new Date(s.openedAt).toLocaleDateString()}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(s.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </td>
+                      <td className="py-5 px-4 text-right">
+                        <p className="text-[11px] font-bold text-slate-700">
+                          {(() => {
+                            try {
+                              if (s.closingSummary) {
+                                const parsed = JSON.parse(s.closingSummary);
+                                if (parsed && typeof parsed.totalRevenue === 'number') {
+                                  return fmt(parsed.totalRevenue);
+                                }
+                              }
+                            } catch (e) {}
+                            return fmt(s.closingAmountExpected || 0);
+                          })()}
+                        </p>
+                      </td>
+                      <td className="py-5 px-4 text-right">
+                        <span className={`text-[11px] font-bold ${s.difference >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {s.difference > 0 && '+'}{fmt(s.difference || 0)}
+                        </span>
+                      </td>
+                      <td className="py-5 px-4 text-center">
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-widest border border-slate-200">Finalizada</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          locallyFilteredZReports.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+              <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm">
+                <Search className="w-8 h-8 text-slate-200" />
+              </div>
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] mb-3">Sin Reportes Z</p>
+              <p className="text-[11px] text-slate-300 font-bold max-w-xs leading-relaxed">No se encontraron reportes Z locales con los filtros activos.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[650px] text-left">
+                <thead>
+                  <tr className="border-b border-slate-50">
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Reporte ID / Creado por</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">Fecha de Emisión</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Esperado (Total)</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Declarado (Total)</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 text-right">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {locallyFilteredZReports.map((z) => (
+                    <tr key={z.id} onClick={() => { setZReportData(z); setIsHistoryZReport(true); }} className="border-b border-slate-50/50 hover:bg-slate-50/50 transition-colors group cursor-pointer">
+                      <td className="py-5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-650">Z</div>
+                          <div>
+                            <p className="text-[11px] font-bold text-slate-700">#Z-{z.id?.substring(0, 8).toUpperCase()}</p>
+                            <p className="text-[9px] font-bold text-slate-400">{z.generatedBy?.fullName || 'Administrador'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-5 px-4">
+                        <p className="text-[11px] font-bold text-slate-700">{new Date(z.generatedAt).toLocaleDateString()}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(z.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </td>
+                      <td className="py-5 px-4 text-right">
+                        <p className="text-[11px] font-bold text-slate-700">{fmt(z.totalExpected || 0)}</p>
+                      </td>
+                      <td className="py-5 px-4 text-right">
+                        <p className="text-[11px] font-bold text-slate-700">{fmt(z.totalDeclared || 0)}</p>
+                      </td>
+                      <td className="py-5 px-4 text-right">
+                        <span className={`text-[11px] font-bold ${z.differenceTotal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {z.differenceTotal > 0 && '+'}{fmt(z.differenceTotal || 0)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
 
@@ -597,7 +832,6 @@ export default function CashControlScreen() {
           }
         }
       `}</style>
-      {/* Closed Session Details Modal */}
       <AnimatePresence>
         {selectedSession && selectedSessionData && (
           <motion.div 
@@ -615,7 +849,6 @@ export default function CashControlScreen() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]"
             >
-              {/* Header */}
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 flex items-center justify-center">
@@ -629,9 +862,7 @@ export default function CashControlScreen() {
                 <button onClick={() => setSelectedSession(null)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-rose-500 transition-all"><X className="w-5 h-5" /></button>
               </div>
 
-              {/* Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/20">
-                {/* Meta details grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Responsable</span>
@@ -651,9 +882,7 @@ export default function CashControlScreen() {
                   </div>
                 </div>
 
-                {/* Arqueo Efectivo desglosado */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left: Table of Bills counted */}
                   <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-3">
                     <h4 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
                       <Lock className="w-4 h-4 text-rose-500" /> Billetes Declarados
@@ -671,7 +900,7 @@ export default function CashControlScreen() {
                           <tbody>
                             {denominations.map((den) => {
                               const qty = selectedSessionData.metadata.bills[den] || 0;
-                              if (qty === 0) return null; // Only show counted bills to save screen height
+                              if (qty === 0) return null;
                               return (
                                 <tr key={den} className="border-b border-slate-50 last:border-0 font-medium">
                                   <td className="py-2 font-bold text-slate-500">$ {den.toLocaleString()}</td>
@@ -691,7 +920,6 @@ export default function CashControlScreen() {
                     )}
                   </div>
 
-                  {/* Right: Cash conciliación metrics */}
                   <div className="bg-white rounded-xl border border-slate-200/80 p-5 flex flex-col justify-between">
                     <div>
                       <h4 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100 mb-4">
@@ -705,6 +933,10 @@ export default function CashControlScreen() {
                         <div className="flex justify-between text-rose-500">
                           <span>(-) Egresos / Gastos Registrados</span>
                           <span className="font-bold">-{fmt(selectedSessionData.summary.cashExpense || 0)}</span>
+                        </div>
+                        <div className="flex justify-between text-rose-500">
+                          <span>(-) Retiros a Caja Fuerte</span>
+                          <span className="font-bold">-{fmt(selectedSessionData.summary.cashWithdrawal || 0)}</span>
                         </div>
                         <div className="flex justify-between border-t border-slate-100 pt-3">
                           <span className="font-semibold text-slate-600">Efectivo Esperado</span>
@@ -725,13 +957,11 @@ export default function CashControlScreen() {
                   </div>
                 </div>
 
-                {/* Sección 2: Cuentas Virtuales y Posnet */}
                 <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-4">
                   <h4 className="text-xs font-bold text-slate-755 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
                     <Smartphone className="w-4 h-4 text-indigo-500" /> Conciliación Cuentas Virtuales y Crédito
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Clover */}
                     <div className="bg-slate-50/50 border border-slate-200/60 p-4 rounded-xl space-y-2">
                       <div className="flex justify-between border-b border-slate-100 pb-1.5">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Clover (Posnet)</span>
@@ -755,7 +985,6 @@ export default function CashControlScreen() {
                       </div>
                     </div>
 
-                    {/* MercadoPago */}
                     <div className="bg-slate-50/50 border border-slate-200/60 p-4 rounded-xl space-y-2">
                       <div className="flex justify-between border-b border-slate-100 pb-1.5">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">MercadoPago (Cajas 1 y 2)</span>
@@ -779,7 +1008,6 @@ export default function CashControlScreen() {
                       </div>
                     </div>
 
-                    {/* Cuenta Corriente */}
                     <div className="bg-pink-50/40 border border-pink-200/60 p-4 rounded-xl space-y-2">
                       <div className="flex justify-between border-b border-pink-100 pb-1.5">
                         <span className="text-[10px] font-bold text-pink-700 uppercase tracking-wider">Cuenta Corriente</span>
@@ -799,7 +1027,6 @@ export default function CashControlScreen() {
                   </div>
                 </div>
 
-                {/* Detalle de Movimientos Manuales (Egresos/Gastos) */}
                 {selectedSession.cashMovements && selectedSession.cashMovements.length > 0 && (
                   <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-3">
                     <h4 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
@@ -855,7 +1082,6 @@ export default function CashControlScreen() {
                   </div>
                 )}
 
-                {/* Notes */}
                 {selectedSessionData.notesClean && (
                   <div className="bg-amber-50/40 border border-amber-200/60 p-4 rounded-xl">
                     <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wider block mb-1">Observaciones / Anotaciones</span>
@@ -864,7 +1090,6 @@ export default function CashControlScreen() {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
                 <button 
                   onClick={() => window.print()}
@@ -884,7 +1109,6 @@ export default function CashControlScreen() {
         )}
       </AnimatePresence>
 
-      {/* Modal de Cierre de Caja en Vivo para Administrador */}
       <AnimatePresence>
         {closingSession && (
           <motion.div 
@@ -964,7 +1188,6 @@ export default function CashControlScreen() {
         )}
       </AnimatePresence>
 
-      {/* Modal de Monitoreo en Tiempo Real */}
       <AnimatePresence>
         {monitoringSession && (
           <motion.div 
@@ -982,7 +1205,6 @@ export default function CashControlScreen() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl w-full max-w-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]"
             >
-              {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-500 flex items-center justify-center shrink-0">
@@ -996,9 +1218,7 @@ export default function CashControlScreen() {
                 <button onClick={() => setMonitoringSession(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400"><X className="w-5 h-5" /></button>
               </div>
 
-              {/* Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                {/* Metric Summary Grid */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-100 p-4 rounded-xl">
                     <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block mb-1">Efectivo en Caja en Vivo</span>
@@ -1010,7 +1230,6 @@ export default function CashControlScreen() {
                   </div>
                 </div>
 
-                {/* Live sales breakdown by payment method */}
                 <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-4">
                   <h4 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
                     <DollarSign className="w-4 h-4 text-emerald-500" /> Desglose de Ventas del Turno
@@ -1053,7 +1272,6 @@ export default function CashControlScreen() {
                   </div>
                 </div>
 
-                {/* Cash movements breakdown */}
                 <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-3">
                   <h4 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
                     <RefreshCw className="w-4 h-4 text-indigo-500" /> Movimientos Manuales (Entradas/Salidas)
@@ -1084,7 +1302,6 @@ export default function CashControlScreen() {
                 </div>
               </div>
 
-              {/* Footer */}
               <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
                 <button 
                   onClick={() => {
@@ -1113,143 +1330,220 @@ export default function CashControlScreen() {
         )}
       </AnimatePresence>
 
-      {/* Printable Z-Report (A4) in History */}
-      {selectedSession && selectedSessionData && (
-        <div id="printable-zreport" className="hidden">
-          <div style={{ padding: '10mm', fontFamily: 'sans-serif' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '3px solid #e2e8f0', paddingBottom: '5mm', marginBottom: '8mm' }}>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#e11d48', letterSpacing: '-0.03em' }}>
-                  {(localStorage.getItem('gd_store_name') || 'GO! Punto de Venta').toUpperCase()}
-                </h1>
-                <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Sistema de Control e Inventario de Caja</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>REPORTE DE ARQUEO DE CAJA (Z)</h2>
-                <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#e11d48' }}>ID: #{selectedSession.id?.substring(0, 8).toUpperCase()}</p>
-              </div>
-            </div>
+      {selectedSession && selectedSessionData && (() => {
+        const cashSales = selectedSessionData.summary.paymentBreakdown?.CASH || 0;
+        const cloverSales = selectedSessionData.summary.paymentBreakdown?.CLOVER || 0;
+        const mpSales = selectedSessionData.summary.paymentBreakdown?.MERCADOPAGO || 0;
+        const debtSales = selectedSessionData.summary.paymentBreakdown?.DEBT || 0;
+        const expenses = selectedSessionData.summary.cashExpense || 0;
+        const withdrawals = selectedSessionData.summary.cashWithdrawal || 0;
 
-            {/* Session Metadata Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4mm', marginBottom: '8mm', background: '#f8fafc', padding: '4mm', borderRadius: '4mm', border: '1px solid #f1f5f9' }}>
-              <div>
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Apertura Por</span>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e293b' }}>{selectedSession.user?.fullName || 'Administrador'}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Cerrado Por</span>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e293b' }}>{selectedSessionData.metadata?.closedBy || selectedSession.user?.fullName || 'Administrador'}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Terminal</span>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e293b' }}>{selectedSession.terminalName || 'Terminal Principal'}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Apertura</span>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>{new Date(selectedSession.openedAt).toLocaleString('es-AR')}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Cierre</span>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>{new Date(selectedSession.closedAt).toLocaleString('es-AR')}</span>
-              </div>
-            </div>
+        const totalGross = cashSales + debtSales + cloverSales + mpSales;
+        const totalExpected = (selectedSession.closingAmountExpected || 0) + cloverSales + mpSales;
 
-            {/* A: Arqueo Físico de Billetes */}
-            <div style={{ marginBottom: '8mm' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', paddingBottom: '2mm', marginBottom: '4mm' }}>Sección A: Arqueo de Efectivo Físico</h3>
-              <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
-                    <th style={{ textAlign: 'left', padding: '6px' }}>Denominación</th>
-                    <th style={{ textAlign: 'center', padding: '6px' }}>Cantidad Declarada</th>
-                    <th style={{ textAlign: 'right', padding: '6px' }}>Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  {denominations.map((den) => {
-                    const qty = selectedSessionData.metadata.bills[den] || 0;
-                    return (
-                      <tr key={den} style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td style={{ padding: '6px', fontWeight: 'bold' }}>$ {den.toLocaleString()}</td>
-                        <td style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold', color: qty > 0 ? '#1e293b' : '#cbd5e1' }}>{qty}</td>
-                        <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(den * qty)}</td>
+        const cloverDeclared = selectedSessionData.metadata.virtualClover || 0;
+        const mpDeclared = selectedSessionData.metadata.virtualMP1 + selectedSessionData.metadata.virtualMP2;
+        const countedCash = selectedSessionData.summary.countedCash || 0;
+
+        const totalDeclared = countedCash + cloverDeclared + mpDeclared;
+        const differenceTotal = totalDeclared - totalExpected;
+
+        return (
+          <div id="printable-zreport" className="hidden">
+            <div style={{ padding: '10mm', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', minHeight: '275mm', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '3px solid #e2e8f0', paddingBottom: '5mm', marginBottom: '8mm' }}>
+                <div>
+                  <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#e11d48', letterSpacing: '-0.03em' }}>
+                    {(localStorage.getItem('gd_store_name') || 'GO! Punto de Venta').toUpperCase()}
+                  </h1>
+                  <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Sistema de Control e Inventario de Caja</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>REPORTE DE ARQUEO DE TURNO (X)</h2>
+                  <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#e11d48' }}>ID: #{selectedSession.id?.substring(0, 8).toUpperCase()}</p>
+                </div>
+              </div>
+
+              {/* Session Metadata Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4mm', marginBottom: '8mm', background: '#f8fafc', padding: '4mm', borderRadius: '4mm', border: '1px solid #f1f5f9' }}>
+                <div>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Cajero</span>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e293b' }}>{selectedSession.user?.fullName || 'Administrador'}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Terminal</span>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e293b' }}>{selectedSession.terminalName || 'Terminal Principal'}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Apertura</span>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>{new Date(selectedSession.openedAt).toLocaleString('es-AR')}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Cierre</span>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>{new Date(selectedSession.closedAt).toLocaleString('es-AR')}</span>
+                </div>
+                <div style={{ background: '#ecfdf5', padding: '2mm 3mm', borderRadius: '2mm', border: '1px solid #d1fae5', alignSelf: 'center' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#047857', textTransform: 'uppercase', display: 'block', marginBottom: '1mm' }}>Total Bruto</span>
+                  <span style={{ fontSize: '12px', fontWeight: '900', color: '#047857' }}>
+                    {fmt(totalGross)}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '0.85fr 1.15fr', gap: '6mm', marginBottom: '4mm' }}>
+                {/* A: Arqueo Físico de Billetes */}
+                <div>
+                  <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', paddingBottom: '2mm', marginBottom: '3mm' }}>Sección A: Arqueo de Efectivo</h3>
+                  <table style={{ width: '100%', fontSize: '10px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                        <th style={{ textAlign: 'left', padding: '4px' }}>Denominación</th>
+                        <th style={{ textAlign: 'center', padding: '4px' }}>Cantidad</th>
+                        <th style={{ textAlign: 'right', padding: '4px' }}>Subtotal</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8mm', marginTop: '3mm', fontSize: '11px' }}>
-                <div><span style={{ color: '#64748b' }}>Ventas Efectivo: </span><span style={{ fontWeight: 'bold' }}>{fmt(selectedSessionData.summary.paymentBreakdown?.CASH || 0)}</span></div>
-                <div><span style={{ color: '#64748b' }}>Egresos/Gastos: </span><span style={{ fontWeight: 'bold', color: '#ef4444' }}>-{fmt(selectedSessionData.summary.cashExpense || 0)}</span></div>
-                <div><span style={{ color: '#1e293b', fontWeight: 'bold' }}>Total Esperado: </span><span style={{ fontWeight: 'bold' }}>{fmt(selectedSession.closingAmountExpected || 0)}</span></div>
-                <div><span style={{ color: '#e11d48', fontWeight: 'bold' }}>Total Contado: </span><span style={{ fontWeight: 'bold', color: '#e11d48' }}>{fmt(selectedSessionData.summary.countedCash || 0)}</span></div>
-              </div>
-            </div>
-
-            {/* B: Arqueo Virtual y Posnets */}
-            <div style={{ marginBottom: '8mm' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', paddingBottom: '2mm', marginBottom: '4mm' }}>Sección B: Tarjetas y Cuentas Virtuales</h3>
-              <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
-                    <th style={{ textAlign: 'left', padding: '6px' }}>Medio de Pago</th>
-                    <th style={{ textAlign: 'right', padding: '6px' }}>Esperado Sistema</th>
-                    <th style={{ textAlign: 'right', padding: '6px' }}>Declarado Físico</th>
-                    <th style={{ textAlign: 'right', padding: '6px' }}>Diferencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                    <td style={{ padding: '6px', fontWeight: 'bold' }}>Clover (Posnet)</td>
-                    <td style={{ padding: '6px', textAlign: 'right' }}>{fmt(selectedSessionData.summary.paymentBreakdown?.CLOVER || 0)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(selectedSessionData.metadata.virtualClover || 0)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: (selectedSessionData.metadata.virtualClover - (selectedSessionData.summary.paymentBreakdown?.CLOVER || 0)) >= 0 ? '#10b981' : '#ef4444' }}>{fmt(selectedSessionData.metadata.virtualClover - (selectedSessionData.summary.paymentBreakdown?.CLOVER || 0))}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                    <td style={{ padding: '6px', fontWeight: 'bold' }}>MercadoPago (Caja 1 y 2)</td>
-                    <td style={{ padding: '6px', textAlign: 'right' }}>{fmt(selectedSessionData.summary.paymentBreakdown?.MERCADOPAGO || 0)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(selectedSessionData.metadata.virtualMP1 + selectedSessionData.metadata.virtualMP2)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: ((selectedSessionData.metadata.virtualMP1 + selectedSessionData.metadata.virtualMP2) - (selectedSessionData.summary.paymentBreakdown?.MERCADOPAGO || 0)) >= 0 ? '#10b981' : '#ef4444' }}>{fmt((selectedSessionData.metadata.virtualMP1 + selectedSessionData.metadata.virtualMP2) - (selectedSessionData.summary.paymentBreakdown?.MERCADOPAGO || 0))}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                    <td style={{ padding: '6px', fontWeight: 'bold' }}>Cuenta Corriente (A Crédito)</td>
-                    <td style={{ padding: '6px', textAlign: 'right' }}>{fmt(selectedSessionData.summary.paymentBreakdown?.DEBT || 0)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>-</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#64748b' }}>No Afecta Caja</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* C: Conciliación General y Firmas */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8mm', marginTop: '6mm', borderTop: '2px solid #334155', paddingTop: '6mm' }}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '11px', fontWeight: 'bold', color: '#1e293b', textTransform: 'uppercase' }}>Observaciones del Cierre</h4>
-                <p style={{ margin: '2mm 0 0 0', fontSize: '10px', color: '#475569', fontStyle: 'italic', background: '#f8fafc', padding: '3mm', borderRadius: '2mm', minHeight: '15mm', border: '1px solid #f1f5f9' }}>{selectedSessionData.notesClean || 'Sin observaciones registradas para este turno.'}</p>
-              </div>
-              <div style={{ background: '#f8fafc', padding: '4mm', borderRadius: '4mm', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2.5mm', fontSize: '11px' }}>
-                  <span style={{ fontWeight: 'bold', color: '#64748b' }}>TOTAL ESPERADO:</span>
-                  <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{fmt(selectedSession.closingAmountExpected || 0)}</span>
+                    </thead>
+                    <tbody style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      {denominations.map((den) => {
+                        const qty = selectedSessionData.metadata.bills[den] || 0;
+                        return (
+                          <tr key={den} style={{ borderBottom: '1px solid #f8fafc' }}>
+                            <td style={{ padding: '4px', fontWeight: 'bold' }}>$ {den.toLocaleString()}</td>
+                            <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: qty > 0 ? '#1e293b' : '#cbd5e1' }}>{qty}</td>
+                            <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(den * qty)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1mm', marginTop: '3mm', fontSize: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Ventas Efectivo:</span> <span style={{ fontWeight: 'bold' }}>{fmt(cashSales)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Egresos/Gastos:</span> <span style={{ fontWeight: 'bold', color: '#ef4444' }}>-{fmt(expenses)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Retiros a Caja Fuerte:</span> <span style={{ fontWeight: 'bold', color: '#ef4444' }}>-{fmt(withdrawals)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#1e293b', fontWeight: 'bold' }}>Total Esperado:</span> <span style={{ fontWeight: 'bold' }}>{fmt(selectedSession.closingAmountExpected || 0)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '1mm' }}><span style={{ color: '#e11d48', fontWeight: 'bold' }}>Total Contado:</span> <span style={{ fontWeight: 'bold', color: '#e11d48' }}>{fmt(countedCash)}</span></div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3.5mm', fontSize: '11px' }}>
-                  <span style={{ fontWeight: 'bold', color: '#64748b' }}>TOTAL DECLARADO:</span>
-                  <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{fmt(selectedSession.closingAmountCounted || 0)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #e11d48', paddingTop: '3mm', fontSize: '14px', fontWeight: 'bold' }}>
-                  <span style={{ color: '#e11d48' }}>DESVIACIÓN NETO:</span>
-                  <span style={{ color: selectedSession.difference === 0 ? '#10b981' : '#ef4444' }}>{selectedSession.difference > 0 ? '+' : ''}{fmt(selectedSession.difference || 0)}</span>
+
+                {/* B: Arqueo Virtual y Posnets */}
+                <div>
+                  <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', paddingBottom: '2mm', marginBottom: '3mm' }}>Sección B: Tarjetas y Cuentas</h3>
+                  <table style={{ width: '100%', fontSize: '10px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                        <th style={{ textAlign: 'left', padding: '4px' }}>Medio de Pago</th>
+                        <th style={{ textAlign: 'right', padding: '4px' }}>Esperado</th>
+                        <th style={{ textAlign: 'right', padding: '4px' }}>Declarado</th>
+                        <th style={{ textAlign: 'right', padding: '4px' }}>Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <td style={{ padding: '4px', fontWeight: 'bold' }}>Clover (Posnet)</td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fmt(cloverSales)}</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(cloverDeclared)}</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: (cloverDeclared - cloverSales) >= 0 ? '#10b981' : '#ef4444' }}>{fmt(cloverDeclared - cloverSales)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <td style={{ padding: '4px', fontWeight: 'bold' }}>MercadoPago (Caja 1 y 2)</td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fmt(mpSales)}</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(mpDeclared)}</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: (mpDeclared - mpSales) >= 0 ? '#10b981' : '#ef4444' }}>{fmt(mpDeclared - mpSales)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <td style={{ padding: '4px', fontWeight: 'bold' }}>
+                          Cuenta Corriente
+                          <div style={{ fontSize: '8px', color: '#94a3b8', fontStyle: 'italic', fontWeight: 'normal', marginTop: '0.5mm' }}>* Se registra aparte, no afecta el arqueo</div>
+                        </td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fmt(debtSales)}</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold' }}>-</td>
+                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: '#64748b' }}>N/A</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </div>
 
-            <div style={{ marginTop: '20mm', display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', color: '#64748b' }}>
-              <div style={{ borderTop: '2px solid #cbd5e1', width: '60mm', textAlign: 'center', paddingTop: '2.5mm' }}>Firma Cajero</div>
-              <div style={{ borderTop: '2px solid #cbd5e1', width: '60mm', textAlign: 'center', paddingTop: '2.5mm' }}>Firma Dueño / Supervisor</div>
+              {/* C: Egresos de Dinero y Movimientos */}
+              <div style={{ marginBottom: '6mm' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', paddingBottom: '2mm', marginBottom: '2mm' }}>Sección C: Egresos de Dinero y Movimientos</h3>
+                {(!selectedSession.cashMovements || selectedSession.cashMovements.length === 0) ? (
+                  <div style={{ padding: '4mm', background: '#f8fafc', borderRadius: '2mm', border: '1px solid #f1f5f9', fontSize: '10px', color: '#64748b', fontStyle: 'italic', textAlign: 'center' }}>
+                    No se registraron egresos ni movimientos de dinero durante este turno.
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', fontSize: '10px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                        <th style={{ textAlign: 'left', padding: '4px' }}>Tipo</th>
+                        <th style={{ textAlign: 'left', padding: '4px' }}>Descripción (Motivo)</th>
+                        <th style={{ textAlign: 'right', padding: '4px' }}>Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSession.cashMovements.map((m: any) => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                          <td style={{ padding: '4px', fontWeight: 'bold', color: m.type === 'INCOME' ? '#10b981' : '#ef4444' }}>
+                            {m.type === 'INCOME' ? 'INGRESO' : m.type === 'EXPENSE' ? 'GASTO / PAGO' : 'RETIRO'}
+                          </td>
+                          <td style={{ padding: '4px', color: '#475569' }}>{m.description || 'Sin descripción'}</td>
+                          <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: m.type === 'INCOME' ? '#10b981' : '#ef4444' }}>
+                            {m.type === 'INCOME' ? '+' : '-'}{fmt(m.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* D: Conciliación General */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8mm', marginTop: 'auto', borderTop: '2px solid #334155', paddingTop: '6mm' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '11px', fontWeight: 'bold', color: '#1e293b', textTransform: 'uppercase' }}>Observaciones del Cierre</h4>
+                  <p style={{ margin: '2mm 0 0 0', fontSize: '10px', color: '#475569', fontStyle: 'italic', background: '#f8fafc', padding: '3mm', borderRadius: '2mm', minHeight: '15mm', border: '1px solid #f1f5f9' }}>{selectedSessionData.notesClean || 'Sin observaciones registradas para este turno.'}</p>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '4mm', borderRadius: '4mm', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2.5mm', fontSize: '11px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 'bold', color: '#64748b' }}>TOTAL ESPERADO:</span>
+                      <span style={{ fontSize: '8px', color: '#94a3b8' }}>(Efectivo + Posnets)</span>
+                    </div>
+                    <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{fmt(totalExpected)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3.5mm', fontSize: '11px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 'bold', color: '#64748b' }}>TOTAL DECLARADO:</span>
+                      <span style={{ fontSize: '8px', color: '#94a3b8' }}>(Billetes + Posnets)</span>
+                    </div>
+                    <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{fmt(totalDeclared)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #e11d48', paddingTop: '3mm', fontSize: '14px', fontWeight: 'bold' }}>
+                    <span style={{ color: '#e11d48' }}>DESVIACIÓN NETO:</span>
+                    <span style={{ color: differenceTotal === 0 ? '#10b981' : '#ef4444' }}>{differenceTotal > 0 ? '+' : ''}{fmt(differenceTotal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '20mm', display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', color: '#64748b' }}>
+                <div style={{ borderTop: '2px solid #cbd5e1', width: '60mm', textAlign: 'center', paddingTop: '2.5mm' }}>Firma Cajero</div>
+                <div style={{ borderTop: '2px solid #cbd5e1', width: '60mm', textAlign: 'center', paddingTop: '2.5mm' }}>Firma Dueño / Supervisor</div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+      <AnimatePresence>
+        {zReportData && (
+          <CierreDiaModal
+            zReport={zReportData}
+            isHistory={isHistoryZReport}
+            onClose={() => {
+              setZReportData(null);
+              setIsHistoryZReport(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

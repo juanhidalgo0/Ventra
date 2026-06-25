@@ -336,7 +336,7 @@ export default function DashboardScreen() {
             <div>
               <p className="text-[9px] font-extrabold text-rose-600 uppercase tracking-widest leading-none">Modo de Evaluación Activo</p>
               <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</h4>
-              <p className="text-[10px] text-slate-500 font-semibold mt-1">Tu licencia DEMO vencerá pronto. Contáctate con soporte para adquirir una licencia definitiva.</p>
+              <p className="text-[10px] text-slate-700 font-semibold mt-1">Tu licencia DEMO vencerá pronto. Contáctate con soporte para adquirir una licencia definitiva.</p>
             </div>
           </div>
         </div>
@@ -369,7 +369,7 @@ export default function DashboardScreen() {
             )}
             <div>
               <p className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest leading-none">Sesión Corporativa de Google Activa</p>
-              <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">{localGoogleUser.name} <span className="text-xs font-semibold text-slate-400">({localGoogleUser.email})</span></h4>
+              <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">{localGoogleUser.name} <span className="text-xs font-semibold text-slate-600">({localGoogleUser.email})</span></h4>
               <p className="text-[10px] text-slate-455 font-semibold mt-1">Esta terminal está vinculada correctamente. Los productos se sincronizarán en tiempo real con GoDelivery.</p>
             </div>
           </div>
@@ -439,7 +439,7 @@ export default function DashboardScreen() {
       )}
 
       {/* Premium Period / Date Selector & Exports Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-white border border-slate-400 rounded-2xl p-3 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
           {/* Selector de modo */}
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto justify-between sm:justify-start">
@@ -454,7 +454,7 @@ export default function DashboardScreen() {
                 className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all cursor-pointer text-center ${
                   filterMode === mode.id 
                     ? 'bg-rose-500 text-white shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-800'
+                    : 'text-slate-700 hover:text-slate-800'
                 }`}
               >
                 {mode.label}
@@ -468,7 +468,7 @@ export default function DashboardScreen() {
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
               >
                 {months.map((m, idx) => (
                   <option key={m} value={idx}>{m}</option>
@@ -477,7 +477,7 @@ export default function DashboardScreen() {
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
               >
                 {years.map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -493,7 +493,7 @@ export default function DashboardScreen() {
                 type="date"
                 value={selectedDay}
                 onChange={(e) => setSelectedDay(e.target.value)}
-                className="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
+                className="w-full sm:w-auto bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
               />
             </div>
           )}
@@ -501,19 +501,19 @@ export default function DashboardScreen() {
           {/* Selector de Rango */}
           {filterMode === 'range' && (
             <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200 w-full sm:w-auto">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Desde</span>
+              <span className="text-[10px] font-bold text-slate-600 uppercase">Desde</span>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
+                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
               />
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Hasta</span>
+              <span className="text-[10px] font-bold text-slate-600 uppercase">Hasta</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
+                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
               />
             </div>
           )}
@@ -523,7 +523,7 @@ export default function DashboardScreen() {
         <div className="flex items-center gap-2 w-full lg:w-auto">
           <button
             onClick={exportConsolidatedExcel}
-            className="flex-1 lg:flex-none justify-center px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-2 active:scale-95 cursor-pointer"
+            className="flex-1 lg:flex-none justify-center px-3 py-2.5 rounded-xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-2 active:scale-95 cursor-pointer"
             title="Descargar Excel con todos los datos consolidados del período"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" />
@@ -575,13 +575,13 @@ export default function DashboardScreen() {
 
       {/* Main Stats Row */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-slate-200 relative overflow-hidden">
+        <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-slate-400 relative overflow-hidden">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-rose-500" /> Análisis Financiero
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-1">Ganancias y egresos acumulados</p>
+              <p className="text-xs text-slate-700 font-medium mt-1">Ganancias y egresos acumulados</p>
             </div>
             <div className="text-xs font-bold text-slate-650 bg-slate-50 border border-slate-150 px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
               <Calendar className="w-3.5 h-3.5 text-rose-500" />
@@ -619,17 +619,17 @@ export default function DashboardScreen() {
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Ingresos por POS</span>
+              <span className="text-[10px] font-bold text-slate-700 uppercase">Ingresos por POS</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Ganancia Estimada</span>
+              <span className="text-[10px] font-bold text-slate-700 uppercase">Ganancia Estimada</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-5 border-b border-slate-100 pb-3">Resumen Financiero</h3>
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-5 border-b border-slate-300 pb-3">Resumen Financiero</h3>
           <div className="space-y-5 flex-1">
             {[
               { label: 'Ganancia Bruta', val: fmt(summary?.totalRevenue || 0), color: 'text-emerald-600', icon: ArrowUpRight, bg: 'bg-emerald-50 border border-emerald-200' },
@@ -649,7 +649,7 @@ export default function DashboardScreen() {
                     <item.icon className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">{item.label}</p>
+                    <p className="text-[10px] font-medium text-slate-700 uppercase tracking-wider">{item.label}</p>
                     <p className={`text-sm font-bold ${item.color}`}>{item.val}</p>
                   </div>
                 </div>
@@ -662,10 +662,10 @@ export default function DashboardScreen() {
       {/* Grid Sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Resumen del Mes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200">
+        <div className="bg-white p-5 rounded-xl border border-slate-400">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-5 flex items-center justify-between">
             <span>Resumen del Mes</span>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+            <ChevronDown className="w-4 h-4 text-slate-600" />
           </h3>
           <div className="space-y-3">
             {[
@@ -676,7 +676,7 @@ export default function DashboardScreen() {
               { label: 'Ventas por Cajas', icon: Calculator, color: 'text-blue-600', value: fmt(summary?.monthlyStats?.boxSales) },
               { label: 'Consumo Interno', icon: ShoppingCart, color: 'text-orange-600', value: fmt(summary?.monthlyStats?.internalConsumption) }
             ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between text-xs text-slate-500 border-b border-slate-100 pb-3 last:border-0">
+              <div key={item.label} className="flex items-center justify-between text-xs text-slate-700 border-b border-slate-300 pb-3 last:border-0">
                 <div className="flex items-center gap-2.5">
                   <item.icon className={`w-4 h-4 ${item.color}`} />
                   <span className="font-medium">{item.label}</span>
@@ -688,17 +688,17 @@ export default function DashboardScreen() {
         </div>
 
         {/* Top 10 Clientes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col overflow-hidden h-[340px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col overflow-hidden h-[340px]">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 w-full text-left flex items-center gap-2 shrink-0">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Top Clientes
           </h3>
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3.5">
             {(!dashboardData?.topClients || dashboardData.topClients.length === 0) ? (
               <div className="py-12 text-center my-auto flex flex-col items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-200">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-400">
                   <Users className="w-5 h-5 text-slate-405" />
                 </div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sin ventas a cuenta corriente hoy</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Sin ventas a cuenta corriente hoy</p>
               </div>
             ) : (
               dashboardData.topClients.map((client: any, i: number) => (
@@ -709,7 +709,7 @@ export default function DashboardScreen() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-slate-800 truncate">{client.name}</p>
-                      <p className="text-[9px] text-slate-400 font-semibold">{client.salesCount} compras</p>
+                      <p className="text-[9px] text-slate-600 font-semibold">{client.salesCount} compras</p>
                     </div>
                   </div>
                   <span className="font-extrabold text-slate-800 shrink-0">{fmt(client.totalSpent)}</span>
@@ -720,17 +720,17 @@ export default function DashboardScreen() {
         </div>
 
         {/* Top Productos */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col overflow-hidden h-[340px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col overflow-hidden h-[340px]">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 w-full text-left flex items-center gap-2 shrink-0">
             <div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Top Productos
           </h3>
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
             {(!dashboardData?.topProducts || dashboardData.topProducts.length === 0) ? (
               <div className="py-12 text-center my-auto flex flex-col items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-200">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-400">
                   <Package className="w-5 h-5 text-slate-405" />
                 </div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sin ventas registradas en el periodo</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Sin ventas registradas en el periodo</p>
               </div>
             ) : (
               dashboardData.topProducts.map((p: any, i: number) => (
@@ -741,12 +741,12 @@ export default function DashboardScreen() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-slate-800 truncate" title={p.name}>{p.name}</p>
-                      <p className="text-[9px] text-slate-400 font-semibold">{p.quantity} unidades vendidas</p>
+                      <p className="text-[9px] text-slate-600 font-semibold">{p.quantity} unidades vendidas</p>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <span className="font-extrabold text-slate-800 block">{fmt(p.revenue)}</span>
-                    <span className="text-[9px] text-slate-400 block font-medium">Stock: {p.stock}</span>
+                    <span className="text-[9px] text-slate-600 block font-medium">Stock: {p.stock}</span>
                   </div>
                 </div>
               ))
@@ -758,9 +758,9 @@ export default function DashboardScreen() {
       {/* More Grid Sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Rentabilidad */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col justify-between h-[180px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center justify-between shrink-0">
-            Margen Comercial <ChevronDown className="w-4 h-4 text-slate-400" />
+            Margen Comercial <ChevronDown className="w-4 h-4 text-slate-600" />
           </h3>
           <div className="flex items-center gap-4 py-2">
             <div className="w-14 h-14 rounded-2xl border-4 border-emerald-100 flex items-center justify-center shrink-0 relative bg-emerald-50">
@@ -770,34 +770,34 @@ export default function DashboardScreen() {
               <p className="text-base font-extrabold text-emerald-600 tracking-tight leading-none">
                 {summary?.totalRevenue > 0 ? Math.round((summary.netProfit / summary.totalRevenue) * 100) : 0}%
               </p>
-              <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Margen Operativo de Hoy</p>
-              <p className="text-[10px] text-slate-500 font-medium leading-tight mt-1">Refleja la ganancia neta sobre la facturación bruta actual.</p>
+              <p className="text-[9.5px] font-bold text-slate-600 uppercase tracking-wider mt-1.5">Margen Operativo de Hoy</p>
+              <p className="text-[10px] text-slate-700 font-medium leading-tight mt-1">Refleja la ganancia neta sobre la facturación bruta actual.</p>
             </div>
           </div>
         </div>
 
         {/* Cuentas Corrientes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col justify-between h-[180px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 shrink-0">Cuentas Corrientes</h3>
           <div className="space-y-1">
             <h4 className="text-2xl font-black text-rose-650 tracking-tight">{fmt(summary?.totalClientBalance || 0)}</h4>
-            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Saldo Pendiente de Clientes</p>
-            <p className="text-[10.5px] text-slate-500 font-medium leading-tight">Total acumulado de deudas de clientes activos en cuenta corriente.</p>
+            <p className="text-[10px] text-slate-600 font-extrabold uppercase tracking-wider">Saldo Pendiente de Clientes</p>
+            <p className="text-[10.5px] text-slate-700 font-medium leading-tight">Total acumulado de deudas de clientes activos en cuenta corriente.</p>
           </div>
         </div>
 
         {/* Control de Caja */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col justify-between h-[180px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 shrink-0">Control de Caja</h3>
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <span className={`w-2 h-2 rounded-full ${summary?.activeSessionsCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-              <span className={`text-[10px] font-extrabold uppercase tracking-wider ${summary?.activeSessionsCount > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider ${summary?.activeSessionsCount > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
                 {summary?.activeSessionsCount > 0 ? `${summary.activeSessionsCount} Caja(s) Activa(s)` : 'Caja Cerrada'}
               </span>
             </div>
             <h4 className="text-2xl font-black text-slate-800 tracking-tight">{fmt(summary?.activeSessionsCash || 0)}</h4>
-            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider mt-1">Efectivo Físico en Caja</p>
+            <p className="text-[10px] text-slate-600 font-extrabold uppercase tracking-wider mt-1">Efectivo Físico en Caja</p>
           </div>
         </div>
       </div>
@@ -805,11 +805,11 @@ export default function DashboardScreen() {
       {/* Final Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Deuda Proveedores */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 flex items-center justify-between h-[150px]">
+        <div className="bg-white p-5 rounded-xl border border-slate-400 flex items-center justify-between h-[150px]">
           <div className="min-w-0 flex-1 pr-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Deuda Proveedores</h3>
             <h4 className="text-2xl font-black text-rose-650 tracking-tight">{fmt(summary?.totalSupplierDebt || 0)}</h4>
-            <p className="text-[9.5px] text-slate-400 font-extrabold uppercase tracking-wider mt-1.5">Saldos Pendientes de Compras</p>
+            <p className="text-[9.5px] text-slate-600 font-extrabold uppercase tracking-wider mt-1.5">Saldos Pendientes de Compras</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shrink-0 shadow-inner">
             <Truck className="w-6 h-6" />
@@ -822,7 +822,7 @@ export default function DashboardScreen() {
           className={`p-5 rounded-xl border flex items-center justify-between h-[150px] cursor-pointer hover:shadow-md transition-all active:scale-[0.98] ${
             summary?.lowStockCount > 0 
               ? 'bg-amber-50/50 border-amber-250' 
-              : 'bg-white border-slate-200'
+              : 'bg-white border-slate-400'
           }`}
         >
           <div className="min-w-0 flex-1 pr-3">
@@ -840,7 +840,7 @@ export default function DashboardScreen() {
                 </>
               )}
             </div>
-            <p className="text-[9.5px] text-slate-400 font-semibold mt-2.5">
+            <p className="text-[9.5px] text-slate-600 font-semibold mt-2.5">
               {summary?.lowStockCount > 0 ? 'Haz clic para ver y reabastecer' : 'Todos los productos tienen stock suficiente'}
             </p>
           </div>
@@ -853,13 +853,13 @@ export default function DashboardScreen() {
       </div>
 
       {/* Feed de Actividad Reciente */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 flex flex-col overflow-hidden">
-        <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-widest mb-6 w-full text-left flex items-center gap-2 border-b border-slate-100 pb-3">
+      <div className="bg-white p-6 rounded-xl border border-slate-400 flex flex-col overflow-hidden">
+        <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-widest mb-6 w-full text-left flex items-center gap-2 border-b border-slate-300 pb-3">
           <Clock className="w-4 h-4 text-rose-500 animate-pulse" /> Actividad Reciente del Sistema
         </h3>
         <div className="space-y-4 text-left w-full">
           {(!summary?.latestMovements || summary.latestMovements.length === 0) ? (
-            <div className="py-8 text-center text-slate-400">
+            <div className="py-8 text-center text-slate-600">
               <p className="text-xs font-semibold">Sin movimientos registrados hoy</p>
             </div>
           ) : (
@@ -884,12 +884,12 @@ export default function DashboardScreen() {
                     <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
                     <div>
                       <p className="font-bold text-slate-700">{desc}</p>
-                      <p className="text-[9.5px] text-slate-400 mt-0.5">
-                        Por <span className="font-semibold text-slate-500">{log.user?.fullName || log.user?.username || 'Sistema'}</span>
+                      <p className="text-[9.5px] text-slate-600 mt-0.5">
+                        Por <span className="font-semibold text-slate-700">{log.user?.fullName || log.user?.username || 'Sistema'}</span>
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-150">
+                  <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-150">
                     {date} {time}
                   </span>
                 </div>

@@ -87,7 +87,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         initial={{ scale: 0.98, opacity: 0 }} 
         animate={{ scale: 1, opacity: 1 }} 
         exit={{ scale: 0.98, opacity: 0 }}
-        className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl border border-slate-400 overflow-hidden flex flex-col max-h-[92vh]"
       >
         <style>{`
           @media print {
@@ -118,7 +118,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         `}</style>
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
+        <div className="px-6 py-4 border-b border-slate-300 flex items-center justify-between shrink-0 bg-white">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-5 h-5" />
@@ -130,20 +130,20 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                   {products.length} Críticos
                 </span>
               </h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Control de reabastecimiento en tiempo real</p>
+              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Control de reabastecimiento en tiempo real</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <button 
               onClick={loadLowStockProducts} 
-              className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all text-slate-500 hover:text-slate-700 active:scale-95"
+              className="p-2.5 rounded-xl border border-slate-400 hover:bg-slate-50 transition-all text-slate-700 hover:text-slate-700 active:scale-95"
               title="Refrescar lista"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button 
               onClick={onClose} 
-              className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-rose-500 transition-all"
+              className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-600 hover:text-rose-500 transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -151,7 +151,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         </div>
 
         {/* Search and Quick Filters */}
-        <div className="px-6 py-4.5 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="px-6 py-4.5 bg-slate-50/50 border-b border-slate-300 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-455" />
             <input 
@@ -159,12 +159,12 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
               placeholder="Buscar por producto, código o proveedor..." 
-              className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-amber-400 transition-all"
+              className="w-full bg-white border border-slate-400 rounded-xl pl-11 pr-4 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-amber-400 transition-all"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')} 
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-650"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600 hover:text-slate-650"
               >
                 Clear
               </button>
@@ -175,9 +175,9 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
             <button 
               onClick={handlePrintDraft}
               disabled={filteredProducts.length === 0}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-bold text-xs flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+              className="px-5 py-2.5 rounded-xl border border-slate-400 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-bold text-xs flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
             >
-              <Printer className="w-4 h-4 text-slate-500" /> Imprimir Hoja de Compras
+              <Printer className="w-4 h-4 text-slate-700" /> Imprimir Hoja de Compras
             </button>
           </div>
         </div>
@@ -185,7 +185,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         {/* Content Panel */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/30">
           {isLoading ? (
-            <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3">
+            <div className="py-24 flex flex-col items-center justify-center text-slate-600 gap-3">
               <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
               <p className="text-xs font-bold uppercase tracking-widest">Cargando alertas de inventario...</p>
             </div>
@@ -195,13 +195,13 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                 <Check className="w-8 h-8" />
               </div>
               <h4 className="text-base font-bold text-slate-800 mb-1">Todo en Balance</h4>
-              <p className="text-xs text-slate-400 font-medium leading-relaxed">No se encontraron productos con stock crítico bajo los filtros ingresados.</p>
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">No se encontraron productos con stock crítico bajo los filtros ingresados.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200/85 overflow-hidden shadow-sm">
+            <div className="bg-white rounded-xl border border-slate-400/85 overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-300">
                     <th className="py-3.5 px-4 w-[40%]">Producto / Categoría</th>
                     <th className="py-3.5 px-4 text-center">Stock Actual</th>
                     <th className="py-3.5 px-4 text-center">Mín. Requerido</th>
@@ -218,12 +218,12 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                     const isZero = p.stock === 0;
 
                     return (
-                      <tr key={p.id} className="border-b border-slate-100/70 hover:bg-slate-50/40 transition-colors font-medium">
+                      <tr key={p.id} className="border-b border-slate-300/70 hover:bg-slate-50/40 transition-colors font-medium">
                         {/* Info */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             {p.imageUrl ? (
-                              <img src={p.imageUrl} className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" alt="" />
+                              <img src={p.imageUrl} className="w-10 h-10 rounded-lg object-cover border border-slate-400 shrink-0" alt="" />
                             ) : (
                               <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0 border border-amber-100">
                                 {p.name[0]?.toUpperCase()}
@@ -239,7 +239,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                                   {p.category?.name || 'Sin Cat.'}
                                 </span>
                                 {p.barcode && (
-                                  <span className="text-[9px] text-slate-400 font-mono tracking-tight bg-slate-100 px-1.5 py-0.2 rounded border border-slate-150">
+                                  <span className="text-[9px] text-slate-600 font-mono tracking-tight bg-slate-100 px-1.5 py-0.2 rounded border border-slate-150">
                                     {p.barcode}
                                   </span>
                                 )}
@@ -282,7 +282,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                         </td>
 
                         {/* Minimum Required */}
-                        <td className="py-3.5 px-4 text-center text-slate-500 font-bold">
+                        <td className="py-3.5 px-4 text-center text-slate-700 font-bold">
                           {p.minStock} {p.unit || 'U'}
                         </td>
 
@@ -294,7 +294,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                                 <Truck className="w-3.5 h-3.5 text-indigo-500" /> {p.supplier.name}
                               </span>
                               {p.supplier.phone && (
-                                <span className="text-[10px] text-slate-400 font-semibold tracking-tight">
+                                <span className="text-[10px] text-slate-600 font-semibold tracking-tight">
                                   📞 {p.supplier.phone}
                                 </span>
                               )}
@@ -306,7 +306,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
 
                         {/* Prices */}
                         <td className="py-3.5 px-4 text-right">
-                          <p className="text-slate-400 font-semibold text-[10px]">Costo: {formatPrice(p.costPrice)}</p>
+                          <p className="text-slate-600 font-semibold text-[10px]">Costo: {formatPrice(p.costPrice)}</p>
                           <p className="font-extrabold text-rose-600 text-xs mt-0.5">Venta: {formatPrice(p.salePrice)}</p>
                         </td>
 
@@ -324,7 +324,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                               </button>
                               <button 
                                 onClick={() => setEditingId(null)}
-                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg border border-slate-250 transition-all active:scale-90"
+                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-250 transition-all active:scale-90"
                                 title="Cancelar"
                               >
                                 <X className="w-4 h-4" />
@@ -333,7 +333,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                           ) : (
                             <button 
                               onClick={() => handleStartEdit(p)}
-                              className="px-3 py-1.5 bg-slate-50 hover:bg-amber-50 hover:text-amber-700 text-slate-500 rounded-xl border border-slate-200 hover:border-amber-300 transition-all font-bold text-[10px] uppercase flex items-center justify-center gap-1 mx-auto active:scale-95 cursor-pointer"
+                              className="px-3 py-1.5 bg-slate-50 hover:bg-amber-50 hover:text-amber-700 text-slate-700 rounded-xl border border-slate-400 hover:border-amber-300 transition-all font-bold text-[10px] uppercase flex items-center justify-center gap-1 mx-auto active:scale-95 cursor-pointer"
                               title="Ajustar Stock Rápido"
                             >
                               <Pencil className="w-3 h-3" /> Ajustar
@@ -350,8 +350,8 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-300 flex items-center justify-between shrink-0">
+          <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
             Mostrando {filteredProducts.length} de {products.length} alertas registradas
           </p>
           <button 

@@ -168,7 +168,7 @@ export default function MainLayout({ children }: Props) {
           </motion.div>
 
           <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none mb-3">Sin Conexión con el Servidor</h2>
-          <p className="text-slate-500 text-xs leading-relaxed mb-8">
+          <p className="text-slate-700 text-xs leading-relaxed mb-8">
             El Punto de Venta no pudo comunicarse con el servicio local de base de datos. Por favor, asegúrate de que el motor del backend se esté ejecutando y no esté bloqueado por el cortafuegos.
           </p>
 
@@ -220,7 +220,7 @@ export default function MainLayout({ children }: Props) {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-              className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-rose-600 flex items-center justify-center shadow-inner"
+              className="w-12 h-12 rounded-full border-4 border-slate-400 border-t-rose-600 flex items-center justify-center shadow-inner"
             />
             <div className="h-6 flex items-center justify-center overflow-hidden mt-6 min-w-[280px]">
               <AnimatePresence mode="wait">
@@ -230,7 +230,7 @@ export default function MainLayout({ children }: Props) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.35, ease: "easeInOut" }}
-                  className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block text-center"
+                  className="text-[10px] font-bold text-slate-600 uppercase tracking-widest block text-center"
                 >
                   {loadingMessages[messageIndex]}
                 </motion.span>
@@ -243,7 +243,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   return (
-    <div className="h-screen w-full flex bg-slate-100 overflow-hidden relative">
+    <div className="h-screen w-full flex bg-slate-100 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300">
       {!isPOS && (
         <>
           {/* Backdrop mask for mobile menu */}
@@ -278,11 +278,11 @@ export default function MainLayout({ children }: Props) {
       <div className="flex-1 min-w-0 flex flex-col h-full relative overflow-hidden">
         {/* TopBar */}
         {!isPOS && (
-          <header className="h-14 bg-white border-b border-slate-200 px-4 md:px-5 flex items-center justify-between shrink-0 sticky top-0 z-40">
+          <header className="h-14 bg-white border-b border-slate-400 px-4 md:px-5 flex items-center justify-between shrink-0 sticky top-0 z-40">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowMobileMenu(true)}
-              className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg focus:outline-none"
+              className="md:hidden p-1.5 -ml-1 text-slate-700 hover:text-slate-700 hover:bg-slate-50 rounded-lg focus:outline-none"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -291,14 +291,14 @@ export default function MainLayout({ children }: Props) {
           <div className="flex-1 max-w-lg px-2 sm:px-6">
             <div className="relative group flex items-center w-full">
               <div className="absolute left-3 flex items-center justify-center pointer-events-none">
-                <Search className="w-4 h-4 text-slate-400 group-focus-within:text-rose-500 transition-colors" />
+                <Search className="w-4 h-4 text-slate-600 group-focus-within:text-rose-500 transition-colors" />
               </div>
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar..."
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none placeholder:text-slate-400"
+                className="w-full bg-slate-50 border border-slate-400 text-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none placeholder:text-slate-600"
               />
             </div>
           </div>
@@ -329,7 +329,7 @@ export default function MainLayout({ children }: Props) {
         )}
 
         {/* Content Area */}
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-4 bg-slate-100 relative flex flex-col">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-4 bg-slate-100 dark:bg-slate-950 relative flex flex-col">
           {showUpdate && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mx-2 mb-3 p-3 bg-rose-600 rounded-xl flex items-center justify-between z-50">
               <div className="flex items-center gap-3 text-white">

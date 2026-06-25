@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "GO! Portal",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.godelivery.pos",
   "build": {
     "frontendDist": "../apps/frontend/dist",
     "devUrl": "http://localhost:5180",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeDevCommand": "node -e \"require(require('fs').existsSync('cleanup-backend.js')?'./cleanup-backend.js':'../cleanup-backend.js')\"",
+    "beforeBuildCommand": "node -e \"require(require('fs').existsSync('cleanup-backend.js')?'./cleanup-backend.js':'../cleanup-backend.js')\""
   },
   "app": {
     "windows": [
@@ -25,6 +25,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/juanhidalgo0/GoPortal/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3ODRCRTY2M0I1RkFFNTcKUldSWHJsODdacjZFRjk0MUlYM2ZvTFRZOTh3eWt2TU9QSDBvM29FZXJuVVZ0LzdtTWR2Q3VxR2wK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
@@ -38,7 +46,8 @@
     "resources": [
       "../apps/backend/dist/ncc",
       "../apps/backend/prisma/dev.db",
-      "../apps/backend/bin/*"
+      "../apps/backend/bin/*",
+      "../apps/frontend/dist"
     ]
   }
 }

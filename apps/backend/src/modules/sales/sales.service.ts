@@ -41,7 +41,7 @@ export class SalesService {
         if (!product.isActive) throw new BadRequestException(`Producto inactivo: ${product.name}`);
         // Removed stock check to allow negative stock sales as per user request
 
-        const unitPrice = (product.allowCustomPrice && item.price !== undefined) ? item.price : product.salePrice;
+        const unitPrice = item.price !== undefined ? item.price : product.salePrice;
         const itemSubtotal = unitPrice * item.quantity;
         const itemDiscount = item.discount || 0;
         const itemTotal = itemSubtotal - itemDiscount;
@@ -56,10 +56,10 @@ export class SalesService {
           await tx.inventoryMovement.create({ data: { productId: product.id, userId, type: 'SALE', quantity: -item.quantity, stockBefore, stockAfter: newStock, reference: 'Venta POS' } });
         }
 
-        if (product.barcode && !product.unlimitedStock) {
+        if (!product.unlimitedStock) {
           const currentStock = product.unlimitedStock ? product.stock : (product.stock - item.quantity);
           productsToSync.push({
-            barcode: product.barcode,
+            barcode: product.barcode || product.id,
             newStock: currentStock,
             salePrice: product.salePrice,
           });
@@ -204,9 +204,9 @@ export class SalesService {
         await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
         await tx.inventoryMovement.create({ data: { productId: item.productId, userId, type: 'RETURN', quantity: item.quantity, stockBefore, stockAfter: newStock, reference: `Cancelación venta #${sale.saleNumber}` } });
         
-        if (product && product.barcode) {
+        if (product) {
           productsToSync.push({
-            barcode: product.barcode,
+            barcode: product.barcode || product.id,
             newStock,
             salePrice: product.salePrice,
           });
@@ -513,4 +513,168 @@ export class SalesService {
       topClients: Object.values(topClients).sort((a: any, b: any) => b.totalSpent - a.totalSpent).slice(0, 10),
     };
   }
+
+  async getGoDeliveryMetrics(email: string, from?: string, to?: string) {
+    const rawOrders = (await this.firebaseSync.getRawOrders(email)) as any[];
+    
+    // Filter by completed/delivered status
+    let filteredOrders = rawOrders.filter(o => 
+      o.status === 'completed' || o.status === 'delivered' || o.status === 'entregado'
+    );
+
+    // Filter by date range if provided
+    if (from) {
+      const fromDate = new Date(from);
+      filteredOrders = filteredOrders.filter(o => new Date(o.createdAt) >= fromDate);
+    }
+    if (to) {
+      const toDate = new Date(to);
+      filteredOrders = filteredOrders.filter(o => new Date(o.createdAt) <= toDate);
+    }
+
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalCommissions = 0;
+    let totalDelivery = 0;
+    const chartData: Record<string, { date: string; sales: number; profit: number; count: number }> = {};
+    const detailedOrders: any[] = [];
+
+    // Pre-cache local products cost price for faster matching
+    const localProducts = await this.prisma.product.findMany({
+      where: { isActive: true },
+      include: { additionalBarcodes: true }
+    });
+
+    for (const order of filteredOrders) {
+      const subtotal = order.subtotal || (order.total - (order.deliveryCost || 0) - (order.appUsageFee || 0));
+      totalRevenue += subtotal;
+      totalCommissions += order.appUsageFee || 0;
+      totalDelivery += order.deliveryCost || 0;
+
+      let orderCost = 0;
+      const parsedItems = (order.items || []).map((item: any) => {
+        // Match product in cache
+        const matchedProduct = localProducts.find(p => 
+          p.id === item.barcode ||
+          p.barcode === item.barcode || 
+          p.name === item.name?.toUpperCase() ||
+          p.additionalBarcodes?.some(ab => ab.barcode === item.barcode)
+        );
+
+        const costPrice = matchedProduct ? matchedProduct.costPrice : 0;
+        const itemQty = item.qty || item.quantity || 1;
+        const itemPrice = item.price || 0;
+        const itemCost = costPrice * itemQty;
+        orderCost += itemCost;
+
+        return {
+          name: item.name,
+          qty: itemQty,
+          price: itemPrice,
+          cost: costPrice,
+          total: itemPrice * itemQty,
+          profit: (itemPrice - costPrice) * itemQty
+        };
+      });
+
+      totalCost += orderCost;
+      const orderProfit = subtotal - orderCost;
+
+      const dateKey = order.createdAt.split('T')[0];
+      if (!chartData[dateKey]) {
+        chartData[dateKey] = { date: dateKey, sales: 0, profit: 0, count: 0 };
+      }
+      chartData[dateKey].sales += subtotal;
+      chartData[dateKey].profit += orderProfit;
+      chartData[dateKey].count += 1;
+
+      detailedOrders.push({
+        id: order.id,
+        orderId: order.orderId,
+        clientName: order.clientName || order.userName || 'Cliente Web',
+        total: order.total,
+        subtotal: subtotal,
+        profit: orderProfit,
+        status: order.status,
+        createdAt: order.createdAt,
+        items: parsedItems
+      });
+    }
+
+    // Sort history chronologically
+    const history = Object.values(chartData).sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      totalRevenue,
+      totalCost,
+      netProfit: totalRevenue - totalCost,
+      totalCommissions,
+      totalDelivery,
+      totalOrders: filteredOrders.length,
+      orders: detailedOrders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      history
+    };
+  }
+
+  async getConsolidatedMetrics(email: string, from?: string, to?: string) {
+    // 1. Get GoPortal (POS) metrics
+    const posSalesFilter: any = {
+      status: 'COMPLETED'
+    };
+    if (from || to) {
+      posSalesFilter.createdAt = {};
+      if (from) posSalesFilter.createdAt.gte = new Date(from);
+      if (to) posSalesFilter.createdAt.lte = new Date(to);
+    }
+
+    const posSales = await this.prisma.sale.findMany({
+      where: posSalesFilter,
+      include: {
+        items: {
+          include: {
+            product: { select: { costPrice: true } }
+          }
+        }
+      }
+    });
+
+    let posBilling = 0;
+    let posCost = 0;
+    for (const sale of posSales) {
+      posBilling += sale.total;
+      for (const item of sale.items) {
+        posCost += (item.product?.costPrice || 0) * item.quantity;
+      }
+    }
+    const posNetProfit = posBilling - posCost;
+
+    // 2. Get GoDelivery (Online App) metrics
+    const goMetrics = await this.getGoDeliveryMetrics(email, from, to);
+
+    const consolidatedBilling = posBilling + goMetrics.totalRevenue + goMetrics.totalCommissions + goMetrics.totalDelivery;
+    const consolidatedNetProfit = posNetProfit + goMetrics.netProfit + goMetrics.totalCommissions + goMetrics.totalDelivery;
+
+    return {
+      pos: {
+        billing: posBilling,
+        cost: posCost,
+        netProfit: posNetProfit,
+        count: posSales.length
+      },
+      go: {
+        billing: goMetrics.totalRevenue,
+        cost: goMetrics.totalCost,
+        netProfit: goMetrics.netProfit,
+        commissions: goMetrics.totalCommissions,
+        delivery: goMetrics.totalDelivery,
+        count: goMetrics.totalOrders
+      },
+      consolidated: {
+        billing: consolidatedBilling,
+        netProfit: consolidatedNetProfit,
+        splitPerPartner: consolidatedNetProfit / 3
+      }
+    };
+  }
 }
+

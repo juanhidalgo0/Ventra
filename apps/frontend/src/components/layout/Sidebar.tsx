@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Globe,
+  Smartphone,
   X
 } from 'lucide-react';
 import { useState } from 'react';
@@ -120,8 +121,21 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Resumen Fiscal', icon: Calculator, path: '/fiscal', badge: 'FULL' },
-        { label: 'Tienda Online', icon: Globe, path: '/online-store' },
+        { 
+          label: 'Tienda Online', 
+          icon: Globe, 
+          path: '/online-store',
+          collapsible: true,
+          subItems: [
+            { label: 'Configuración', path: '/online-store' },
+            { label: 'Métricas y Ventas', path: '/online-store/metrics' },
+          ]
+        },
+        { label: 'División de Ganancias', icon: Calculator, path: '/earnings-division' },
         { label: 'Presupuestos', icon: FileText, path: '/quotes' },
+        ...(user?.role === 'ADMIN' ? [
+          { label: 'Acceso Remoto', icon: Smartphone, path: '/remote-access' }
+        ] : [])
       ]
     }
   ];
@@ -129,9 +143,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <aside className={`h-full bg-white border-r border-slate-200/80 flex flex-col shrink-0 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <aside className={`h-full bg-white border-r border-slate-400/80 flex flex-col shrink-0 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       {/* Header Profile Box */}
-      <div className="p-4 shrink-0 flex items-center justify-between gap-2 border-b border-slate-100">
+      <div className="p-4 shrink-0 flex items-center justify-between gap-2 border-b border-slate-300">
         <div className="flex items-center gap-3 py-1 flex-1 overflow-hidden">
           <GoDeliveryLogo className="w-10 h-10 shrink-0" />
           {!isCollapsed && <span className="font-black text-xs text-slate-800 tracking-wider">GO! Portal</span>}
@@ -142,7 +156,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
               e.stopPropagation();
               onCloseMobile();
             }}
-            className="md:hidden p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200 shrink-0 cursor-pointer relative z-[100]"
+            className="md:hidden p-2 text-slate-700 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-400 shrink-0 cursor-pointer relative z-[100]"
             title="Cerrar menú"
           >
             <X className="w-5 h-5" />
@@ -177,7 +191,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           <div key={group.title} className="space-y-1">
             {!isCollapsed && (
               <div className="flex items-center gap-3 px-2 mb-3 mt-4">
-                <span className="text-[9px] font-semibold text-slate-400 tracking-[0.15em]">{group.title}</span>
+                <span className="text-[9px] font-semibold text-slate-600 tracking-[0.15em]">{group.title}</span>
                 <div className="flex-1 h-[1px] bg-slate-200" />
               </div>
             )}
@@ -189,12 +203,12 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                     onClick={() => item.collapsible ? toggleGroup(item.label) : (navigate(item.path || ''), onCloseMobile?.())}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group cursor-pointer ${isActive(item.path || '') && !item.collapsible ? 'text-rose-600 font-bold bg-rose-50 border border-rose-100' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'}`}
                   >
-                    <item.icon className={`w-5 h-5 shrink-0 ${isActive(item.path || '') && !item.collapsible ? 'text-rose-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <item.icon className={`w-5 h-5 shrink-0 ${isActive(item.path || '') && !item.collapsible ? 'text-rose-600' : 'text-slate-600 group-hover:text-slate-600'}`} />
                     {!isCollapsed && (
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
                         <span className="text-[11px] font-semibold uppercase tracking-tight truncate">{item.label}</span>
                         {item.collapsible && (
-                          <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isGroupExpanded ? 'rotate-180' : ''}`} />
+                          <ChevronDown className={`w-3.5 h-3.5 text-slate-700 transition-transform ${isGroupExpanded ? 'rotate-180' : ''}`} />
                         )}
                         {item.badge && <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-100 text-[8px] font-bold">{item.badge}</span>}
                       </div>
@@ -202,12 +216,12 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                   </button>
                   
                   {!isCollapsed && item.collapsible && isGroupExpanded && item.subItems && (
-                    <div className="ml-9 border-l-2 border-slate-200 space-y-1 my-1">
+                    <div className="ml-9 border-l-2 border-slate-400 space-y-1 my-1">
                       {item.subItems.map((sub) => (
                         <button
                           key={sub.label}
                           onClick={() => { navigate(sub.path); onCloseMobile?.(); }}
-                          className={`w-full text-left px-4 py-1.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${isActive(sub.path) ? 'text-rose-600 font-semibold bg-rose-50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                          className={`w-full text-left px-4 py-1.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${isActive(sub.path) ? 'text-rose-600 font-semibold bg-rose-50' : 'text-slate-700 hover:text-slate-700 hover:bg-slate-50'}`}
                         >
                           {sub.label}
                         </button>
@@ -237,14 +251,14 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminUnlockModal(false)}>
           <div 
             onClick={(e) => e.stopPropagation()} 
-            className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl border border-slate-200 flex flex-col p-6 space-y-4"
+            className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl border border-slate-400 flex flex-col p-6 space-y-4"
           >
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2">
                 <Settings className="w-6 h-6 animate-spin" />
               </div>
               <h3 className="text-lg font-bold text-slate-800">Acceso Restringido</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
+              <p className="text-xs text-slate-700 leading-relaxed">
                 Esta sección requiere credenciales de Administrador. Por favor, ingresa la contraseña numérica del usuario <b>ADMIN</b> para continuar.
               </p>
             </div>
@@ -254,7 +268,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                 type="password" 
                 value={adminPassword} 
                 onChange={(e) => setAdminPassword(e.target.value)} 
-                className="w-full text-center bg-white border border-slate-200 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none transition-all tracking-[0.25em]" 
+                className="w-full text-center bg-white border border-slate-400 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none transition-all tracking-[0.25em]" 
                 placeholder="••••" 
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleVerifyAdminPassword();
@@ -263,7 +277,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
               />
               
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAdminUnlockModal(false)} className="flex-1 py-2.5 rounded-xl font-medium text-slate-500 hover:bg-slate-50 transition-all text-xs border border-slate-200">Cancelar</button>
+                <button onClick={() => setShowAdminUnlockModal(false)} className="flex-1 py-2.5 rounded-xl font-medium text-slate-700 hover:bg-slate-50 transition-all text-xs border border-slate-400">Cancelar</button>
                 <button 
                   onClick={handleVerifyAdminPassword} 
                   disabled={isVerifying || !adminPassword}

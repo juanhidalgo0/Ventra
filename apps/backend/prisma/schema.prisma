@@ -34,6 +34,7 @@ model User {
   accountMovements   AccountMovement[]
   purchases          Purchase[]
   supplierPayments   SupplierPayment[]
+  zReports           DailyZReport[]
 
   @@map("users")
 }
@@ -54,11 +55,29 @@ model CashRegisterSession {
   openedAt              DateTime @default(now()) @map("opened_at")
   closedAt              DateTime? @map("closed_at")
 
+  zReportId             String?  @map("z_report_id")
+
   user          User           @relation(fields: [userId], references: [id])
+  zReport       DailyZReport?  @relation(fields: [zReportId], references: [id])
   sales         Sale[]
   cashMovements CashMovement[]
 
   @@map("cash_register_sessions")
+}
+
+model DailyZReport {
+  id              String   @id @default(uuid())
+  generatedById   String   @map("generated_by_id")
+  generatedAt     DateTime @default(now()) @map("generated_at")
+  totalExpected   Float    @map("total_expected")
+  totalDeclared   Float    @map("total_declared")
+  differenceTotal Float    @map("difference_total")
+  summary         String?  // JSON string holding broken down data
+  
+  generatedBy     User     @relation(fields: [generatedById], references: [id])
+  sessions        CashRegisterSession[]
+
+  @@map("daily_z_reports")
 }
 
 // ---- Sales ----
@@ -193,6 +212,7 @@ model Product {
   purchaseItems      PurchaseItem[]
   additionalBarcodes ProductBarcode[]
   promotions        PromotionProduct[]
+  marketingItems    MarketingGroupItem[]
 
   @@index([name])
   @@index([barcode])
@@ -219,7 +239,12 @@ model Category {
   displayOrder Int     @default(0) @map("display_order")
   isActive     Boolean @default(true) @map("is_active")
 
+  parentCategoryId String?   @map("parent_category_id")
+  parentCategory   Category? @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subcategories    Category[] @relation("CategoryHierarchy")
+
   products Product[]
+  surcharge Surcharge?
 
   @@map("categories")
 }
@@ -420,4 +445,45 @@ model AppLicense {
   updatedAt     DateTime @updatedAt
 
   @@map("app_licenses")
+}
+
+// ---- Marketing & Labels ----
+model MarketingGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items       MarketingGroupItem[]
+
+  @@map("marketing_groups")
+}
+
+model MarketingGroupItem {
+  id               String   @id @default(uuid())
+  marketingGroupId String   @map("marketing_group_id")
+  productId        String   @map("product_id")
+  order            Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  group            MarketingGroup @relation(fields: [marketingGroupId], references: [id], onDelete: Cascade)
+  product          Product        @relation(fields: [productId], references: [id])
+
+  @@index([marketingGroupId])
+  @@index([productId])
+  @@map("marketing_group_items")
+}
+
+model Surcharge {
+  id             String   @id @default(uuid())
+  categoryId     String   @unique @map("category_id")
+  percentage     Float    @default(0)
+  paymentMethods String   @map("payment_methods") // Comma-separated payment methods
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  category       Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("surcharges")
 }

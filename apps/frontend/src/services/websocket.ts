@@ -9,12 +9,19 @@ class WebSocketService {
     const activePort = sessionStorage.getItem('active_backend_port') || '3001';
     let socketUrl = '/';
     if (savedIp && savedIp !== 'localhost' && savedIp !== '127.0.0.1') {
-      socketUrl = `http://${savedIp}:3001`;
-    } else if (window.location.protocol === 'file:') {
+      const hasPort = savedIp.includes(':');
+      socketUrl = `http://${savedIp}${hasPort ? '' : ':3001'}`;
+    } else if (
+      window.location.protocol === 'file:' || 
+      window.location.protocol.startsWith('tauri') || 
+      window.location.hostname.includes('tauri')
+    ) {
       socketUrl = `http://127.0.0.1:${activePort}`;
+    } else {
+      socketUrl = `${window.location.protocol}//${window.location.hostname}:${activePort}`;
     }
     this.socket = io(socketUrl, { transports: ['websocket', 'polling'], reconnection: true, reconnectionDelay: 1000, reconnectionAttempts: 10 });
-    this.socket.on('connect', () => console.log('📡 WebSocket connected'));
+    this.socket.on('connect', () => console.log('📡 WebSocket connected to:', socketUrl));
     this.socket.on('disconnect', () => console.log('📡 WebSocket disconnected'));
   }
 

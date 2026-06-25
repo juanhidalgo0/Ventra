@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { motion, AnimatePresence } from 'framer-motion';
+
 import { ShoppingBag, Eye, EyeOff, Loader2, ShieldCheck, UserCheck, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -30,13 +30,18 @@ export default function LoginPage() {
     const maxRetries = 150; // Extended retries for slow systems/first extract
 
     const detectPortAndCheckInit = async () => {
-      const portsToTry = [3001, 3002, 3003, 3004, 3005];
+      const savedPort = sessionStorage.getItem('active_backend_port');
+      const basePorts = [3001, 3002, 3003, 3004, 3005];
+      const portsToTry = savedPort ? Array.from(new Set([parseInt(savedPort), ...basePorts])) : basePorts;
+      
+      const rawHost = window.location.hostname;
+      const host = !rawHost || rawHost === 'localhost' || rawHost === '127.0.0.1' || rawHost.includes('tauri') || rawHost.endsWith('.localhost') ? '127.0.0.1' : rawHost;
       
       for (const p of portsToTry) {
         try {
           const controller = new AbortController();
           const id = setTimeout(() => controller.abort(), 200); // Fast 200ms ping
-          const response = await fetch(`http://127.0.0.1:${p}/api/auth/init-status`, { signal: controller.signal });
+          const response = await fetch(`http://${host}:${p}/api/auth/init-status`, { signal: controller.signal });
           clearTimeout(id);
           
           if (response.ok) {
@@ -45,13 +50,20 @@ export default function LoginPage() {
             sessionStorage.setItem('active_backend_port', p.toString());
             setIsInitialized(data.initialized);
             setCheckLoading(false);
-
-            // Fetch local IP (silent logging, no toast notifications)
+ 
+            // Fetch local IP (show toast with connection address if server mode)
             try {
-              const infoRes = await fetch(`http://127.0.0.1:${p}/api/system/info`);
+              const infoRes = await fetch(`http://${host}:${p}/api/system/info`);
               if (infoRes.ok) {
                 const infoData = await infoRes.json();
                 console.log(`[Frontend] Server local IP detected: ${infoData.localIp}`);
+                const isServerMode = localStorage.getItem('connection_mode') !== 'CLIENT';
+                if (isServerMode && infoData.localIp && infoData.localIp !== 'localhost') {
+                  toast.success(
+                    `Servidor iniciado. Conexión en red: http://${infoData.localIp}:${p}`, 
+                    { duration: 8000, id: 'server-started-toast' }
+                  );
+                }
               }
             } catch (err) {
               console.error('Error fetching system info:', err);
@@ -91,7 +103,6 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       await login(username, password);
-      toast.success('¡Sesión iniciada con éxito!');
       navigate('/pos');
     } catch (err: any) {
       toast.error(err.message);
@@ -116,15 +127,13 @@ export default function LoginPage() {
 
   if (checkLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-tr from-slate-100 via-white to-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
-        {/* Decorative background radial glows */}
-        <div className="absolute top-[-30%] left-[-20%] w-[70%] h-[70%] rounded-full bg-rose-500/5 blur-[140px] pointer-events-none" />
-        <div className="absolute bottom-[-30%] right-[-20%] w-[70%] h-[70%] rounded-full bg-slate-200/20 blur-[140px] pointer-events-none" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
+        {/* Decorative backgrounds removed for performance */}
 
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }} 
-          animate={{ opacity: 1, scale: 1 }} 
-          className="relative z-10 w-full max-w-md card p-8 bg-white border border-slate-200/80 shadow-2xl text-center flex flex-col items-center gap-6"
+        <div 
+          
+          
+          className="relative z-10 w-full max-w-md card p-8 bg-white border border-slate-400/80 shadow-2xl text-center flex flex-col items-center gap-6"
         >
           <div className="p-1 bg-white rounded-2xl shadow-xl border-4 border-rose-500/20">
             <GoDeliveryLogo className="w-20 h-20" />
@@ -138,39 +147,37 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="w-full bg-slate-50 p-6 rounded-2xl border border-slate-200/50 flex flex-col items-center gap-4">
+          <div className="w-full bg-slate-50 p-6 rounded-2xl border border-slate-400/50 flex flex-col items-center gap-4">
             <Loader2 className="w-8 h-8 text-rose-600 animate-spin" />
             <div className="space-y-1 text-center">
               <p className="text-slate-700 text-xs font-bold leading-normal px-2">
                 {loadingMessage}
               </p>
-              <p className="text-[10px] text-slate-400 font-semibold">
+              <p className="text-[10px] text-slate-600 font-semibold">
                 Por favor, no cierres la aplicación
               </p>
             </div>
           </div>
 
           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
-            <motion.div 
-              initial={{ left: "-100%" }} 
-              animate={{ left: "100%" }} 
-              transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }} 
+            <div 
+              
+              
+              
               className="absolute top-0 bottom-0 w-1/3 bg-rose-500 rounded-full" 
             />
           </div>
-        </motion.div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-tr from-slate-100 via-white to-slate-50 flex items-center justify-center relative overflow-hidden">
-      {/* Decorative background glassmorphism radial glows */}
-      <div className="absolute top-[-30%] left-[-20%] w-[70%] h-[70%] rounded-full bg-rose-500/5 blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-[-30%] right-[-20%] w-[70%] h-[70%] rounded-full bg-slate-200/20 blur-[140px] pointer-events-none" />
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center relative overflow-hidden">
+      {/* Decorative backgrounds removed for performance */}
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="relative z-10 w-full max-w-md px-6">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1 }} className="text-center mb-8 flex flex-col items-center gap-4">
+      <div className="relative z-10 w-full max-w-md px-6">
+        <div className="text-center mb-8 flex flex-col items-center gap-4">
           <div className="p-1 bg-white rounded-2xl shadow-2xl border-4 border-rose-500/20">
             <GoDeliveryLogo className="w-20 h-20" />
           </div>
@@ -181,9 +188,9 @@ export default function LoginPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
             </p>
           </div>
-        </motion.div>
+        </div>
  
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card p-8 bg-white border border-slate-200/80 shadow-2xl text-slate-800">
+        <div className="card p-8 bg-white border border-slate-400/80 shadow-2xl text-slate-800 w-full">
             {!isInitialized ? (
               <div>
                 <div className="flex items-center gap-2 mb-6">
@@ -192,20 +199,20 @@ export default function LoginPage() {
                   </div>
                   <h2 className="text-lg font-bold text-slate-800 tracking-tight">Configurar Administrador</h2>
                 </div>
-                <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">
+                <p className="text-xs text-slate-700 mb-6 font-medium leading-relaxed">
                   Esta es la primera vez que se inicia el sistema. Debes crear una cuenta de administrador inicial obligatoria para poder acceder.
                 </p>
  
                 <form onSubmit={handleRegisterFirstAdmin} className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Usuario (ADMIN)</label>
-                    <input type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ej: AMIN" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
+                    <input type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ej: AMIN" className="w-full bg-slate-50 border border-slate-400 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Contraseña (Solo números)</label>
                     <div className="relative">
-                      <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ej: 1234" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 transition-colors">
+                      <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ej: 1234" className="w-full bg-slate-50 border border-slate-400 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-650 transition-colors">
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
@@ -227,13 +234,13 @@ export default function LoginPage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Usuario</label>
-                    <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ingresá tu usuario" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" autoFocus required />
+                    <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ingresá tu usuario" className="w-full bg-slate-50 border border-slate-400 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" autoFocus required />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Contraseña</label>
                     <div className="relative">
-                      <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ingresá tu contraseña" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 transition-colors">
+                      <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ingresá tu contraseña" className="w-full bg-slate-50 border border-slate-400 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-650 transition-colors">
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
@@ -244,9 +251,9 @@ export default function LoginPage() {
                 </form>
               </div>
             )}
-        </motion.div>
-        <p className="text-center text-slate-400/60 text-[10px] font-bold uppercase tracking-widest mt-8">© 2026 GO! Portal POS — v2.0</p>
-      </motion.div>
+        </div>
+        <p className="text-center text-slate-600/60 text-[10px] font-bold uppercase tracking-widest mt-8">© 2026 GO! Portal POS — v2.0</p>
+      </div>
     </div>
   );
 }

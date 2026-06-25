@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
 import { SyncImageService } from './sync-image.service';
@@ -142,6 +142,33 @@ export class ProductsController {
   updateGoDeliverySettings(@Request() req, @Body() body: any) {
     const { googleEmail, ...configData } = body;
     return this.productsService.updateGoDeliverySettings(req.user?.sub, configData, googleEmail);
+  }
+
+  @Post('bulk-remove-images-subset')
+  bulkRemoveImagesSubset(@Body('ids') ids: string[]) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
+    }
+    return this.productsService.bulkRemoveImagesSubset(ids);
+  }
+
+  @Post('bulk-delete-subset')
+  bulkDeleteSubset(@Body('ids') ids: string[]) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
+    }
+    return this.productsService.bulkDeleteSubset(ids);
+  }
+
+  @Post('bulk-update-category-subset')
+  bulkUpdateCategorySubset(@Body('ids') ids: string[], @Body('categoryId') categoryId: string) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
+    }
+    if (!categoryId) {
+      throw new BadRequestException('Se debe proporcionar el ID de la nueva categoría.');
+    }
+    return this.productsService.bulkUpdateCategorySubset(ids, categoryId);
   }
 
   @Delete(':id')

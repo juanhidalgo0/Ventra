@@ -45,14 +45,34 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  // Serve static files from frontend/dist
+  // Serve static files from frontend/dist or Electron package layout
   const express = require('express');
-  let frontendPath = path.join(__dirname, '../../frontend/dist');
-  if (!fs.existsSync(frontendPath)) {
-    frontendPath = path.join(__dirname, '../frontend/dist');
+  const possiblePaths = [
+    path.join(__dirname, '../../frontend/dist'),
+    path.join(__dirname, '../frontend/dist'),
+    path.join(__dirname, '../../../frontend/dist'),     // Tauri production layout (up 3 levels from ncc to apps, then down)
+    path.join(__dirname, '../../../../frontend/dist'),  // Alternative layout
+    path.join(__dirname, '../../../../frontend'),       // Electron production layout
+    path.join(__dirname, '../../../frontend'),
+  ];
+
+  let frontendPath = '';
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+      frontendPath = p;
+      break;
+    }
   }
 
-  if (fs.existsSync(frontendPath)) {
+  if (!frontendPath) {
+    console.warn('[Backend Warning] Static frontend directory not found. Searched paths:');
+    possiblePaths.forEach(p => {
+      console.warn(`  - Path: "${p}" | Exists: ${fs.existsSync(p)} | Has index.html: ${fs.existsSync(p) ? fs.existsSync(path.join(p, 'index.html')) : false}`);
+    });
+  }
+
+  if (frontendPath) {
+    console.log(`[Backend] Serving static frontend files from: ${frontendPath}`);
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp.use(express.static(frontendPath));
     expressApp.get('*', (req: any, res: any, next: any) => {
@@ -61,36 +81,23 @@ async function bootstrap() {
       }
       res.sendFile(path.join(frontendPath, 'index.html'));
     });
+  } else {
+    console.warn('[Backend Warning] Static frontend directory not found. Remote devices won\'t be able to access the UI via this port.');
   }
 
   let port = Number(process.env.PORT || 3001);
-  const maxPort = port + 20;
-
-  async function startServer(targetPort: number) {
-    try {
-      await app.listen(targetPort, '0.0.0.0');
-      console.log('--- RESTARTING MAXIKIOSCO PAULOS BACKEND ---');
-      console.log('--- TIME: ' + new Date().toISOString() + ' ---');
-      console.log(`
-      ╔══════════════════════════════════════════╗
-      ║     Maxikiosco Paulos POS - Backend      ║
-      ╠══════════════════════════════════════════╣
-      ║  🚀 Server running on port ${targetPort}          ║
-      ║  📡 WebSocket ready                      ║
-      ║  🗄️  Database: SQLite                    ║
-      ╚══════════════════════════════════════════╝
-      `);
-    } catch (err: any) {
-      if (err.code === 'EADDRINUSE' && targetPort < maxPort) {
-        console.warn(`[Nest] Port ${targetPort} is in use. Trying port ${targetPort + 1}...`);
-        await startServer(targetPort + 1);
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  await startServer(port);
+  await app.listen(port, '0.0.0.0');
+  console.log('--- RESTARTING MAXIKIOSCO PAULOS BACKEND ---');
+  console.log('--- TIME: ' + new Date().toISOString() + ' ---');
+  console.log(`
+  ╔══════════════════════════════════════════╗
+  ║     Maxikiosco Paulos POS - Backend      ║
+  ╠══════════════════════════════════════════╣
+  ║  🚀 Server running on port ${port}          ║
+  ║  📡 WebSocket ready                      ║
+  ║  🗄️  Database: SQLite                    ║
+  ╚══════════════════════════════════════════╝
+  `);
 }
 
 bootstrap().catch((err) => {

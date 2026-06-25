@@ -100,6 +100,11 @@ export class GoogleAuthService {
         data: { userId: user.id, entityType: 'AUTH', entityId: user.id, action: 'GOOGLE_LOGIN' },
       });
 
+      // Intentar iniciar la sincronización si la cuenta de Google es la dueña del comercio
+      this.productsService.verifyGoogleEmailOwnsTerminalCommerce(email).catch(err => {
+        console.error('[GoogleAuthService] Error al verificar propiedad para sincronización tras login:', err.message);
+      });
+
       return {
         accessToken,
         refreshToken,

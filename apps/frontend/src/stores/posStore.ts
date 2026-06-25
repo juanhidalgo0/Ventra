@@ -27,7 +27,7 @@ interface POSState {
   getDiscounts: () => number;
   getAppliedPromotions: () => { name: string; discount: number }[];
   getCartItemsWithDiscounts: () => { discountsMap: { [productId: string]: number }; appliedPromosInfo: { id: string; quantitySold: number }[] };
-  getCheckoutPayload: () => { productId: string; quantity: number; discount: number }[];
+  getCheckoutPayload: () => { productId: string; quantity: number; discount: number; price?: number }[];
   getFinalTotal: () => number;
   getItemCount: () => number;
 
@@ -523,10 +523,10 @@ export const usePOSStore = create<POSState>()(
     {
       name: 'paulos-pos-cache',
       partialize: (state) => ({
-        products: state.products,
+        // We no longer persist 'products' and 'clients' to localStorage
+        // because large catalogs easily exceed the browser's 5MB quota.
+        // The local SQLite backend is fast enough to serve them on boot.
         categories: state.categories,
-        clients: state.clients,
-        isWarmed: state.isWarmed,
       }),
     }
   )

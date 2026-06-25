@@ -1,10 +1,32 @@
-const { app, BrowserWindow, utilityProcess } = require("electron");
+const { app, BrowserWindow, utilityProcess, dialog } = require("electron");
 const path = require("path");
 const { execSync } = require("child_process");
 const isDev = require("electron-is-dev");
 
 const fs = require("fs");
 const net = require("net");
+
+// Load .env file from app package directory
+try {
+  const envPath = path.join(__dirname, ".env");
+  if (fs.existsSync(envPath)) {
+    const envConfig = fs.readFileSync(envPath, "utf-8");
+    envConfig.split(/\r?\n/).forEach((line) => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const key = match[1];
+        let value = match[2] || "";
+        if (value.length > 0 && value.charAt(0) === '"' && value.charAt(value.length - 1) === '"') {
+          value = value.substring(1, value.length - 1);
+        }
+        process.env[key] = value;
+      }
+    });
+    console.log("[Desktop] Loaded env vars from .env");
+  }
+} catch (err) {
+  console.error("[Desktop] Failed to load .env file:", err);
+}
 
 let mainWindow;
 let backendProcess;
@@ -25,15 +47,24 @@ function findFreePort(startPort) {
   });
 }
 
+function killPort3001() {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve();
+      return;
+    }
+    // Only kill processes LISTENING on port 3001 to avoid killing Tailscale client connections to remote servers on 3001
+    const cmd = 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr LISTENING ^| findstr :3001\') do taskkill /F /PID %a';
+    const { exec } = require("child_process");
+    exec(cmd, (err) => {
+      resolve();
+    });
+  });
+}
+
 async function startBackend() {
   if (!isDev) {
-    try {
-      if (process.platform === "win32") {
-        execSync('cmd.exe /c "for /f \\"tokens=5\\" %a in (\'netstat -aon ^| findstr :3001\') do taskkill /F /PID %a"', { stdio: "ignore" });
-      }
-    } catch (e) {
-      console.warn("[Desktop] Zombie port cleanup ignored/failed:", e.message);
-    }
+    await killPort3001();
 
     const activePort = await findFreePort(3001);
     activeBackendPort = activePort;
@@ -95,6 +126,33 @@ async function startBackend() {
         PRISMA_QUERY_ENGINE_LIBRARY: prismaEnginePath,
       },
       stdio: "pipe"
+    });
+
+    // Listen for custom IPC messages from NestJS backend process
+    backendProcess.on("message", (msg) => {
+      if (msg && msg.type === "SELECT_SAVE_PATH") {
+        const { defaultName } = msg;
+        const options = {
+          title: "Guardar Copia de Seguridad",
+          defaultPath: path.join(app.getPath("documents") || app.getPath("downloads") || userDataPath, defaultName),
+          filters: [
+            { name: "Base de Datos SQLite", extensions: ["db", "sqlite"] }
+          ]
+        };
+        
+        dialog.showSaveDialog(mainWindow, options).then((result) => {
+          backendProcess.send({
+            type: "SELECT_SAVE_PATH_RESPONSE",
+            path: result.canceled ? null : result.filePath
+          });
+        }).catch((err) => {
+          console.error("[Desktop] Error showing save dialog:", err);
+          backendProcess.send({
+            type: "SELECT_SAVE_PATH_RESPONSE",
+            path: null
+          });
+        });
+      }
     });
 
     const logPath = path.join(userDataPath, "backend.log");

@@ -73,7 +73,7 @@ export default function PromosScreen() {
                <span className="text-[10px] font-bold uppercase tracking-widest">Actualizar</span>
             </button>
             <div className="hidden sm:block h-6 w-[1px] bg-slate-200" />
-            <div className="flex gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
+            <div className="flex gap-1 bg-slate-50 p-1 rounded-xl border border-slate-300 overflow-x-auto whitespace-nowrap scrollbar-hide">
                {[
                  { key: 'ALL', label: 'Todos' },
                  { key: 'NX_M', label: 'N x M' },
@@ -83,7 +83,7 @@ export default function PromosScreen() {
                  <button
                    key={type.key}
                    onClick={() => setSelectedType(type.key)}
-                   className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${selectedType === type.key ? 'bg-emerald-600 text-white shadow-md shadow-emerald-150' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+                   className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${selectedType === type.key ? 'bg-emerald-600 text-white shadow-md shadow-emerald-150' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-600'}`}
                  >
                    {type.label}
                  </button>
@@ -98,7 +98,7 @@ export default function PromosScreen() {
                  value={searchQuery}
                  onChange={e => setSearchQuery(e.target.value)}
                  placeholder="Buscar promoción..." 
-                 className="bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-4 py-2.5 text-[10px] font-bold outline-none focus:bg-white focus:border-emerald-250 transition-all w-full sm:w-64" 
+                 className="bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-[10px] font-bold outline-none focus:bg-white focus:border-emerald-250 transition-all w-full sm:w-64" 
                />
             </div>
             <button 
@@ -147,8 +147,8 @@ export default function PromosScreen() {
                <div className="w-20 h-20 rounded-2xl bg-[#fff7ed] flex items-center justify-center mb-6">
                   <Tag className="w-10 h-10 text-orange-200" />
                </div>
-               <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">No hay promociones creadas</h4>
-               <p className="text-[10px] text-slate-400 font-bold max-w-[280px] uppercase tracking-widest mb-8">Comenzá creando tu primera promoción para aumentar tus ventas.</p>
+               <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-[0.2em] mb-2">No hay promociones creadas</h4>
+               <p className="text-[10px] text-slate-600 font-bold max-w-[280px] uppercase tracking-widest mb-8">Comenzá creando tu primera promoción para aumentar tus ventas.</p>
                <button 
                 onClick={() => setShowModal(true)}
                 className="px-8 py-3.5 bg-[#10b981] text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest shadow-xl shadow-emerald-200 hover:bg-[#059669] transition-all active:scale-95"
@@ -173,8 +173,8 @@ export default function PromosScreen() {
                         {promo.type === 'NX_M' ? <ShoppingCart className="w-5 h-5" /> : promo.type === 'DISCOUNT_PERCENT' ? <Tag className="w-5 h-5" /> : <Package className="w-5 h-5" />}
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => { setSelectedPromo(promo); setShowModal(true); }} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(promo.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => { setSelectedPromo(promo); setShowModal(true); }} className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(promo.id)} className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
 
@@ -183,7 +183,7 @@ export default function PromosScreen() {
                         {promo.type === 'NX_M' ? `${promo.nValue} x ${promo.mValue}` : promo.type === 'DISCOUNT_PERCENT' ? `${promo.name || 'Oferta'}` : promo.name}
                       </h4>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">
                           {promo.type === 'NX_M' ? 'Promoción de cantidad' : promo.type === 'DISCOUNT_PERCENT' ? 'Oferta de porcentaje' : 'Combo de productos'}
                         </span>
                         {promo.code && (
@@ -200,7 +200,7 @@ export default function PromosScreen() {
                           {promo.products.slice(0, 3).map((pp: any) => (
                              <div key={pp.id} className="text-[10px] font-bold text-slate-700 flex justify-between">
                                 <span>{pp.product.name}</span>
-                                <span className="text-slate-400">x{pp.quantity}</span>
+                                <span className="text-slate-600">x{pp.quantity}</span>
                              </div>
                           ))}
                           {promo.products.length > 3 && <p className="text-[9px] text-emerald-600 font-bold">+{promo.products.length - 3} más...</p>}
@@ -211,7 +211,7 @@ export default function PromosScreen() {
                        <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-lg">
                           {promo.type === 'FIXED_COMBO' ? `$${promo.fixedPrice}` : promo.type === 'DISCOUNT_PERCENT' ? `-${promo.discountPercentage}%` : <TrendingUp className="w-5 h-5" />}
                        </div>
-                       <div className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-tight">
+                       <div className="flex items-center gap-1 text-[9px] font-bold text-slate-600 uppercase tracking-tight">
                           <Calendar className="w-3 h-3 text-slate-300" /> 
                           {promo.limitType === 'DATE' && promo.endDate ? (
                             <span>Hasta {new Date(promo.endDate).toLocaleDateString('es-AR')}</span>

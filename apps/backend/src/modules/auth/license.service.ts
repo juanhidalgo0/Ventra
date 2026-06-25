@@ -31,17 +31,36 @@ export class LicenseService implements OnModuleInit {
   detectMachineUuid(): string {
     try {
       if (process.platform === 'win32') {
+        // 1. Try registry query first (extremely fast, ~30ms, no Antivirus blocks)
         try {
-          const output = execSync('powershell -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_ComputerSystemProduct).UUID"').toString().trim();
-          if (output && output !== '00000000-0000-0000-0000-000000000000') {
-            return output;
+          const output = execSync('reg query HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography /v MachineGuid').toString();
+          const matches = output.match(/MachineGuid\s+REG_SZ\s+([a-fA-F0-9-]+)/);
+          if (matches && matches[1]) {
+            return matches[1].trim().toUpperCase();
           }
         } catch {
+          // Fallback to next method
+        }
+
+        // 2. Try wmic (faster than powershell, ~200ms)
+        try {
           const output = execSync('wmic csproduct get uuid').toString();
           const uuid = output.replace(/UUID/g, '').trim();
           if (uuid && uuid !== '00000000-0000-0000-0000-000000000000') {
-            return uuid;
+            return uuid.toUpperCase();
           }
+        } catch {
+          // Fallback to next method
+        }
+
+        // 3. Try powershell (slowest, ~300ms to several seconds on cold start)
+        try {
+          const output = execSync('powershell -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_ComputerSystemProduct).UUID"').toString().trim();
+          if (output && output !== '00000000-0000-0000-0000-000000000000') {
+            return output.toUpperCase();
+          }
+        } catch {
+          // Fallback to next method
         }
       }
     } catch (e) {
@@ -135,13 +154,14 @@ export class LicenseService implements OnModuleInit {
   }
 
   async triggerOnlineCheck() {
-    const licenseCheckUrl = process.env.LICENSE_CHECK_URL;
-    if (!licenseCheckUrl) return;
+    const projectId = "motocreditos-addc1";
+    const cleanUuid = this.machineUuid.trim().toUpperCase();
+    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/customers/${cleanUuid}`;
 
     try {
-      const { data } = await axios.get(licenseCheckUrl, { timeout: 6000 });
-      if (data && data[this.machineUuid]) {
-        const expirationStr = data[this.machineUuid];
+      const { data } = await axios.get(firestoreUrl, { timeout: 6000 });
+      if (data && data.fields && data.fields.expiresAt && data.fields.expiresAt.stringValue) {
+        const expirationStr = data.fields.expiresAt.stringValue;
         const newExpiry = new Date(expirationStr);
         if (!isNaN(newExpiry.getTime())) {
           await this.prisma.appLicense.update({
@@ -151,10 +171,12 @@ export class LicenseService implements OnModuleInit {
               lastCheckedAt: new Date()
             }
           });
+          console.log(`[LicenseService] Online check success. Expires at: ${newExpiry}`);
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       // Ignore network errors, keep offline access
+      console.warn('[LicenseService] Online check failed (offline or invalid UUID):', e.message);
     }
   }
 

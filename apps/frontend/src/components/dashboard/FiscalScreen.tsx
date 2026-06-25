@@ -252,7 +252,7 @@ export default function FiscalScreen() {
           <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
             <Calculator className="w-8 h-8 text-rose-600 animate-pulse-soft" /> Resumen Fiscal & Facturación Electrónica ARCA
           </h1>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.25em] mt-1">
+          <p className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.25em] mt-1">
             Módulo homologado de facturación legal y registro fiscal de ventas
           </p>
         </div>
@@ -260,7 +260,7 @@ export default function FiscalScreen() {
         <div className="flex gap-2">
           <button 
             onClick={handleSimulateCierreX}
-            className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-slate-50 shadow-sm active:scale-95 transition-all"
+            className="px-4 py-2.5 bg-white border border-slate-400 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-slate-50 shadow-sm active:scale-95 transition-all"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Cierre X
           </button>
@@ -275,12 +275,12 @@ export default function FiscalScreen() {
 
       {/* Connection & General Info Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
             <Server className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Servidores Homologación ARCA</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block">Servidores Homologación ARCA</span>
             <span className="text-sm font-black text-slate-800 flex items-center gap-2 mt-0.5">
               Conectado (Producción)
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
@@ -288,24 +288,24 @@ export default function FiscalScreen() {
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
             <FileCheck2 className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Último CAE Autorizado</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block">Último CAE Autorizado</span>
             <span className="text-sm font-black text-slate-800 mt-0.5">
               CAE N° {sales[0]?.cae || '7604928172930'}
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
             <Clock className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Vencimiento del Token</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block">Vencimiento del Token</span>
             <span className="text-sm font-black text-slate-800 mt-0.5">
               Hoy, 23:59:59 (Auto-Renovable)
             </span>
@@ -344,40 +344,40 @@ export default function FiscalScreen() {
         {/* Left Column: AFIP / ARCA Configuration Settings */}
         <div className="xl:col-span-2 space-y-6">
           {/* Section 1: AFIP Web Services Integration */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm space-y-5">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-sm space-y-5">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-300">
               <Settings className="w-4.5 h-4.5 text-indigo-500" /> Registro y Parámetros ARCA (ex-AFIP)
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">CUIT del Contribuyente</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">CUIT del Contribuyente</label>
                 <input 
                   type="text" 
                   value={cuit}
                   onChange={e => setCuit(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
                   placeholder="20-XXXXXXXX-X"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punto de Venta Autorizado (POS)</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Punto de Venta Autorizado (POS)</label>
                 <input 
                   type="text" 
                   value={posNumber}
                   onChange={e => setPosNumber(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
                   placeholder="00001"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Régimen Impositivo</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Régimen Impositivo</label>
                 <select 
                   value={taxRegime}
                   onChange={e => setTaxRegime(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
                 >
                   <option>Monotributo</option>
                   <option>Responsable Inscripto</option>
@@ -386,11 +386,11 @@ export default function FiscalScreen() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Concepto de Venta</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Concepto de Venta</label>
                 <select 
                   value={concept}
                   onChange={e => setConcept(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-755 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-755 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
                 >
                   <option>Productos</option>
                   <option>Servicios</option>
@@ -400,15 +400,15 @@ export default function FiscalScreen() {
             </div>
 
             {/* Cert Upload Simulator */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Certificado Digital de Delegación ARCA (.pfx / .crt)</span>
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-400 space-y-3">
+              <span className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Certificado Digital de Delegación ARCA (.pfx / .crt)</span>
               
-              <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3 shadow-inner">
+              <div className="flex items-center justify-between bg-white border border-slate-400 rounded-xl p-3 shadow-inner">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600"><Lock className="w-5 h-5" /></div>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-700 truncate">{certUploaded ? certName : 'Sin certificado cargado'}</p>
-                    <p className="text-[9px] text-slate-400">Válido hasta: 28/05/2028</p>
+                    <p className="text-[9px] text-slate-600">Válido hasta: 28/05/2028</p>
                   </div>
                 </div>
                 <button 
@@ -416,7 +416,7 @@ export default function FiscalScreen() {
                     setCertUploaded(true);
                     toast.success('Certificado digital cargado correctamente.');
                   }}
-                  className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 rounded-lg text-[10px] font-extrabold uppercase tracking-wider text-slate-600 transition-all flex items-center gap-1.5 active:scale-95"
+                  className="px-3.5 py-2 border border-slate-400 hover:bg-slate-50 rounded-lg text-[10px] font-extrabold uppercase tracking-wider text-slate-600 transition-all flex items-center gap-1.5 active:scale-95"
                 >
                   <Upload className="w-3.5 h-3.5" /> Reemplazar
                 </button>
@@ -443,23 +443,23 @@ export default function FiscalScreen() {
           </div>
 
           {/* Section 2: Ticket Templates & Fiscal Print Settings */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm space-y-5">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-sm space-y-5">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-300">
               <Printer className="w-4.5 h-4.5 text-emerald-500" /> Plantilla e Impresión de Ticket Homologado
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ancho del Papel Térmico</label>
-                <div className="flex p-1 bg-slate-50 rounded-xl border border-slate-200 select-none">
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Ancho del Papel Térmico</label>
+                <div className="flex p-1 bg-slate-50 rounded-xl border border-slate-400 select-none">
                   {(['80MM', '58MM', 'A4'] as const).map(w => (
                     <button 
                       key={w} 
                       onClick={() => setPaperWidth(w)}
                       className={`flex-1 py-2 text-[9px] font-extrabold rounded-lg uppercase transition-all tracking-wider ${
                         paperWidth === w 
-                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
-                          : 'text-slate-400 hover:text-slate-600'
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-400/50' 
+                          : 'text-slate-600 hover:text-slate-600'
                       }`}
                     >
                       {w}
@@ -469,11 +469,11 @@ export default function FiscalScreen() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo de Comprobante por Defecto</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Tipo de Comprobante por Defecto</label>
                 <select 
                   value={invoiceType}
                   onChange={e => setInvoiceType(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white transition-all cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white transition-all cursor-pointer"
                 >
                   <option value="FACTURA_C">Factura Electrónica C</option>
                   <option value="FACTURA_B_A">Factura Electrónica A/B</option>
@@ -481,33 +481,33 @@ export default function FiscalScreen() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Impresión Automática</label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Impresión Automática</label>
                 <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-250 rounded-xl shadow-inner">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Auto-Imprimir ticket</span>
+                  <span className="text-[10px] font-bold text-slate-700 uppercase">Auto-Imprimir ticket</span>
                   <input 
                     type="checkbox" 
                     checked={autoPrint}
                     onChange={e => setAutoPrint(e.target.checked)}
-                    className="rounded-md border-slate-200 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer"
+                    className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer"
                   />
                 </div>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pie de Página del Ticket Fiscal</label>
+              <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Pie de Página del Ticket Fiscal</label>
               <input 
                 type="text" 
                 value={footerText}
                 onChange={e => setFooterText(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all shadow-inner"
+                className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all shadow-inner"
               />
             </div>
           </div>
 
           {/* Section 3: Live AFIP Audit Trail and Electronic Invoices Logs */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-2 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-2 border-b border-slate-300">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <FileText className="w-4.5 h-4.5 text-indigo-500" /> Registro de Comprobantes Homologados por ARCA
               </h3>
@@ -518,13 +518,13 @@ export default function FiscalScreen() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Buscar por N° factura o total..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-3 py-1.5 text-xs font-semibold outline-none focus:bg-white focus:border-indigo-500 transition-all text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-3 py-1.5 text-xs font-semibold outline-none focus:bg-white focus:border-indigo-500 transition-all text-slate-800"
                 />
               </div>
             </div>
 
             {/* Filtros de Fecha */}
-            <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-slate-100/80 bg-slate-50/30 px-2 rounded-xl">
+            <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-slate-300/80 bg-slate-50/30 px-2 rounded-xl">
               <div className="flex flex-wrap gap-1.5 select-none">
                 {(['hoy', 'semana', 'mes', 'anio', 'personalizado'] as const).map(period => (
                   <button
@@ -534,7 +534,7 @@ export default function FiscalScreen() {
                     className={`px-3 py-1.5 text-[10px] font-extrabold rounded-lg uppercase transition-all tracking-wider cursor-pointer ${
                       filterPeriod === period
                         ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                        : 'bg-white border border-slate-400 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
                     {period === 'hoy' ? 'Hoy' :
@@ -549,21 +549,21 @@ export default function FiscalScreen() {
               {filterPeriod === 'personalizado' && (
                 <div className="flex items-center gap-2 animate-fadeIn">
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Desde:</span>
+                    <span className="text-[9px] font-bold text-slate-600 uppercase">Desde:</span>
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={e => setCustomStartDate(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
+                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
                     />
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Hasta:</span>
+                    <span className="text-[9px] font-bold text-slate-600 uppercase">Hasta:</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={e => setCustomEndDate(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
+                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
                     />
                   </div>
                 </div>
@@ -571,15 +571,15 @@ export default function FiscalScreen() {
             </div>
 
             {filteredSales.length === 0 ? (
-              <div className="text-center py-10 text-slate-400">
+              <div className="text-center py-10 text-slate-600">
                 <FileText className="w-12 h-12 text-slate-200 mx-auto mb-2 animate-bounce" />
                 <p className="text-xs font-bold uppercase tracking-wider">No hay comprobantes fiscales en esta búsqueda</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-100">
+              <div className="overflow-x-auto rounded-xl border border-slate-300">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase text-slate-450 font-bold tracking-wider">
+                    <tr className="bg-slate-50/50 border-b border-slate-300 text-[10px] uppercase text-slate-450 font-bold tracking-wider">
                       <th className="py-3 px-4">Comprobante N°</th>
                       <th className="py-3 px-4">Fecha</th>
                       <th className="py-3 px-4">Tipo</th>
@@ -600,7 +600,7 @@ export default function FiscalScreen() {
                           }`}
                         >
                           <td className="py-3 px-4 font-mono font-bold text-slate-700">{s.invoiceNum}</td>
-                          <td className="py-3 px-4 text-slate-400 font-bold">{new Date(s.createdAt).toLocaleDateString()}</td>
+                          <td className="py-3 px-4 text-slate-600 font-bold">{new Date(s.createdAt).toLocaleDateString()}</td>
                           <td className="py-3 px-4 text-slate-600 font-bold">{s.docType}</td>
                           <td className="py-3 px-4 text-slate-800 font-black">${s.total.toLocaleString()}</td>
                           <td className="py-3 px-4 font-mono text-slate-450">{s.cae}</td>
@@ -625,13 +625,13 @@ export default function FiscalScreen() {
 
         {/* Right Column: Premium Fiscal Invoice Live Ticket Preview Simulator */}
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-md space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-md space-y-4">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-300">
               <Eye className="w-4.5 h-4.5 text-rose-500 animate-pulse-soft" /> Visualización Ticket ARCA (80mm)
             </h3>
 
             {/* Thermal Ticket Container */}
-            <div className="bg-[#fcfdfd] border-2 border-dashed border-slate-200 rounded-xl p-5 shadow-inner flex flex-col font-mono text-[10px] text-slate-650 space-y-3 leading-relaxed relative overflow-hidden select-none max-w-[340px] mx-auto">
+            <div className="bg-[#fcfdfd] border-2 border-dashed border-slate-400 rounded-xl p-5 shadow-inner flex flex-col font-mono text-[10px] text-slate-650 space-y-3 leading-relaxed relative overflow-hidden select-none max-w-[340px] mx-auto">
               {/* Backlight effect */}
               <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-xl pointer-events-none" />
 
@@ -639,10 +639,10 @@ export default function FiscalScreen() {
               <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
                 <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">GO! PUNTO DE VENTA</h4>
                 <p className="text-[9px] font-bold text-slate-450 leading-none">C.U.I.T. N° {cuit}</p>
-                <p className="text-[8px] text-slate-400">Punto de Venta N° {posNumber}</p>
-                <p className="text-[8px] text-slate-400 uppercase font-bold">{taxRegime}</p>
-                <p className="text-[8px] text-slate-400">ING. BRUTOS: Convenio Multilateral</p>
-                <p className="text-[8px] text-slate-400">Inicio de Actividades: 10/12/2023</p>
+                <p className="text-[8px] text-slate-600">Punto de Venta N° {posNumber}</p>
+                <p className="text-[8px] text-slate-600 uppercase font-bold">{taxRegime}</p>
+                <p className="text-[8px] text-slate-600">ING. BRUTOS: Convenio Multilateral</p>
+                <p className="text-[8px] text-slate-600">Inicio de Actividades: 10/12/2023</p>
               </div>
 
               {/* Invoice Main Meta */}
@@ -696,11 +696,11 @@ export default function FiscalScreen() {
                   <span>SUBTOTAL:</span>
                   <span>${selectedInvoice ? (selectedInvoice.total * 0.79).toFixed(2) : '5.990'}</span>
                 </div>
-                <div className="flex justify-between text-[9px] text-slate-500 leading-none">
+                <div className="flex justify-between text-[9px] text-slate-700 leading-none">
                   <span>IVA 21.00%:</span>
                   <span>${selectedInvoice ? (selectedInvoice.total * 0.21).toFixed(2) : '1.510'}</span>
                 </div>
-                <div className="flex justify-between text-xs font-black text-rose-600 pt-1 border-t border-dashed border-slate-200">
+                <div className="flex justify-between text-xs font-black text-rose-600 pt-1 border-t border-dashed border-slate-400">
                   <span>TOTAL NETO:</span>
                   <span>${selectedInvoice ? selectedInvoice.total.toLocaleString() : '7.500'}</span>
                 </div>
@@ -715,11 +715,11 @@ export default function FiscalScreen() {
               <div className="border-t border-dashed border-slate-300 pt-3 flex flex-col items-center gap-2">
                 <div className="flex items-center gap-3">
                   {/* Visual QR Code Generator */}
-                  <div className="w-16 h-16 bg-white border border-slate-200 rounded p-1 flex items-center justify-center shadow-inner shrink-0 relative">
+                  <div className="w-16 h-16 bg-white border border-slate-400 rounded p-1 flex items-center justify-center shadow-inner shrink-0 relative">
                     <QrCode className="w-full h-full text-slate-800 stroke-[1.5]" />
                     <div className="absolute inset-0 m-auto w-4.5 h-4.5 bg-rose-600 rounded-sm flex items-center justify-center text-[5px] font-black text-white leading-none shadow">ARCA</div>
                   </div>
-                  <div className="text-[8px] text-slate-400 font-bold leading-normal">
+                  <div className="text-[8px] text-slate-600 font-bold leading-normal">
                     <p className="text-slate-650 font-black flex items-center gap-1 uppercase tracking-wider text-[7px] leading-none mb-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       Comprobante Autorizado
@@ -734,7 +734,7 @@ export default function FiscalScreen() {
                   <div className="font-mono text-[7px] tracking-[0.25em] text-slate-350 select-none bg-slate-900/5 py-1 px-3 rounded flex items-center justify-center font-bold">
                     |||| | ||||| | ||| |||| | ||| | ||| ||||| |||| | |||| |||
                   </div>
-                  <span className="text-[7px] text-slate-400 font-mono">ARCA COD. 94 - REGISTRO N° 102492810</span>
+                  <span className="text-[7px] text-slate-600 font-mono">ARCA COD. 94 - REGISTRO N° 102492810</span>
                 </div>
               </div>
             </div>

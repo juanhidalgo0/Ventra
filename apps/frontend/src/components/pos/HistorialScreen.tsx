@@ -364,7 +364,7 @@ export default function HistorialScreen() {
       MIXED: 'Cobro Mixto', 
       DEBT: clientName ? `Adeudado: ${clientName}` : 'Cta. Cte.' 
     };
-    return <span className={`text-[9px] px-2.5 py-1 rounded-xl font-bold uppercase tracking-tight ${styles[m] || 'bg-slate-50 text-slate-500'}`}>{labels[m] || m}</span>;
+    return <span className={`text-[9px] px-2.5 py-1 rounded-xl font-bold uppercase tracking-tight ${styles[m] || 'bg-slate-50 text-slate-700'}`}>{labels[m] || m}</span>;
   };
 
   return (
@@ -375,7 +375,7 @@ export default function HistorialScreen() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <History className="w-7 h-7 text-indigo-500" /> Historial de Caja
           </h1>
-          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Ventas y movimientos operativos</p>
+          <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Ventas y movimientos operativos</p>
         </div>
 
         {/* Date Selector & Exports Bar */}
@@ -393,7 +393,7 @@ export default function HistorialScreen() {
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   filterMode === mode.id 
                     ? 'bg-indigo-600 text-white shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-800'
+                    : 'text-slate-700 hover:text-slate-800'
                 }`}
               >
                 {mode.label}
@@ -407,7 +407,7 @@ export default function HistorialScreen() {
               <select 
                 value={selectedMonth} 
                 onChange={(e) => setSelectedMonth(Number(e.target.value))} 
-                className="bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer capitalize"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer capitalize"
               >
                 {months.map((m, i) => (
                   <option key={m} value={i}>{m}</option>
@@ -416,7 +416,7 @@ export default function HistorialScreen() {
               <select 
                 value={selectedYear} 
                 onChange={(e) => setSelectedYear(Number(e.target.value))} 
-                className="bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
               >
                 {years.map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -432,7 +432,7 @@ export default function HistorialScreen() {
                 type="date"
                 value={selectedDay}
                 onChange={(e) => setSelectedDay(e.target.value)}
-                className="bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
               />
             </div>
           )}
@@ -440,19 +440,19 @@ export default function HistorialScreen() {
           {/* Selector de Rango */}
           {filterMode === 'range' && (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Desde</span>
+              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Desde</span>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
               />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hasta</span>
+              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Hasta</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
               />
             </div>
           )}
@@ -463,7 +463,7 @@ export default function HistorialScreen() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportExcel}
-              className="px-4 py-2 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              className="px-4 py-2 rounded-2xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-1.5 active:scale-95 cursor-pointer"
               title="Descargar Excel"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600" />
@@ -482,49 +482,49 @@ export default function HistorialScreen() {
       </div>
 
       {/* Navigation tabs at the top */}
-      <div className="flex flex-col md:flex-row gap-3 md:justify-between md:items-center bg-white/50 backdrop-blur-sm p-4 rounded-2xl border border-slate-100/50 shrink-0 shadow-sm">
-        <div className="flex gap-2 p-1 rounded-2xl bg-slate-50 border border-slate-100/40 overflow-x-auto whitespace-nowrap scrollbar-hide w-full md:w-auto">
+      <div className="flex flex-col md:flex-row gap-3 md:justify-between md:items-center bg-white/50 backdrop-blur-sm p-4 rounded-2xl border border-slate-300/50 shrink-0 shadow-sm">
+        <div className="flex gap-2 p-1 rounded-2xl bg-slate-50 border border-slate-300/40 overflow-x-auto whitespace-nowrap scrollbar-hide w-full md:w-auto">
           <button 
             onClick={() => setActiveTab('SUMMARY')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'SUMMARY' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'SUMMARY' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
             Resumen
           </button>
           <button 
             onClick={() => setActiveTab('SALES')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'SALES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'SALES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
             Ventas ({sales.length})
           </button>
           <button 
             onClick={() => setActiveTab('ORDERS')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'ORDERS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'ORDERS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
             Pedidos
           </button>
           <button 
             onClick={() => setActiveTab('QUOTES')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'QUOTES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'QUOTES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
             Presupuestos
           </button>
           <button 
             onClick={() => setActiveTab('RETURNS')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'RETURNS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'RETURNS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
             Devoluciones ({cancelledSales.length})
           </button>
         </div>
 
         {activeTab === 'SALES' && (
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="relative w-full md:w-72 flex items-center">
+            <Search className="absolute left-4 w-4 h-4 text-slate-600 pointer-events-none" />
             <input 
               type="text" 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
               placeholder="Buscar por ticket o cajero..." 
-              className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400"
+              className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600"
             />
           </div>
         )}
@@ -533,7 +533,7 @@ export default function HistorialScreen() {
       {/* Main Content Areas */}
       <div className="flex-1 overflow-hidden">
         {isLoading ? (
-          <div className="h-full card flex items-center justify-center text-slate-400 text-sm font-medium">
+          <div className="h-full card flex items-center justify-center text-slate-600 text-sm font-medium">
             Cargando historial de ventas...
           </div>
         ) : (
@@ -550,11 +550,11 @@ export default function HistorialScreen() {
                 {/* 4 Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
                   {/* TOTAL VENDIDO */}
-                  <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-between">
+                  <div className="p-5 rounded-2xl bg-white border border-slate-300 shadow-sm flex items-center justify-between">
                     <div>
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block">TOTAL VENDIDO</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 block">TOTAL VENDIDO</span>
                       <span className="text-2xl font-bold text-slate-800 mt-1 block">{fmt(totalSold)}</span>
-                      <span className="text-[10px] font-bold text-slate-400 block mt-1.5">Ventas facturadas en el mes</span>
+                      <span className="text-[10px] font-bold text-slate-600 block mt-1.5">Ventas facturadas en el mes</span>
                     </div>
                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500">
                       <DollarSign className="w-6 h-6" />
@@ -562,9 +562,9 @@ export default function HistorialScreen() {
                   </div>
 
                   {/* GANANCIA BRUTA */}
-                  <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-between">
+                  <div className="p-5 rounded-2xl bg-white border border-slate-300 shadow-sm flex items-center justify-between">
                     <div>
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block">GANANCIA BRUTA</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 block">GANANCIA BRUTA</span>
                       <span className="text-2xl font-bold text-slate-800 mt-1 block">{fmt(grossProfit)}</span>
                       <span className="text-[10px] font-bold text-emerald-500 block mt-1.5 uppercase tracking-tighter">Margen: {grossMargin.toFixed(1)}%</span>
                     </div>
@@ -574,11 +574,11 @@ export default function HistorialScreen() {
                   </div>
 
                   {/* VENTAS EN EFECTIVO */}
-                  <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-between">
+                  <div className="p-5 rounded-2xl bg-white border border-slate-300 shadow-sm flex items-center justify-between">
                     <div>
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block">VENTAS EN EFECTIVO</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 block">VENTAS EN EFECTIVO</span>
                       <span className="text-2xl font-bold text-slate-800 mt-1 block">{cashPercentage.toFixed(0)}%</span>
-                      <span className="text-[10px] font-bold text-slate-400 block mt-1.5">Con Tarjeta/MP: {(100 - cashPercentage).toFixed(0)}%</span>
+                      <span className="text-[10px] font-bold text-slate-600 block mt-1.5">Con Tarjeta/MP: {(100 - cashPercentage).toFixed(0)}%</span>
                     </div>
                     <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500">
                       <Wallet className="w-6 h-6" />
@@ -586,11 +586,11 @@ export default function HistorialScreen() {
                   </div>
 
                   {/* TOTAL DE VENTAS */}
-                  <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-between">
+                  <div className="p-5 rounded-2xl bg-white border border-slate-300 shadow-sm flex items-center justify-between">
                     <div>
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block">TOTAL DE VENTAS</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 block">TOTAL DE VENTAS</span>
                       <span className="text-2xl font-bold text-slate-800 mt-1 block">{salesCount}</span>
-                      <span className="text-[10px] font-bold text-slate-500 block mt-1.5 uppercase">Ticket prom: {fmt(averageTicket)}</span>
+                      <span className="text-[10px] font-bold text-slate-700 block mt-1.5 uppercase">Ticket prom: {fmt(averageTicket)}</span>
                     </div>
                     <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-500">
                       <ShoppingBag className="w-6 h-6" />
@@ -601,8 +601,8 @@ export default function HistorialScreen() {
                 {/* Payments breakdown */}
                 <div className="card p-6 flex flex-col gap-6 shrink-0">
                   <div>
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Desglose de Pagos</h3>
-                    <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wide">Distribución del flujo de ingresos</p>
+                    <h3 className="text-xs font-bold uppercase text-slate-700 tracking-wider">Desglose de Pagos</h3>
+                    <p className="text-[10px] text-slate-600 font-bold mt-0.5 uppercase tracking-wide">Distribución del flujo de ingresos</p>
                   </div>
 
                   <div className="space-y-4">
@@ -654,22 +654,22 @@ export default function HistorialScreen() {
               >
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                   {filteredSales.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
+                    <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
                       <History className="w-12 h-12 mb-3 opacity-30" />
                       <p className="text-sm font-medium">No se encontraron ventas para este período.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {filteredSales.map((sale) => (
-                        <div key={sale.id} className="rounded-2xl border border-slate-100/80 overflow-hidden hover:border-indigo-100 hover:shadow-md hover:shadow-indigo-500/5 transition-all">
+                        <div key={sale.id} className="rounded-2xl border border-slate-300/80 overflow-hidden hover:border-indigo-100 hover:shadow-md hover:shadow-indigo-500/5 transition-all">
                           <button 
                             onClick={() => setExpandedId(expandedId === sale.id ? null : sale.id)} 
                             className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50/50 transition-colors"
                           >
                             <div className="flex items-center gap-4 flex-wrap">
                               <span className="text-xs font-bold text-slate-800">#{sale.saleNumber}</span>
-                              <span className="text-xs text-slate-400 font-medium">{fmtDate(sale.createdAt)}</span>
-                              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {sale.user?.username}</span>
+                              <span className="text-xs text-slate-600 font-medium">{fmtDate(sale.createdAt)}</span>
+                              <span className="text-xs text-slate-600 font-semibold flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {sale.user?.username}</span>
                               {methodBadge(sale.paymentMethodSummary, sale.client?.name)}
                               {sale.status === 'CANCELLED' && (
                                 <span className="text-[9px] px-2.5 py-0.5 rounded-xl bg-rose-50 text-rose-500 font-bold border border-rose-100 uppercase tracking-tight">Cancelada</span>
@@ -677,7 +677,7 @@ export default function HistorialScreen() {
                             </div>
                             <div className="flex items-center gap-4">
                               <span className="text-sm font-bold text-slate-800">{fmt(sale.total)}</span>
-                              {expandedId === sale.id ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                              {expandedId === sale.id ? <ChevronUp className="w-4 h-4 text-slate-600" /> : <ChevronDown className="w-4 h-4 text-slate-600" />}
                             </div>
                           </button>
                           
@@ -687,25 +687,25 @@ export default function HistorialScreen() {
                                 initial={{ height: 0, opacity: 0 }} 
                                 animate={{ height: 'auto', opacity: 1 }} 
                                 exit={{ height: 0, opacity: 0 }} 
-                                className="overflow-hidden bg-slate-50/30 border-t border-slate-100/50"
+                                className="overflow-hidden bg-slate-50/30 border-t border-slate-300/50"
                               >
                                 <div className="px-6 py-5 space-y-4">
                                   {/* Table of items */}
                                   <table className="w-full text-xs">
                                     <thead>
-                                      <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pb-2 border-b border-slate-100"><th className="text-left pb-2">Producto</th><th className="text-right pb-2">Cant.</th><th className="text-right pb-2">P. Unit</th><th className="text-right pb-2">Subtotal</th></tr>
+                                      <tr className="text-[9px] font-bold text-slate-600 uppercase tracking-widest pb-2 border-b border-slate-300"><th className="text-left pb-2">Producto</th><th className="text-right pb-2">Cant.</th><th className="text-right pb-2">P. Unit</th><th className="text-right pb-2">Subtotal</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100/50">
                                       {sale.items?.map((item: any) => (
-                                        <tr key={item.id} className="text-slate-600"><td className="py-2.5 font-bold text-slate-700">{item.productName}</td><td className="text-right text-slate-500">{item.quantity}</td><td className="text-right text-slate-500">{fmt(item.unitPrice)}</td><td className="text-right font-bold text-slate-700">{fmt(item.total)}</td></tr>
+                                        <tr key={item.id} className="text-slate-600"><td className="py-2.5 font-bold text-slate-700">{item.productName}</td><td className="text-right text-slate-700">{item.quantity}</td><td className="text-right text-slate-700">{fmt(item.unitPrice)}</td><td className="text-right font-bold text-slate-700">{fmt(item.total)}</td></tr>
                                       ))}
                                     </tbody>
                                   </table>
 
                                   {/* Payments detail */}
-                                  <div className="flex flex-wrap gap-2.5 pt-3 border-t border-slate-100/50">
+                                  <div className="flex flex-wrap gap-2.5 pt-3 border-t border-slate-300/50">
                                     {sale.payments.map((p: any, i: number) => (
-                                      <span key={i} className="text-[10px] text-slate-500 bg-white px-3 py-1.5 rounded-xl border border-slate-100/70 font-semibold">
+                                      <span key={i} className="text-[10px] text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-slate-300/70 font-semibold">
                                         {p.method === 'CASH' ? '💵 Efectivo' : p.method === 'CLOVER' ? '💳 Clover' : p.method === 'DEBT' ? '👛 Cta. Cte.' : '📱 MP'}: <b className="text-slate-800 font-bold ml-1">{fmt(p.amount)}</b>
                                       </span>
                                     ))}
@@ -713,7 +713,7 @@ export default function HistorialScreen() {
 
                                   {/* Cancel action */}
                                   {sale.status === 'COMPLETED' && (
-                                    <div className="flex justify-end pt-3 border-t border-slate-100/40">
+                                    <div className="flex justify-end pt-3 border-t border-slate-300/40">
                                       <button 
                                         onClick={() => handleCancelSale(sale.id)}
                                         className="flex items-center gap-1.5 py-2 px-4 rounded-xl border border-rose-100 text-rose-600 bg-rose-50/20 hover:bg-rose-50 text-[10px] font-bold uppercase tracking-tight transition-all active:scale-[0.98]"
@@ -748,7 +748,7 @@ export default function HistorialScreen() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-700">Integración con Pedidos Web</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1 max-w-[280px] leading-relaxed mx-auto">
+                  <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-1 max-w-[280px] leading-relaxed mx-auto">
                     Los pedidos del Catálogo Online se gestionan en la pestaña <b>"Pedidos Recibidos"</b> de la barra lateral.
                   </p>
                 </div>
@@ -769,7 +769,7 @@ export default function HistorialScreen() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-700">Presupuestos y Cotizaciones</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1 max-w-[280px] leading-relaxed mx-auto">
+                  <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-1 max-w-[280px] leading-relaxed mx-auto">
                     Los presupuestos de clientes se gestionan en la pestaña <b>"Presupuestos"</b> de la barra lateral.
                   </p>
                 </div>
@@ -787,7 +787,7 @@ export default function HistorialScreen() {
               >
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                   {cancelledSales.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
+                    <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
                       <Ban className="w-12 h-12 mb-3 opacity-30 text-rose-400" />
                       <p className="text-sm font-medium">No hay devoluciones o cancelaciones en este período.</p>
                     </div>
@@ -800,13 +800,13 @@ export default function HistorialScreen() {
                               <span className="text-xs font-bold text-slate-800">#{sale.saleNumber}</span>
                               <span className="text-[9px] px-2 py-0.5 rounded-lg bg-rose-50 text-rose-500 font-bold border border-rose-100 uppercase tracking-tight">Cancelada</span>
                             </div>
-                            <p className="text-[10px] text-slate-400 font-medium mt-1">
+                            <p className="text-[10px] text-slate-600 font-medium mt-1">
                               Fecha: {fmtDate(sale.createdAt)} — Cajero: {sale.user?.username}
                             </p>
                           </div>
                           <div className="text-right">
                             <span className="text-sm font-bold text-rose-600">-{fmt(sale.total)}</span>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Efectivo devuelto</p>
+                            <p className="text-[9px] text-slate-600 font-bold uppercase tracking-wider mt-0.5">Efectivo devuelto</p>
                           </div>
                         </div>
                       ))}
