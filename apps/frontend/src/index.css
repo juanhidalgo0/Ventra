@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -24,8 +24,8 @@
     transition: all 0.2s;
 }
 .pos-theme .pos-input:focus {
-    border-color: #6366f1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    border-color: #0E6E52;
+    box-shadow: 0 0 0 3px rgba(226, 96, 10, 0.2);
 }
 .pos-theme .pos-btn-secondary {
     background-color: #334155;
@@ -59,7 +59,7 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    @apply bg-slate-200 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
   }
   
   /* Fallback to ensure dark mode background is applied if Tailwind @apply fails */
@@ -86,6 +86,36 @@
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.7; transform: scale(0.97); }
   }
+
+  /* Loading halo for the Ventra mark: a thin rotating gradient ring (like a
+     circular progress arc) instead of expanding "sonar" pulse rings, paired
+     with a slow breathing scale on the logo itself. Reads as "still working"
+     without the busier concentric-ping look. */
+  .boot-halo {
+    position: relative;
+  }
+  .boot-halo::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 9999px;
+    padding: 2px;
+    background: conic-gradient(from 0deg, transparent 0deg, #0E6E52 110deg, transparent 200deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: boot-halo-spin 1.6s linear infinite;
+  }
+  .boot-halo__logo {
+    animation: boot-halo-breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes boot-halo-spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes boot-halo-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.045); }
+  }
 }
 
 @keyframes toast-progress {
@@ -96,11 +126,11 @@
 @layer components {
   /* ── Card ────────────────────────────────── */
   .card {
-    @apply bg-white dark:bg-slate-900 border-[1.5px] border-slate-300 dark:border-slate-700 shadow-sm dark:shadow-none transition-all duration-200 ease-in-out;
+    @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none transition-all duration-200 ease-in-out;
     border-radius: 1rem;
   }
   .card:hover {
-    @apply border-slate-400 dark:border-slate-500;
+    @apply border-slate-300 dark:border-slate-500;
   }
 
   /* ── Buttons ─────────────────────────────── */
@@ -168,8 +198,8 @@
     transition: all 0.2s ease;
   }
   .input-field:focus {
-    border-color: #e11d48;
-    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.2); /* Stronger focus ring */
+    border-color: #0E6E52;
+    box-shadow: 0 0 0 3px rgba(226, 96, 10, 0.2); /* Stronger focus ring */
   }
   .input-field::placeholder {
     color: #64748b; /* Darker placeholder */
@@ -204,17 +234,16 @@ body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.keep-style),
 body[data-performance-mode="true"]:not(.on-auth-screen) input,
 body[data-performance-mode="true"]:not(.on-auth-screen) select,
 body[data-performance-mode="true"]:not(.on-auth-screen) textarea,
-body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style),
+body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style):not(.keep-animated):not(.keep-animated *):not([class*="toast"]):not([id*="toast"]):not([class*="toast"] *):not([id*="toast"] *):not([class*="Go"]),
 body[data-performance-mode="true"]:not(.on-auth-screen) header,
 body[data-performance-mode="true"]:not(.on-auth-screen) main,
 body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar),
-body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated),
-body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated),
+body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated):not([class*="toast"]):not([class*="toast"] *),
+body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated):not([class*="toast"] *):not([id*="toast"] *),
 body[data-performance-mode="true"]:not(.on-auth-screen) img {
   transition: none !important;
   animation: none !important;
   box-shadow: none !important;
-  border-radius: 0px !important; /* Absolute square corners in perf mode */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   transform: none !important;
@@ -223,34 +252,63 @@ body[data-performance-mode="true"]:not(.on-auth-screen) img {
   scroll-behavior: auto !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .card {
-  border: 2px solid #64748b !important; /* Strong dark border for cards */
+body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel) {
+  border: 1px solid #e2e8f0 !important;
 }
 
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card {
-  border: 2px solid #334155 !important;
+body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-panel {
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel) {
+  border: 1px solid #334155 !important;
   background-color: #1e293b !important; /* Slate 800 */
 }
 
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) img {
-  filter: invert(1) hue-rotate(180deg) !important;
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-panel {
+  border: 1px solid #334155 !important;
+  background-color: #0f172a !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) input,
 body[data-performance-mode="true"]:not(.on-auth-screen) select,
 body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
-  border: 2px solid #334155 !important;
+  border: 1px solid #cbd5e1 !important;
   background-color: #ffffff !important;
   color: #000000 !important;
-  font-weight: bold !important;
+  font-weight: 500 !important;
+}
+
+#pos-search {
+  border: 1px solid #e2e8f0 !important;
+  font-family: 'Outfit', sans-serif !important;
+}
+
+#pos-search::placeholder {
+  font-family: 'Outfit', sans-serif !important;
+  font-weight: 400 !important;
+  color: #94a3b8 !important;
 }
 
 html.dark body[data-performance-mode="true"]:not(.on-auth-screen) input,
 html.dark body[data-performance-mode="true"]:not(.on-auth-screen) select,
 html.dark body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
-  border: 2px solid #475569 !important;
+  border: 1px solid #334155 !important;
   background-color: #0f172a !important; /* Slate 900 */
   color: #ffffff !important;
+}
+
+html.dark #pos-search {
+  border: 1px solid #334155 !important;
+}
+
+#pos-search:focus {
+  border-color: #0E6E52 !important;
+  box-shadow: 0 0 0 2px rgba(226, 96, 10, 0.15) !important;
 }
 
 /* Bypass gradients and transparencias to avoid alpha blending GPU lag */
@@ -262,9 +320,9 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-r {
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary {
-  background: #be123c !important; /* Darker red */
+  background: #C24F06 !important; /* Darker mango */
   color: #ffffff !important;
-  border: 2px solid #881337 !important;
+  border: 2px solid #7A3309 !important;
   font-weight: bold !important;
 }
 
@@ -322,4 +380,14 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-pending {
 body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
   background-color: #ecfdf5 !important; /* light emerald */
   border-color: #a7f3d0 !important;
+}
+
+/* High visibility focus state for writing fields inside product modal */
+#product-modal-container input:focus,
+#product-modal-container select:focus,
+#product-modal-container textarea:focus {
+  border-color: #F97F1E !important; /* Mango 500 */
+  box-shadow: 0 0 0 4px rgba(226, 96, 10, 0.22) !important; /* Strong Mango focus ring */
+  background-color: rgba(255, 247, 237, 0.6) !important; /* Soft mango tint background */
+  outline: none !important;
 }

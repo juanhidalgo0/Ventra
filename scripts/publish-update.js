@@ -23,7 +23,7 @@ const bundleDir = path.join(__dirname, '..', 'src-tauri', 'target', 'release', '
 // Vamos a buscar dinámicamente el .zip.sig en esa carpeta que contenga la versión actual.
 
 let sigFilePath = '';
-let zipUrl = `https://github.com/juanhidalgo0/GoPortal/releases/download/v${version}/GoPortal_${version}_x64-setup.nsis.zip`;
+let zipUrl = `https://github.com/juanhidalgo0/Ventra/releases/download/v${version}/Ventra_${version}_x64-setup.nsis.zip`;
 
 if (fs.existsSync(bundleDir)) {
   const files = fs.readdirSync(bundleDir);
@@ -66,11 +66,11 @@ fs.writeFileSync(outputPath, JSON.stringify(latestJson, null, 2));
 console.log('\n--- ÉXITO ---');
 console.log(`Se ha generado el archivo latest.json en la raíz del proyecto.`);
 console.log('\nPASOS FINALES PARA PUBLICAR LA ACTUALIZACIÓN:');
-console.log(`1. Ve a https://github.com/juanhidalgo0/GoPortal/releases`);
+console.log(`1. Ve a https://github.com/juanhidalgo0/Ventra/releases`);
 console.log(`2. Crea un nuevo Release llamado "v${version}" (el tag DEBE SER v${version}).`);
 console.log(`3. Sube los siguientes archivos a ese release:`);
-console.log(`   - src-tauri/target/release/bundle/nsis/GoPortal_${version}_x64-setup.exe (Para instalaciones nuevas)`);
-console.log(`   - src-tauri/target/release/bundle/nsis/GoPortal_${version}_x64-setup.nsis.zip (El paquete de actualización)`);
-console.log(`   - src-tauri/target/release/bundle/nsis/GoPortal_${version}_x64-setup.nsis.zip.sig`);
+console.log(`   - src-tauri/target/release/bundle/nsis/Ventra_${version}_x64-setup.exe (Para instalaciones nuevas)`);
+console.log(`   - src-tauri/target/release/bundle/nsis/Ventra_${version}_x64-setup.nsis.zip (El paquete de actualización)`);
+console.log(`   - src-tauri/target/release/bundle/nsis/Ventra_${version}_x64-setup.nsis.zip.sig`);
 console.log(`   - latest.json (Generado en la raíz de tu proyecto)`);
 console.log(`4. Publica el release. ¡Las aplicaciones cliente se actualizarán automáticamente!`);

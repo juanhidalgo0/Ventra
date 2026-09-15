@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{Listener, Manager};
 
 struct BackendPort(u16);
 
@@ -74,6 +74,12 @@ fn open_auth_window(app_handle: tauri::AppHandle, url: String) {
 }
 
 #[tauri::command]
+fn restart_app(app_handle: tauri::AppHandle) {
+    println!("[Tauri] Relaunching application...");
+    app_handle.restart();
+}
+
+#[tauri::command]
 fn open_browser(url: String) {
     #[cfg(target_os = "windows")]
     {
@@ -129,18 +135,33 @@ pub fn run() {
 
             // Copy .env to AppData to make sure spawned backend can access keys (e.g. GEMINI_API_KEY)
             let env_path = app_data_dir.join(".env");
-            let possible_paths = [
-                "../.env",
-                "../../.env",
-                ".env",
-                "apps/backend/.env",
-            ];
-            for rel_path in &possible_paths {
-                let check_path = std::path::Path::new(rel_path);
-                if check_path.exists() {
-                    if std::fs::copy(check_path, &env_path).is_ok() {
-                        println!("[Tauri] Env file copied successfully to AppData from: {:?}", check_path);
-                        break;
+            let mut env_copied = false;
+
+            // 1. Try to copy from the bundled resources (packaged in production)
+            if let Ok(resource_env) = app.path().resolve("_up_/.env", tauri::path::BaseDirectory::Resource) {
+                if resource_env.exists() {
+                    if std::fs::copy(&resource_env, &env_path).is_ok() {
+                        println!("[Tauri] Env file copied from resource bundle: {:?}", resource_env);
+                        env_copied = true;
+                    }
+                }
+            }
+
+            // 2. Fallback to local paths in development
+            if !env_copied {
+                let possible_paths = [
+                    "../.env",
+                    "../../.env",
+                    ".env",
+                    "apps/backend/.env",
+                ];
+                for rel_path in &possible_paths {
+                    let check_path = std::path::Path::new(rel_path);
+                    if check_path.exists() {
+                        if std::fs::copy(check_path, &env_path).is_ok() {
+                            println!("[Tauri] Env file copied successfully to AppData from: {:?}", check_path);
+                            break;
+                        }
                     }
                 }
             }
@@ -177,7 +198,42 @@ pub fn run() {
             // In development, it points directly to devUrl (localhost:5180).
             // The frontend dynamically requests the backend_port using tauri::command `get_backend_port`.
             if let Some(main_window) = app.get_webview_window("main") {
-                main_window.set_fullscreen(true).ok();
+                // Maximized (fills the screen, keeps window borders/titlebar so
+                // the close button works) instead of true borderless fullscreen.
+                main_window.maximize().ok();
+
+                // The main window starts hidden (see tauri.conf.json) so the user
+                // never sees a blank white frame while the webview boots. The
+                // splashscreen window covers that gap instead. Once this window's
+                // content actually finishes loading (either the dev navigate below,
+                // or the bundled frontendDist in production), swap them: close the
+                // splash and reveal the real window.
+                let reveal_handle = app.handle().clone();
+                main_window.once("tauri://load", move |_event| {
+                    if let Some(splash) = reveal_handle.get_webview_window("splashscreen") {
+                        splash.close().ok();
+                    }
+                    if let Some(main) = reveal_handle.get_webview_window("main") {
+                        main.show().ok();
+                        main.set_focus().ok();
+                    }
+                });
+
+                // Safety net: if "tauri://load" never fires (navigation error, a
+                // frontend that never resolves, etc.) don't leave the user staring
+                // at the splash forever — reveal the main window anyway. Calling
+                // show()/close() again once the normal path already ran is harmless.
+                let fallback_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    if let Some(splash) = fallback_handle.get_webview_window("splashscreen") {
+                        splash.close().ok();
+                    }
+                    if let Some(main) = fallback_handle.get_webview_window("main") {
+                        main.show().ok();
+                    }
+                });
+
                 if tauri::is_dev() {
                     let dev_url = "http://localhost:5180/";
                     let target_url = match main_window.url() {
@@ -249,7 +305,7 @@ pub fn run() {
 
             println!("[Tauri] Spawning Node backend using: {:?}", node_path_clean);
             let mut cmd = std::process::Command::new(node_path_clean);
-            cmd.arg("--max-old-space-size=256")
+            cmd.arg("--max-old-space-size=512")
                 .arg(backend_path_clean)
                 .env("NODE_ENV", "production")
                 .env("PORT", port.to_string())
@@ -279,16 +335,24 @@ pub fn run() {
  
              Ok(())
          })
-         .on_window_event(move |_window, event| {
+         .on_window_event(move |window, event| {
+             // Only the "main" window closing means the app is actually exiting.
+             // The splashscreen window is also destroyed (via .close()) a few
+             // seconds after startup as part of the normal boot handoff — without
+             // this guard, that close was being treated as "app closed" and killed
+             // the freshly-started backend before it ever got used.
+             if window.label() != "main" {
+                 return;
+             }
              if let tauri::WindowEvent::Destroyed = event {
                  let mut lock = child_process_clone.lock().unwrap();
                  if let Some(mut child) = lock.take() {
-                     println!("[Tauri] Window destroyed: Killing Node backend process...");
+                     println!("[Tauri] Main window destroyed: Killing Node backend process...");
                      child.kill().ok();
                  }
              }
          })
-         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser]);
+         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser, restart_app]);
 
     let app = builder
         .build(tauri::generate_context!())

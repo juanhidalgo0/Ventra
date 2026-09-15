@@ -1,0 +1,68 @@
+name: Release Desktop App
+
+# Push a tag like "v1.0.2" (matching the "version" in src-tauri/tauri.conf.json)
+# to build, sign, and publish a new Ventra desktop release automatically.
+# Every installed app checks this repo's latest release for updates.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Reset local dev database (fresh schema, no seed data bundled)
+        run: npm run db:reset
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Ventra v__VERSION__'
+          releaseBody: 'Ver los cambios de esta versión.'
+          releaseDraft: false
+          prerelease: false
+
+      # Notify every running desktop app instantly (Firestore realtime push),
+      # instead of each one waiting for its next periodic update check.
+      - name: Push instant update notification
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v',''
+          $body = @{
+            fields = @{
+              version = @{ stringValue = $version }
+              publishedAt = @{ timestampValue = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ") }
+            }
+          } | ConvertTo-Json -Depth 5
+          Invoke-RestMethod -Method Patch `
+            -Uri "https://firestore.googleapis.com/v1/projects/godelivery-magdalena/databases/(default)/documents/ventra_desktop/latest_version?key=AIzaSyAldeFtUWWlEpcuEg1LSTko90cVEvnsMLA" `
+            -ContentType "application/json" `
+            -Body $body
+        shell: pwsh
