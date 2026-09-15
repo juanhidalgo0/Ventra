@@ -8,6 +8,11 @@ on:
     tags:
       - 'v*.*.*'
 
+# The default GITHUB_TOKEN is read-only unless a workflow says otherwise —
+# tauri-action needs contents:write to create the release and upload assets.
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: windows-latest
