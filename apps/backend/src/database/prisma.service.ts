@@ -175,6 +175,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               console.log('[PrismaService] Auto-migrating products table: adding piece_size...');
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN piece_size REAL DEFAULT NULL;`);
             }
+            const hasShowOnline = productColumns.some(c => c.name === 'show_online');
+            if (!hasShowOnline) {
+              console.log('[PrismaService] Auto-migrating products table: adding show_online...');
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN show_online INTEGER NOT NULL DEFAULT 0;`);
+            }
+            const hasTaxRate = productColumns.some(c => c.name === 'tax_rate');
+            if (!hasTaxRate) {
+              console.log('[PrismaService] Auto-migrating products table: adding tax_rate...');
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN tax_rate REAL NOT NULL DEFAULT 0;`);
+            }
           }
         } catch (err) {
           console.error('[PrismaService] Failed to auto-migrate products table:', err);
