@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "GO! Portal",
+  "productName": "Ventra",
   "version": "1.0.1",
   "identifier": "com.godelivery.pos",
   "build": {
@@ -12,12 +12,28 @@
   "app": {
     "windows": [
       {
-        "title": "GO! Portal",
+        "label": "main",
+        "title": "Ventra",
         "width": 1280,
         "height": 800,
         "resizable": true,
-        "fullscreen": true,
-        "devtools": true
+        "fullscreen": false,
+        "maximized": true,
+        "decorations": true,
+        "devtools": true,
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splashscreen.html",
+        "width": 320,
+        "height": 320,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "skipTaskbar": true,
+        "shadow": true
       }
     ],
     "withGlobalTauri": true,
@@ -28,9 +44,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/juanhidalgo0/GoPortal/releases/latest/download/latest.json"
+        "https://github.com/juanhidalgo0/Ventra/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3ODRCRTY2M0I1RkFFNTcKUldSWHJsODdacjZFRjk0MUlYM2ZvTFRZOTh3eWt2TU9QSDBvM29FZXJuVVZ0LzdtTWR2Q3VxR2wK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUwNjFFMTJCMkNCMTQ4NjUKUldSbFNMRXNLK0ZoVURGNXZETkJaZmllTFl5alBmL1BwYVYrdjY4c3c5RDl6ZzI4S01OUHdFbW8K"
     }
   },
   "bundle": {
@@ -45,9 +61,19 @@
     ],
     "resources": [
       "../apps/backend/dist/ncc",
-      "../apps/backend/prisma/dev.db",
       "../apps/backend/bin/*",
-      "../apps/frontend/dist"
-    ]
+      "../apps/frontend/dist",
+      "../.env"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer-header.bmp",
+        "sidebarImage": "installer-sidebar.bmp",
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": ["Spanish"]
+      }
+    }
   }
 }
