@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Listener, Manager};
 
 struct BackendPort(u16);
+struct BackendChild(Arc<Mutex<Option<std::process::Child>>>);
 
 fn clean_unc_path(path: std::path::PathBuf) -> String {
     let path_str = path.to_string_lossy().to_string();
@@ -38,6 +39,26 @@ fn save_performance_mode(enabled: bool) {
 #[tauri::command]
 fn get_backend_port(port_state: tauri::State<'_, BackendPort>) -> u16 {
     port_state.0
+}
+
+// Called by the frontend right before installing a downloaded update. NSIS
+// needs to overwrite the backend's files (including native .node addons like
+// bcrypt_lib.node), which stay locked by Windows for as long as the spawned
+// Node process that loaded them is alive. Waiting for our own process to exit
+// isn't good enough — the old Updater.tsx flow never restarts the app at all,
+// it just runs the installer while everything is still running — so this
+// kills the backend and BLOCKS until the OS has actually released its file
+// handles (kill() alone only requests termination; wait() is what confirms
+// it's gone) before the frontend is allowed to proceed to update.install().
+#[tauri::command]
+fn stop_backend_for_update(state: tauri::State<'_, BackendChild>) {
+    let mut lock = state.0.lock().unwrap();
+    if let Some(mut child) = lock.take() {
+        println!("[Tauri] Stopping backend before installing update...");
+        child.kill().ok();
+        child.wait().ok();
+        println!("[Tauri] Backend stopped; file handles released.");
+    }
 }
 
 #[tauri::command]
@@ -115,9 +136,11 @@ pub fn run() {
     let child_process: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
     let child_process_clone = Arc::clone(&child_process);
     let child_process_exit = Arc::clone(&child_process);
+    let child_process_state = Arc::clone(&child_process);
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(BackendChild(child_process_state))
         .setup(move |app| {
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).ok();
@@ -349,10 +372,16 @@ pub fn run() {
                  if let Some(mut child) = lock.take() {
                      println!("[Tauri] Main window destroyed: Killing Node backend process...");
                      child.kill().ok();
+                     // Block until the OS confirms the process is actually gone — kill()
+                     // alone only sends the termination request. Without this, app.exe
+                     // can finish tearing down (and anything waiting on it, like an
+                     // updater installer, can start writing files) before Windows has
+                     // released the native .node addons the backend had loaded.
+                     child.wait().ok();
                  }
              }
          })
-         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser, restart_app]);
+         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser, restart_app, stop_backend_for_update]);
 
     let app = builder
         .build(tauri::generate_context!())
@@ -364,6 +393,7 @@ pub fn run() {
             if let Some(mut child) = lock.take() {
                 println!("[Tauri] Exit event: Killing Node backend process...");
                 child.kill().ok();
+                child.wait().ok();
             }
         }
     });
