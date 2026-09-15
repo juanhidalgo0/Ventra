@@ -1,22 +1,22 @@
 {
-  "name": "GO! Portal",
-  "short_name": "GO! Portal",
-  "description": "Sistema POS profesional para gestión de ventas, inventario y caja registradora.",
+  "name": "Ventra",
+  "short_name": "Ventra",
+  "description": "Sistema de ventas para comercios argentinos: caja, inventario y tienda online.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#e11d48",
+  "theme_color": "#E2600A",
   "orientation": "any",
   "icons": [
     {
-      "src": "godelivery-logo.jpg",
+      "src": "mango-icon.svg",
       "sizes": "192x192",
-      "type": "image/jpeg"
+      "type": "image/svg+xml"
     },
     {
-      "src": "godelivery-logo.jpg",
+      "src": "mango-icon.svg",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/svg+xml"
     }
   ]
 }

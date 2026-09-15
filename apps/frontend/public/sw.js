@@ -3,14 +3,13 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    fetch(e.request).catch((err) => {
-      // Prevent console spam on network errors (e.g. during dev server restarts or HMR issues)
-      return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
-    })
-  );
+  self.registration.unregister()
+    .then(() => self.clients.matchAll())
+    .then((clients) => {
+      clients.forEach(client => {
+        if (client.url) {
+          client.navigate(client.url);
+        }
+      });
+    });
 });

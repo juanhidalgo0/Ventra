@@ -11,7 +11,18 @@ export default defineConfig({
     host: true,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://localhost:3001', changeOrigin: true },
+      '/api': { 
+        target: 'http://localhost:3001', 
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            if (res && !(res as any).headersSent) {
+              (res as any).writeHead?.(503, { 'Content-Type': 'application/json' });
+              (res as any).end?.(JSON.stringify({ message: 'Servidor iniciando...' }));
+            }
+          });
+        }
+      },
       '/socket.io': { target: 'http://localhost:3001', ws: true },
     },
   },

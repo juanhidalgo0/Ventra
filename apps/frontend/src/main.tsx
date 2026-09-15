@@ -13,6 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <App />
       <Toaster
         position="top-right"
+        containerClassName="keep-animated"
         toastOptions={{
           duration: 3000,
         }}
@@ -32,7 +33,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <div className="relative flex flex-col w-full min-w-[300px]">
                 <div 
                   className="flex items-center gap-3 p-4 bg-white cursor-pointer" 
-                  onClick={() => toast.dismiss(t.id)}
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    const posInput = document.getElementById('pos-search') as HTMLInputElement | null;
+                    if (posInput) {
+                      setTimeout(() => posInput.focus(), 30);
+                    }
+                  }}
                 >
                   {icon}
                   <div className="flex-1 text-sm font-semibold text-slate-800 break-words">{message}</div>
