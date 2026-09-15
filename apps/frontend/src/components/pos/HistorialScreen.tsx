@@ -274,7 +274,7 @@ export default function HistorialScreen() {
     setIsLoading(true);
     try {
       const { from, to } = getDateRange();
-      const params: any = {};
+      const params: any = { limit: 1000 };
       if (from) params.from = from;
       if (to) params.to = to;
 
@@ -373,7 +373,7 @@ export default function HistorialScreen() {
       <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <History className="w-7 h-7 text-indigo-500" /> Historial de Caja
+            <History className="w-7 h-7 text-rose-500" /> Historial de Caja
           </h1>
           <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Ventas y movimientos operativos</p>
         </div>
@@ -392,7 +392,7 @@ export default function HistorialScreen() {
                 onClick={() => setFilterMode(mode.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   filterMode === mode.id 
-                    ? 'bg-indigo-600 text-white shadow-sm' 
+                    ? 'bg-rose-600 text-white shadow-sm' 
                     : 'text-slate-700 hover:text-slate-800'
                 }`}
               >
@@ -407,7 +407,7 @@ export default function HistorialScreen() {
               <select 
                 value={selectedMonth} 
                 onChange={(e) => setSelectedMonth(Number(e.target.value))} 
-                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer capitalize"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all cursor-pointer capitalize"
               >
                 {months.map((m, i) => (
                   <option key={m} value={i}>{m}</option>
@@ -416,7 +416,7 @@ export default function HistorialScreen() {
               <select 
                 value={selectedYear} 
                 onChange={(e) => setSelectedYear(Number(e.target.value))} 
-                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all cursor-pointer"
               >
                 {years.map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -432,7 +432,7 @@ export default function HistorialScreen() {
                 type="date"
                 value={selectedDay}
                 onChange={(e) => setSelectedDay(e.target.value)}
-                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all"
               />
             </div>
           )}
@@ -445,14 +445,14 @@ export default function HistorialScreen() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all"
               />
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Hasta</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                className="bg-white border border-slate-300 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all"
               />
             </div>
           )}
@@ -502,12 +502,14 @@ export default function HistorialScreen() {
           >
             Pedidos
           </button>
-          <button 
-            onClick={() => setActiveTab('QUOTES')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'QUOTES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
-          >
-            Presupuestos
-          </button>
+          {localStorage.getItem('business_type') === 'FERRETERIA' && (
+            <button 
+              onClick={() => setActiveTab('QUOTES')} 
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'QUOTES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
+            >
+              Presupuestos
+            </button>
+          )}
           <button 
             onClick={() => setActiveTab('RETURNS')} 
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'RETURNS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
@@ -524,7 +526,7 @@ export default function HistorialScreen() {
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
               placeholder="Buscar por ticket o cajero..." 
-              className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600"
+              className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-600"
             />
           </div>
         )}
@@ -568,7 +570,7 @@ export default function HistorialScreen() {
                       <span className="text-2xl font-bold text-slate-800 mt-1 block">{fmt(grossProfit)}</span>
                       <span className="text-[10px] font-bold text-emerald-500 block mt-1.5 uppercase tracking-tighter">Margen: {grossMargin.toFixed(1)}%</span>
                     </div>
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500">
                       <TrendingUp className="w-6 h-6" />
                     </div>
                   </div>
@@ -661,7 +663,7 @@ export default function HistorialScreen() {
                   ) : (
                     <div className="space-y-3">
                       {filteredSales.map((sale) => (
-                        <div key={sale.id} className="rounded-2xl border border-slate-300/80 overflow-hidden hover:border-indigo-100 hover:shadow-md hover:shadow-indigo-500/5 transition-all">
+                        <div key={sale.id} className="rounded-2xl border border-slate-300/80 overflow-hidden hover:border-rose-100 hover:shadow-md hover:shadow-rose-500/5 transition-all">
                           <button 
                             onClick={() => setExpandedId(expandedId === sale.id ? null : sale.id)} 
                             className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50/50 transition-colors"
@@ -743,7 +745,7 @@ export default function HistorialScreen() {
                 exit={{ opacity: 0 }}
                 className="h-full card p-8 flex flex-col items-center justify-center text-center gap-4"
               >
-                <div className="w-16 h-16 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
+                <div className="w-16 h-16 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500">
                   <ArrowRightLeft className="w-8 h-8" />
                 </div>
                 <div>
@@ -764,7 +766,7 @@ export default function HistorialScreen() {
                 exit={{ opacity: 0 }}
                 className="h-full card p-8 flex flex-col items-center justify-center text-center gap-4"
               >
-                <div className="w-16 h-16 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
+                <div className="w-16 h-16 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500">
                   <FileText className="w-8 h-8" />
                 </div>
                 <div>

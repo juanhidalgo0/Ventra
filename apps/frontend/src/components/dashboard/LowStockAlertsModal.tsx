@@ -77,17 +77,17 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
   );
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} 
-      animate={{ opacity: 1 }} 
-      exit={{ opacity: 0 }} 
-      className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
     >
-      <motion.div 
-        initial={{ scale: 0.98, opacity: 0 }} 
-        animate={{ scale: 1, opacity: 1 }} 
+      <motion.div
+        initial={{ scale: 0.98, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.98, opacity: 0 }}
-        className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl border border-slate-400 overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]"
       >
         <style>{`
           @media print {
@@ -141,9 +141,9 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
-            <button 
-              onClick={onClose} 
-              className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-600 hover:text-rose-500 transition-all"
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -234,7 +234,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                               <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 <span 
                                   className="text-[9px] font-bold px-2 py-0.5 rounded-md inline-block uppercase tracking-wider" 
-                                  style={{ backgroundColor: `${p.category?.color || '#e11d48'}12`, color: p.category?.color || '#e11d48' }}
+                                  style={{ backgroundColor: `${p.category?.color || '#0E6E52'}12`, color: p.category?.color || '#0E6E52' }}
                                 >
                                   {p.category?.name || 'Sin Cat.'}
                                 </span>
@@ -291,7 +291,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                           {p.supplier ? (
                             <div className="flex flex-col gap-0.5">
                               <span className="font-bold text-slate-700 flex items-center gap-1">
-                                <Truck className="w-3.5 h-3.5 text-indigo-500" /> {p.supplier.name}
+                                <Truck className="w-3.5 h-3.5 text-rose-500" /> {p.supplier.name}
                               </span>
                               {p.supplier.phone && (
                                 <span className="text-[10px] text-slate-600 font-semibold tracking-tight">
@@ -354,9 +354,9 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
             Mostrando {filteredProducts.length} de {products.length} alertas registradas
           </p>
-          <button 
-            onClick={onClose} 
-            className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
+          <button
+            onClick={onClose}
+            className="btn-secondary"
           >
             Cerrar Panel
           </button>
@@ -367,7 +367,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '3px solid #e2e8f0', paddingBottom: '4mm', marginBottom: '6mm' }}>
             <div>
               <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#b45309' }}>HOJA DE PEDIDO DE REABASTECIMIENTO</h1>
-              <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>GO! Punto de Venta — Alertas de Stock Bajo</p>
+              <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ventra POS — Alertas de Stock Bajo</p>
             </div>
             <div style={{ textAlign: 'right' }}>
               <p style={{ margin: 0, fontSize: '10px', color: '#64748b', fontWeight: 'bold' }}>Emitido: {new Date().toLocaleString('es-AR')}</p>

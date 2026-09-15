@@ -156,7 +156,7 @@ export default function EarningsDivisionScreen() {
   if (!email) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md bg-white p-8 rounded-2xl border border-slate-300 shadow-sm text-center">
+        <div className="card max-w-md p-8 text-center">
           <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-4 border border-amber-100">
             <AlertCircle className="w-7 h-7" />
           </div>
@@ -174,7 +174,7 @@ export default function EarningsDivisionScreen() {
       {/* Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0">
         <div className="flex items-center gap-4 text-left">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-inner">
             <Calculator className="w-6 h-6 animate-pulse-soft" />
           </div>
           <div>
@@ -198,25 +198,25 @@ export default function EarningsDivisionScreen() {
         <div className="flex bg-slate-100 border border-slate-400 rounded-xl p-1 shrink-0">
           <button 
             onClick={() => setPeriod('today')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'today' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'today' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
           >
             Hoy
           </button>
           <button 
             onClick={() => setPeriod('week')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'week' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'week' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
           >
             7 Días
           </button>
           <button 
             onClick={() => setPeriod('month')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'month' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'month' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
           >
             30 Días
           </button>
           <button 
             onClick={() => setPeriod('custom')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'custom' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'custom' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
           >
             Personalizado
           </button>
@@ -248,7 +248,7 @@ export default function EarningsDivisionScreen() {
         </div>
       ) : loading ? (
         <div className="flex-1 flex flex-col items-center justify-center p-12">
-          <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
+          <div className="w-12 h-12 border-4 border-rose-100 border-t-rose-600 rounded-full animate-spin mb-4" />
           <p className="text-xs font-black uppercase tracking-wider text-slate-600">Consolidando bases de datos física y digital...</p>
         </div>
       ) : metrics ? (
@@ -256,9 +256,9 @@ export default function EarningsDivisionScreen() {
           {/* Main Consolidated Output */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Consolidated Card */}
-            <div className="bg-gradient-to-tr from-slate-900 via-indigo-950 to-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col justify-between border border-indigo-500/20 text-left">
+            <div className="bg-gradient-to-tr from-slate-900 via-rose-950 to-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col justify-between border border-rose-500/20 text-left">
               <div>
-                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Total Combinado Consolidado</span>
+                <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Total Combinado Consolidado</span>
                 <h2 className="text-4xl font-black mt-2 leading-none">{formatCurrency(metrics.consolidated.billing)}</h2>
                 <p className="text-xs text-slate-600 font-bold mt-2">Facturación consolidada (POS + App Go + Comisiones + Repartos)</p>
               </div>
@@ -297,13 +297,13 @@ export default function EarningsDivisionScreen() {
                     max="10"
                     value={partners.length}
                     onChange={e => handlePartnerCountChange(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:bg-white focus:border-rose-500 transition-all"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleDistributeEqually}
-                  className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border-0 cursor-pointer"
+                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-650 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border-0 cursor-pointer"
                 >
                   Equitativo
                 </button>
@@ -322,7 +322,7 @@ export default function EarningsDivisionScreen() {
                         updated[idx].name = e.target.value;
                         setPartners(updated);
                       }}
-                      className="flex-1 bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:border-indigo-500 uppercase"
+                      className="flex-1 bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:border-rose-500 uppercase"
                     />
                     <div className="w-20 relative flex items-center">
                       <input
@@ -336,7 +336,7 @@ export default function EarningsDivisionScreen() {
                           updated[idx].percentage = parseFloat(e.target.value) || 0;
                           setPartners(updated);
                         }}
-                        className="w-full bg-white border border-slate-400 rounded-lg pl-2 pr-6 py-1 text-xs font-bold text-right outline-none focus:border-indigo-500"
+                        className="w-full bg-white border border-slate-400 rounded-lg pl-2 pr-6 py-1 text-xs font-bold text-right outline-none focus:border-rose-500"
                       />
                       <span className="absolute right-2 text-xs font-bold text-slate-600 pointer-events-none">%</span>
                     </div>
@@ -368,7 +368,7 @@ export default function EarningsDivisionScreen() {
             {/* POS Card */}
             <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4 text-left">
               <h4 className="text-[10.5px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-300 pb-3">
-                <Store className="w-4 h-4 text-rose-500" /> GoPortal POS (Tienda Física y Web)
+                <Store className="w-4 h-4 text-rose-500" /> Ventra POS (Tienda Física y Web)
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
@@ -389,7 +389,7 @@ export default function EarningsDivisionScreen() {
             {/* GoDelivery Card */}
             <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4 text-left">
               <h4 className="text-[10.5px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-300 pb-3">
-                <Smartphone className="w-4 h-4 text-indigo-500" /> Go Delivery (Aplicación Móvil)
+                <Smartphone className="w-4 h-4 text-rose-500" /> Go Delivery (Aplicación Móvil)
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
@@ -403,11 +403,11 @@ export default function EarningsDivisionScreen() {
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner col-span-2 flex justify-between items-center">
                   <div>
                     <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Comisiones Cobradas a Comercios</span>
-                    <span className="text-sm font-extrabold text-indigo-600">{formatCurrency(metrics.go.commissions || 0)}</span>
+                    <span className="text-sm font-extrabold text-rose-600">{formatCurrency(metrics.go.commissions || 0)}</span>
                   </div>
                   <div className="text-right">
                     <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Liquidaciones a Repartidores</span>
-                    <span className="text-sm font-extrabold text-indigo-600">{formatCurrency(metrics.go.delivery || 0)}</span>
+                    <span className="text-sm font-extrabold text-rose-600">{formatCurrency(metrics.go.delivery || 0)}</span>
                   </div>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner col-span-2">

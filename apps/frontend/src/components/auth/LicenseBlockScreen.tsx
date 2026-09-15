@@ -83,8 +83,8 @@ export default function LicenseBlockScreen({ onActivated, statusData }: LicenseB
       >
         {/* Header */}
         <div className="flex flex-col items-center text-center space-y-5 mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-300 flex items-center justify-center text-indigo-600 shadow-sm">
-             <GoDeliveryLogo className="w-8 h-8" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden border border-slate-300 shadow-sm">
+             <GoDeliveryLogo className="w-full h-full" />
           </div>
           
           <div className="space-y-2">
@@ -150,14 +150,14 @@ export default function LicenseBlockScreen({ onActivated, statusData }: LicenseB
             <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
               Código de Activación
             </label>
-            <div className="relative">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+            <div className="relative flex items-center">
+              <KeyRound className="absolute left-4 w-4 h-4 text-slate-600" />
               <input
                 type="text"
                 value={activationCode}
                 onChange={(e) => setActivationCode(e.target.value)}
                 placeholder="XXXX-XXXX-XXXX"
-                className="w-full bg-white border border-slate-400 rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-900 tracking-widest placeholder-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all uppercase"
+                className="w-full bg-white border border-slate-400 rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-900 tracking-widest placeholder-slate-300 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all uppercase"
                 maxLength={14}
               />
             </div>

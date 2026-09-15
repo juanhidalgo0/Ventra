@@ -73,20 +73,6 @@ export default function DashboardScreen() {
   ];
   const years = [2025, 2026, 2027, 2028];
 
-  // Google account status inside Dashboard
-  const [localGoogleUser, setLocalGoogleUser] = useState<any>(() => {
-    const saved = localStorage.getItem('google_authenticated_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const handleDisconnectGoogle = () => {
-    if (confirm('¿Estás seguro de desvincular la cuenta de Google? Los productos ya no se sincronizarán con GoDelivery.')) {
-      localStorage.removeItem('google_authenticated_user');
-      setLocalGoogleUser(null);
-      toast.success('Cuenta de Google desvinculada');
-    }
-  };
-
   const getDateRange = () => {
     let from: string = '';
     let to: string = '';
@@ -328,116 +314,19 @@ export default function DashboardScreen() {
   return (
     <div className="h-full overflow-y-auto p-2 space-y-4 custom-scrollbar">
       {license?.isDemo && (
-        <div className="bg-gradient-to-r from-rose-500/10 to-pink-500/10 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        <div className="bg-rose-50 border border-rose-250 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm select-none">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-rose-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border-2 border-rose-400">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border border-rose-450">
               📢
             </div>
             <div>
               <p className="text-[9px] font-extrabold text-rose-600 uppercase tracking-widest leading-none">Modo de Evaluación Activo</p>
-              <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</h4>
-              <p className="text-[10px] text-slate-700 font-semibold mt-1">Tu licencia DEMO vencerá pronto. Contáctate con soporte para adquirir una licencia definitiva.</p>
+              <h4 className="text-sm font-black text-rose-900 leading-tight mt-1.5">VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</h4>
+              <p className="text-[10.5px] text-rose-805 font-bold mt-1">Tu licencia DEMO vencerá pronto. Contáctate con soporte para adquirir una licencia definitiva.</p>
             </div>
           </div>
         </div>
       )}
-      {/* Google Terminal Session Status Banner */}
-      {localGoogleUser ? (
-        <div className="google-banner-active bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in-50 duration-300">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            {localGoogleUser.picture ? (
-              <img 
-                src={localGoogleUser.picture} 
-                referrerPolicy="no-referrer"
-                className="w-12 h-12 rounded-full border-2 border-emerald-500 shadow-md shrink-0 object-cover" 
-                alt="Google Profile" 
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  const parent = (e.target as HTMLImageElement).parentElement;
-                  if (parent) {
-                    const fallback = document.createElement('div');
-                    fallback.className = "w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-md border-2 border-emerald-500";
-                    fallback.innerText = localGoogleUser.name?.[0] || 'G';
-                    parent.appendChild(fallback);
-                  }
-                }}
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0">
-                {localGoogleUser.name?.[0]}
-              </div>
-            )}
-            <div>
-              <p className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest leading-none">Sesión Corporativa de Google Activa</p>
-              <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">{localGoogleUser.name} <span className="text-xs font-semibold text-slate-600">({localGoogleUser.email})</span></h4>
-              <p className="text-[10px] text-slate-455 font-semibold mt-1">Esta terminal está vinculada correctamente. Los productos se sincronizarán en tiempo real con GoDelivery.</p>
-            </div>
-          </div>
-          <button 
-            onClick={handleDisconnectGoogle} 
-            className="w-full md:w-auto px-5 py-2.5 rounded-xl border border-rose-250 bg-rose-50 text-rose-600 hover:bg-rose-100/80 transition-all font-extrabold text-xs shadow-sm active:scale-95 cursor-pointer shrink-0 text-center"
-          >
-            Desconectar Google
-          </button>
-        </div>
-      ) : (
-        <div className="google-banner-pending bg-gradient-to-r from-rose-500/10 to-amber-500/10 border border-amber-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in-50 duration-300">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border-2 border-amber-400">
-              G
-            </div>
-            <div>
-              <p className="text-[9px] font-extrabold text-amber-600 uppercase tracking-widest leading-none">Vinculación con GoDelivery Pendiente</p>
-              <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">Conectá tu cuenta de Google</h4>
-              <p className="text-[10px] text-slate-455 font-semibold mt-1">Vinculá una cuenta de Google para habilitar la sincronización en tiempo real de tus productos con la tienda online GoDelivery.</p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3 self-start md:self-auto shrink-0">
-            <button 
-              onClick={() => {
-                  const activePort = sessionStorage.getItem('active_backend_port') || '3001';
-                  const authUrl = `http://localhost:${activePort}/api/auth/google/login-page`;
-                
-                // Open external browser using Rust command to ensure compatibility
-                if ((window as any).__TAURI__) {
-                  const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
-                  if (invokeFn) {
-                    invokeFn('open_browser', { url: authUrl }).catch(() => window.open(authUrl, '_blank'));
-                  } else {
-                    window.open(authUrl, '_blank');
-                  }
-                } else {
-                  window.open(authUrl, '_blank');
-                }
-                toast("Iniciando sesión segura en tu navegador...");
-                
-                // Poll status every 1 second
-                const pollInterval = setInterval(async () => {
-                  try {
-                    const { data } = await api.get('/auth/google-link-status');
-                    if (data.linked && data.user) {
-                      clearInterval(pollInterval);
-                      localStorage.setItem('google_authenticated_user', JSON.stringify(data.user));
-                      setLocalGoogleUser(data.user);
-                      toast.success('¡Cuenta de Google vinculada con éxito!');
-                    }
-                  } catch (e) {
-                    // Ignore transient polling errors
-                  }
-                }, 1000);
-
-                // Auto stop polling after 5 minutes
-                setTimeout(() => clearInterval(pollInterval), 300000);
-              }}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md active:scale-95 transition-all cursor-pointer flex items-center gap-2 border border-slate-750"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.136 4.113-3.072 0-5.565-2.493-5.565-5.565s2.493-5.565 5.565-5.565c1.378 0 2.637.5 3.613 1.328l3.06-3.06C18.822 3.912 15.69 2.25 12 2.25 6.615 2.25 2.25 6.615 2.25 12s4.365 9.75 9.75 9.75c5.07 0 9.27-3.66 9.27-9.2 0-.6-.054-1.17-.154-1.728H12.24z"/></svg>
-              Iniciar sesión con Google
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Premium Period / Date Selector & Exports Bar */}
       <div className="bg-white border border-slate-400 rounded-2xl p-3 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
@@ -544,8 +433,28 @@ export default function DashboardScreen() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Productos', value: summary?.totalProducts || '0', sub: `${summary?.totalProducts || 0} activos`, icon: Package, accent: 'bg-rose-600 text-white' },
-          { label: 'Ventas Semanales', value: fmt(summary?.weeklyTotal || 0), sub: 'Últimos 7 días', icon: TrendingUp, accent: 'bg-slate-800 text-white' },
-          { label: 'Ventas de Hoy', value: fmt(summary?.totalRevenue || 0), sub: `${summary?.totalSales || 0} ventas completadas`, icon: ShoppingCart, accent: 'bg-rose-500 text-white' },
+          { 
+            label: filterMode === 'month' ? 'Ventas del Mes' : filterMode === 'day' ? 'Ventas del Día' : 'Ventas del Periodo', 
+            value: fmt(summary?.totalRevenue || 0), 
+            sub: filterMode === 'month' 
+              ? `Mes de: ${months[selectedMonth]} ${selectedYear}` 
+              : filterMode === 'day' 
+                ? `Día: ${selectedDay}` 
+                : `Rango: ${startDate} al ${endDate}`, 
+            icon: TrendingUp, 
+            accent: 'bg-slate-800 text-white' 
+          },
+          { 
+            label: 'Transacciones', 
+            value: summary?.totalSales || 0, 
+            sub: filterMode === 'month' 
+              ? `Ventas del mes` 
+              : filterMode === 'day' 
+                ? `Ventas de hoy` 
+                : `Ventas en el rango`, 
+            icon: ShoppingCart, 
+            accent: 'bg-rose-500 text-white' 
+          },
           { 
             label: 'Alertas Stock', 
             value: summary?.lowStockCount || '0', 
@@ -598,8 +507,8 @@ export default function DashboardScreen() {
               <AreaChart data={dashboardData?.history || []}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#e11d48" stopOpacity={0.12}/>
-                    <stop offset="95%" stopColor="#e11d48" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#0E6E52" stopOpacity={0.12}/>
+                    <stop offset="95%" stopColor="#0E6E52" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.12}/>
@@ -610,7 +519,7 @@ export default function DashboardScreen() {
                 <XAxis dataKey="date" stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
                 <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
                 <Tooltip formatter={(value) => fmt(Number(value))} />
-                <Area type="monotone" name="Ingresos (Ventas)" dataKey="sales" stroke="#e11d48" strokeWidth={2.5} fill="url(#colorSales)" />
+                <Area type="monotone" name="Ingresos (Ventas)" dataKey="sales" stroke="#0E6E52" strokeWidth={2.5} fill="url(#colorSales)" />
                 <Area type="monotone" name="Ganancia Neta" dataKey="profit" stroke="#10b981" strokeWidth={2.5} fill="url(#colorProfit)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -638,9 +547,9 @@ export default function DashboardScreen() {
               { 
                 label: 'Rendimiento Neto', 
                 val: summary?.totalRevenue > 0 ? `${Math.round(((summary.totalRevenue - summary.totalCost - summary.expenses) / summary.totalRevenue) * 100)}%` : '0%', 
-                color: 'text-indigo-600', 
+                color: 'text-rose-600', 
                 icon: PieChart, 
-                bg: 'bg-indigo-50 border border-indigo-200' 
+                bg: 'bg-rose-50 border border-rose-200' 
               }
             ].map((item) => (
               <div key={item.label} className="flex items-center justify-between">

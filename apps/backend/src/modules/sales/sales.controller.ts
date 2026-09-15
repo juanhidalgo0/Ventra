@@ -12,8 +12,23 @@ export class SalesController {
   create(@Request() req, @Body() dto: any) { return this.salesService.create(req.user.sub, dto); }
 
   @Get()
-  findAll(@Query('sessionId') sessionId?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('paymentMethod') paymentMethod?: string, @Query('limit') limit?: string) {
-    return this.salesService.findAll({ sessionId, from, to, paymentMethod, limit: limit ? parseInt(limit) : undefined });
+  findAll(
+    @Query('sessionId') sessionId?: string, 
+    @Query('from') from?: string, 
+    @Query('to') to?: string, 
+    @Query('paymentMethod') paymentMethod?: string, 
+    @Query('limit') limit?: string,
+    @Query('search') search?: string
+  ) {
+    return this.salesService.findAll({ sessionId, from, to, paymentMethod, limit: limit ? parseInt(limit) : undefined, search });
+  }
+
+  @Get('virtual-metrics')
+  getVirtualMetrics(
+    @Query('from') from?: string,
+    @Query('to') to?: string
+  ) {
+    return this.salesService.getVirtualMetrics(from, to);
   }
 
   @Get('today-summary')

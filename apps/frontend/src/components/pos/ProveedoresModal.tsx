@@ -117,9 +117,12 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
+  const MotionDiv = (perfMode ? 'div' : motion.div) as any;
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 shadow-2xl" onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-400 dark:border-slate-700">
+    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
         
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
@@ -128,13 +131,15 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
               <DollarSign className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-[10px] text-teal-600 dark:text-teal-400 font-extrabold uppercase tracking-[0.15em] leading-none mb-1.5">GO! POS</p>
+              <p className="text-[10px] text-teal-600 dark:text-teal-400 font-extrabold uppercase tracking-[0.15em] leading-none mb-1.5">VENTRA POS</p>
               <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 leading-none tracking-tight">
                 {isRegistering ? 'Nuevo Proveedor' : selectedSupplier ? `Pago a ${selectedSupplier.name}` : 'Pago a Proveedor'}
               </h2>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"><X className="w-6 h-6" /></button>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Content Container */}
@@ -199,17 +204,17 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button" 
-                    onClick={() => setIsRegistering(false)} 
-                    className="flex-1 py-3 border border-slate-400 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={() => setIsRegistering(false)}
+                    className="flex-1 btn-secondary py-3 text-xs uppercase tracking-wider"
                   >
                     <ArrowLeft className="w-4 h-4" /> Volver
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={isSaving}
-                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    className="flex-1 btn-primary py-3 text-xs uppercase tracking-wider font-extrabold"
                   >
                     {isSaving ? 'Guardando...' : 'Crear e Inscribir'}
                   </button>
@@ -293,17 +298,17 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedSupplier(null)} 
-                    className="flex-1 py-3 border border-slate-400 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider transition-all cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSupplier(null)}
+                    className="flex-1 btn-secondary py-3 text-xs uppercase tracking-wider"
                   >
                     Atrás
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={isSubmittingPayment}
-                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                    className="flex-1 btn-success py-3 text-xs uppercase tracking-wider font-extrabold"
                   >
                     <CheckCircle className="w-4 h-4" /> {isSubmittingPayment ? 'Registrando...' : 'Confirmar Pago'}
                   </button>
@@ -336,7 +341,7 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
                   <button 
                     type="button"
                     onClick={() => setIsRegistering(true)}
-                    className="px-5 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
+                    className="px-5 py-3.5 bg-teal-700 hover:bg-teal-800 text-white rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-5 h-5" /> Nuevo
                   </button>
@@ -389,7 +394,7 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
-    </motion.div>
+      </MotionDiv>
+    </MotionDiv>
   );
 }

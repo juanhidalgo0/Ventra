@@ -1,830 +1,791 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
-import { wsService } from '../../services/websocket';
-import { usePOSStore } from '../../stores/posStore';
-import { 
-  Globe, 
-  Eye, 
-  Smartphone, 
-  Palette, 
-  Layout, 
-  Settings, 
-  Truck, 
-  Store, 
-  ShieldCheck, 
-  MessageSquare, 
-  Instagram, 
-  Facebook, 
-  MapPin, 
-  Plus,
-  ChevronRight,
-  Monitor,
+import toast from 'react-hot-toast';
+import {
+  Globe,
+  Palette,
+  Store,
+  MessageSquare,
+  MapPin,
+  Instagram,
   CheckCircle2,
   AlertCircle,
   Save,
-  Link2,
   ExternalLink,
   RefreshCw,
-  Clock,
   Sparkles,
-  Wifi,
   ShoppingBag,
-  Sliders,
-  ChevronLeft,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  Search,
+  Package,
+  Wrench,
+  Shirt,
+  LayoutGrid,
+  Clock,
+  Phone,
+  User as UserIcon,
+  Eye,
+  Check,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import {
+  getOrCreateStoreId,
+  loadStoreConfig,
+  saveStoreConfig,
+  isSubdomainAvailable,
+  syncCatalogToStore,
+  subscribeToStoreOrders,
+  compressImageFile,
+  type StoreConfig,
+  type StoreOrder,
+} from '../../services/onlineStore';
+
+// Dominio público de la tienda online de Ventra. Cuando se publique el sitio de
+// Firebase Hosting definitivo (ver README de despliegue), solo hay que actualizar
+// esta constante — nada más del código depende del dominio.
+const PUBLIC_STORE_BASE_URL = 'https://ventra-tienda.web.app';
+
+const RUBROS = [
+  { id: 'KIOSKO', label: 'Kiosco / Almacén', icon: Package },
+  { id: 'FERRETERIA', label: 'Ferretería / Corralón', icon: Wrench },
+  { id: 'INDUMENTARIA', label: 'Indumentaria y Calzado', icon: Shirt },
+  { id: 'OTRO', label: 'Otro Rubro', icon: LayoutGrid },
+];
+
+function SectionHeader({ icon: Icon, title, subtitle, accent }: { icon: any; title: string; subtitle?: string; accent: string }) {
+  return (
+    <div className="flex items-start gap-3.5 pb-5 mb-6 border-b border-slate-100">
+      <div
+        className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+        style={{ backgroundColor: `${accent}14`, color: accent }}
+      >
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="pt-0.5">
+        <h3 className="text-[15px] font-bold text-slate-900 tracking-tight leading-tight">{title}</h3>
+        {subtitle && <p className="text-[13px] text-slate-500 font-medium mt-1 leading-snug">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div className="mb-2">
+      <label className="block text-[13px] font-semibold text-slate-800">{children}</label>
+      {hint && <p className="text-[12px] text-slate-500 mt-0.5">{hint}</p>}
+    </div>
+  );
+}
+
+const inputBase = "w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus:border-[var(--accent)] focus:ring-[3px] focus:ring-[var(--accent)]/15";
 
 export default function OnlineStoreScreen() {
-  const { products: localProducts } = usePOSStore();
-  const [simulatedSelectedProduct, setSimulatedSelectedProduct] = useState<any>(null);
+  const storeId = useMemo(() => getOrCreateStoreId(), []);
 
-  // Config States (stored in localStorage or state)
-  const [storeName, setStoreName] = useState(() => localStorage.getItem('gd_store_name') || 'GO! TIENDA ONLINE');
-  const [subdomain, setSubdomain] = useState(() => localStorage.getItem('gd_subdomain') || 'go-kiosco');
-  const [whatsapp, setWhatsapp] = useState(() => localStorage.getItem('gd_whatsapp') || '5491123456789');
-  const accentColor = '#e11d48'; // GoDelivery Cherry Red
-  const [isStoreActive, setIsStoreActive] = useState(() => (localStorage.getItem('gd_store_active') || 'true') === 'true');
-  const [bidirectionalSyncEnabled, setBidirectionalSyncEnabled] = useState(() => (localStorage.getItem('gd_bidirectional_sync') || 'true') === 'true');
-  const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>(() => (localStorage.getItem('gd_view_mode') || 'GRID') as 'GRID' | 'LIST');
-  const [deliveryMode, setDeliveryMode] = useState<'BOTH' | 'PICKUP' | 'DELIVERY'>(() => (localStorage.getItem('gd_delivery_mode') || 'BOTH') as 'BOTH' | 'PICKUP' | 'DELIVERY');
-  const [deliveryFee, setDeliveryFee] = useState(() => Number(localStorage.getItem('gd_delivery_fee') || 800));
-  const [freeShippingThreshold, setFreeShippingThreshold] = useState(() => Number(localStorage.getItem('gd_free_shipping') || 8000));
-  
-  const [schedules, setSchedules] = useState<{ open: string; close: string }[]>(() => {
-    const saved = localStorage.getItem('gd_schedules');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return [{ open: '08:00', close: '20:00' }];
-  });
-  
-  const [instagram, setInstagram] = useState(() => localStorage.getItem('gd_instagram') || '@go_kiosco');
-  const [facebook, setFacebook] = useState(() => localStorage.getItem('gd_facebook') || 'go.kiosco');
-  const [address, setAddress] = useState(() => localStorage.getItem('gd_address') || 'Av. Rivadavia 1234, CABA');
-
+  const [config, setConfig] = useState<StoreConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [syncStepText, setSyncStepText] = useState('Iniciando sincronización...');
-  const [syncStatus, setSyncStatus] = useState<any>({
-    progress: 0,
-    total: 0,
-    current: 0,
-    status: 'Iniciando sincronización...',
-    isComplete: false,
-    error: null
-  });
+  const [subdomainStatus, setSubdomainStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
 
-  // GoDelivery Stats and Orders States
-  const [statsData, setStatsData] = useState<any>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+  const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
 
-  const loadStats = async () => {
-    const googleUserStr = localStorage.getItem('google_authenticated_user');
-    const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
-    const email = googleUser?.email;
+  const [orders, setOrders] = useState<StoreOrder[]>([]);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
-    if (!email) {
-      setStatsData(null);
-      setStatsError('No se ha vinculado ninguna cuenta de Google en esta terminal. Conéctela desde el Dashboard.');
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      try {
+        const loaded = await loadStoreConfig(storeId);
+        setConfig(loaded);
+      } catch (err) {
+        console.error(err);
+        toast.error('No se pudo cargar la configuración de la tienda (revisá tu conexión a internet)');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [storeId]);
+
+  useEffect(() => {
+    const unsub = subscribeToStoreOrders(storeId, setOrders);
+    return () => unsub();
+  }, [storeId]);
+
+  const loadProducts = useCallback(async () => {
+    setIsLoadingProducts(true);
+    try {
+      const { data } = await api.get('/products', { params: { take: 5000 } });
+      setProducts(data?.products || data || []);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al cargar los productos del catálogo');
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  // Chequeo de disponibilidad del subdominio, debounced.
+  useEffect(() => {
+    if (!config?.subdomain) {
+      setSubdomainStatus('idle');
       return;
     }
-
-    setIsLoadingStats(true);
-    setStatsError(null);
-    try {
-      const { data } = await api.get('/products/godelivery/stats', {
-        params: { email }
-      });
-      setStatsData(data);
-      if (data?.commerce) {
-        if (data.commerce.name) setStoreName(data.commerce.name);
-        if (data.commerce.subdomain) {
-          setSubdomain(data.commerce.subdomain);
-          setPreviewSubdomain(data.commerce.subdomain);
-        }
-        if (data.commerce.whatsapp) setWhatsapp(data.commerce.whatsapp);
-        if (data.commerce.address) setAddress(data.commerce.address);
-        if (data.commerce.instagram) setInstagram(data.commerce.instagram);
-        if (data.commerce.facebook) setFacebook(data.commerce.facebook);
-        if (data.commerce.schedules) setSchedules(data.commerce.schedules);
-        if (data.commerce.bidirectionalSyncEnabled !== undefined) {
-          setBidirectionalSyncEnabled(data.commerce.bidirectionalSyncEnabled);
-        }
+    setSubdomainStatus('checking');
+    const handler = setTimeout(async () => {
+      try {
+        const available = await isSubdomainAvailable(config.subdomain, storeId);
+        setSubdomainStatus(available ? 'available' : 'taken');
+      } catch {
+        setSubdomainStatus('idle');
       }
-    } catch (err: any) {
-      console.error(err);
-      setStatsError(err.response?.data?.message || 'Error al conectar con GoDelivery. Asegúrate de tener configurado el archivo firebase-credentials.json en el servidor.');
-    } finally {
-      setIsLoadingStats(false);
-    }
-  };
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  // Debounced subdomain for live preview to avoid constant reloading while typing
-  const [previewSubdomain, setPreviewSubdomain] = useState(subdomain);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setPreviewSubdomain(subdomain);
-    }, 800);
+    }, 600);
     return () => clearTimeout(handler);
-  }, [subdomain]);
+  }, [config?.subdomain, storeId]);
 
-  useEffect(() => {
-    wsService.connect();
-  }, []);
-
-  const handleSyncAll = async () => {
-    setIsSyncingAll(true);
-    setSyncStepText('Iniciando sincronización...');
-    setSyncStatus({
-      progress: 0,
-      total: 0,
-      current: 0,
-      status: 'Conectando con GoDelivery...',
-      isComplete: false,
-      error: null
-    });
-    
-    const loadingToast = toast.loading('Sincronizando inventario con GoDelivery...');
-
-    const handleProgress = (data: any) => {
-      setSyncStatus({
-        progress: data.progress || 0,
-        total: data.total || 0,
-        current: data.current || 0,
-        status: data.status || 'Sincronizando...',
-        isComplete: !!data.isComplete,
-        error: data.error || null
-      });
-
-      if (data.status) {
-        setSyncStepText(data.status);
-      }
-
-      if (data.isComplete) {
-        wsService.off('sync:progress', handleProgress);
-        
-        if (data.error) {
-          toast.error(`Error al sincronizar con GoDelivery: ${data.error}`, { id: loadingToast, duration: 6000 });
-          setIsSyncingAll(false);
-        } else {
-          toast.success(
-            `🚀 Sincronización masiva finalizada con éxito:\n` +
-            `• Sincronizados: ${data.current || 0} productos\n` +
-            `• Omitidos (sin código de barras): ${data.omittedCount || 0}\n` +
-            `• Fallidos: ${data.failedCount || 0}`,
-            { id: loadingToast, duration: 6000 }
-          );
-          loadStats();
-          setTimeout(() => {
-            setIsSyncingAll(false);
-          }, 1500);
-        }
-      }
-    };
-
-    wsService.on('sync:progress', handleProgress);
-
-    try {
-      const googleUserStr = localStorage.getItem('google_authenticated_user');
-      const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
-      const email = googleUser?.email;
-
-      await api.post('/products/sync-all', { googleEmail: email });
-    } catch (err: any) {
-      wsService.off('sync:progress', handleProgress);
-      const errMsg = err.response?.data?.message || 'Error al iniciar la sincronización.';
-      toast.error(errMsg, { id: loadingToast });
-      setIsSyncingAll(false);
-    }
+  const update = (patch: Partial<StoreConfig>) => {
+    setConfig(prev => (prev ? { ...prev, ...patch } : prev));
   };
 
   const handleSave = async () => {
+    if (!config) return;
+    if (config.isPublished && subdomainStatus === 'taken') {
+      toast.error('Ese subdominio ya está en uso por otra tienda. Elegí otro.');
+      return;
+    }
+    if (config.isPublished && (!config.subdomain || !config.whatsappNumber)) {
+      toast.error('Para publicar la tienda necesitás definir un subdominio y un número de WhatsApp.');
+      return;
+    }
     setIsSaving(true);
     try {
-      const googleUserStr = localStorage.getItem('google_authenticated_user');
-      const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
-      const email = googleUser?.email;
-
-      if (!email) {
-        throw new Error('Debes vincular tu cuenta de Google en esta terminal para sincronizar y guardar configuraciones con GoDelivery.');
-      }
-
-      await api.post('/products/godelivery/settings', {
-        googleEmail: email,
-        storeName,
-        whatsapp,
-        address,
-        instagram,
-        facebook,
-        isActive: isStoreActive,
-        viewMode,
-        schedules,
-        bidirectionalSyncEnabled
-      });
-
-      // Save to local storage as local backup
-      localStorage.setItem('gd_store_name', storeName);
-      localStorage.setItem('gd_subdomain', subdomain);
-      localStorage.setItem('gd_whatsapp', whatsapp);
-      localStorage.setItem('gd_accent_color', accentColor);
-      localStorage.setItem('gd_store_active', String(isStoreActive));
-      localStorage.setItem('gd_bidirectional_sync', String(bidirectionalSyncEnabled));
-      localStorage.setItem('gd_view_mode', viewMode);
-      localStorage.setItem('gd_instagram', instagram);
-      localStorage.setItem('gd_facebook', facebook);
-      localStorage.setItem('gd_address', address);
-      localStorage.setItem('gd_schedules', JSON.stringify(schedules));
-
-      toast.success('✨ ¡Configuración de GoDelivery guardada y sincronizada con éxito!');
-      loadStats();
-    } catch (err: any) {
+      await saveStoreConfig(storeId, config);
+      toast.success('✨ Configuración de la tienda guardada');
+    } catch (err) {
       console.error(err);
-      const errMsg = err.response?.data?.message || err.message || 'Error al guardar la configuración';
-      toast.error(`❌ ${errMsg}`);
+      toast.error('Error al guardar la configuración en la nube');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Add a schedule slot
-  const handleAddSchedule = () => {
-    if (schedules.length >= 3) {
-      toast.error('Puedes configurar hasta 3 rangos horarios de atención.');
-      return;
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, 300, 300, 0.7);
+      update({ logoUrl: compressed });
+      toast.success('Logo cargado');
+    } catch {
+      toast.error('No se pudo procesar la imagen del logo');
+    } finally {
+      e.target.value = '';
     }
-    setSchedules([...schedules, { open: '09:00', close: '20:00' }]);
   };
 
-  // Remove a schedule slot
-  const handleRemoveSchedule = (index: number) => {
-    if (schedules.length <= 1) {
-      toast.error('Debe haber al menos 1 rango horario configurado.');
-      return;
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, 1200, 400, 0.6);
+      update({ bannerUrl: compressed });
+      toast.success('Banner cargado');
+    } catch {
+      toast.error('No se pudo procesar la imagen del banner');
+    } finally {
+      e.target.value = '';
     }
-    const updated = schedules.filter((_, i) => i !== index);
-    setSchedules(updated);
   };
 
-  // Update a specific schedule slot
-  const handleUpdateSchedule = (index: number, field: 'open' | 'close', value: string) => {
-    const updated = schedules.map((item, i) => {
-      if (i === index) {
-        return { ...item, [field]: value };
+  const toggleProductOnline = async (product: any) => {
+    const nextValue = !product.showOnline;
+    setPendingToggles(prev => new Set(prev).add(product.id));
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, showOnline: nextValue } : p));
+    try {
+      await api.patch(`/products/${product.id}`, { showOnline: nextValue });
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al actualizar el producto');
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, showOnline: !nextValue } : p));
+    } finally {
+      setPendingToggles(prev => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
+    }
+  };
+
+  const handleSyncCatalog = async () => {
+    let online = products.filter(p => p.showOnline);
+
+    // Si todavía no se marcó ningún producto a mano, "Sincronizar Todo el Inventario"
+    // hace exactamente eso: activa TODO el catálogo activo para la tienda de una vez.
+    const syncingEverything = online.length === 0;
+    const targetCount = syncingEverything ? products.length : online.length;
+
+    const confirmed = window.confirm(
+      syncingEverything
+        ? `No marcaste ningún producto individualmente. Se va a activar y sincronizar TODO tu inventario ` +
+          `(${targetCount} producto(s)) en la tienda, incluyendo categorías y marcas de cada uno. ¿Continuar?`
+        : `Se va a sincronizar TODO el inventario marcado para la tienda (${targetCount} producto(s)), ` +
+          `incluyendo categorías y marcas de cada uno. Esto reemplaza el catálogo publicado actualmente. ¿Continuar?`
+    );
+    if (!confirmed) return;
+
+    setIsSyncingCatalog(true);
+    try {
+      if (syncingEverything) {
+        await api.post('/products/bulk-set-show-online', { showOnline: true });
+        online = products.map(p => ({ ...p, showOnline: true }));
+        setProducts(online);
       }
-      return item;
-    });
-    setSchedules(updated);
+
+      await syncCatalogToStore(storeId, online.map(p => ({
+        productId: p.id,
+        name: p.name,
+        description: p.description || '',
+        price: p.salePrice,
+        imageUrl: p.imageUrl || '',
+        category: p.category?.name || 'Varios',
+        brand: p.brand?.name || '',
+        unit: p.unit || 'UNIT',
+        inStock: p.unlimitedStock || p.stock > 0,
+      })));
+      toast.success(`🚀 Inventario sincronizado: ${online.length} producto(s) publicado(s) en la tienda`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al sincronizar el inventario con la nube');
+    } finally {
+      setIsSyncingCatalog(false);
+    }
   };
 
-  if (isLoadingStats) {
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [brandFilter, setBrandFilter] = useState('ALL');
+
+  const categoryOptions = useMemo(() => {
+    const names = new Set<string>();
+    products.forEach(p => { if (p.category?.name) names.add(p.category.name); });
+    return Array.from(names).sort();
+  }, [products]);
+
+  const brandOptions = useMemo(() => {
+    const names = new Set<string>();
+    products.forEach(p => { if (p.brand?.name) names.add(p.brand.name); });
+    return Array.from(names).sort();
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    let list = products;
+    if (categoryFilter !== 'ALL') list = list.filter(p => p.category?.name === categoryFilter);
+    if (brandFilter !== 'ALL') list = list.filter(p => p.brand?.name === brandFilter);
+    if (productSearch.trim()) {
+      const q = productSearch.trim().toLowerCase();
+      list = list.filter(p => p.name?.toLowerCase().includes(q) || p.barcode?.includes(q));
+    }
+    return list;
+  }, [products, productSearch, categoryFilter, brandFilter]);
+
+  const onlineCount = useMemo(() => products.filter(p => p.showOnline).length, [products]);
+  const pendingOrdersCount = useMemo(() => orders.filter(o => o.status !== 'SYNCED' && !o.syncedLocal).length, [orders]);
+
+  const publicUrl = config?.subdomain ? `${PUBLIC_STORE_BASE_URL}/${config.subdomain}` : '';
+  const accent = config?.primaryColor || '#e11d48';
+  const rubroMeta = RUBROS.find(r => r.id === config?.rubro) || RUBROS[0];
+
+  if (isLoading || !config) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-[#f8fafc] gap-4">
+      <div className="h-full flex flex-col items-center justify-center bg-slate-50 gap-4">
         <div className="relative flex items-center justify-center">
           <div className="w-16 h-16 border-4 border-rose-100 border-t-rose-500 rounded-full animate-spin" />
-          <Globe className="w-6 h-6 text-rose-500 absolute animate-pulse-soft" />
+          <Globe className="w-6 h-6 text-rose-500 absolute" />
         </div>
         <div className="text-center">
-          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Cargando Tienda Online</h3>
-          <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-1">Estableciendo conexión segura con GoDelivery Cloud...</p>
+          <h3 className="text-sm font-bold text-slate-800">Cargando Tienda Online</h3>
+          <p className="text-[13px] text-slate-500 font-medium mt-1">Conectando con la nube de Ventra...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col gap-6 bg-[#f8fafc] p-6 overflow-y-auto custom-scrollbar pb-16">
-      {/* Header Info */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between shrink-0">
+    <div
+      className="h-full flex flex-col gap-6 bg-slate-50 p-5 sm:p-7 overflow-y-auto custom-scrollbar pb-16"
+      style={{ '--accent': accent } as React.CSSProperties}
+    >
+      {/* Header */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-12px_rgba(0,0,0,0.08)] flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-           <div className="w-12 h-12 rounded-2xl bg-rose-55 flex items-center justify-center text-rose-600 shadow-inner">
-              <Globe className="w-6 h-6 animate-pulse-soft" />
-           </div>
-           <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-slate-800">Red de Negocios — GoDelivery Cloud</h3>
-                <span className="flex h-2.5 w-2.5 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-450 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          <div
+            className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center shadow-sm shrink-0"
+            style={{ backgroundColor: accent, color: '#fff' }}
+          >
+            <Store className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-lg font-bold text-slate-900 tracking-tight">Mi Tienda Online</h1>
+              {config.isPublished ? (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold uppercase tracking-wide">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Publicada
                 </span>
-              </div>
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] mt-1">Sincronización en tiempo real y portal web autogestionado</p>
-           </div>
+              ) : (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-bold uppercase tracking-wide">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Borrador
+                </span>
+              )}
+            </div>
+            <p className="text-[13px] font-medium text-slate-500 mt-1">Catálogo propio con tu marca — pedidos directo a tu WhatsApp</p>
+          </div>
         </div>
-        
-        <div className="flex items-center gap-3 shrink-0">
-          <button 
-            onClick={handleSyncAll}
-            disabled={isSyncingAll}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-400 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 text-slate-700 ${isSyncingAll ? 'animate-spin' : ''}`} />
-            <span>Sincronizar</span>
-          </button>
-          
-          <a 
-            href={`https://godelivery-magdalena.web.app/#/comercio/${subdomain}`}
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-400 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer"
-          >
-            <ExternalLink className="w-4 h-4 text-slate-700" />
-            <span>Ver Web</span>
-          </a>
 
-          <button 
+        <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
+          {publicUrl && (
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-[13px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Ver Tienda</span>
+            </a>
+          )}
+          <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-95 transition-all cursor-pointer"
-            style={{ backgroundColor: accentColor, boxShadow: `0 10px 15px -3px ${accentColor}30` }}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold text-white shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+            style={{ backgroundColor: accent, boxShadow: `0 8px 20px -6px ${accent}66` }}
           >
             <Save className="w-4 h-4" />
-            <span>{isSaving ? 'Guardando...' : 'Guardar'}</span>
+            <span>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</span>
           </button>
         </div>
       </div>
 
-      <div className="w-full max-w-4xl mx-auto">
-        <div className="space-y-6">
-          
-          {/* Cloud Sync & GoDelivery Stats Status */}
-          {isLoadingStats ? (
-            <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm flex flex-col items-center justify-center gap-3">
-              <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-600">Cargando métricas de GoDelivery...</p>
+      <div className="w-full max-w-5xl mx-auto space-y-6">
+
+        {/* Identidad y Rubro */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <SectionHeader icon={Sparkles} title="Identidad de la Tienda" subtitle="El nombre y rubro que van a ver tus clientes" accent={accent} />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <FieldLabel>Nombre Comercial</FieldLabel>
+              <input
+                type="text"
+                value={config.businessName}
+                onChange={(e) => update({ businessName: e.target.value })}
+                className={inputBase}
+                placeholder="Mi Negocio"
+              />
             </div>
-          ) : statsError ? (
-            <div className="bg-white p-6 rounded-2xl border border-rose-100 shadow-sm flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center shrink-0 border border-rose-100">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-xs font-black text-rose-800 uppercase tracking-wider">Estado Offline — Tienda Desconectada</h4>
-                <p className="text-xs text-slate-700 font-bold mt-1.5">{statsError}</p>
-                <button
-                  onClick={loadStats}
-                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-400 bg-slate-50 hover:bg-slate-100 text-[9px] font-extrabold uppercase tracking-wider text-slate-650 transition-all cursor-pointer shadow-sm active:scale-95"
-                >
-                  <RefreshCw className="w-3 h-3 text-slate-700" />
-                  Reintentar Conexión
-                </button>
-              </div>
-            </div>
-          ) : statsData ? (
-            <div className="space-y-6">
-              {/* Stats Grid */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-4 flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <Wifi className="w-4 h-4 text-rose-500 animate-pulse-soft" /> Métricas Reales de Tienda Online (GoDelivery)
-                  </span>
-                  <button onClick={loadStats} className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-600 transition-all">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Ventas Online</span>
-                    <span className="text-lg font-black text-emerald-600">
-                      {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(statsData.stats?.totalRevenue || 0)}
-                    </span>
-                  </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Pedidos Totales</span>
-                    <span className="text-lg font-black text-slate-800">{statsData.stats?.totalOrders || 0}</span>
-                  </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Pedidos Pendientes</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black text-slate-800">{statsData.stats?.pendingOrders || 0}</span>
-                      {(statsData.stats?.pendingOrders || 0) > 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[8px] font-extrabold animate-pulse">NUEVO</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-400 shadow-inner">
-                    <span className="text-[8.5px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Productos en Nube</span>
-                    <span className="text-lg font-black text-slate-800">{statsData.stats?.totalProducts || 0}</span>
-                  </div>
+
+            <div>
+              <FieldLabel>Subdominio Público</FieldLabel>
+              <div className="flex flex-col sm:flex-row sm:items-stretch rounded-xl overflow-hidden border border-slate-300 bg-white focus-within:border-[var(--accent)] focus-within:ring-[3px] focus-within:ring-[var(--accent)]/15 transition-all">
+                <div className="bg-slate-50 px-3 py-3 flex items-center justify-center text-[12.5px] font-semibold text-slate-500 border-b sm:border-b-0 sm:border-r border-slate-200 select-none whitespace-nowrap">
+                  ventra-tienda.web.app/
                 </div>
-              </div>
-
-              {/* Pedidos Recientes */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
-                  <ShoppingBag className="w-4 h-4 text-rose-500" /> Últimos Pedidos Recibidos (Tienda Online)
-                </h4>
-                
-                {statsData.recentOrders?.length === 0 ? (
-                  <div className="text-center py-6 text-slate-600 font-bold uppercase text-[9.5px]">
-                    No se han registrado pedidos online todavía
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-300">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-300 text-[9px] uppercase text-slate-600 font-bold tracking-wider font-sans">
-                          <th className="py-2.5 px-4 font-black">Código / Cliente</th>
-                          <th className="py-2.5 px-4 font-black">Fecha</th>
-                          <th className="py-2.5 px-4 text-right font-black">Total</th>
-                          <th className="py-2.5 px-4 text-center font-black">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {statsData.recentOrders.map((o: any) => (
-                          <tr key={o.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-all">
-                            <td className="py-3 px-4 font-bold text-slate-800">
-                              <div className="flex flex-col">
-                                <span className="font-mono text-[9.5px] text-indigo-600 uppercase tracking-tight">#{o.id.substring(0, 8)}</span>
-                                <span className="text-xs mt-0.5">{o.clientName}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-700 font-semibold">
-                              {o.createdAt ? new Date(o.createdAt).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Reciente'}
-                            </td>
-                            <td className="py-3 px-4 text-slate-800 font-extrabold text-right">
-                              {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(o.total || 0)}
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                o.status === 'pending' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                                o.status === 'delivered' || o.status === 'completed' || o.status === 'entregado' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                'bg-rose-50 text-rose-600 border border-rose-100'
-                              }`}>
-                                {o.status === 'pending' ? 'Pendiente' : 
-                                 o.status === 'delivered' || o.status === 'completed' || o.status === 'entregado' ? 'Entregado' : 
-                                 o.status === 'accepted' ? 'Aceptado' : o.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Sincronización Bidireccional */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-5">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
-                   <Sliders className="w-4 h-4 text-rose-500" /> Sincronización Bidireccional de Stock
-                </h4>
-                
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-150 shadow-inner">
-                  <div className="flex-1 pr-4">
-                    <span className="block text-xs font-black text-slate-700 uppercase">Descontar stock al retirar pedidos online</span>
-                    <span className="block text-[10px] text-slate-450 font-bold uppercase mt-1 leading-normal">
-                      Si se activa, cuando un repartidor retire un pedido de la tienda online (estado 'En entrega' o 'Entregado'), se descontará automáticamente el stock del inventario local de Kiosco POS.
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-3">
-                    <span className={`keep-style text-[9px] font-black uppercase tracking-wider select-none px-2 py-0.5 rounded-md transition-colors duration-200 border ${
-                      bidirectionalSyncEnabled ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-100 text-slate-600 border-slate-400'
-                    }`}>
-                      {bidirectionalSyncEnabled ? 'Activo' : 'Inactivo'}
-                    </span>
-                    
-                    <button
-                      type="button"
-                      onClick={() => setBidirectionalSyncEnabled(!bidirectionalSyncEnabled)}
-                      className={`keep-style relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-rose-500/30 ${
-                        bidirectionalSyncEnabled ? 'bg-rose-500' : 'bg-slate-300'
-                      }`}
-                    >
-                      <span
-                        className={`keep-style pointer-events-none block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
-                          bidirectionalSyncEnabled ? 'translate-x-7' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          ) : (
-            <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm flex flex-col items-center justify-center text-center p-8 gap-3">
-              <Globe className="w-8 h-8 text-slate-300 animate-pulse" />
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Conexión con GoDelivery pendiente de vinculación</p>
-            </div>
-          )}
-
-          {/* Identidad Digital */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-5">
-            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
-               <Sparkles className="w-4 h-4 text-indigo-500" /> Identidad Digital de la Tienda
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Nombre Comercial Web</label>
-                <input 
-                  type="text" 
-                  value={storeName} 
-                  onChange={(e) => setStoreName(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-slate-350 transition-all shadow-inner" 
-                  placeholder="GO! TIENDA ONLINE" 
+                <input
+                  type="text"
+                  value={config.subdomain}
+                  onChange={(e) => update({ subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                  className="w-full sm:flex-1 bg-white px-3.5 py-3 text-[14px] font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                  placeholder="mi-negocio"
                 />
               </div>
+              {config.subdomain && (
+                <p className={`text-[12.5px] font-semibold mt-2 flex items-center gap-1.5 ${
+                  subdomainStatus === 'available' ? 'text-emerald-600' : subdomainStatus === 'taken' ? 'text-rose-600' : 'text-slate-400'
+                }`}>
+                  {subdomainStatus === 'checking' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Verificando disponibilidad...</>}
+                  {subdomainStatus === 'available' && <><CheckCircle2 className="w-3.5 h-3.5" /> Disponible</>}
+                  {subdomainStatus === 'taken' && <><AlertCircle className="w-3.5 h-3.5" /> Ya está en uso por otra tienda</>}
+                </p>
+              )}
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Subdominio Público GoDelivery</label>
-                <div className="flex flex-col sm:flex-row sm:items-stretch gap-2 sm:gap-0 sm:border sm:border-slate-400 sm:rounded-xl sm:overflow-hidden bg-slate-50 focus-within:bg-white focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-slate-350 transition-all sm:shadow-inner">
-                  <div className="bg-slate-100 sm:bg-slate-150 px-3 py-2.5 flex items-center justify-center text-[9px] sm:text-[9.5px] font-bold sm:font-extrabold text-slate-700 tracking-wider border border-slate-400 sm:border-0 rounded-xl sm:rounded-none select-none">
-                    godelivery-magdalena.web.app/#/comercio/
-                  </div>
-                  <input 
-                    type="text" 
-                    value={subdomain} 
-                    onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                    className="w-full sm:flex-1 bg-slate-50 sm:bg-transparent border border-slate-400 sm:border-0 rounded-xl sm:rounded-none px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white sm:focus:bg-transparent transition-all shadow-inner sm:shadow-none" 
-                    placeholder="go-kiosco"
+          <div className="mt-6">
+            <FieldLabel>Rubro del Negocio</FieldLabel>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {RUBROS.map(r => {
+                const Icon = r.icon;
+                const active = config.rubro === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => update({ rubro: r.id })}
+                    className="relative p-4 rounded-xl border-2 flex flex-col items-center gap-2.5 text-center transition-all cursor-pointer"
+                    style={active
+                      ? { borderColor: accent, backgroundColor: `${accent}0d` }
+                      : { borderColor: '#e2e8f0', backgroundColor: '#fff' }
+                    }
+                  >
+                    {active && (
+                      <span
+                        className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: accent }}
+                      >
+                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                      </span>
+                    )}
+                    <Icon className="w-5 h-5" style={{ color: active ? accent : '#64748b' }} />
+                    <span className="text-[12.5px] font-semibold leading-tight" style={{ color: active ? accent : '#475569' }}>{r.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Apariencia */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <SectionHeader icon={Palette} title="Apariencia y Marca" subtitle="Colores, logo y banner que definen el look de tu tienda" accent={accent} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,1.1fr] gap-8">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="flex items-center gap-3.5 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-all">
+                  <input
+                    type="color"
+                    value={config.primaryColor}
+                    onChange={(e) => update({ primaryColor: e.target.value })}
+                    className="w-11 h-11 rounded-lg cursor-pointer border border-slate-300 shrink-0"
                   />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-800">Color Principal</p>
+                    <p className="text-[12px] text-slate-500 font-mono uppercase mt-0.5">{config.primaryColor}</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3.5 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-all">
+                  <input
+                    type="color"
+                    value={config.secondaryColor}
+                    onChange={(e) => update({ secondaryColor: e.target.value })}
+                    className="w-11 h-11 rounded-lg cursor-pointer border border-slate-300 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-800">Color Secundario</p>
+                    <p className="text-[12px] text-slate-500 font-mono uppercase mt-0.5">{config.secondaryColor}</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel>Logo de la Tienda</FieldLabel>
+                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="w-full h-28 rounded-xl bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden hover:border-[var(--accent)] hover:bg-white transition-all group cursor-pointer"
+                  >
+                    {config.logoUrl ? (
+                      <img src={config.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain p-2" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-slate-500">
+                        <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[12px] font-semibold">Subir Logo</span>
+                      </div>
+                    )}
+                  </button>
                 </div>
+                <div>
+                  <FieldLabel>Banner de Portada</FieldLabel>
+                  <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+                  <button
+                    type="button"
+                    onClick={() => bannerInputRef.current?.click()}
+                    className="w-full h-28 rounded-xl bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden hover:border-[var(--accent)] hover:bg-white transition-all group cursor-pointer"
+                  >
+                    {config.bannerUrl ? (
+                      <img src={config.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-slate-500">
+                        <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[12px] font-semibold">Subir Banner</span>
+                      </div>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Live preview */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2.5 text-slate-500">
+                <Eye className="w-3.5 h-3.5" />
+                <span className="text-[12px] font-bold uppercase tracking-wide">Vista Previa en Vivo</span>
+              </div>
+              <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm bg-white">
+                <div className="h-24 bg-slate-100 relative overflow-hidden">
+                  {config.bannerUrl ? (
+                    <img src={config.bannerUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full" style={{ background: `linear-gradient(135deg, ${accent}, ${config.secondaryColor})` }} />
+                  )}
+                </div>
+                <div className="p-4 flex items-center gap-3 bg-white">
+                  <div className="w-11 h-11 rounded-xl border-2 border-white shadow-md -mt-9 bg-white flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: config.logoUrl ? '#fff' : accent }}>
+                    {config.logoUrl ? (
+                      <img src={config.logoUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Store className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-bold text-slate-900 truncate">{config.businessName || 'Mi Negocio'}</p>
+                    <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: accent }}>{rubroMeta.label}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="ml-auto text-white text-[11px] font-bold px-3 py-2 rounded-lg shrink-0"
+                    style={{ backgroundColor: accent }}
+                  >
+                    🛒 Carrito
+                  </button>
+                </div>
+              </div>
+              <p className="text-[12px] text-slate-500 mt-2.5 leading-relaxed">Así se va a ver el encabezado de tu tienda. Se actualiza en tiempo real mientras editás.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Contacto */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <SectionHeader icon={MessageSquare} title="Contacto y Pedidos" subtitle="A dónde llegan los pedidos y cómo te encuentran" accent={accent} />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div>
+              <FieldLabel hint="Los pedidos del carrito llegan a este número.">WhatsApp del Comercio</FieldLabel>
+              <div className="relative flex items-center">
+                <Phone className="w-4 h-4 absolute left-3.5 text-emerald-600" />
+                <input
+                  type="text"
+                  value={config.whatsappNumber}
+                  onChange={(e) => update({ whatsappNumber: e.target.value.replace(/\D/g, '') })}
+                  className={`${inputBase} pl-10`}
+                  placeholder="5491123456789"
+                />
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel>Instagram</FieldLabel>
+              <div className="relative flex items-center">
+                <Instagram className="w-4 h-4 absolute left-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={config.instagram || ''}
+                  onChange={(e) => update({ instagram: e.target.value })}
+                  className={`${inputBase} pl-10`}
+                  placeholder="@mi_negocio"
+                />
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel>Dirección (opcional)</FieldLabel>
+              <div className="relative flex items-center">
+                <MapPin className="w-4 h-4 absolute left-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={config.address || ''}
+                  onChange={(e) => update({ address: e.target.value })}
+                  className={`${inputBase} pl-10`}
+                  placeholder="Av. Siempreviva 742"
+                />
               </div>
             </div>
           </div>
 
-          {/* Horarios de Atención (Interactive Time Slots - Up to 3) */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-              <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2">
-                 <Clock className="w-4 h-4 text-indigo-500 self-center" /> Horarios de Atención Web
-              </h4>
-              <button 
-                type="button" 
-                onClick={handleAddSchedule}
-                disabled={schedules.length >= 3}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[9px] font-extrabold uppercase tracking-wider text-indigo-650 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Agregar Horario</span>
-              </button>
+          <div className="flex items-center justify-between p-4 sm:p-5 bg-slate-50 rounded-xl border border-slate-200 mt-6">
+            <div className="pr-4">
+              <span className="block text-[14px] font-bold text-slate-800">Publicar Tienda</span>
+              <span className="block text-[12.5px] text-slate-500 font-medium mt-1 leading-relaxed">
+                Mientras esté en "Borrador", la tienda no es visible públicamente aunque tenga la URL.
+              </span>
             </div>
+            <button
+              type="button"
+              onClick={() => update({ isPublished: !config.isPublished })}
+              className="keep-style relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full p-1 transition-colors duration-300 ease-in-out"
+              style={{ backgroundColor: config.isPublished ? '#10b981' : '#cbd5e1' }}
+            >
+              <span className={`keep-style pointer-events-none block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                config.isPublished ? 'translate-x-7' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+        </div>
 
-            <div className="space-y-3">
-              {schedules.map((schedule, index) => (
-                <div key={index} className="flex items-center gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-150 shadow-inner">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  
-                  <div className="flex-1 grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="block text-[8px] font-black text-slate-600 uppercase tracking-wider mb-1">Apertura (Desde)</span>
-                      <input 
-                        type="time" 
-                        value={schedule.open} 
-                        onChange={(e) => handleUpdateSchedule(index, 'open', e.target.value)}
-                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[8px] font-black text-slate-600 uppercase tracking-wider mb-1">Cierre (Hasta)</span>
-                      <input 
-                        type="time" 
-                        value={schedule.close} 
-                        onChange={(e) => handleUpdateSchedule(index, 'close', e.target.value)}
-                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-705 outline-none focus:border-slate-350 transition-all shadow-sm"
-                      />
-                    </div>
-                  </div>
+        {/* Productos */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-5 mb-6 border-b border-slate-100">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}14`, color: accent }}>
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div className="pt-0.5">
+                <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Productos en la Tienda</h3>
+                <p className="text-[13px] text-slate-500 font-medium mt-1">
+                  <span className="font-bold" style={{ color: accent }}>{onlineCount}</span> producto(s) visible(s) actualmente
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleSyncCatalog}
+              disabled={isSyncingCatalog}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60 shrink-0"
+              style={{ backgroundColor: accent }}
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingCatalog ? 'animate-spin' : ''}`} />
+              {isSyncingCatalog ? 'Sincronizando...' : 'Sincronizar Todo el Inventario'}
+            </button>
+          </div>
 
-                  <button 
-                    type="button"
-                    onClick={() => handleRemoveSchedule(index)}
-                    disabled={schedules.length <= 1}
-                    className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100 self-end disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4 rotate-45" />
-                  </button>
+          <div className="grid grid-cols-1 sm:grid-cols-[1.4fr,1fr,1fr] gap-3 mb-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Buscar producto por nombre o código..."
+                className={`${inputBase} pl-10`}
+              />
+            </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className={inputBase}
+            >
+              <option value="ALL">Todas las categorías</option>
+              {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
+              value={brandFilter}
+              onChange={(e) => setBrandFilter(e.target.value)}
+              className={inputBase}
+            >
+              <option value="ALL">Todas las marcas</option>
+              {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+
+          <div className="max-h-96 overflow-y-auto custom-scrollbar rounded-xl border border-slate-200">
+            {isLoadingProducts ? (
+              <div className="p-10 flex items-center justify-center text-slate-400 gap-2 text-[13px] font-semibold">
+                <Loader2 className="w-4 h-4 animate-spin" /> Cargando productos...
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-[13px] font-semibold">Sin resultados</div>
+            ) : (
+              <table className="w-full text-left">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
+                  <tr className="text-[11.5px] uppercase text-slate-500 font-bold tracking-wide">
+                    <th className="py-3 px-4">Producto</th>
+                    <th className="py-3 px-4 text-right">Precio</th>
+                    <th className="py-3 px-4 text-center">Mostrar en Tienda</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredProducts.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4">
+                        <p className="font-semibold text-[13.5px] text-slate-800 truncate max-w-xs">{p.name}</p>
+                        <p className="text-[11.5px] text-slate-400 font-medium uppercase mt-0.5">
+                          {p.category?.name || 'Sin categoría'}{p.brand?.name ? ` · ${p.brand.name}` : ''}
+                        </p>
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-[13.5px] text-slate-700">
+                        {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p.salePrice)}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => toggleProductOnline(p)}
+                          disabled={pendingToggles.has(p.id)}
+                          className="keep-style relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out disabled:opacity-50"
+                          style={{ backgroundColor: p.showOnline ? '#10b981' : '#cbd5e1' }}
+                        >
+                          <span className={`keep-style pointer-events-none block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out ${
+                            p.showOnline ? 'translate-x-5' : 'translate-x-0'
+                          }`} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Pedidos Recibidos */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <div className="flex items-start gap-3.5 pb-5 mb-6 border-b border-slate-100">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}14`, color: accent }}>
+              <ShoppingBag className="w-5 h-5" />
+            </div>
+            <div className="pt-0.5 flex items-center gap-2.5 flex-wrap">
+              <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Pedidos Recibidos</h3>
+              {pendingOrdersCount > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-rose-500 text-white text-[11px] font-bold animate-pulse">{pendingOrdersCount} NUEVO(S)</span>
+              )}
+            </div>
+          </div>
+
+          {orders.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 font-semibold text-[13.5px]">
+              Todavía no llegó ningún pedido por la tienda online
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {orders.slice(0, 15).map((o) => (
+                <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+                      <UserIcon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-bold text-slate-800 truncate">{o.customerName || 'Cliente Web'}</p>
+                      <p className="text-[12px] text-slate-500 font-medium truncate mt-0.5">{o.items?.length || 0} producto(s) · {o.customerPhone}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-[14px] font-bold text-slate-800">
+                      {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(o.total || 0)}
+                    </span>
+                    <span className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${
+                      o.syncedLocal ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {o.syncedLocal ? 'En Presupuestos' : 'Procesando...'}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Apariencia y Colores */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-6">
-            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
-               <Palette className="w-4 h-4 text-indigo-500" /> Apariencia y Diseño Web
-            </h4>
-            
-            <div className="space-y-3">
-               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Diseño de Catálogo Web</span>
-               <div className="grid grid-cols-2 gap-3">
-                  <button 
-                    onClick={() => setViewMode('GRID')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'GRID' ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-white hover:border-slate-400'}`}
-                  >
-                     <Layout className="w-4 h-4 text-slate-650" />
-                     <div className="text-left leading-none">
-                       <p className="text-[10px] font-bold text-slate-800 uppercase">Grilla</p>
-                       <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">2 Columnas</p>
-                     </div>
-                  </button>
-                  <button 
-                    onClick={() => setViewMode('LIST')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer flex items-center gap-3 transition-all ${viewMode === 'LIST' ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-white hover:border-slate-400'}`}
-                  >
-                     <Sliders className="w-4 h-4 text-slate-650" />
-                     <div className="text-left leading-none">
-                       <p className="text-[10px] font-bold text-slate-800 uppercase">Lista</p>
-                       <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Compacto</p>
-                     </div>
-                  </button>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-300">
-               <div className="space-y-3">
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Logo de Kiosco</span>
-                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-400 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
-                     <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                     <span className="text-[9px] font-bold uppercase">Subir Logo PNG</span>
-                  </div>
-               </div>
-               <div className="space-y-3">
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Banner de Portada</span>
-                  <div className="w-full h-28 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-400 flex flex-col items-center justify-center text-slate-300 gap-1.5 cursor-pointer hover:border-slate-300 transition-all group shadow-inner">
-                     <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                     <span className="text-[9px] font-bold uppercase">Subir Banner Web</span>
-                  </div>
-               </div>
-            </div>
-          </div>
-
-          {/* Redes Sociales, Localización y Whatsapp */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm space-y-6">
-            <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2 border-b border-slate-300 pb-3">
-               <MessageSquare className="w-4 h-4 text-indigo-500" /> Redes Sociales y Localización
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Instagram</label>
-                <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
-                    <Instagram className="w-4 h-4" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={instagram} 
-                    onChange={(e) => setInstagram(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
-                    placeholder="@usuario" 
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Facebook</label>
-                <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
-                    <Facebook className="w-4 h-4" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={facebook} 
-                    onChange={(e) => setFacebook(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
-                    placeholder="nombre_pagina" 
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">WhatsApp</label>
-                <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-emerald-600 font-extrabold text-xs">
-                    +
-                  </div>
-                  <input 
-                    type="text" 
-                    value={whatsapp} 
-                    onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
-                    placeholder="5491123456789" 
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Dirección Física</label>
-                <div className="relative flex items-center">
-                  <div className="absolute left-3 w-4 h-4 flex items-center justify-center text-slate-600">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={address} 
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all shadow-inner" 
-                    placeholder="Av. Rivadavia 1234" 
-                  />
-                </div>
-              </div>
-            </div>
-      {/* GoDelivery Sync Progress Modal */}
-      <AnimatePresence>
-        {isSyncingAll && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-400 p-8 text-center space-y-6"
-            >
-              {/* Animated Sync Icon */}
-              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border-2 border-dashed border-rose-300 animate-spin [animation-duration:8s]"></div>
-                <div className="absolute inset-2 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
-                  <RefreshCw className="w-8 h-8 animate-spin [animation-duration:3s]" />
-                </div>
-              </div>
-
-              {/* Text Header */}
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-800">Sincronizando Omnicanal</h3>
-                <p className="text-xs text-slate-700">Kiosco POS <span className="text-rose-500 font-bold">↔</span> GoDelivery</p>
-              </div>
-
-              {/* Animated Progress Bar */}
-              <div className="space-y-2">
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${syncStatus.progress}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-xs text-slate-700">
-                  <span>{syncStatus.current} de {syncStatus.total} productos</span>
-                  <span className="text-rose-600 font-semibold">{syncStatus.progress}%</span>
-                </div>
-                <div className="flex items-center justify-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                  <p className="text-xs font-medium text-rose-600 truncate max-w-full">
-                    {syncStatus.status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Status checklist */}
-              <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 text-left space-y-2.5">
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 5 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 5 ? 'text-slate-600' : 'text-slate-600'}`}>Conexión establecida con Firestore</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 10 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 10 ? 'text-slate-600' : 'text-slate-600'}`}>Sincronizando categorías del POS</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  {syncStatus.progress >= 100 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 text-rose-500 animate-spin shrink-0" />
-                  )}
-                  <span className={`text-xs ${syncStatus.progress >= 100 ? 'text-slate-600' : 'text-slate-600'}`}>Cargando catálogo online...</span>
-                </div>
-              </div>
-
-              {/* Warning tag */}
-              <p className="text-[10px] text-slate-600">
-                Por favor, no cierres la aplicación hasta finalizar la operación.
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+          <p className="text-[12px] text-slate-400 font-medium flex items-center gap-1.5 mt-4">
+            <Clock className="w-3.5 h-3.5" /> Cada pedido nuevo se guarda automáticamente como Presupuesto mientras esta terminal esté abierta.
+          </p>
         </div>
       </div>
     </div>
-  </div>
   );
 }

@@ -102,7 +102,7 @@ export class AuthController {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Vincular Google con GO! Portal</title>
+          <title>Vincular Google con Ventra</title>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <link href="https://fonts.googleapis.com/css2?family=Inter:wght@450;600;800&display=swap" rel="stylesheet">

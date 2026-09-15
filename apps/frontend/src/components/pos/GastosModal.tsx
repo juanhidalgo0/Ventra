@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Receipt, ArrowDownRight, Wallet, Info } from 'lucide-react';
+import { X, Receipt, ArrowDownRight, Wallet, Info, Trash2, Edit2 } from 'lucide-react';
 
-export default function GastosModal({ sessionId, terminalName, onClose }: { sessionId?: string; terminalName?: string; onClose: () => void }) {
+export default function GastosModal({ sessionId, terminalName, onClose, editingGasto }: { sessionId?: string; terminalName?: string; onClose: () => void; editingGasto?: any }) {
   const [type, setType] = useState<'EXPENSE' | 'WITHDRAWAL'>('EXPENSE');
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('Otro');
@@ -12,6 +12,7 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
   const [description, setDescription] = useState('');
   const [session, setSession] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [localEditingGasto, setLocalEditingGasto] = useState<any | null>(editingGasto || null);
 
   // Salary payment states
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -21,7 +22,43 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
   const [selectedMovement, setSelectedMovement] = useState<any | null>(null);
 
   useEffect(() => {
-    if (category === 'Cobrar Sueldo') {
+    setLocalEditingGasto(editingGasto || null);
+  }, [editingGasto]);
+
+  useEffect(() => {
+    if (localEditingGasto) {
+      setAmount(localEditingGasto.amount);
+      if (localEditingGasto.type) setType(localEditingGasto.type);
+      
+      // Parse description like: "[Otro] MOTIVO | METODO: CASH"
+      const descStr = localEditingGasto.description || '';
+      const catMatch = descStr.match(/^\[(.*?)\]/);
+      const methodMatch = descStr.match(/\| METODO: (CASH|TRANSFER)$/i);
+      
+      let parsedCategory = 'Otro';
+      if (catMatch) {
+        parsedCategory = catMatch[1];
+        setCategory(parsedCategory);
+      }
+      
+      if (methodMatch) {
+        setMethod(methodMatch[1].toUpperCase());
+      }
+      
+      // Extract main description text
+      let mainDesc = descStr;
+      if (catMatch) {
+        mainDesc = mainDesc.replace(catMatch[0], '').trim();
+      }
+      if (methodMatch) {
+        mainDesc = mainDesc.replace(methodMatch[0], '').trim();
+      }
+      setDescription(mainDesc);
+    }
+  }, [localEditingGasto]);
+
+  useEffect(() => {
+    if (category === 'Cobrar Sueldo' && !localEditingGasto) {
       api.get('/users')
         .then(({ data }) => {
           setUsersList(data || []);
@@ -31,27 +68,27 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
         })
         .catch((e) => console.error('Error fetching users in GastosModal', e));
     }
-  }, [category]);
+  }, [category, localEditingGasto]);
 
   useEffect(() => {
-    if (category === 'Cobrar Sueldo') {
+    if (category === 'Cobrar Sueldo' && !localEditingGasto) {
       const computedAmount = hoursWorked * rate;
       setAmount(computedAmount);
       setDescription(`Liquidación de sueldo para ${selectedUser} por ${hoursWorked} horas trabajadas (Valor hora: $${rate})`);
     }
-  }, [category, hoursWorked, selectedUser, rate]);
+  }, [category, hoursWorked, selectedUser, rate, localEditingGasto]);
 
   useEffect(() => {
-    if (category === 'Retiro a caja fuerte') {
+    if (category === 'Retiro a caja fuerte' && !localEditingGasto) {
       setType('WITHDRAWAL');
       setDescription('RETIRO A CAJA FUERTE');
-    } else if (category !== 'Cobrar Sueldo') {
+    } else if (category !== 'Cobrar Sueldo' && !localEditingGasto) {
       setType('EXPENSE');
       setDescription('');
-    } else {
+    } else if (!localEditingGasto) {
       setType('EXPENSE');
     }
-  }, [category]);
+  }, [category, localEditingGasto]);
 
   useEffect(() => {
     loadSession();
@@ -61,8 +98,6 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
     const handleGastosKeys = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         const activeElement = document.activeElement;
-        // Do not intercept if user is actively writing inside textarea/inputs unless they specifically trigger it.
-        // For selects and other background areas, submit on Enter!
         if (activeElement?.tagName !== 'TEXTAREA') {
           e.preventDefault();
           handleSubmit();
@@ -74,7 +109,7 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
     };
     window.addEventListener('keydown', handleGastosKeys);
     return () => window.removeEventListener('keydown', handleGastosKeys);
-  }, [sessionId, amount, description, category, method, selectedUser, hoursWorked, onClose]);
+  }, [sessionId, amount, description, category, method, selectedUser, hoursWorked, onClose, localEditingGasto]);
 
   const loadSession = async () => {
     try {
@@ -88,7 +123,7 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
   };
 
   const handleSubmit = async () => {
-    if (!sessionId) { toast.error('No hay caja abierta'); return; }
+    if (!sessionId && !localEditingGasto) { toast.error('No hay caja abierta'); return; }
     if (amount <= 0) { toast.error('Ingresá un monto válido'); return; }
     if (category !== 'Cobrar Sueldo' && category !== 'Retiro a caja fuerte' && !description.trim()) {
       toast.error('⚠️ El campo Motivo es obligatorio');
@@ -97,12 +132,22 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
     try {
       const mappedCategory = category === 'Cobrar Sueldo' ? 'Sueldos / Adelantos' : category === 'Retiro a caja fuerte' ? 'Otro' : category;
       const finalDescription = `[${mappedCategory}] ${description.trim().toUpperCase()} | METODO: ${method}`;
-      await api.post(`/cash/${sessionId}/movement`, { 
-        type, 
-        amount, 
-        description: finalDescription
-      });
-      toast.success('✅ Gasto registrado correctamente');
+      
+      if (localEditingGasto) {
+        await api.put(`/cash/movement/${localEditingGasto.id}`, {
+          type,
+          amount,
+          description: finalDescription
+        });
+        toast.success('✅ Gasto actualizado correctamente');
+      } else {
+        await api.post(`/cash/${sessionId}/movement`, { 
+          type, 
+          amount, 
+          description: finalDescription
+        });
+        toast.success('✅ Gasto registrado correctamente');
+      }
       onClose();
     } catch (err: any) { toast.error(err.response?.data?.message || 'Error'); }
   };
@@ -115,21 +160,44 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
   const withdrawals = session?.cashMovements?.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0;
   const expectedCash = cashPayments - expenses - withdrawals;
 
+  const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
+  const MotionDiv = (perfMode ? 'div' : motion.div) as any;
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-        <motion.div 
-          initial={{ scale: 0.95, opacity: 0 }} 
-          animate={{ scale: 1, opacity: 1 }} 
-          exit={{ scale: 0.95, opacity: 0 }} 
-          onClick={(e) => e.stopPropagation()} 
-          className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl overflow-hidden shadow-xl border border-slate-400 dark:border-slate-700 flex flex-col max-h-[90vh]"
+    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+        <MotionDiv
+          {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
+          onClick={(e: any) => e.stopPropagation()}
+          className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl overflow-hidden shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]"
         >
           <div className="px-6 py-5 border-b border-slate-300 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900">
             <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Registrar Gasto del Día</h2>
-              <p className="text-xs text-slate-700 dark:text-slate-400 mt-0.5">Gestión de egresos de caja</p>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                {localEditingGasto ? 'Editar Gasto del Turno' : 'Registrar Gasto del Día'}
+              </h2>
+              <p className="text-xs text-slate-755 dark:text-slate-400 mt-0.5">
+                {localEditingGasto ? 'Modificando un egreso de caja existente' : 'Gestión de egresos de caja'}
+              </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-500 transition-all"><X className="w-5 h-5" /></button>
+            <div className="flex items-center gap-2">
+              {localEditingGasto && (
+                <button 
+                  onClick={() => {
+                    setLocalEditingGasto(null);
+                    setAmount(0);
+                    setCategory('Otro');
+                    setDescription('');
+                    setMethod('CASH');
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase transition-all cursor-pointer border border-slate-300"
+                >
+                  Cancelar Edición
+                </button>
+              )}
+              <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
         {/* Side-by-Side Content Area */}
@@ -223,9 +291,9 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
               </div>
             )}
 
-            <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 flex gap-3">
-              <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-              <p className="text-[9px] text-indigo-600 dark:text-indigo-300 leading-relaxed font-medium">
+            <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800 flex gap-3">
+              <Info className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              <p className="text-[9px] text-rose-600 dark:text-rose-300 leading-relaxed font-medium">
                 ¿Vas a pagarle a un proveedor? Usá el botón <b>"Proveedores"</b> arriba — así queda en su cuenta corriente y no se mezcla con tus gastos operativos.
               </p>
             </div>
@@ -267,20 +335,22 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
         </div>
 
         {/* Footer Buttons */}
-        <div className="px-6 py-4 border-t border-slate-300 dark:border-slate-800 flex gap-3 shrink-0 bg-white dark:bg-slate-900">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-medium text-slate-550 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-sm border border-slate-400 dark:border-slate-600">Cancelar</button>
-          <button onClick={handleSubmit} className="flex-1 py-2.5 rounded-xl font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-all text-sm active:scale-[0.97]">Guardar Gasto</button>
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex gap-3 shrink-0 bg-white dark:bg-slate-900">
+          <button onClick={onClose} className="flex-1 btn-secondary text-sm">Cancelar</button>
+          <button onClick={handleSubmit} className="flex-1 btn-primary text-sm">
+            {localEditingGasto ? 'Guardar Cambios' : 'Guardar Gasto'}
+          </button>
         </div>
 
         {/* Expense Detail Overlay Modal */}
         {selectedMovement && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md p-6 border border-slate-300 dark:border-slate-600 shadow-2xl relative animate-in zoom-in-95 duration-200">
-              <button 
-                onClick={() => setSelectedMovement(null)} 
-                className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-all"
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setSelectedMovement(null)}
+                className="absolute top-4 right-4 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
               
               <div className="flex items-center gap-3 border-b border-slate-150 dark:border-slate-700 pb-4 mb-4">
@@ -321,10 +391,51 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
                 </div>
               </div>
 
-              <div className="mt-6">
+              <div className="flex gap-3 mt-6">
                 <button 
-                  onClick={() => setSelectedMovement(null)} 
-                  className="w-full py-3 rounded-xl font-bold bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs transition-all active:scale-[0.98] uppercase tracking-wider"
+                  onClick={async () => {
+                    if (window.confirm('¿Seguro que quieres eliminar este gasto?')) {
+                       try {
+                        await api.delete(`/cash/movement/${selectedMovement.id}`);
+                        toast.success('Gasto de caja eliminado');
+                        setSelectedMovement(null);
+                        loadSession();
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.message || 'Error al eliminar');
+                      }
+                    }
+                  }}
+                  className="flex-1 btn-danger text-xs uppercase tracking-wider"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+                <button
+                  onClick={() => {
+                    setAmount(selectedMovement.amount);
+                    if (selectedMovement.type) setType(selectedMovement.type);
+
+                    const descStr = selectedMovement.description || '';
+                    const catMatch = descStr.match(/^\[(.*?)\]/);
+                    const methodMatch = descStr.match(/\| METODO: (CASH|TRANSFER)$/i);
+
+                    if (catMatch) setCategory(catMatch[1]);
+                    if (methodMatch) setMethod(methodMatch[1].toUpperCase());
+
+                    let mainDesc = descStr;
+                    if (catMatch) mainDesc = mainDesc.replace(catMatch[0], '').trim();
+                    if (methodMatch) mainDesc = mainDesc.replace(methodMatch[0], '').trim();
+                    setDescription(mainDesc);
+
+                    setLocalEditingGasto(selectedMovement);
+                    setSelectedMovement(null);
+                  }}
+                  className="flex-1 btn-secondary text-xs uppercase tracking-wider"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Editar
+                </button>
+                <button
+                  onClick={() => setSelectedMovement(null)}
+                  className="btn-secondary px-5 text-xs uppercase tracking-wider"
                 >
                   Cerrar
                 </button>
@@ -332,7 +443,7 @@ export default function GastosModal({ sessionId, terminalName, onClose }: { sess
             </div>
           </div>
         )}
-      </motion.div>
-    </motion.div>
+        </MotionDiv>
+    </MotionDiv>
   );
 }

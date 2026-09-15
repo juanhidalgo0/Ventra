@@ -10,6 +10,7 @@ export class PromotionsController {
   @Get()
   async findAll() {
     return this.prisma.promotion.findMany({
+      where: { isActive: true },
       include: { 
         products: { 
           include: { 
@@ -18,7 +19,9 @@ export class PromotionsController {
                 id: true, 
                 name: true, 
                 barcode: true, 
-                salePrice: true 
+                salePrice: true,
+                stock: true,
+                unlimitedStock: true
               } 
             } 
           } 
@@ -46,7 +49,8 @@ export class PromotionsController {
             products: {
               create: products.map((p: any) => ({
                 productId: p.productId,
-                quantity: p.quantity || 1
+                quantity: p.quantity || 1,
+                groupId: p.groupId || null
               }))
             }
           },
@@ -83,7 +87,8 @@ export class PromotionsController {
             products: {
               create: products.map((p: any) => ({
                 productId: p.productId,
-                quantity: p.quantity || 1
+                quantity: p.quantity || 1,
+                groupId: p.groupId || null
               }))
             }
           },

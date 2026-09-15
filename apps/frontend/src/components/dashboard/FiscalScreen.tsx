@@ -38,7 +38,7 @@ export default function FiscalScreen() {
   const [paperWidth, setPaperWidth] = useState<'80MM' | '58MM' | 'A4'>('80MM');
   const [autoPrint, setAutoPrint] = useState(true);
   const [invoiceType, setInvoiceType] = useState<'FACTURA_C' | 'FACTURA_B_A'>('FACTURA_C');
-  const [footerText, setFooterText] = useState('¡Muchas gracias por su compra! - GO! Punto de Venta');
+  const [footerText, setFooterText] = useState('¡Muchas gracias por su compra! - Ventra POS');
 
   // Fiscal Sales Logs (AFIP integrations simulation)
   const [sales, setSales] = useState<any[]>([]);
@@ -183,7 +183,7 @@ export default function FiscalScreen() {
           </style>
         </head>
         <body>
-          <div class="text-center bold" style="font-size: 13px;">GO! PUNTO DE VENTA</div>
+          <div class="text-center bold" style="font-size: 13px;">VENTRA POS</div>
           <div class="text-center" style="font-size: 9px; font-weight: bold;">${subTitle}</div>
           <div class="line"></div>
           
@@ -210,7 +210,7 @@ export default function FiscalScreen() {
           ${extraFooter}
           
           <br/><br/>
-          <div class="text-center" style="font-size: 8px; color: #555;">© 2026 GO! Punto de Venta POS</div>
+          <div class="text-center" style="font-size: 8px; color: #555;">© 2026 Ventra POS</div>
         </body>
       </html>
     `);
@@ -266,7 +266,7 @@ export default function FiscalScreen() {
           </button>
           <button 
             onClick={handleSimulateCierreZ}
-            className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-slate-850 shadow-md active:scale-95 transition-all"
+            className="px-4 py-2.5 bg-teal-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-teal-800 shadow-md active:scale-95 transition-all"
           >
             <Printer className="w-4 h-4 text-rose-500 animate-bounce" /> Cierre Z (ARCA)
           </button>
@@ -301,7 +301,7 @@ export default function FiscalScreen() {
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
             <Clock className="w-6 h-6" />
           </div>
           <div>
@@ -315,12 +315,12 @@ export default function FiscalScreen() {
 
       {/* Estadísticas de Hoy */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 rounded-2xl border border-indigo-100 shadow-md flex items-center gap-4 text-white">
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 p-5 rounded-2xl border border-rose-100 shadow-md flex items-center gap-4 text-white">
           <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
             <TrendingUp className="w-6 h-6 text-white" />
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100 block">Total Facturado Hoy (ARCA)</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-rose-100 block">Total Facturado Hoy (ARCA)</span>
             <span className="text-2xl font-black mt-0.5 block">
               ${getTodayStats().amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
             </span>
@@ -346,7 +346,7 @@ export default function FiscalScreen() {
           {/* Section 1: AFIP Web Services Integration */}
           <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-sm space-y-5">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2.5 border-b border-slate-300">
-              <Settings className="w-4.5 h-4.5 text-indigo-500" /> Registro y Parámetros ARCA (ex-AFIP)
+              <Settings className="w-4.5 h-4.5 text-rose-500" /> Registro y Parámetros ARCA (ex-AFIP)
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -356,7 +356,7 @@ export default function FiscalScreen() {
                   type="text" 
                   value={cuit}
                   onChange={e => setCuit(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner font-mono"
                   placeholder="20-XXXXXXXX-X"
                 />
               </div>
@@ -367,7 +367,7 @@ export default function FiscalScreen() {
                   type="text" 
                   value={posNumber}
                   onChange={e => setPosNumber(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner font-mono"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner font-mono"
                   placeholder="00001"
                 />
               </div>
@@ -377,7 +377,7 @@ export default function FiscalScreen() {
                 <select 
                   value={taxRegime}
                   onChange={e => setTaxRegime(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all cursor-pointer"
                 >
                   <option>Monotributo</option>
                   <option>Responsable Inscripto</option>
@@ -390,7 +390,7 @@ export default function FiscalScreen() {
                 <select 
                   value={concept}
                   onChange={e => setConcept(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-755 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-755 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all cursor-pointer"
                 >
                   <option>Productos</option>
                   <option>Servicios</option>
@@ -427,7 +427,7 @@ export default function FiscalScreen() {
               <button 
                 onClick={handleTestConnection}
                 disabled={isTestingConnection}
-                className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="flex-1 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isTestingConnection ? (
                   <>
@@ -500,7 +500,7 @@ export default function FiscalScreen() {
                 type="text" 
                 value={footerText}
                 onChange={e => setFooterText(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all shadow-inner"
+                className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 transition-all shadow-inner"
               />
             </div>
           </div>
@@ -509,7 +509,7 @@ export default function FiscalScreen() {
           <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-2 border-b border-slate-300">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-4.5 h-4.5 text-indigo-500" /> Registro de Comprobantes Homologados por ARCA
+                <FileText className="w-4.5 h-4.5 text-rose-500" /> Registro de Comprobantes Homologados por ARCA
               </h3>
               <div className="relative w-full sm:w-60">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-350" />
@@ -518,7 +518,7 @@ export default function FiscalScreen() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Buscar por N° factura o total..."
-                  className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-3 py-1.5 text-xs font-semibold outline-none focus:bg-white focus:border-indigo-500 transition-all text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-3 py-1.5 text-xs font-semibold outline-none focus:bg-white focus:border-rose-500 transition-all text-slate-800"
                 />
               </div>
             </div>
@@ -533,7 +533,7 @@ export default function FiscalScreen() {
                     type="button"
                     className={`px-3 py-1.5 text-[10px] font-extrabold rounded-lg uppercase transition-all tracking-wider cursor-pointer ${
                       filterPeriod === period
-                        ? 'bg-indigo-600 text-white shadow-sm'
+                        ? 'bg-rose-600 text-white shadow-sm'
                         : 'bg-white border border-slate-400 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
@@ -554,7 +554,7 @@ export default function FiscalScreen() {
                       type="date"
                       value={customStartDate}
                       onChange={e => setCustomStartDate(e.target.value)}
-                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
+                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-rose-500 text-slate-700"
                     />
                   </div>
                   <div className="flex items-center gap-1">
@@ -563,7 +563,7 @@ export default function FiscalScreen() {
                       type="date"
                       value={customEndDate}
                       onChange={e => setCustomEndDate(e.target.value)}
-                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500 text-slate-700"
+                      className="bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:border-rose-500 text-slate-700"
                     />
                   </div>
                 </div>
@@ -596,7 +596,7 @@ export default function FiscalScreen() {
                           key={s.id || idx} 
                           onClick={() => setSelectedInvoice(s)}
                           className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors font-medium cursor-pointer ${
-                            isSelected ? 'bg-indigo-50/30' : ''
+                            isSelected ? 'bg-rose-50/30' : ''
                           }`}
                         >
                           <td className="py-3 px-4 font-mono font-bold text-slate-700">{s.invoiceNum}</td>
@@ -637,7 +637,7 @@ export default function FiscalScreen() {
 
               {/* Title & Info */}
               <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
-                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">GO! PUNTO DE VENTA</h4>
+                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">VENTRA POS</h4>
                 <p className="text-[9px] font-bold text-slate-450 leading-none">C.U.I.T. N° {cuit}</p>
                 <p className="text-[8px] text-slate-600">Punto de Venta N° {posNumber}</p>
                 <p className="text-[8px] text-slate-600 uppercase font-bold">{taxRegime}</p>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt } from 'lucide-react';
+import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt, Edit, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewPurchaseScreen from './NewPurchaseScreen';
+import SuggestedReplenishmentModal from './SuggestedReplenishmentModal';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -12,6 +13,8 @@ export default function PurchasesScreen() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+  const [editingPurchase, setEditingPurchase] = useState<any | null>(null);
+  const [showSuggestedReplenishment, setShowSuggestedReplenishment] = useState(false);
 
   const handleSetView = (newView: 'list' | 'new') => {
     setView(newView);
@@ -81,7 +84,7 @@ export default function PurchasesScreen() {
   };
 
   if (view === 'new') {
-    return <NewPurchaseScreen onBack={() => handleSetView('list')} />;
+    return <NewPurchaseScreen onBack={() => { handleSetView('list'); setEditingPurchase(null); }} initialPurchase={editingPurchase} />;
   }
 
   const totalSpent = purchases.reduce((sum, p) => sum + p.total, 0);
@@ -92,13 +95,13 @@ export default function PurchasesScreen() {
       <div className="flex items-center justify-between px-2">
          <div>
             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-               <ShoppingCart className="w-5 h-5 text-indigo-500" /> Compras
+               <ShoppingCart className="w-5 h-5 text-rose-500" /> Compras
             </h2>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Registro de compras a proveedores</p>
          </div>
          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input type="text" placeholder="Buscar..." className="bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-[10px] font-bold outline-none focus:border-indigo-200 transition-all w-32" />
+            <input type="text" placeholder="Buscar..." className="bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-[10px] font-bold outline-none focus:border-rose-200 transition-all w-32" />
          </div>
       </div>
 
@@ -112,7 +115,7 @@ export default function PurchasesScreen() {
       </div>
 
       {/* Filters and Action Bar */}
-      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+      <div className="card p-4 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-300 w-full sm:w-auto justify-between sm:justify-start">
             <div className="relative">
@@ -143,6 +146,13 @@ export default function PurchasesScreen() {
                 className="w-full bg-slate-50 border border-transparent rounded-2xl pl-11 pr-4 py-2.5 text-[11px] focus:bg-white focus:border-emerald-500/50 transition-all outline-none font-bold placeholder:text-gray-300"
              />
            </div>
+             <button 
+               onClick={() => setShowSuggestedReplenishment(true)}
+               className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest shadow-md shadow-rose-100 transition-all cursor-pointer whitespace-nowrap"
+               title="Calcular faltantes de stock mínimo y armar pedidos a proveedores"
+             >
+                <Sparkles className="w-3.5 h-3.5" /> Pedido Sugerido
+             </button>
             <button 
               onClick={() => handleSetView('new')}
               className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest shadow-md shadow-emerald-100 transition-all cursor-pointer"
@@ -161,10 +171,10 @@ export default function PurchasesScreen() {
       </div>
 
       {/* History Area */}
-      <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col p-4 md:p-8 relative">
+      <div className="flex-1 card flex flex-col p-4 md:p-8 relative">
         {isLoading && (
           <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
-             <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+             <RefreshCw className="w-8 h-8 text-rose-500 animate-spin" />
           </div>
         )}
 
@@ -184,7 +194,7 @@ export default function PurchasesScreen() {
 
         <div className="flex items-center justify-between mb-4 md:mb-6">
            <h3 className="text-sm font-bold text-gray-800 tracking-tight flex items-center gap-3">
-              <History className="w-5 h-5 text-indigo-500" /> Historial de Compras
+              <History className="w-5 h-5 text-rose-500" /> Historial de Compras
            </h3>
         </div>
 
@@ -198,20 +208,49 @@ export default function PurchasesScreen() {
                    <th className="pb-4 text-[10px] font-bold text-slate-600 uppercase tracking-widest">Factura</th>
                    <th className="pb-4 text-[10px] font-bold text-slate-600 uppercase tracking-widest text-center">Estado</th>
                    <th className="pb-4 text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Total</th>
+                   <th className="pb-4 text-[10px] font-bold text-slate-600 uppercase tracking-widest text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {purchases.map((p) => (
                   <tr key={p.id} onClick={() => setSelectedPurchase(p)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
-                     <td className="py-4 text-[11px] font-bold text-slate-600 group-hover:text-indigo-600 transition-colors">{new Date(p.createdAt).toLocaleDateString()}</td>
+                     <td className="py-4 text-[11px] font-bold text-slate-600 group-hover:text-rose-600 transition-colors">{new Date(p.createdAt).toLocaleDateString()}</td>
                      <td className="py-4 text-[11px] font-bold text-slate-700 uppercase">{p.supplier.name}</td>
                      <td className="py-4 text-[11px] font-bold text-slate-600">{p.invoiceNumber || '---'}</td>
                      <td className="py-4 text-center">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest ${p.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                            {p.paymentStatus === 'PAID' ? 'Pagada' : 'A deber'}
                         </span>
+                        {p.status === 'PENDING' && (
+                          <span className="ml-2 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-amber-100 text-amber-800 border border-amber-200">
+                             Borrador IA
+                          </span>
+                        )}
                      </td>
                      <td className="py-4 text-right text-[12px] font-bold text-slate-800">$ {p.total.toLocaleString()}</td>
+                     <td className="py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {p.status === 'PENDING' ? (
+                            <button 
+                              onClick={() => {
+                                setEditingPurchase(p);
+                                handleSetView('new');
+                              }}
+                              className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-extrabold uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                              title="Editar y Confirmar Boleta"
+                            >
+                               <Edit className="w-3 h-3" /> Confirmar
+                            </button>
+                          ) : null}
+                          <button 
+                            onClick={() => handleDeletePurchase(p.id)}
+                            className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                            title="Eliminar Compra"
+                          >
+                             <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                     </td>
                   </tr>
                 ))}
               </tbody>
@@ -249,7 +288,7 @@ export default function PurchasesScreen() {
               {/* Header */}
               <div className="px-6 py-4 border-b border-slate-300 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-500 flex items-center justify-center">
                     <Receipt className="w-5 h-5" />
                   </div>
                   <div>
@@ -305,7 +344,7 @@ export default function PurchasesScreen() {
                 {/* Items Table */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                    <Box className="w-4 h-4 text-indigo-500" /> Artículos Detallados
+                    <Box className="w-4 h-4 text-rose-500" /> Artículos Detallados
                   </h4>
                   <div className="bg-white rounded-xl border border-slate-400 overflow-hidden">
                     <table className="w-full text-left">
@@ -345,7 +384,7 @@ export default function PurchasesScreen() {
                 <div className="flex gap-2">
                   <button 
                     onClick={() => handleRestorePurchase(selectedPurchase.id)}
-                    className="bg-indigo-600 hover:bg-indigo-750 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                    className="bg-rose-600 hover:bg-rose-750 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
                   >
                     Restaurar Compra
                   </button>
@@ -365,6 +404,12 @@ export default function PurchasesScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showSuggestedReplenishment && (
+        <SuggestedReplenishmentModal
+          onClose={() => setShowSuggestedReplenishment(false)}
+        />
+      )}
     </div>
   );
 }

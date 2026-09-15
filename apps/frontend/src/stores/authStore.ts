@@ -53,14 +53,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    // Clear admin unlock flag on logout
+    // Clear admin unlock flag and tokens on logout
     sessionStorage.removeItem('admin_unlocked');
+    sessionStorage.removeItem('adminAccessToken');
+    sessionStorage.removeItem('adminRefreshToken');
+    localStorage.removeItem('admin_unlocked');
     // Also clear stored admin password (optional security)
     localStorage.removeItem('admin_password');
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
-    sessionStorage.removeItem('admin_unlocked');
     wsService.disconnect();
     set({ user: null, isAuthenticated: false });
     set({ user: null, isAuthenticated: false });

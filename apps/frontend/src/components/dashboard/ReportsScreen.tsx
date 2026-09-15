@@ -23,7 +23,8 @@ import {
   Percent,
   CheckCircle2,
   Box,
-  FileText
+  FileText,
+  Smartphone
 } from 'lucide-react';
 
 interface ReportCard {
@@ -234,14 +235,14 @@ const CostVsSaleBar = ({ cost, sale }: { cost: number; sale: number }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs font-bold text-slate-700">
             <span>Capital a Costo</span>
-            <span className="text-indigo-600 font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(cost)}</span>
+            <span className="text-rose-600 font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(cost)}</span>
           </div>
           <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-300 flex">
             <motion.div 
               initial={{ width: 0 }} 
               animate={{ width: `${costPercent}%` }} 
               transition={{ duration: 0.8 }} 
-              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full"
+              className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
             />
           </div>
         </div>
@@ -686,7 +687,7 @@ export default function ReportsScreen() {
       category: 'FINANCIAL',
       tag: 'BASIC',
       icon: Layers,
-      color: 'from-blue-500/10 to-indigo-500/10 text-blue-600 border-blue-100 hover:border-blue-300'
+      color: 'from-blue-500/10 to-rose-500/10 text-blue-600 border-blue-100 hover:border-blue-300'
     },
     {
       id: 'rotacion_inventario',
@@ -722,7 +723,7 @@ export default function ReportsScreen() {
       category: 'INVENTORY',
       tag: 'BASIC',
       icon: Activity,
-      color: 'from-violet-500/10 to-indigo-500/10 text-violet-600 border-violet-100 hover:border-violet-300'
+      color: 'from-violet-500/10 to-rose-500/10 text-violet-600 border-violet-100 hover:border-violet-300'
     },
     {
       id: 'valorizacion',
@@ -750,6 +751,15 @@ export default function ReportsScreen() {
       tag: 'FULL',
       icon: CornerUpLeft,
       color: 'from-fuchsia-500/10 to-pink-500/10 text-fuchsia-600 border-fuchsia-100 hover:border-fuchsia-300'
+    },
+    {
+      id: 'cargas_virtuales',
+      title: 'Cargas Virtuales',
+      description: 'Reporte detallado de cargas virtuales (1 y 2) vendidas en el periodo.',
+      category: 'SALES',
+      tag: 'FULL',
+      icon: Smartphone,
+      color: 'from-rose-500/10 to-blue-500/10 text-rose-600 border-rose-100 hover:border-rose-300'
     }
   ];
 
@@ -793,6 +803,9 @@ export default function ReportsScreen() {
         } else if (activeReport === 'stock_bajo') {
           const { data } = await api.get('/products', { params: { lowStock: 'true', take: 10000 } });
           dataResult = Array.isArray(data) ? data : [];
+        } else if (activeReport === 'cargas_virtuales') {
+          const { data } = await api.get('/sales/virtual-metrics', { params });
+          dataResult = data;
         } else if (activeReport === 'movimientos') {
           const { data } = await api.get('/products/movements/all', { params: { limit: 200 } });
           dataResult = Array.isArray(data) ? data.filter((m: any) => {
@@ -800,7 +813,7 @@ export default function ReportsScreen() {
             return d >= fromDate && d <= toDate;
           }) : [];
         } else if (activeReport === 'rentabilidad' || activeReport === 'rentabilidad_categoria' || activeReport === 'rotacion_inventario' || activeReport === 'devoluciones') {
-          const { data: sales } = await api.get('/sales', { params });
+          const { data: sales } = await api.get('/sales', { params: { ...params, withCost: true } });
           const { data: products } = await api.get('/products', { params: { take: 10000 } });
           
           if (!Array.isArray(sales) || !Array.isArray(products)) {
@@ -916,10 +929,17 @@ export default function ReportsScreen() {
               dataResult = abcList;
             } else if (activeReport === 'devoluciones') {
               const cancelled = sales.filter((s: any) => s.status === 'CANCELLED');
-              const totalRefunded = cancelled.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+              const exchanges = sales.filter((s: any) => s.status === 'COMPLETED' && s.items?.some((item: any) => item.quantity < 0));
+              
+              const totalRefunded = cancelled.reduce((sum: number, s: any) => sum + (s.total || 0), 0) +
+                exchanges.reduce((sum: number, s: any) => {
+                  const returnTotal = s.items?.filter((item: any) => item.quantity < 0)
+                    .reduce((isum: number, item: any) => isum + Math.abs(item.total), 0) || 0;
+                  return sum + returnTotal;
+                }, 0);
 
               dataResult = {
-                list: cancelled,
+                list: [...cancelled, ...exchanges].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
                 totalRefunded
               };
             }
@@ -1008,7 +1028,10 @@ export default function ReportsScreen() {
 
         {/* Search */}
         <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+          <Search 
+            className="absolute left-4 w-4 h-4 text-slate-600" 
+            style={{ top: '50%', transform: 'translateY(-50%)' }} 
+          />
           <input 
             type="text" 
             value={searchQuery} 
@@ -1079,7 +1102,7 @@ export default function ReportsScreen() {
 
                 <div className="flex items-center gap-3">
                   {/* Calendar Filters inside Modal */}
-                  {['rentabilidad', 'rentabilidad_categoria', 'rotacion_inventario', 'movimientos', 'perdidas', 'devoluciones'].includes(activeReport) && (
+                  {['rentabilidad', 'rentabilidad_categoria', 'rotacion_inventario', 'movimientos', 'perdidas', 'devoluciones', 'cargas_virtuales'].includes(activeReport) && (
                     <div className="flex items-center gap-1">
                       <select 
                         value={selectedMonth} 
@@ -1162,7 +1185,7 @@ export default function ReportsScreen() {
                           </div>
                           <div>
                             <span className="text-[9px] font-bold text-slate-600 uppercase">Valor a Costo</span>
-                            <p className="text-lg font-bold text-indigo-600 mt-0.5">{fmt(reportData.reduce((s: number, p: any) => s + (p.costPrice * p.stock), 0))}</p>
+                            <p className="text-lg font-bold text-rose-600 mt-0.5">{fmt(reportData.reduce((s: number, p: any) => s + (p.costPrice * p.stock), 0))}</p>
                           </div>
                           <div>
                             <span className="text-[9px] font-bold text-slate-600 uppercase">Valor a Venta</span>
@@ -1246,9 +1269,9 @@ export default function ReportsScreen() {
                             <span className="text-[9px] font-bold text-emerald-600 uppercase block">Ganancia Neta</span>
                             <span className="text-xl font-bold text-emerald-700 mt-1 block">{fmt(reportData.netProfit)}</span>
                           </div>
-                          <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-indigo-600 uppercase block">Margen Promedio</span>
-                            <span className="text-xl font-bold text-indigo-700 mt-1 block">{reportData.margin.toFixed(1)}%</span>
+                          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 shadow-sm">
+                            <span className="text-[9px] font-bold text-rose-600 uppercase block">Margen Promedio</span>
+                            <span className="text-xl font-bold text-rose-700 mt-1 block">{reportData.margin.toFixed(1)}%</span>
                           </div>
                         </div>
 
@@ -1319,11 +1342,11 @@ export default function ReportsScreen() {
                     {/* E. ROTACIÓN DE INVENTARIO */}
                     {activeReport === 'rotacion_inventario' && (
                       <div className="space-y-4">
-                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex gap-3 text-xs leading-relaxed text-indigo-700">
-                          <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 text-xs leading-relaxed text-rose-700">
+                          <Info className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
                           <div>
                             <p className="font-bold">Clasificación ABC de Inventario</p>
-                            <p className="mt-0.5 text-indigo-600"><b>A:</b> Productos críticos que representan el 80% de tus ingresos. <b>B:</b> Productos de rotación media (15% de ingresos). <b>C:</b> Productos de baja rotación (5% restante).</p>
+                            <p className="mt-0.5 text-rose-600"><b>A:</b> Productos críticos que representan el 80% de tus ingresos. <b>B:</b> Productos de rotación media (15% de ingresos). <b>C:</b> Productos de baja rotación (5% restante).</p>
                           </div>
                         </div>
 
@@ -1345,7 +1368,7 @@ export default function ReportsScreen() {
                                     onClick={() => setAbcFilter(type)}
                                     className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                                       abcFilter === type
-                                        ? 'bg-indigo-600 text-white shadow-md active:scale-95'
+                                        ? 'bg-rose-600 text-white shadow-md active:scale-95'
                                         : 'bg-white border border-slate-400 text-slate-700 hover:bg-slate-100 hover:text-slate-700 active:scale-95'
                                     }`}
                                   >
@@ -1392,9 +1415,9 @@ export default function ReportsScreen() {
                             <span className="text-[9px] font-bold text-slate-600 uppercase block">Existencias Totales</span>
                             <span className="text-xl font-bold text-slate-800 mt-1 block">{reportData.itemCount} u.</span>
                           </div>
-                          <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-sm">
-                            <span className="text-[9px] font-bold text-indigo-600 uppercase block">Valor a Costo</span>
-                            <span className="text-xl font-bold text-indigo-700 mt-1 block">{fmt(reportData.totalCost)}</span>
+                          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 shadow-sm">
+                            <span className="text-[9px] font-bold text-rose-600 uppercase block">Valor a Costo</span>
+                            <span className="text-xl font-bold text-rose-700 mt-1 block">{fmt(reportData.totalCost)}</span>
                           </div>
                           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 shadow-sm">
                             <span className="text-[9px] font-bold text-emerald-600 uppercase block">Valor a Venta</span>
@@ -1494,24 +1517,102 @@ export default function ReportsScreen() {
                             </div>
 
                             <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
-                              <table className="w-full min-w-[600px] text-xs text-left border-collapse">
+                              <table className="w-full min-w-[700px] text-xs text-left border-collapse">
                                 <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest"><th className="p-3 pl-4">Ticket</th><th className="p-3">Fecha</th><th className="p-3">Cajero</th><th className="p-3 text-right pr-4">Total Devuelto</th></tr>
+                                  <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest">
+                                    <th className="p-3 pl-4">Ticket</th>
+                                    <th className="p-3">Fecha</th>
+                                    <th className="p-3">Cajero</th>
+                                    <th className="p-3">Detalle Devolución</th>
+                                    <th className="p-3 text-right pr-4">Monto Devuelto</th>
+                                  </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
-                                  {reportData.list.map((sale: any) => (
-                                    <tr key={sale.id} className="hover:bg-slate-50/40 text-slate-700">
-                                      <td className="p-3 pl-4 font-bold text-slate-800">#{sale.saleNumber}</td>
-                                      <td className="p-3 text-slate-600 font-medium">{fmtDate(sale.createdAt)}</td>
-                                      <td className="p-3 text-slate-700 font-semibold">{sale.user?.fullName}</td>
-                                      <td className="p-3 text-right pr-4 font-bold text-rose-600">-{fmt(sale.total)}</td>
-                                    </tr>
-                                  ))}
+                                  {reportData.list.map((sale: any) => {
+                                    const isCancelled = sale.status === 'CANCELLED';
+                                    const returnAmount = isCancelled 
+                                      ? (sale.total || 0) 
+                                      : (sale.items?.filter((i: any) => i.quantity < 0).reduce((sum: number, i: any) => sum + Math.abs(i.total), 0) || 0);
+                                    
+                                    const returnedItemsNames = isCancelled 
+                                      ? 'Cancelación Total de Venta' 
+                                      : sale.items?.filter((i: any) => i.quantity < 0).map((i: any) => `${Math.abs(i.quantity)}x ${i.productName}`).join(', ');
+
+                                    return (
+                                      <tr key={sale.id} className="hover:bg-slate-50/40 text-slate-700">
+                                        <td className="p-3 pl-4 font-bold text-slate-800">
+                                          #{sale.saleNumber}
+                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider ml-2 ${isCancelled ? 'bg-rose-50 text-rose-650 border-rose-100' : 'bg-amber-50 text-amber-650 border-amber-100'}`}>
+                                            {isCancelled ? 'Cancelación' : 'Cambio'}
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-slate-600 font-medium">{fmtDate(sale.createdAt)}</td>
+                                        <td className="p-3 text-slate-700 font-semibold">{sale.user?.fullName || 'N/A'}</td>
+                                        <td className="p-3 text-slate-600 font-medium italic">{returnedItemsNames}</td>
+                                        <td className="p-3 text-right pr-4 font-bold text-rose-600">-{fmt(returnAmount)}</td>
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* J. CARGAS VIRTUALES */}
+                    {activeReport === 'cargas_virtuales' && (
+                      <div className="space-y-6">
+                        {/* Grid cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="p-5 bg-rose-50/45 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900 rounded-2xl shadow-sm">
+                            <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block mb-1">Carga Virtual 1</span>
+                            <span className="text-2xl font-black text-rose-600 dark:text-rose-400">{fmt(reportData.totalVirtual1)}</span>
+                          </div>
+                          <div className="p-5 bg-blue-50/45 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-2xl shadow-sm">
+                            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-1">Carga Virtual 2</span>
+                            <span className="text-2xl font-black text-blue-600 dark:text-blue-400">{fmt(reportData.totalVirtual2)}</span>
+                          </div>
+                          <div className="p-5 bg-emerald-50/45 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 rounded-2xl shadow-sm">
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider block mb-1">Total Acumulado</span>
+                            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{fmt(reportData.totalVirtualAmount)}</span>
+                          </div>
+                        </div>
+
+                        {/* List of transactions */}
+                        <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm">
+                          <table className="w-full min-w-[600px] text-xs text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-300 text-[9px] font-bold text-slate-600 uppercase tracking-widest">
+                                <th className="p-3 pl-4">Fecha / Hora</th>
+                                <th className="p-3">Tipo de Carga</th>
+                                <th className="p-3 text-right pr-4">Monto</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                              {reportData.items.length === 0 ? (
+                                <tr>
+                                  <td colSpan={3} className="p-8 text-center text-slate-400 font-medium italic">
+                                    No se registraron cargas virtuales en este período.
+                                  </td>
+                                </tr>
+                              ) : (
+                                reportData.items.map((item: any, idx: number) => (
+                                  <tr key={idx} className="hover:bg-slate-50/40 text-slate-700">
+                                    <td className="p-3 pl-4 font-medium text-slate-650">{fmtDate(item.createdAt)}</td>
+                                    <td className="p-3">
+                                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider ${item.type.includes('1') ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                        {item.type}
+                                      </span>
+                                    </td>
+                                    <td className="p-3 text-right pr-4 font-extrabold text-slate-800">{fmt(item.amount)}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )}
 

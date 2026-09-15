@@ -38,7 +38,7 @@ export default function MarketingScreen() {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
             <Megaphone className="w-6 h-6" />
           </div>
           <div>
@@ -48,7 +48,7 @@ export default function MarketingScreen() {
         </div>
         <button 
           onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all active:scale-95"
+          className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 text-white rounded-xl font-bold shadow-md hover:bg-rose-700 hover:shadow-lg transition-all active:scale-95"
         >
           <Plus className="w-5 h-5" />
           <span>Nuevo Grupo</span>
@@ -59,12 +59,12 @@ export default function MarketingScreen() {
       <div className="flex-1 overflow-auto custom-scrollbar">
         {isLoading && groups.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600"></div>
           </div>
         ) : groups.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-4">
-              <LayoutGrid className="w-10 h-10 text-indigo-300" />
+            <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mb-4">
+              <LayoutGrid className="w-10 h-10 text-rose-300" />
             </div>
             <h3 className="text-lg font-bold text-slate-700">Aún no tienes grupos de marketing</h3>
             <p className="text-slate-700 max-w-md mt-2">
@@ -85,14 +85,14 @@ export default function MarketingScreen() {
                   <div>
                     <h3 className="text-lg font-bold text-slate-800">{group.name}</h3>
                     {group.description && <p className="text-sm text-slate-700 line-clamp-2 mt-1">{group.description}</p>}
-                    <p className="text-xs font-semibold text-indigo-600 mt-2 bg-indigo-50 inline-block px-2 py-1 rounded-md">
+                    <p className="text-xs font-semibold text-rose-600 mt-2 bg-rose-50 inline-block px-2 py-1 rounded-md">
                       {group.items.length} productos
                     </p>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button 
                       onClick={() => setEditingGroupId(group.id)}
-                      className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                       title="Editar"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -120,7 +120,7 @@ export default function MarketingScreen() {
                   </button>
                   <button 
                     onClick={() => setEditingGroupId(group.id)}
-                    className="flex items-center justify-center gap-2 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-semibold transition-colors"
+                    className="flex items-center justify-center gap-2 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-sm font-semibold transition-colors"
                   >
                     <Download className="w-4 h-4" /> Exportar
                   </button>

@@ -2,11 +2,93 @@ import { Injectable, NotFoundException, InternalServerErrorException, BadRequest
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from './firebase-sync.service';
-import { DBFFile } from 'dbffile';
+import { SyncImageService } from './sync-image.service';
+import { DBFFile, DELETED } from 'dbffile';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
+
+function getSearchVariants(token: string): string[] {
+  const t = token.trim();
+  if (!t) return [];
+
+  const set = new Set<string>();
+  set.add(t.toLowerCase());
+  set.add(t.toUpperCase());
+  set.add(t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+
+  // Handle accents and tildes
+  const removeAccents = (str: string) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const unaccented = removeAccents(t);
+  set.add(unaccented.toLowerCase());
+  set.add(unaccented.toUpperCase());
+
+  // If token has ñ or Ñ, also search with n and N
+  if (/[ñÑ]/.test(t)) {
+    const withN = t.replace(/ñ/g, 'n').replace(/Ñ/g, 'N');
+    set.add(withN.toLowerCase());
+    set.add(withN.toUpperCase());
+  }
+
+  // If token has n or N, also generate variants where n is replaced by ñ (for words up to 20 chars)
+  if (/[nN]/.test(t) && t.length <= 20) {
+    for (let i = 0; i < t.length; i++) {
+      if (t[i].toLowerCase() === 'n') {
+        const replacedLower = (t.slice(0, i) + 'ñ' + t.slice(i + 1)).toLowerCase();
+        set.add(replacedLower);
+        set.add(replacedLower.toUpperCase());
+      }
+    }
+  }
+
+  // Handle Spanish accented vowels: á, é, í, ó, ú
+  const vowels = [
+    { plain: 'a', accented: 'á' },
+    { plain: 'e', accented: 'é' },
+    { plain: 'i', accented: 'í' },
+    { plain: 'o', accented: 'ó' },
+    { plain: 'u', accented: 'ú' }
+  ];
+
+  for (const v of vowels) {
+    if (t.toLowerCase().includes(v.plain) && t.length <= 20) {
+      for (let i = 0; i < t.length; i++) {
+        if (t[i].toLowerCase() === v.plain) {
+          const replacedLower = (t.slice(0, i) + v.accented + t.slice(i + 1)).toLowerCase();
+          set.add(replacedLower);
+          set.add(replacedLower.toUpperCase());
+        }
+      }
+    }
+  }
+
+  // Hardware Store Measurement Equivalences (Pulgadas vs Milímetros vs Nombres)
+  const measureEquivalences: Array<string[]> = [
+    ['1/2', '1/2"', 'media', '20mm', '20 mm'],
+    ['3/4', '3/4"', 'tres cuartos', '25mm', '25 mm'],
+    ['1', '1"', 'una pulgada', '32mm', '32 mm'],
+    ['3/8', '3/8"', 'tres octavos', '10mm', '10 mm'],
+    ['5/8', '5/8"', 'cinco octavos', '16mm', '16 mm'],
+    ['1/4', '1/4"', 'un cuarto', '6mm', '6.35mm', '6 mm'],
+    ['5/16', '5/16"', 'cinco dieciseis', '8mm', '8 mm'],
+    ['1 1/4', '1-1/4', '1 1/4"', '40mm', '40 mm'],
+    ['1 1/2', '1-1/2', '1 1/2"', '50mm', '50 mm'],
+    ['2', '2"', 'dos pulgadas', '63mm', '63 mm']
+  ];
+
+  const tClean = t.toLowerCase().replace(/["']/g, '').trim();
+  for (const group of measureEquivalences) {
+    if (group.some(m => m.toLowerCase().replace(/["']/g, '') === tClean)) {
+      for (const eq of group) {
+        set.add(eq);
+        set.add(eq.toUpperCase());
+      }
+    }
+  }
+
+  return Array.from(set);
+}
 
 @Injectable()
 export class ProductsService {
@@ -16,52 +98,213 @@ export class ProductsService {
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
     private firebaseSync: FirebaseSyncService,
+    private syncImageService: SyncImageService,
   ) {}
+
+  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean }): any {
+    const where: any = {};
+    if (params?.isActive !== undefined) {
+      where.isActive = params.isActive;
+    } else {
+      where.isActive = true;
+    }
+
+    if (params?.search) {
+      const rawTokens = params.search.trim().split(/\s+/).filter(Boolean);
+      if (rawTokens.length > 0) {
+        where.AND = rawTokens.map((token) => {
+          const variants = getSearchVariants(token);
+          return {
+            OR: [
+              ...variants.map((v) => ({ name: { contains: v } })),
+              ...variants.map((v) => ({ barcode: { contains: v } })),
+              ...variants.map((v) => ({ sku: { contains: v } })),
+              ...variants.map((v) => ({ additionalBarcodes: { some: { barcode: { contains: v } } } })),
+            ]
+          };
+        });
+      }
+    }
+
+    if (params?.categoryId) where.categoryId = params.categoryId;
+    if (params?.isFavorite) where.isFavorite = true;
+
+    if (params?.hasImage !== undefined) {
+      if (params.hasImage) {
+        where.NOT = [
+          { imageUrl: null },
+          { imageUrl: '' },
+          { imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80' }
+        ];
+      } else {
+        where.OR = [
+          { imageUrl: null },
+          { imageUrl: '' },
+          { imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80' }
+        ];
+      }
+    }
+
+    return where;
+  }
 
   async verifyGoogleEmailOwnsTerminalCommerce(email: string): Promise<boolean> {
     return this.firebaseSync.verifyGoogleEmailOwnsTerminalCommerce(email);
   }
 
-  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; skip?: number; take?: number }) {
-    try {
-      const where: any = { isActive: true };
-      if (params?.search) {
-        where.OR = [
-          { name: { contains: params.search } },
-          { barcode: { contains: params.search } },
-          { sku: { contains: params.search } },
-          { additionalBarcodes: { some: { barcode: { contains: params.search } } } },
-        ];
+  async getPOSCatalog(updatedAfter?: string) {
+    const where: any = { isActive: true };
+    if (updatedAfter) {
+      const date = new Date(updatedAfter);
+      if (!isNaN(date.getTime())) {
+        where.updatedAt = { gt: date };
       }
-      if (params?.categoryId) where.categoryId = params.categoryId;
-      if (params?.isFavorite) where.isFavorite = true;
+    }
+
+    const products = await this.prisma.product.findMany({
+      where,
+      select: {
+        id: true,
+        barcode: true,
+        sku: true,
+        name: true,
+        salePrice: true,
+        stock: true,
+        categoryId: true,
+        category: { select: { id: true, name: true, color: true } },
+        imageUrl: true,
+        allowCustomPrice: true,
+        unit: true,
+        unitsPerPack: true,
+        pieceSize: true,
+        updatedAt: true,
+        additionalBarcodes: {
+          select: {
+            barcode: true
+          }
+        },
+        saleItems: {
+          take: 1,
+          select: {
+            id: true
+          }
+        }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    const mappedProducts = products.map((p: any) => ({
+      id: p.id,
+      barcode: p.barcode,
+      sku: p.sku,
+      name: p.name,
+      salePrice: p.salePrice,
+      stock: p.stock,
+      categoryId: p.categoryId,
+      category: p.category,
+      imageUrl: p.imageUrl,
+      allowCustomPrice: p.allowCustomPrice,
+      unit: p.unit,
+      unitsPerPack: p.unitsPerPack,
+      pieceSize: p.pieceSize,
+      additionalBarcodes: p.additionalBarcodes,
+      salesCount: p.saleItems?.length ?? 0
+    }));
+
+    mappedProducts.sort((a: any, b: any) => (b.salesCount ?? 0) - (a.salesCount ?? 0));
+
+    return {
+      serverTime: new Date().toISOString(),
+      products: mappedProducts
+    };
+  }
+
+  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; skip?: number; take?: number }) {
+    try {
+      const where = this.buildSearchWhere(params);
 
       const selectOrInclude = {
         include: {
           category: { select: { id: true, name: true, color: true, icon: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } }, 
           supplier: { select: { id: true, name: true } },
-          additionalBarcodes: true
+          additionalBarcodes: true,
         }
       };
 
       if (params?.lowStock) {
         const products = await this.prisma.product.findMany({
-          where: { isActive: true },
+          where,
           ...selectOrInclude,
           orderBy: [
-            { saleItems: { _count: 'desc' } },
             { name: 'asc' }
           ],
         });
         return products.filter((p) => p.stock <= p.minStock);
       }
 
+      const rawTokens = params?.search ? params.search.trim().split(/\s+/).filter(Boolean) : [];
+
+      if (rawTokens.length > 0) {
+        // Fetch candidates ordered by name ASC to guarantee determinism
+        const candidateLimit = Math.max(500, (params?.skip || 0) + (params?.take || 50) * 10);
+        let results = await this.prisma.product.findMany({
+          where,
+          ...selectOrInclude,
+          orderBy: [
+            { name: 'asc' }
+          ],
+          take: candidateLimit,
+        });
+
+        const normalizeStr = (str: string) => (str || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+        const fullQueryNorm = normalizeStr(params.search || '');
+        const tokensNorm = rawTokens.map(t => normalizeStr(t));
+
+        results.sort((a: any, b: any) => {
+          const aName = normalizeStr(a.name);
+          const bName = normalizeStr(b.name);
+          
+          // 1. Exact match of full query
+          const aExact = aName === fullQueryNorm;
+          const bExact = bName === fullQueryNorm;
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+
+          // 2. Starts with exact full query
+          const aStarts = aName.startsWith(fullQueryNorm);
+          const bStarts = bName.startsWith(fullQueryNorm);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+
+          // 3. Match words in sequential order from the start
+          const aWords = aName.split(' ');
+          const bWords = bName.split(' ');
+
+          const aStartsSequence = tokensNorm.every((token, i) => aWords[i] && aWords[i].startsWith(token));
+          const bStartsSequence = tokensNorm.every((token, i) => bWords[i] && bWords[i].startsWith(token));
+          if (aStartsSequence && !bStartsSequence) return -1;
+          if (!aStartsSequence && bStartsSequence) return 1;
+
+          // 4. All query tokens match word-starts anywhere in the product name
+          const aAllTokensStartWords = tokensNorm.every((token) => aWords.some((w) => w.startsWith(token)));
+          const bAllTokensStartWords = tokensNorm.every((token) => bWords.some((w) => w.startsWith(token)));
+          if (aAllTokensStartWords && !bAllTokensStartWords) return -1;
+          if (!aAllTokensStartWords && bAllTokensStartWords) return 1;
+
+          // 5. Always sort alphabetically A-Z
+          return (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' });
+        });
+
+        const skip = params?.skip || 0;
+        const take = params?.take || 50;
+        return results.slice(skip, skip + take);
+      }
+
       const results = await this.prisma.product.findMany({
         where,
         ...selectOrInclude,
         orderBy: [
-          { saleItems: { _count: 'desc' } },
           { name: 'asc' }
         ],
         skip: params?.skip || 0,
@@ -75,8 +318,27 @@ export class ProductsService {
     }
   }
 
+  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean }) {
+    try {
+      const where = this.buildSearchWhere(params);
+      return await this.prisma.product.count({ where });
+    } catch (err) {
+      console.error('Error in count:', err);
+      throw err;
+    }
+  }
+
   async findById(id: string) {
-    const product = await this.prisma.product.findUnique({ where: { id }, include: { category: true, brand: true, supplier: true } });
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        category: true,
+        brand: true,
+        supplier: true,
+        additionalBarcodes: true,
+        kitItems: { include: { childProduct: { select: { id: true, name: true, salePrice: true, stock: true, barcode: true } } } }
+      }
+    });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
   }
@@ -100,14 +362,15 @@ export class ProductsService {
   }
 
   async create(createProductDto: any) {
-    const { additionalBarcodes, ...data } = createProductDto;
+    const { additionalBarcodes, kitItems, ...data } = createProductDto;
     
     // Clean up data to only include valid schema fields
     const validFields = [
       'name', 'barcode', 'sku', 'description', 'imageUrl', 
       'costPrice', 'salePrice', 'stock', 'minStock', 'unit', 
       'presentationType', 'unitsPerPack',
-      'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId'
+      'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
+      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline'
     ];
     
     const productData: any = {};
@@ -127,6 +390,36 @@ export class ProductsService {
       productData.imageUrl = await this.firebaseSync.compressRemoteImageToBase64(productData.imageUrl);
     }
 
+    // Clear any inactive products with the same barcode/sku to avoid unique constraint violations
+    if (productData.barcode) {
+      const existingInactive = await this.prisma.product.findFirst({
+        where: { barcode: productData.barcode, isActive: false }
+      });
+      if (existingInactive) {
+        await this.prisma.product.update({
+          where: { id: existingInactive.id },
+          data: { barcode: null }
+        });
+      }
+      const existingAdditional = await this.prisma.productBarcode.findFirst({
+        where: { barcode: productData.barcode, product: { isActive: false } }
+      });
+      if (existingAdditional) {
+        await this.prisma.productBarcode.delete({ where: { id: existingAdditional.id } });
+      }
+    }
+    if (productData.sku) {
+      const existingInactiveSku = await this.prisma.product.findFirst({
+        where: { sku: productData.sku, isActive: false }
+      });
+      if (existingInactiveSku) {
+        await this.prisma.product.update({
+          where: { id: existingInactiveSku.id },
+          data: { sku: null }
+        });
+      }
+    }
+
     let product: any;
     try {
       product = await this.prisma.product.create({
@@ -134,12 +427,16 @@ export class ProductsService {
           ...productData,
           additionalBarcodes: additionalBarcodes && additionalBarcodes.length > 0 ? {
             create: additionalBarcodes.map((b: string) => ({ barcode: b }))
+          } : undefined,
+          kitItems: productData.isKit && kitItems && Array.isArray(kitItems) && kitItems.length > 0 ? {
+            create: kitItems.map((k: any) => ({ childProductId: k.childProductId, quantity: Number(k.quantity) || 1 }))
           } : undefined
         },
         include: { 
           category: { select: { id: true, name: true, color: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } },
-          additionalBarcodes: true
+          additionalBarcodes: true,
+          kitItems: { include: { childProduct: { select: { id: true, name: true, salePrice: true, stock: true, barcode: true } } } }
         }
       });
     } catch (err: any) {
@@ -166,19 +463,26 @@ export class ProductsService {
       console.error('Error syncing new product to Firestore:', err);
     });
 
+    if (product.barcode && (!product.imageUrl || product.imageUrl === 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80')) {
+      this.syncImageService.assignImageToSingleProduct(product.id, product.barcode).catch(err => {
+        console.error('Error auto-assigning image to new product:', err);
+      });
+    }
+
     return product;
   }
 
   async update(id: string, data: any, userId?: string) {
     const existing = await this.prisma.product.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Producto no encontrado');
-    const { additionalBarcodes } = data;
+    const { additionalBarcodes, kitItems } = data;
 
     const validFields = [
       'name', 'barcode', 'sku', 'description', 'imageUrl', 
       'costPrice', 'salePrice', 'stock', 'minStock', 'unit', 
       'presentationType', 'unitsPerPack',
-      'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId'
+      'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
+      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline'
     ];
     
     const updateData: any = {};
@@ -219,13 +523,29 @@ export class ProductsService {
         }
       }
 
+      if (data.isKit !== undefined) {
+        await tx.productKitItem.deleteMany({ where: { parentProductId: id } });
+        if (data.isKit && kitItems && Array.isArray(kitItems) && kitItems.length > 0) {
+          for (const k of kitItems) {
+            await tx.productKitItem.create({
+              data: {
+                parentProductId: id,
+                childProductId: k.childProductId,
+                quantity: Number(k.quantity) || 1
+              }
+            });
+          }
+        }
+      }
+
       return tx.product.update({ 
         where: { id }, 
         data: updateData, 
         include: { 
           category: { select: { id: true, name: true, color: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } },
-          additionalBarcodes: true
+          additionalBarcodes: true,
+          kitItems: { include: { childProduct: { select: { id: true, name: true, salePrice: true, stock: true, barcode: true } } } }
         } 
       });
     });
@@ -246,13 +566,28 @@ export class ProductsService {
       console.error('Error syncing updated product to Firestore:', err);
     });
 
+    if (updatedProduct.barcode && (!updatedProduct.imageUrl || updatedProduct.imageUrl === 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80')) {
+      this.syncImageService.assignImageToSingleProduct(updatedProduct.id, updatedProduct.barcode).catch(err => {
+        console.error('Error auto-assigning image to updated product:', err);
+      });
+    }
+
     return updatedProduct;
   }
 
   async delete(id: string) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Producto no encontrado');
-    const updated = await this.prisma.product.update({ where: { id }, data: { isActive: false } });
+    // Clear barcodes and delete additional barcodes to release unique constraints
+    const updated = await this.prisma.product.update({ 
+      where: { id }, 
+      data: { 
+        isActive: false,
+        barcode: null,
+        sku: null
+      } 
+    });
+    await this.prisma.productBarcode.deleteMany({ where: { productId: id } });
 
     const syncBarcode = updated.barcode || updated.id;
     this.firebaseSync.syncProductDeletion(syncBarcode).catch(err => {
@@ -369,6 +704,7 @@ export class ProductsService {
                   stock,
                   costPrice,
                   salePrice,
+                  isActive: true,
                   updatedAt: new Date(),
                 },
               });
@@ -427,28 +763,93 @@ export class ProductsService {
       if (extension === '.dbf') {
         const dbf = await DBFFile.open(file.path, { readMode: 'loose' });
         console.log(`DBF opened, record count: ${dbf.recordCount}`);
-        records = await dbf.readRecords();
-        console.log(`Read ${records.length} records`);
-        console.log(`Parsed ${records.length} records from DBF`);
-        records = records.map((r: any) => {
-          const rawSku = getDbfFieldValue(r, 'NUM_ART');
-          const barcode = typeof rawSku === 'string' ? rawSku.trim() : String(rawSku || '').trim();
-          const rawName = getDbfFieldValue(r, 'DESC');
-          const name = (typeof rawName === 'string' ? rawName.trim() : String(rawName || '').trim()).toUpperCase() || 'SIN NOMBRE';
-          const stock = parseFloat(getDbfFieldValue(r, 'EXISTENCIA')) || 0;
-          const paquete = parseFloat(getDbfFieldValue(r, 'PAQUETE')) || 1;
-          const costo = parseFloat(getDbfFieldValue(r, 'COSTO')) || 0;
-          const costPrice = costo / (paquete || 1);
-          const salePrice = parseFloat(getDbfFieldValue(r, 'PRECIOA')) || 0;
-          return {
-            sku: barcode,
-            barcode: barcode,
-            name,
-            stock,
-            costPrice,
-            salePrice
-          };
-        });
+
+        let imported = 0;
+        let updated = 0;
+        let lastProcessedItemName = '';
+        const total = dbf.recordCount;
+        const batchSize = 250;
+
+        for (let i = 0; i < total; i += batchSize) {
+          const rawRecords = await dbf.readRecords(batchSize);
+
+          for (const r of rawRecords) {
+            // Skip soft-deleted records in the dBase DBF file
+            if (r[DELETED] === true || r['@deleted'] === true) continue;
+
+            const rawSku = getDbfFieldValue(r, 'NUM_ART');
+            const barcode = typeof rawSku === 'string' ? rawSku.trim() : String(rawSku || '').trim();
+            if (!barcode) continue;
+
+            const rawName = getDbfFieldValue(r, 'DESC');
+            const name = (typeof rawName === 'string' ? rawName.trim() : String(rawName || '').trim()).toUpperCase() || 'SIN NOMBRE';
+            lastProcessedItemName = name;
+            const stock = parseFloat(getDbfFieldValue(r, 'EXISTENCIA')) || 0;
+            const paquete = parseFloat(getDbfFieldValue(r, 'PAQUETE')) || 1;
+            const costo = parseFloat(getDbfFieldValue(r, 'COSTO')) || 0;
+            const costPrice = costo / (paquete || 1);
+            const salePrice = parseFloat(getDbfFieldValue(r, 'PRECIOA')) || 0;
+
+            let finalBarcode = null;
+            const lower = barcode.toLowerCase();
+            if (barcode !== '' && lower !== 'sin código' && lower !== 'sin codigo' && lower !== 'null' && lower !== 'undefined') {
+              finalBarcode = barcode;
+            }
+
+            try {
+              let existing = await this.prisma.product.findUnique({ where: { sku: barcode } });
+              if (existing) {
+                await this.prisma.product.update({
+                  where: { id: existing.id },
+                  data: {
+                    barcode: finalBarcode || existing.barcode,
+                    stock: isNaN(stock) ? 0 : stock,
+                    costPrice: isNaN(costPrice) ? 0 : costPrice,
+                    salePrice: isNaN(salePrice) ? 0 : salePrice,
+                    isActive: true,
+                    updatedAt: new Date(),
+                  }
+                });
+                updated++;
+              } else {
+                await this.prisma.product.create({
+                  data: {
+                    sku: barcode,
+                    barcode: finalBarcode,
+                    name,
+                    stock: isNaN(stock) ? 0 : stock,
+                    costPrice: isNaN(costPrice) ? 0 : costPrice,
+                    salePrice: isNaN(salePrice) ? 0 : salePrice,
+                    description: '',
+                    imageUrl: '',
+                  }
+                });
+                imported++;
+              }
+            } catch (err: any) {
+              console.error(`Error processing product SKU ${barcode} in batch:`, err.message);
+            }
+          }
+
+          const currentProgress = Math.min(i + batchSize, total);
+          const percentage = Math.floor((currentProgress / total) * 100);
+          console.log(`Processed DBF: ${currentProgress}/${total}. Progress: ${percentage}%`);
+
+          this.eventsGateway.emitImportProgress({
+            progress: percentage,
+            total,
+            current: currentProgress,
+            status: `Importando: ${lastProcessedItemName || 'procesando lote...'}`,
+            details: { imported, updated, lastItem: lastProcessedItemName }
+          });
+
+          // Yield to event loop
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+
+        console.log(`DBF Import completed. Total: ${total}, Imported: ${imported}, Updated: ${updated}`);
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return { success: true, total, imported, updated };
       } else if (extension === '.json') {
         console.log(`Parsing JSON file...`);
         const content = fs.readFileSync(file.path, 'utf-8');
@@ -526,102 +927,121 @@ export class ProductsService {
 
       // Process in batches and report progress
       const batchSize = 100;
-      for (let i = 0; i < total; i += batchSize) {
-        const batch = records.slice(i, i + batchSize);
-        
-        let lastItemName = '';
-        await this.prisma.$transaction(async (tx) => {
-          for (const record of batch) {
-            if (!record.sku) continue;
-            lastItemName = record.name;
+      console.log(`Beginning dynamic processing of ${total} records...`);
 
-            // Normalize barcode to null if it's empty, invalid, or placeholder to avoid unique constraint violations on empty strings
-            let finalBarcode = null;
-            if (record.barcode && typeof record.barcode === 'string') {
-              const cleaned = record.barcode.trim();
-              const lower = cleaned.toLowerCase();
-              if (cleaned !== '' && lower !== 'sin código' && lower !== 'sin codigo' && lower !== 'null' && lower !== 'undefined') {
-                finalBarcode = cleaned;
+      for (let i = 0; i < total; i++) {
+        const record = records[i];
+        if (!record.sku) continue;
+        const lastItemName = record.name || '';
+
+        try {
+          // Normalize barcode to null if it's empty, invalid, or placeholder to avoid unique constraint violations on empty strings
+          let finalBarcode = null;
+          if (record.barcode && typeof record.barcode === 'string') {
+            const cleaned = record.barcode.trim();
+            const lower = cleaned.toLowerCase();
+            if (cleaned !== '' && lower !== 'sin código' && lower !== 'sin codigo' && lower !== 'null' && lower !== 'undefined') {
+              finalBarcode = cleaned;
+            }
+          }
+
+          // Find existing product by SKU or by Barcode to prevent unique constraint failures
+          let existing = await this.prisma.product.findUnique({ where: { sku: record.sku } });
+          if (!existing && finalBarcode) {
+            existing = await this.prisma.product.findUnique({ where: { barcode: finalBarcode } });
+          }
+
+          // Ensure the barcode is truly unique before applying it to avoid Prisma Unique constraint failures
+          if (finalBarcode) {
+            const duplicateBarcodeProduct = await this.prisma.product.findFirst({
+              where: { 
+                barcode: finalBarcode,
+                sku: { not: record.sku }
               }
+            });
+            if (duplicateBarcodeProduct) {
+              console.warn(`Barcode ${finalBarcode} is already used by product ${duplicateBarcodeProduct.sku}. Setting barcode to null for ${record.sku} to prevent unique constraint failure.`);
+              finalBarcode = null;
             }
+          }
 
-            // Find existing product by SKU or by Barcode to prevent unique constraint failures
-            let existing = await tx.product.findUnique({ where: { sku: record.sku } });
-            if (!existing && finalBarcode) {
-              existing = await tx.product.findUnique({ where: { barcode: finalBarcode } });
-            }
-
-            let categoryId = undefined;
-            if (record.categoryName) {
-              const catName = record.categoryName.trim();
-              if (catName !== '') {
-                let category = await tx.category.findFirst({
-                  where: { name: { equals: catName } }
+          let categoryId = undefined;
+          if (record.categoryName) {
+            const catName = record.categoryName.trim();
+            if (catName !== '') {
+              let category = await this.prisma.category.findFirst({
+                where: { name: { equals: catName } }
+              });
+              if (!category) {
+                category = await this.prisma.category.create({
+                  data: {
+                    name: catName,
+                    color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
+                  }
                 });
-                if (!category) {
-                  category = await tx.category.create({
-                    data: {
-                      name: catName,
-                      color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
-                    }
-                  });
-                }
-                categoryId = category.id;
               }
-            }
-
-            if (existing) {
-              await tx.product.update({
-                where: { id: existing.id },
-                data: {
-                  barcode: finalBarcode || existing.barcode,
-                  stock: isNaN(record.stock) ? 0 : record.stock,
-                  costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
-                  salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
-                  description: record.description !== undefined ? record.description : existing.description,
-                  imageUrl: record.imageUrl !== undefined ? record.imageUrl : existing.imageUrl,
-                  categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
-                  updatedAt: new Date(),
-                }
-              });
-              updated++;
-            } else {
-              await tx.product.create({
-                data: {
-                  sku: record.sku,
-                  barcode: finalBarcode,
-                  name: record.name ? record.name.toUpperCase() : 'SIN NOMBRE',
-                  stock: isNaN(record.stock) ? 0 : record.stock,
-                  costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
-                  salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
-                  description: record.description || '',
-                  imageUrl: record.imageUrl || '',
-                  categoryId: categoryId,
-                }
-              });
-              imported++;
+              categoryId = category.id;
             }
           }
-        }, {
-          timeout: 30000 // 30 seconds per batch
-        });
 
-        const currentProgress = Math.min(i + batchSize, total);
-        const percentage = Math.floor((currentProgress / total) * 100);
-
-        console.log(`Processed batch ${Math.floor(i/batchSize) + 1}. Total progress: ${percentage}%`);
-        
-        this.eventsGateway.emitImportProgress({
-          progress: percentage,
-          total,
-          current: currentProgress,
-          status: `Importando: ${lastItemName}`,
-          details: {
-            imported,
-            updated,
-            lastItem: lastItemName
+          if (existing) {
+            await this.prisma.product.update({
+              where: { id: existing.id },
+              data: {
+                barcode: finalBarcode || existing.barcode,
+                stock: isNaN(record.stock) ? 0 : record.stock,
+                costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
+                salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
+                description: record.description !== undefined ? record.description : existing.description,
+                imageUrl: (record.imageUrl !== undefined && record.imageUrl !== '') ? record.imageUrl : existing.imageUrl,
+                categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
+                isActive: true,
+                updatedAt: new Date(),
+              }
+            });
+            updated++;
+          } else {
+            await this.prisma.product.create({
+              data: {
+                sku: record.sku,
+                barcode: finalBarcode,
+                name: record.name ? record.name.toUpperCase() : 'SIN NOMBRE',
+                stock: isNaN(record.stock) ? 0 : record.stock,
+                costPrice: isNaN(record.costPrice) ? 0 : record.costPrice,
+                salePrice: isNaN(record.salePrice) ? 0 : record.salePrice,
+                description: record.description || '',
+                imageUrl: record.imageUrl || '',
+                categoryId: categoryId,
+              }
+            });
+            imported++;
           }
-        });
+        } catch (itemError) {
+          console.error(`Error processing product SKU ${record.sku} (${lastItemName}):`, itemError.message);
+        }
+
+        // Periodically report progress to frontend (every 50 items) and yield to event loop
+        if (i % 50 === 0 || i === total - 1) {
+          const currentProgress = i + 1;
+          const percentage = Math.floor((currentProgress / total) * 100);
+
+          console.log(`Processed: ${currentProgress}/${total}. Progress: ${percentage}%`);
+          
+          this.eventsGateway.emitImportProgress({
+            progress: percentage,
+            total,
+            current: currentProgress,
+            status: `Importando: ${lastItemName}`,
+            details: {
+              imported,
+              updated,
+              lastItem: lastItemName
+            }
+          });
+
+          // Small sleep to yield CPU and allow memory collection
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
       }
 
       console.log(`Import completed successfully. Total: ${total}, Imported: ${imported}, Updated: ${updated}`);
@@ -858,6 +1278,58 @@ export class ProductsService {
     }
   }
 
+  async bulkUpdatePrices(data: {
+    supplierId?: string;
+    categoryId?: string;
+    brandId?: string;
+    percentage: number;
+    target?: 'COST_AND_SALE' | 'SALE_ONLY' | 'COST_ONLY';
+  }) {
+    const { supplierId, categoryId, brandId, percentage, target = 'COST_AND_SALE' } = data;
+    if (percentage === 0 || isNaN(percentage)) {
+      throw new BadRequestException('El porcentaje de actualización no puede ser 0');
+    }
+
+    const where: any = { isActive: true };
+    if (supplierId) where.supplierId = supplierId;
+    if (categoryId) where.categoryId = categoryId;
+    if (brandId) where.brandId = brandId;
+
+    const products = await this.prisma.product.findMany({ where });
+    if (products.length === 0) {
+      return { updatedCount: 0, message: 'No se encontraron productos con los filtros seleccionados.' };
+    }
+
+    const factor = 1 + (percentage / 100);
+
+    const updates = products.map(p => {
+      const updateData: any = {};
+      if (target === 'COST_AND_SALE' || target === 'COST_ONLY') {
+        updateData.costPrice = Math.round((p.costPrice * factor) * 100) / 100;
+      }
+      if (target === 'COST_AND_SALE' || target === 'SALE_ONLY') {
+        updateData.salePrice = Math.round((p.salePrice * factor) * 100) / 100;
+      }
+      return this.prisma.product.update({
+        where: { id: p.id },
+        data: updateData,
+      });
+    });
+
+    await this.prisma.$transaction(updates);
+
+    try {
+      this.eventsGateway.server?.emit('products:bulk-updated', { count: products.length });
+    } catch {}
+
+    return {
+      updatedCount: products.length,
+      percentage,
+      target,
+      message: `Se actualizaron ${products.length} productos con un ajuste del ${percentage > 0 ? '+' : ''}${percentage}%.`,
+    };
+  }
+
   async bulkResetStock() {
     console.log('[ProductsService] Resetting stock of all active products to 0...');
     const result = await this.prisma.product.updateMany({
@@ -871,9 +1343,17 @@ export class ProductsService {
 
   async bulkDeleteAll() {
     console.log('[ProductsService] Soft-deleting all products...');
+    
+    // Delete all additional barcodes to release unique constraints
+    await this.prisma.productBarcode.deleteMany({});
+    
     const result = await this.prisma.product.updateMany({
       where: { isActive: true },
-      data: { isActive: false }
+      data: { 
+        isActive: false,
+        barcode: null,
+        sku: null
+      }
     });
     
     return { count: result.count };
@@ -881,13 +1361,35 @@ export class ProductsService {
 
   async bulkDeleteZeroNegative() {
     console.log('[ProductsService] Soft-deleting products with zero or negative stock...');
-    const result = await this.prisma.product.updateMany({
+    const products = await this.prisma.product.findMany({
       where: { 
         isActive: true,
         stock: { lte: 0 }
       },
-      data: { isActive: false }
+      select: { id: true, barcode: true }
     });
+    const ids = products.map(p => p.id);
+
+    await this.prisma.productBarcode.deleteMany({
+      where: { productId: { in: ids } }
+    });
+
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: ids } },
+      data: { 
+        isActive: false,
+        barcode: null,
+        sku: null
+      }
+    });
+
+    // Sync deletion to GoDelivery Firestore
+    Promise.all(products.map(p => {
+      const syncBarcode = p.barcode || p.id;
+      return this.firebaseSync.syncProductDeletion(syncBarcode).catch(err => {
+        console.error(`Error syncing bulk deletion for ${syncBarcode}:`, err.message);
+      });
+    })).catch(err => console.error('Error in bulk deletion sync:', err));
     
     return { count: result.count };
   }
@@ -939,9 +1441,18 @@ export class ProductsService {
 
   async bulkDeleteSubset(ids: string[]) {
     console.log(`[ProductsService] Soft-deleting subset of ${ids.length} products...`);
+    
+    await this.prisma.productBarcode.deleteMany({
+      where: { productId: { in: ids } }
+    });
+
     const result = await this.prisma.product.updateMany({
       where: { id: { in: ids } },
-      data: { isActive: false }
+      data: { 
+        isActive: false,
+        barcode: null,
+        sku: null
+      }
     });
 
     // Sync product deletion to GoDelivery Firestore in background
@@ -957,6 +1468,15 @@ export class ProductsService {
     })).catch(err => console.error('Error in subset deletion sync:', err));
 
     return { count: result.count };
+  }
+
+  async bulkSetShowOnline(ids: string[] | undefined, showOnline: boolean) {
+    const where = ids && ids.length > 0 ? { id: { in: ids } } : { isActive: true };
+    const result = await this.prisma.product.updateMany({
+      where,
+      data: { showOnline: !!showOnline }
+    });
+    return { success: true, count: result.count };
   }
 
   async bulkUpdateCategorySubset(ids: string[], categoryId: string) {

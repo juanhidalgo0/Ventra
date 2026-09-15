@@ -27,14 +27,15 @@ import {
    Check,
    Upload,
    Calculator,
-   AlertCircle
+   AlertCircle,
+   Link2
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
 
 export default function SettingsScreen() {
   const { user, resetAdminUnlock, logout } = useAuthStore();
-  const isAdmin = user?.role === 'ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || localStorage.getItem('admin_unlocked') === 'true' || sessionStorage.getItem('admin_unlocked') === 'true';
 
   // State
   const [terminalUuid, setTerminalUuid] = useState('');
@@ -77,8 +78,64 @@ export default function SettingsScreen() {
     const saved = localStorage.getItem('performance_mode');
     return saved ? saved === 'true' : false;
   });
+  const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => {
+    const saved = localStorage.getItem('pos_disable_change_calculator');
+    return saved ? saved === 'true' : false;
+  });
+  const [businessType, setBusinessType] = useState<'KIOSKO' | 'FERRETERIA'>(() => {
+    const saved = localStorage.getItem('business_type');
+    return (saved as any) || 'KIOSKO';
+  });
 
-  const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'mantenimiento'>('general');
+  // Integraciones: vínculo de cuenta de Google con GoDelivery
+  const [localGoogleUser, setLocalGoogleUser] = useState<any>(() => {
+    const saved = localStorage.getItem('google_authenticated_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const handleDisconnectGoogle = () => {
+    if (confirm('¿Estás seguro de desvincular la cuenta de Google? Los productos ya no se sincronizarán con GoDelivery.')) {
+      localStorage.removeItem('google_authenticated_user');
+      setLocalGoogleUser(null);
+      toast.success('Cuenta de Google desvinculada');
+    }
+  };
+
+  const handleConnectGoogle = () => {
+    const activePort = sessionStorage.getItem('active_backend_port') || '3001';
+    const authUrl = `http://localhost:${activePort}/api/auth/google/login-page`;
+
+    // Open external browser using Rust command to ensure compatibility
+    if ((window as any).__TAURI__) {
+      const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
+      if (invokeFn) {
+        invokeFn('open_browser', { url: authUrl }).catch(() => window.open(authUrl, '_blank'));
+      } else {
+        window.open(authUrl, '_blank');
+      }
+    } else {
+      window.open(authUrl, '_blank');
+    }
+    toast('Iniciando sesión segura en tu navegador...');
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data } = await api.get('/auth/google-link-status');
+        if (data.linked && data.user) {
+          clearInterval(pollInterval);
+          localStorage.setItem('google_authenticated_user', JSON.stringify(data.user));
+          setLocalGoogleUser(data.user);
+          toast.success('¡Cuenta de Google vinculada con éxito!');
+        }
+      } catch (e) {
+        // Ignore transient polling errors
+      }
+    }, 1000);
+
+    setTimeout(() => clearInterval(pollInterval), 300000);
+  };
+
+  const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'integraciones' | 'mantenimiento'>('general');
 
   // Posnet Config States
   const [posnets, setPosnets] = useState<{ id: string; name: string }[]>(() => {
@@ -168,6 +225,20 @@ export default function SettingsScreen() {
   const [selectedMethods, setSelectedMethods] = useState<string[]>(['CLOVER', 'MERCADOPAGO', 'DEBT']); // default non-cash
   const [isSavingSurcharge, setIsSavingSurcharge] = useState(false);
   const [isLoadingSurcharges, setIsLoadingSurcharges] = useState(false);
+
+  // Virtual Load Surcharges and Codes
+  const [virtual1Code, setVirtual1Code] = useState(() => localStorage.getItem('virtual1_code') || 'VIRTUAL1');
+  const [virtual2Code, setVirtual2Code] = useState(() => localStorage.getItem('virtual2_code') || 'VIRTUAL2');
+  const [virtual1Surcharge, setVirtual1Surcharge] = useState(() => Number(localStorage.getItem('virtual1_surcharge') || '0'));
+  const [virtual2Surcharge, setVirtual2Surcharge] = useState(() => Number(localStorage.getItem('virtual2_surcharge') || '0'));
+
+  const handleSaveVirtualConfigs = () => {
+    localStorage.setItem('virtual1_code', virtual1Code.trim().toUpperCase());
+    localStorage.setItem('virtual2_code', virtual2Code.trim().toUpperCase());
+    localStorage.setItem('virtual1_surcharge', virtual1Surcharge.toString());
+    localStorage.setItem('virtual2_surcharge', virtual2Surcharge.toString());
+    toast.success('✅ Configuración de Cargas Virtuales guardada con éxito');
+  };
 
   useEffect(() => {
     if (activeTab === 'recargos') {
@@ -435,7 +506,12 @@ export default function SettingsScreen() {
       setSelectedBackupToRestore(null);
       setUploadedFileToRestore(null);
       setRestoreConfirmWord('');
-      logout();
+
+      toast.loading('Actualizando sesión con la base de datos importada...');
+      setTimeout(() => {
+        logout();
+        window.location.reload();
+      }, 1200);
       
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al restaurar la copia de seguridad');
@@ -484,6 +560,7 @@ export default function SettingsScreen() {
     localStorage.setItem('low_stock_alerts', String(lowStockAlerts));
     localStorage.setItem('hourly_rate', String(hourlyRate));
     localStorage.setItem('performance_mode', String(performanceMode));
+    localStorage.setItem('pos_disable_change_calculator', String(disableChangeCalculator));
     if ((window as any).__TAURI__) {
       try {
         const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
@@ -604,7 +681,7 @@ export default function SettingsScreen() {
       {/* Header */}
       <div className="shrink-0 p-6 pb-4 border-b border-slate-400 bg-white">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-          <Settings className="w-7 h-7 text-indigo-500" /> Configuración General
+          <Settings className="w-7 h-7 text-rose-500" /> Configuración General
         </h1>
         <p className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.3em] mt-1">Panel administrativo del maxikiosco</p>
       </div>
@@ -618,7 +695,7 @@ export default function SettingsScreen() {
           <button
             onClick={() => setActiveTab('general')}
             className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'general' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+              activeTab === 'general' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
             <Laptop className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> General y POS
@@ -627,7 +704,7 @@ export default function SettingsScreen() {
           <button
             onClick={() => setActiveTab('posnets')}
             className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'posnets' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+              activeTab === 'posnets' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
             <Sliders className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Métodos de Pago
@@ -636,7 +713,7 @@ export default function SettingsScreen() {
           <button
             onClick={() => setActiveTab('recargos')}
             className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'recargos' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+              activeTab === 'recargos' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
             <Calculator className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Recargos
@@ -646,7 +723,7 @@ export default function SettingsScreen() {
             <button
               onClick={() => setActiveTab('personal')}
               className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-                activeTab === 'personal' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+                activeTab === 'personal' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
               <Users className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Personal y Cajeros
@@ -657,15 +734,26 @@ export default function SettingsScreen() {
             <button
               onClick={() => setActiveTab('backups')}
               className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-                activeTab === 'backups' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+                activeTab === 'backups' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
               <Database className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Backup y Seguridad
             </button>
           )}
  
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('integraciones')}
+              className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
+                activeTab === 'integraciones' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <Link2 className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Integraciones
+            </button>
+          )}
+
           <div className="h-px bg-slate-100 my-2 hidden md:block" />
- 
+
           <button
             onClick={() => setActiveTab('mantenimiento')}
             className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
@@ -688,9 +776,9 @@ export default function SettingsScreen() {
                 className="space-y-6 max-w-4xl"
               >
                 {/* PC Identity */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
-                    <Laptop className="w-4.5 h-4.5 text-indigo-500" /> Identidad de este Dispositivo
+                    <Laptop className="w-4.5 h-4.5 text-rose-500" /> Identidad de este Dispositivo
                   </h3>
                   
                   <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-400 text-xs font-semibold text-slate-700 flex flex-col gap-1 shadow-inner">
@@ -705,13 +793,13 @@ export default function SettingsScreen() {
                         type="text" 
                         value={terminalName} 
                         onChange={(e) => setTerminalName(e.target.value)} 
-                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                         placeholder="Ej: Terminal 1"
                       />
-                      <button 
+                      <button
                         onClick={handleSaveTerminalName}
                         disabled={isSavingName}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                       >
                         {isSavingName ? '...' : <Save className="w-4 h-4" />} Guardar
                       </button>
@@ -721,12 +809,62 @@ export default function SettingsScreen() {
                 </div>
 
                 {/* System Parameters */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-155 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
                     <Sliders className="w-4.5 h-4.5 text-emerald-500" /> Parámetros del Sistema (POS & Caja)
                   </h3>
 
                   <div className="space-y-4">
+                    {/* Rubro del Negocio */}
+                    <div className="space-y-2 pb-2">
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Rubro / Tipo de Comercio</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBusinessType('KIOSKO');
+                            localStorage.setItem('business_type', 'KIOSKO');
+                            toast.success('Modo Kiosco activado (interfaz simplificada)');
+                          }}
+                          className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                            businessType === 'KIOSKO'
+                              ? 'border-rose-600 bg-rose-50/70 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20'
+                              : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            🍬 Kiosco / Almacén (Predeterminado)
+                          </span>
+                          <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                            Interfaz simple y limpia por unidades o packs. Oculta acopios, presupuestos y sustitutos para no saturar el mostrador.
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBusinessType('FERRETERIA');
+                            localStorage.setItem('business_type', 'FERRETERIA');
+                            toast.success('Modo Ferretería activado (Acopios, Presupuestos, Sustitutos y Fraccionados)');
+                          }}
+                          className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                            businessType === 'FERRETERIA'
+                              ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                              : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            🔧 Ferretería / Corralón / Multirubro
+                          </span>
+                          <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                            Habilita Acopio y Remitos parciales, Presupuestos / Cotizaciones, Productos Sustitutos, Tarifas de Gremio y unidades de medida (Metros, Kilos, Litros).
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-slate-100" />
+
                     <div className="space-y-1.5">
                       <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Monto Inicial de Caja por Defecto ($)</label>
                       <input 
@@ -768,6 +906,19 @@ export default function SettingsScreen() {
                         />
                       </label>
 
+                      <label className="flex items-center justify-between cursor-pointer group">
+                        <div className="max-w-[80%]">
+                          <span className="text-xs font-bold text-slate-700 block">Calculadora de Vuelto en Efectivo</span>
+                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Habilita la opción de introducir el monto recibido del cliente para calcular el vuelto automáticamente.</span>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          checked={!disableChangeCalculator} 
+                          onChange={(e) => setDisableChangeCalculator(!e.target.checked)} 
+                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
+                        />
+                      </label>
+
                       <label className="flex items-center justify-between cursor-pointer group pt-2 border-t border-slate-300/50">
                         <div className="max-w-[80%]">
                           <span className="text-xs font-bold text-rose-600 block flex items-center gap-1.5">⚡ Modo Rendimiento (Bajo Consumo)</span>
@@ -797,9 +948,9 @@ export default function SettingsScreen() {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handleSaveSystemConfig}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer mt-4"
+                    className="btn-success w-full text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer mt-4"
                   >
                     <CheckCircle2 className="w-4 h-4" /> Guardar Parámetros
                   </button>
@@ -815,9 +966,9 @@ export default function SettingsScreen() {
                 exit={{ opacity: 0, y: -10 }}
                 className="max-w-4xl"
               >
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
-                    <Sliders className="w-4.5 h-4.5 text-indigo-500" /> Posnets (Métodos de Pago POS)
+                    <Sliders className="w-4.5 h-4.5 text-rose-500" /> Posnets (Métodos de Pago POS)
                   </h3>
                   
                   <p className="text-[10px] text-slate-600">
@@ -851,12 +1002,12 @@ export default function SettingsScreen() {
                         type="text" 
                         value={newPosnetName} 
                         onChange={(e) => setNewPosnetName(e.target.value)} 
-                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                         placeholder="Ej: Clover Regalos"
                       />
-                      <button 
+                      <button
                         onClick={handleAddPosnet}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
+                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
                       >
                         <Plus className="w-4 h-4" /> Agregar
                       </button>
@@ -875,10 +1026,10 @@ export default function SettingsScreen() {
                 className="space-y-6 max-w-4xl"
               >
                 {/* Form to add surcharge */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-300">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Calculator className="w-4.5 h-4.5 text-indigo-500" /> Configuración de Recargos
+                      <Calculator className="w-4.5 h-4.5 text-rose-500" /> Configuración de Recargos
                     </h3>
                   </div>
 
@@ -890,7 +1041,7 @@ export default function SettingsScreen() {
                         <select
                           value={selectedCategoryId}
                           onChange={(e) => setSelectedCategoryId(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
                         >
                           <option value="">Seleccione una categoría</option>
                           {surchargeCategories.map((c) => (
@@ -909,7 +1060,7 @@ export default function SettingsScreen() {
                           min="0"
                           max="100"
                           step="0.1"
-                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
                           placeholder="Ej: 10"
                         />
                       </div>
@@ -929,11 +1080,11 @@ export default function SettingsScreen() {
                               onClick={() => toggleMethod(method)}
                               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer ${
                                 isChecked
-                                  ? 'bg-indigo-50 border-indigo-500 text-indigo-600 shadow-sm'
+                                  ? 'bg-rose-50 border-rose-500 text-rose-600 shadow-sm'
                                   : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                               }`}
                             >
-                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-400'}`}>
+                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isChecked ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-400'}`}>
                                 {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                               </div>
                               {label}
@@ -946,7 +1097,7 @@ export default function SettingsScreen() {
                     <button
                       type="submit"
                       disabled={isSavingSurcharge}
-                      className="w-full md:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      className="btn-primary w-full md:w-auto text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {isSavingSurcharge ? 'Guardando...' : 'Configurar Recargo'}
                     </button>
@@ -954,7 +1105,7 @@ export default function SettingsScreen() {
                 </div>
 
                 {/* Surcharges List */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
                     Recargos Configurados
                   </h3>
@@ -972,7 +1123,7 @@ export default function SettingsScreen() {
                             <div>
                               <div className="text-xs font-extrabold text-slate-850 uppercase">{s.category?.name || 'Categoría Desconocida'}</div>
                               <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                                Recargo: <span className="text-indigo-600 font-bold">+{s.percentage}%</span> en {methodsText}
+                                Recargo: <span className="text-rose-600 font-bold">+{s.percentage}%</span> en {methodsText}
                               </div>
                             </div>
                             <button
@@ -987,6 +1138,83 @@ export default function SettingsScreen() {
                     </div>
                   )}
                 </div>
+
+                {/* Cargas Virtuales Surcharges and Codes */}
+                <div className="card p-6 space-y-4">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                    Configuración de Cargas Virtuales (1 y 2)
+                  </h3>
+                  <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
+                    Define los códigos de barra personalizados y sus porcentajes de recargo correspondientes. Al escribir estos códigos y presionar Enter en el POS, se solicitará el monto de la carga.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Carga Virtual 1 */}
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                      <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">Carga Virtual 1</h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Código de Barra</label>
+                        <input
+                          type="text"
+                          value={virtual1Code}
+                          onChange={(e) => setVirtual1Code(e.target.value)}
+                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all uppercase"
+                          placeholder="VIRTUAL1"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Recargo (%)</label>
+                        <input
+                          type="number"
+                          value={virtual1Surcharge}
+                          onChange={(e) => setVirtual1Surcharge(Number(e.target.value))}
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Carga Virtual 2 */}
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                      <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">Carga Virtual 2</h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Código de Barra</label>
+                        <input
+                          type="text"
+                          value={virtual2Code}
+                          onChange={(e) => setVirtual2Code(e.target.value)}
+                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all uppercase"
+                          placeholder="VIRTUAL2"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Recargo (%)</label>
+                        <input
+                          type="number"
+                          value={virtual2Surcharge}
+                          onChange={(e) => setVirtual2Surcharge(Number(e.target.value))}
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      onClick={handleSaveVirtualConfigs}
+                      className="btn-primary text-xs font-extrabold uppercase tracking-wider shadow-md active:scale-95 transition-all cursor-pointer"
+                    >
+                      Guardar Configuración Virtual
+                    </button>
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -999,14 +1227,14 @@ export default function SettingsScreen() {
                 className="space-y-6 max-w-4xl"
               >
                 {/* Users List */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-300">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Users className="w-4.5 h-4.5 text-indigo-500" /> Gestión de Personal y Cajeros
+                      <Users className="w-4.5 h-4.5 text-rose-500" /> Gestión de Personal y Cajeros
                     </h3>
-                    <button 
+                    <button
                       onClick={() => setShowCreateModal(true)}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
+                      className="btn-primary text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
                     >
                       <UserPlus className="w-4 h-4" /> Crear Cajero
                     </button>
@@ -1031,10 +1259,10 @@ export default function SettingsScreen() {
                         <tbody>
                           {users.map((u: any) => (
                             <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/30 transition-colors font-medium">
-                              <td className="py-3 px-4 font-mono font-bold text-indigo-600">{u.username}</td>
+                              <td className="py-3 px-4 font-mono font-bold text-rose-600">{u.username}</td>
                               <td className="py-3 px-4">
                                 <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
-                                  u.role === 'ADMIN' ? 'bg-indigo-50 text-indigo-600 border-indigo-150' :
+                                  u.role === 'ADMIN' ? 'bg-rose-50 text-rose-600 border-rose-150' :
                                   u.role === 'SUPERVISOR' ? 'bg-amber-50 text-amber-600 border-amber-150' :
                                   'bg-slate-50 text-slate-650 border-slate-150'
                                 }`}>
@@ -1051,7 +1279,7 @@ export default function SettingsScreen() {
                               <td className="py-3 px-4 text-center flex items-center justify-center gap-1">
                                 <button 
                                   onClick={() => handleOpenEditModal(u)}
-                                  className="p-2 hover:bg-indigo-50 rounded-lg text-slate-600 hover:text-indigo-600 active:scale-95 transition-all cursor-pointer"
+                                  className="p-2 hover:bg-rose-50 rounded-lg text-slate-600 hover:text-rose-600 active:scale-95 transition-all cursor-pointer"
                                   title="Editar cajero"
                                 >
                                   <Edit className="w-4 h-4" />
@@ -1074,22 +1302,22 @@ export default function SettingsScreen() {
                 </div>
 
                 {/* Password Change Card */}
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-slate-300">
-                    <Key className="w-4.5 h-4.5 text-indigo-500" /> Cambiar Contraseña de Administrador (ADMIN)
+                    <Key className="w-4.5 h-4.5 text-rose-500" /> Cambiar Contraseña de Administrador (ADMIN)
                   </h3>
                   <div className="flex gap-3">
                     <input
                       type="password"
                       value={newAdminPassword}
                       onChange={e => setNewAdminPassword(e.target.value)}
-                      className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+                      className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
                       placeholder="Nueva contraseña numérica..."
                     />
                     <button
                       onClick={handleChangeAdminPassword}
                       disabled={isChangingPassword || !newAdminPassword}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 disabled:opacity-50 shadow-md active:scale-95 cursor-pointer transition-all shrink-0"
+                      className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 disabled:opacity-50 shadow-md active:scale-95 cursor-pointer transition-all shrink-0"
                     >
                       {isChangingPassword ? '...' : <Key className="w-4 h-4" />} Cambiar
                     </button>
@@ -1106,25 +1334,25 @@ export default function SettingsScreen() {
                 exit={{ opacity: 0, y: -10 }}
                 className="max-w-4xl"
               >
-                <div className="card bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-5">
+                <div className="card p-6 space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-300">
                     <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2">
-                      <Database className="w-4.5 h-4.5 text-indigo-500" /> Copias de Seguridad Locales y Programadas (Backup Pro)
+                      <Database className="w-4.5 h-4.5 text-rose-500" /> Copias de Seguridad Locales y Programadas (Backup Pro)
                     </h3>
                     <div className="flex flex-wrap gap-2 shrink-0">
-                      <label className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer">
+                      <label className="btn-success text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50">
                         <Upload className="w-4 h-4" /> Cargar Backup (.db)
-                        <input 
-                          type="file" 
-                          accept=".db,.sqlite" 
-                          onChange={triggerFileRestore} 
-                          className="hidden" 
+                        <input
+                          type="file"
+                          accept=".db,.sqlite"
+                          onChange={triggerFileRestore}
+                          className="hidden"
                         />
                       </label>
-                      <button 
+                      <button
                         onClick={handleCreateBackup}
                         disabled={isCreatingBackup}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
+                        className="btn-primary text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                       >
                         <Plus className="w-4 h-4" /> {isCreatingBackup ? 'Generando...' : 'Respaldar Ahora'}
                       </button>
@@ -1132,9 +1360,9 @@ export default function SettingsScreen() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                    <div className="p-5 rounded-2xl border border-indigo-50 bg-indigo-50/20 space-y-4 md:col-span-1">
+                    <div className="p-5 rounded-2xl border border-rose-50 bg-rose-50/20 space-y-4 md:col-span-1">
                       <div className="flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-indigo-500" />
+                        <Clock className="w-5 h-5 text-rose-500" />
                         <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Backups Automáticos</span>
                       </div>
                       
@@ -1149,7 +1377,7 @@ export default function SettingsScreen() {
                             type="checkbox" 
                             checked={autoBackupEnabled} 
                             onChange={(e) => setAutoBackupEnabled(e.target.checked)} 
-                            className="rounded-md border-slate-400 text-indigo-600 focus:ring-indigo-500 h-4.5 w-4.5 cursor-pointer"
+                            className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer"
                           />
                         </label>
 
@@ -1160,17 +1388,17 @@ export default function SettingsScreen() {
                               type="time" 
                               value={backupTime} 
                               onChange={(e) => setBackupTime(e.target.value)} 
-                              className="w-full bg-white border border-slate-400 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner cursor-pointer" 
+                              className="w-full bg-white border border-slate-400 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer" 
                             />
                           </motion.div>
                         )}
 
-                        <button 
+                        <button
                           onClick={handleSaveBackupSettings}
                           disabled={isSavingBackupSettings}
-                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                          className="btn-primary w-full text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
                         >
-                          <Check className="w-3.5 h-3.5" /> Guardar Programación
+                          <Check className="w-4 h-4" /> Guardar programación
                         </button>
                       </div>
                     </div>
@@ -1183,36 +1411,36 @@ export default function SettingsScreen() {
                           No se han generado backups en este equipo
                         </div>
                       ) : (
-                        <div className="overflow-y-auto max-h-[300px] rounded-xl border border-slate-105 bg-white custom-scrollbar">
-                          <table className="w-full min-w-[550px] text-left text-xs border-collapse">
+                        <div className="overflow-y-auto overflow-x-hidden max-h-[300px] rounded-xl border border-slate-105 bg-white custom-scrollbar">
+                          <table className="w-full min-w-0 text-left text-xs border-collapse">
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-300 text-[9px] uppercase text-slate-600 font-bold tracking-wider">
-                                <th className="py-2.5 px-4">Fecha y Hora</th>
-                                <th className="py-2.5 px-4">Tipo</th>
-                                <th className="py-2.5 px-4">Tamaño</th>
-                                <th className="py-2.5 px-4 text-center">Acciones</th>
+                                <th className="py-2.5 px-3">Fecha y Hora</th>
+                                <th className="py-2.5 px-3">Tipo</th>
+                                <th className="py-2.5 px-3">Tamaño</th>
+                                <th className="py-2.5 px-3 text-center">Acciones</th>
                               </tr>
                             </thead>
                             <tbody>
                               {backups.map((b, idx) => (
                                 <tr key={idx} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/30 transition-colors">
-                                  <td className="py-2.5 px-4 font-bold text-slate-700">
+                                  <td className="py-2.5 px-3 font-bold text-slate-700">
                                     {new Date(b.createdAt).toLocaleString('es-AR')}
                                   </td>
-                                  <td className="py-2.5 px-4">
+                                  <td className="py-2.5 px-3">
                                     <span className={`text-[8.5px] font-extrabold px-1.5 py-0.5 rounded border uppercase tracking-wider ${
-                                      b.type === 'MANUAL' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                      b.type === 'MANUAL' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'
                                     }`}>
                                       {b.type}
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-4 text-slate-700 font-mono">
+                                  <td className="py-2.5 px-3 text-slate-700 font-mono">
                                     {(b.size / 1024 / 1024).toFixed(2)} MB
                                   </td>
-                                  <td className="py-2.5 px-4 text-center flex items-center justify-center gap-1.5">
+                                  <td className="py-2.5 px-3 text-center flex items-center justify-center gap-1.5">
                                     <button 
                                       onClick={() => handleDownloadBackup(b.filename)}
-                                      className="p-1.5 hover:bg-indigo-50 rounded-lg text-indigo-600 hover:text-indigo-700 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center"
+                                      className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-600 hover:text-rose-700 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center"
                                       title="Descargar base de datos local (.db)"
                                     >
                                       <Download className="w-4 h-4" />
@@ -1241,6 +1469,87 @@ export default function SettingsScreen() {
               </motion.div>
             )}
 
+            {activeTab === 'integraciones' && (
+              <motion.div
+                key="integraciones"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6 max-w-4xl"
+              >
+                <div className="card p-6 space-y-4">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                    <Link2 className="w-4.5 h-4.5 text-rose-500" /> Integraciones Externas
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-semibold -mt-2">
+                    Conectá servicios externos opcionales. Esto es independiente de tu Tienda Online propia de Mangano.
+                  </p>
+
+                  {localGoogleUser ? (
+                    <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        {localGoogleUser.picture ? (
+                          <img
+                            src={localGoogleUser.picture}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-full border-2 border-emerald-500 shadow-md shrink-0 object-cover"
+                            alt="Google Profile"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const parent = (e.target as HTMLImageElement).parentElement;
+                              if (parent) {
+                                const fallback = document.createElement('div');
+                                fallback.className = "w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-md border-2 border-emerald-500";
+                                fallback.innerText = localGoogleUser.name?.[0] || 'G';
+                                parent.appendChild(fallback);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0">
+                            {localGoogleUser.name?.[0]}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest leading-none">Sesión Corporativa de Google Activa</p>
+                          <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">{localGoogleUser.name} <span className="text-xs font-semibold text-slate-600">({localGoogleUser.email})</span></h4>
+                          <p className="text-[10px] text-slate-455 font-semibold mt-1">Esta terminal está vinculada correctamente. Los productos se sincronizarán en tiempo real con GoDelivery.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleDisconnectGoogle}
+                        className="w-full md:w-auto px-5 py-2.5 rounded-xl border border-rose-250 bg-rose-50 text-rose-600 hover:bg-rose-100/80 transition-all font-extrabold text-xs shadow-sm active:scale-95 cursor-pointer shrink-0 text-center"
+                      >
+                        Desconectar Google
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-gradient-to-r from-rose-500/10 to-amber-500/10 border border-amber-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border-2 border-amber-400">
+                          G
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-extrabold text-amber-600 uppercase tracking-widest leading-none">Vinculación con GoDelivery Pendiente</p>
+                          <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">Conectá tu cuenta de Google</h4>
+                          <p className="text-[10px] text-slate-455 font-semibold mt-1">Vinculá una cuenta de Google para habilitar la sincronización en tiempo real de tus productos con la tienda online GoDelivery (marketplace externo, opcional).</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row items-center gap-3 self-start md:self-auto shrink-0">
+                        <button
+                          onClick={handleConnectGoogle}
+                          className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md active:scale-95 transition-all cursor-pointer flex items-center gap-2 border border-slate-750"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.136 4.113-3.072 0-5.565-2.493-5.565-5.565s2.493-5.565 5.565-5.565c1.378 0 2.637.5 3.613 1.328l3.06-3.06C18.822 3.912 15.69 2.25 12 2.25 6.615 2.25 2.25 6.615 2.25 12s4.365 9.75 9.75 9.75c5.07 0 9.27-3.66 9.27-9.2 0-.6-.054-1.17-.154-1.728H12.24z"/></svg>
+                          Iniciar sesión con Google
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
             {activeTab === 'mantenimiento' && (
               <motion.div
                 key="mantenimiento"
@@ -1249,7 +1558,7 @@ export default function SettingsScreen() {
                 exit={{ opacity: 0, y: -10 }}
                 className="max-w-4xl"
               >
-                <div className="card bg-white p-6 rounded-2xl border border-rose-100 shadow-sm space-y-4">
+                <div className="card p-6 border-rose-100 space-y-4">
                   <h3 className="text-xs font-bold text-rose-600 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-rose-100">
                     <ShieldAlert className="w-4.5 h-4.5 text-rose-500 animate-pulse" /> Zona de Peligro (Mantenimiento y Resets)
                   </h3>
@@ -1300,7 +1609,7 @@ export default function SettingsScreen() {
                               >
                                 {isResettingStock ? '...' : 'Confirmar'}
                               </button>
-                              <button onClick={() => { setShowResetStock(false); setStockConfirmWord(''); }} className="px-3 py-2 border border-slate-400 bg-white text-slate-700 rounded-lg text-xs font-bold cursor-pointer">Cancelar</button>
+                              <button onClick={() => { setShowResetStock(false); setStockConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
                             </div>
                           </motion.div>
                         )}
@@ -1345,7 +1654,7 @@ export default function SettingsScreen() {
                               >
                                 {isResettingCajas ? '...' : 'Confirmar'}
                               </button>
-                              <button onClick={() => { setShowResetCajas(false); setCajasConfirmWord(''); }} className="px-3 py-2 border border-slate-400 bg-white text-slate-700 rounded-lg text-xs font-bold cursor-pointer">Cancelar</button>
+                              <button onClick={() => { setShowResetCajas(false); setCajasConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
                             </div>
                           </motion.div>
                         )}
@@ -1390,7 +1699,7 @@ export default function SettingsScreen() {
                               >
                                 {isResettingCatalog ? '...' : 'Confirmar'}
                               </button>
-                              <button onClick={() => { setShowResetCatalog(false); setCatalogConfirmWord(''); }} className="px-3 py-2 border border-slate-400 bg-white text-slate-700 rounded-lg text-xs font-bold cursor-pointer">Cancelar</button>
+                              <button onClick={() => { setShowResetCatalog(false); setCatalogConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
                             </div>
                           </motion.div>
                         )}
@@ -1437,7 +1746,7 @@ export default function SettingsScreen() {
                               >
                                 {isHardResetting ? '...' : 'Confirmar Reset'}
                               </button>
-                              <button onClick={() => { setShowHardReset(false); setHardResetConfirmWord(''); }} className="px-3 py-2 border border-slate-400 bg-white text-slate-700 rounded-lg text-xs font-bold cursor-pointer">Cancelar</button>
+                              <button onClick={() => { setShowHardReset(false); setHardResetConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
                             </div>
                           </motion.div>
                         )}
@@ -1469,7 +1778,7 @@ export default function SettingsScreen() {
             >
               <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-indigo-500" /> Crear Cajero / Usuario
+                  <UserPlus className="w-5 h-5 text-rose-500" /> Crear Cajero / Usuario
                 </h3>
                 <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
               </div>
@@ -1481,7 +1790,7 @@ export default function SettingsScreen() {
                     type="text" 
                     value={newUsername} 
                     onChange={(e) => setNewUsername(e.target.value.toUpperCase().replace(/\s+/g, ''))} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                     placeholder="Ej: JUAN.PEREZ" 
                     required 
                   />
@@ -1494,7 +1803,7 @@ export default function SettingsScreen() {
                       type="password" 
                       value={newPassword} 
                       onChange={(e) => setNewPassword(e.target.value)} 
-                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                       placeholder="Ingresá contraseña segura..." 
                       required 
                     />
@@ -1507,7 +1816,7 @@ export default function SettingsScreen() {
                   <select 
                     value={newRole} 
                     onChange={(e) => setNewRole(e.target.value)} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer"
                   >
                     <option value="CASHIER">Cajero (Operador POS)</option>
                     <option value="SUPERVISOR">Supervisor</option>
@@ -1519,7 +1828,7 @@ export default function SettingsScreen() {
                   <button 
                     type="submit" 
                     disabled={isCreatingUser}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <UserPlus className="w-4.5 h-4.5" /> {isCreatingUser ? 'Guardando...' : 'Crear Usuario'}
                   </button>
@@ -1552,7 +1861,7 @@ export default function SettingsScreen() {
             >
               <div className="flex items-center justify-between border-b border-slate-300 pb-3">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Edit className="w-5 h-5 text-indigo-500" /> Editar Cajero / Usuario
+                  <Edit className="w-5 h-5 text-rose-500" /> Editar Cajero / Usuario
                 </h3>
                 <button onClick={() => setShowEditModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
               </div>
@@ -1564,7 +1873,7 @@ export default function SettingsScreen() {
                     type="text" 
                     value={editUsername} 
                     onChange={(e) => setEditUsername(e.target.value.toUpperCase().replace(/\s+/g, ''))} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                     placeholder="Ej: JUAN.PEREZ" 
                     required 
                   />
@@ -1577,7 +1886,7 @@ export default function SettingsScreen() {
                       type="password" 
                       value={editPassword} 
                       onChange={(e) => setEditPassword(e.target.value)} 
-                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                       placeholder="Nueva contraseña numérica..." 
                     />
                     <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
@@ -1589,7 +1898,7 @@ export default function SettingsScreen() {
                   <select 
                     value={editRole} 
                     onChange={(e) => setEditRole(e.target.value)} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer"
                   >
                     <option value="CASHIER">Cajero (Operador POS)</option>
                     <option value="SUPERVISOR">Supervisor</option>
@@ -1603,7 +1912,7 @@ export default function SettingsScreen() {
                     type="checkbox" 
                     checked={editIsActive} 
                     onChange={(e) => setEditIsActive(e.target.checked)} 
-                    className="rounded-md border-slate-400 text-indigo-650 focus:ring-indigo-500 h-4.5 w-4.5"
+                    className="rounded-md border-slate-400 text-rose-650 focus:ring-rose-500 h-4.5 w-4.5"
                   />
                 </div>
 
@@ -1611,7 +1920,7 @@ export default function SettingsScreen() {
                   <button 
                     type="submit" 
                     disabled={isSavingEdit}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <Save className="w-4.5 h-4.5" /> {isSavingEdit ? 'Guardando...' : 'Guardar Cambios'}
                   </button>

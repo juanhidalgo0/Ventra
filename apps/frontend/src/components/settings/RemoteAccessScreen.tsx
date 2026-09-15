@@ -82,7 +82,7 @@ export default function RemoteAccessScreen() {
         <Smartphone className="w-7 h-7 text-rose-500 animate-pulse-soft" />
         <div>
           <h2 className="text-xl font-black text-slate-800 uppercase tracking-wider dark:text-slate-100">Acceso Remoto y Móvil</h2>
-          <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-0.5">Conecta tu celular a GO! Portal en tiempo real</p>
+          <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-0.5">Conecta tu celular a Ventra en tiempo real</p>
         </div>
       </div>
 
@@ -91,7 +91,7 @@ export default function RemoteAccessScreen() {
         <div className="card p-6 bg-white border border-slate-400/80 shadow-md dark:bg-slate-900 dark:border-slate-800 flex flex-col justify-between gap-6">
           <div className="space-y-4">
             <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider dark:text-slate-200 flex items-center gap-2">
-              <Laptop className="w-5 h-5 text-indigo-500" />
+              <Laptop className="w-5 h-5 text-rose-500" />
               Direcciones del Servidor
             </h3>
             
@@ -200,7 +200,7 @@ export default function RemoteAccessScreen() {
               <li>Escanea el código QR de arriba o ingresa la dirección IP en Safari.</li>
               <li>Toca el botón de <strong className="text-slate-700 dark:text-slate-300">Compartir</strong> (icono de un cuadrado con flecha hacia arriba en la barra inferior).</li>
               <li>Selecciona la opción <strong className="text-slate-700 dark:text-slate-300">"Agregar a la pantalla de inicio"</strong>.</li>
-              <li>¡Listo! Abre el acceso directo en tu celular para usar GoPortal en pantalla completa.</li>
+              <li>¡Listo! Abre el acceso directo en tu celular para usar Ventra en pantalla completa.</li>
             </ol>
           </div>
 

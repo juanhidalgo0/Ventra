@@ -9,7 +9,9 @@ interface CreateSaleDto {
   payments: { method: string; amount: number; reference?: string }[];
   notes?: string;
   clientId?: string;
+  pickedUpBy?: string;
   appliedPromotions?: { promotionId: string; quantitySold: number }[];
+  isAcopio?: boolean;
 }
 
 @Injectable()
@@ -31,6 +33,32 @@ export class SalesService {
       const saleItems: any[] = [];
 
       const productIds = dto.items.map((i) => i.productId);
+      
+      // Ensure virtual products exist in the database
+      for (const id of productIds) {
+        if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE') {
+          const exists = await tx.product.findUnique({ where: { id } });
+          if (!exists) {
+            let virtualName = 'Carga Virtual 1';
+            if (id === 'VIRTUAL_LOAD_2') virtualName = 'Carga Virtual 2';
+            else if (id === 'PAGO_CTA_CTE') virtualName = 'PAGO CUENTA CORRIENTE';
+
+            await tx.product.create({
+              data: {
+                id,
+                name: virtualName,
+                barcode: id,
+                salePrice: 0,
+                costPrice: 0,
+                stock: 999999,
+                unlimitedStock: true,
+                isActive: true
+              }
+            });
+          }
+        }
+      }
+
       const dbProducts = await tx.product.findMany({
         where: { id: { in: productIds } }
       });
@@ -45,22 +73,64 @@ export class SalesService {
         const itemSubtotal = unitPrice * item.quantity;
         const itemDiscount = item.discount || 0;
         const itemTotal = itemSubtotal - itemDiscount;
-        saleItems.push({ productId: product.id, productName: product.name, unitPrice, quantity: item.quantity, subtotal: itemSubtotal, discount: itemDiscount, total: itemTotal });
+        saleItems.push({ productId: product.id, productName: (item as any).productName || product.name, unitPrice, quantity: item.quantity, subtotal: itemSubtotal, discount: itemDiscount, total: itemTotal });
         subtotal += itemTotal;
 
-        // Skip stock decrement for unlimited stock products
-        if (!product.unlimitedStock) {
+        // Deduct stock for product (or kit components if product.isKit)
+        if (product.isKit) {
+          const kitComponents = await tx.productKitItem.findMany({
+            where: { parentProductId: product.id },
+            include: { childProduct: true }
+          });
+          for (const kitComp of kitComponents) {
+            const childQty = kitComp.quantity * item.quantity;
+            if (!kitComp.childProduct.unlimitedStock) {
+              const childStockBefore = kitComp.childProduct.stock;
+              const childNewStock = childStockBefore - childQty;
+              await tx.product.update({
+                where: { id: kitComp.childProductId },
+                data: { stock: { decrement: childQty } }
+              });
+              const isItemReturn = item.quantity < 0;
+              await tx.inventoryMovement.create({
+                data: {
+                  productId: kitComp.childProductId,
+                  userId,
+                  type: isItemReturn ? 'RETURN' : 'SALE',
+                  quantity: -childQty,
+                  stockBefore: childStockBefore,
+                  stockAfter: childNewStock,
+                  reference: isItemReturn ? `Devolución Kit: ${product.name}` : `Despiece Kit: ${product.name}`
+                }
+              });
+              productsToSync.push({
+                barcode: kitComp.childProduct.barcode || kitComp.childProduct.id,
+                newStock: childNewStock,
+                salePrice: kitComp.childProduct.salePrice
+              });
+            }
+          }
+        } else if (!product.unlimitedStock) {
           const stockBefore = product.stock;
           const newStock = stockBefore - item.quantity;
           await tx.product.update({ where: { id: product.id }, data: { stock: { decrement: item.quantity } } });
-          await tx.inventoryMovement.create({ data: { productId: product.id, userId, type: 'SALE', quantity: -item.quantity, stockBefore, stockAfter: newStock, reference: 'Venta POS' } });
-        }
+          
+          const isItemReturn = item.quantity < 0;
+          await tx.inventoryMovement.create({ 
+            data: { 
+              productId: product.id, 
+              userId, 
+              type: isItemReturn ? 'RETURN' : 'SALE', 
+              quantity: -item.quantity, 
+              stockBefore, 
+              stockAfter: newStock, 
+              reference: isItemReturn ? 'Devolución en Venta POS' : 'Venta POS' 
+            } 
+          });
 
-        if (!product.unlimitedStock) {
-          const currentStock = product.unlimitedStock ? product.stock : (product.stock - item.quantity);
           productsToSync.push({
             barcode: product.barcode || product.id,
-            newStock: currentStock,
+            newStock,
             salePrice: product.salePrice,
           });
         }
@@ -75,7 +145,9 @@ export class SalesService {
 
       const newSale = await tx.sale.create({
         data: {
-          saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary, notes: dto.notes, clientId: dto.clientId,
+          saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary, notes: dto.notes, clientId: dto.clientId, pickedUpBy: dto.pickedUpBy || null,
+          isAcopio: dto.isAcopio ? true : false,
+          acopioStatus: dto.isAcopio ? 'PENDING' : 'NONE',
           items: { create: saleItems },
           payments: { create: dto.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })) },
         },
@@ -84,8 +156,8 @@ export class SalesService {
 
       // Handle Credit Account (DEBT)
       const debtAmount = dto.payments.filter(p => p.method === 'DEBT').reduce((sum, p) => sum + p.amount, 0);
-      if (debtAmount > 0) {
-        if (!dto.clientId) throw new BadRequestException('Se requiere un cliente para ventas a crédito');
+      if (debtAmount !== 0) {
+        if (!dto.clientId) throw new BadRequestException('Se requiere un cliente para ventas a crédito o saldos a favor');
         const client = await tx.client.findUnique({ where: { id: dto.clientId } });
         if (!client) throw new BadRequestException('Cliente no encontrado');
 
@@ -101,7 +173,8 @@ export class SalesService {
             amount: debtAmount,
             balanceBefore,
             balanceAfter,
-            description: `Venta #${saleNumber}`,
+            description: dto.pickedUpBy ? `Venta #${saleNumber} (Retiró: ${dto.pickedUpBy})` : `Venta #${saleNumber}`,
+            pickedUpBy: dto.pickedUpBy || null,
           },
         });
 
@@ -111,7 +184,9 @@ export class SalesService {
       // Process applied promotions to increment soldStock and check limits
       if (dto.appliedPromotions && dto.appliedPromotions.length > 0) {
         for (const ap of dto.appliedPromotions) {
-          const promo = await tx.promotion.findUnique({ where: { id: ap.promotionId } });
+          const promoId = ap.promotionId || (ap as any).id;
+          if (!promoId) continue;
+          const promo = await tx.promotion.findUnique({ where: { id: promoId } });
           if (promo) {
             const newSoldStock = promo.soldStock + ap.quantitySold;
             const updates: any = { soldStock: newSoldStock };
@@ -144,7 +219,7 @@ export class SalesService {
     return sale;
   }
 
-  async findAll(params?: { sessionId?: string; userId?: string; from?: string; to?: string; paymentMethod?: string; limit?: number }) {
+  async findAll(params?: { sessionId?: string; userId?: string; from?: string; to?: string; paymentMethod?: string; limit?: number; search?: string; withCost?: string | boolean }) {
     const where: any = {};
     if (params?.sessionId) where.sessionId = params.sessionId;
     if (params?.userId) where.userId = params.userId;
@@ -154,11 +229,26 @@ export class SalesService {
       if (params.from) where.createdAt.gte = new Date(params.from);
       if (params.to) where.createdAt.lte = new Date(params.to);
     }
+    if (params?.search) {
+      const searchVal = params.search.trim().toLowerCase();
+      if (/^\d+$/.test(searchVal)) {
+        where.saleNumber = parseInt(searchVal);
+      } else {
+        where.items = {
+          some: {
+            productName: {
+              contains: searchVal
+            }
+          }
+        };
+      }
+    }
     try {
-      return await this.prisma.sale.findMany({
+      const includeCost = params?.withCost === true || params?.withCost === 'true';
+      const queryOptions: any = {
         where,
         include: {
-          items: {
+          items: includeCost ? {
             include: {
               product: {
                 select: {
@@ -166,13 +256,23 @@ export class SalesService {
                 }
               }
             }
-          },
+          } : true,
           payments: true,
           user: { select: { fullName: true, username: true } }
         },
         orderBy: { createdAt: 'desc' },
-        take: params?.limit && !isNaN(params.limit) ? params.limit : 100,
-      });
+      };
+
+      if (params?.limit && !isNaN(params.limit)) {
+        queryOptions.take = params.limit;
+      } else if (!params?.from && !params?.to) {
+        queryOptions.take = 100;
+      } else {
+        // Safe upper bound for date ranges (prevents Node.js OOM if kiosk has 10,000+ sales)
+        queryOptions.take = 2500;
+      }
+
+      return await this.prisma.sale.findMany(queryOptions);
     } catch (err) {
       console.error('Error in findAll sales:', err);
       return [];
@@ -258,6 +358,75 @@ export class SalesService {
     return updatedSale;
   }
 
+  async getVirtualMetrics(from?: string, to?: string) {
+    const where: any = {
+      status: 'COMPLETED',
+      items: {
+        some: {
+          OR: [
+            { productId: 'VIRTUAL_LOAD_1' },
+            { productId: 'VIRTUAL_LOAD_2' },
+            { product: { barcode: { in: ['VIRTUAL1', 'VIRTUAL2'] } } }
+          ]
+        }
+      }
+    };
+    
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) where.createdAt.lte = new Date(to);
+    }
+    
+    const sales = await this.prisma.sale.findMany({
+      where,
+      include: {
+        items: {
+          include: { product: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    let totalVirtual1 = 0;
+    let totalVirtual2 = 0;
+    const itemsList: any[] = [];
+    
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        if (item.productId === 'VIRTUAL_LOAD_1' || item.product?.barcode === 'VIRTUAL1') {
+          const amt = item.total;
+          totalVirtual1 += amt;
+          itemsList.push({
+            id: sale.id,
+            createdAt: sale.createdAt,
+            type: 'Carga Virtual 1',
+            amount: amt,
+            quantity: item.quantity
+          });
+        } else if (item.productId === 'VIRTUAL_LOAD_2' || item.product?.barcode === 'VIRTUAL2') {
+          const amt = item.total;
+          totalVirtual2 += amt;
+          itemsList.push({
+            id: sale.id,
+            createdAt: sale.createdAt,
+            type: 'Carga Virtual 2',
+            amount: amt,
+            quantity: item.quantity
+          });
+        }
+      }
+    }
+    
+    return {
+      totalVirtual1,
+      totalVirtual2,
+      totalVirtualAmount: totalVirtual1 + totalVirtual2,
+      items: itemsList,
+      salesCount: sales.length
+    };
+  }
+
   async getTodaySummary(from?: string, to?: string) {
     let today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -274,7 +443,16 @@ export class SalesService {
     const salesFilter: any = { createdAt: { gte: today, lte: endOfPeriod }, status: 'COMPLETED' };
     const sales = await this.prisma.sale.findMany({
       where: salesFilter,
-      include: { payments: true, items: { include: { product: { select: { costPrice: true } } } } },
+      select: {
+        total: true,
+        payments: { select: { method: true, amount: true } },
+        items: {
+          select: {
+            quantity: true,
+            product: { select: { costPrice: true } }
+          }
+        }
+      },
     });
 
     const totalSales = sales.length;
@@ -310,49 +488,61 @@ export class SalesService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [monthlySales, monthlyPurchases, monthlySuppPayments] = await Promise.all([
+    const [monthlySales, monthlyPurchasesAgg, monthlySuppPaymentsAgg] = await Promise.all([
       this.prisma.sale.findMany({
         where: { createdAt: { gte: startOfMonth, lte: endOfPeriod }, status: 'COMPLETED' },
-        include: { payments: true }
+        select: {
+          total: true,
+          payments: {
+            where: { method: 'CASH' },
+            select: { amount: true }
+          }
+        }
       }),
-      this.prisma.purchase.findMany({
+      this.prisma.purchase.aggregate({
+        _sum: { total: true },
         where: { createdAt: { gte: startOfMonth, lte: endOfPeriod }, status: 'COMPLETED' }
       }),
-      this.prisma.supplierPayment.findMany({
+      this.prisma.supplierPayment.aggregate({
+        _sum: { amount: true },
         where: { createdAt: { gte: startOfMonth, lte: endOfPeriod } }
       })
     ]);
 
     const monthlyRevenue = monthlySales.reduce((sum, s) => sum + s.total, 0);
     const monthlyCash = monthlySales.reduce((sum, s) => {
-      const cashPayments = s.payments.filter(p => p.method === 'CASH').reduce((ps, p) => ps + p.amount, 0);
+      const cashPayments = s.payments.reduce((ps, p) => ps + p.amount, 0);
       return sum + cashPayments;
     }, 0);
-    const monthlyPurchaseTotal = monthlyPurchases.reduce((sum, p) => sum + p.total, 0);
-    const monthlySuppPaymentTotal = monthlySuppPayments.reduce((sum, p) => sum + p.amount, 0);
+    const monthlyPurchaseTotal = monthlyPurchasesAgg._sum?.total || 0;
+    const monthlySuppPaymentTotal = monthlySuppPaymentsAgg._sum?.amount || 0;
 
-    // Dynamic low stock count
-    const allProductsCount = await this.prisma.product.findMany({ where: { isActive: true }, select: { stock: true, minStock: true } });
-    const totalProducts = allProductsCount.length;
-    const lowStockCount = allProductsCount.filter((p) => p.stock <= p.minStock).length;
+    // Dynamic product and low stock count via fast DB queries
+    const totalProducts = await this.prisma.product.count({ where: { isActive: true } });
+    const lowStockRaw = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock <= min_stock;`
+    ).catch(() => [{ count: 0 }]);
+    const lowStockCount = Number(lowStockRaw[0]?.count || 0);
 
-    // Period's real out-of-pocket expenses
-    const movements = await this.prisma.cashMovement.findMany({
-      where: { createdAt: { gte: today, lte: endOfPeriod }, type: 'EXPENSE' },
-      select: { amount: true }
-    });
-    const supplierPayments = await this.prisma.supplierPayment.findMany({
-      where: { createdAt: { gte: today, lte: endOfPeriod } },
-      select: { amount: true }
-    });
-    const purchases = await this.prisma.purchase.findMany({
-      where: { createdAt: { gte: today, lte: endOfPeriod }, status: { not: 'CANCELLED' } },
-      select: { total: true }
-    });
+    // Period's real out-of-pocket expenses via DB aggregations
+    const [movementsAgg, supplierPaymentsAgg, purchasesAgg] = await Promise.all([
+      this.prisma.cashMovement.aggregate({
+        _sum: { amount: true },
+        where: { createdAt: { gte: today, lte: endOfPeriod }, type: 'EXPENSE' }
+      }),
+      this.prisma.supplierPayment.aggregate({
+        _sum: { amount: true },
+        where: { createdAt: { gte: today, lte: endOfPeriod } }
+      }),
+      this.prisma.purchase.aggregate({
+        _sum: { total: true },
+        where: { createdAt: { gte: today, lte: endOfPeriod }, status: { not: 'CANCELLED' } }
+      })
+    ]);
     const expenses = 
-      movements.reduce((sum, m) => sum + m.amount, 0) +
-      supplierPayments.reduce((sum, p) => sum + p.amount, 0) +
-      purchases.reduce((sum, p) => sum + p.total, 0);
+      (movementsAgg._sum?.amount || 0) +
+      (supplierPaymentsAgg._sum?.amount || 0) +
+      (purchasesAgg._sum?.total || 0);
 
     // Sum of all active client debt balances
     const clientBalanceAgg = await this.prisma.client.aggregate({
@@ -452,9 +642,34 @@ export class SalesService {
 
     const sales = await this.prisma.sale.findMany({
       where: whereClause,
-      include: {
-        client: true,
-        items: { include: { product: { select: { costPrice: true, stock: true } } } }
+      select: {
+        id: true,
+        total: true,
+        createdAt: true,
+        clientId: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            dni: true,
+            phone: true
+          }
+        },
+        items: {
+          select: {
+            productId: true,
+            productName: true,
+            quantity: true,
+            unitPrice: true,
+            total: true,
+            product: {
+              select: {
+                costPrice: true,
+                stock: true
+              }
+            }
+          }
+        }
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -617,7 +832,7 @@ export class SalesService {
   }
 
   async getConsolidatedMetrics(email: string, from?: string, to?: string) {
-    // 1. Get GoPortal (POS) metrics
+    // 1. Get Ventra (POS) metrics
     const posSalesFilter: any = {
       status: 'COMPLETED'
     };
@@ -641,8 +856,11 @@ export class SalesService {
     let posBilling = 0;
     let posCost = 0;
     for (const sale of posSales) {
-      posBilling += sale.total;
       for (const item of sale.items) {
+        if (item.productId === 'VIRTUAL_LOAD_1' || item.productId === 'VIRTUAL_LOAD_2') {
+          continue;
+        }
+        posBilling += item.total;
         posCost += (item.product?.costPrice || 0) * item.quantity;
       }
     }

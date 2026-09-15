@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import api from '../../services/api';
 import { 
   Package, 
@@ -21,10 +22,14 @@ import {
   CheckCircle2,
   XCircle,
   Bookmark,
-  Megaphone
+  Megaphone,
+  Image,
+  Percent
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
+import BulkPriceModal from './BulkPriceModal';
+import GaveteroLabelModal from './GaveteroLabelModal';
 import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
 
@@ -33,8 +38,13 @@ export default function ProductsScreen() {
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [showGaveteroLabels, setShowGaveteroLabels] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [importStatus, setImportStatus] = useState<{
@@ -44,6 +54,7 @@ export default function ProductsScreen() {
     current: number;
     status: string;
     isComplete: boolean;
+    isMinimized?: boolean;
     error: string | null;
     details?: {
       imported: number;
@@ -58,6 +69,7 @@ export default function ProductsScreen() {
     current: 0,
     status: '',
     isComplete: false,
+    isMinimized: false,
     error: null,
     recentItems: []
   });
@@ -66,6 +78,8 @@ export default function ProductsScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [imageFilter, setImageFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [totalCount, setTotalCount] = useState<number>(0);
   const take = 50;
 
   // New States for AI Image search and Bulk actions
@@ -87,23 +101,102 @@ export default function ProductsScreen() {
   const [selectedBulkCategory, setSelectedBulkCategory] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const isLoadingRef = useRef(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const savedScrollTopRef = useRef<number>(0);
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
+
+  const scrollRowToTop = (row: HTMLElement) => {
+    row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        savedScrollTopRef.current = scrollContainerRef.current.scrollTop;
+      }
+    }, 450);
+  };
 
   useEffect(() => {
-    loadProducts();
-    
+    const isAnyModalOpen = showModal || importStatus.show || showImageSyncModal || showBulkModal || showBulkCategoryModal;
+    if (isAnyModalOpen) return;
+
+    // Focus immediately on mount or modal close
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+
+    const handleFocusLoss = (e: MouseEvent) => {
+      const currentModalOpen = showModal || importStatus.show || showImageSyncModal || showBulkModal || showBulkCategoryModal;
+      if (currentModalOpen) return;
+
+      const target = e.target as HTMLElement;
+      const interactiveTags = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'LABEL'];
+      if (interactiveTags.includes(target.tagName) || target.closest('button') || target.closest('a') || target.closest('input')) {
+        return;
+      }
+
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 10);
+    };
+
+    document.addEventListener('click', handleFocusLoss);
+    return () => {
+      document.removeEventListener('click', handleFocusLoss);
+    };
+  }, [showModal, importStatus.show, showImageSyncModal, showBulkModal, showBulkCategoryModal]);
+
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      // If any modal is open, ignore document clicks to prevent unmarking the item
+      if (showModal || showImageSyncModal || showBulkModal || showBulkCategoryModal) {
+        return;
+      }
+      const target = e.target as HTMLElement;
+      // If the clicked element was unmounted (like modal buttons) or is part of a modal layout, do not unmark
+      if (!document.body.contains(target) || target.closest('[role="dialog"]') || target.closest('.fixed')) {
+        return;
+      }
+      if (!target.closest('tbody tr')) {
+        setActiveProductId(null);
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, [showModal, showImageSyncModal, showBulkModal, showBulkCategoryModal]);
+
+  useEffect(() => {
+    if (!showModal && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      const targetScroll = savedScrollTopRef.current;
+      // Wait for React state updates and layout rendering to fully settle
+      const timer = setTimeout(() => {
+        if (container) {
+          container.scrollTop = targetScroll;
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [showModal]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  useEffect(() => {
     wsService.connect();
-    wsService.on('import:progress', (data: any) => {
-      setImportStatus(prev => ({
-        ...prev,
-        progress: data.progress,
-        total: data.total,
-        current: data.current,
-        status: data.status,
-        details: data.details,
-        recentItems: [data.details?.lastItem, ...prev.recentItems].filter(Boolean).slice(0, 5)
-      }));
-    });
+
+    const handleUpdate = () => {
+      if ((window as any).globalImportStatus) {
+        setImportStatus((window as any).globalImportStatus);
+      }
+    };
+    window.addEventListener('import-progress-update', handleUpdate);
 
     wsService.on('sync:images:progress', (data: any) => {
       setImageSyncStatus({
@@ -125,16 +218,83 @@ export default function ProductsScreen() {
     });
 
     return () => {
-      wsService.off('import:progress');
+      window.removeEventListener('import-progress-update', handleUpdate);
       wsService.off('sync:images:progress');
     };
   }, []);
 
-  const loadProducts = async (isInitial = true) => {
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleGlobalKeyDown = async (e: KeyboardEvent) => {
+      if (showModal || importStatus.show || showImageSyncModal || showBulkModal || showBulkCategoryModal) {
+        buffer = '';
+        return;
+      }
+
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        buffer = '';
+        return;
+      }
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime;
+      lastKeyTime = now;
+      const isScannerFast = timeDiff <= 50;
+
+      let char = '';
+      if (e.code.startsWith('Digit')) {
+        char = e.code.slice(5);
+      } else if (e.code.startsWith('Key')) {
+        char = e.code.slice(3).toLowerCase();
+      }
+
+      if (char && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (isScannerFast) {
+          e.preventDefault();
+          e.stopPropagation();
+          buffer += char;
+          return;
+        } else {
+          buffer = char;
+        }
+      }
+
+      if (e.key === 'Enter') {
+        if (buffer.length >= 2) {
+          e.preventDefault();
+          e.stopPropagation();
+          const scannedCode = buffer;
+          buffer = '';
+          
+          try {
+            const { data } = await api.get(`/products/barcode/${scannedCode}`);
+            setSelectedProduct(data);
+            setShowModal(true);
+          } catch (err) {
+            setSelectedProduct({ barcode: scannedCode });
+            setShowModal(true);
+          }
+        } else {
+          buffer = '';
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showModal, importStatus.show, showImageSyncModal, showBulkModal, showBulkCategoryModal]);
+
+  const loadProducts = async (isInitial = true, search = debouncedSearchQuery) => {
     if (!isInitial && isLoadingRef.current) return;
     isLoadingRef.current = true;
 
     if (isInitial) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
       setIsLoading(true);
       setProducts([]);
       setSkip(0);
@@ -142,17 +302,32 @@ export default function ProductsScreen() {
     } else {
       setIsLoadingMore(true);
     }
+
+    const currentSignal = abortControllerRef.current?.signal;
     
     try {
       const currentSkip = isInitial ? 0 : skip + take;
       const { data } = await api.get('/products', {
+        signal: currentSignal,
         params: { 
-          search: searchQuery,
+          search: search || undefined,
           categoryId: selectedCategory || undefined,
+          hasImage: imageFilter === 'with' ? 'true' : imageFilter === 'without' ? 'false' : undefined,
           skip: currentSkip,
           take
         }
       });
+      
+      // Fetch total count matching current filters
+      const countRes = await api.get('/products/count', {
+        signal: currentSignal,
+        params: {
+          search: search || undefined,
+          categoryId: selectedCategory || undefined,
+          hasImage: imageFilter === 'with' ? 'true' : imageFilter === 'without' ? 'false' : undefined,
+        }
+      });
+      setTotalCount(countRes.data);
       
       if (isInitial) {
         setProducts(data);
@@ -162,12 +337,42 @@ export default function ProductsScreen() {
       
       setSkip(currentSkip);
       setHasMore(data.length === take);
-    } catch (err) {
+    } catch (err: any) {
+      if (axios.isCancel(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+        return;
+      }
       toast.error('Error al cargar productos');
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
       isLoadingRef.current = false;
+    }
+  };
+
+  const handleProductSuccess = (savedProduct?: any) => {
+    if (savedProduct) {
+      setProducts(prev => {
+        const idx = prev.findIndex(p => String(p.id) === String(savedProduct.id));
+        if (idx !== -1) {
+          const updatedList = [...prev];
+          updatedList[idx] = { ...updatedList[idx], ...savedProduct };
+          return updatedList;
+        } else {
+          loadProducts(true);
+          return prev;
+        }
+      });
+      if (scrollContainerRef.current) {
+        const container = scrollContainerRef.current;
+        const targetScroll = savedScrollTopRef.current;
+        setTimeout(() => {
+          if (container) {
+            container.scrollTop = targetScroll;
+          }
+        }, 150);
+      }
+    } else {
+      loadProducts(true);
     }
   };
 
@@ -181,12 +386,30 @@ export default function ProductsScreen() {
   };
 
   useEffect(() => {
-    loadProducts(true);
-  }, [searchQuery, selectedCategory]);
+    loadProducts(true, debouncedSearchQuery);
+  }, [debouncedSearchQuery, selectedCategory, imageFilter]);
 
   useEffect(() => {
     loadCategories();
   }, []);
+
+  // Infinite scroll: observes the sentinel row and requests the next page.
+  // Re-created whenever hasMore/isLoadingMore change so it always calls the
+  // current loadProducts (which closes over the latest `skip`) instead of a
+  // stale closure from whichever render first attached the observer.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || isLoadingMore) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        loadProducts(false);
+      }
+    }, { threshold: 0.1 });
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, products]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
@@ -210,30 +433,42 @@ export default function ProductsScreen() {
     const formData = new FormData();
     formData.append('file', file);
 
-    setImportStatus({
+    const initialStatus = {
       show: true,
       progress: 0,
       total: 0,
       current: 0,
       status: 'Iniciando importación...',
       isComplete: false,
+      isMinimized: false,
       error: null,
       recentItems: []
-    });
+    };
+    (window as any).globalImportStatus = initialStatus;
+    setImportStatus(initialStatus);
+    window.dispatchEvent(new CustomEvent('import-progress-update'));
 
     try {
       await api.post('/products/import', formData);
-      setImportStatus(prev => ({ ...prev, isComplete: true, status: '¡Importación finalizada con éxito!' }));
+      const completedStatus = {
+        ...((window as any).globalImportStatus || {}),
+        isComplete: true,
+        progress: 100,
+        status: '¡Importación finalizada con éxito!'
+      };
+      (window as any).globalImportStatus = completedStatus;
+      setImportStatus(completedStatus);
+      window.dispatchEvent(new CustomEvent('import-progress-update'));
       loadProducts();
-      setTimeout(() => {
-        setImportStatus(prev => ({ ...prev, show: false }));
-      }, 3000);
     } catch (err: any) {
-      setImportStatus(prev => ({ 
-        ...prev, 
+      const errorStatus = {
+        ...((window as any).globalImportStatus || {}),
         error: err.response?.data?.message || 'Error al importar archivo',
         status: 'Error en la importación'
-      }));
+      };
+      (window as any).globalImportStatus = errorStatus;
+      setImportStatus(errorStatus);
+      window.dispatchEvent(new CustomEvent('import-progress-update'));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -430,29 +665,54 @@ export default function ProductsScreen() {
   return (
     <div className="h-full flex flex-col gap-4 p-2 overflow-hidden">
       {/* Search and Global Filters */}
-      <div className="bg-white p-5 rounded-xl border border-slate-400 space-y-4">
+      <div className="card p-5 space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+            {isLoading || searchQuery !== debouncedSearchQuery ? (
+              <Loader2 className="absolute left-3.5 top-[13px] w-4 h-4 text-rose-500 animate-spin" />
+            ) : (
+              <Search className="absolute left-3.5 top-[13px] w-4 h-4 text-slate-600" />
+            )}
             <input 
+              ref={searchInputRef}
               type="text" 
-              placeholder="Nombre o código... (Enter para editar)" 
+              placeholder="Nombre o código... (Enter para buscar/editar)" 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={async (e) => {
-                if (e.key === 'Enter' && searchQuery) {
-                  try {
-                    const { data } = await api.get(`/products/barcode/${searchQuery}`);
-                    if (data) {
-                      setSelectedProduct(data);
+                if (e.code && e.code.startsWith('Digit') && e.shiftKey) {
+                  e.preventDefault();
+                  const digit = e.code.slice(5);
+                  setSearchQuery(prev => prev + digit);
+                  return;
+                }
+                if (e.code && e.code.startsWith('Numpad') && e.code.length === 7 && e.shiftKey) {
+                  e.preventDefault();
+                  const digit = e.code.slice(6);
+                  setSearchQuery(prev => prev + digit);
+                  return;
+                }
+                if (e.key === 'Enter') {
+                  const trimmed = searchQuery.trim();
+                  if (!trimmed) return;
+                  if (/^\d{5,}$/.test(trimmed)) {
+                    try {
+                      const { data } = await api.get(`/products/barcode/${trimmed}`);
+                      if (data) {
+                        setSelectedProduct(data);
+                        setShowModal(true);
+                        setSearchQuery('');
+                        return;
+                      }
+                    } catch (err) {
+                      setSelectedProduct({ barcode: trimmed });
                       setShowModal(true);
                       setSearchQuery('');
+                      return;
                     }
-                  } catch (err) {
-                    // Not a barcode or not found - automatically open modal to create with this barcode
-                    setSelectedProduct({ barcode: searchQuery });
-                    setShowModal(true);
-                    setSearchQuery('');
+                  } else {
+                    e.preventDefault();
+                    setDebouncedSearchQuery(trimmed);
                   }
                 }
               }}
@@ -460,17 +720,29 @@ export default function ProductsScreen() {
             />
           </div>
           <div className="flex items-center justify-between md:justify-start gap-2">
-            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-400">
-               <Filter className="w-4 h-4 text-slate-600 ml-2" />
+            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
+               <Filter className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                <select 
                  value={selectedCategory || ''}
                  onChange={(e) => setSelectedCategory(e.target.value || null)}
-                 className="bg-transparent text-xs font-medium text-slate-600 py-1.5 pr-4 outline-none cursor-pointer w-full"
+                 className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
                >
                  <option value="">Todas las categorías</option>
                  {categories.filter(c => c._count?.products > 0).map(cat => (
                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                  ))}
+               </select>
+            </div>
+            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
+               <Image className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+               <select 
+                 value={imageFilter}
+                 onChange={(e) => setImageFilter(e.target.value as any)}
+                 className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
+               >
+                 <option value="all">Todas las fotos</option>
+                 <option value="with">Con imagen</option>
+                 <option value="without">Sin imagen</option>
                </select>
             </div>
             <button className="px-4 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-all flex items-center gap-2">
@@ -494,6 +766,9 @@ export default function ProductsScreen() {
                 <ListIcon className="w-4 h-4" />
               </button>
            </div>
+            <div className="text-xs font-bold text-slate-800 bg-slate-100 px-3 py-2 rounded-lg border border-slate-300">
+               Total: {totalCount} productos
+            </div>
              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
               <input 
                 type="file" 
@@ -510,10 +785,26 @@ export default function ProductsScreen() {
               </button>
               <button 
                 onClick={() => { navigate('/marketing'); }}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[11px] font-bold hover:from-purple-700 hover:to-indigo-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-rose-600 text-white text-[11px] font-bold hover:from-purple-700 hover:to-rose-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
               >
                   <Megaphone className="w-3.5 h-3.5" /> <span>Marketing & Etiquetas</span>
               </button>
+              <button 
+                onClick={() => setShowBulkPriceModal(true)}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
+                title="Actualización masiva de precios por porcentaje"
+              >
+                  <Percent className="w-3.5 h-3.5" /> <span>Ajuste Masivo %</span>
+              </button>
+              {localStorage.getItem('business_type') === 'FERRETERIA' && (
+                <button 
+                  onClick={() => setShowGaveteroLabels(true)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
+                  title="Imprimir etiquetas para cajoneras y estanterías"
+                >
+                    <Tag className="w-3.5 h-3.5" /> <span>Etiquetas Gavetero</span>
+                </button>
+              )}
 
 
 
@@ -542,12 +833,12 @@ export default function ProductsScreen() {
                   <button 
                     onClick={handleAssignImages}
                     disabled={isAssigningImages}
-                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-semibold hover:bg-indigo-100 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[11px] font-semibold hover:bg-rose-100 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
                   >
                       {isAssigningImages ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
                       ) : (
-                        <Package className="w-3.5 h-3.5 text-indigo-500" />
+                        <Package className="w-3.5 h-3.5 text-rose-500" />
                       )}
                       <span>Asignar Fotos</span>
                   </button>
@@ -565,7 +856,7 @@ export default function ProductsScreen() {
       </div>
 
       {/* Table Area */}
-      <div className="flex-1 bg-white rounded-xl border border-slate-400 flex flex-col overflow-hidden relative">
+      <div className="flex-1 card flex flex-col overflow-hidden relative">
         {isLoading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] z-10 flex items-center justify-center">
              <div className="flex flex-col items-center gap-3">
@@ -575,7 +866,7 @@ export default function ProductsScreen() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto custom-scrollbar">
+        <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar">
           {filteredProducts.length > 0 ? (
             <table className="w-full min-w-[850px] text-left table-fixed">
               <thead className="sticky top-0 bg-slate-50 border-b border-slate-400 z-20">
@@ -588,12 +879,12 @@ export default function ProductsScreen() {
                       className="w-4 h-4 rounded text-rose-600 border-slate-300 focus:ring-rose-500 cursor-pointer"
                     />
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[27%]">Producto</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Categoría</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Marca</th>
+                  <th className="px-4 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[30%]">Producto</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider w-[17%]">Categoría</th>
                   <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Stock</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Costo</th>
-                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[10%]">Venta</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[9%]">Costo U.</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[9%]">Costo Pack</th>
+                  <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[9%]">Venta</th>
                   <th className="px-3 py-3 text-[10px] font-semibold text-slate-700 uppercase tracking-wider text-center w-[11%]">Margen</th>
                 </tr>
               </thead>
@@ -604,14 +895,28 @@ export default function ProductsScreen() {
                   return (
                     <tr 
                       key={p.id} 
-                      onClick={() => toggleSelectProduct(p.id)}
-                      className={`hover:bg-slate-50 transition-colors group cursor-pointer ${isSelected ? 'bg-rose-50/30' : ''}`}
+                      onClick={(e) => {
+                        scrollRowToTop(e.currentTarget as HTMLElement);
+                        setActiveProductId(p.id);
+                        setSelectedProduct(p);
+                        setShowModal(true);
+                      }}
+                      style={{ scrollMarginTop: '48px' }}
+                      className={`hover:bg-slate-50 transition-all group cursor-pointer ${activeProductId === p.id ? 'bg-rose-50/70 shadow-sm' : isSelected ? 'bg-rose-50/30' : ''}`}
                     >
-                      <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className={`px-3 py-3 text-center transition-all ${activeProductId === p.id ? 'border-l-4 border-l-rose-600' : 'border-l-4 border-l-transparent'}`} onClick={(e) => {
+                        e.stopPropagation();
+                        const row = e.currentTarget.closest('tr');
+                        if (row) {
+                          scrollRowToTop(row);
+                        }
+                        setActiveProductId(p.id);
+                        toggleSelectProduct(p.id);
+                      }}>
                         <input 
                           type="checkbox" 
                           checked={isSelected}
-                          onChange={() => toggleSelectProduct(p.id)}
+                          onChange={() => {}} // Handled by td onClick to prevent double triggering
                           className="w-4 h-4 rounded text-rose-600 border-slate-300 focus:ring-rose-500 cursor-pointer"
                         />
                       </td>
@@ -621,6 +926,8 @@ export default function ProductsScreen() {
                               <img 
                                 src={p.imageUrl || './product-placeholder.png'} 
                                 alt="" 
+                                loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover" 
                                 onError={(e) => { 
                                   (e.target as HTMLImageElement).src = './product-placeholder.png'; 
@@ -638,11 +945,6 @@ export default function ProductsScreen() {
                            <Tag className="w-3 h-3 text-rose-400 shrink-0" /> {p.category ? (p.category.parentCategory ? `${p.category.parentCategory.name} > ${p.category.name}` : p.category.name) : 'Varios'}
                          </span>
                       </td>
-                      <td className="px-3 py-3">
-                         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis">
-                           <Bookmark className="w-3 h-3 text-slate-600 shrink-0" /> {p.brand?.name || 'Varios'}
-                         </span>
-                      </td>
                       <td className="px-3 py-3 text-center">
                          <div className="inline-flex flex-col items-center">
                             <span className={`text-sm font-bold ${p.stock <= p.minStock ? 'text-red-600' : 'text-slate-800'}`}>
@@ -652,10 +954,13 @@ export default function ProductsScreen() {
                          </div>
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
-                         $ {p.costPrice.toLocaleString()}
+                         $ {p.costPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
+                         {p.presentationType === 'PACK' ? `$ ${(p.costPrice * (p.unitsPerPack || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
                       </td>
                       <td className="px-3 py-3 text-center">
-                         <span className="text-sm font-bold text-slate-800 whitespace-nowrap">$ {p.salePrice.toLocaleString()}</span>
+                         <span className="text-sm font-bold text-slate-800 whitespace-nowrap">$ {p.salePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
                       <td className="px-3 py-3 text-center">
                          <div className="flex items-center justify-center gap-2">
@@ -664,7 +969,16 @@ export default function ProductsScreen() {
                             </span>
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowModal(true); }}
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    const row = e.currentTarget.closest('tr');
+                                    if (row) {
+                                      scrollRowToTop(row);
+                                    }
+                                    setActiveProductId(p.id);
+                                    setSelectedProduct(p); 
+                                    setShowModal(true); 
+                                  }}
                                   className="p-1.5 rounded-md text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-all"
                                >
                                   <Edit2 className="w-3.5 h-3.5" />
@@ -682,17 +996,8 @@ export default function ProductsScreen() {
                   );
                 })}
                 {hasMore && (
-                  <tr ref={(el) => {
-                    if (!el || isLoadingMore) return;
-                    const observer = new IntersectionObserver((entries) => {
-                      if (entries[0].isIntersecting && hasMore) {
-                        setIsLoadingMore(true);
-                        loadProducts(false);
-                      }
-                    }, { threshold: 0.1 });
-                    observer.observe(el);
-                  }}>
-                    <td colSpan={6} className="py-8 text-center">
+                  <tr ref={sentinelRef}>
+                    <td colSpan={9} className="py-8 text-center">
                        <div className="flex items-center justify-center gap-2 text-slate-600 text-xs">
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-500" /> {isLoadingMore ? 'Cargando más productos...' : 'Desliza para cargar más'}
                        </div>
@@ -721,20 +1026,17 @@ export default function ProductsScreen() {
         </div>
       </div>
 
-      {/* Modals */}
-      <AnimatePresence>
         {showModal && (
           <ProductModal 
             onClose={() => setShowModal(false)} 
-            onSuccess={loadProducts}
+            onSuccess={handleProductSuccess}
             product={selectedProduct}
           />
         )}
-      </AnimatePresence>
 
       {/* Import Progress Modal */}
       <AnimatePresence>
-        {importStatus.show && (
+        {importStatus.show && !importStatus.isMinimized && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -836,16 +1138,39 @@ export default function ProductsScreen() {
                   </div>
                 )}
 
-                <button 
-                  onClick={() => setImportStatus(prev => ({ ...prev, show: false }))}
-                  disabled={!importStatus.isComplete && !importStatus.error}
-                  className={`w-full py-3 rounded-lg text-sm font-semibold transition-all
-                    ${(importStatus.isComplete || importStatus.error) 
-                      ? 'bg-rose-600 hover:bg-rose-700 text-white' 
-                      : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
-                >
-                  {importStatus.isComplete ? 'Finalizar' : importStatus.error ? 'Cerrar y Reintentar' : 'Procesando...'}
-                </button>
+                {(!importStatus.isComplete && !importStatus.error) ? (
+                  <div className="flex gap-3 w-full">
+                    <button 
+                      onClick={() => {
+                        const updated = { ...((window as any).globalImportStatus || {}), isMinimized: true };
+                        (window as any).globalImportStatus = updated;
+                        setImportStatus(updated);
+                        window.dispatchEvent(new CustomEvent('import-progress-update'));
+                      }}
+                      className="flex-1 py-3 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all cursor-pointer border border-slate-300 active:scale-[0.98]"
+                    >
+                      Minimizar a Segundo Plano
+                    </button>
+                    <button 
+                      disabled={true}
+                      className="flex-1 py-3 rounded-lg text-xs font-semibold bg-rose-100 text-rose-500 cursor-not-allowed"
+                    >
+                      Procesando...
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      const updated = { ...((window as any).globalImportStatus || {}), show: false };
+                      (window as any).globalImportStatus = updated;
+                      setImportStatus(updated);
+                      window.dispatchEvent(new CustomEvent('import-progress-update'));
+                    }}
+                    className="w-full py-3 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer active:scale-[0.98] transition-all"
+                  >
+                    {importStatus.isComplete ? 'Finalizar' : 'Cerrar y Reintentar'}
+                  </button>
+                )}
               </div>
             </motion.div>
         
@@ -869,21 +1194,21 @@ export default function ProductsScreen() {
               className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-400 p-8 text-center space-y-6"
             >
               <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border-2 border-dashed border-indigo-300 animate-spin [animation-duration:8s]"></div>
-                <div className="absolute inset-2 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
-                  <Package className="w-8 h-8 animate-pulse text-indigo-600" />
+                <div className="absolute inset-0 rounded-full border-2 border-dashed border-rose-300 animate-spin [animation-duration:8s]"></div>
+                <div className="absolute inset-2 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                  <Package className="w-8 h-8 animate-pulse text-rose-600" />
                 </div>
               </div>
 
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-slate-800">Buscador de Fotos por IA</h3>
-                <p className="text-xs text-slate-700">Asignando imágenes de alta precisión <span className="text-indigo-500 font-bold">en base blanca</span></p>
+                <p className="text-xs text-slate-700">Asignando imágenes de alta precisión <span className="text-rose-500 font-bold">en base blanca</span></p>
               </div>
 
               <div className="space-y-2">
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                   <motion.div 
-                    className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full"
+                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
                     initial={{ width: 0 }}
                     animate={{ width: `${imageSyncStatus.progress}%` }}
                     transition={{ duration: 0.3 }}
@@ -891,11 +1216,11 @@ export default function ProductsScreen() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-slate-700 font-semibold">
                   <span>{imageSyncStatus.current} de {imageSyncStatus.total} productos</span>
-                  <span className="text-indigo-650 font-bold">{imageSyncStatus.progress}%</span>
+                  <span className="text-rose-650 font-bold">{imageSyncStatus.progress}%</span>
                 </div>
-                <div className="flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-100 p-2.5 rounded-xl">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
-                  <p className="text-xs font-semibold text-indigo-700 truncate max-w-full">
+                <div className="flex items-center justify-center gap-1.5 bg-rose-50 border border-rose-100 p-2.5 rounded-xl">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                  <p className="text-xs font-semibold text-rose-700 truncate max-w-full">
                     {imageSyncStatus.status}
                   </p>
                 </div>
@@ -921,7 +1246,7 @@ export default function ProductsScreen() {
               <div className="flex flex-col gap-2 pt-2">
                 <button
                   onClick={() => setShowImageSyncModal(false)}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all active:scale-[0.98] cursor-pointer"
+                  className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all active:scale-[0.98] cursor-pointer"
                 >
                   Minimizar (Seguir en segundo plano)
                 </button>
@@ -941,10 +1266,10 @@ export default function ProductsScreen() {
       {isAssigningImages && !showImageSyncModal && (
         <div 
           onClick={() => setShowImageSyncModal(true)}
-          className="fixed bottom-6 right-6 z-[90] bg-white border border-indigo-200 rounded-xl p-4 shadow-2xl flex items-center gap-4 cursor-pointer hover:bg-indigo-50 transition-all select-none animate-bounce"
+          className="fixed bottom-6 right-6 z-[90] bg-white border border-rose-200 rounded-xl p-4 shadow-2xl flex items-center gap-4 cursor-pointer hover:bg-rose-50 transition-all select-none animate-bounce"
         >
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-150 flex items-center justify-center text-indigo-600">
-            <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
+          <div className="w-10 h-10 rounded-lg bg-rose-50 border border-rose-150 flex items-center justify-center text-rose-600">
+            <Loader2 className="w-5 h-5 animate-spin text-rose-600 shrink-0" />
           </div>
           <div className="text-left pr-2">
             <p className="text-xs font-bold text-slate-800">Cargando fotos con IA...</p>
@@ -993,10 +1318,10 @@ export default function ProductsScreen() {
 
                   <button 
                     onClick={() => { setBulkAction('remove_images'); setConfirmInput(''); }}
-                    className="w-full p-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-left transition-all active:scale-[0.98] cursor-pointer"
+                    className="w-full p-4 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-left transition-all active:scale-[0.98] cursor-pointer"
                   >
-                    <p className="text-xs font-extrabold text-indigo-850">Remover imágenes de todos los productos</p>
-                    <p className="text-[10px] text-indigo-600 font-semibold mt-1">Restablece todas las fotos cargadas en los productos del catálogo.</p>
+                    <p className="text-xs font-extrabold text-rose-850">Remover imágenes de todos los productos</p>
+                    <p className="text-[10px] text-rose-600 font-semibold mt-1">Restablece todas las fotos cargadas en los productos del catálogo.</p>
                   </button>
 
                   <button 
@@ -1097,7 +1422,7 @@ export default function ProductsScreen() {
               <div className="pt-4 border-t border-slate-200 flex gap-3">
                 <button 
                   onClick={handleBulkUpdateCategory}
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all cursor-pointer"
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all cursor-pointer"
                 >
                   Aplicar Cambios
                 </button>
@@ -1132,9 +1457,9 @@ export default function ProductsScreen() {
             <div className="flex items-center gap-2">
               <button 
                 onClick={handleRemoveImagesForSelected}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-650 hover:bg-indigo-700 active:scale-95 text-[11px] font-bold text-white transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-650 hover:bg-rose-700 active:scale-95 text-[11px] font-bold text-white transition-all cursor-pointer"
               >
-                <Package className="w-3.5 h-3.5 text-indigo-300" />
+                <Package className="w-3.5 h-3.5 text-rose-300" />
                 <span>Quitar Imágenes</span>
               </button>
               <button 
@@ -1161,6 +1486,20 @@ export default function ProductsScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showBulkPriceModal && (
+        <BulkPriceModal
+          onClose={() => setShowBulkPriceModal(false)}
+          onSuccess={() => loadProducts(true)}
+        />
+      )}
+
+      {showGaveteroLabels && (
+        <GaveteroLabelModal
+          products={products}
+          onClose={() => setShowGaveteroLabels(false)}
+        />
+      )}
     </div>
   );
 }

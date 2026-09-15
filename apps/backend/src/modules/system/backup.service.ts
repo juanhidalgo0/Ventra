@@ -1,8 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Inject, forwardRef } from '@nestjs/common';
+import { LicenseService } from '../auth/license.service';
 import { Cron, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import { PrismaService } from '../../database/prisma.service';
 
 interface BackupSettings {
@@ -18,7 +20,8 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private schedulerRegistry: SchedulerRegistry,
-    private prismaService: PrismaService
+    private prismaService: PrismaService,
+    @Inject(forwardRef(() => LicenseService)) private licenseService: LicenseService
   ) {
     // Almacenar backups en la raíz del proyecto para máxima seguridad y fácil acceso
     this.backupDir = path.join(process.cwd(), 'backups');
@@ -49,7 +52,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     
     // Si la ruta es relativa, la resolvemos desde apps/backend/prisma
     if (!path.isAbsolute(cleanPath)) {
-      cleanPath = path.join(process.cwd(), 'prisma', cleanPath);
+      cleanPath = path.resolve(__dirname, '../../../prisma', cleanPath);
     }
     
     return path.normalize(cleanPath);
@@ -142,7 +145,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     // Checkpoint SQLite WAL first to merge all pending transactions into the main database file
     try {
       console.log('[BackupService] Ejecutando checkpoint de SQLite para consolidar el archivo WAL...');
-      await this.prismaService.$executeRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
+      await this.prismaService.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
     } catch (err: any) {
       console.warn('[BackupService] No se pudo hacer checkpoint de WAL:', err.message);
     }
@@ -320,35 +323,126 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // 2. Disconnect Prisma
+      // 2. Force SQLite to commit and flush all WAL transactions to the database file before disconnecting
+      try {
+        console.log('[BackupService] Forzando checkpoint de SQLite (wal_checkpoint TRUNCATE)...');
+        await this.prismaService.$executeRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
+      } catch (walErr: any) {
+        console.warn('[BackupService] Advertencia al ejecutar wal_checkpoint:', walErr.message);
+      }
+
+      // 3. Disconnect Prisma
       console.log('[BackupService] Desconectando Prisma antes de restaurar...');
       await this.prismaService.$disconnect();
 
-      // 3. Wait a brief moment to ensure all locks are released
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // 4. Wait a brief moment to ensure all file locks are released by OS
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // 4. Overwrite active database file
+      // Helper function to safely delete locked SQLite transaction files with retries.
+      // On Windows, a -shm file stays memory-mapped (and therefore undeletable) for a
+      // beat after $disconnect() resolves, even though the native handle is on its way
+      // out — the old fixed 800ms/750ms budget wasn't always enough. If a stale -wal/-shm
+      // from the PREVIOUS database generation survives next to the freshly-copied file,
+      // SQLite reads it as a mismatched WAL index and reports "database disk image is
+      // malformed" on the very next query — silently corrupting the restore. So this now
+      // retries for much longer, and — critically — the caller must treat a failure to
+      // delete as fatal and abort rather than proceeding to overwrite the live database.
+      const deleteFileSafe = async (filePath: string): Promise<boolean> => {
+        if (!fs.existsSync(filePath)) return true;
+        for (let attempt = 1; attempt <= 40; attempt++) {
+          try {
+            fs.unlinkSync(filePath);
+            console.log(`[BackupService] Archivo de transacción eliminado con éxito: ${filePath}`);
+            return true;
+          } catch (err: any) {
+            if (attempt === 40) {
+              console.error(`[BackupService] No se pudo eliminar ${filePath} tras 40 intentos: ${err.message}`);
+              return false;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+        }
+        return false;
+      };
+
+      // 5. Clean up old SQLite WAL, SHM and journal files before copying. This MUST
+      // succeed — copying a new .db file while a stale -wal/-shm from the old one is
+      // still sitting next to it is exactly what corrupts the database (see above).
+      const preCleanOk = [
+        await deleteFileSafe(`${dbPath}-wal`),
+        await deleteFileSafe(`${dbPath}-shm`),
+        await deleteFileSafe(`${dbPath}-journal`),
+      ].every(Boolean);
+
+      if (!preCleanOk) {
+        throw new Error(
+          'No se pudieron liberar los archivos temporales de la base de datos actual (-wal/-shm). ' +
+          'Para evitar corromper los datos, cerrá completamente la aplicación, volvé a abrirla, y probá restaurar el backup de nuevo.'
+        );
+      }
+
+      // 6. Overwrite active database file
       console.log(`[BackupService] Restaurando base de datos desde ${backupFilePath} hacia ${dbPath}...`);
-      
-      // Clean up SQLite WAL and journal files to prevent database corruption on replace
-      const walPath = `${dbPath}-wal`;
-      const shmPath = `${dbPath}-shm`;
-      const journalPath = `${dbPath}-journal`;
-      if (fs.existsSync(walPath)) {
-        try { fs.unlinkSync(walPath); } catch {}
-      }
-      if (fs.existsSync(shmPath)) {
-        try { fs.unlinkSync(shmPath); } catch {}
-      }
-      if (fs.existsSync(journalPath)) {
-        try { fs.unlinkSync(journalPath); } catch {}
-      }
-
       fs.copyFileSync(backupFilePath, dbPath);
 
-      // 5. Reconnect Prisma
-      console.log('[BackupService] Reconectando Prisma...');
-      await this.prismaService.$connect();
+      // Clean up any copied WAL/SHM if the backup file directory had them
+      await deleteFileSafe(`${dbPath}-wal`);
+      await deleteFileSafe(`${dbPath}-shm`);
+      await deleteFileSafe(`${dbPath}-journal`);
+
+      // 7. Run prisma db push to ensure database schema matches current model (only in development)
+      try {
+        const parts = ['..', '..', '..', 'node_modules', 'prisma', 'build', 'index.js'];
+        const prismaCliPath = path.resolve(__dirname, ...parts);
+        if (fs.existsSync(prismaCliPath)) {
+          console.log('[BackupService] Ejecutando prisma db push para sincronizar esquema de la base de datos importada...');
+          execSync(`node "${prismaCliPath}" db push --accept-data-loss --skip-generate`, {
+            cwd: path.resolve(__dirname, '../../..'),
+            stdio: 'inherit'
+          });
+        } else {
+          console.log('[BackupService] Producción detectada (Prisma CLI ausente). Omitiendo db push en restauración.');
+        }
+      } catch (err: any) {
+        console.error('[BackupService] Error al sincronizar esquema (db push) tras restauración:', err.message);
+      }
+
+      // 8. Reconnect Prisma with fresh connection pool
+      console.log('[BackupService] Reconectando Prisma para cargar la nueva base de datos...');
+      try {
+        await this.prismaService.$disconnect();
+      } catch (discErr: any) {
+        console.warn('[BackupService] Advertencia al desconectar Prisma antes de reconexión:', discErr.message);
+      }
+      (this.prismaService as any).initPromise = null;
+      await this.prismaService.ensureInitialized();
+
+      // 9. Verify database integrity
+      try {
+        const integrity: any = await this.prismaService.$queryRawUnsafe('PRAGMA integrity_check;');
+        console.log('[BackupService] Verificación de integridad SQLite:', JSON.stringify(integrity));
+      } catch (checkErr: any) {
+        console.warn('[BackupService] Advertencia en check de integridad:', checkErr.message);
+      }
+
+      // 10. Restore WAL mode for maximum database write performance
+      try {
+        console.log('[BackupService] Restableciendo modo WAL para rendimiento de escritura...');
+        await this.prismaService.$executeRawUnsafe('PRAGMA journal_mode=WAL;');
+      } catch (walErr: any) {
+        console.warn('[BackupService] No se pudo restablecer journal_mode a WAL:', walErr.message);
+      }
+
+      // 11. Automatically sync and re-verify the license for the current machine
+      try {
+        console.log('[BackupService] Sincronizando licencia para esta PC tras restauración...');
+        await this.licenseService.syncLicenseEntry();
+        await this.licenseService.triggerOnlineCheck();
+      } catch (err: any) {
+        console.warn('[BackupService] Error al sincronizar licencia post-restauración:', err.message);
+      }
+
+      console.log('[BackupService] Base de datos restaurada y reconectada con éxito. Servidor listo.');
 
       return {
         success: true,

@@ -68,10 +68,60 @@ export default function CashRegisterScreen() {
   // Calculate session totals
   const salesTotal = session?.sales?.reduce((s: number, v: any) => s + v.total, 0) || 0;
   const salesCount = session?.sales?.length || 0;
-  const cashPayments = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'CASH').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
-  const cloverPayments = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'CLOVER').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
-  const mpPayments = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'MERCADOPAGO').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
-  const debtPayments = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'DEBT').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
+
+  // Calculate VIRTUAL1 and VIRTUAL2 sales breakdown
+  const virtual1SalesBreakdown = session?.sales?.reduce((acc: Record<string, number>, v: any) => {
+    let saleVirtualTotal = 0;
+    if (v.items) {
+      for (const item of v.items) {
+        if (item.productId === 'VIRTUAL_LOAD_1' || item.product?.barcode === 'VIRTUAL1') {
+          saleVirtualTotal += item.total || (item.unitPrice * item.quantity) || 0;
+        }
+      }
+    }
+    if (saleVirtualTotal > 0) {
+      const saleTotal = v.total || v.totalAmount || 0;
+      for (const p of v.payments || []) {
+        const proportion = saleTotal > 0 ? (p.amount / saleTotal) : 0;
+        const virtualPaymentAmount = saleVirtualTotal * proportion;
+        acc[p.method] = (acc[p.method] || 0) + virtualPaymentAmount;
+      }
+    }
+    return acc;
+  }, { CASH: 0, CLOVER: 0, MERCADOPAGO: 0, DEBT: 0 }) || { CASH: 0, CLOVER: 0, MERCADOPAGO: 0, DEBT: 0 };
+
+  const virtual2SalesBreakdown = session?.sales?.reduce((acc: Record<string, number>, v: any) => {
+    let saleVirtualTotal = 0;
+    if (v.items) {
+      for (const item of v.items) {
+        if (item.productId === 'VIRTUAL_LOAD_2' || item.product?.barcode === 'VIRTUAL2') {
+          saleVirtualTotal += item.total || (item.unitPrice * item.quantity) || 0;
+        }
+      }
+    }
+    if (saleVirtualTotal > 0) {
+      const saleTotal = v.total || v.totalAmount || 0;
+      for (const p of v.payments || []) {
+        const proportion = saleTotal > 0 ? (p.amount / saleTotal) : 0;
+        const virtualPaymentAmount = saleVirtualTotal * proportion;
+        acc[p.method] = (acc[p.method] || 0) + virtualPaymentAmount;
+      }
+    }
+    return acc;
+  }, { CASH: 0, CLOVER: 0, MERCADOPAGO: 0, DEBT: 0 }) || { CASH: 0, CLOVER: 0, MERCADOPAGO: 0, DEBT: 0 };
+
+  const cashPaymentsBase = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'CASH').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
+  const cashPayments = cashPaymentsBase - (virtual1SalesBreakdown['CASH'] || 0) - (virtual2SalesBreakdown['CASH'] || 0);
+
+  const cloverPaymentsBase = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'CLOVER').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
+  const cloverPayments = cloverPaymentsBase - (virtual1SalesBreakdown['CLOVER'] || 0) - (virtual2SalesBreakdown['CLOVER'] || 0);
+
+  const mpPaymentsBase = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'MERCADOPAGO').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
+  const mpPayments = mpPaymentsBase - (virtual1SalesBreakdown['MERCADOPAGO'] || 0) - (virtual2SalesBreakdown['MERCADOPAGO'] || 0);
+
+  const debtPaymentsBase = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'DEBT').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
+  const debtPayments = debtPaymentsBase - (virtual1SalesBreakdown['DEBT'] || 0) - (virtual2SalesBreakdown['DEBT'] || 0);
+
   const expenses = session?.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0;
   const withdrawals = session?.cashMovements?.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0;
   const expectedCash = (session?.openingAmount || 0) + cashPayments - expenses - withdrawals;
@@ -86,7 +136,7 @@ export default function CashRegisterScreen() {
       {!session ? (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md mt-10 mx-auto">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4"><Lock className="w-8 h-8 text-indigo-500" /></div>
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto mb-4"><Lock className="w-8 h-8 text-rose-500" /></div>
             <h2 className="text-lg font-semibold text-gray-700 mb-1">Abrir Caja</h2>
             <p className="text-sm text-gray-400">Ingresá los datos para iniciar la sesión</p>
           </div>
@@ -147,9 +197,9 @@ export default function CashRegisterScreen() {
               <p className="text-[9px] text-red-400 mb-0.5 uppercase tracking-wider font-bold">Gastos</p>
               <p className="text-base font-bold text-red-600 leading-none">{fmt(expenses + withdrawals)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-center shadow-sm">
-              <p className="text-[9px] text-indigo-400 mb-0.5 uppercase tracking-wider font-bold">Efectivo esperado</p>
-              <p className="text-base font-bold text-indigo-700 leading-none">{fmt(expectedCash)}</p>
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-center shadow-sm">
+              <p className="text-[9px] text-rose-400 mb-0.5 uppercase tracking-wider font-bold">Efectivo esperado</p>
+              <p className="text-base font-bold text-rose-700 leading-none">{fmt(expectedCash)}</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-300 text-center shadow-sm">
               <p className="text-[9px] text-slate-600 mb-0.5 uppercase tracking-wider font-bold">Terminal</p>
@@ -158,7 +208,7 @@ export default function CashRegisterScreen() {
           </div>
 
           <div className="flex items-center gap-3 text-sm text-gray-400 mb-6 font-medium">
-            <Clock className="w-4 h-4 text-indigo-400 animate-pulse" />Abierta desde {fmtTime(session.openedAt)} — {session.terminalName} — {session.user?.fullName}
+            <Clock className="w-4 h-4 text-rose-400 animate-pulse" />Abierta desde {fmtTime(session.openedAt)} — {session.terminalName} — {session.user?.fullName}
           </div>
 
           {!showCloseConfirm ? (
@@ -175,8 +225,8 @@ export default function CashRegisterScreen() {
                 <input value={closingNotes} onChange={(e) => setClosingNotes(e.target.value)} className="w-full bg-white border border-red-200 rounded-xl px-4 py-3 text-xs font-semibold text-slate-700 outline-none focus:border-red-400 transition-all shadow-inner" placeholder="Notas del cierre..." />
               </div>
               <div className="flex gap-3 pt-2">
-                <button onClick={handleClose} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"><CheckCircle2 className="w-5 h-5" />Confirmar Cierre</button>
-                <button onClick={() => setShowCloseConfirm(false)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-100 font-bold text-xs uppercase tracking-wider transition-all active:scale-95">Cancelar</button>
+                <button onClick={handleClose} className="flex-1 btn-danger"><CheckCircle2 className="w-5 h-5" />Confirmar Cierre</button>
+                <button onClick={() => setShowCloseConfirm(false)} className="btn-secondary">Cancelar</button>
               </div>
             </div>
           )}
@@ -185,7 +235,7 @@ export default function CashRegisterScreen() {
           {session.cashMovements && session.cashMovements.length > 0 && (
             <div className="mt-8 border-t border-slate-400/60 pt-6">
               <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Detalle de Gastos y Egresos del Turno</h3>
-              <div className="overflow-x-auto rounded-2xl border border-slate-400 bg-white shadow-sm max-h-[300px] custom-scrollbar">
+              <div className="card overflow-x-auto max-h-[300px] custom-scrollbar">
                 <table className="w-full text-left text-xs font-semibold text-slate-600 border-collapse">
                   <thead>
                     <tr className="border-b border-slate-400 bg-slate-50/50 text-[10px] uppercase text-slate-600 tracking-wider">
@@ -207,7 +257,7 @@ export default function CashRegisterScreen() {
                           'Otro': 'bg-slate-50 text-slate-600 border-slate-150',
                           'Mercadería / Insumos': 'bg-emerald-50 text-emerald-600 border-emerald-150',
                           'Servicios (Luz, Agua, etc)': 'bg-blue-50 text-blue-600 border-blue-150',
-                          'Sueldos / Adelantos': 'bg-indigo-50 text-indigo-600 border-indigo-150',
+                          'Sueldos / Adelantos': 'bg-rose-50 text-rose-600 border-rose-150',
                           'Mantenimiento': 'bg-amber-50 text-amber-600 border-amber-150',
                           'Impuestos': 'bg-rose-50 text-rose-600 border-rose-150'
                         };

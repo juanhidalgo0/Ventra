@@ -49,25 +49,24 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
 
   const fmt = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p);
 
+  const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
+  const MotionDiv = (perfMode ? 'div' : motion.div) as any;
+
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} 
-      animate={{ opacity: 1 }} 
-      exit={{ opacity: 0 }} 
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+    <MotionDiv 
+      {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
-      <motion.div 
-        initial={{ scale: 0.95, opacity: 0 }} 
-        animate={{ scale: 1, opacity: 1 }} 
-        exit={{ scale: 0.95, opacity: 0 }} 
-        onClick={(e) => e.stopPropagation()} 
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-300 dark:border-slate-700 flex flex-col p-6 space-y-5"
+      <MotionDiv
+        {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
+        onClick={(e: any) => e.stopPropagation()}
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col p-6 space-y-5"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-300 dark:border-slate-700 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center text-rose-500 dark:text-rose-400">
               <Lock className="w-5 h-5" />
             </div>
             <div>
@@ -75,7 +74,9 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
               <p className="text-[9px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider">Turno del terminal activo</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Body */}
@@ -100,18 +101,18 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
 
         {/* Footer */}
         <div className="flex gap-3 pt-2">
-          <button 
+          <button
             onClick={handleOpen}
             disabled={isSubmitting}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+            className="flex-1 btn-primary py-3.5 text-xs uppercase tracking-wider font-extrabold"
           >
-            <Unlock className="w-4.5 h-4.5 text-indigo-200" /> {isSubmitting ? 'Abriendo...' : 'Abrir Caja'}
+            <Unlock className="w-4.5 h-4.5 text-rose-200" /> {isSubmitting ? 'Abriendo...' : 'Abrir Caja'}
           </button>
-          <button onClick={onClose} className="px-5 py-3.5 rounded-xl border border-slate-400 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
+          <button onClick={onClose} className="btn-secondary px-5 py-3.5 text-xs uppercase tracking-wider">
             Cancelar
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </MotionDiv>
+    </MotionDiv>
   );
 }

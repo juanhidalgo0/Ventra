@@ -66,7 +66,7 @@ export default function PromosScreen() {
   return (
     <div className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-y-auto custom-scrollbar">
       {/* Header Bar */}
-      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+      <div className="card p-4 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
             <button onClick={loadPromos} className="p-2 rounded-xl border border-gray-105 text-gray-400 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shrink-0">
                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> 
@@ -118,7 +118,7 @@ export default function PromosScreen() {
           { label: 'Veces Aplicadas', val: '0', icon: TrendingUp, color: 'bg-emerald-50 text-emerald-600' },
           { label: 'Ganancia Estimada', val: '$0.00', icon: DollarSign, color: 'bg-emerald-50 text-emerald-600' }
         ].map((card) => (
-          <div key={card.label} className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+          <div key={card.label} className="card p-4 md:p-6 flex items-center gap-4">
             <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl ${card.color.split(' ')[0]} flex items-center justify-center ${card.color.split(' ')[1]} shadow-sm`}>
                <card.icon className="w-5 h-5 md:w-6 md:h-6" />
             </div>
@@ -131,7 +131,7 @@ export default function PromosScreen() {
       </div>
 
       {/* Main List Area */}
-      <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col p-4 md:p-8 overflow-hidden min-h-[400px]">
+      <div className="flex-1 card flex flex-col p-4 md:p-8 overflow-hidden min-h-[400px]">
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <div>
             <h3 className="text-sm font-bold text-gray-800 tracking-tight flex items-center gap-3">
@@ -195,15 +195,46 @@ export default function PromosScreen() {
                     </div>
 
                     <div className="bg-white/70 border border-emerald-100/50 rounded-2xl p-3 mb-4">
-                       <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-2">Productos</p>
+                       <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-2">Componentes</p>
                        <div className="space-y-1">
-                          {promo.products.slice(0, 3).map((pp: any) => (
-                             <div key={pp.id} className="text-[10px] font-bold text-slate-700 flex justify-between">
-                                <span>{pp.product.name}</span>
-                                <span className="text-slate-600">x{pp.quantity}</span>
-                             </div>
-                          ))}
-                          {promo.products.length > 3 && <p className="text-[9px] text-emerald-600 font-bold">+{promo.products.length - 3} más...</p>}
+                          {(() => {
+                            if (promo.type === 'FIXED_COMBO') {
+                              const groupMap = new Map<string, any[]>();
+                              promo.products.forEach((pp: any, idx: number) => {
+                                const gId = pp.groupId || `g_${pp.productId}_${idx}`;
+                                if (!groupMap.has(gId)) groupMap.set(gId, []);
+                                groupMap.get(gId)!.push(pp);
+                              });
+                              const groups = Array.from(groupMap.values());
+                              return (
+                                <>
+                                  {groups.slice(0, 3).map((gItems, gIdx) => (
+                                    <div key={gIdx} className="text-[10px] font-bold text-slate-700 flex justify-between gap-1">
+                                      <span className="truncate">
+                                        {gItems.length === 1 
+                                          ? gItems[0].product.name 
+                                          : `${gItems[0].product.name} (+${gItems.length - 1} opciones)`}
+                                      </span>
+                                      <span className="text-slate-600 shrink-0">x{gItems[0].quantity}</span>
+                                    </div>
+                                  ))}
+                                  {groups.length > 3 && <p className="text-[9px] text-emerald-600 font-bold">+{groups.length - 3} grupos más...</p>}
+                                </>
+                              );
+                            }
+
+                            return (
+                              <>
+                                {promo.products.slice(0, 3).map((pp: any) => (
+                                   <div key={pp.id} className="text-[10px] font-bold text-slate-700 flex justify-between">
+                                      <span className="truncate">{pp.product.name}</span>
+                                      <span className="text-slate-600">x{pp.quantity}</span>
+                                   </div>
+                                ))}
+                                {promo.products.length > 3 && <p className="text-[9px] text-emerald-600 font-bold">+{promo.products.length - 3} más...</p>}
+                              </>
+                            );
+                          })()}
                        </div>
                     </div>
 

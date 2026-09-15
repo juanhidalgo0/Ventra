@@ -87,6 +87,46 @@ async function bootstrap() {
 
   let port = Number(process.env.PORT || 3001);
   await app.listen(port, '0.0.0.0');
+
+  // Start localhost.run SSH tunnel in the background to automatically bypass Windows Firewall and router port-forwarding with ZERO landing pages
+  // Skipped when running from a real hosted deployment (Docker sets DISABLE_TUNNEL=true), where the server is already reachable on a public domain.
+  if (process.env.DISABLE_TUNNEL === 'true') {
+    console.log('[Tunnel] Skipped (DISABLE_TUNNEL=true) — server is expected to be reachable directly.');
+  } else
+  try {
+    const { exec } = require('child_process');
+    // Detect if we are in dev mode by checking if frontend dist build directory exists
+    const distExists = fs.existsSync(path.join(__dirname, '../../frontend/dist')) || 
+                       fs.existsSync(path.join(__dirname, '../frontend/dist')) ||
+                       fs.existsSync(path.join(__dirname, '../../desktop/frontend'));
+                       
+    // In dev mode, Vite runs on port 5180. In prod, the backend serves files on 3001.
+    const tunnelPort = distExists ? port : 5180;
+    
+    console.log(`[Tunnel] Starting SSH tunnel on port ${tunnelPort} (Dev Mode: ${!distExists})...`);
+    const tunnelProcess = exec(`ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 80:localhost:${tunnelPort} nokey@localhost.run`);
+    
+    tunnelProcess.stdout.on('data', (data: string) => {
+      console.log('[Tunnel Output]', data);
+      const match = data.match(/(https?:\/\/[\w-]+\.lhr\.life)/i) || data.match(/(https?:\/\/[\w-]+\.lhr\.pro)/i);
+      if (match) {
+        const url = match[1];
+        process.env.PUBLIC_TUNNEL_URL = url;
+        console.log(`[Tunnel] Public tunnel URL (localhost.run) created successfully: ${url}`);
+      }
+    });
+
+    tunnelProcess.stderr.on('data', (data: string) => {
+      console.warn(`[Tunnel Warning] ${data}`);
+    });
+
+    process.on('exit', () => {
+      tunnelProcess.kill();
+    });
+  } catch (err) {
+    console.error('[Tunnel Error] Failed to start SSH tunnel process:', err);
+  }
+
   console.log('--- RESTARTING MAXIKIOSCO PAULOS BACKEND ---');
   console.log('--- TIME: ' + new Date().toISOString() + ' ---');
   console.log(`

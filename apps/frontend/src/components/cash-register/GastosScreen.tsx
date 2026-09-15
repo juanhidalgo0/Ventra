@@ -17,7 +17,8 @@ import {
   AlertCircle,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Edit2
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import GastosModal from '../pos/GastosModal';
@@ -35,6 +36,7 @@ export default function GastosScreen() {
   const [selectedTab, setSelectedTab] = useState<'ALL' | 'FIXED' | 'VARIABLE'>('ALL');
   const [showModal, setShowModal] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<any | null>(null);
+  const [editingGasto, setEditingGasto] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -195,7 +197,7 @@ export default function GastosScreen() {
       'Otro': 'bg-slate-50 text-slate-600 border-slate-300',
       'Mercadería / Insumos': 'bg-emerald-50 text-emerald-600 border-emerald-100',
       'Servicios (Luz, Agua, etc)': 'bg-blue-50 text-blue-600 border-blue-100',
-      'Sueldos / Adelantos': 'bg-indigo-50 text-indigo-600 border-indigo-100',
+      'Sueldos / Adelantos': 'bg-rose-50 text-rose-600 border-rose-100',
       'Mantenimiento': 'bg-amber-50 text-amber-600 border-amber-100',
       'Impuestos': 'bg-rose-50 text-rose-600 border-rose-100'
     };
@@ -235,7 +237,7 @@ export default function GastosScreen() {
           initial={{ opacity: 0, y: 15 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.05 }}
-          className="p-6 rounded-2xl bg-white border border-slate-300 shadow-sm flex flex-col relative overflow-hidden"
+          className="card p-6 flex flex-col relative overflow-hidden"
         >
           <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">FIJOS</span>
           <span className="text-3xl font-bold mt-1 text-slate-800 leading-none">{formatPrice(fixedAmount)}</span>
@@ -249,7 +251,7 @@ export default function GastosScreen() {
           initial={{ opacity: 0, y: 15 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.1 }}
-          className="p-6 rounded-2xl bg-white border border-slate-300 shadow-sm flex flex-col relative overflow-hidden"
+          className="card p-6 flex flex-col relative overflow-hidden"
         >
           <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">VARIABLES</span>
           <span className="text-3xl font-bold mt-1 text-slate-800 leading-none">{formatPrice(variableAmount)}</span>
@@ -336,13 +338,13 @@ export default function GastosScreen() {
           {/* New Expense button */}
           <button 
             onClick={() => {
-              if (!currentSession) {
-                toast.error('⚠️ No hay una caja abierta. Registrá una sesión en la pantalla de Caja para cargar gastos.');
+              if (!currentSession || currentSession.status !== 'OPEN') {
+                toast.error('⚠️ No hay una caja abierta o la caja ya está cerrada. Registrá una sesión en la pantalla de Caja para cargar gastos.');
                 return;
               }
               setShowModal(true);
             }} 
-            className="flex items-center justify-center gap-2 py-2.5 px-5 rounded-2xl bg-teal-600 text-white font-bold text-xs hover:bg-teal-700 transition-all active:scale-[0.97] shadow-lg shadow-teal-500/10 shrink-0"
+            className="btn-primary text-xs shrink-0"
           >
             <Plus className="w-4 h-4" /> Nuevo Gasto
           </button>
@@ -375,8 +377,8 @@ export default function GastosScreen() {
               </button>
             </div>
             {isFiltered && (
-              <div className="px-4 py-2 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-2xl text-xs font-bold shrink-0">
-                Monto Filtrado: <span className="text-indigo-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
+              <div className="px-4 py-2 bg-rose-50 border border-rose-150 text-rose-700 rounded-2xl text-xs font-bold shrink-0">
+                Monto Filtrado: <span className="text-rose-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
               </div>
             )}
           </div>
@@ -441,16 +443,31 @@ export default function GastosScreen() {
                         {formatPrice(mov.amount)}
                       </td>
                       <td className="py-4 text-right pr-2">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(mov.id);
-                          }} 
-                          className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                          title="Eliminar gasto"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {currentSession && mov.sessionId === currentSession.id && (
+                          <>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGasto(mov);
+                                setShowModal(true);
+                              }} 
+                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer mr-1"
+                              title="Editar gasto"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(mov.id);
+                              }} 
+                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                              title="Eliminar gasto"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -466,8 +483,10 @@ export default function GastosScreen() {
         {showModal && (
           <GastosModal 
             sessionId={currentSession?.id} 
+            editingGasto={editingGasto}
             onClose={() => {
               setShowModal(false);
+              setEditingGasto(null);
               loadMovements();
               loadCurrentSession();
             }} 
@@ -541,7 +560,7 @@ export default function GastosScreen() {
                 </div>
               </div>
 
-              <button onClick={() => setSelectedMovement(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all cursor-pointer">
+              <button onClick={() => setSelectedMovement(null)} className="w-full py-3 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all cursor-pointer">
                 Cerrar Detalle
               </button>
             </motion.div>
@@ -559,7 +578,7 @@ export default function GastosScreen() {
             className="fixed inset-0 z-[80] bg-slate-50 flex flex-col p-4 overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-4 bg-white p-4 rounded-2xl border border-slate-300 shadow-sm shrink-0">
+            <div className="card flex items-center justify-between mb-4 p-4 shrink-0">
               <div>
                 <h3 className="text-sm font-bold text-slate-850 flex items-center gap-2 uppercase tracking-wider">
                   <Receipt className="w-5 h-5 text-rose-500" /> Historial de Gastos Completo
@@ -575,7 +594,7 @@ export default function GastosScreen() {
             </div>
 
             {/* Content box */}
-            <div className="flex-1 bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden p-4 gap-4">
+            <div className="flex-1 card flex flex-col overflow-hidden p-4 gap-4">
               {/* Filters inside Expanded view */}
               <div className="flex flex-col gap-3 shrink-0">
                 <div className="flex flex-wrap items-center gap-3">
@@ -639,8 +658,8 @@ export default function GastosScreen() {
 
                   {isFiltered && (
                     <div className="flex items-center gap-3">
-                      <div className="px-4 py-1.5 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-xl text-xs font-bold">
-                        Monto Filtrado: <span className="text-indigo-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
+                      <div className="px-4 py-1.5 bg-rose-50 border border-rose-150 text-rose-700 rounded-xl text-xs font-bold">
+                        Monto Filtrado: <span className="text-rose-900 font-extrabold">{formatPrice(filteredTotalAmount)}</span>
                       </div>
                       <button 
                         onClick={() => {
@@ -705,16 +724,31 @@ export default function GastosScreen() {
                               {formatPrice(mov.amount)}
                             </td>
                             <td className="py-4 text-right pr-2">
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(mov.id);
-                                }} 
-                                className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 transition-all cursor-pointer"
-                                title="Eliminar gasto"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {currentSession && mov.sessionId === currentSession.id && (
+                                <>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingGasto(mov);
+                                      setShowModal(true);
+                                    }} 
+                                    className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 transition-all cursor-pointer mr-1"
+                                    title="Editar gasto"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(mov.id);
+                                    }} 
+                                    className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 transition-all cursor-pointer"
+                                    title="Eliminar gasto"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
                             </td>
                           </tr>
                         ))}

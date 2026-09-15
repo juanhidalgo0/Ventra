@@ -21,10 +21,11 @@ export class ProductsController {
     @Query('isActive') isActive?: string,
     @Query('isFavorite') isFavorite?: string,
     @Query('lowStock') lowStock?: string,
+    @Query('hasImage') hasImage?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ) {
-    console.log(`GET /api/products - params: search="${search}", skip=${skip}, take=${take}`);
+    console.log(`GET /api/products - params: search="${search}", skip=${skip}, take=${take}, hasImage=${hasImage}`);
     
     const skipNum = skip ? parseInt(skip) : 0;
     const takeNum = take ? parseInt(take) : 50;
@@ -32,17 +33,36 @@ export class ProductsController {
     return this.productsService.findAll({
       search,
       categoryId,
-      isActive: isActive === 'true',
+      isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       isFavorite: isFavorite === 'true',
       lowStock: lowStock === 'true',
+      hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
       skip: isNaN(skipNum) ? 0 : skipNum,
       take: isNaN(takeNum) ? 50 : takeNum,
+    });
+  }
+
+  @Get('count')
+  getCount(
+    @Query('search') search?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('hasImage') hasImage?: string,
+  ) {
+    return this.productsService.count({
+      search,
+      categoryId,
+      hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
     });
   }
 
   @Get('barcode/:barcode')
   findByBarcode(@Param('barcode') barcode: string) {
     return this.productsService.findByBarcode(barcode);
+  }
+
+  @Get('pos-catalog')
+  getPOSCatalog(@Query('updatedAfter') updatedAfter?: string) {
+    return this.productsService.getPOSCatalog(updatedAfter);
   }
 
   @Get(':id')
@@ -92,6 +112,11 @@ export class ProductsController {
   @Post('sync-all')
   syncAll(@Request() req, @Body('googleEmail') googleEmail?: string) {
     return this.productsService.syncAllToGoDelivery(req.user?.sub, googleEmail);
+  }
+
+  @Post('bulk-update-prices')
+  bulkUpdatePrices(@Body() body: any) {
+    return this.productsService.bulkUpdatePrices(body);
   }
 
   @Post('bulk-reset-stock')
@@ -169,6 +194,17 @@ export class ProductsController {
       throw new BadRequestException('Se debe proporcionar el ID de la nueva categoría.');
     }
     return this.productsService.bulkUpdateCategorySubset(ids, categoryId);
+  }
+
+  @Post('bulk-set-show-online')
+  bulkSetShowOnline(@Body('ids') ids: string[] | undefined, @Body('showOnline') showOnline: boolean) {
+    return this.productsService.bulkSetShowOnline(ids, showOnline);
+  }
+
+  @Get('search-external-image/:barcode')
+  async searchExternalImage(@Param('barcode') barcode: string) {
+    const imageUrl = await this.syncImageService.searchImageByBarcode(barcode);
+    return { imageUrl };
   }
 
   @Delete(':id')

@@ -25,6 +25,7 @@ export class FirebaseSyncService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    await this.prisma.ensureInitialized();
     this.comercioId = 'godelivery-magdalena';
     
     try {
@@ -179,15 +180,15 @@ export class FirebaseSyncService implements OnModuleInit {
       console.log(`[FirebaseSync] Descargando y comprimiendo imagen: ${imageUrl}`);
       const image = await Jimp.read(imageUrl);
       
-      // Resize preserving aspect ratio (max 800x800)
+      // Resize preserving aspect ratio (max 300x300 for POS optimization)
       if (image.width > image.height) {
-        image.resize({ w: 800 });
+        image.resize({ w: 300 });
       } else {
-        image.resize({ h: 800 });
+        image.resize({ h: 300 });
       }
       
-      // Compress quality to 80% using getBuffer options
-      const buffer = await image.getBuffer("image/jpeg", { quality: 80 });
+      // Compress quality to 60% to drastically reduce DB file size
+      const buffer = await image.getBuffer("image/jpeg", { quality: 60 });
       const base64 = buffer.toString('base64');
       return `data:image/jpeg;base64,${base64}`;
     } catch (err: any) {

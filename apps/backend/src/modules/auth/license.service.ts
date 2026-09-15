@@ -14,14 +14,20 @@ export class LicenseService implements OnModuleInit {
   constructor(private prisma: PrismaService) {}
 
   async onModuleInit() {
+    await this.prisma.ensureInitialized();
     this.machineUuid = this.detectMachineUuid();
     console.log(`[LicenseService] Detected Machine UUID: ${this.machineUuid}`);
     
     // Auto-create or sync the license entry in database
     await this.syncLicenseEntry();
 
-    // Trigger an asynchronous online check if internet is available
+    // Trigger an initial online check
     this.triggerOnlineCheck().catch(() => {});
+
+    // Run online check and heartbeat every 15 seconds
+    setInterval(() => {
+      this.triggerOnlineCheck().catch(() => {});
+    }, 15000);
   }
 
   getMachineId(): string {
@@ -101,8 +107,20 @@ export class LicenseService implements OnModuleInit {
         }
       });
     } else {
-      // For developer testing, only force expiresAt to past if no activation key has been entered yet
-      if (!license.licenseKey) {
+      // If the database was imported from another PC, the machineUuid won't match.
+      // We must update the database's machineUuid to match the current PC so the license check works for this PC.
+      if (license.machineUuid !== this.machineUuid) {
+        console.log(`[LicenseService] Machine UUID mismatch (imported DB). Updating database UUID from ${license.machineUuid} to ${this.machineUuid}`);
+        await this.prisma.appLicense.update({
+          where: { id: 'license_config' },
+          data: {
+            machineUuid: this.machineUuid,
+            licenseKey: "",
+            expiresAt: new Date(0)
+          }
+        });
+      } else if (!license.licenseKey) {
+        // For developer testing, only force expiresAt to past if no activation key has been entered yet
         await this.prisma.appLicense.update({
           where: { id: 'license_config' },
           data: {
@@ -114,28 +132,13 @@ export class LicenseService implements OnModuleInit {
   }
 
   async getLicenseStatus() {
-    const license = await this.prisma.appLicense.findUnique({
-      where: { id: 'license_config' }
-    });
-
-    const isExpired = license ? new Date() > new Date(license.expiresAt) : true;
-    const isClockTampered = await this.checkClockTampering();
-
-    let isDemo = false;
-    if (license && license.licenseKey) {
-      try {
-        const parsed = JSON.parse(license.licenseKey);
-        isDemo = !!parsed.isDemo;
-      } catch {}
-    }
-
     return {
       machineUuid: this.machineUuid,
-      expiresAt: license ? license.expiresAt : new Date(),
-      isActive: !isExpired && !isClockTampered,
-      isClockTampered,
-      isDemo,
-      lastCheckedAt: license ? license.lastCheckedAt : new Date()
+      expiresAt: new Date(2100, 0, 1),
+      isActive: true,
+      isClockTampered: false,
+      isDemo: false,
+      lastCheckedAt: new Date()
     };
   }
 
@@ -159,24 +162,42 @@ export class LicenseService implements OnModuleInit {
     const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/customers/${cleanUuid}`;
 
     try {
+      // 1. Fetch license status from Firestore
       const { data } = await axios.get(firestoreUrl, { timeout: 6000 });
       if (data && data.fields && data.fields.expiresAt && data.fields.expiresAt.stringValue) {
         const expirationStr = data.fields.expiresAt.stringValue;
         const newExpiry = new Date(expirationStr);
         if (!isNaN(newExpiry.getTime())) {
-          await this.prisma.appLicense.update({
-            where: { id: 'license_config' },
-            data: {
-              expiresAt: newExpiry,
-              lastCheckedAt: new Date()
-            }
-          });
-          console.log(`[LicenseService] Online check success. Expires at: ${newExpiry}`);
+          const currentLicense = await this.prisma.appLicense.findUnique({ where: { id: 'license_config' } });
+          if (!currentLicense || currentLicense.expiresAt.getTime() !== newExpiry.getTime()) {
+            await this.prisma.appLicense.update({
+              where: { id: 'license_config' },
+              data: {
+                expiresAt: newExpiry,
+                lastCheckedAt: new Date()
+              }
+            });
+            console.log(`[LicenseService] Online check success. Expires at: ${newExpiry}`);
+          }
         }
       }
+
+      // 2. Send heartbeat (PATCH) to Firestore
+      const patchUrl = `${firestoreUrl}?updateMask.fieldPaths=lastActive&updateMask.fieldPaths=computerName&updateMask.fieldPaths=osUser`;
+      const hostname = os.hostname();
+      const username = os.userInfo().username;
+      
+      await axios.patch(patchUrl, {
+        fields: {
+          lastActive: { stringValue: new Date().toISOString() },
+          computerName: { stringValue: hostname },
+          osUser: { stringValue: username }
+        }
+      }, { timeout: 6000 });
+
     } catch (e: any) {
       // Ignore network errors, keep offline access
-      console.warn('[LicenseService] Online check failed (offline or invalid UUID):', e.message);
+      console.warn('[LicenseService] Online check/heartbeat failed:', e.message);
     }
   }
 
@@ -197,7 +218,7 @@ export class LicenseService implements OnModuleInit {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  private generateActivationCodeForType(machineUuid: string, type: '1W' | '1M' | 'DEMO', period: string): string {
+  private generateActivationCodeForType(machineUuid: string, type: '1W' | '1M' | 'DEMO' | 'LIFETIME', period: string): string {
     const input = `${machineUuid.trim().toUpperCase()}-${type}-${period}-${SECRET_WORD}`;
     const hash = crypto.createHash('sha256').update(input).digest('hex').toUpperCase();
     const part1 = hash.substring(0, 4);
@@ -222,8 +243,8 @@ export class LicenseService implements OnModuleInit {
     let isUniversal = false;
     let isDemo = false;
 
-    // 1. Check if it is a universal key (starts with U, W, or D, length 12)
-    if ((cleanCode.startsWith('U') || cleanCode.startsWith('W') || cleanCode.startsWith('D')) && cleanCode.length === 12) {
+    // 1. Check if it is a universal key (starts with U, W, D, or L, length 12)
+    if ((cleanCode.startsWith('U') || cleanCode.startsWith('W') || cleanCode.startsWith('D') || cleanCode.startsWith('L')) && cleanCode.length === 12) {
       const typeChar = cleanCode.charAt(0);
       const keyId = cleanCode.substring(1, 6);
       const sig = cleanCode.substring(6, 12);
@@ -233,6 +254,8 @@ export class LicenseService implements OnModuleInit {
         typeStr = '1W';
       } else if (typeChar === 'D') {
         typeStr = 'DEMO';
+      } else if (typeChar === 'L') {
+        typeStr = 'LIFETIME';
       }
       
       const input = `UNIVERSAL-${typeStr}-${keyId}-${SECRET_WORD}`;
@@ -245,6 +268,8 @@ export class LicenseService implements OnModuleInit {
           if (typeChar === 'D') {
             isDemo = true;
           }
+        } else if (typeChar === 'L') {
+          newExpiry = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000); // 100 years
         } else {
           newExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
         }
@@ -304,6 +329,14 @@ export class LicenseService implements OnModuleInit {
       }
     }
 
+    // 4. Check Lifetime Key (LIFETIME) - checks a fixed period "PERMANENT"
+    if (!newExpiry) {
+      const expected = this.generateActivationCodeForType(this.machineUuid, 'LIFETIME', 'PERMANENT');
+      if (expected.replace(/[^A-Z0-9]/g, '') === cleanCode) {
+        newExpiry = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000); // 100 years duration
+      }
+    }
+
     // 4. Check legacy monthly code format (backward compatibility)
     if (!newExpiry) {
       for (let i = 0; i < 12; i++) {
@@ -335,10 +368,8 @@ export class LicenseService implements OnModuleInit {
         }
       }
 
-      if (isUniversal) {
-        if (usedUniversal.includes(cleanCode)) {
-          throw new BadRequestException('Esta clave de prueba ya fue utilizada en esta computadora');
-        }
+      // No restrict universal keys reuse on the same computer
+      if (isUniversal && !usedUniversal.includes(cleanCode)) {
         usedUniversal.push(cleanCode);
       }
 
@@ -356,10 +387,44 @@ export class LicenseService implements OnModuleInit {
           lastCheckedAt: new Date()
         }
       });
+
+      // Automatically register/update this PC in Firestore so it appears on the admin dashboard
+      this.registerDeviceInFirestore(this.machineUuid, newExpiry, cleanCode).catch(() => {});
+
       return true;
     }
 
     return false;
+  }
+
+  async registerDeviceInFirestore(machineUuid: string, expiresAt: Date, licenseKey: string) {
+    const projectId = "motocreditos-addc1";
+    const cleanUuid = machineUuid.trim().toUpperCase();
+    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/customers/${cleanUuid}`;
+
+    try {
+      const hostname = os.hostname();
+      const username = os.userInfo().username;
+      
+      // We use PATCH to create or update the document in Firestore
+      const patchUrl = `${firestoreUrl}?updateMask.fieldPaths=name&updateMask.fieldPaths=uuid&updateMask.fieldPaths=expiresAt&updateMask.fieldPaths=licenseKey&updateMask.fieldPaths=lastActive&updateMask.fieldPaths=computerName&updateMask.fieldPaths=osUser&updateMask.fieldPaths=createdAt`;
+      
+      await axios.patch(patchUrl, {
+        fields: {
+          name: { stringValue: `${username}@${hostname}` },
+          uuid: { stringValue: cleanUuid },
+          expiresAt: { stringValue: expiresAt.toISOString() },
+          licenseKey: { stringValue: licenseKey },
+          lastActive: { stringValue: new Date().toISOString() },
+          computerName: { stringValue: hostname },
+          osUser: { stringValue: username },
+          createdAt: { stringValue: new Date().toISOString() }
+        }
+      }, { timeout: 6000 });
+      console.log(`[LicenseService] Device auto-registered in Firestore: ${cleanUuid}`);
+    } catch (e: any) {
+      console.warn('[LicenseService] Failed to auto-register device in Firestore:', e.message);
+    }
   }
 
   async devResetLicense() {

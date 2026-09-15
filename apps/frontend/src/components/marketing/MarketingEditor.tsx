@@ -171,7 +171,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
           </button>
           <button 
             onClick={() => setActiveTab('design')}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'design' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'design' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             Diseño / Exportar
           </button>
@@ -198,7 +198,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                     value={name} 
                     onChange={e => setName(e.target.value)} 
                     placeholder="Ej. Ofertas Fin de Semana" 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                    className="w-full bg-slate-50 border border-slate-400 rounded-lg px-4 py-2.5 outline-none focus:border-rose-400 focus:bg-white transition-all"
                   />
                 </div>
                 <div>
@@ -208,7 +208,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                     value={description} 
                     onChange={e => setDescription(e.target.value)} 
                     placeholder="Válido hasta agotar stock..." 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                    className="w-full bg-slate-50 border border-slate-400 rounded-lg px-4 py-2.5 outline-none focus:border-rose-400 focus:bg-white transition-all"
                   />
                 </div>
               </div>
@@ -225,7 +225,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                   onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Buscar producto por nombre o código para agregar..." 
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-11 pr-4 py-3 text-sm font-medium outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-11 pr-4 py-3 text-sm font-medium outline-none focus:border-rose-400 focus:bg-white transition-all"
                 />
                 
                 {searchQuery.length >= 2 && (
@@ -254,7 +254,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                                 <p className="text-xs text-slate-600">$ {prod.salePrice.toLocaleString()}</p>
                               </div>
                             </div>
-                            <Plus className="w-5 h-5 text-indigo-500" />
+                            <Plus className="w-5 h-5 text-rose-500" />
                           </div>
                         ))}
                       </div>
@@ -277,7 +277,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                   </div>
                 ) : (
                   items.map((prod, idx) => (
-                    <div key={prod.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-400 rounded-xl group hover:border-indigo-300 transition-colors">
+                    <div key={prod.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-400 rounded-xl group hover:border-rose-300 transition-colors">
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-slate-600 w-4">{idx + 1}.</span>
                         <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-slate-400">
@@ -313,19 +313,19 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                     <Layout className="w-4 h-4" /> Formato
                   </h3>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setFormat('ig_feed')} className={`p-3 rounded-xl border text-left transition-all ${format === 'ig_feed' ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
+                    <button onClick={() => setFormat('ig_feed')} className={`p-3 rounded-xl border text-left transition-all ${format === 'ig_feed' ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
                       <p className="text-sm font-bold text-slate-800">Instagram Feed</p>
                       <p className="text-[10px] text-slate-700">1080x1080 (Cuadrado)</p>
                     </button>
-                    <button onClick={() => setFormat('ig_story')} className={`p-3 rounded-xl border text-left transition-all ${format === 'ig_story' ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
+                    <button onClick={() => setFormat('ig_story')} className={`p-3 rounded-xl border text-left transition-all ${format === 'ig_story' ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
                       <p className="text-sm font-bold text-slate-800">Stories / Reels</p>
                       <p className="text-[10px] text-slate-700">1080x1920 (Vertical)</p>
                     </button>
-                    <button onClick={() => setFormat('a4')} className={`p-3 rounded-xl border text-left transition-all ${format === 'a4' ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
+                    <button onClick={() => setFormat('a4')} className={`p-3 rounded-xl border text-left transition-all ${format === 'a4' ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
                       <p className="text-sm font-bold text-slate-800">Catálogo A4</p>
                       <p className="text-[10px] text-slate-700">Imprimir Catálogo</p>
                     </button>
-                    <button onClick={() => setFormat('a3')} className={`p-3 rounded-xl border text-left transition-all ${format === 'a3' ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
+                    <button onClick={() => setFormat('a3')} className={`p-3 rounded-xl border text-left transition-all ${format === 'a3' ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500/20' : 'border-slate-400 hover:bg-slate-50'}`}>
                       <p className="text-sm font-bold text-slate-800">Etiquetas A4</p>
                       <p className="text-[10px] text-slate-700">Para Góndolas</p>
                     </button>
@@ -340,7 +340,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                         type="checkbox" 
                         checked={showImages} 
                         onChange={(e) => setShowImages(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 h-4 w-4"
                       />
                       <span className="text-sm font-semibold text-slate-700">Mostrar imágenes</span>
                     </label>
@@ -349,7 +349,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                         type="checkbox" 
                         checked={showCodes} 
                         onChange={(e) => setShowCodes(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 h-4 w-4"
                       />
                       <span className="text-sm font-semibold text-slate-700">Mostrar códigos</span>
                     </label>
@@ -365,7 +365,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                       <div className="flex gap-2">
                         <button onClick={() => setTheme('dark')} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${theme === 'dark' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-400 text-slate-600 hover:bg-slate-50'}`}>Dark</button>
                         <button onClick={() => setTheme('light')} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${theme === 'light' ? 'border-slate-300 bg-white shadow-sm' : 'border-slate-400 bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>Light</button>
-                        <button onClick={() => setTheme('brand')} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${theme === 'brand' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-400 text-slate-600 hover:bg-slate-50'}`}>Vibrante</button>
+                        <button onClick={() => setTheme('brand')} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${theme === 'brand' ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-400 text-slate-600 hover:bg-slate-50'}`}>Vibrante</button>
                       </div>
                     </div>
 
@@ -373,7 +373,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2 mb-3">
                         <ImageIcon className="w-4 h-4" /> Logo del Local
                       </h3>
-                      <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 hover:border-indigo-400 transition-all cursor-pointer">
+                      <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 hover:border-rose-400 transition-all cursor-pointer">
                         {logoUrl ? (
                           <img src={logoUrl} alt="Logo" className="max-h-16 object-contain" />
                         ) : (
@@ -393,7 +393,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                   {(format === 'ig_feed' || format === 'ig_story') ? (
                     <button 
                       onClick={handleExportImage}
-                      className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-indigo-500/25 active:scale-95 transition-all"
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-rose-600 text-white font-bold rounded-xl shadow-lg hover:shadow-rose-500/25 active:scale-95 transition-all"
                     >
                       <Download className="w-5 h-5" /> Descargar Imagen PNG
                     </button>
@@ -422,7 +422,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                   ${(format === 'a4' || format === 'a3') ? 'flex flex-col gap-12 print:gap-0' : ''}
                   ${(format === 'ig_feed' || format === 'ig_story') && theme === 'dark' ? 'bg-slate-900 text-white' : ''}
                   ${(format === 'ig_feed' || format === 'ig_story') && theme === 'light' ? 'bg-slate-50 text-slate-800' : ''}
-                  ${(format === 'ig_feed' || format === 'ig_story') && theme === 'brand' ? 'bg-gradient-to-br from-indigo-600 via-purple-600 to-rose-500 text-white' : ''}
+                  ${(format === 'ig_feed' || format === 'ig_story') && theme === 'brand' ? 'bg-gradient-to-br from-rose-600 via-purple-600 to-rose-500 text-white' : ''}
                 `}
                 style={{
                   padding: (format === 'ig_feed' || format === 'ig_story') ? '60px' : '0'
@@ -448,7 +448,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                         </div>
                       ) : (
                         <div className={`backdrop-blur-md px-8 py-6 rounded-3xl border ${theme === 'light' ? 'bg-white/50 border-slate-400 shadow-sm' : 'bg-white/10 border-white/20'} flex items-center justify-center`}>
-                          <span className={`text-6xl font-black italic tracking-tighter ${theme === 'light' ? 'text-indigo-600' : 'text-white'}`}>GO!</span>
+                          <span className={`text-5xl font-black italic tracking-tighter ${theme === 'light' ? '' : 'text-white'}`} style={theme === 'light' ? { color: '#0E6E52' } : undefined}>VENTRA</span>
                         </div>
                       )}
                     </div>
@@ -464,7 +464,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className={`text-2xl font-bold truncate ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>{item.name}</h3>
-                            <p className={`text-4xl font-black mt-2 ${theme === 'brand' ? 'text-yellow-300' : theme === 'light' ? 'text-indigo-600' : 'text-rose-400'}`}>
+                            <p className={`text-4xl font-black mt-2 ${theme === 'brand' ? 'text-yellow-300' : theme === 'light' ? 'text-rose-600' : 'text-rose-400'}`}>
                               $ {item.salePrice.toLocaleString()}
                             </p>
                           </div>
@@ -482,7 +482,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                 {(format === 'ig_feed' || format === 'ig_story') && (
                   <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
                      <div className={`absolute -top-40 -right-40 w-96 h-96 rounded-full blur-[100px] ${theme === 'light' ? 'bg-rose-200/50' : theme === 'dark' ? 'bg-rose-500/20' : 'bg-white/20'}`}></div>
-                     <div className={`absolute bottom-0 -left-20 w-80 h-80 rounded-full blur-[100px] ${theme === 'light' ? 'bg-indigo-200/50' : theme === 'dark' ? 'bg-indigo-500/20' : 'bg-white/20'}`}></div>
+                     <div className={`absolute bottom-0 -left-20 w-80 h-80 rounded-full blur-[100px] ${theme === 'light' ? 'bg-rose-200/50' : theme === 'dark' ? 'bg-rose-500/20' : 'bg-white/20'}`}></div>
                   </div>
                 )}
 
@@ -518,7 +518,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                                       </div>
                                     )}
                                     <div className="min-w-0 flex-1">
-                                      <p className="text-lg font-bold text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{item.name}</p>
+                                      <p className="text-lg font-bold text-slate-800 truncate group-hover:text-rose-600 transition-colors">{item.name}</p>
                                       {showCodes && item.barcode && (
                                         <p className="text-xs font-semibold text-slate-600 truncate tracking-widest mt-1 uppercase">{item.barcode}</p>
                                       )}

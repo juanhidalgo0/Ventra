@@ -17,6 +17,13 @@ export class ClientsService {
       where: { id },
       include: {
         movements: {
+          include: {
+            sale: {
+              include: {
+                items: true
+              }
+            }
+          },
           orderBy: { createdAt: 'desc' },
           take: 50,
         },
@@ -61,6 +68,17 @@ export class ClientsService {
       });
 
       return movement;
+    });
+  }
+
+  async remove(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete all current account movements for this client
+      await tx.accountMovement.deleteMany({ where: { clientId: id } });
+      // 2. Dissociate the client from sales to preserve sales reports
+      await tx.sale.updateMany({ where: { clientId: id }, data: { clientId: null } });
+      // 3. Delete the client record
+      return tx.client.delete({ where: { id } });
     });
   }
 }

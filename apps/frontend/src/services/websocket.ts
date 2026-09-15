@@ -8,19 +8,21 @@ class WebSocketService {
     const savedIp = localStorage.getItem('server_ip');
     const activePort = sessionStorage.getItem('active_backend_port') || '3001';
     let socketUrl = '/';
-    if (savedIp && savedIp !== 'localhost' && savedIp !== '127.0.0.1') {
+    // Same rule as services/api.ts: a saved server_ip matching this page's own
+    // host just means "deployed on a real domain", not "connect to a LAN IP".
+    if (savedIp && savedIp !== 'localhost' && savedIp !== '127.0.0.1' && savedIp !== window.location.host && savedIp !== window.location.hostname) {
       const hasPort = savedIp.includes(':');
       socketUrl = `http://${savedIp}${hasPort ? '' : ':3001'}`;
     } else if (
-      window.location.protocol === 'file:' || 
-      window.location.protocol.startsWith('tauri') || 
+      window.location.protocol === 'file:' ||
+      window.location.protocol.startsWith('tauri') ||
       window.location.hostname.includes('tauri')
     ) {
       socketUrl = `http://127.0.0.1:${activePort}`;
     } else {
-      socketUrl = `${window.location.protocol}//${window.location.hostname}:${activePort}`;
+      socketUrl = window.location.origin;
     }
-    this.socket = io(socketUrl, { transports: ['websocket', 'polling'], reconnection: true, reconnectionDelay: 1000, reconnectionAttempts: 10 });
+    this.socket = io(socketUrl, { transports: ['polling', 'websocket'], reconnection: true, reconnectionDelay: 1000, reconnectionAttempts: 20 });
     this.socket.on('connect', () => console.log('📡 WebSocket connected to:', socketUrl));
     this.socket.on('disconnect', () => console.log('📡 WebSocket disconnected'));
   }

@@ -6,13 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
-
-// Premium SVG Go! Delivery Logo replica
-function GoDeliveryLogo({ className = 'w-16 h-16' }: { className?: string }) {
-  return (
-    <img src="./godelivery-logo.jpg" className={`${className} rounded-full object-cover`} alt="GoDelivery" />
-  );
-}
+import { MangoLogo as GoDeliveryLogo } from '../common/MangoLogo';
 
 interface Props { children: React.ReactNode; }
 
@@ -206,7 +200,7 @@ export default function MainLayout({ children }: Props) {
           </motion.div>
 
           <div className="text-center flex flex-col items-center gap-1.5">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">GO! Punto de Venta</h1>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">Ventra POS</h1>
             <p className="text-rose-600 text-[10px] font-black tracking-widest uppercase mt-3 flex items-center justify-center gap-2">
               <span>Cargando Terminal POS</span>
               <span className="flex h-2 w-2 relative">
@@ -243,7 +237,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   return (
-    <div className="h-screen w-full flex bg-slate-100 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300">
+    <div className="h-[100dvh] w-full flex bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300">
       {!isPOS && (
         <>
           {/* Backdrop mask for mobile menu */}
@@ -291,14 +285,14 @@ export default function MainLayout({ children }: Props) {
           <div className="flex-1 max-w-lg px-2 sm:px-6">
             <div className="relative group flex items-center w-full">
               <div className="absolute left-3 flex items-center justify-center pointer-events-none">
-                <Search className="w-4 h-4 text-slate-600 group-focus-within:text-rose-500 transition-colors" />
+                <Search className="w-4 h-4 text-slate-650 group-focus-within:text-rose-500 transition-colors" />
               </div>
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar..."
-                className="w-full bg-slate-50 border border-slate-400 text-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none placeholder:text-slate-600"
+                className="w-full bg-slate-50 border border-slate-400 text-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm focus:bg-white focus:border-rose-455 focus:ring-2 focus:ring-rose-100 transition-all outline-none placeholder:text-slate-655"
               />
             </div>
           </div>
@@ -329,7 +323,7 @@ export default function MainLayout({ children }: Props) {
         )}
 
         {/* Content Area */}
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-4 bg-slate-100 dark:bg-slate-950 relative flex flex-col">
+        <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-950 relative flex flex-col ${isPOS ? 'p-0 md:p-4' : 'p-4'}`}>
           {showUpdate && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mx-2 mb-3 p-3 bg-rose-600 rounded-xl flex items-center justify-between z-50">
               <div className="flex items-center gap-3 text-white">
@@ -341,7 +335,7 @@ export default function MainLayout({ children }: Props) {
                   const { ipcRenderer } = window.require('electron');
                   ipcRenderer.send('restart_app');
                 }}
-                className="px-4 py-1.5 bg-white text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-50 transition-all"
+                className="px-4 py-1.5 bg-white text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-55 transition-all"
               >
                 Reiniciar y Actualizar
               </button>

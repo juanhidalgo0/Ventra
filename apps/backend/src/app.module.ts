@@ -19,6 +19,8 @@ import { LicenseGuard } from './common/guards/license.guard';
 
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { SurchargesModule } from './modules/surcharges/surcharges.module';
+import { QuotesModule } from './modules/quotes/quotes.module';
+import { AcopioModule } from './modules/acopio/acopio.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { SurchargesModule } from './modules/surcharges/surcharges.module';
     PromotionsModule,
     MarketingModule,
     SurchargesModule,
+    QuotesModule,
+    AcopioModule,
   ],
   providers: [
     {

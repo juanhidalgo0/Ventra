@@ -176,12 +176,12 @@ export default function SuppliersScreen() {
       <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between px-2">
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2 md:gap-3">
-            <Truck className="w-6 h-6 md:w-8 md:h-8 text-indigo-500" /> Proveedores
+            <Truck className="w-6 h-6 md:w-8 md:h-8 text-rose-500" /> Proveedores
           </h2>
           <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">Gestión integral de abastecimiento</p>
         </div>
         <div className="flex items-center gap-2">
-           <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
+           <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
               <Plus className="w-4 h-4" /> Nuevo
            </button>
            <button 
@@ -221,10 +221,10 @@ export default function SuppliersScreen() {
           </div>
         </div>
 
-        <div className="bg-indigo-50 p-4 md:p-5 rounded-xl border border-indigo-200 relative overflow-hidden">
-          <p className="text-[9px] md:text-[10px] font-bold text-indigo-600 uppercase tracking-[0.2em] mb-2">Total Activos</p>
-          <p className="text-xl md:text-3xl font-bold text-indigo-700">{suppliers.length}</p>
-          <p className="text-[9px] md:text-[10px] font-bold text-indigo-500/60 mt-4 uppercase tracking-widest">En red</p>
+        <div className="bg-rose-50 p-4 md:p-5 rounded-xl border border-rose-200 relative overflow-hidden">
+          <p className="text-[9px] md:text-[10px] font-bold text-rose-600 uppercase tracking-[0.2em] mb-2">Total Activos</p>
+          <p className="text-xl md:text-3xl font-bold text-rose-700">{suppliers.length}</p>
+          <p className="text-[9px] md:text-[10px] font-bold text-rose-500/60 mt-4 uppercase tracking-widest">En red</p>
         </div>
       </div>
 
@@ -243,13 +243,13 @@ export default function SuppliersScreen() {
                    value={search}
                    onChange={e => setSearch(e.target.value)}
                    placeholder="Buscar por nombre..." 
-                   className="w-full bg-slate-50 border-2 border-transparent rounded-2xl pl-12 pr-4 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500/50 outline-none transition-all"
+                   className="w-full bg-slate-50 border-2 border-transparent rounded-2xl pl-12 pr-4 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-rose-500/50 outline-none transition-all"
                  />
               </div>
            </div>
            <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between xl:justify-end">
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-400">
-                  <Calendar className="w-4 h-4 text-indigo-500" />
+                  <Calendar className="w-4 h-4 text-rose-500" />
                   <select 
                     value={filterType} 
                     onChange={e => setFilterType(e.target.value as any)}
@@ -291,7 +291,7 @@ export default function SuppliersScreen() {
            {/* Left: List */}
            <div className={`${selectedSupplier ? 'hidden lg:block' : 'w-full'} lg:w-1/3 border-r border-slate-50 overflow-y-auto custom-scrollbar`}>
               {isLoading ? (
-                <div className="p-10 text-center"><RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mx-auto" /></div>
+                <div className="p-10 text-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mx-auto" /></div>
               ) : filteredSuppliers.length > 0 ? (
                 <div className="divide-y divide-slate-50">
                   {filteredSuppliers.map(s => {
@@ -301,10 +301,10 @@ export default function SuppliersScreen() {
                       <div 
                         key={s.id} 
                         onClick={() => setSelectedSupplier(s)}
-                        className={`p-6 hover:bg-slate-50 cursor-pointer transition-colors group relative ${isSelected ? 'bg-indigo-50/50 border-r-4 border-indigo-500' : ''}`}
+                        className={`p-6 hover:bg-slate-50 cursor-pointer transition-colors group relative ${isSelected ? 'bg-rose-50/50 border-r-4 border-rose-500' : ''}`}
                       >
                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors uppercase truncate pr-4">{s.name}</h4>
+                            <h4 className="text-sm font-bold text-slate-800 group-hover:text-rose-600 transition-colors uppercase truncate pr-4">{s.name}</h4>
                             {debt > 0 && <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-500 text-[8px] font-bold uppercase">Deuda</span>}
                          </div>
                          <div className="flex items-center gap-3 mb-4">
@@ -350,7 +350,7 @@ export default function SuppliersScreen() {
                         >
                            <ChevronDown className="w-4 h-4 rotate-90" />
                         </button>
-                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-lg md:text-2xl font-bold shrink-0 shadow-md">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-rose-600 flex items-center justify-center text-white text-lg md:text-2xl font-bold shrink-0 shadow-md">
                            {selectedSupplier.name[0].toUpperCase()}
                         </div>
                         <div>
@@ -359,8 +359,8 @@ export default function SuppliersScreen() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                         <a href={`tel:${selectedSupplier.phone}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-indigo-650 transition-all shadow-sm"><Phone className="w-4.5 h-4.5" /></a>
-                         <a href={`mailto:${selectedSupplier.email}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-indigo-655 transition-all shadow-sm"><Mail className="w-4.5 h-4.5" /></a>
+                         <a href={`tel:${selectedSupplier.phone}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-rose-650 transition-all shadow-sm"><Phone className="w-4.5 h-4.5" /></a>
+                         <a href={`mailto:${selectedSupplier.email}`} className="p-2.5 bg-white border border-slate-300 rounded-xl text-slate-600 hover:text-rose-655 transition-all shadow-sm"><Mail className="w-4.5 h-4.5" /></a>
                       </div>
                    </div>
 
@@ -387,7 +387,7 @@ export default function SuppliersScreen() {
                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:grid-cols-3">
                           <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
                              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Productos Vendidos</p>
-                             <p className="text-xl md:text-2xl font-black text-indigo-600">{(selectedSupplier.stats?.productsSold || 0).toLocaleString()} u.</p>
+                             <p className="text-xl md:text-2xl font-black text-rose-600">{(selectedSupplier.stats?.productsSold || 0).toLocaleString()} u.</p>
                           </div>
                           <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
                               <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Total Facturado</p>
@@ -408,7 +408,7 @@ export default function SuppliersScreen() {
 
                    <div className="space-y-4">
                       <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                         <FileText className="w-5 h-5 text-indigo-500" /> Movimientos de Cuenta
+                         <FileText className="w-5 h-5 text-rose-500" /> Movimientos de Cuenta
                       </h4>
                       <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-x-auto">
                          <table className="w-full min-w-[450px] text-left">
@@ -455,29 +455,29 @@ export default function SuppliersScreen() {
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-slate-400 overflow-hidden">
                <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                     <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white"><Truck className="w-5 h-5" /></div>
+                     <div className="w-10 h-10 rounded-xl bg-rose-600 flex items-center justify-center text-white"><Truck className="w-5 h-5" /></div>
                      <h3 className="text-lg font-bold text-slate-800">Nuevo Proveedor</h3>
                   </div>
                   <button onClick={() => setShowModal(false)} className="p-2 text-slate-600 hover:text-slate-800"><X className="w-5 h-5" /></button>
                </div>
                <form onSubmit={handleCreate} className="p-8 space-y-6">
                   <div className="group">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1 group-focus-within:text-indigo-500 transition-colors">Razón Social / Nombre *</span>
-                    <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Distribuidora Coca-Cola S.A." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1 group-focus-within:text-rose-500 transition-colors">Razón Social / Nombre *</span>
+                    <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Distribuidora Coca-Cola S.A." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div>
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Teléfono de Contacto</span>
-                        <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+54 11 ..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                        <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+54 11 ..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
                      </div>
                      <div>
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Correo Electrónico</span>
-                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="admin@distribuidora.com" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="admin@distribuidora.com" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
                      </div>
                   </div>
                   <div className="group">
                     <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Persona de Contacto</span>
-                    <input type="text" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="Nombre del vendedor..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all" />
+                    <input type="text" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="Nombre del vendedor..." className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
                   </div>
                   <div className="flex justify-end gap-4 pt-4">
                      <button type="button" onClick={() => setShowModal(false)} className="px-8 py-4 text-[11px] font-bold text-slate-600 uppercase tracking-widest">Cancelar</button>

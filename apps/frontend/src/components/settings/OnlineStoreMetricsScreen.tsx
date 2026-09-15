@@ -222,7 +222,7 @@ export default function OnlineStoreMetricsScreen() {
             <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">Facturación Digital</span>
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-505 flex items-center justify-center text-indigo-600">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-505 flex items-center justify-center text-rose-600">
                   <TrendingUp className="w-4 h-4" />
                 </div>
               </div>
@@ -286,7 +286,7 @@ export default function OnlineStoreMetricsScreen() {
                         className="p-4 flex items-center justify-between gap-4 cursor-pointer select-none text-left"
                       >
                         <div>
-                          <span className="font-mono text-[10px] text-indigo-600 uppercase tracking-tight block">#{o.orderId || o.id.substring(0, 8)}</span>
+                          <span className="font-mono text-[10px] text-rose-600 uppercase tracking-tight block">#{o.orderId || o.id.substring(0, 8)}</span>
                           <span className="text-xs font-black text-slate-800 block mt-0.5">{o.clientName}</span>
                           <span className="text-[9px] text-slate-600 font-semibold block mt-0.5">
                             {new Date(o.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}

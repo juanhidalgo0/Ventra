@@ -16,7 +16,9 @@ import {
   Sparkles,
   AlertTriangle,
   DollarSign,
-  Link as LinkIcon
+  Link as LinkIcon,
+  X,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
@@ -86,7 +88,50 @@ const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean =
   return Math.round(price / 10) * 10;
 };
 
-export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
+const isExcelOrCsv = (file: File) => {
+  const n = (file.name || '').toLowerCase();
+  return n.endsWith('.xlsx') || n.endsWith('.xls') || n.endsWith('.csv');
+};
+
+const FilePreview = ({ file }: { file: File }) => {
+  const [src, setSrc] = useState<string>('');
+  const isExcel = isExcelOrCsv(file);
+
+  useEffect(() => {
+    if (isExcel) return;
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file, isExcel]);
+
+  if (isExcel) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-1.5 text-center select-none">
+        <FileSpreadsheet className="w-6 h-6 mb-1 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        <span className="text-[8px] font-bold truncate max-w-full text-slate-800 dark:text-slate-200" title={file.name}>
+          {file.name}
+        </span>
+        <span className="text-[7px] font-black text-emerald-600 dark:text-emerald-400 uppercase">
+          Excel / CSV
+        </span>
+      </div>
+    );
+  }
+
+  if (!src) return null;
+
+  return (
+    <img 
+      src={src} 
+      alt="Preview" 
+      className="w-full h-full object-cover" 
+    />
+  );
+};
+
+export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack: () => void, initialPurchase?: any }) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -138,7 +183,46 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
   const [date, setDate] = useState(draft?.date || new Date().toISOString().split('T')[0]);
   
   const [items, setItems] = useState<PurchaseItem[]>(draft?.items || []);
+  const [showScanModal, setShowScanModal] = useState(false);
   const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') !== 'false');
+
+  useEffect(() => {
+    if (initialPurchase) {
+      setInvoiceNumber(initialPurchase.invoiceNumber || '');
+      setDate(initialPurchase.date ? initialPurchase.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+      if (initialPurchase.supplier) {
+        setSelectedSupplier(initialPurchase.supplier);
+        setSupplierSearch(initialPurchase.supplier.name);
+      }
+      setPaymentStatus(initialPurchase.paymentStatus || 'PAID');
+      setPaymentMethod(initialPurchase.paymentMethod || 'Efectivo');
+      setNotes(initialPurchase.notes || '');
+      
+      const loadedItems = (initialPurchase.items || []).map((item: any) => {
+        const cost = item.cost / 1.21;
+        const total = item.total / 1.21;
+        return {
+          productId: item.productId,
+          barcode: item.product?.barcode || '',
+          sku: item.product?.sku || '',
+          name: item.productName || item.product?.name || '',
+          categoryName: item.product?.category?.name || '-',
+          brandName: item.product?.brand?.name || '-',
+          variant: '-',
+          unit: item.product?.unit || 'UNIT',
+          quantity: item.quantity,
+          cost,
+          total,
+          buyFormat: item.buyFormat || 'UNIT',
+          unitsPerPack: item.product?.unitsPerPack || 1,
+          presentationType: item.product?.presentationType || 'UNIT',
+          margin: item.product ? Math.round(((item.product.salePrice - (cost * 1.21)) / (cost * 1.21)) * 100) : 0,
+          salePrice: item.product?.salePrice || 0
+        };
+      });
+      setItems(loadedItems);
+    }
+  }, [initialPurchase]);
 
   useEffect(() => {
     localStorage.setItem('purchase_use_iva', useIvaGlobal.toString());
@@ -189,6 +273,9 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
   const [fixedAmountTotal, setFixedAmountTotal] = useState<string>('');
   const productInputRef = useRef<HTMLInputElement>(null);
   const unmatchedSearchInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   const focusUnmatchedSearch = () => {
     setTimeout(() => {
@@ -510,9 +597,10 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
   const executeScanWithTotal = async (useManualTotal: boolean) => {
     if (!selectedFilesForScan || selectedFilesForScan.length === 0) return;
     setShowTotalPrompt(false);
+    const hasExcel = selectedFilesForScan.some(isExcelOrCsv);
     setIsScanning(true);
-    setScanProgress(5);
-    setScanStep('Subiendo imágenes a la IA...');
+    setScanProgress(hasExcel ? 25 : 5);
+    setScanStep(hasExcel ? 'Cargando planilla Excel del proveedor...' : 'Subiendo imágenes a la IA...');
 
     // Start simulated progress bar interval (expected duration around 15-20s, slowing down as it goes)
     const progressInterval = setInterval(() => {
@@ -522,7 +610,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
           return 95;
         }
         // Slower increment as it approaches 95%
-        const diff = Math.max(1, Math.round((100 - prev) / 15));
+        const diff = Math.max(1, Math.round((100 - prev) / (hasExcel ? 6 : 15)));
         return prev + diff;
       });
     }, 400);
@@ -537,7 +625,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
     }
 
     try {
-      setScanStep('La IA está analizando detalladamente los productos y totales...');
+      setScanStep(hasExcel ? 'Analizando planilla Excel y cruzando con inventario...' : 'La IA está analizando detalladamente los productos y totales...');
       const { data } = await api.post('/purchases/scan-invoice', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -596,9 +684,9 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
       if (unmatched.length > 0) {
         setPendingNewProducts(unmatched);
         setShowNewProductsModal(true);
-        toast.success(`Escaneo completado. ${newItems.length} productos agregados, ${unmatched.length} nuevos detectados.`);
+        toast.success(`Escaneo completado. Borrador #${data.purchaseId.substring(0, 8).toUpperCase()} guardado. ${newItems.length} productos vinculados, ${unmatched.length} nuevos detectados.`);
       } else {
-        toast.success(`¡Boleta procesada con éxito! ${newItems.length} productos agregados.`);
+        toast.success(`¡Boleta procesada con éxito! Borrador #${data.purchaseId.substring(0, 8).toUpperCase()} guardado en el sistema.`);
       }
     } catch (err: any) {
       clearInterval(progressInterval);
@@ -767,7 +855,9 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
       }
       setIsSubmitting(true);
       try {
-        await api.post('/purchases', {
+        const url = initialPurchase ? `/purchases/${initialPurchase.id}/confirm` : '/purchases';
+        const method = initialPurchase ? 'put' : 'post';
+        await api[method](url, {
           supplierId: selectedSupplier.id,
           invoiceNumber,
           manualTotal: parsedTotal,
@@ -791,7 +881,9 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
 
     setIsSubmitting(true);
     try {
-      await api.post('/purchases', {
+      const url = initialPurchase ? `/purchases/${initialPurchase.id}/confirm` : '/purchases';
+      const method = initialPurchase ? 'put' : 'post';
+      await api[method](url, {
         supplierId: selectedSupplier.id,
         invoiceNumber,
         items: items.map(i => {
@@ -835,6 +927,158 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
       animate={{ opacity: 1, y: 0 }} 
       className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-hidden"
     >
+      {/* Modal para selección de fotos / cámara */}
+      <AnimatePresence>
+        {showScanModal && (
+          <div className="fixed inset-0 z-[150] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[85vh]"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4 text-rose-500" /> Cargar Boleta (Fotos con IA o Planilla Excel)
+                </h3>
+                <button 
+                  onClick={() => {
+                    setShowScanModal(false);
+                    setSelectedFilesForScan([]);
+                  }} 
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Thumbnails of selected photos */}
+              <div className="flex-1 overflow-y-auto min-h-[120px] max-h-[40vh] border-2 border-dashed border-slate-300 dark:border-slate-750 rounded-2xl p-4 mb-4 flex flex-wrap gap-3 items-center justify-center bg-slate-50/55 dark:bg-slate-950/30">
+                {selectedFilesForScan.length === 0 ? (
+                  <div className="text-center text-slate-400 p-6">
+                    <p className="text-xs font-bold uppercase tracking-wider mb-1">No hay archivos seleccionados</p>
+                    <p className="text-[10px]">Agrega fotos usando la cámara o sube directamente un archivo Excel / CSV del proveedor.</p>
+                  </div>
+                ) : (
+                  selectedFilesForScan.map((file, idx) => (
+                    <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-350 bg-white shadow-sm shrink-0">
+                      <FilePreview file={file} />
+                      <button 
+                        onClick={() => setSelectedFilesForScan(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 p-1 bg-rose-600 text-white rounded-full hover:bg-rose-750 shadow-sm"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Options to add photos / files */}
+              <div className="grid grid-cols-3 gap-2.5 mb-6">
+                {/* Camera Button */}
+                <button 
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-300 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98]"
+                >
+                  <Scan className="w-5 h-5 text-rose-500" />
+                  <span className="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-center leading-tight">Cámara</span>
+                </button>
+                <input 
+                  ref={cameraInputRef}
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      setSelectedFilesForScan(prev => [...prev, files[0]]);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+
+                {/* Gallery Button */}
+                <button 
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-350 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98]"
+                >
+                  <Plus className="w-5 h-5 text-rose-500" />
+                  <span className="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-center leading-tight">Fotos / Galería</span>
+                </button>
+                <input 
+                  ref={galleryInputRef}
+                  type="file" 
+                  accept="image/*, .xlsx, .xls, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv" 
+                  multiple 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      setSelectedFilesForScan(prev => [...prev, ...Array.from(files)]);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+
+                {/* Excel Button */}
+                <button 
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  className="flex flex-col items-center justify-center gap-1.5 p-3 border border-emerald-300 dark:border-emerald-700/60 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30 rounded-2xl cursor-pointer transition-all active:scale-[0.98] relative"
+                >
+                  <span className="absolute -top-2 right-1 px-1.5 py-0.5 bg-emerald-600 text-white rounded-full text-[7px] font-black uppercase tracking-wider shadow-xs">
+                    Gratis
+                  </span>
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider text-center leading-tight">Planilla Excel</span>
+                </button>
+                <input 
+                  ref={excelInputRef}
+                  type="file" 
+                  accept=".xlsx, .xls, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      setSelectedFilesForScan(prev => [...prev, files[0]]);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {/* Footer actions */}
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    setShowScanModal(false);
+                    setSelectedFilesForScan([]);
+                  }}
+                  className="flex-1 py-3 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  disabled={selectedFilesForScan.length === 0}
+                  onClick={() => {
+                    setShowScanModal(false);
+                    setManualTotalInput('');
+                    setShowTotalPrompt(true);
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-750 text-white font-bold text-xs rounded-xl disabled:opacity-50 transition-all shadow-md cursor-pointer"
+                >
+                  Continuar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Loading overlay for scanning */}
       <AnimatePresence>
         {isScanning && (
@@ -845,14 +1089,16 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center p-6 text-white text-center"
           >
             <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700/80 shadow-2xl flex flex-col items-center w-full max-w-md">
-              <RefreshCw className="w-12 h-12 text-indigo-400 animate-spin mb-4 keep-animated" />
-              <h3 className="text-base font-bold text-slate-100 mb-2">Escaneando Boleta con IA</h3>
+              <RefreshCw className="w-12 h-12 text-rose-400 animate-spin mb-4 keep-animated" />
+              <h3 className="text-base font-bold text-slate-100 mb-2">
+                {selectedFilesForScan.some(isExcelOrCsv) ? 'Procesando Planilla Excel' : 'Escaneando Boleta con IA'}
+              </h3>
               <p className="text-xs font-semibold text-slate-350 mb-4">{scanStep}</p>
               
               {/* Progress Bar */}
               <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2">
                 <div 
-                  className="bg-indigo-500 h-full transition-all duration-300 ease-out"
+                  className="bg-rose-500 h-full transition-all duration-300 ease-out"
                   style={{ width: `${scanProgress}%` }}
                 />
               </div>
@@ -885,28 +1131,24 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                     }} 
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-600"></div>
                </label>
             </div>
          </div>
          
          {!isFixedAmount && (
-           <label className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:scale-[1.02] active:scale-[0.98] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-widest cursor-pointer shadow-md shadow-indigo-150 transition-all select-none border border-indigo-500">
+           <button 
+             onClick={() => setShowScanModal(true)}
+             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-700 hover:scale-[1.02] active:scale-[0.98] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-widest cursor-pointer shadow-md shadow-rose-150 transition-all select-none border border-rose-500"
+           >
               <Sparkles className="w-4 h-4" /> Escanear con IA
-              <input 
-                type="file" 
-                accept="image/*" 
-                multiple
-                className="hidden" 
-                onChange={handleFileSelection} 
-              />
-           </label>
+           </button>
          )}
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-4">
          {/* Top Info Bar */}
-         <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-sm grid grid-cols-12 gap-6 items-end">
+         <div className="card p-6 grid grid-cols-12 gap-6 items-end">
             <div className="col-span-4 relative">
                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Proveedor</span>
                 <div className="relative flex items-center">
@@ -921,7 +1163,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                     }}
                     onFocus={() => setShowSupplierResults(true)}
                     placeholder="Buscar proveedor..."
-                    className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl pl-11 pr-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-indigo-500/50 outline-none transition-all"
+                    className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl pl-11 pr-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-rose-500/50 outline-none transition-all"
                   />
                   {showSupplierResults && !selectedSupplier && (
                     <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-300 z-50 overflow-hidden max-h-48 overflow-y-auto">
@@ -957,7 +1199,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                       type="number" 
                       value={defaultMargin} 
                       onChange={e => setDefaultMargin(parseInt(e.target.value) || 0)} 
-                      className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-5 py-3 text-sm font-bold outline-none focus:bg-white focus:border-indigo-500/50 transition-all text-center" 
+                      className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-5 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all text-center" 
                     />
                  </div>
                </>
@@ -1048,7 +1290,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                              <p className="text-slate-800 uppercase leading-none font-extrabold">{p.name}</p>
                              <p className="text-[9px] text-slate-600 font-bold mt-0.5">{p.barcode || 'Sin código'}</p>
                            </div>
-                           <LinkIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                           <LinkIcon className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                          </button>
                        ))}
                      </div>
@@ -1165,7 +1407,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                        id="quick-create-iva-toggle"
                        checked={useIvaForQuickCreate}
                        onChange={e => setUseIvaForQuickCreate(e.target.checked)}
-                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                       className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
                      />
                      <label htmlFor="quick-create-iva-toggle" className="text-[10px] font-extrabold text-slate-700 cursor-pointer select-none">
                        Sumar IVA (21%) al costo del producto
@@ -1389,7 +1631,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                        </div>
                        <div className="flex items-center gap-3 mt-1 pt-1 border-t border-slate-250">
                          <span className="text-[10px] uppercase tracking-wider text-slate-700">Total con IVA:</span>
-                         <span className="text-indigo-600 text-sm whitespace-nowrap">$ {(pendingNewProducts.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.cost) || 0)), 0) * 1.21).toFixed(2)}</span>
+                         <span className="text-rose-600 text-sm whitespace-nowrap">$ {(pendingNewProducts.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.cost) || 0)), 0) * 1.21).toFixed(2)}</span>
                        </div>
                      </div>
                      <div className="flex gap-3">
@@ -1401,7 +1643,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                             setShowNewProductsModal(false);
                             focusUnmatchedSearch();
                           }} 
-                          className="px-5 py-2.5 text-[10px] font-extrabold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl uppercase tracking-wider cursor-pointer border-0 transition-colors"
+                          className="px-5 py-2.5 text-[10px] font-extrabold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl uppercase tracking-wider cursor-pointer border-0 transition-colors"
                         >
                           Asociar/Crear uno por uno
                         </button>
@@ -1460,7 +1702,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowTotalPrompt(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
                 <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-400 overflow-hidden flex flex-col p-6 space-y-4">
                   <div className="flex items-center gap-2.5 pb-2 border-b border-slate-300">
-                    <Sparkles className="w-5 h-5 text-indigo-500" />
+                    <Sparkles className="w-5 h-5 text-rose-500" />
                     <h3 className="text-sm font-bold text-slate-800">Escanear Boleta con IA</h3>
                   </div>
                   <div className="space-y-2">
@@ -1475,7 +1717,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                         placeholder="Ej: 304947.88" 
                         value={manualTotalInput} 
                         onChange={(e) => setManualTotalInput(e.target.value)} 
-                        className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-8 pr-4 py-3 text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner" 
+                        className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-8 pr-4 py-3 text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
@@ -1496,7 +1738,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                     <button 
                       type="button" 
                       onClick={() => executeScanWithTotal(true)} 
-                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-md transition-all cursor-pointer"
+                      className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-md transition-all cursor-pointer"
                     >
                       Comenzar Escaneo
                     </button>
@@ -1594,7 +1836,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                      const name = prompt('Nombre de la nueva categoría:');
                                      if (name && name.trim()) {
                                        try {
-                                         const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#f43f5e' });
+                                         const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#F97F1E' });
                                          setCategories(prev => [...prev, newCat]);
                                          setItems(prev => prev.map(p => {
                                            if (p.productId === item.productId) {
@@ -1730,7 +1972,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                       if (next) (next as HTMLInputElement).focus();
                                     }
                                   }}
-                                  className="w-12 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-indigo-500/50"
+                                  className="w-12 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
                                 />
                                 <button 
                                   type="button"
@@ -1741,7 +1983,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                 </button>
                               </div>
                               {item.buyFormat === 'PACK' && (
-                                <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-tight">({(parseFloat(item.quantity as any) || 0) * item.unitsPerPack} unidades)</span>
+                                <span className="text-[8px] font-bold text-rose-500 uppercase tracking-tight">({(parseFloat(item.quantity as any) || 0) * item.unitsPerPack} unidades)</span>
                               )}
                             </div>
                           </td>
@@ -1763,7 +2005,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                      if (next) (next as HTMLInputElement).focus();
                                    }
                                  }}
-                                 className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-indigo-500/50"
+                                 className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
                                />
                                {item.buyFormat === 'PACK' && (
                                  <span className="text-[8px] font-extrabold text-slate-600 uppercase">(${( (parseFloat(item.cost as any) || 0) / item.unitsPerPack).toFixed(1)} / u.)</span>
@@ -1774,7 +2016,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                              <div className="flex flex-col items-center justify-center gap-0.5">
                                <span>$ {((parseFloat(item.cost as any) || 0) * (useIvaGlobal ? 1.21 : 1)).toFixed(2)}</span>
                                {item.buyFormat === 'PACK' && (
-                                 <span className="text-[8px] font-bold text-indigo-500 uppercase">
+                                 <span className="text-[8px] font-bold text-rose-500 uppercase">
                                    ($ {(((parseFloat(item.cost as any) || 0) * (useIvaGlobal ? 1.21 : 1)) / item.unitsPerPack).toFixed(2)} / u.)
                                  </span>
                                )}
@@ -1797,7 +2039,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                    if (next) (next as HTMLInputElement).focus();
                                  }
                                }}
-                               className="w-14 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-indigo-500/50"
+                               className="w-14 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
                              />
                           </td>
                           <td className="px-4 py-1.5 text-center">
@@ -1826,7 +2068,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                                    }
                                  }
                                }}
-                               className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-indigo-500/50 text-emerald-700 font-extrabold"
+                               className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50 text-emerald-700 font-extrabold"
                              />
                           </td>
                          <td className="px-4 py-1.5 text-right text-[12px] font-bold text-emerald-600">$ {item.total.toFixed(2)}</td>
@@ -1846,23 +2088,23 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                               value={productSearch}
                               onChange={e => searchProducts(e.target.value)}
                               placeholder="Buscar producto (min 2 letras)..."
-                              className="w-full bg-slate-50/50 border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-[11px] font-bold outline-none focus:bg-white focus:border-indigo-300 transition-all"
+                              className="w-full bg-slate-50/50 border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-[11px] font-bold outline-none focus:bg-white focus:border-rose-300 transition-all"
                             />
                             {(productResults.length > 0 || productSearch.trim().length >= 2) && (
                               <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-300 z-[100] overflow-hidden max-h-64 overflow-y-auto">
                                  {productResults.map(p => (
                                    <button key={p.id} type="button" onClick={() => addItem(p)} className="w-full text-left px-5 py-4 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0 group transition-colors border-0 cursor-pointer">
                                       <div className="flex flex-col">
-                                         <div className="text-[12px] font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{p.name}</div>
+                                         <div className="text-[12px] font-bold text-slate-700 group-hover:text-rose-600 transition-colors">{p.name}</div>
                                          <div className="text-[9px] font-bold text-slate-600">{p.barcode || 'Sin código'}</div>
                                       </div>
-                                      <div className="px-3 py-1 rounded-lg bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase">Stock: {p.stock}</div>
+                                      <div className="px-3 py-1 rounded-lg bg-rose-50 text-rose-600 text-[9px] font-bold uppercase">Stock: {p.stock}</div>
                                    </button>
                                  ))}
                                  <button
                                    type="button"
                                    onClick={() => openQuickCreate(null)}
-                                   className="w-full text-left px-5 py-4 bg-indigo-50/50 hover:bg-indigo-50 border-0 text-indigo-600 font-extrabold text-[11px] flex items-center gap-2 cursor-pointer transition-colors"
+                                   className="w-full text-left px-5 py-4 bg-rose-50/50 hover:bg-rose-50 border-0 text-rose-600 font-extrabold text-[11px] flex items-center gap-2 cursor-pointer transition-colors"
                                  >
                                    <Plus className="w-4 h-4" />
                                    <span>Crear y agregar producto nuevo: "{productSearch.toUpperCase()}"</span>
@@ -1875,7 +2117,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                          <button 
                            type="button"
                            onClick={() => productInputRef.current?.focus()}
-                           className="ml-4 text-[10px] font-bold text-indigo-500 uppercase tracking-widest hover:underline transition-all border-0 bg-transparent cursor-pointer"
+                           className="ml-4 text-[10px] font-bold text-rose-500 uppercase tracking-widest hover:underline transition-all border-0 bg-transparent cursor-pointer"
                          >
                            + Agregar producto
                          </button>
@@ -1912,7 +2154,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
           </>
           ) : (
             <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm flex flex-col items-center justify-center max-w-xl mx-auto my-6 space-y-6">
-              <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+              <div className="w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
                 <DollarSign className="w-8 h-8" />
               </div>
               <div className="text-center space-y-1">
@@ -1927,7 +2169,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                   value={fixedAmountTotal}
                   onChange={e => setFixedAmountTotal(e.target.value)}
                   placeholder="0.00" 
-                  className="w-full bg-slate-50/50 border-2 border-slate-150 rounded-2xl pl-10 pr-6 py-4 text-2xl font-extrabold text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-center shadow-inner"
+                  className="w-full bg-slate-50/50 border-2 border-slate-150 rounded-2xl pl-10 pr-6 py-4 text-2xl font-extrabold text-slate-800 focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none transition-all text-center shadow-inner"
                   autoFocus
                 />
               </div>
@@ -1942,7 +2184,7 @@ export default function NewPurchaseScreen({ onBack }: { onBack: () => void }) {
                  value={notes}
                  onChange={e => setNotes(e.target.value)}
                  placeholder="Descripción opcional..." 
-                 className="w-full h-32 bg-white border border-slate-300 rounded-2xl p-6 text-sm font-bold outline-none focus:border-indigo-500/50 transition-all resize-none shadow-sm"
+                 className="w-full h-32 bg-white border border-slate-300 rounded-2xl p-6 text-sm font-bold outline-none focus:border-rose-500/50 transition-all resize-none shadow-sm"
                ></textarea>
             </div>
             <div className="space-y-6">

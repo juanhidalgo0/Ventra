@@ -35,6 +35,7 @@ model User {
   purchases          Purchase[]
   supplierPayments   SupplierPayment[]
   zReports           DailyZReport[]
+  quotes             Quote[]
 
   @@map("users")
 }
@@ -94,6 +95,9 @@ model Sale {
   status               String   @default("COMPLETED") // COMPLETED | CANCELLED | REFUNDED
   notes                String?
   clientId             String?  @map("client_id")
+  pickedUpBy           String?  @map("picked_up_by")
+  isAcopio             Boolean  @default(false) @map("is_acopio")
+  acopioStatus         String   @default("NONE") @map("acopio_status") // NONE | PENDING | PARTIAL | COMPLETED
   createdAt            DateTime @default(now()) @map("created_at")
 
   user     User                @relation(fields: [userId], references: [id])
@@ -102,9 +106,11 @@ model Sale {
   items    SaleItem[]
   payments Payment[]
   accountMovements AccountMovement[]
+  deliveryReceipts DeliveryReceipt[]
 
   @@index([createdAt])
   @@index([sessionId])
+  @@index([clientId])
   @@map("sales")
 }
 
@@ -137,6 +143,7 @@ model PromotionProduct {
   promotionId String    @map("promotion_id")
   productId   String    @map("product_id")
   quantity    Int       @default(1)
+  groupId     String?   @map("group_id")
 
   promotion   Promotion @relation(fields: [promotionId], references: [id])
   product     Product   @relation(fields: [productId], references: [id])
@@ -155,10 +162,13 @@ model SaleItem {
   subtotal    Float
   discount    Float  @default(0)
   total       Float
+  deliveredQuantity Float @default(0) @map("delivered_quantity")
 
   sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
 
+  @@index([productId])
+  @@index([saleId])
   @@map("sale_items")
 }
 
@@ -195,6 +205,14 @@ model Product {
   unit             String  @default("UNIT") // UNIT | KG | L | PACK
   presentationType String  @default("UNIT") @map("presentation_type")
   unitsPerPack     Int     @default(1) @map("units_per_pack")
+  location         String?
+  wholesalePrice   Float?  @map("wholesale_price")
+  wholesaleMinQty  Float?  @map("wholesale_min_qty")
+  pieceSize        Float?  @map("piece_size") // Ferretería: tamaño de la pieza madre (ej. 100 = rollo de 100m) para productos fraccionados (MT/KG/L)
+  showOnline       Boolean @default(false) @map("show_online") // Visible en la tienda online propia de Ventra
+  tradePrice       Float?  @map("trade_price")
+  isKit            Boolean @default(false) @map("is_kit")
+  equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
   isActive    Boolean @default(true) @map("is_active")
   isFavorite  Boolean @default(false) @map("is_favorite")
@@ -213,6 +231,10 @@ model Product {
   additionalBarcodes ProductBarcode[]
   promotions        PromotionProduct[]
   marketingItems    MarketingGroupItem[]
+  quoteItems        QuoteItem[]
+  kitItems          ProductKitItem[] @relation("KitParent")
+  parentKits        ProductKitItem[] @relation("KitChild")
+  deliveryReceiptItems DeliveryReceiptItem[]
 
   @@index([name])
   @@index([barcode])
@@ -228,6 +250,7 @@ model ProductBarcode {
   productId String  @map("product_id")
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
   @@map("product_barcodes")
 }
 
@@ -310,6 +333,8 @@ model Purchase {
   user     User     @relation(fields: [userId], references: [id])
   items    PurchaseItem[]
 
+  @@index([supplierId])
+  @@index([createdAt])
   @@map("purchases")
 }
 
@@ -326,6 +351,8 @@ model PurchaseItem {
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])
 
+  @@index([purchaseId])
+  @@index([productId])
   @@map("purchase_items")
 }
 
@@ -358,6 +385,7 @@ model CashMovement {
   session CashRegisterSession @relation(fields: [sessionId], references: [id])
   user    User                @relation(fields: [userId], references: [id])
 
+  @@index([sessionId])
   @@map("cash_movements")
 }
 
@@ -373,6 +401,7 @@ model PriceHistory {
   product Product @relation(fields: [productId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
 
+  @@index([productId])
   @@map("price_history")
 }
 
@@ -404,12 +433,17 @@ model Client {
   address   String?
   email     String?
   balance   Float    @default(0) // Positive means they owe us
+  creditLimit Float? @map("credit_limit")
+  authorizedPickups String? @map("authorized_pickups")
+  priceList String   @default("RETAIL") @map("price_list") // RETAIL | TRADE | WHOLESALE
+  tradeDiscountPercentage Float? @map("trade_discount_percentage")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   sales     Sale[]
   movements AccountMovement[]
+  deliveryReceipts DeliveryReceipt[]
 
   @@map("clients")
 }
@@ -424,6 +458,7 @@ model AccountMovement {
   balanceBefore Float   @map("balance_before")
   balanceAfter  Float   @map("balance_after")
   description String?
+  pickedUpBy  String?  @map("picked_up_by")
   createdAt   DateTime @default(now()) @map("created_at")
 
   client Client @relation(fields: [clientId], references: [id])
@@ -487,3 +522,94 @@ model Surcharge {
 
   @@map("surcharges")
 }
+
+// ---- Quotes / Presupuestos ----
+model Quote {
+  id           String      @id @default(uuid())
+  quoteNumber  String?     @unique @map("quote_number")
+  clientName   String?     @map("client_name")
+  clientPhone  String?     @map("client_phone")
+  userId       String      @map("user_id")
+  total        Float
+  status       String      @default("PENDING") // PENDING | CONVERTED | EXPIRED | CANCELLED
+  validUntil   DateTime?   @map("valid_until")
+  notes        String?
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  user         User        @relation(fields: [userId], references: [id])
+  items        QuoteItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String   @id @default(uuid())
+  quoteId     String   @map("quote_id")
+  productId   String?  @map("product_id")
+  productName String   @map("product_name")
+  unitPrice   Float    @map("unit_price")
+  quantity    Float
+  subtotal    Float
+
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id])
+
+  @@index([quoteId])
+  @@map("quote_items")
+}
+
+// ---- Kits & Composites ----
+model ProductKitItem {
+  id              String  @id @default(uuid())
+  parentProductId String  @map("parent_product_id")
+  childProductId  String  @map("child_product_id")
+  quantity        Float   @default(1)
+
+  parentProduct   Product @relation("KitParent", fields: [parentProductId], references: [id], onDelete: Cascade)
+  childProduct    Product @relation("KitChild", fields: [childProductId], references: [id], onDelete: Cascade)
+
+  @@index([parentProductId])
+  @@index([childProductId])
+  @@map("product_kit_items")
+}
+
+// ---- Acopio & Remitos de Entrega ----
+model DeliveryReceipt {
+  id              String   @id @default(uuid())
+  remitoNumber    Int      @unique @map("remito_number")
+  saleId          String   @map("sale_id")
+  clientId        String?  @map("client_id")
+  receiverName    String?  @map("receiver_name")
+  driverName      String?  @map("driver_name")
+  deliveryAddress String?  @map("delivery_address")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  sale            Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  client          Client?  @relation(fields: [clientId], references: [id])
+  items           DeliveryReceiptItem[]
+
+  @@index([saleId])
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("delivery_receipts")
+}
+
+model DeliveryReceiptItem {
+  id                String  @id @default(uuid())
+  deliveryReceiptId String  @map("delivery_receipt_id")
+  productId         String  @map("product_id")
+  productName       String  @map("product_name")
+  quantity          Float
+
+  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
+  product           Product         @relation(fields: [productId], references: [id])
+
+  @@index([deliveryReceiptId])
+  @@index([productId])
+  @@map("delivery_receipt_items")
+}
+

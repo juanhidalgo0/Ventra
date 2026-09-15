@@ -20,7 +20,7 @@ export default function StockAuditScreen() {
   return (
     <div className="h-full flex flex-col gap-6 bg-slate-50/30 p-2 overflow-y-auto custom-scrollbar pb-10">
       {/* Header Info */}
-      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
+      <div className="card p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
               <ClipboardCheck className="w-6 h-6" />
@@ -40,7 +40,7 @@ export default function StockAuditScreen() {
       </div>
 
       {/* Progress Steps */}
-      <div className="bg-white px-12 py-8 rounded-2xl border border-gray-100 shadow-sm">
+      <div className="card px-12 py-8">
         <div className="relative flex items-center justify-between">
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-slate-100" />
           {[
@@ -60,7 +60,7 @@ export default function StockAuditScreen() {
       </div>
 
       {/* Main Action Card */}
-      <div className="bg-white p-12 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+      <div className="card p-12 flex flex-col items-center justify-center text-center">
         <div className="w-20 h-20 rounded-2xl bg-emerald-50 flex items-center justify-center mb-8">
            <ClipboardCheck className="w-10 h-10 text-emerald-500" />
         </div>
@@ -75,7 +75,7 @@ export default function StockAuditScreen() {
       </div>
 
       {/* Audit History Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+      <div className="card flex flex-col overflow-hidden">
         <div className="p-6 border-b border-gray-50 flex items-center justify-between">
           <h3 className="text-[11px] font-bold text-gray-800 uppercase tracking-widest flex items-center gap-2">
             <History className="w-5 h-5 text-emerald-500" /> Historial de Auditorías
@@ -102,7 +102,7 @@ export default function StockAuditScreen() {
               <td className="px-6 py-4 text-[11px] font-bold text-gray-400">13/05/2026 18:41</td>
               <td className="px-6 py-4">
                  <p className="text-[11px] font-bold text-gray-700">Auditoría 13/5/2026</p>
-                 <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">GO! POS</p>
+                 <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">VENTRA POS</p>
               </td>
               <td className="px-6 py-4 text-[11px] font-bold text-gray-600">0</td>
               <td className="px-6 py-4 text-[11px] font-bold text-gray-600">0</td>

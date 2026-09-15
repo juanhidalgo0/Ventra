@@ -3,6 +3,177 @@ import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
 import axios from 'axios';
 import { Jimp } from 'jimp';
+import * as XLSX from 'xlsx';
+
+function normalizeHeaderCell(s: any): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_.\-\/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectExcelColumns(rows: any[][]) {
+  const synonyms: { [key: string]: string[] } = {
+    sku: ['codigo', 'cod', 'sku', 'articulo', 'art', 'nro art', 'cod art', 'item', 'ref', 'clave'],
+    barcode: ['barcode', 'barra', 'ean', 'gtin', 'cod barra', 'codigo barra', 'codbarra'],
+    name: ['descripcion', 'detalle', 'nombre', 'producto', 'denominacion', 'concepto', 'desc', 'detalle del producto', 'material'],
+    quantity: ['cantidad', 'cant', 'unidades', 'bultos', 'qty', 'u b', 'uxb', 'bulto'],
+    cost: ['costo', 'p unit', 'p unitario', 'p costo', 'precio unit', 'precio unitario', 'precio', 'unitario', 'p lista', 'neto', 'imp neto', 'valor', 'p neto'],
+    total: ['total', 'subtotal', 'importe', 'final', 'sub total', 'total linea', 'imp total'],
+    unitsPerPack: ['u b', 'uxb', 'unidades bulto', 'emb', 'empaque']
+  };
+
+  let bestRow = -1;
+  let maxMatches = 0;
+  let detected: { [key: string]: number } = {};
+
+  const scanLimit = Math.min(20, rows.length);
+  for (let r = 0; r < scanLimit; r++) {
+    const row = rows[r] || [];
+    let currentMap: { [key: string]: number } = {};
+    let matches = 0;
+
+    for (let c = 0; c < row.length; c++) {
+      const cellVal = normalizeHeaderCell(row[c]);
+      if (!cellVal) continue;
+
+      for (const [key, list] of Object.entries(synonyms)) {
+        if (currentMap[key] === undefined && list.some(syn => cellVal === syn || cellVal.startsWith(syn + ' ') || cellVal.includes(' ' + syn) || cellVal.endsWith(' ' + syn))) {
+          currentMap[key] = c;
+          matches++;
+          break;
+        }
+      }
+    }
+
+    if (matches > maxMatches && (currentMap.name !== undefined || currentMap.sku !== undefined)) {
+      maxMatches = matches;
+      bestRow = r;
+      detected = currentMap;
+    }
+  }
+
+  return { headerRow: bestRow, columns: detected };
+}
+
+function extractExcelMetadata(rows: any[][], headerRow: number) {
+  let supplierName = '';
+  let invoiceNumber = '';
+  let date = '';
+
+  const metaLimit = Math.min(headerRow, 12);
+  for (let r = 0; r < metaLimit; r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const val = String(row[c] || '').trim();
+      if (!val) continue;
+
+      const invMatch = val.match(/(?:remito|factura|boleta|comprobante|fc|fa|nro|n°|num)[:\s#]*([A-Za-z0-9\-_]+(?:\s+[A-Za-z0-9\-_]+)?)/i);
+      if (invMatch && !invoiceNumber && invMatch[1].length >= 3) {
+        invoiceNumber = invMatch[1].trim();
+      }
+
+      const dateMatch = val.match(/(?:fecha)[:\s]*(\d{4}[-/.]\d{2}[-/.]\d{2}|\d{2}[-/.]\d{2}[-/.]\d{4})/i) || val.match(/(\d{4}[-/.]\d{2}[-/.]\d{2})/);
+      if (dateMatch && !date) {
+        date = dateMatch[1];
+      }
+
+      if (r <= 3 && !supplierName && val.length > 5 && !/cliente|fecha|remito|factura|cuit|ingresos|direccion/i.test(val)) {
+        supplierName = val;
+      }
+    }
+  }
+
+  return { supplierName, invoiceNumber, date };
+}
+
+function parseExcelInvoiceData(file: Express.Multer.File, manualTotal?: number) {
+  const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) {
+    throw new Error('El archivo Excel no contiene hojas de cálculo legibles.');
+  }
+
+  const worksheet = workbook.Sheets[firstSheetName];
+  const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+  if (!rows || rows.length === 0) {
+    throw new Error('La planilla Excel está vacía.');
+  }
+
+  const { headerRow, columns } = detectExcelColumns(rows);
+  if (headerRow === -1 || (columns.name === undefined && columns.sku === undefined)) {
+    throw new Error('No se pudieron identificar las columnas de la planilla Excel (se requiere al menos columna de Descripción/Producto o Código).');
+  }
+
+  const meta = extractExcelMetadata(rows, headerRow);
+
+  const items: Array<{
+    sku: string;
+    barcode: string;
+    name: string;
+    packageQuantity: number;
+    unitsPerPack: number;
+    total: string;
+  }> = [];
+
+  const summaryKeywords = ['total general', 'total', 'subtotal', 'resumen', 'son pesos', 'i.v.a', 'iva', 'transporte', 'saldo'];
+
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    if (row.length === 0) continue;
+
+    const nonBlankCount = row.filter((c: any) => String(c).trim().length > 0).length;
+    if (nonBlankCount === 0) continue;
+
+    const rawName = columns.name !== undefined ? String(row[columns.name] || '').trim() : '';
+    const rawSku = columns.sku !== undefined ? String(row[columns.sku] || '').trim() : '';
+    const rawBarcode = columns.barcode !== undefined ? String(row[columns.barcode] || '').trim() : '';
+
+    const firstColStr = String(row[0] || '').toLowerCase().trim();
+    if (summaryKeywords.some(k => firstColStr.startsWith(k))) {
+      continue;
+    }
+
+    if (!rawName && !rawSku) continue;
+
+    const itemName = rawName || rawSku;
+    if (summaryKeywords.some(k => itemName.toLowerCase().startsWith(k))) continue;
+
+    const qty = columns.quantity !== undefined ? (parseArgentineNumber(row[columns.quantity]) || 1) : 1;
+    const uPack = columns.unitsPerPack !== undefined ? (parseArgentineNumber(row[columns.unitsPerPack]) || 1) : 1;
+    const cost = columns.cost !== undefined ? parseArgentineNumber(row[columns.cost]) : 0;
+    let total = columns.total !== undefined ? parseArgentineNumber(row[columns.total]) : 0;
+
+    if (total === 0 && cost > 0 && qty > 0) {
+      total = cost * qty;
+    }
+
+    items.push({
+      sku: rawSku,
+      barcode: rawBarcode,
+      name: itemName,
+      packageQuantity: qty,
+      unitsPerPack: uPack,
+      total: String(total),
+    });
+  }
+
+  if (items.length === 0) {
+    throw new Error('No se detectaron filas de productos válidas debajo del encabezado de la planilla Excel.');
+  }
+
+  return {
+    rawTableTranscription: '',
+    supplierName: meta.supplierName,
+    invoiceNumber: meta.invoiceNumber,
+    date: meta.date || new Date().toISOString().split('T')[0],
+    totalFacturaAPagar: manualTotal !== undefined ? String(manualTotal) : undefined,
+    items,
+  };
+}
 
 function parseArgentineNumber(val: any): number {
   if (val === undefined || val === null) return 0;
@@ -252,22 +423,43 @@ export class PurchasesService {
     return purchase;
   }
 
-  async scanInvoice(files: Express.Multer.File[], manualTotal?: number) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('La clave de API de Gemini (GEMINI_API_KEY) no está configurada en las variables de entorno.');
-    }
+  async scanInvoice(files: Express.Multer.File[], manualTotal?: number, userId?: string) {
+    const isExcel = files.some(f => {
+      const name = (f.originalname || '').toLowerCase();
+      const mime = (f.mimetype || '').toLowerCase();
+      return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') ||
+             mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv');
+    });
 
-    const inlineDataParts = [];
-    for (const file of files) {
-      console.log(`[GeminiAI] Preparando imagen original para escaneo: ${file.originalname || 'sin-nombre'} (${(file.buffer.length / 1024 / 1024).toFixed(2)} MB)`);
-      inlineDataParts.push({
-        inlineData: {
-          mimeType: file.mimetype || 'image/jpeg',
-          data: file.buffer.toString('base64'),
-        }
-      });
-    }
+    let parsedData: any = null;
+
+    if (isExcel) {
+      console.log(`[PurchasesService] Procesando boleta vía motor Excel nativo (100% gratuito, offline)...`);
+      const excelFile = files.find(f => {
+        const name = (f.originalname || '').toLowerCase();
+        const mime = (f.mimetype || '').toLowerCase();
+        return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') ||
+               mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv');
+      }) || files[0];
+
+      parsedData = parseExcelInvoiceData(excelFile, manualTotal);
+      console.log(`[PurchasesService] Excel procesado con éxito: ${parsedData.items.length} productos detectados.`);
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('La clave de API de Gemini (GEMINI_API_KEY) no está configurada en las variables de entorno.');
+      }
+
+      const inlineDataParts = [];
+      for (const file of files) {
+        console.log(`[GeminiAI] Preparando imagen original para escaneo: ${file.originalname || 'sin-nombre'} (${(file.buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        inlineDataParts.push({
+          inlineData: {
+            mimeType: file.mimetype || 'image/jpeg',
+            data: file.buffer.toString('base64'),
+          }
+        });
+      }
 
     let promptText = `Eres un experto en OCR visual y extracción de datos estructurados de comprobantes de compra.
 Tu tarea es analizar la imagen de la boleta (factura impresa, ticket de supermercado/mayorista o incluso notas/comprobantes escritos a mano) y extraer la lista completa de todos los productos físicos reales comprados.
@@ -394,11 +586,12 @@ REGLAS CRÍTICAS:
     }
 
     if (!parsedData) {
-      if (lastError.response?.status === 503) {
+      if (lastError?.response?.status === 503) {
         throw new Error('Los servidores de Google Gemini están temporalmente saturados. Por favor, intenta de nuevo en unos segundos.');
       }
       throw new Error(`No se pudo procesar la boleta con IA tras intentar con varios modelos: ${errors.join(' | ')}`);
     }
+  }
 
     try {
       // Match supplier if found
@@ -487,7 +680,95 @@ REGLAS CRÍTICAS:
         };
       });
 
+      // 1. Get or create default supplier if none matched
+      let supplierId = matchedSupplier?.id;
+      if (!supplierId) {
+        let defaultSupplier = await this.prisma.supplier.findFirst({
+          where: { name: 'IA - Pendiente de Clasificar' }
+        });
+        if (!defaultSupplier) {
+          defaultSupplier = await this.prisma.supplier.create({
+            data: {
+              name: 'IA - Pendiente de Clasificar',
+              contact: 'IA',
+              phone: '',
+              email: ''
+            }
+          });
+        }
+        supplierId = defaultSupplier.id;
+      }
+
+      // 2. Create the Purchase in PENDING status
+      const total = items.reduce((acc, item) => acc + item.total, 0) * 1.21;
+      
+      const purchase = await this.prisma.$transaction(async (tx) => {
+        const newPurchase = await (tx as any).purchase.create({
+          data: {
+            supplierId,
+            userId: userId || (await tx.user.findFirst()).id, // fallback to first user if none provided
+            invoiceNumber: parsedData.invoiceNumber || null,
+            total,
+            status: 'PENDING',
+            paymentStatus: 'OWED',
+            notes: isExcel ? 'Cargado automáticamente desde planilla Excel.' : 'Escaneado automáticamente con IA.',
+          },
+        });
+
+        // For each item, if it has a matched product, use it.
+        // If not, we create it in the database immediately as inactive
+        for (const item of items) {
+          let productId = item.product?.id;
+          if (!productId) {
+            const costVal = item.cost * 1.21;
+            const saleVal = costVal * 1.35; // default 35% markup
+            const newProduct = await tx.product.create({
+              data: {
+                name: item.name,
+                barcode: item.barcode || null,
+                sku: item.sku || null,
+                costPrice: costVal,
+                salePrice: saleVal,
+                stock: 0,
+                presentationType: 'UNIT',
+                unitsPerPack: 1,
+              }
+            });
+            productId = newProduct.id;
+            
+            // Update the item's product info so the frontend knows it was created
+            item.product = {
+              id: newProduct.id,
+              barcode: newProduct.barcode,
+              sku: newProduct.sku,
+              name: newProduct.name,
+              costPrice: newProduct.costPrice,
+              salePrice: newProduct.salePrice,
+              unit: newProduct.unit,
+              presentationType: newProduct.presentationType,
+              unitsPerPack: newProduct.unitsPerPack,
+            };
+          }
+
+          await (tx as any).purchaseItem.create({
+            data: {
+              purchaseId: newPurchase.id,
+              productId,
+              productName: item.name,
+              quantity: item.quantity,
+              cost: item.cost * 1.21,
+              total: item.total * 1.21,
+              buyFormat: 'UNIT',
+            }
+          });
+        }
+
+        return newPurchase;
+      });
+
       return {
+        purchaseId: purchase.id,
+        status: purchase.status,
         supplierName: parsedData.supplierName || '',
         matchedSupplier: (matchedSupplier && matchedSupplier.id) ? {
           id: matchedSupplier.id,
@@ -499,12 +780,152 @@ REGLAS CRÍTICAS:
       };
 
     } catch (err: any) {
-      console.error('Error scanning invoice with Gemini:', err.response?.data || err.message);
+      console.error('Error scanning/parsing invoice:', err.response?.data || err.message);
       if (err.response?.status === 503) {
-        throw new Error('El modelo de IA de Gemini está experimentando alta demanda (saturación temporal). Por favor, intenta de nuevo en unos segundos.');
+        throw new Error('El servicio está temporalmente saturado. Por favor, intenta de nuevo en unos segundos.');
       }
-      throw new Error(`Error al escanear la boleta con IA: ${err.message}`);
+      throw new Error(`Error al procesar la boleta: ${err.message}`);
     }
+  }
+
+  async confirmPending(id: string, data: {
+    supplierId: string;
+    userId: string;
+    invoiceNumber?: string;
+    items?: { 
+      productId: string; 
+      quantity: number; 
+      cost: number; 
+      buyFormat?: string;
+      salePrice?: number;
+    }[];
+    paymentStatus: 'PAID' | 'OWED';
+    paymentMethod?: string;
+    notes?: string;
+    manualTotal?: number;
+  }) {
+    const total = data.manualTotal !== undefined 
+      ? Number(data.manualTotal) 
+      : (data.items || []).reduce((acc, item) => acc + (item.quantity * item.cost), 0) * 1.21;
+    const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
+
+    const purchase = await this.prisma.$transaction(async (tx) => {
+      // 1. Update Purchase status to COMPLETED and other fields
+      const updatedPurchase = await (tx as any).purchase.update({
+        where: { id },
+        data: {
+          supplierId: data.supplierId,
+          userId: data.userId,
+          invoiceNumber: data.invoiceNumber,
+          total,
+          status: 'COMPLETED',
+          paymentStatus: data.paymentStatus,
+          paymentMethod: data.paymentMethod,
+          notes: data.notes,
+        },
+      });
+
+      // 2. Delete existing items of this purchase
+      await (tx as any).purchaseItem.deleteMany({
+        where: { purchaseId: id }
+      });
+
+      // 3. Create Items and Update Stock
+      if (data.items && data.items.length > 0) {
+        for (const item of data.items) {
+          const productId = item.productId;
+          const product = await tx.product.findUnique({ 
+            where: { id: productId }, 
+            include: { category: true } 
+          });
+          if (!product) throw new NotFoundException(`Producto ${productId} no encontrado`);
+
+          const isPack = item.buyFormat === 'PACK' && product.presentationType === 'PACK';
+          const unitsPerPack = isPack ? (product.unitsPerPack || 1) : 1;
+          const totalUnitsAdded = item.quantity * unitsPerPack;
+          const unitCost = isPack ? (item.cost / unitsPerPack) : item.cost;
+          const unitCostWithIva = unitCost * 1.21;
+
+          await (tx as any).purchaseItem.create({
+            data: {
+              purchaseId: id,
+              productId: productId,
+              productName: product.name,
+              quantity: item.quantity,
+              cost: item.cost * 1.21,
+              total: item.quantity * item.cost * 1.21,
+              buyFormat: item.buyFormat || 'UNIT',
+            },
+          });
+
+          const stockBefore = product.stock;
+          const stockAfter = stockBefore + totalUnitsAdded;
+
+          // Update Product Stock, Cost Price and Sale Price
+          const updatedSalePrice = item.salePrice || product.salePrice;
+          const updateData: any = {
+            stock: stockAfter,
+            costPrice: unitCostWithIva,
+            salePrice: updatedSalePrice,
+            isActive: true
+          };
+
+          await tx.product.update({
+            where: { id: productId },
+            data: updateData,
+          });
+
+          // Create Inventory Movement
+          await tx.inventoryMovement.create({
+            data: {
+              productId: productId,
+              userId: data.userId,
+              type: 'ENTRY',
+              quantity: totalUnitsAdded,
+              stockBefore,
+              stockAfter,
+              reason: isPack 
+                ? `Compra a proveedor (${item.quantity} paq. x ${unitsPerPack} u.)` 
+                : 'Compra a proveedor',
+              reference: `Compra #${id}`,
+            },
+          });
+
+          productsToSync.push({
+            barcode: product.barcode || product.id,
+            newStock: stockAfter,
+            salePrice: updatedSalePrice,
+            name: product.name,
+            description: product.description || '',
+            categoryName: product.category?.name || 'Varios',
+            minStock: product.minStock,
+            imageUrl: product.imageUrl || '',
+          });
+        }
+      }
+
+      return updatedPurchase;
+    });
+
+    // Sync all updated stocks to GoDelivery
+    for (const p of productsToSync) {
+      this.firebaseSync.syncProductToFirestore(
+        p.barcode,
+        p.newStock,
+        p.salePrice,
+        {
+          name: p.name,
+          description: p.description,
+          categoryName: p.categoryName,
+          minStock: p.minStock,
+          imageUrl: p.imageUrl,
+        }
+      ).catch(err => {
+        console.error(`Error syncing product ${p.barcode} to Firestore after purchase confirmation:`, err.message);
+      });
+    }
+
+    return purchase;
   }
 
   async deleteOne(id: string) {
@@ -639,5 +1060,52 @@ REGLAS CRÍTICAS:
     }
 
     return { success: true, restoredCount: restoredProducts.length };
+  }
+
+  async getSuggestedReplenishment() {
+    const lowStockProducts = await this.prisma.product.findMany({
+      where: {
+        isActive: true,
+        unlimitedStock: false,
+        minStock: { gt: 0 }
+      },
+      include: {
+        supplier: {
+          select: { id: true, name: true, phone: true, email: true, contact: true }
+        },
+        category: {
+          select: { id: true, name: true }
+        }
+      },
+      orderBy: [
+        { supplierId: 'asc' },
+        { name: 'asc' }
+      ]
+    });
+
+    const filtered = lowStockProducts.filter((p: any) => p.stock <= p.minStock);
+
+    const items = filtered.map((p: any) => {
+      const targetStock = p.minStock * 2;
+      const deficit = Math.max(1, Math.ceil(targetStock - p.stock));
+      return {
+        productId: p.id,
+        barcode: p.barcode,
+        sku: p.sku,
+        name: p.name,
+        stock: p.stock,
+        minStock: p.minStock,
+        costPrice: p.costPrice,
+        unit: p.unit,
+        presentationType: p.presentationType,
+        unitsPerPack: p.unitsPerPack,
+        suggestedQty: deficit,
+        estimatedTotal: deficit * (p.costPrice || 0),
+        supplier: p.supplier || { id: 'UNASSIGNED', name: 'Sin Proveedor Asignado', phone: null, email: null },
+        category: p.category?.name || 'General'
+      };
+    });
+
+    return items;
   }
 }

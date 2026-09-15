@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { CashRegisterService } from './cash-register.service';
 import { CashRegisterController } from './cash-register.controller';
 import { WebsocketModule } from '../../websockets/websocket.module';
+import { SystemModule } from '../system/system.module';
 
 @Module({
-  imports: [WebsocketModule],
+  imports: [WebsocketModule, SystemModule],
   controllers: [CashRegisterController],
   providers: [CashRegisterService],
   exports: [CashRegisterService],

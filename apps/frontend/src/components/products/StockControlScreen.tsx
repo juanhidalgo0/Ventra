@@ -119,7 +119,7 @@ export default function StockControlScreen() {
             className="grid grid-cols-1 lg:grid-cols-4 gap-6"
           >
             {/* Main Form Column */}
-            <div className="lg:col-span-3 bg-white p-8 rounded-xl border border-slate-400 space-y-8">
+            <div className="lg:col-span-3 card p-8 space-y-8">
               
               <div className="space-y-4">
                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Tipo de Movimiento</h4>
@@ -173,7 +173,7 @@ export default function StockControlScreen() {
                                   <p className="text-xs font-bold text-slate-800">{p.name}</p>
                                   <p className="text-[10px] text-slate-600 font-bold uppercase">{p.barcode}</p>
                                </div>
-                               <span className="text-[10px] font-bold text-indigo-500">Stock: {p.stock}</span>
+                               <span className="text-[10px] font-bold text-rose-500">Stock: {p.stock}</span>
                             </button>
                           ))}
                         </div>
@@ -247,10 +247,10 @@ export default function StockControlScreen() {
 
             {/* Info Column */}
             <div className="space-y-6">
-               <div className="bg-white p-6 rounded-xl border border-slate-400 flex flex-col items-center justify-center text-center min-h-[280px]">
+               <div className="card p-6 flex flex-col items-center justify-center text-center min-h-[280px]">
                   {selectedProduct ? (
                     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full space-y-6">
-                       <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto text-indigo-500">
+                       <div className="w-20 h-20 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto text-rose-500">
                           <Package className="w-10 h-10" />
                        </div>
                        <div>
@@ -260,7 +260,17 @@ export default function StockControlScreen() {
                        <div className="grid grid-cols-2 gap-4 py-4 border-y border-gray-50">
                           <div>
                              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Stock Actual</p>
-                             <p className={`text-xl font-bold ${selectedProduct.stock <= selectedProduct.minStock ? 'text-rose-500' : 'text-indigo-600'}`}>{selectedProduct.stock}</p>
+                             <p className={`text-xl font-bold ${selectedProduct.stock <= selectedProduct.minStock ? 'text-rose-500' : 'text-rose-600'}`}>{selectedProduct.stock}</p>
+                             {localStorage.getItem('business_type') === 'FERRETERIA' && selectedProduct.pieceSize > 0 && (
+                               <p className="text-[9.5px] font-bold text-emerald-600 mt-1">
+                                 {Math.floor(selectedProduct.stock / selectedProduct.pieceSize)} pieza(s) completa(s)
+                                 {(() => {
+                                   const remainder = selectedProduct.stock % selectedProduct.pieceSize;
+                                   const unitLabel = selectedProduct.unit === 'MT' ? 'm' : selectedProduct.unit === 'KG' ? 'kg' : selectedProduct.unit === 'L' ? 'L' : '';
+                                   return remainder > 0.001 ? ` + ${parseFloat(remainder.toFixed(2))}${unitLabel} sobrante` : '';
+                                 })()}
+                               </p>
+                             )}
                           </div>
                           <div>
                              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Costo Unit.</p>
@@ -281,22 +291,22 @@ export default function StockControlScreen() {
                   )}
                </div>
 
-               <div className="bg-indigo-50/50 p-8 rounded-2xl border border-indigo-100/50 space-y-6">
-                  <h4 className="text-[11px] font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+               <div className="bg-rose-50/50 p-8 rounded-2xl border border-rose-100/50 space-y-6">
+                  <h4 className="text-[11px] font-bold text-rose-700 uppercase tracking-widest flex items-center gap-2">
                      <AlertCircle className="w-4 h-4" /> Tips de Registro
                   </h4>
                   <ul className="space-y-4">
                      <li className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
-                        <p className="text-[10px] font-bold text-indigo-600/80 leading-relaxed uppercase tracking-widest">Usa <span className="font-bold">Ingreso</span> para compras o stock inicial.</p>
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                        <p className="text-[10px] font-bold text-rose-600/80 leading-relaxed uppercase tracking-widest">Usa <span className="font-bold">Ingreso</span> para compras o stock inicial.</p>
                      </li>
                      <li className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
-                        <p className="text-[10px] font-bold text-indigo-600/80 leading-relaxed uppercase tracking-widest">Usa <span className="font-bold">Egreso</span> para mermas, vencimientos o consumo propio.</p>
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                        <p className="text-[10px] font-bold text-rose-600/80 leading-relaxed uppercase tracking-widest">Usa <span className="font-bold">Egreso</span> para mermas, vencimientos o consumo propio.</p>
                      </li>
                      <li className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
-                        <p className="text-[10px] font-bold text-indigo-600/80 leading-relaxed uppercase tracking-widest">El historial se guarda automáticamente con quien lo cambie.</p>
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                        <p className="text-[10px] font-bold text-rose-600/80 leading-relaxed uppercase tracking-widest">El historial se guarda automáticamente con quien lo cambie.</p>
                      </li>
                   </ul>
                </div>
@@ -310,10 +320,10 @@ export default function StockControlScreen() {
             className="flex-1 flex flex-col gap-4 overflow-hidden"
           >
             {/* AUDITORIA DE MOVIMIENTOS HEADER */}
-            <div className="bg-white p-5 rounded-xl border border-slate-400 space-y-5">
+            <div className="card p-5 space-y-5">
                <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-gray-800 tracking-tight">Auditoría de Movimientos</h3>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all">
+                  <button className="btn-success text-xs">
                      <FileSpreadsheet className="w-4 h-4" /> Exportar a Excel
                   </button>
                </div>
@@ -357,7 +367,7 @@ export default function StockControlScreen() {
             </div>
 
             {/* TABLE */}
-            <div className="flex-1 bg-white rounded-xl border border-slate-400 overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] custom-scrollbar">
+            <div className="flex-1 card overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] custom-scrollbar">
                <table className="w-full text-left">
                   <thead className="bg-slate-50/50 border-b border-gray-50">
                      <tr>
@@ -388,7 +398,7 @@ export default function StockControlScreen() {
                               <td className={`px-6 py-4 text-center text-[11px] font-bold ${m.type === 'ENTRY' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                  {m.type === 'ENTRY' ? '+' : ''}{m.quantity}
                               </td>
-                              <td className="px-6 py-4 text-center text-[11px] font-bold text-indigo-500">{m.stockAfter}</td>
+                              <td className="px-6 py-4 text-center text-[11px] font-bold text-rose-500">{m.stockAfter}</td>
                               <td className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase">{m.user.fullName}</td>
                               <td className="px-6 py-4 text-[11px] font-bold text-gray-400">---</td>
                               <td className="px-6 py-4 text-[11px] font-bold text-gray-400 truncate max-w-[120px]">{m.reference || '---'}</td>

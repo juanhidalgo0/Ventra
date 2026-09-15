@@ -10,7 +10,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "npx prisma studio",
-    "db:reset": "npx prisma migrate reset --force",
+    "db:reset": "node -e \"const fs = require('fs'); ['prisma/dev.db', 'prisma/dev.db-wal', 'prisma/dev.db-shm'].forEach(f => { try { fs.unlinkSync(f); } catch {} });\" && npx prisma db push",
     "db:generate": "npx prisma generate"
   },
   "dependencies": {
