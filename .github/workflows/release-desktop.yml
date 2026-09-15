@@ -29,6 +29,17 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
+      # .env is gitignored and tauri.conf.json bundles it into the installer, so
+      # a fresh CI checkout has no .env at all. Every other setting the backend
+      # needs is already passed straight to the process by src-tauri/src/lib.rs
+      # when it spawns Node (DATABASE_URL, Firebase creds, sync token, etc.) —
+      # GEMINI_API_KEY is the one value that actually comes from this file, so
+      # that's the only thing this writes. Deliberately NOT the full production
+      # .env: this repo is public and this file ships inside a public installer.
+      - name: Write minimal .env (only what main.rs can't already supply)
+        shell: bash
+        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+
       - name: Reset local dev database (fresh schema, no seed data bundled)
         run: npm run db:reset
         env:
