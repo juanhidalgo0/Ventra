@@ -118,24 +118,24 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
   return (
     <MotionDiv 
       {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3"
       onClick={onClose}
     >
       <MotionDiv
         {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
         onClick={(e: any) => e.stopPropagation()}
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-6xl overflow-hidden shadow-xl flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800"
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-6xl overflow-hidden shadow-xl flex flex-col max-h-[calc(100dvh-24px)] border border-slate-200 dark:border-slate-800 tabular-nums"
       >
         {/* Header */}
-        <div className="px-6 py-4.5 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+        <div className="px-6 py-3 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
           <div className="flex items-center gap-3">
             <MangoIcon className="w-6 h-6" />
             <div>
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-none">Estado Actual de la Caja</h2>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-widest mt-1">Auditoría rápida del turno activo</p>
+              <p className="text-[12.5px] text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-widest mt-1">Auditoría rápida del turno activo</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -157,45 +157,45 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
         ) : (
           <>
             {/* Side-by-Side Area */}
-            <div className="flex-1 flex flex-col md:flex-row gap-5 p-6 overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-5 px-6 py-4 overflow-hidden">
               {/* Left Side: General Stats & breakdown */}
-              <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
+              <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
                 {/* General Info Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="p-3.5 rounded-xl bg-rose-50/40 dark:bg-rose-900/20 border border-rose-100/30 dark:border-rose-800/30">
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider mb-1.5">
+                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1.5">
                       <Calendar className="w-3.5 h-3.5" />
                       Apertura
                     </div>
-                    <p className="text-sm font-bold text-rose-900 dark:text-rose-100">{fmtDateTime(session.openedAt).date}</p>
-                    <p className="text-[10px] font-bold text-rose-400/80 dark:text-rose-300/80 mt-0.5">{fmtDateTime(session.openedAt).time}</p>
+                    <p className="text-lg font-extrabold text-rose-900 dark:text-rose-100 leading-tight">{fmtDateTime(session.openedAt).date}</p>
+                    <p className="text-sm font-bold text-rose-700 dark:text-rose-300 mt-0.5">{fmtDateTime(session.openedAt).time}</p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-emerald-50/40 dark:bg-emerald-900/20 border border-emerald-100/30 dark:border-emerald-800/30">
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-wider mb-1.5">
+                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       Transcurrido
                     </div>
-                    <p className="text-base font-bold text-emerald-800 dark:text-emerald-100 tracking-tight leading-tight">{timeElapsed || 'Calculando...'}</p>
-                    <p className="text-[9px] font-bold text-emerald-500/80 dark:text-emerald-400/80 mt-1 uppercase tracking-widest">EN CURSO</p>
+                    <p className="text-lg font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight leading-tight">{timeElapsed || 'Calculando...'}</p>
+                    <p className="text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300 mt-1 uppercase tracking-widest">EN CURSO</p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-amber-50/40 dark:bg-amber-900/20 border border-amber-100/30 dark:border-amber-800/30">
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-amber-500 dark:text-amber-400 uppercase tracking-wider mb-1.5">
+                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1.5">
                       <User className="w-3.5 h-3.5" />
                       Cajero Activo
                     </div>
-                    <p className="text-sm font-bold text-amber-900 dark:text-amber-100 truncate leading-none mt-1">{session.user?.fullName || session.user?.username || 'Sin cajero'}</p>
-                    <p className="text-[9px] font-bold text-amber-400 dark:text-amber-500 uppercase tracking-widest mt-1">{session.user?.role || 'Empleado'}</p>
+                    <p className="text-lg font-extrabold text-amber-900 dark:text-amber-100 truncate leading-tight mt-1">{session.user?.fullName || session.user?.username || 'Sin cajero'}</p>
+                    <p className="text-[11.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-widest mt-1">{session.user?.role || 'Empleado'}</p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                       <Monitor className="w-3.5 h-3.5" />
                       Terminal
                     </div>
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate leading-none mt-1">{session.terminalName || 'Terminal 1'}</p>
-                    <p className="text-[9px] font-bold text-slate-600 dark:text-slate-500 uppercase tracking-widest mt-1">ID: #{session.id.substring(0, 6).toUpperCase()}</p>
+                    <p className="text-lg font-extrabold text-slate-900 dark:text-slate-100 truncate leading-tight mt-1">{session.terminalName || 'Terminal 1'}</p>
+                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 uppercase tracking-widest mt-1">ID: #{session.id.substring(0, 6).toUpperCase()}</p>
                   </div>
                 </div>
 
@@ -203,30 +203,30 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex flex-col justify-between">
                     <div>
-                      <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-1">Ventas en Efectivo</span>
-                      <p className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tighter">{fmt(cashPayments)}</p>
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-1">Ventas en Efectivo</span>
+                      <p className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{fmt(cashPayments)}</p>
                     </div>
-                    <div className="pt-3 border-t border-slate-400/50 dark:border-slate-600/50 mt-3 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 font-bold">
+                    <div className="pt-3 border-t border-slate-300 dark:border-slate-600/50 mt-3 flex items-center justify-between text-sm text-slate-800 dark:text-slate-200 font-bold">
                       <span>Gastos Registrados</span>
-                      <span className="text-rose-500 font-bold">-{fmt(expenses + withdrawals)}</span>
+                      <span className="text-red-600 dark:text-red-400 font-extrabold text-base">-{fmt(expenses + withdrawals)}</span>
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F97F1E] to-[#C24F06] text-white shadow-md flex flex-col justify-between relative overflow-hidden">
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-md flex flex-col justify-between relative overflow-hidden">
                     <div>
-                      <span className="text-[10px] font-semibold text-orange-100 uppercase tracking-widest block mb-1">Total Estimado en Caja</span>
-                      <p className="text-2xl font-bold tracking-tighter">{fmt(totalInDrawer)}</p>
+                      <span className="text-xs font-bold text-white/85 uppercase tracking-widest block mb-1">Total Estimado en Caja</span>
+                      <p className="text-4xl font-black tracking-tight">{fmt(totalInDrawer)}</p>
                     </div>
-                    <div className="pt-3 border-t border-white/25 mt-3 flex items-center justify-between text-xs text-orange-50 font-bold">
+                    <div className="pt-3 border-t border-white/25 mt-3 flex items-center justify-between text-sm text-white font-bold">
                       <span>Total Ventas Turno ({salesCount})</span>
-                      <span className="font-bold">{fmt(salesTotal)}</span>
+                      <span className="font-extrabold text-base">{fmt(salesTotal)}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Payment Methods breakdown */}
                 <div className="space-y-2.5">
-                  <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-[0.2em] ml-1">Monto según medio de pago</h4>
+                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-[0.2em] ml-1">Monto según medio de pago</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* Cash */}
                     <div className="p-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl flex items-center gap-3.5">
@@ -234,9 +234,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                         <Banknote className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Efectivo</span>
-                        <span className="text-base font-bold text-slate-800 dark:text-slate-100">{fmt(cashPayments)}</span>
-                        <span className="text-[8px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">En Caja: {fmt(expectedCash)}</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Efectivo</span>
+                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cashPayments)}</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">En Caja: {fmt(expectedCash)}</span>
                       </div>
                     </div>
 
@@ -246,9 +246,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                         <CreditCard className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Clover POS</span>
-                        <span className="text-base font-bold text-slate-800 dark:text-slate-100">{fmt(cloverPayments)}</span>
-                        <span className="text-[8px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Tarjetas comprobante</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Clover POS</span>
+                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cloverPayments)}</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Tarjetas comprobante</span>
                       </div>
                     </div>
 
@@ -258,9 +258,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                         <Smartphone className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">MercadoPago</span>
-                        <span className="text-base font-bold text-slate-800 dark:text-slate-100">{fmt(mpPayments)}</span>
-                        <span className="text-[8px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Pagos QR en vivo</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">MercadoPago</span>
+                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(mpPayments)}</span>
+                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Pagos QR en vivo</span>
                       </div>
                     </div>
                   </div>
@@ -269,8 +269,8 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 {/* Audit warning / footer info */}
                 <div className="p-3.5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 flex items-start gap-3">
                   <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="text-xs font-semibold text-slate-650 dark:text-slate-350">
-                    <span className="font-bold text-slate-850 dark:text-slate-200">Control de Caja:</span> Este informe es de carácter informativo. Para auditar diferencias concilia registros.
+                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="font-bold text-slate-900 dark:text-slate-100">Control de Caja:</span> Este informe es de carácter informativo. Para auditar diferencias concilia registros.
                   </div>
                 </div>
               </div>
@@ -280,10 +280,10 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
 
               {/* Right Side: Detailed Expenses list */}
               <div className="w-full md:w-[420px] shrink-0 flex flex-col h-full overflow-hidden">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] ml-1 mb-2.5">Detalle de Gastos y Salidas</h4>
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-[0.2em] ml-1 mb-2.5">Detalle de Gastos y Salidas</h4>
                 <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 rounded-2xl p-3.5 overflow-y-auto custom-scrollbar space-y-2">
                   {(!session.cashMovements || session.cashMovements.length === 0) ? (
-                    <p className="text-xs text-slate-600 dark:text-slate-400 font-medium text-center py-8">No hay gastos o egresos registrados en este turno.</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium text-center py-8">No hay gastos o egresos registrados en este turno.</p>
                   ) : (
                     session.cashMovements.map((movement: any) => {
                       return (
@@ -292,11 +292,11 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                             <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate leading-snug">
                               {movement.description || 'Gasto general'}
                             </p>
-                            <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mt-1 uppercase">
+                            <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 mt-1 uppercase">
                               {fmtDateTime(movement.createdAt).time} - {movement.type === 'EXPENSE' ? 'GASTO / PAGO' : 'RETIRO'}
                             </p>
                           </div>
-                          <span className="text-base font-extrabold text-rose-600 dark:text-rose-400 shrink-0">
+                          <span className="text-lg font-extrabold text-red-600 dark:text-red-400 shrink-0">
                             -{fmt(movement.amount)}
                           </span>
                         </div>
@@ -308,7 +308,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
             </div>
 
             {/* Action Buttons Footer */}
-            <div className="px-6 py-4 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
+            <div className="px-6 py-3 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
               <div className="flex items-center gap-2 w-full md:w-auto">
                 <button 
                   type="button"
@@ -317,7 +317,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                   className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   title="Imprimir copia del último reporte Z emitido"
                 >
-                  <Printer className="w-4 h-4 text-slate-500" />
+                  <Printer className="w-4 h-4 text-slate-600" />
                   <span>{loadingLatestZ ? 'Cargando...' : 'Reimprimir Último Z'}</span>
                 </button>
               </div>
@@ -333,9 +333,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 >
                   <div className="flex items-center gap-2">
                     <ArrowRightLeft className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Cambio de Turno (Cierre X)</span>
+                    <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Cambio de Turno (Cierre X)</span>
                   </div>
-                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                  <span className="block text-xs text-slate-600 dark:text-slate-400 font-semibold mt-0.5">
                     Para cuando entra otro cajero en el mismo día
                   </span>
                 </button>
@@ -350,9 +350,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 >
                   <div className="flex items-center gap-2">
                     <FileOutput className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-black tracking-tight text-white">Cierre Final del Día (Cierre Z)</span>
+                    <span className="text-sm font-black tracking-tight text-white">Cierre Final del Día (Cierre Z)</span>
                   </div>
-                  <span className="block text-[10px] text-rose-100 font-semibold mt-0.5">
+                  <span className="block text-xs text-white/90 font-semibold mt-0.5">
                     Para cuando el local cierra sus puertas
                   </span>
                 </button>
@@ -380,28 +380,28 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                   <Banknote className="w-8 h-8" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800">Detalle de Movimiento</h3>
-                <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mt-1">{fmtDateTime(selectedMovement.createdAt).date} - {fmtDateTime(selectedMovement.createdAt).time}</p>
+                <p className="text-xs uppercase font-bold tracking-widest text-slate-600 mt-1">{fmtDateTime(selectedMovement.createdAt).date} - {fmtDateTime(selectedMovement.createdAt).time}</p>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Monto del Movimiento</label>
+                  <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Monto del Movimiento</label>
                   <p className="text-3xl font-black text-rose-600 tracking-tighter">-{fmt(selectedMovement.amount)}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Descripción Registrada</label>
+                  <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Descripción Registrada</label>
                   <p className="text-sm font-bold text-slate-700 bg-slate-100 p-3 rounded-xl border border-slate-200 leading-snug break-words">
                     {selectedMovement.description || 'Sin descripción detallada'}
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Tipo</label>
-                    <span className="inline-block px-2 py-1 bg-rose-50 text-rose-600 text-[10px] font-bold uppercase rounded border border-rose-100">
+                    <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Tipo</label>
+                    <span className="inline-block px-2 py-1 bg-rose-50 text-rose-600 text-xs font-bold uppercase rounded border border-rose-100">
                       {selectedMovement.type === 'EXPENSE' ? 'Gasto Operativo' : 'Retiro Manual'}
                     </span>
                   </div>
                   <div className="flex-1">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Cajero</label>
+                    <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Cajero</label>
                     <span className="text-xs font-bold text-slate-700 uppercase">{selectedMovement.user?.fullName || session.user?.fullName || 'Desconocido'}</span>
                   </div>
                 </div>
@@ -443,23 +443,23 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 }`}>
                   {isZAction ? <FileOutput className="w-7 h-7" /> : <ArrowRightLeft className="w-7 h-7" />}
                 </div>
-                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100">
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
                   {isZAction ? 'Cierre Final del Día (Cierre Z)' : 'Cambio de Turno (Cierre X)'}
                 </h3>
-                <p className={`text-[10px] uppercase font-bold tracking-widest mt-1 ${
+                <p className={`text-xs uppercase font-bold tracking-widest mt-1 ${
                   isZAction ? 'text-rose-600 dark:text-rose-400' : 'text-sky-600 dark:text-sky-400'
                 }`}>
                   {isZAction ? 'Fin de Jornada Comercial' : 'Relevo de Cajero'}
                 </p>
               </div>
               <div className="p-6 text-center space-y-3">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-relaxed">
+                <p className="text-base font-medium text-slate-800 dark:text-slate-100 leading-relaxed">
                   {isZAction 
                     ? '¿El local cierra sus puertas? Se liquidará la jornada completa y se emitirá el Reporte Z diario.' 
                     : '¿Entra otro cajero a relevarte en este mismo día? Tu turno individual quedará arqueado y cerrado, y la jornada comercial continuará abierta para el nuevo cajero.'
                   }
                 </p>
-                <p className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/50">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-300 dark:border-amber-800/50">
                   💡 Recordá verificar si ya te cobraste tu sueldo de hoy antes de confirmar.
                 </p>
               </div>
@@ -473,7 +473,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                       onTriggerClose();
                     }
                   }} 
-                  className={`flex-1 py-3 rounded-xl text-white font-extrabold text-xs uppercase tracking-wider transition-all active:scale-[0.98] shadow-md cursor-pointer ${
+                  className={`flex-1 py-3.5 rounded-xl text-white font-extrabold text-sm uppercase tracking-wide transition-all active:scale-[0.98] shadow-md cursor-pointer ${
                     isZAction 
                       ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/20' 
                       : 'bg-sky-600 hover:bg-sky-700 shadow-sky-500/20'
@@ -483,7 +483,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                 </button>
                 <button
                   onClick={() => setShowConfirmClose(false)}
-                  className="btn-secondary px-5 py-3 text-xs uppercase tracking-wider"
+                  className="btn-secondary px-5 py-3.5 text-sm uppercase tracking-wide"
                 >
                   Cancelar
                 </button>

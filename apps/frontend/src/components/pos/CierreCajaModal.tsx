@@ -67,7 +67,6 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
     if (!window.confirm('¿Seguro que querés eliminar este gasto?')) return;
     try {
       await api.delete(`/cash/movement/${id}`);
-      toast.success('Gasto eliminado correctamente');
       reloadSession();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al eliminar el gasto');
@@ -281,8 +280,8 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
   return (
-    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
-      <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[92vh]">
+    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-3" onClick={onClose}>
+      <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[calc(100dvh-16px)]">
         <style>{`
           @media print {
             #root {
@@ -314,7 +313,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
         `}</style>
         
         {/* Header */}
-        <div className="px-4 sm:px-8 py-3 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900">
+        <div className="px-4 sm:px-8 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900">
           <div className="flex items-center gap-3 sm:gap-4">
             <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${step <= 3 ? 'bg-rose-600 dark:bg-rose-700 shadow-rose-100 dark:shadow-none' : step === 4 ? 'bg-emerald-500 shadow-emerald-100 dark:shadow-none' : step === 5 ? 'bg-rose-500 shadow-rose-100 dark:shadow-none' : 'bg-green-500 shadow-green-100 dark:shadow-none'} text-white shadow-md`}>
               {step <= 3 ? <Wallet className="w-5 h-5" /> : step === 4 ? <CheckCircle2 className="w-5 h-5" /> : step === 5 ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
@@ -324,7 +323,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                 {step === 1 ? 'Control de Gastos' : step === 2 ? 'Arqueo de Efectivo' : step === 3 ? 'Arqueo Virtual y Posnets' : step === 4 ? 'Validación de Cierre' : 'Confirmación'}
               </h2>
               {/* Desktop breadcrumb */}
-              <p className="hidden sm:flex text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 items-center gap-1.5">
+              <p className="hidden sm:flex text-xs font-bold text-slate-600 uppercase tracking-widest mt-1 items-center gap-1.5">
                 <span className={step === 1 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Gastos</span>
                 <ChevronRight className="w-2.5 h-2.5" />
                 <span className={step >= 2 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Efectivo</span>
@@ -334,18 +333,18 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                 <span className={step >= 4 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Validación</span>
               </p>
               {/* Mobile step pill */}
-              <p className="flex sm:hidden text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider mt-0.5">
+              <p className="flex sm:hidden text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider mt-0.5">
                 Paso {step} de 4 · {step === 1 ? 'Gastos' : step === 2 ? 'Efectivo' : step === 3 ? 'Virtual' : 'Validación'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto bg-white dark:bg-slate-900">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white dark:bg-slate-900">
           {step === 1 && (
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full p-4 sm:p-8 flex flex-col overflow-hidden">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6 shrink-0">
@@ -353,7 +352,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <div className="w-1.5 h-7 sm:h-8 bg-rose-500 rounded-full shrink-0" />
                   <div>
                     <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Gastos y Egresos Registrados</h3>
-                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Revisá o agregá gastos antes del arqueo</p>
+                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Revisá o agregá gastos antes del arqueo</p>
                   </div>
                 </div>
                 <button 
@@ -368,14 +367,14 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                 {(!activeSession?.cashMovements || activeSession.cashMovements.length === 0) ? (
                   <div className="text-center py-12 sm:py-16 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-750 rounded-2xl p-4">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No hay gastos o egresos registrados en este turno.</p>
-                    <p className="text-xs text-slate-500 mt-1">Si pagaste sueldos, proveedores o realizaste retiros, agrégalos ahora.</p>
+                    <p className="text-xs text-slate-600 mt-1">Si pagaste sueldos, proveedores o realizaste retiros, agrégalos ahora.</p>
                   </div>
                 ) : (
                   <div className="space-y-2 sm:space-y-0 sm:border sm:border-slate-200 sm:dark:border-slate-700 sm:rounded-2xl sm:overflow-hidden sm:bg-white sm:dark:bg-slate-800">
                     {/* Desktop table */}
                     <table className="hidden sm:table w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 uppercase tracking-wider">
                           <th className="py-3 px-4">Descripción / Motivo</th>
                           <th className="py-3 px-4">Método</th>
                           <th className="py-3 px-4 text-right">Monto</th>
@@ -390,19 +389,19 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                             <tr key={mov.id} className="text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                               <td className="py-3.5 px-4 font-bold uppercase">{cleanDesc}</td>
                               <td className="py-3.5 px-4 font-semibold uppercase">{isTransfer ? '🏦 Transferencia' : '💵 Efectivo'}</td>
-                              <td className="py-3.5 px-4 text-right font-black text-rose-600 dark:text-rose-400">-{fmt(mov.amount)}</td>
+                              <td className="py-3.5 px-4 text-right font-black text-red-600 dark:text-red-400">-{fmt(mov.amount)}</td>
                               <td className="py-3.5 px-4 text-right">
                                 <div className="flex justify-end gap-1.5">
                                   <button 
                                     onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }}
-                                    className="p-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
+                                    className="p-1.5 rounded-lg text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
                                     title="Editar gasto"
                                   >
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
                                   <button 
                                     onClick={() => handleDeleteGasto(mov.id)}
-                                    className="p-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
+                                    className="p-1.5 rounded-lg text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
                                     title="Eliminar gasto"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -424,12 +423,12 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                           <div key={mov.id} className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase truncate">{cleanDesc}</p>
-                              <p className="text-[10px] text-slate-500 mt-0.5">{isTransfer ? '🏦 Transferencia' : '💵 Efectivo'}</p>
+                              <p className="text-xs text-slate-600 mt-0.5">{isTransfer ? '🏦 Transferencia' : '💵 Efectivo'}</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs font-black text-rose-600 dark:text-rose-400">-{fmt(mov.amount)}</span>
-                              <button onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Edit2 className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDeleteGasto(mov.id)} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                              <span className="text-sm font-black text-red-600 dark:text-red-400">-{fmt(mov.amount)}</span>
+                              <button onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }} className="p-1.5 text-slate-500 hover:text-rose-600"><Edit2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDeleteGasto(mov.id)} className="p-1.5 text-slate-500 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
                             </div>
                           </div>
                         );
@@ -442,31 +441,31 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
           )}
 
           {step === 2 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full p-4 sm:p-6 flex flex-col overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6 shrink-0">
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full px-4 sm:px-6 py-4 flex flex-col overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-1.5 h-7 sm:h-8 bg-rose-600 dark:bg-rose-500 rounded-full shrink-0" />
                   <div>
                     <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Conteo de Billetes</h3>
-                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Detalla el efectivo total a retirar</p>
+                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Detalla el efectivo total a retirar</p>
                   </div>
                 </div>
-                <div className="px-4 py-2 sm:px-6 sm:py-3 bg-rose-50/80 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800/50 rounded-2xl flex sm:block items-center justify-between">
-                  <span className="text-[9px] font-bold text-rose-500 dark:text-rose-300 uppercase block sm:mb-0.5">Total Arqueado</span>
-                  <span className="text-lg sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">{fmt(cashToWithdraw)}</span>
+                <div className="px-4 py-1.5 sm:px-5 sm:py-2 bg-rose-50/80 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800/50 rounded-2xl flex sm:block items-center justify-between">
+                  <span className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider block sm:mb-0.5">Total contado</span>
+                  <span className="text-3xl sm:text-4xl font-black text-rose-700 dark:text-rose-300 tracking-tight tabular-nums">{fmt(cashToWithdraw)}</span>
                 </div>
               </div>
               
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 pb-2">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
                   {denominations.map((den, i) => (
                     <div 
                        key={den} 
                        onClick={() => document.getElementById(`bill-input-${i}`)?.focus()}
-                       className="flex items-center justify-between py-2 px-3 sm:px-4 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-500/50 cursor-pointer transition-all group"
+                       className="flex items-center justify-between py-1.5 px-4 bg-white dark:bg-slate-800/70 rounded-2xl border-2 border-slate-200 dark:border-slate-700 hover:border-rose-300 focus-within:border-rose-500 focus-within:bg-rose-50/40 dark:hover:border-rose-500/50 cursor-pointer transition-all group tabular-nums"
                     >
-                      <span className="text-xs sm:text-sm font-black text-slate-700 dark:text-slate-300 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight min-w-[55px] sm:min-w-[65px]">${den.toLocaleString('es-AR')}</span>
-                      <div className="flex items-center gap-2 sm:gap-3">
+                      <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight min-w-0 shrink-0">${den.toLocaleString('es-AR')}</span>
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                         <input 
                           id={`bill-input-${i}`}
                           type="number" 
@@ -478,10 +477,10 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                             }
                           }}
                           onChange={(e) => setBills({ ...bills, [den]: Math.max(0, Number(e.target.value)) })}
-                          className="w-14 sm:w-16 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/60 rounded-lg py-1.5 text-sm sm:text-base font-bold text-rose-700 dark:text-rose-300 outline-none text-center focus:ring-2 focus:ring-rose-500 transition-all shadow-inner"
+                          className="w-[72px] sm:w-20 h-11 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-xl text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 outline-none text-center focus:border-rose-500 focus:ring-4 focus:ring-rose-500/20 transition-all"
                           placeholder="0"
                         />
-                        <span className="text-xs sm:text-sm font-black text-rose-600 dark:text-rose-400 min-w-[70px] sm:min-w-[85px] text-right">{fmt(den * (bills[den] || 0))}</span>
+                        <span className={`text-lg sm:text-xl font-black min-w-[92px] text-right ${(bills[den] || 0) > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500'}`}>{fmt(den * (bills[den] || 0))}</span>
                       </div>
                     </div>
                   ))}
@@ -497,7 +496,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <div className="w-1.5 h-7 sm:h-8 bg-rose-600 dark:bg-rose-500 rounded-full shrink-0" />
                   <div>
                     <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Comprobantes y Virtual</h3>
-                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Ingresa los totales de cada posnet</p>
+                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Ingresa los totales de cada posnet</p>
                   </div>
                 </div>
 
@@ -505,11 +504,11 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   {/* MercadoPago Section */}
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">MercadoPago</span>
+                      <span className="text-[12.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">MercadoPago</span>
                       <button 
                         type="button" 
                         onClick={() => setMpInputs([...mpInputs, 0])}
-                        className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
+                        className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" /> Agregar Terminal
                       </button>
@@ -523,7 +522,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                           <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Terminal MP {idx + 1}</span>
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                          <span className="text-sm font-bold text-slate-400">$</span>
+                          <span className="text-sm font-bold text-slate-500">$</span>
                           <input 
                             type="number" 
                             value={val || ''} 
@@ -532,7 +531,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                               copy[idx] = Number(e.target.value);
                               setMpInputs(copy);
                             }}
-                            className="flex-1 sm:w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-base font-bold text-slate-800 dark:text-slate-100 outline-none text-right focus:ring-2 focus:ring-rose-500 transition-all"
+                            className="flex-1 sm:w-40 h-12 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-xl px-3 text-xl font-black text-slate-900 dark:text-slate-100 outline-none text-right tabular-nums focus:border-rose-500 focus:ring-4 focus:ring-rose-500/20 transition-all"
                             placeholder="0"
                           />
                           {mpInputs.length > 2 && (
@@ -552,11 +551,11 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   {/* Clover Section */}
                   <div className="space-y-2.5 pt-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Clover</span>
+                      <span className="text-[12.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Clover</span>
                       <button 
                         type="button" 
                         onClick={() => setCloverInputs([...cloverInputs, 0])}
-                        className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
+                        className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" /> Agregar Terminal
                       </button>
@@ -570,7 +569,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                           <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Terminal Clover {idx + 1}</span>
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                          <span className="text-sm font-bold text-slate-400">$</span>
+                          <span className="text-sm font-bold text-slate-500">$</span>
                           <input 
                             type="number" 
                             value={val || ''} 
@@ -579,7 +578,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                               copy[idx] = Number(e.target.value);
                               setCloverInputs(copy);
                             }}
-                            className="flex-1 sm:w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-base font-bold text-slate-800 dark:text-slate-100 outline-none text-right focus:ring-2 focus:ring-rose-500 transition-all"
+                            className="flex-1 sm:w-40 h-12 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-xl px-3 text-xl font-black text-slate-900 dark:text-slate-100 outline-none text-right tabular-nums focus:border-rose-500 focus:ring-4 focus:ring-rose-500/20 transition-all"
                             placeholder="0"
                           />
                           {cloverInputs.length > 1 && (
@@ -599,11 +598,11 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               </div>
 
               <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-850 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 flex flex-col gap-2.5">
-                <h3 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Notas y Observaciones</h3>
+                <h3 className="text-[12.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Notas y Observaciones</h3>
                 <textarea 
                   value={notes} 
                   onChange={(e) => setNotes(e.target.value)} 
-                  className="h-24 lg:flex-1 w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 outline-none resize-none focus:ring-2 focus:ring-rose-500 transition-all"
+                  className="h-24 lg:flex-1 w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3.5 text-sm sm:text-base font-medium text-slate-700 dark:text-slate-200 outline-none resize-none focus:ring-2 focus:ring-rose-500 transition-all"
                   placeholder="Ej: Diferencia por error en ticket, retiro de socio, etc..."
                 />
               </div>
@@ -611,109 +610,111 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
           )}
 
           {step === 4 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-3.5 sm:p-6 lg:p-8 h-full min-h-0 flex-1 flex flex-col gap-3.5 sm:gap-5 overflow-y-auto custom-scrollbar pb-8">
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="px-4 sm:px-6 py-4 h-full min-h-0 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
               {/* Diferencia de Caja Banner (Top - Always Visible) */}
-              <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-xs ${differenceTotal === 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50'}`}>
+              <div className={`px-4 py-3 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-xs ${differenceTotal === 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50'}`}>
                 <div className="flex items-center gap-3.5 text-center sm:text-left">
-                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${differenceTotal === 0 ? 'bg-emerald-500' : 'bg-rose-500'} text-white shadow-md`}>
+                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${differenceTotal === 0 ? 'bg-emerald-500' : 'bg-red-500'} text-white shadow-md`}>
                     {differenceTotal === 0 ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                   </div>
                   <div>
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${differenceTotal === 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>Diferencia de Caja</p>
-                    <p className={`text-xl sm:text-2xl font-black ${differenceTotal === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    <p className={`text-xs font-black uppercase tracking-widest ${differenceTotal === 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>Diferencia de Caja</p>
+                    <p className={`text-2xl sm:text-3xl font-black ${differenceTotal === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                       {differenceTotal > 0 && '+'}{fmt(differenceTotal)}
                     </p>
                   </div>
                 </div>
                 {differenceTotal !== 0 ? (
                   <div className="text-center sm:text-right">
-                    <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase">Caja fuera de balance</p>
-                    <p className="text-[9px] font-medium text-rose-500 dark:text-rose-300">Revisa los registros antes de confirmar.</p>
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400 uppercase">Caja fuera de balance</p>
+                    <p className="text-[11.5px] font-medium text-red-600 dark:text-red-300">Revisa los registros antes de confirmar.</p>
                   </div>
                 ) : (
                   <div className="text-center sm:text-right">
-                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Caja Balanceada</p>
-                    <p className="text-[9px] font-medium text-emerald-500 dark:text-emerald-300">Los valores coinciden exactamente.</p>
+                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Caja Balanceada</p>
+                    <p className="text-[11.5px] font-medium text-emerald-500 dark:text-emerald-300">Los valores coinciden exactamente.</p>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* Sistema */}
-                <div className="p-4 sm:p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col">
-                  <div className="flex items-center gap-2.5 mb-3 sm:mb-5">
+                <div className="px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col">
+                  <div className="flex items-center gap-2.5 mb-2.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Sistema</span>
+                    <span className="text-[12.5px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Sistema</span>
                   </div>
-                  <div className="space-y-2.5 sm:space-y-3 flex-1">
-                    <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex justify-between items-center text-sm sm:text-base">
                       <span className="font-semibold text-slate-600 dark:text-slate-400">Ventas Efectivo</span>
-                      <span className="font-black text-slate-800 dark:text-slate-200">{fmt(cashSales)}</span>
+                      <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(cashSales)}</span>
                     </div>
                     {posnets.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center text-xs sm:text-sm">
+                      <div key={p.id} className="flex justify-between items-center text-sm sm:text-base">
                         <span className="font-semibold text-slate-600 dark:text-slate-400">Ventas {p.name}</span>
-                        <span className="font-black text-slate-800 dark:text-slate-200">{fmt(getPosnetSales(p.id))}</span>
+                        <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(getPosnetSales(p.id))}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 dark:border-slate-700 text-xs sm:text-sm">
-                      <span className="font-bold text-rose-600 dark:text-rose-400 uppercase tracking-tight">(-) Gastos Turno</span>
-                      <span className="font-black text-rose-600 dark:text-rose-400">-{fmt(expenses)}</span>
+                    <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 dark:border-slate-700 text-sm sm:text-base">
+                      <span className="font-bold text-red-700 dark:text-red-400 uppercase tracking-tight">(-) Gastos Turno</span>
+                      <span className="font-black text-red-600 dark:text-red-400 tabular-nums">-{fmt(expenses)}</span>
                     </div>
-                    <div className="flex justify-between items-center pt-0.5 text-xs sm:text-sm">
-                      <span className="font-bold text-rose-600 dark:text-rose-400 uppercase tracking-tight">(-) Retiros a Caja Fuerte</span>
-                      <span className="font-black text-rose-600 dark:text-rose-400">-{fmt(withdrawals)}</span>
+                    <div className="flex justify-between items-center pt-0.5 text-sm sm:text-base">
+                      <span className="font-bold text-red-700 dark:text-red-400 uppercase tracking-tight">(-) Retiros a Caja Fuerte</span>
+                      <span className="font-black text-red-600 dark:text-red-400 tabular-nums">-{fmt(withdrawals)}</span>
                     </div>
-                    <div className="flex justify-between items-center pt-2.5 border-t border-dashed border-slate-300 dark:border-slate-700 text-xs sm:text-sm">
-                      <span className="font-bold text-rose-600 dark:text-rose-400 uppercase tracking-tight">Virtual 1 (No afecta caja)</span>
-                      <span className="font-black text-rose-600 dark:text-rose-400">
+                    {(virtual1SalesTotal > 0 || virtual2SalesTotal > 0) && (<>
+                    <div className="flex justify-between items-center pt-2.5 border-t border-dashed border-slate-300 dark:border-slate-700 text-sm sm:text-base">
+                      <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-tight">Virtual 1 (No afecta caja)</span>
+                      <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">
                         {fmt(virtual1SalesTotal)}
                         {virtual1SalesTotal > 0 && (
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium ml-1.5">
+                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium ml-1.5">
                             ({fmt(virtual1Base)} + {fmt(virtual1Surcharge)})
                           </span>
                         )}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center pt-0.5 text-xs sm:text-sm">
-                      <span className="font-bold text-rose-600 dark:text-rose-400 uppercase tracking-tight">Virtual 2 (No afecta caja)</span>
-                      <span className="font-black text-rose-600 dark:text-rose-400">
+                    <div className="flex justify-between items-center pt-0.5 text-sm sm:text-base">
+                      <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-tight">Virtual 2 (No afecta caja)</span>
+                      <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">
                         {fmt(virtual2SalesTotal)}
                         {virtual2SalesTotal > 0 && (
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium ml-1.5">
+                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium ml-1.5">
                             ({fmt(virtual2Base)} + {fmt(virtual2Surcharge)})
                           </span>
                         )}
                       </span>
                     </div>
+                    </>)}
                   </div>
-                  <div className="mt-3.5 pt-3.5 border-t border-slate-200 dark:border-slate-700 text-center">
-                    <p className="text-[10px] font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest mb-0.5">Total Esperado</p>
-                    <p className="text-xl sm:text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{fmt(totalExpected)}</p>
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-center">
+                    <p className="text-xs font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest mb-0.5">Total Esperado</p>
+                    <p className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(totalExpected)}</p>
                   </div>
                 </div>
 
                 {/* Declarado */}
-                <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-rose-100 dark:border-slate-700 flex flex-col shadow-xs">
-                  <div className="flex items-center gap-2.5 mb-3 sm:mb-5">
+                <div className="px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-white dark:bg-slate-800 border border-rose-100 dark:border-slate-700 flex flex-col shadow-xs">
+                  <div className="flex items-center gap-2.5 mb-2.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Declarado</span>
+                    <span className="text-[12.5px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Declarado</span>
                   </div>
-                  <div className="space-y-2.5 sm:space-y-3 flex-1 text-xs sm:text-sm">
+                  <div className="space-y-1.5 flex-1 text-sm sm:text-base">
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-slate-600 dark:text-slate-400">Efectivo Contado</span>
-                      <span className="font-black text-slate-800 dark:text-slate-200">{fmt(cashToWithdraw)}</span>
+                      <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(cashToWithdraw)}</span>
                     </div>
                     {posnets.map((p) => (
                       <div key={p.id} className="flex justify-between items-center">
                         <span className="font-semibold text-slate-600 dark:text-slate-400">{p.name}</span>
-                        <span className="font-black text-slate-800 dark:text-slate-200">{fmt(posnetDeclarations[p.id] || 0)}</span>
+                        <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(posnetDeclarations[p.id] || 0)}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3.5 pt-3.5 border-t border-slate-200 dark:border-slate-700 text-center">
-                    <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Total Declarado</p>
-                    <p className="text-xl sm:text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{fmt(totalDeclared)}</p>
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-center">
+                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Total Declarado</p>
+                    <p className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(totalDeclared)}</p>
                   </div>
                 </div>
               </div>
@@ -737,8 +738,8 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-6">
                 <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-green-600 dark:text-green-400" />
               </div>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-slate-100 mb-2">Turno Finalizado</h3>
-              <p className="text-slate-500 dark:text-slate-400 mb-6 sm:mb-8 max-w-sm text-xs sm:text-sm">
+              <h3 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-slate-100 mb-2">Turno Finalizado</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6 sm:mb-8 max-w-sm text-sm sm:text-base">
                 El arqueo se completó correctamente y el turno ha sido cerrado. Puedes imprimir el comprobante X si lo necesitas.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">

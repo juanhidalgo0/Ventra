@@ -243,6 +243,11 @@ export class PurchasesService {
         brandId?: string;
         unitsPerPack?: number;
         presentationType?: string;
+        listPrice?: number;
+        discount1?: number;
+        discount2?: number;
+        discount3?: number;
+        taxRate?: number;
       };
     }[];
     paymentStatus: 'PAID' | 'OWED';
@@ -304,6 +309,12 @@ export class PurchasesService {
                 brandId: item.newProductData.brandId || null,
                 unitsPerPack: item.newProductData.unitsPerPack || 1,
                 presentationType: item.newProductData.presentationType || 'UNIT',
+                // Compra al proveedor: precio de lista sin IVA, descuentos e IVA
+                listPrice: item.newProductData.listPrice ?? null,
+                discount1: item.newProductData.discount1 || 0,
+                discount2: item.newProductData.discount2 || 0,
+                discount3: item.newProductData.discount3 || 0,
+                taxRate: item.newProductData.taxRate || 0,
               },
               include: { category: true }
             });

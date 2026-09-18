@@ -163,7 +163,6 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
         return g;
       }));
       const groupName = comboGroups.find(g => g.id === targetGroupId)?.name || 'grupo';
-      toast.success(`Agregado a ${groupName}`);
     } else {
       // 2. Check if there is an empty group waiting for a product:
       const emptyGroupIndex = comboGroups.findIndex(g => g.products.length === 0);
@@ -182,7 +181,6 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
           }
           return g;
         }));
-        toast.success(`Agregado a ${comboGroups[emptyGroupIndex].name}`);
       } else {
         // 3. Create a new group
         const newGroupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
@@ -200,7 +198,6 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
             }]
           }
         ]);
-        toast.success('Nuevo producto / grupo agregado al combo');
       }
     }
 

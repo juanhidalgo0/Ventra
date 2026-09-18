@@ -121,7 +121,6 @@ export default function CuentasCorrientesScreen() {
         tradeDiscountPercentage: newClient.tradeDiscountPercentage !== '' && !isNaN(Number(newClient.tradeDiscountPercentage)) ? Number(newClient.tradeDiscountPercentage) : null
       };
       await api.post('/clients', payload);
-      toast.success('Cliente registrado con éxito');
       setShowAddModal(false);
       setNewClient({ name: '', dni: '', phone: '', address: '', email: '', creditLimit: '', authorizedPickups: '', balance: 0, priceList: 'RETAIL', tradeDiscountPercentage: '' });
       loadClients();
@@ -153,7 +152,6 @@ export default function CuentasCorrientesScreen() {
         tradeDiscountPercentage: editingClient.tradeDiscountPercentage !== '' && editingClient.tradeDiscountPercentage !== null && !isNaN(Number(editingClient.tradeDiscountPercentage)) ? Number(editingClient.tradeDiscountPercentage) : null
       };
       await api.patch(`/clients/${editingClient.id}`, payload);
-      toast.success('Cliente actualizado con éxito');
       setShowEditModal(false);
       setEditingClient(null);
       loadClients();
@@ -170,7 +168,6 @@ export default function CuentasCorrientesScreen() {
     }
     try {
       await api.delete(`/clients/${id}`);
-      toast.success('Cliente eliminado con éxito');
       setShowEditModal(false);
       setEditingClient(null);
       loadClients();
@@ -217,7 +214,7 @@ export default function CuentasCorrientesScreen() {
       {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
         {[
-          { label: 'DEUDA TOTAL', value: fmt(totalDebt), sub: '0 clientes', color: 'bg-[#F97F1E]', textColor: 'text-white', icon: TrendingDown },
+          { label: 'DEUDA TOTAL', value: fmt(totalDebt), sub: '0 clientes', color: 'bg-amber-600', textColor: 'text-white', icon: TrendingDown },
           { label: 'ACTIVOS', value: activeCount.toString(), sub: 'cuentas habilitadas', color: 'bg-[#f0fdf4]', textColor: 'text-emerald-600', icon: UserCheck, border: 'border-emerald-100' },
           { label: 'VENCIDOS', value: overdueCount.toString(), sub: 'con facturas vencidas', color: 'bg-[#fff7ed]', textColor: 'text-orange-600', icon: AlertCircle, border: 'border-orange-100' },
           { label: 'CON DEUDA', value: withDebtCount.toString(), sub: 'deben algo', color: 'bg-[#f5f3ff]', textColor: 'text-purple-600', icon: Clock, border: 'border-purple-100' }

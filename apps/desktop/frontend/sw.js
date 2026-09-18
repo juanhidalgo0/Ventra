@@ -3,10 +3,13 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', (e) => {
-  // Simple network pass-through to satisfy installation requirements
-  e.respondWith(fetch(e.request));
+  self.registration.unregister()
+    .then(() => self.clients.matchAll())
+    .then((clients) => {
+      clients.forEach(client => {
+        if (client.url) {
+          client.navigate(client.url);
+        }
+      });
+    });
 });

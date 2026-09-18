@@ -101,8 +101,9 @@ export class ProductsService {
     private syncImageService: SyncImageService,
   ) {}
 
-  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean }): any {
-    const where: any = {};
+  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean }): any {
+    // Hide the internal "Venta Rápida" product from inventory lists.
+    const where: any = { id: { not: 'VENTA_RAPIDA' } };
     if (params?.isActive !== undefined) {
       where.isActive = params.isActive;
     } else {
@@ -145,6 +146,10 @@ export class ProductsService {
       }
     }
 
+    if (params?.noBarcode) {
+      where.AND = [...(where.AND || []), { OR: [{ barcode: null }, { barcode: '' }] }];
+    }
+
     return where;
   }
 
@@ -153,7 +158,8 @@ export class ProductsService {
   }
 
   async getPOSCatalog(updatedAfter?: string) {
-    const where: any = { isActive: true };
+    // "Venta Rápida" is opened with code "1" / F1, never shown as a catalog card.
+    const where: any = { isActive: true, id: { not: 'VENTA_RAPIDA' } };
     if (updatedAfter) {
       const date = new Date(updatedAfter);
       if (!isNaN(date.getTime())) {
@@ -183,15 +189,25 @@ export class ProductsService {
             barcode: true
           }
         },
-        saleItems: {
-          take: 1,
-          select: {
-            id: true
-          }
-        }
       },
       orderBy: { updatedAt: 'desc' }
     });
+
+    // Unidades vendidas en los últimos 60 días: es lo que ordena el catálogo del POS
+    const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    let soldByProduct = new Map<string, number>();
+    try {
+      const rows: { productId: string; sold: number }[] = await this.prisma.$queryRaw`
+        SELECT si.product_id AS productId, SUM(si.quantity) AS sold
+        FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        WHERE s.created_at >= ${since} AND s.status = 'COMPLETED'
+        GROUP BY si.product_id
+      `;
+      soldByProduct = new Map(rows.map(r => [r.productId, Number(r.sold) || 0]));
+    } catch (err: any) {
+      console.warn('[ProductsService] No se pudo calcular lo más vendido:', err.message);
+    }
 
     const mappedProducts = products.map((p: any) => ({
       id: p.id,
@@ -208,10 +224,13 @@ export class ProductsService {
       unitsPerPack: p.unitsPerPack,
       pieceSize: p.pieceSize,
       additionalBarcodes: p.additionalBarcodes,
-      salesCount: p.saleItems?.length ?? 0
+      salesCount: soldByProduct.get(p.id) ?? 0
     }));
 
-    mappedProducts.sort((a: any, b: any) => (b.salesCount ?? 0) - (a.salesCount ?? 0));
+    // Más vendidos primero; entre los que nunca se vendieron, por nombre
+    mappedProducts.sort((a: any, b: any) =>
+      (b.salesCount ?? 0) - (a.salesCount ?? 0) || (a.name || '').localeCompare(b.name || '', 'es'),
+    );
 
     return {
       serverTime: new Date().toISOString(),
@@ -219,7 +238,7 @@ export class ProductsService {
     };
   }
 
-  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; skip?: number; take?: number }) {
+  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; skip?: number; take?: number }) {
     try {
       const where = this.buildSearchWhere(params);
 
@@ -257,11 +276,41 @@ export class ProductsService {
           take: candidateLimit,
         });
 
+        // Exact code match (barcode, SKU or alternate code) always comes first,
+        // even if it falls outside the name-ordered candidate window above.
+        const exactCode = params.search!.trim();
+        const exactUpper = exactCode.toUpperCase();
+        const codeVariants = Array.from(new Set([exactCode, exactUpper, exactCode.toLowerCase()]));
+        const sameCode = (v?: string | null) => !!v && v.toUpperCase() === exactUpper;
+        const isExactCode = (p: any) =>
+          sameCode(p.barcode) || sameCode(p.sku) ||
+          (p.additionalBarcodes || []).some((ab: any) => sameCode(ab.barcode));
+        if (rawTokens.length === 1) {
+          const { AND: _searchTokens, ...baseWhere } = where;
+          const exactMatches = await this.prisma.product.findMany({
+            where: {
+              ...baseWhere,
+              AND: [{ OR: [{ barcode: { in: codeVariants } }, { sku: { in: codeVariants } }, { additionalBarcodes: { some: { barcode: { in: codeVariants } } } }] }],
+            },
+            ...selectOrInclude,
+          });
+          if (exactMatches.length) {
+            const ids = new Set(exactMatches.map((p) => p.id));
+            results = [...exactMatches, ...results.filter((p) => !ids.has(p.id))];
+          }
+        }
+
         const normalizeStr = (str: string) => (str || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
         const fullQueryNorm = normalizeStr(params.search || '');
         const tokensNorm = rawTokens.map(t => normalizeStr(t));
 
         results.sort((a: any, b: any) => {
+          // 0. Exact code match
+          const aCode = isExactCode(a);
+          const bCode = isExactCode(b);
+          if (aCode && !bCode) return -1;
+          if (!aCode && bCode) return 1;
+
           const aName = normalizeStr(a.name);
           const bName = normalizeStr(b.name);
           
@@ -318,7 +367,7 @@ export class ProductsService {
     }
   }
 
-  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean }) {
+  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean; noBarcode?: boolean }) {
     try {
       const where = this.buildSearchWhere(params);
       return await this.prisma.product.count({ where });
@@ -343,12 +392,90 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Internal barcodes are EAN-13 with the GS1 "restricted circulation" prefix 20, reserved
+   * for in-store use, so they can never clash with a manufacturer's code:
+   *   20 + 10-digit sequence + check digit
+   */
+  private static readonly INTERNAL_BARCODE_PREFIX = '20';
+
+  static ean13CheckDigit(first12: string): string {
+    const sum = first12
+      .split('')
+      .reduce((acc, d, i) => acc + Number(d) * (i % 2 === 0 ? 1 : 3), 0);
+    return String((10 - (sum % 10)) % 10);
+  }
+
+  private async getUsedInternalBarcodes(): Promise<Set<string>> {
+    const prefix = ProductsService.INTERNAL_BARCODE_PREFIX;
+    const [main, extra] = await Promise.all([
+      this.prisma.product.findMany({ where: { barcode: { startsWith: prefix } }, select: { barcode: true } }),
+      this.prisma.productBarcode.findMany({ where: { barcode: { startsWith: prefix } }, select: { barcode: true } }),
+    ]);
+    return new Set([...main.map((p) => p.barcode!), ...extra.map((b) => b.barcode)]);
+  }
+
+  /** Returns `count` free internal EAN-13 codes, continuing after the highest one in use. */
+  private async allocateInternalBarcodes(count: number): Promise<string[]> {
+    const prefix = ProductsService.INTERNAL_BARCODE_PREFIX;
+    const used = await this.getUsedInternalBarcodes();
+    let seq = 0;
+    for (const code of used) {
+      if (code.length === 13 && /^\d+$/.test(code)) {
+        seq = Math.max(seq, Number(code.slice(prefix.length, 12)));
+      }
+    }
+    const codes: string[] = [];
+    while (codes.length < count) {
+      seq++;
+      const body = prefix + String(seq).padStart(12 - prefix.length, '0');
+      const code = body + ProductsService.ean13CheckDigit(body);
+      if (!used.has(code)) codes.push(code);
+    }
+    return codes;
+  }
+
+  async getNextInternalBarcode() {
+    const [barcode] = await this.allocateInternalBarcodes(1);
+    return { barcode };
+  }
+
+  /** Assigns internal barcodes to the given products (or every active product) that have none. */
+  async assignInternalBarcodes(ids?: string[]) {
+    const where: any = { OR: [{ barcode: null }, { barcode: '' }] };
+    if (ids && ids.length > 0) where.id = { in: ids };
+    else where.isActive = true;
+
+    const products = await this.prisma.product.findMany({ where, select: { id: true }, orderBy: { name: 'asc' } });
+    if (products.length === 0) return { assigned: 0, products: [] };
+
+    const codes = await this.allocateInternalBarcodes(products.length);
+    await this.prisma.$transaction(
+      products.map((p, i) => this.prisma.product.update({ where: { id: p.id }, data: { barcode: codes[i] } })),
+    );
+
+    const updated = await this.prisma.product.findMany({
+      where: { id: { in: products.map((p) => p.id) } },
+      select: { id: true, barcode: true },
+    });
+
+    // Avisar a las otras terminales para que su lista quede al día
+    for (const p of updated) this.eventsGateway.emitProductUpdated(p);
+
+    return { assigned: updated.length, products: updated };
+  }
+
   async findByBarcode(barcode: string) {
+    // Los códigos se guardan en mayúsculas, pero puede haber datos viejos en
+    // minúsculas: se acepta cualquiera de las variantes.
+    const raw = (barcode || '').trim();
+    const variants = Array.from(new Set([raw, raw.toUpperCase(), raw.toLowerCase()]));
     const product = await this.prisma.product.findFirst({
       where: {
         OR: [
-          { barcode },
-          { additionalBarcodes: { some: { barcode } } }
+          { barcode: { in: variants } },
+          { sku: { in: variants } },
+          { additionalBarcodes: { some: { barcode: { in: variants } } } }
         ],
         isActive: true
       },
@@ -370,7 +497,8 @@ export class ProductsService {
       'costPrice', 'salePrice', 'stock', 'minStock', 'unit', 
       'presentationType', 'unitsPerPack',
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
-      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline'
+      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
+      'listPrice', 'discount1', 'discount2', 'discount3'
     ];
     
     const productData: any = {};
@@ -378,8 +506,9 @@ export class ProductsService {
       if (data[key] !== undefined) {
         if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           productData[key] = null;
-        } else if (key === 'name' && typeof data[key] === 'string') {
-          productData[key] = data[key].toUpperCase();
+        } else if (['name', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
+          // Nombres y códigos siempre en mayúsculas
+          productData[key] = key === 'name' ? data[key].toUpperCase() : data[key].trim().toUpperCase();
         } else {
           productData[key] = data[key];
         }
@@ -426,7 +555,7 @@ export class ProductsService {
         data: {
           ...productData,
           additionalBarcodes: additionalBarcodes && additionalBarcodes.length > 0 ? {
-            create: additionalBarcodes.map((b: string) => ({ barcode: b }))
+            create: additionalBarcodes.map((b: string) => ({ barcode: String(b).trim().toUpperCase() }))
           } : undefined,
           kitItems: productData.isKit && kitItems && Array.isArray(kitItems) && kitItems.length > 0 ? {
             create: kitItems.map((k: any) => ({ childProductId: k.childProductId, quantity: Number(k.quantity) || 1 }))
@@ -482,7 +611,8 @@ export class ProductsService {
       'costPrice', 'salePrice', 'stock', 'minStock', 'unit', 
       'presentationType', 'unitsPerPack',
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
-      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline'
+      'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
+      'listPrice', 'discount1', 'discount2', 'discount3'
     ];
     
     const updateData: any = {};
@@ -491,8 +621,9 @@ export class ProductsService {
         // Handle empty strings for optional relations
         if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           updateData[key] = null;
-        } else if (key === 'name' && typeof data[key] === 'string') {
-          updateData[key] = data[key].toUpperCase();
+        } else if (['name', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
+          // Nombres y códigos siempre en mayúsculas
+          updateData[key] = key === 'name' ? data[key].toUpperCase() : data[key].trim().toUpperCase();
         } else {
           updateData[key] = data[key];
         }
@@ -515,7 +646,7 @@ export class ProductsService {
           for (const b of additionalBarcodes) {
             await tx.productBarcode.create({
               data: {
-                barcode: b,
+                barcode: String(b).trim().toUpperCase(),
                 productId: id
               }
             });
@@ -1328,6 +1459,39 @@ export class ProductsService {
       target,
       message: `Se actualizaron ${products.length} productos con un ajuste del ${percentage > 0 ? '+' : ''}${percentage}%.`,
     };
+  }
+
+  /**
+   * Redondea hacia arriba los precios de venta al múltiplo indicado (por defecto 10),
+   * para que no queden con decimales: 1.912,28 -> 1.920.
+   */
+  async bulkRoundPrices(multiple = 10) {
+    if (!Number.isFinite(multiple) || multiple <= 0) {
+      throw new BadRequestException('El múltiplo debe ser mayor a 0');
+    }
+    console.log(`[ProductsService] Redondeando precios de venta hacia arriba a múltiplos de ${multiple}...`);
+
+    const products = await this.prisma.product.findMany({
+      where: { isActive: true, salePrice: { gt: 0 } },
+      select: { id: true, salePrice: true },
+    });
+
+    const changes = products
+      .map(p => ({ id: p.id, newPrice: Math.ceil(p.salePrice / multiple) * multiple, oldPrice: p.salePrice }))
+      .filter(c => Math.abs(c.newPrice - c.oldPrice) > 0.0001);
+
+    // Se agrupan por precio para hacer pocas consultas en lugar de una por producto
+    const byPrice = new Map<number, string[]>();
+    for (const c of changes) byPrice.set(c.newPrice, [...(byPrice.get(c.newPrice) || []), c.id]);
+
+    for (const [price, ids] of byPrice) {
+      for (let i = 0; i < ids.length; i += 300) {
+        await this.prisma.product.updateMany({ where: { id: { in: ids.slice(i, i + 300) } }, data: { salePrice: price } });
+      }
+    }
+
+    console.log(`[ProductsService] Precios redondeados: ${changes.length} de ${products.length}`);
+    return { updated: changes.length, total: products.length, multiple };
   }
 
   async bulkResetStock() {

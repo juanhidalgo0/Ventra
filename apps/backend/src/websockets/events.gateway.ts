@@ -35,6 +35,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server?.emit('cash:updated', data);
   }
 
+  /**
+   * Pide a las terminales de un usuario que cierren su sesión (por ejemplo, después
+   * de un cierre X o Z), para que no quede una sesión abierta en otra máquina.
+   * `clientId` identifica a la terminal que originó el cierre, que se maneja sola.
+   */
+  emitForceLogout(data: { userId: string; reason: string; sessionId?: string; clientId?: string }) {
+    this.server?.emit('auth:force-logout', data);
+  }
+
   emitProductUpdated(product: any) {
     this.server?.emit('product:updated', product);
   }

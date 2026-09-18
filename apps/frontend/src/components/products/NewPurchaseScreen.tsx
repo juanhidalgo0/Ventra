@@ -68,6 +68,9 @@ interface PurchaseItem {
   isNew?: boolean;
   margin?: number;
   salePrice?: number;
+  discount1?: number;
+  discount2?: number;
+  discount3?: number;
   categoryName?: string;
   brandName?: string;
   newProductData?: {
@@ -81,6 +84,13 @@ interface PurchaseItem {
     presentationType?: string;
   };
 }
+
+/** Costo del renglón después de los descuentos en cascada del proveedor. */
+const netCostOf = (item: { cost: any; discount1?: any; discount2?: any; discount3?: any }) => {
+  const c = parseFloat(item.cost as any) || 0;
+  const d = (v: any) => 1 - (parseFloat(v as any) || 0) / 100;
+  return parseFloat((c * d(item.discount1) * d(item.discount2) * d(item.discount3)).toFixed(4));
+};
 
 const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean = true) => {
   const baseCost = useIva ? cost * 1.21 : cost;
@@ -184,7 +194,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   
   const [items, setItems] = useState<PurchaseItem[]>(draft?.items || []);
   const [showScanModal, setShowScanModal] = useState(false);
-  const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') !== 'false');
+  const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') === 'true');
 
   useEffect(() => {
     if (initialPurchase) {
@@ -537,10 +547,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         }
         
         const q = parseFloat(updated.quantity as any) || 0;
-        const c = parseFloat(updated.cost as any) || 0;
+        const c = netCostOf(updated);
         updated.total = q * c;
 
-        if (field === 'cost') {
+        if (field === 'cost' || field === 'discount1' || field === 'discount2' || field === 'discount3') {
           if (updated.isNew) {
             const currentMargin = updated.margin !== undefined ? updated.margin : defaultMargin;
             updated.salePrice = calculateSuggestedPrice(c, currentMargin, useIvaGlobal);
@@ -839,7 +849,6 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       setShowQuickCreate(false);
       setProductSearch('');
       setProductResults([]);
-      toast.success('Producto creado y agregado a la lista');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al crear producto');
     }
@@ -887,7 +896,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         supplierId: selectedSupplier.id,
         invoiceNumber,
         items: items.map(i => {
-          const costVal = parseFloat(i.cost as any) || 0;
+          const costVal = netCostOf(i);
           // Scale cost down if useIvaGlobal is false since the backend will automatically multiply it by 1.21
           const backendCost = useIvaGlobal ? costVal : costVal / 1.21;
           return { 
@@ -899,7 +908,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
               name: i.name,
               barcode: i.barcode || null,
               sku: i.sku || null,
-              salePrice: i.newProductData?.salePrice || calculateSuggestedPrice(i.cost, defaultMargin, useIvaGlobal),
+              salePrice: i.newProductData?.salePrice || calculateSuggestedPrice(netCostOf(i), defaultMargin, useIvaGlobal),
+              listPrice: parseFloat(i.cost as any) || 0,
+              discount1: parseFloat(i.discount1 as any) || 0,
+              discount2: parseFloat(i.discount2 as any) || 0,
+              discount3: parseFloat(i.discount3 as any) || 0,
+              taxRate: useIvaGlobal ? 21 : 0,
               categoryId: i.newProductData?.categoryId || null,
               brandId: i.newProductData?.brandId || null,
               unitsPerPack: i.unitsPerPack || 1,
@@ -1761,7 +1775,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Variante</th>
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Formato Compra</th>
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Cantidad</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Costo Neto</th>
+                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Costo lista</th>
+                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Desc. 1/2/3 (%)</th>
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Costo + IVA</th>
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Margen (%)</th>
                       <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Precio Venta</th>
@@ -1836,7 +1851,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                                      const name = prompt('Nombre de la nueva categoría:');
                                      if (name && name.trim()) {
                                        try {
-                                         const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#F97F1E' });
+                                         const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#17925F' });
                                          setCategories(prev => [...prev, newCat]);
                                          setItems(prev => prev.map(p => {
                                            if (p.productId === item.productId) {
@@ -1850,7 +1865,6 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                                            }
                                            return p;
                                          }));
-                                         toast.success('Categoría creada');
                                        } catch {
                                          toast.error('Error al crear categoría');
                                        }
@@ -1914,7 +1928,6 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                                            }
                                            return p;
                                          }));
-                                         toast.success('Marca creada');
                                        } catch {
                                          toast.error('Error al crear marca');
                                        }
@@ -2012,9 +2025,33 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                                )}
                              </div>
                           </td>
+                          {/* Descuentos del proveedor, en cascada sobre el costo de lista */}
+                          <td className="px-2 py-1.5 text-center">
+                             <div className="flex items-center justify-center gap-1">
+                               {([1, 2, 3] as const).map(n => (
+                                 <input
+                                   key={n}
+                                   type="number"
+                                   min={0}
+                                   max={100}
+                                   placeholder="0"
+                                   value={(item as any)[`discount${n}`] || ''}
+                                   onFocus={e => e.target.select()}
+                                   onChange={e => {
+                                     const val = parseFloat(e.target.value);
+                                     updateItem(item.productId, `discount${n}`, isNaN(val) ? 0 : val);
+                                   }}
+                                   className="w-11 bg-slate-50 border border-slate-300 rounded px-1 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
+                                 />
+                               ))}
+                             </div>
+                             {netCostOf(item) !== (parseFloat(item.cost as any) || 0) && (
+                               <span className="text-[8px] font-bold text-emerald-600 uppercase">neto $ {netCostOf(item).toFixed(2)}</span>
+                             )}
+                          </td>
                           <td className="px-4 py-1.5 text-center text-[11px] font-extrabold text-slate-700 bg-slate-50/20">
                              <div className="flex flex-col items-center justify-center gap-0.5">
-                               <span>$ {((parseFloat(item.cost as any) || 0) * (useIvaGlobal ? 1.21 : 1)).toFixed(2)}</span>
+                               <span>$ {(netCostOf(item) * (useIvaGlobal ? 1.21 : 1)).toFixed(2)}</span>
                                {item.buyFormat === 'PACK' && (
                                  <span className="text-[8px] font-bold text-rose-500 uppercase">
                                    ($ {(((parseFloat(item.cost as any) || 0) * (useIvaGlobal ? 1.21 : 1)) / item.unitsPerPack).toFixed(2)} / u.)
@@ -2113,7 +2150,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                             )}
                          </div>
                       </td>
-                       <td colSpan={9}>
+                       <td colSpan={10}>
                          <button 
                            type="button"
                            onClick={() => productInputRef.current?.focus()}

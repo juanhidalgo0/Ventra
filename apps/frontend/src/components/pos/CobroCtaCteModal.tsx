@@ -59,7 +59,7 @@ export default function CobroCtaCteModal({ sessionId, onClose, onSuccess }: Cobr
       key: p.id,
       label: p.name,
       icon: CreditCard,
-      color: idx % 2 === 0 ? '#f59e0b' : '#3b82f6',
+      color: idx % 2 === 0 ? '#D9A70F' : '#3b82f6',
     })),
     { key: 'MIXED', label: 'Mixto', icon: Shuffle, color: '#8b5cf6' },
   ];

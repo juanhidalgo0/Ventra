@@ -1,23 +1,9 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getVentraDb } from './ventraFirebase';
 
-// Reuses the same (public, client-safe) Firebase project already used for the
-// GoDelivery integration — just to push instant "new version available"
-// notifications to every running desktop app. This is a single lightweight
-// realtime listener on one tiny document; it never touches sale/product data.
-const firebaseConfig = {
-  apiKey: 'AIzaSyAldeFtUWWlEpcuEg1LSTko90cVEvnsMLA',
-  authDomain: 'godelivery-magdalena.firebaseapp.com',
-  projectId: 'godelivery-magdalena',
-  storageBucket: 'godelivery-magdalena.firebasestorage.app',
-  messagingSenderId: '848164656125',
-  appId: '1:848164656125:web:eef2314205f5d8f887ff94',
-};
-
-function getFirestoreDb() {
-  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  return getFirestore(app);
-}
+// Aviso instantáneo de versión nueva: un listener liviano sobre un único
+// documento público (ventra_desktop/latest_version) del proyecto de Ventra.
+const getFirestoreDb = getVentraDb;
 
 // Subscribes to the "latest published version" doc and calls onNewVersion
 // every time it changes (including the initial read). Returns an unsubscribe

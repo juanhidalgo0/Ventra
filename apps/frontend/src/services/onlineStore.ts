@@ -1,4 +1,3 @@
-import { initializeApp, getApps } from 'firebase/app';
 import {
   getFirestore,
   doc,
@@ -15,23 +14,37 @@ import {
   serverTimestamp,
   orderBy,
 } from 'firebase/firestore';
+import { getVentraDb, ensureVentraSession } from './ventraFirebase';
 
-// Reusa el mismo proyecto Firebase (público, client-safe) ya utilizado para las
-// notificaciones de actualización del desktop (ver updatePush.ts) — pero con
-// colecciones 100% propias de Ventra ("ventra_stores"), sin ningún vínculo con
-// las colecciones de GoDelivery ("comercios"/"orders").
-const firebaseConfig = {
-  apiKey: 'AIzaSyAldeFtUWWlEpcuEg1LSTko90cVEvnsMLA',
-  authDomain: 'godelivery-magdalena.firebaseapp.com',
-  projectId: 'godelivery-magdalena',
-  storageBucket: 'godelivery-magdalena.firebasestorage.app',
-  messagingSenderId: '848164656125',
-  appId: '1:848164656125:web:eef2314205f5d8f887ff94',
-};
+// Proyecto Firebase propio de Ventra (ver ventraFirebase.ts).
+const getDb = getVentraDb;
 
-function getDb() {
-  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  return getFirestore(app);
+export class StoreOwnedElsewhereError extends Error {
+  constructor() {
+    super('Esta tienda online está vinculada a otra instalación de Ventra.');
+  }
+}
+
+/**
+ * Se asegura de que esta instalación sea la dueña de su tienda: si la tienda no
+ * existe la crea, y si viene de la migración (sin dueño) la reclama. Las reglas
+ * de Firestore solo dejan escribir a la sesión dueña.
+ */
+export async function claimStore(storeId: string): Promise<void> {
+  const user = await ensureVentraSession();
+  const db = getDb();
+  const ref = doc(db, 'ventra_stores', storeId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await setDoc(ref, { ...DEFAULT_CONFIG, ownerUid: user.uid, claimed: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    return;
+  }
+  const owner = snap.data().ownerUid;
+  if (!owner) {
+    await updateDoc(ref, { ownerUid: user.uid, claimed: true, updatedAt: serverTimestamp() });
+  } else if (owner !== user.uid) {
+    throw new StoreOwnedElsewhereError();
+  }
 }
 
 export const STORE_ID_KEY = 'ventra_store_id';
@@ -60,6 +73,8 @@ export interface StoreConfig {
   address?: string;
   instagram?: string;
   isPublished: boolean;
+  ownerUid?: string;
+  claimed?: boolean;
   updatedAt?: any;
   createdAt?: any;
 }
@@ -92,22 +107,17 @@ export async function loadStoreConfig(storeId: string): Promise<StoreConfig> {
 }
 
 export async function saveStoreConfig(storeId: string, config: Partial<StoreConfig>): Promise<void> {
-  const db = getDb();
-  const ref = doc(db, 'ventra_stores', storeId);
-  const snap = await getDoc(ref);
-  const payload = { ...config, updatedAt: serverTimestamp() };
-  if (snap.exists()) {
-    await updateDoc(ref, payload);
-  } else {
-    await setDoc(ref, { ...DEFAULT_CONFIG, ...payload, createdAt: serverTimestamp() });
-  }
+  await claimStore(storeId);
+  const { ownerUid: _o, claimed: _c, storeId: _s, ...editable } = config as any;
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId), { ...editable, updatedAt: serverTimestamp() });
 }
 
 // Verifica si un subdominio está disponible (o pertenece a esta misma tienda).
 export async function isSubdomainAvailable(subdomain: string, storeId: string): Promise<boolean> {
   if (!subdomain) return false;
   const db = getDb();
-  const q = query(collection(db, 'ventra_stores'), where('subdomain', '==', subdomain), limit(1));
+  // Solo las tiendas ya reclamadas son visibles (ver reglas de Firestore)
+  const q = query(collection(db, 'ventra_stores'), where('claimed', '==', true), where('subdomain', '==', subdomain), limit(1));
   const snap = await getDocs(q);
   if (snap.empty) return true;
   return snap.docs[0].id === storeId;
@@ -128,6 +138,7 @@ export interface OnlineProduct {
 // Sube (o reemplaza) el catálogo completo visible en la tienda online. Se usa
 // batch writes para mantenerlo rápido incluso con cientos de productos.
 export async function syncCatalogToStore(storeId: string, products: OnlineProduct[]): Promise<void> {
+  await claimStore(storeId);
   const db = getDb();
   const productsRef = collection(db, 'ventra_stores', storeId, 'products');
 
@@ -180,19 +191,31 @@ export interface StoreOrder {
 
 // Escucha en tiempo real los pedidos de la tienda, más nuevos primero.
 export function subscribeToStoreOrders(storeId: string, onChange: (orders: StoreOrder[]) => void): () => void {
-  const db = getDb();
-  const q = query(collection(db, 'ventra_stores', storeId, 'orders'), orderBy('createdAt', 'desc'), limit(50));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })) as StoreOrder[];
-      onChange(orders);
-    },
-    (err) => console.warn('[OnlineStore] Error escuchando pedidos:', err.message)
-  );
+  // Leer pedidos requiere ser el dueño: primero la sesión/reclamo, después el listener.
+  let unsub: (() => void) | null = null;
+  let cancelled = false;
+  claimStore(storeId)
+    .then(() => {
+      if (cancelled) return;
+      const q = query(collection(getDb(), 'ventra_stores', storeId, 'orders'), orderBy('createdAt', 'desc'), limit(50));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })) as StoreOrder[];
+          onChange(orders);
+        },
+        (err) => console.warn('[OnlineStore] Error escuchando pedidos:', err.message)
+      );
+    })
+    .catch((err) => console.warn('[OnlineStore] No se pudo acceder a la tienda:', err.message));
+  return () => {
+    cancelled = true;
+    unsub?.();
+  };
 }
 
 export async function markOrderSyncedLocally(storeId: string, orderId: string): Promise<void> {
+  await ensureVentraSession();
   const db = getDb();
   await updateDoc(doc(db, 'ventra_stores', storeId, 'orders', orderId), {
     syncedLocal: true,

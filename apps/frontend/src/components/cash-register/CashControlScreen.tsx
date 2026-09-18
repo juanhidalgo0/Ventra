@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import api from '../../services/api';
+import { getClientId } from '../../utils/clientId';
 import { Calendar, ChevronDown, ChevronRight, DollarSign, Download, Search, Users, Copy, Wallet, CheckCircle2, TrendingDown, Receipt, ChevronUp, Clock, AlertCircle, RefreshCw, FileText, Printer, FileOutput, User, XCircle, History, TrendingUp, ArrowDownRight, LayoutDashboard, Lock, X, Package, Smartphone, CreditCard, Play, Filter, ArrowDown, ArrowUp, Loader2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -158,7 +159,7 @@ export default function CashControlScreen() {
   const handleExportExcel = () => {
     const headers = [
       'Terminal', 'Responsable', 'Apertura', 'Cierre', 
-      'Monto Apertura', 'Ventas Totales', 'Gastos', 'Monto Cierre', 'Diferencia'
+      'Ventas Totales', 'Gastos', 'Monto Cierre', 'Diferencia'
     ];
     const rows = closedSessions.map((s: any) => {
       const salesTotal = getSessionSalesTotal(s);
@@ -168,7 +169,6 @@ export default function CashControlScreen() {
         s.user?.fullName,
         new Date(s.openedAt).toLocaleString('es-AR'),
         s.closedAt ? new Date(s.closedAt).toLocaleString('es-AR') : '',
-        s.openingAmount,
         salesTotal,
         expensesTotal,
         s.closingAmount || 0,
@@ -229,7 +229,6 @@ export default function CashControlScreen() {
           <td>${s.user?.fullName}</td>
           <td>${new Date(s.openedAt).toLocaleDateString('es-AR')}</td>
           <td>${s.closedAt ? new Date(s.closedAt).toLocaleDateString('es-AR') : 'Abierta'}</td>
-          <td class="text-right">${fmt(s.openingAmount)}</td>
           <td class="text-right">${fmt(salesTotal)}</td>
           <td class="text-right">${fmt(expensesTotal)}</td>
           <td class="text-right">${fmt(s.closingAmount || 0)}</td>
@@ -259,7 +258,6 @@ export default function CashControlScreen() {
             <th>Responsable</th>
             <th>Apertura</th>
             <th>Cierre</th>
-            <th class="text-right">M. Apertura</th>
             <th class="text-right">Ventas</th>
             <th class="text-right">Gastos</th>
             <th class="text-right">M. Cierre</th>
@@ -833,10 +831,6 @@ export default function CashControlScreen() {
                   <div>
                     <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Efectivo Esperado</p>
                     <p className="text-lg font-black text-rose-600 tracking-tight">{hideTotals ? '***' : fmt(s.expectedAmount || 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Apertura Inicial</p>
-                    <p className="text-lg font-bold text-slate-700 tracking-tight">{hideTotals ? '***' : fmt(s.openingAmount)}</p>
                   </div>
                 </div>
 
@@ -1509,6 +1503,7 @@ export default function CashControlScreen() {
                     }
                     try {
                       await api.post(`/cash/${closingSession.id}/close`, { 
+                        clientId: getClientId(),
                         closingAmountCounted: closingAmount, 
                         closingNotes 
                       });
@@ -1647,10 +1642,6 @@ export default function CashControlScreen() {
                   <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-100 p-4 rounded-xl">
                     <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider block mb-1">Efectivo en Caja en Vivo</span>
                     <span className="text-2xl font-black text-rose-700">{fmt(monitoringSession.expectedAmount)}</span>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Fondo de Apertura</span>
-                    <span className="text-2xl font-bold text-slate-700">{fmt(monitoringSession.openingAmount)}</span>
                   </div>
                 </div>
 

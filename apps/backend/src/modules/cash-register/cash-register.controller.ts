@@ -80,7 +80,7 @@ export class CashRegisterController {
   }
 
   @Post(':sessionId/close')
-  close(@Param('sessionId') sessionId: string, @Request() req, @Body() dto: { closingAmountCounted?: number; closingNotes?: string }) {
+  close(@Param('sessionId') sessionId: string, @Request() req, @Body() dto: { closingAmountCounted?: number; closingNotes?: string; clientId?: string }) {
     return this.cashService.close(sessionId, req.user.sub, dto);
   }
 

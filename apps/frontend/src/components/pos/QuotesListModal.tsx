@@ -50,7 +50,6 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
       }
     });
 
-    toast.success('Presupuesto #' + quote.quoteNumber + ' cargado al carrito');
     onLoadCart();
     onClose();
   };
@@ -83,7 +82,6 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
     if (!window.confirm('¿Seguro que deseas eliminar este presupuesto?')) return;
     try {
       await api.delete('/quotes/' + quoteId);
-      toast.success('Presupuesto eliminado');
       setQuotes(quotes.filter(q => q.id !== quoteId));
     } catch (err) {
       toast.error('Error al eliminar presupuesto');

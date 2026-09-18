@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
+import { getClientId } from '../../utils/clientId';
 import toast from 'react-hot-toast';
 import { Lock, Unlock, DollarSign, Clock, CreditCard, Smartphone, Banknote, CheckCircle2, Wallet } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -9,10 +10,6 @@ export default function CashRegisterScreen() {
   const [session, setSession] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [terminalName, setTerminalName] = useState('Terminal 1');
-  const [openingAmount, setOpeningAmount] = useState(() => {
-    const saved = localStorage.getItem('default_opening_amount');
-    return saved ? Number(saved) : 30000;
-  });
   const [closingAmount, setClosingAmount] = useState(0);
   const [closingNotes, setClosingNotes] = useState('');
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -48,15 +45,15 @@ export default function CashRegisterScreen() {
 
   const handleOpen = async () => {
     try {
-      const { data } = await api.post('/cash/open', { terminalName, openingAmount, openingNotes: '' });
-      setSession(data); toast.success('✅ Caja abierta');
+      const { data } = await api.post('/cash/open', { terminalName, openingAmount: 0, openingNotes: '' });
+      setSession(data);
     } catch (err: any) { toast.error(err.response?.data?.message || 'Error'); }
   };
 
   const handleClose = async () => {
     try {
-      await api.post(`/cash/${session.id}/close`, { closingAmountCounted: closingAmount, closingNotes });
-      toast.success('✅ Caja cerrada'); setSession(null); setShowCloseConfirm(false);
+      await api.post(`/cash/${session.id}/close`, { clientId: getClientId(), closingAmountCounted: closingAmount, closingNotes });
+      setSession(null); setShowCloseConfirm(false);
     } catch (err: any) { toast.error(err.response?.data?.message || 'Error'); }
   };
 
@@ -124,7 +121,7 @@ export default function CashRegisterScreen() {
 
   const expenses = session?.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0;
   const withdrawals = session?.cashMovements?.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0;
-  const expectedCash = (session?.openingAmount || 0) + cashPayments - expenses - withdrawals;
+  const expectedCash = cashPayments - expenses - withdrawals;
 
   return (
     <div className="h-full card p-5 overflow-y-auto custom-scrollbar bg-slate-50/20">
@@ -145,18 +142,6 @@ export default function CashRegisterScreen() {
               <label className="block text-sm text-gray-500 mb-1">Terminal</label>
               <input value={terminalName} disabled={true} className="input-field bg-slate-100 text-slate-700 font-bold select-none cursor-not-allowed" placeholder="Terminal 1" />
               <p className="text-[9px] text-slate-600 font-semibold mt-1">🖥️ Dispositivo detectado localmente.</p>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-500 mb-1">Monto inicial ($)</label>
-              <input 
-                type="number" 
-                value={openingAmount || ''} 
-                onChange={(e) => setOpeningAmount(Number(e.target.value))} 
-                disabled={true}
-                className="input-field text-xl font-bold bg-slate-100 text-slate-600 cursor-not-allowed select-none"
-                placeholder="30000" 
-              />
-              <p className="text-[10px] text-amber-500 font-bold mt-1.5 ml-1">🔒 Monto bloqueado. Configurado por el Administrador desde el panel general.</p>
             </div>
             <button onClick={handleOpen} className="w-full btn-primary py-3 flex items-center justify-center gap-2"><Unlock className="w-5 h-5" /> Abrir Caja</button>
           </div>
@@ -188,11 +173,7 @@ export default function CashRegisterScreen() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-center shadow-sm">
-              <p className="text-[9px] text-gray-400 mb-0.5 uppercase tracking-wider font-bold">Apertura</p>
-              <p className="text-base font-bold text-gray-700 leading-none">{fmt(session.openingAmount)}</p>
-            </div>
+          <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-center shadow-sm">
               <p className="text-[9px] text-red-400 mb-0.5 uppercase tracking-wider font-bold">Gastos</p>
               <p className="text-base font-bold text-red-600 leading-none">{fmt(expenses + withdrawals)}</p>

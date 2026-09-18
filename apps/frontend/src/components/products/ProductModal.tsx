@@ -13,12 +13,23 @@ import {
   Tag,
   Plus,
   Check,
-  Bookmark
+  Bookmark,
+  Wand2,
+  Search,
+  FolderTree,
+  Coins,
+  Boxes,
+  Ruler,
+  Truck,
+  Layers,
+  Wrench,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
+import ImageSearchPicker from './ImageSearchPicker';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -54,6 +65,43 @@ interface ProductModalProps {
   product?: any;
 }
 
+/** Sección del formulario: título chico en mayúsculas con ícono y una línea. */
+function FormSection({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-2.5">
+        <Icon className="w-4 h-4 text-rose-600" />
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{title}</h3>
+        <div className="flex-1 h-px bg-slate-100" />
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+/** Opciones avanzadas plegadas. Se abren solas si el producto ya tiene datos ahí. */
+function Collapsible({ icon: Icon, title, hint, defaultOpen, badge, children }: {
+  icon: any; title: string; hint?: string; defaultOpen?: boolean; badge?: string; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <div className={`rounded-xl border transition-colors ${open ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50'}`}>
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-3 py-2 text-left">
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${open ? 'bg-rose-50 text-rose-600' : 'bg-white border border-slate-200 text-slate-500'}`}>
+          <Icon className="w-4 h-4" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] font-semibold text-slate-800">{title}</span>
+          {hint && <span className="block text-[11.5px] text-slate-500 truncate">{hint}</span>}
+        </span>
+        {badge && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">{badge}</span>}
+        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-3 pb-3 pt-2.5 border-t border-slate-100 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
 export default function ProductModal({ onClose, onSuccess, product }: ProductModalProps) {
   const [formData, setFormData] = useState({
     name: product?.name || '',
@@ -85,6 +133,16 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     isKit: product?.isKit || false,
     equivalents: product?.equivalents || '',
     margin: 0,
+    // Compra al proveedor: precio de lista sin IVA, descuentos en cascada e IVA
+    listPrice: product?.listPrice == null
+      ? ''
+      : product?.presentationType === 'PACK'
+        ? parseFloat((product.listPrice * (product?.unitsPerPack || 1)).toFixed(2))
+        : product.listPrice,
+    discount1: product?.discount1 || 0,
+    discount2: product?.discount2 || 0,
+    discount3: product?.discount3 || 0,
+    taxRate: product?.taxRate || 0,
     imageUrl: product?.imageUrl || '',
     supplierId: product?.supplierId || '',
     allowCustomPrice: product?.allowCustomPrice || false,
@@ -125,8 +183,11 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
   const [suggestedImageUrl, setSuggestedImageUrl] = useState<string | null>(null);
   const [isSearchingImage, setIsSearchingImage] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
   const [rejectedBarcodeSuggestion, setRejectedBarcodeSuggestion] = useState<string | null>(null);
   const [activeLargeImage, setActiveLargeImage] = useState<{ url: string; isSuggestion: boolean } | null>(null);
+  // Al cerrar la ventana de la imagen sugerida, el cursor vuelve al nombre para seguir cargando
+  const focusName = () => setTimeout(() => { nameInputRef.current?.focus(); nameInputRef.current?.select(); }, 60);
 
   useEffect(() => {
     if (suggestedImageUrl) {
@@ -172,43 +233,45 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   }, [formData.barcode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      const target = e.target as HTMLElement;
-      
-      // Allow native Enter behavior for buttons, submits, and textareas
-      if (e.key === 'Enter' && (target.tagName === 'BUTTON' || (target as any).type === 'submit')) {
-        return;
-      }
-      if (e.key === 'Enter' && target.tagName === 'TEXTAREA') {
-        return;
-      }
-
+    if (e.key !== 'Enter') return;
+    if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      if (!modalRef.current) return;
+      handleSubmit();
+      return;
+    }
+    const target = e.target as HTMLElement;
+    // Botones (plegables, "+ Nueva", etc.) y textareas mantienen su Enter normal
+    if (target.tagName === 'BUTTON' || target.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    if (!modalRef.current) return;
 
-      // Select only writing/input fields, skipping buttons, checkboxes, close buttons etc.
-      const query = 'input:not([type]):not([disabled]), input[type="text"]:not([disabled]), input[type="number"]:not([disabled]), input[type="url"]:not([disabled]), select:not([disabled]), textarea:not([disabled])';
-      const writingFields = Array.from(
-        modalRef.current.querySelectorAll(query)
-      ) as HTMLElement[];
+    // Solo campos donde se escribe: sin selectores, checkboxes ni la URL de imagen
+    const writable = Array.from(
+      modalRef.current.querySelectorAll<HTMLInputElement>(
+        'input:not([type]):not([disabled]):not([data-enter-skip]), input[type="text"]:not([disabled]):not([data-enter-skip]), input[type="number"]:not([disabled]):not([data-enter-skip])',
+      ),
+    );
 
-      const index = writingFields.indexOf(target);
-      if (index > -1) {
-        if (e.shiftKey) {
-          // Go backward on Shift+Tab or Shift+Enter
-          const prevElement = writingFields[index - 1] || writingFields[writingFields.length - 1];
-          if (prevElement) prevElement.focus();
-        } else {
-          // Go forward on Tab or Enter
-          const nextElement = writingFields[index + 1] || writingFields[0];
-          if (nextElement) nextElement.focus();
-        }
-      } else {
-        // Fallback to first writing field if focus is elsewhere
-        if (writingFields.length > 0) {
-          writingFields[0].focus();
-        }
-      }
+    // Stock mínimo es el último: Enter ahí guarda el producto
+    if (target.hasAttribute('data-enter-submit')) {
+      handleSubmit();
+      return;
+    }
+
+    let index = writable.indexOf(target as HTMLInputElement);
+    if (index === -1) {
+      // Enter sobre un selector/checkbox: seguir desde el próximo campo escribible
+      index = writable.findIndex(el => target.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) - 1;
+      if (index < -1) index = writable.length - 1;
+    }
+
+    const next = e.shiftKey ? writable[index - 1] : writable[index + 1];
+    if (next) {
+      next.focus();
+      next.select?.();
+    } else if (!e.shiftKey) {
+      // No hay más campos: confirmar
+      handleSubmit();
     }
   };
 
@@ -224,12 +287,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
   useEffect(() => {
     setTimeout(() => {
-      if (costInputRef.current) {
-        costInputRef.current.focus();
-        costInputRef.current.select();
-      } else {
-        nameInputRef.current?.focus();
-      }
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
     }, 150);
   }, []);
 
@@ -287,7 +346,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           ctx.drawImage(img, 0, 0, width, height);
           const compressed = canvas.toDataURL('image/jpeg', 0.55); // Highly compressed, ultra-lightweight JPEG
           setFormData(prev => ({ ...prev, imageUrl: compressed }));
-          toast.success('📸 Imagen local procesada y comprimida');
         }
       };
       img.src = event.target?.result as string;
@@ -308,7 +366,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       setIsCreatingCategory(false);
       setNewCategoryName('');
       setNewCategoryParentId('');
-      toast.success('Categoría creada');
     } catch {
       toast.error('Error al crear categoría');
     }
@@ -322,7 +379,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       setFormData({ ...formData, brandId: data.id });
       setIsCreatingBrand(false);
       setNewBrandName('');
-      toast.success('Marca creada');
     } catch {
       toast.error('Error al crear marca');
     }
@@ -353,6 +409,22 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       costPrice: isNaN(cost) ? '' as any : cost, 
       salePrice: isNaN(cost) ? '' as any : parseFloat(sale.toFixed(2)) 
     }));
+  };
+
+  /**
+   * Costo = precio de lista - descuentos en cascada + IVA.
+   * Se recalcula al tocar cualquiera de esos campos; el costo se puede seguir
+   * escribiendo a mano si no se carga un precio de lista.
+   */
+  const recalcCostFromList = (changes: Partial<typeof formData>) => {
+    const next = { ...formData, ...changes };
+    const list = parseFloat(next.listPrice as any);
+    setFormData(prev => ({ ...prev, ...changes }));
+    if (isNaN(list) || list <= 0) return;
+    const d = (v: any) => 1 - (parseFloat(v as any) || 0) / 100;
+    const iva = 1 + (parseFloat(next.taxRate as any) || 0) / 100;
+    const cost = list * d(next.discount1) * d(next.discount2) * d(next.discount3) * iva;
+    handleCostChange(parseFloat(cost.toFixed(2)));
   };
 
   const handleUnitCostChange = (unitCost: number) => {
@@ -574,6 +646,13 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         kitItems: formData.isKit ? kitItems.map(k => ({ childProductId: k.childProductId, quantity: Number(k.quantity) || 1 })) : [],
         equivalents: formData.equivalents?.trim() || null,
         margin: parseFloat(formData.margin as any) || 0,
+        listPrice: formData.listPrice !== '' && formData.listPrice !== null && !isNaN(parseFloat(formData.listPrice as any))
+          ? parseFloat(formData.listPrice as any) / (isPack ? uPerPack : 1)
+          : null,
+        discount1: parseFloat(formData.discount1 as any) || 0,
+        discount2: parseFloat(formData.discount2 as any) || 0,
+        discount3: parseFloat(formData.discount3 as any) || 0,
+        taxRate: parseFloat(formData.taxRate as any) || 0,
         unitsPerPack: uPerPack,
         pieceSize: ['MT', 'KG', 'L'].includes(formData.unit) && formData.pieceSize !== '' && formData.pieceSize !== null && !isNaN(parseFloat(formData.pieceSize as any)) && parseFloat(formData.pieceSize as any) > 0
           ? parseFloat(formData.pieceSize as any)
@@ -610,12 +689,19 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     saveProduct(false);
   };
 
+  const labelCls = 'block text-[12.5px] font-semibold text-slate-800 mb-1';
+  const hintCls = 'text-[11.5px] text-slate-500 mt-1 leading-snug';
+  const inputCls = 'w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all';
+  const selectCls = inputCls + ' pr-8 appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap';
+  const moneyPrefix = 'absolute inset-y-0 left-3 flex items-center text-slate-400 font-semibold pointer-events-none';
+  const isEditing = !!(product && product.id);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-3 md:p-4"
       onClick={onClose}
     >
       <motion.div
@@ -623,104 +709,108 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         id="product-modal-container"
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="relative bg-white border border-slate-200 dark:border-slate-800 w-full max-w-6xl rounded-2xl shadow-xl flex flex-col overflow-hidden"
+        exit={{ opacity: 0, scale: 0.98, y: 8 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="keep-style relative w-full max-w-[1280px] max-h-[calc(100dvh-24px)] md:max-h-[calc(100dvh-32px)] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 shadow-[0_24px_70px_-20px_rgba(15,23,42,0.45)] flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-300 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 border border-rose-200">
-              <Package className="w-5 h-5" />
-            </div>
-            <h2 className="text-base font-bold text-slate-800">{(product && product.id) ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+        <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div>
+            <p className="eyebrow">{isEditing ? 'Inventario · Edición' : 'Inventario'}</p>
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight mt-0.5">{isEditing ? 'Editar producto' : 'Agregar producto'}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} type="button" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors" aria-label="Cerrar">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 md:p-6 grid grid-cols-12 gap-4 md:gap-6 overflow-y-auto max-h-[calc(100vh-160px)]">
-          {/* Main Info (Left) */}
-          <div className="col-span-12 lg:col-span-7 space-y-4">
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6 py-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-7 gap-y-5 content-start">
+
+          {/* Columna 1: datos básicos + organización */}
+          <div className="space-y-5 min-w-0">
+          {/* ── Datos básicos ── */}
+          <FormSection icon={Package} title="Datos básicos">
             <div>
-              <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Nombre del producto *</span>
-              <input 
+              <label className={labelCls}>Nombre del producto <span className="text-rose-600">*</span></label>
+              <input
                 ref={nameInputRef}
-                type="text" 
+                type="text"
                 value={formData.name}
                 onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
                 onFocus={e => e.target.select()}
                 placeholder="Ej: COCA COLA ZERO 2.25L"
-                className="w-full bg-white border border-slate-400 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-600 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none transition-all"
+                className={inputCls + ' h-10 text-[15px]'}
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Imagen del Producto</span>
-                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">💡 Recomendado: Carga local</span>
-              </div>
-              
-              <div className="flex gap-3 items-stretch">
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <input 
-                      type="file" 
-                      id="local-image-upload" 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={handleImageUpload} 
-                    />
-                    <label 
-                      htmlFor="local-image-upload"
-                      className="flex-1 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 hover:border-rose-400 rounded-lg px-4 py-2.5 text-xs font-semibold text-rose-600 text-center cursor-pointer transition-all flex items-center justify-center gap-2 select-none"
-                    >
-                      <Plus className="w-4 h-4" /> Cargar Imagen Local
-                    </label>
-                  </div>
-                  
-                  <input 
-                    type="text" 
-                    value={formData.imageUrl.startsWith('data:') ? '📸 Imagen Local Procesada (Guardada)' : formData.imageUrl}
-                    onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
-                    disabled={formData.imageUrl.startsWith('data:')}
-                    placeholder="O pegar URL de imagen externa..."
-                    className="w-full bg-white border border-slate-400 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-600 focus:border-rose-400 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Código de barras</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.barcode}
+                    onChange={e => setFormData({ ...formData, barcode: e.target.value.toUpperCase() })}
+                    onFocus={e => e.target.select()}
+                    placeholder="Escaneá o escribí"
+                    className={inputCls + (!formData.barcode ? ' pr-9' : '')}
                   />
-                  {formData.imageUrl.startsWith('data:') && (
+                  {!formData.barcode && (
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, imageUrl: '' })}
-                      className="text-[10px] font-medium text-rose-500 text-left hover:text-rose-600 transition-colors"
+                      onClick={async () => {
+                        try {
+                          const { data } = await api.get('/products/internal-barcode/next');
+                          setFormData(prev => ({ ...prev, barcode: data.barcode }));
+                          toast.success('Código interno generado. Se guarda al guardar el producto.');
+                        } catch {
+                          toast.error('No se pudo generar el código interno');
+                        }
+                      }}
+                      className="absolute inset-y-0 right-1.5 my-auto h-7 w-7 flex items-center justify-center rounded-md text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="Generar código interno (para productos sin código)"
                     >
-                      ✕ Quitar imagen local para ingresar URL
+                      <Wand2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
+              </div>
+              <div>
+                <label className={labelCls}>SKU <span className="text-slate-400 font-normal text-[12px]">(opcional)</span></label>
+                <input
+                  type="text"
+                  value={formData.sku}
+                  onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                  onFocus={e => e.target.select()}
+                  className={inputCls}
+                />
+              </div>
+            </div>
 
-                {/* Preview Box */}
+            {/* Imagen */}
+            <div>
+              <label className={labelCls}>Imagen</label>
+              <div className="flex gap-3 items-start">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (formData.imageUrl) {
-                      setActiveLargeImage({ url: formData.imageUrl, isSuggestion: false });
-                    }
-                  }}
+                  onClick={() => { if (formData.imageUrl) setActiveLargeImage({ url: formData.imageUrl, isSuggestion: false }); }}
                   disabled={!formData.imageUrl && !isSearchingImage}
-                  className="relative w-20 h-20 rounded-xl bg-slate-50 border border-slate-400 hover:border-rose-500 overflow-hidden flex items-center justify-center text-slate-600 flex-shrink-0 self-center transition-all cursor-pointer disabled:cursor-default disabled:hover:border-slate-400"
-                  title={formData.imageUrl ? "Hacer clic para ver en grande" : undefined}
+                  className="relative w-[80px] h-[80px] rounded-xl bg-slate-50 border border-dashed border-slate-300 hover:border-rose-400 overflow-hidden flex items-center justify-center shrink-0 transition-all cursor-pointer disabled:cursor-default disabled:hover:border-slate-300"
+                  title={formData.imageUrl ? 'Ver en grande' : undefined}
                 >
-                  <img 
-                    src={formData.imageUrl || './product-placeholder.png'} 
-                    alt="Preview" 
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = './product-placeholder.png';
-                    }}
-                  />
-
+                  {formData.imageUrl ? (
+                    <img
+                      src={formData.imageUrl}
+                      alt="Vista previa"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = './product-placeholder.png'; }}
+                    />
+                  ) : (
+                    <ImageIcon className="w-6 h-6 text-slate-300" />
+                  )}
                   {isSearchingImage && (
                     <div className="absolute inset-0 bg-slate-900/60 flex flex-col items-center justify-center text-white text-[9px] font-bold">
                       <RefreshCw className="w-4 h-4 animate-spin mb-1" />
@@ -728,293 +818,521 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     </div>
                   )}
                 </button>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex gap-2">
+                    <input type="file" id="local-image-upload" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    <label
+                      htmlFor="local-image-upload"
+                      className="flex-1 h-9 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer select-none transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-rose-600" /> Subir imagen
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowImagePicker(true)}
+                      className="flex-1 h-9 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer select-none transition-colors"
+                    >
+                      <Search className="w-3.5 h-3.5 text-rose-600" /> Buscar foto
+                    </button>
+                  </div>
+                  {formData.imageUrl.startsWith('data:') ? (
+                    <div className="flex items-center justify-between gap-2 h-9 px-3 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
+                      <span className="truncate">Imagen local cargada (comprimida)</span>
+                      <button type="button" onClick={() => setFormData({ ...formData, imageUrl: '' })} className="font-semibold hover:underline shrink-0">Quitar</button>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formData.imageUrl}
+                      onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
+                      placeholder="O pegá la URL de una imagen"
+                      data-enter-skip
+                      className={inputCls + ' h-9 text-[12.5px]'}
+                    />
+                  )}
+                </div>
               </div>
-              <p className="text-[10px] text-slate-600 italic leading-tight">
-                * Las imágenes cargadas localmente son comprimidas de forma ultra-liviana para no saturar tu web.
-              </p>
             </div>
+          </FormSection>
 
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+          {/* ── Organización ── */}
+          <FormSection icon={FolderTree} title="Organización">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Cód. Barras</span>
-                <div className="relative flex items-center">
-                  <input 
-                    type="text" 
-                    value={formData.barcode}
-                    onChange={e => setFormData({ ...formData, barcode: e.target.value })}
-                    onFocus={e => e.target.select()}
-                    className="w-full bg-white border border-slate-400 rounded-lg px-2.5 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">SKU</span>
-                <div className="relative flex items-center">
-                  <input 
-                    type="text" 
-                    value={formData.sku}
-                    onChange={e => setFormData({ ...formData, sku: e.target.value })}
-                    onFocus={e => e.target.select()}
-                    className="w-full bg-white border border-slate-400 rounded-lg px-2.5 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 outline-none"
-                  />
-                </div>
-              </div>
-               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Categoría</span>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsCreatingCategory(!isCreatingCategory)}
-                    className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition-colors"
-                  >
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[12.5px] font-semibold text-slate-800">Categoría</label>
+                  <button type="button" onClick={() => setIsCreatingCategory(!isCreatingCategory)} className="text-[12px] font-semibold text-rose-600 hover:text-rose-700">
                     {isCreatingCategory ? 'Cancelar' : '+ Nueva'}
                   </button>
                 </div>
-                <div className="relative flex items-center">
-                  {isCreatingCategory ? (
-                    <div className="flex flex-col gap-1.5 w-full bg-slate-50 border border-slate-400 rounded-lg p-2 z-10">
-                      <div className="flex gap-1 w-full">
-                        <input 
-                          type="text"
-                          autoFocus
-                          placeholder="Nombre..."
-                          value={newCategoryName}
-                          onChange={e => setNewCategoryName(e.target.value)}
-                          className="flex-1 bg-white border border-slate-400 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
-                        />
-                        <input 
-                          type="color"
-                          value={newCategoryColor}
-                          onChange={e => setNewCategoryColor(e.target.value)}
-                          className="w-8 h-7 p-0.5 bg-white border border-slate-400 rounded cursor-pointer"
-                        />
-                      </div>
-                      <div className="flex gap-1 items-center">
-                        <select
-                          value={newCategoryParentId}
-                          onChange={e => setNewCategoryParentId(e.target.value)}
-                          className="flex-1 bg-white border border-slate-400 rounded px-1 py-0.5 text-[9px] text-slate-600 outline-none"
-                        >
-                          <option value="">Sin Padre (Principal)</option>
-                          {categories.filter(c => !c.parentCategory && !c.parentCategoryId).map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                        <button 
-                          type="button"
-                          onClick={handleCreateCategory}
-                          className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-all active:scale-[0.97] flex items-center justify-center"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <select 
-                        value={formData.categoryId || ''}
-                        onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                        className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
-                      >
-                        <option value="">Sin categoría</option>
-                        {buildCategoryTree(categories).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
-                    </>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Marca</span>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsCreatingBrand(!isCreatingBrand)}
-                    className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition-colors"
-                  >
-                    {isCreatingBrand ? 'Cancelar' : '+ Nueva'}
-                  </button>
-                </div>
-                <div className="relative flex items-center">
-                  {isCreatingBrand ? (
-                    <div className="flex gap-1 w-full bg-slate-50 border border-slate-400 rounded-lg p-1.5 z-10">
-                      <input 
+                {isCreatingCategory ? (
+                  <div className="flex flex-col gap-1.5 w-full bg-slate-50 border border-slate-300 rounded-lg p-2">
+                    <div className="flex gap-1 w-full">
+                      <input
                         type="text"
                         autoFocus
-                        placeholder="Marca..."
-                        value={newBrandName}
-                        onChange={e => setNewBrandName(e.target.value)}
-                        className="flex-1 bg-white border border-slate-400 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
+                        placeholder="Nombre..."
+                        value={newCategoryName}
+                        onChange={e => setNewCategoryName(e.target.value)}
+                        className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
                       />
-                      <button 
-                        type="button"
-                        onClick={handleCreateBrand}
-                        className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-all active:scale-[0.97] flex items-center justify-center"
+                      <input type="color" value={newCategoryColor} onChange={e => setNewCategoryColor(e.target.value)} className="w-8 h-7 p-0.5 bg-white border border-slate-300 rounded cursor-pointer" />
+                    </div>
+                    <div className="flex gap-1 items-center">
+                      <select
+                        value={newCategoryParentId}
+                        onChange={e => setNewCategoryParentId(e.target.value)}
+                        className="flex-1 bg-white border border-slate-300 rounded px-1 py-0.5 text-[11px] text-slate-600 outline-none"
                       >
+                        <option value="">Sin padre (principal)</option>
+                        {categories.filter(c => !c.parentCategory && !c.parentCategoryId).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={handleCreateCategory} className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 flex items-center justify-center">
                         <Check className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  ) : (
-                    <>
-                      <select 
-                        value={formData.brandId || ''}
-                        onChange={e => setFormData({ ...formData, brandId: e.target.value })}
-                        className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
-                      >
-                        <option value="">Sin marca</option>
-                        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
-                    </>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 block">Proveedor</span>
-                <div className="relative flex items-center">
-                  <select 
-                    value={formData.supplierId || ''}
-                    onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
-                    className="w-full bg-white border border-slate-400 rounded-lg pl-2.5 pr-7 py-2.5 text-xs font-medium text-slate-800 focus:border-rose-400 outline-none appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
-                  >
-                    <option value="">Sin proveedor</option>
-                    {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-
-            {/* Additional Barcodes */}
-            <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-3">
-               <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Códigos Adicionales</span>
-                  <span className="text-[10px] font-medium text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">{formData.additionalBarcodes.length} registrados</span>
-               </div>
-               <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={newBarcode}
-                    onChange={e => setNewBarcode(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddBarcode())}
-                    placeholder="Escanear otro..."
-                    className="flex-1 bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder:text-slate-600 outline-none focus:border-rose-400"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={handleAddBarcode}
-                    className="px-3 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 transition-all"
-                  >
-                    Vincular
-                  </button>
-               </div>
-               <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto custom-scrollbar">
-                  {formData.additionalBarcodes.map(b => (
-                    <div key={b} className="flex items-center gap-1.5 bg-white border border-slate-400 px-2 py-1 rounded-md">
-                       <span className="text-[10px] font-medium text-slate-600">{b}</span>
-                       <button type="button" onClick={() => handleRemoveBarcode(b)} className="text-slate-600 hover:text-red-500"><X className="w-3 h-3" /></button>
-                    </div>
-                  ))}
-               </div>
-            </div>
-
-            {/* Inventory Management */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-               <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider block">Control de Stock</span>
                   </div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <input 
-                      type="checkbox" 
-                      id="unlimitedStock"
-                      checked={formData.unlimitedStock}
-                      onChange={e => setFormData({ ...formData, unlimitedStock: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
-                    />
-                    <label htmlFor="unlimitedStock" className="text-xs font-bold text-slate-700 cursor-pointer select-none flex items-center gap-1.5">
-                      <span>Stock Ilimitado</span>
-                      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">∞</span>
-                    </label>
-                  </div>
-                  {formData.unlimitedStock ? (
-                    <div className="w-full bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5 text-lg font-bold text-rose-600 text-center">
-                      ∞ Ilimitado
-                    </div>
-                  ) : (
-                    <>
-                      <input 
-                        type="number" 
-                        step="any"
-                        value={formData.stock}
-                        onChange={e => setFormData({ ...formData, stock: parseFloat(e.target.value) || 0 })}
-                        onFocus={e => e.target.select()}
-                        className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2.5 text-lg font-bold text-slate-800 outline-none focus:border-rose-400"
-                      />
-                      <div className="grid grid-cols-4 gap-1">
-                        {[1, 5, 10, 24].map(val => (
-                          <button 
-                            key={val}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, stock: parseFloat(((formData.stock || 0) + val).toFixed(2)) })}
-                            className="py-1.5 bg-white border border-slate-400 rounded-md text-[10px] font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200 transition-all active:scale-[0.95]"
-                          >
-                            +{val}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-               </div>
-
-               <div className={`rounded-xl p-4 space-y-2 ${formData.unlimitedStock ? 'bg-slate-50 border border-slate-400 opacity-50 pointer-events-none' : 'bg-amber-50 border border-amber-200'}`}>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider block ${formData.unlimitedStock ? 'text-slate-600' : 'text-amber-700'}`}>Alerta Bajo Stock</span>
+                ) : (
                   <div className="relative">
-                    <Package className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${formData.unlimitedStock ? 'text-slate-300' : 'text-amber-400'}`} />
-                    <input 
-                      type="number" 
-                      step="any"
-                      value={formData.minStock}
-                      onChange={e => setFormData({ ...formData, minStock: parseFloat(e.target.value) || 0 })}
-                      onFocus={e => e.target.select()}
-                      placeholder="Mínimo..."
-                      disabled={formData.unlimitedStock}
-                      className={`w-full bg-white border rounded-lg pl-9 pr-3 py-2.5 text-lg font-bold text-slate-800 outline-none ${formData.unlimitedStock ? 'border-slate-400' : 'border-amber-200 focus:border-amber-400'}`}
-                    />
+                    <select value={formData.categoryId || ''} onChange={e => setFormData({ ...formData, categoryId: e.target.value })} className={selectCls}>
+                      <option value="">Sin categoría</option>
+                      {buildCategoryTree(categories).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
-                  <p className={`text-[10px] italic ${formData.unlimitedStock ? 'text-slate-600' : 'text-amber-600'}`}>{formData.unlimitedStock ? 'No aplica con stock ilimitado' : 'El sistema te avisará al llegar a este número'}</p>
-               </div>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[12.5px] font-semibold text-slate-800">Marca</label>
+                  <button type="button" onClick={() => setIsCreatingBrand(!isCreatingBrand)} className="text-[12px] font-semibold text-rose-600 hover:text-rose-700">
+                    {isCreatingBrand ? 'Cancelar' : '+ Nueva'}
+                  </button>
+                </div>
+                {isCreatingBrand ? (
+                  <div className="flex gap-1 w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Marca..."
+                      value={newBrandName}
+                      onChange={e => setNewBrandName(e.target.value)}
+                      className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 outline-none focus:border-rose-400"
+                    />
+                    <button type="button" onClick={handleCreateBrand} className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 flex items-center justify-center">
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select value={formData.brandId || ''} onChange={e => setFormData({ ...formData, brandId: e.target.value })} className={selectCls}>
+                      <option value="">Sin marca</option>
+                      {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
+                )}
+              </div>
             </div>
+
+            <div>
+              <label className={labelCls}>Proveedor <span className="text-slate-400 font-normal text-[12px]">({suppliers.length} disponibles)</span></label>
+              <div className="relative">
+                <select value={formData.supplierId || ''} onChange={e => setFormData({ ...formData, supplierId: e.target.value })} className={selectCls}>
+                  <option value="">Sin proveedor</option>
+                  {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {isHardwareStore && (
+              <div>
+                <label className={labelCls}>Ubicación en depósito <span className="text-slate-400 font-normal text-[12px]">(opcional)</span></label>
+                <input
+                  type="text"
+                  placeholder="Ej: Pasillo 2 - Estante B - Gaveta 14"
+                  value={formData.location}
+                  onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  className={inputCls}
+                />
+              </div>
+            )}
+          </FormSection>
 
           </div>
 
-          {/* Right Column (Presentation & Pricing) */}
-          <div className="col-span-12 lg:col-span-5 space-y-4">
-            {/* Presentación & Packaging */}
-            <div className="bg-slate-50 border border-slate-400 rounded-xl p-4 space-y-3">
-              <span className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider block">
-                {isHardwareStore ? 'Presentación y Medida' : 'Presentación del Producto'}
-              </span>
-              <div className={`grid ${isHardwareStore ? 'grid-cols-2' : (formData.presentationType === 'PACK' ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
-                <div>
-                  <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">Tipo de Presentación</label>
-                  <select 
-                    value={formData.presentationType}
-                    onChange={e => setFormData({ ...formData, presentationType: e.target.value })}
-                    className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-semibold text-slate-850 outline-none focus:border-rose-450 cursor-pointer"
+          {/* Columna 2: precios */}
+          <div className="space-y-5 min-w-0">
+          {/* ── Precios y rentabilidad ── */}
+          <FormSection icon={Coins} title="Precios y rentabilidad">
+            <Collapsible
+              icon={Truck}
+              title="Compra al proveedor"
+              hint="Calculá el costo desde el precio de lista, descuentos e IVA"
+              defaultOpen={parseFloat(formData.listPrice as any) > 0}
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="col-span-2">
+                  <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio de lista (sin IVA)</label>
+                  <div className="relative">
+                    <span className={moneyPrefix}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.listPrice === 0 ? 0 : formData.listPrice || ''}
+                      onChange={e => recalcCostFromList({ listPrice: e.target.value === '' ? '' : parseFloat(e.target.value) } as any)}
+                      onFocus={e => e.target.select()}
+                      placeholder="0.00"
+                      className={inputCls + ' pl-7'}
+                    />
+                  </div>
+                </div>
+                {([1, 2, 3] as const).map(n => (
+                  <div key={n}>
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Desc. {n} %</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      max={100}
+                      value={(formData as any)[`discount${n}`] || ''}
+                      onChange={e => recalcCostFromList({ [`discount${n}`]: e.target.value === '' ? 0 : parseFloat(e.target.value) } as any)}
+                      onFocus={e => e.target.select()}
+                      placeholder="0"
+                      className={inputCls + ' px-2'}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-rose-600"
+                    checked={(parseFloat(formData.taxRate as any) || 0) > 0}
+                    onChange={e => recalcCostFromList({ taxRate: e.target.checked ? 21 : 0 })}
+                  />
+                  Aplicar IVA
+                </label>
+                {(parseFloat(formData.taxRate as any) || 0) > 0 && (
+                  <select
+                    value={formData.taxRate}
+                    onChange={e => recalcCostFromList({ taxRate: parseFloat(e.target.value) })}
+                    className="h-8 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold text-slate-800 outline-none focus:border-rose-500"
                   >
-                    <option value="UNIT">Unidad Simple (Suelta)</option>
-                    <option value="PACK">Paquete (Multi-unidad / Pack)</option>
+                    <option value={21}>21%</option>
+                    <option value={10.5}>10,5%</option>
+                    <option value={27}>27%</option>
+                  </select>
+                )}
+                {parseFloat(formData.listPrice as any) > 0 && (
+                  <span className="text-[12px] text-slate-600 ml-auto">
+                    Costo: <b className="text-slate-900">$ {(parseFloat(formData.costPrice as any) || 0).toFixed(2)}</b>
+                    {(parseFloat(formData.taxRate as any) || 0) > 0 ? ' con IVA' : ' sin IVA'}
+                  </span>
+                )}
+              </div>
+            </Collapsible>
+
+            {formData.presentationType === 'PACK' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Costo del paquete</label>
+                  <div className="relative">
+                    <span className={moneyPrefix}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.costPrice === 0 && formData.costPrice !== '' as any ? 0 : formData.costPrice || ''}
+                      onChange={e => handleCostChange(parseFloat(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      className={inputCls + ' pl-7'}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelCls}>Costo por unidad</label>
+                  <div className="relative">
+                    <span className={moneyPrefix}>$</span>
+                    <input
+                      ref={costInputRef}
+                      type="number"
+                      step="0.01"
+                      value={formData.costPrice === 0 || !formData.unitsPerPack ? '' : parseFloat((formData.costPrice / formData.unitsPerPack).toFixed(2)) || ''}
+                      onChange={e => handleUnitCostChange(parseFloat(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      placeholder="0.00"
+                      className={inputCls + ' pl-7'}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-3">
+              {formData.presentationType !== 'PACK' && (
+                <div>
+                  <label className={labelCls}>Precio de costo</label>
+                  <div className="relative">
+                    <span className={moneyPrefix}>$</span>
+                    <input
+                      ref={costInputRef}
+                      type="number"
+                      step="0.01"
+                      value={formData.costPrice === 0 && formData.costPrice !== '' as any ? 0 : formData.costPrice || ''}
+                      onChange={e => handleCostChange(parseFloat(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      placeholder="0.00"
+                      className={inputCls + ' pl-7'}
+                    />
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>Margen</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.margin === 0 && formData.margin !== '' as any ? 0 : formData.margin || ''}
+                    onChange={e => handleMarginChange(parseFloat(e.target.value))}
+                    onFocus={e => e.target.select()}
+                    placeholder="Ej: 50"
+                    className={inputCls + ' pr-8'}
+                  />
+                  <span className="absolute inset-y-0 right-3 flex items-center text-slate-400 font-semibold pointer-events-none">%</span>
+                </div>
+              </div>
+              {formData.presentationType === 'PACK' && (
+                <div className="flex flex-col justify-end">
+                  <div className="h-10 rounded-lg bg-slate-50 border border-slate-200 px-3 flex items-center justify-between">
+                    <span className="text-[12px] text-slate-500">Ganancia</span>
+                    <span className="text-sm font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Precio final destacado */}
+            <div className="rounded-2xl bg-rose-50 border border-rose-200 p-4">
+              {formData.presentationType === 'PACK' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[13px] font-bold text-rose-900 mb-1.5">Precio del paquete <span className="text-rose-600">*</span></label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-3 flex items-center text-rose-600 font-bold text-lg pointer-events-none">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.salePrice === 0 && formData.salePrice !== '' as any ? 0 : formData.salePrice || ''}
+                        onChange={e => handleSaleChange(parseFloat(e.target.value))}
+                        onFocus={e => e.target.select()}
+                        className="w-full h-12 bg-white border-2 border-rose-300 rounded-xl pl-8 pr-3 text-xl font-bold text-slate-900 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-bold text-rose-900 mb-1.5">Precio por unidad</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-3 flex items-center text-rose-600 font-bold text-lg pointer-events-none">$</span>
+                      <input
+                        ref={unitSalePriceInputRef}
+                        type="number"
+                        step="0.01"
+                        value={formData.salePrice === 0 || !formData.unitsPerPack ? '' : parseFloat((formData.salePrice / formData.unitsPerPack).toFixed(2)) || ''}
+                        onChange={e => handleUnitSalePriceChange(parseFloat(e.target.value))}
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00"
+                        className="w-full h-12 bg-white border-2 border-rose-300 rounded-xl pl-8 pr-3 text-xl font-bold text-slate-900 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-end gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[13px] font-bold text-rose-900 mb-1.5">Precio de venta final <span className="text-rose-600">*</span></label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-4 flex items-center text-rose-600 font-bold text-2xl pointer-events-none">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.salePrice === 0 && formData.salePrice !== '' as any ? 0 : formData.salePrice || ''}
+                        onChange={e => handleSaleChange(parseFloat(e.target.value))}
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00"
+                        className="w-full h-12 bg-white border-2 border-rose-300 rounded-xl pl-10 pr-4 text-2xl font-bold text-slate-900 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div className="pb-1 text-right shrink-0">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-rose-700/70">Ganancia</span>
+                    <span className="block text-lg font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+              <label className="mt-3 flex items-center gap-2 text-[12.5px] font-semibold text-rose-900 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  id="allowCustomPrice"
+                  checked={formData.allowCustomPrice}
+                  onChange={e => setFormData({ ...formData, allowCustomPrice: e.target.checked })}
+                  className="w-4 h-4 accent-rose-600 cursor-pointer"
+                />
+                Permitir cambiar el precio al vender en el POS
+              </label>
+            </div>
+
+            {isHardwareStore && (
+              <>
+                <Collapsible
+                  icon={Layers}
+                  title="Precio mayorista"
+                  hint="Precio automático a partir de cierta cantidad"
+                  defaultOpen={!!formData.wholesaleMinQty || !!formData.wholesalePrice}
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">A partir de (cantidad)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="1"
+                        placeholder="Ej: 10"
+                        value={formData.wholesaleMinQty}
+                        onChange={e => setFormData({ ...formData, wholesaleMinQty: e.target.value })}
+                        onFocus={e => e.target.select()}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio por unidad</label>
+                      <div className="relative">
+                        <span className={moneyPrefix}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Ej: 850"
+                          value={formData.wholesalePrice}
+                          onChange={e => setFormData({ ...formData, wholesalePrice: e.target.value })}
+                          onFocus={e => e.target.select()}
+                          className={inputCls + ' pl-7'}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </Collapsible>
+
+                <Collapsible
+                  icon={Wrench}
+                  title="Precio gremio / oficio"
+                  hint="Para instaladores y profesionales"
+                  defaultOpen={!!formData.tradePrice}
+                >
+                  <div className="relative">
+                    <span className={moneyPrefix}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ej: 900 (opcional)"
+                      value={formData.tradePrice}
+                      onChange={e => setFormData({ ...formData, tradePrice: e.target.value })}
+                      onFocus={e => e.target.select()}
+                      className={inputCls + ' pl-7'}
+                    />
+                  </div>
+                </Collapsible>
+              </>
+            )}
+          </FormSection>
+
+          </div>
+
+          {/* Columna 3: inventario + más opciones */}
+          <div className="space-y-5 min-w-0 md:col-span-2 xl:col-span-1">
+          {/* ── Inventario ── */}
+          <FormSection icon={Boxes} title="Inventario">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 cursor-pointer select-none">
+              <span>
+                <span className="block text-[13px] font-semibold text-slate-800">Stock ilimitado</span>
+                <span className="block text-[11.5px] text-slate-500">Para servicios o productos que no se cuentan</span>
+              </span>
+              <input
+                type="checkbox"
+                id="unlimitedStock"
+                checked={formData.unlimitedStock}
+                onChange={e => setFormData({ ...formData, unlimitedStock: e.target.checked })}
+                className="w-4 h-4 accent-rose-600 cursor-pointer"
+              />
+            </label>
+
+            {!formData.unlimitedStock && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Cantidad en stock</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={formData.stock}
+                    onChange={e => setFormData({ ...formData, stock: parseFloat(e.target.value) || 0 })}
+                    onFocus={e => e.target.select()}
+                    className={inputCls + ' text-base font-bold'}
+                  />
+                  <div className="grid grid-cols-4 gap-1 mt-1.5">
+                    {[1, 5, 10, 24].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, stock: parseFloat(((formData.stock || 0) + val).toFixed(2)) })}
+                        className="h-7 bg-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-600 hover:text-rose-700 hover:border-rose-300 transition-colors"
+                      >
+                        +{val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={labelCls}>Stock mínimo</label>
+                  <input
+                    type="number"
+                    step="any"
+                    data-enter-submit
+                    value={formData.minStock}
+                    onChange={e => setFormData({ ...formData, minStock: parseFloat(e.target.value) || 0 })}
+                    onFocus={e => e.target.select()}
+                    placeholder="0"
+                    className={inputCls + ' text-base font-bold'}
+                  />
+                  <p className={hintCls}>Te avisamos cuando el stock llegue a este número.</p>
+                </div>
+              </div>
+            )}
+          </FormSection>
+
+          {/* ── Más opciones ── */}
+          <FormSection icon={Plus} title="Más opciones">
+            <Collapsible
+              icon={Ruler}
+              title={isHardwareStore ? 'Presentación y medida' : 'Presentación'}
+              hint={isHardwareStore ? 'Paquetes, metros, kilos, litros' : 'Unidad suelta o paquete de varias unidades'}
+              defaultOpen={formData.presentationType === 'PACK' || (!!formData.unit && formData.unit !== 'UNIT')}
+            >
+              <div className={`grid ${isHardwareStore || formData.presentationType === 'PACK' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                <div>
+                  <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Tipo de presentación</label>
+                  <select value={formData.presentationType} onChange={e => setFormData({ ...formData, presentationType: e.target.value })} className={selectCls}>
+                    <option value="UNIT">Unidad suelta</option>
+                    <option value="PACK">Paquete (varias unidades)</option>
                   </select>
                 </div>
                 {isHardwareStore && (
                   <div>
-                    <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">Unidad de Medida</label>
-                    <select 
-                      value={formData.unit || 'UNIT'}
-                      onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                      className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-semibold text-slate-850 outline-none focus:border-rose-450 cursor-pointer"
-                    >
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Unidad de medida</label>
+                    <select value={formData.unit || 'UNIT'} onChange={e => setFormData({ ...formData, unit: e.target.value })} className={selectCls}>
                       <option value="UNIT">Unidad (un)</option>
                       <option value="MT">Metro (m) - Cables/Caños</option>
                       <option value="KG">Kilogramo (kg) - Clavos/Áridos</option>
@@ -1023,11 +1341,25 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     </select>
                   </div>
                 )}
+                {formData.presentationType === 'PACK' && (
+                  <div className={isHardwareStore ? 'col-span-2' : ''}>
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Unidades por paquete</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formData.unitsPerPack || ''}
+                      onChange={e => {
+                        const val = parseInt(e.target.value);
+                        setFormData({ ...formData, unitsPerPack: isNaN(val) ? '' as any : val });
+                      }}
+                      onFocus={e => e.target.select()}
+                      className={inputCls}
+                    />
+                  </div>
+                )}
                 {isHardwareStore && ['MT', 'KG', 'L'].includes(formData.unit) && (
                   <div className="col-span-2">
-                    <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">
-                      Tamaño de Pieza Madre (opcional)
-                    </label>
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Tamaño de pieza madre (opcional)</label>
                     <input
                       type="number"
                       min={0}
@@ -1039,11 +1371,11 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                         setFormData({ ...formData, pieceSize: isNaN(val) ? '' as any : val });
                       }}
                       onFocus={e => e.target.select()}
-                      className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-450 placeholder:text-slate-400 placeholder:font-normal"
+                      className={inputCls}
                     />
                     {Boolean(formData.pieceSize) && Number(formData.pieceSize) > 0 && (
-                      <p className="text-[9.5px] font-semibold text-emerald-700 mt-1">
-                        Stock actual equivale a {Math.floor((Number(formData.stock) || 0) / Number(formData.pieceSize))} pieza(s) completa(s)
+                      <p className="text-[11.5px] font-semibold text-rose-700 mt-1">
+                        Stock actual: {Math.floor((Number(formData.stock) || 0) / Number(formData.pieceSize))} pieza(s) completa(s)
                         {(() => {
                           const remainder = (Number(formData.stock) || 0) % Number(formData.pieceSize);
                           return remainder > 0.001 ? ` + ${parseFloat(remainder.toFixed(3))} ${formData.unit === 'MT' ? 'm' : formData.unit === 'KG' ? 'kg' : 'L'} sobrante` : '';
@@ -1052,341 +1384,125 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     )}
                   </div>
                 )}
-                {formData.presentationType === 'PACK' && (
-                  <div className={isHardwareStore ? 'col-span-2' : ''}>
-                    <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">Unidades por Paquete / Bulto</label>
-                    <input 
-                      type="number"
-                      min={1}
-                      value={formData.unitsPerPack || ''}
-                      onChange={e => {
-                        const val = parseInt(e.target.value);
-                        setFormData({ ...formData, unitsPerPack: isNaN(val) ? '' as any : val });
-                      }}
-                      onFocus={e => e.target.select()}
-                      className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-450"
-                    />
-                  </div>
-                )}
-                {isHardwareStore && (
-                  <div className="col-span-2">
-                    <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider mb-1 block">
-                      📍 Ubicación en Depósito / Estantería
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="Ej: Pasillo 2 - Estante B - Gaveta 14"
-                      value={formData.location}
-                      onChange={e => setFormData({ ...formData, location: e.target.value })}
-                      className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-rose-450 placeholder:text-slate-400"
-                    />
-                  </div>
-                )}
               </div>
-            </div>
+            </Collapsible>
 
-            {/* Pricing (Right) */}
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 md:p-5 space-y-4">
-               <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-rose-600 uppercase tracking-wider">Estructura de Precios</span>
-                  <Calculator className="w-4 h-4 text-rose-400" />
-               </div>
+            <Collapsible
+              icon={Barcode}
+              title="Códigos alternativos"
+              hint="Otros códigos de barras que identifican este producto"
+              defaultOpen={formData.additionalBarcodes.length > 0}
+              badge={formData.additionalBarcodes.length > 0 ? String(formData.additionalBarcodes.length) : undefined}
+            >
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newBarcode}
+                  onChange={e => setNewBarcode(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleAddBarcode(); } }}
+                  placeholder="Escaneá otro código..."
+                  className={inputCls}
+                />
+                <button type="button" onClick={handleAddBarcode} className="h-10 px-4 bg-rose-600 text-white rounded-lg text-[13px] font-semibold hover:bg-rose-700 transition-colors shrink-0">
+                  Agregar
+                </button>
+              </div>
+              {formData.additionalBarcodes.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto custom-scrollbar">
+                  {formData.additionalBarcodes.map(b => (
+                    <span key={b} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md text-[11.5px] font-medium text-slate-700">
+                      {b}
+                      <button type="button" onClick={() => handleRemoveBarcode(b)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Collapsible>
 
-               <div className="space-y-3">
-                  {formData.presentationType === 'PACK' ? (
-                    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-200">
-                      <div>
-                         <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Costo del Paquete</label>
-                         <div className="relative flex items-center">
-                            <span className="absolute left-3 text-slate-650 font-bold pointer-events-none">$</span>
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              value={formData.costPrice === 0 && formData.costPrice !== '' as any ? 0 : formData.costPrice || ''}
-                              onChange={e => handleCostChange(parseFloat(e.target.value))}
-                              onFocus={e => e.target.select()}
-                              className="w-full bg-white border border-slate-400 rounded-lg pl-7 pr-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
-                            />
-                         </div>
-                      </div>
-                      <div>
-                         <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Costo por Unidad</label>
-                         <div className="relative flex items-center">
-                            <span className="absolute left-3 text-slate-650 font-bold pointer-events-none">$</span>
-                            <input 
-                              ref={costInputRef}
-                              type="number" 
-                              step="0.01"
-                              value={formData.costPrice === 0 || !formData.unitsPerPack ? '' : parseFloat((formData.costPrice / formData.unitsPerPack).toFixed(2)) || ''}
-                              onChange={e => handleUnitCostChange(parseFloat(e.target.value))}
-                              onFocus={e => e.target.select()}
-                              className="w-full bg-white border border-slate-400 rounded-lg pl-7 pr-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
-                              placeholder="0.00"
-                            />
-                         </div>
-                      </div>
+            {isHardwareStore && (
+              <Collapsible
+                icon={Package}
+                title="Kit / combo armado"
+                hint="Al venderlo descuenta el stock de sus piezas"
+                defaultOpen={!!formData.isKit}
+              >
+                <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-800 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.isKit}
+                    onChange={e => setFormData({ ...formData, isKit: e.target.checked })}
+                    className="w-4 h-4 accent-rose-600 cursor-pointer"
+                  />
+                  Este producto es un kit
+                </label>
+                {formData.isKit && (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <select
+                        className={selectCls}
+                        value=""
+                        onChange={(e) => {
+                          const childId = e.target.value;
+                          if (!childId) return;
+                          const found = usePOSStore.getState().products.find(p => p.id === childId);
+                          if (found && !kitItems.some(k => k.childProductId === childId)) {
+                            setKitItems([...kitItems, { childProductId: childId, quantity: 1, name: found.name, salePrice: found.salePrice }]);
+                          }
+                        }}
+                      >
+                        <option value="">+ Agregar pieza al kit...</option>
+                        {usePOSStore.getState().products.filter(p => p.id !== product?.id).map(p => (
+                          <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
                     </div>
-                  ) : (
-                    <div>
-                       <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Costo Unitario</label>
-                       <div className="relative flex items-center">
-                          <span className="absolute left-3 text-slate-600 font-bold pointer-events-none">$</span>
-                          <input 
-                            ref={costInputRef}
-                            type="number" 
-                            step="0.01"
-                            value={formData.costPrice === 0 && formData.costPrice !== '' as any ? 0 : formData.costPrice || ''}
-                            onChange={e => handleCostChange(parseFloat(e.target.value))}
-                            onFocus={e => e.target.select()}
-                            className="w-full bg-white border border-slate-400 rounded-lg pl-7 pr-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
-                          />
-                       </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2">
-                     <div>
-                        <label className="text-[10px] font-medium text-slate-700 uppercase tracking-wider mb-1 block">Margen %</label>
-                        <input 
-                          type="number" 
-                          step="0.1"
-                          value={formData.margin === 0 && formData.margin !== '' as any ? 0 : formData.margin || ''}
-                          onChange={e => handleMarginChange(parseFloat(e.target.value))}
-                          onFocus={e => e.target.select()}
-                          className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2.5 text-base font-bold text-slate-800 outline-none focus:border-rose-400 transition-all"
-                        />
-                     </div>
-                     <div className="flex flex-col justify-end">
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-center">
-                           <span className="text-[9px] font-medium text-emerald-600 uppercase tracking-wider block mb-0.5">Utilidad</span>
-                           <span className="text-sm font-bold text-emerald-600">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toFixed(1)}</span>
-                        </div>
-                     </div>
-                  </div>
-
-                  {formData.presentationType === 'PACK' ? (
-                    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-200 pt-2">
-                      <div>
-                         <label className="text-[10px] font-semibold text-rose-600 uppercase tracking-wider mb-1.5 block">Precio del Paquete</label>
-                         <div className="relative flex items-center">
-                            <span className="absolute left-3 text-lg font-bold text-rose-500 pointer-events-none">$</span>
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              value={formData.salePrice === 0 && formData.salePrice !== '' as any ? 0 : formData.salePrice || ''}
-                              onChange={e => handleSaleChange(parseFloat(e.target.value))}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  unitSalePriceInputRef.current?.focus();
-                                  unitSalePriceInputRef.current?.select();
-                                }
-                              }}
-                              onFocus={e => e.target.select()}
-                              className="w-full bg-white border-2 border-rose-300 rounded-xl pl-7 pr-3 py-3 text-xl font-bold text-slate-800 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all"
-                            />
-                         </div>
-                      </div>
-                      <div>
-                         <label className="text-[10px] font-semibold text-rose-600 uppercase tracking-wider mb-1.5 block">Precio por Unidad</label>
-                         <div className="relative flex items-center">
-                            <span className="absolute left-3 text-lg font-bold text-rose-500 pointer-events-none">$</span>
-                            <input 
-                              ref={unitSalePriceInputRef}
-                              type="number" 
-                              step="0.01"
-                              value={formData.salePrice === 0 || !formData.unitsPerPack ? '' : parseFloat((formData.salePrice / formData.unitsPerPack).toFixed(2)) || ''}
-                              onChange={e => handleUnitSalePriceChange(parseFloat(e.target.value))}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleSubmit();
-                                }
-                              }}
-                              onFocus={e => e.target.select()}
-                              className="w-full bg-white border-2 border-rose-300 rounded-xl pl-7 pr-3 py-3 text-xl font-bold text-slate-800 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all"
-                              placeholder="0.00"
-                            />
-                         </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="pt-2">
-                       <label className="text-[10px] font-semibold text-rose-600 uppercase tracking-wider mb-1.5 block">Precio de Venta</label>
-                       <div className="relative flex items-center">
-                          <span className="absolute left-4 text-xl font-bold text-rose-500 pointer-events-none">$</span>
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            value={formData.salePrice === 0 && formData.salePrice !== '' as any ? 0 : formData.salePrice || ''}
-                            onChange={e => handleSaleChange(parseFloat(e.target.value))}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSubmit();
-                              }
-                            }}
-                            onFocus={e => e.target.select()}
-                            className="w-full bg-white border-2 border-rose-300 rounded-xl pl-9 pr-4 py-4 text-3xl font-bold text-slate-800 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all"
-                          />
-                       </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 flex items-center gap-2">
-                     <input 
-                       type="checkbox" 
-                       id="allowCustomPrice"
-                       checked={formData.allowCustomPrice}
-                       onChange={e => setFormData({ ...formData, allowCustomPrice: e.target.checked })}
-                       className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
-                     />
-                     <label htmlFor="allowCustomPrice" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                       Permitir precio personalizado en POS
-                     </label>
-                  </div>
-
-                  {isHardwareStore && (
-                    <div className="pt-3 border-t border-rose-200 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">
-                          🏷️ Descuento por Cantidad / Mayorista
-                        </span>
-                        <span className="text-[9px] text-rose-600 font-medium">Automático en Carrito</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider block mb-1">A partir de (Cant.)</label>
-                          <input
-                            type="number"
-                            step="any"
-                            min="1"
-                            placeholder="Ej: 10"
-                            value={formData.wholesaleMinQty}
-                            onChange={e => setFormData({ ...formData, wholesaleMinQty: e.target.value })}
-                            onFocus={e => e.target.select()}
-                            className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-medium text-slate-600 uppercase tracking-wider block mb-1">Precio x Cantidad ($)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="Ej: 850"
-                            value={formData.wholesalePrice}
-                            onChange={e => setFormData({ ...formData, wholesalePrice: e.target.value })}
-                            onFocus={e => e.target.select()}
-                            className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-rose-400"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Precio Gremio / Oficio */}
-                      <div className="pt-2.5 border-t border-dashed border-slate-200">
-                        <label className="text-[9.5px] font-bold text-amber-800 uppercase tracking-wider block mb-1 flex items-center justify-between">
-                          <span>🔧 Precio Gremio / Oficio ($)</span>
-                          <span className="text-[8.5px] text-slate-400 font-normal lowercase">(instaladores y profesionales)</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Ej: 900 (opcional)"
-                          value={formData.tradePrice}
-                          onChange={e => setFormData({ ...formData, tradePrice: e.target.value })}
-                          onFocus={e => e.target.select()}
-                          className="w-full bg-white border border-amber-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
-                        />
-                      </div>
-
-                      {/* Kit / Combo Armado con Despiece de Stock */}
-                      <div className="pt-2.5 border-t border-dashed border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-slate-800 flex items-center gap-2 cursor-pointer select-none">
-                            <input 
-                              type="checkbox"
-                              checked={formData.isKit}
-                              onChange={e => setFormData({ ...formData, isKit: e.target.checked })}
-                              className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
-                            />
-                            <span>📦 Kit / Combo Armado (Despiece)</span>
-                          </label>
-                          <span className="text-[8.5px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Descuenta piezas al vender</span>
-                        </div>
-
-                        {formData.isKit && (
-                          <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl space-y-2">
-                            <p className="text-[10px] text-slate-600">Al vender este combo, se descontará automáticamente el stock de los productos que lo integran:</p>
-
-                            <select 
-                              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none cursor-pointer"
-                              value=""
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                      {kitItems.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                          <span className="truncate flex-1 font-semibold text-slate-700">{item.name}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[11px] text-slate-400">Cant.</span>
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="any"
+                              value={item.quantity}
                               onChange={(e) => {
-                                const childId = e.target.value;
-                                if (!childId) return;
-                                const found = usePOSStore.getState().products.find(p => p.id === childId);
-                                if (found && !kitItems.some(k => k.childProductId === childId)) {
-                                  setKitItems([...kitItems, { childProductId: childId, quantity: 1, name: found.name, salePrice: found.salePrice }]);
-                                }
+                                const qty = parseFloat(e.target.value) || 1;
+                                setKitItems(kitItems.map((k, i) => i === idx ? { ...k, quantity: qty } : k));
                               }}
-                            >
-                              <option value="">+ Seleccionar producto para agregar al kit...</option>
-                              {usePOSStore.getState().products.filter(p => p.id !== product?.id).map(p => (
-                                <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>
-                              ))}
-                            </select>
-
-                            <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                              {kitItems.map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-slate-200 text-xs">
-                                  <span className="truncate flex-1 font-bold text-slate-700">{item.name}</span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <span className="text-[10px] text-slate-400">Cant:</span>
-                                    <input 
-                                      type="number"
-                                      min="0.1"
-                                      step="any"
-                                      value={item.quantity}
-                                      onChange={(e) => {
-                                        const qty = parseFloat(e.target.value) || 1;
-                                        setKitItems(kitItems.map((k, i) => i === idx ? { ...k, quantity: qty } : k));
-                                      }}
-                                      className="w-14 px-1.5 py-1 text-center font-bold border border-slate-300 rounded"
-                                    />
-                                    <button 
-                                      type="button" 
-                                      onClick={() => setKitItems(kitItems.filter((_, i) => i !== idx))}
-                                      className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                              {kitItems.length === 0 && (
-                                <p className="text-[10px] text-amber-700 italic">No agregaste ningún componente al kit todavía.</p>
-                              )}
-                            </div>
+                              className="w-14 h-7 px-1.5 text-center font-bold border border-slate-300 rounded bg-white"
+                            />
+                            <button type="button" onClick={() => setKitItems(kitItems.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-500 p-1 cursor-pointer">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ))}
+                      {kitItems.length === 0 && <p className="text-[12px] text-amber-700">Todavía no agregaste piezas al kit.</p>}
                     </div>
-                  )}
-               </div>
-            </div>
+                  </div>
+                )}
+              </Collapsible>
+            )}
+          </FormSection>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-300 bg-slate-50 flex items-center justify-end gap-3">
-          <button onClick={onClose} type="button" className="btn-secondary">Cancelar</button>
+        {/* Footer fijo */}
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50/60 shrink-0 flex items-center justify-end gap-3">
+          <button onClick={onClose} type="button" className="h-11 px-5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+            Cancelar
+          </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 active:scale-[0.97] transition-all flex items-center gap-2 disabled:opacity-50"
+            className="h-11 px-8 min-w-[240px] rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md shadow-rose-600/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {(product && product.id) ? 'Actualizar Producto' : 'Crear Producto'}
+            {isEditing ? 'Guardar cambios' : 'Crear producto'}
+            <kbd className="hidden sm:inline text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/15 border border-white/25 ml-1">Ctrl+Enter</kbd>
           </button>
         </div>
       </motion.div>
@@ -1455,7 +1571,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       )}
 
       {activeLargeImage && (
-        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setActiveLargeImage(null)}>
+        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { const wasSuggestion = activeLargeImage.isSuggestion; setActiveLargeImage(null); if (wasSuggestion) focusName(); }}>
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -1496,7 +1612,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     setFormData(prev => ({ ...prev, imageUrl: activeLargeImage.url }));
                     setSuggestedImageUrl(null);
                     setActiveLargeImage(null);
-                    toast.success("Imagen aplicada con éxito");
+                    focusName();
                   }}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                 >
@@ -1508,6 +1624,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     setRejectedBarcodeSuggestion(formData.barcode);
                     setSuggestedImageUrl(null);
                     setActiveLargeImage(null);
+                    focusName();
                   }}
                   className="px-5 py-3.5 rounded-xl border border-slate-400 dark:border-slate-750 text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                 >
@@ -1527,6 +1644,18 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
             )}
           </motion.div>
         </div>
+      )}
+
+      {showImagePicker && (
+        <ImageSearchPicker
+          initialQuery={formData.name || ''}
+          onClose={() => setShowImagePicker(false)}
+          onSelect={option => {
+            // La URL se descarga y comprime al guardar el producto
+            setFormData(prev => ({ ...prev, imageUrl: option.url }));
+            setShowImagePicker(false);
+          }}
+        />
       )}
     </motion.div>
   );

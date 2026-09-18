@@ -53,7 +53,6 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         reason: 'Ajuste rápido desde alerta de stock'
       });
       
-      toast.success(`Stock de "${product.name}" actualizado a ${editingStock}`);
       setEditingId(null);
       // Reload products list
       loadLowStockProducts();
@@ -366,7 +365,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
         <div id="printable-stock-report" className="hidden">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '3px solid #e2e8f0', paddingBottom: '4mm', marginBottom: '6mm' }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#b45309' }}>HOJA DE PEDIDO DE REABASTECIMIENTO</h1>
+              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#0B5A43' }}>HOJA DE PEDIDO DE REABASTECIMIENTO</h1>
               <p style={{ margin: '1mm 0 0 0', fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ventra POS — Alertas de Stock Bajo</p>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -391,7 +390,7 @@ export default function LowStockAlertsModal({ onClose }: LowStockAlertsModalProp
                 <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '6px', fontWeight: 'bold' }}>{p.name}</td>
                   <td style={{ padding: '6px', fontFamily: 'monospace' }}>{p.barcode || '---'}</td>
-                  <td style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold', color: p.stock <= 0 ? '#ef4444' : '#b45309' }}>{p.stock}</td>
+                  <td style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold', color: p.stock <= 0 ? '#ef4444' : '#8C660C' }}>{p.stock}</td>
                   <td style={{ padding: '6px', textAlign: 'center', color: '#64748b' }}>{p.minStock}</td>
                   <td style={{ padding: '6px' }}>{p.supplier ? `${p.supplier.name} ${p.supplier.phone ? `(${p.supplier.phone})` : ''}` : '---'}</td>
                   <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{formatPrice(p.costPrice)}</td>

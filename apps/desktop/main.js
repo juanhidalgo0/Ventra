@@ -31,6 +31,7 @@ try {
 let mainWindow;
 let backendProcess;
 let activeBackendPort = 3001;
+let isQuitting = false;
 
 function findFreePort(startPort) {
   return new Promise((resolve) => {
@@ -155,6 +156,16 @@ async function startBackend() {
       }
     });
 
+    backendProcess.on("exit", (code) => {
+      console.log(`[Desktop] Backend process exited with code ${code}.`);
+      if (!isQuitting) {
+        console.log("[Desktop] Automatically restarting backend process...");
+        setTimeout(() => {
+          startBackend();
+        }, 1000);
+      }
+    });
+
     const logPath = path.join(userDataPath, "backend.log");
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
     logStream.write(`\n--- Backend Start: ${new Date().toISOString()} on port ${activePort} ---\n`);
@@ -234,6 +245,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   if (backendProcess) {
     backendProcess.kill();
   }

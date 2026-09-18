@@ -6,7 +6,7 @@
     <meta name="description" content="GO! Portal - Sistema POS profesional para gestión de ventas, inventario y caja registradora." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="manifest" href="./manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -14,7 +14,8 @@
     <script>
       (function() {
         const theme = localStorage.getItem('theme') || 'dark';
-        if (theme === 'dark') {
+        const isPOS = window.location.hash.includes('/pos') || window.location.pathname.includes('/pos');
+        if (theme === 'dark' && isPOS) {
           document.documentElement.classList.add('dark');
         } else {
           document.documentElement.classList.remove('dark');
@@ -22,17 +23,17 @@
       })();
     </script>
     <title>GO! Portal — POS</title>
-    <script type="module" crossorigin src="./assets/index-BTpE35gN.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BmoguQpE.css">
+    <script type="module" crossorigin src="./assets/index-CdJkp_w8.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BRHK0j12.css">
   </head>
-  <body>
+  <body class="bg-slate-200 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen">
     <div id="root"></div>
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => {
-            console.error('ServiceWorker registration failed: ', err);
-          });
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
         });
       }
     </script>

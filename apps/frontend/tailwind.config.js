@@ -45,12 +45,26 @@ const BRAND = {
   500: '#17925F', 600: '#0E6E52', 700: '#0B5A43', 800: '#0A4736', 900: '#08362A', 950: '#041D16',
 };
 
+// Same trick for the warm accents: the stock `amber` read as orange next to the
+// green brand, and `orange` was a second, off-brand accent. `amber` becomes a
+// softer golden yellow (still reads as "atención/pendiente"), and `orange`
+// becomes the olive-lime secondary accent of the Ventra look.
+const WARN = {
+  50: '#FEFBEA', 100: '#FDF3C4', 200: '#FBE68A', 300: '#F6D34E', 400: '#EDBE24',
+  500: '#D9A70F', 600: '#B5870A', 700: '#8C660C', 800: '#6E5010', 900: '#5A4212', 950: '#33240A',
+};
+const LIME_ACCENT = {
+  50: '#F7FAE8', 100: '#EDF4C8', 200: '#DDEA97', 300: '#C9DC62', 400: '#B3CB3A',
+  500: '#93AE25', 600: '#74891B', 700: '#58691A', 800: '#46531A', 900: '#3B461A', 950: '#1E2609',
+};
+
 const expandedFamilies = {
   slate: expandShades(colors.slate),
   rose: expandShades(BRAND),
   indigo: expandShades(colors.indigo),
   emerald: expandShades(colors.emerald),
-  amber: expandShades(colors.amber),
+  amber: expandShades(WARN),
+  orange: expandShades(LIME_ACCENT),
   sky: expandShades(colors.sky),
   teal: expandShades(colors.teal),
 };
@@ -67,7 +81,7 @@ export default {
         ...expandedFamilies,
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
         outfit: ['Bricolage Grotesque', 'Outfit', 'Inter', 'sans-serif'],
         mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },

@@ -397,7 +397,6 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
                     if (window.confirm('¿Seguro que quieres eliminar este gasto?')) {
                        try {
                         await api.delete(`/cash/movement/${selectedMovement.id}`);
-                        toast.success('Gasto de caja eliminado');
                         setSelectedMovement(null);
                         loadSession();
                       } catch (err: any) {

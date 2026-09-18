@@ -47,7 +47,6 @@ export default function PromosScreen() {
     if (!confirm('¿Estás seguro de eliminar esta promoción?')) return;
     try {
       await api.delete(`/promotions/${id}`);
-      toast.success('Promoción eliminada');
       loadPromos();
     } catch {
       toast.error('Error al eliminar');

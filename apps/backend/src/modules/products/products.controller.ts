@@ -1,7 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { ProductsService } from './products.service';
 import { SyncImageService } from './sync-image.service';
+import { VentraImportService } from './ventra-import.service';
+import { HardwareImageService } from './hardware-image.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -12,6 +15,8 @@ export class ProductsController {
   constructor(
     private productsService: ProductsService,
     private syncImageService: SyncImageService,
+    private ventraImport: VentraImportService,
+    private hardwareImages: HardwareImageService,
   ) {}
 
   @Get()
@@ -22,6 +27,7 @@ export class ProductsController {
     @Query('isFavorite') isFavorite?: string,
     @Query('lowStock') lowStock?: string,
     @Query('hasImage') hasImage?: string,
+    @Query('noBarcode') noBarcode?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ) {
@@ -37,6 +43,7 @@ export class ProductsController {
       isFavorite: isFavorite === 'true',
       lowStock: lowStock === 'true',
       hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
+      noBarcode: noBarcode === 'true',
       skip: isNaN(skipNum) ? 0 : skipNum,
       take: isNaN(takeNum) ? 50 : takeNum,
     });
@@ -47,12 +54,24 @@ export class ProductsController {
     @Query('search') search?: string,
     @Query('categoryId') categoryId?: string,
     @Query('hasImage') hasImage?: string,
+    @Query('noBarcode') noBarcode?: string,
   ) {
     return this.productsService.count({
       search,
       categoryId,
       hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
+      noBarcode: noBarcode === 'true',
     });
+  }
+
+  @Get('internal-barcode/next')
+  getNextInternalBarcode() {
+    return this.productsService.getNextInternalBarcode();
+  }
+
+  @Post('internal-barcode/assign')
+  assignInternalBarcodes(@Body('ids') ids?: string[]) {
+    return this.productsService.assignInternalBarcodes(Array.isArray(ids) ? ids : undefined);
   }
 
   @Get('barcode/:barcode')
@@ -104,6 +123,82 @@ export class ProductsController {
     return this.productsService.importFile(file);
   }
 
+  // --- Formato propio de Ventra (.xlsx): exportar, plantilla, vista previa e importación ---
+  private sendXlsx(res: Response, buffer: Buffer, filename: string) {
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/ventra')
+  async exportVentra(@Res() res: Response) {
+    const date = new Date().toISOString().split('T')[0];
+    this.sendXlsx(res, await this.ventraImport.exportProducts(), `ventra_productos_${date}.xlsx`);
+  }
+
+  @Get('import/ventra/template')
+  ventraTemplate(@Res() res: Response) {
+    this.sendXlsx(res, this.ventraImport.template(), 'ventra_plantilla_productos.xlsx');
+  }
+
+  @Post('import/ventra/preview')
+  @UseInterceptors(FileInterceptor('file'))
+  previewVentraImport(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    return this.ventraImport.preview(file.buffer);
+  }
+
+  @Post('import/ventra')
+  @UseInterceptors(FileInterceptor('file'))
+  importVentra(@UploadedFile() file: Express.Multer.File, @Body('updateStock') updateStock: string, @Request() req) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    return this.ventraImport.import(file.buffer, { updateStock: updateStock !== 'false' }, req.user?.sub);
+  }
+
+  // --- Fotos para ferretería (productos sin código de barras) ---
+  @Post('images/hardware/start')
+  startHardwareImages(@Body('retryDiscarded') retryDiscarded?: boolean) {
+    return this.hardwareImages.start({ retryDiscarded: !!retryDiscarded });
+  }
+
+  @Post('images/hardware/cancel')
+  cancelHardwareImages() {
+    this.hardwareImages.cancel();
+    return { success: true };
+  }
+
+  @Get('images/hardware/summary')
+  hardwareImagesSummary() {
+    return this.hardwareImages.summary();
+  }
+
+  @Get('images/hardware/suggestions')
+  hardwareImageSuggestions(@Query('skip') skip?: string, @Query('take') take?: string) {
+    return this.hardwareImages.listPending(skip ? parseInt(skip) : 0, take ? Math.min(parseInt(take), 50) : 20);
+  }
+
+  @Post('images/hardware/suggestions/:id/accept')
+  acceptImageSuggestion(@Param('id') id: string, @Body('url') url: string) {
+    return this.hardwareImages.accept(id, url);
+  }
+
+  @Post('images/hardware/suggestions/:id/reject')
+  rejectImageSuggestion(@Param('id') id: string) {
+    return this.hardwareImages.reject(id);
+  }
+
+  @Post('images/hardware/suggestions/:id/search')
+  researchImageSuggestion(@Param('id') id: string, @Body('query') query: string) {
+    return this.hardwareImages.research(id, query);
+  }
+
+  @Get('images/search')
+  searchImages(@Query('q') q: string) {
+    return this.hardwareImages.searchByText(q);
+  }
+
   @Post('import-local-dbf')
   importLocalDbf() {
     return this.productsService.importFromLocalDbf();
@@ -117,6 +212,11 @@ export class ProductsController {
   @Post('bulk-update-prices')
   bulkUpdatePrices(@Body() body: any) {
     return this.productsService.bulkUpdatePrices(body);
+  }
+
+  @Post('bulk-round-prices')
+  bulkRoundPrices(@Body('multiple') multiple?: number) {
+    return this.productsService.bulkRoundPrices(multiple ? Number(multiple) : 10);
   }
 
   @Post('bulk-reset-stock')

@@ -11,3 +11,14 @@ firebase-credentials.json
 *credentials.json
 *.pem
 *.key
+
+# Secretos y datos locales: nunca a git
+PASSWORDS.txt
+updaterPASSWORD.txt
+github-recovery-codes.txt
+*.db-wal
+*.db-shm
+*.before-restore-*
+apps/backend/backups/
+*.secret
+.backups/

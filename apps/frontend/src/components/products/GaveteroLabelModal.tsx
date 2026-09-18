@@ -10,7 +10,7 @@ import {
   MapPin, 
   Barcode 
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { renderBarcodeSvg } from '../../utils/barcodeLabels';
 
 interface GaveteroLabelModalProps {
   products: any[];
@@ -271,11 +271,12 @@ export default function GaveteroLabelModal({ products, onClose }: GaveteroLabelM
                     <div className="flex items-end justify-between pt-1 border-t border-black/30 mt-auto">
                       {showBarcode && p.barcode ? (
                         <div className="leading-none">
-                          <span className="font-mono text-[8px] tracking-tight block font-bold">
+                          <div
+                            className="w-[30mm] h-[7mm] [&>svg]:w-full [&>svg]:h-full"
+                            dangerouslySetInnerHTML={{ __html: renderBarcodeSvg(p.barcode) || '' }}
+                          />
+                          <span className="font-mono text-[7px] tracking-tight block font-bold mt-0.5">
                             {p.barcode}
-                          </span>
-                          <span className="font-mono text-[6px] tracking-widest text-gray-500">
-                            ||||||||||||||||
                           </span>
                         </div>
                       ) : <div />}

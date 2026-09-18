@@ -35,22 +35,16 @@ if (args.length < 2) {
   GoDelivery POS - Generador de Licencias
 ======================================================
 Uso:
-  node keygen.js <ID_DE_COMPUTADORA> <1w | 1m | demo> [offset]
+  node keygen.js <ID_DE_COMPUTADORA> <1w | 1m | demo | lifetime> [offset]
 
 Parámetros:
   ID_DE_COMPUTADORA : El ID / UUID de la máquina (ej. 4C4C4544-...)
-  1w | 1m | demo    : Tipo de licencia: "1w" para 1 semana, "1m" para 1 mes, "demo" para Demo (7 días)
-  offset (opcional) : Desplazamiento en el tiempo (ej. 1 para la siguiente semana/mes, por defecto 0)
+  1w | 1m | demo | lifetime : Tipo de licencia: "1w" (1 semana), "1m" (1 mes), "demo" (7 días), "lifetime" (permanente)
+  offset (opcional) : Desplazamiento en el tiempo (para 1w/1m/demo)
 
 Ejemplos:
-  Generar código de 1 semana para hoy:
-    node keygen.js FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF 1w
-
-  Generar código de 1 mes para hoy:
-    node keygen.js FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF 1m
-
-  Generar código de Demo para hoy:
-    node keygen.js FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF demo
+  Generar código permanente (de por vida):
+    node keygen.js FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF lifetime
 `);
   process.exit(0);
 }
@@ -78,6 +72,11 @@ if (typeArg === '1w' || typeArg === 'w') {
   const code = generateCode(uuid, '1M', period);
   console.log(`\n🔑 CÓDIGO DE ACTIVACIÓN (1 MES - Periodo: ${period}):`);
   console.log(`👉 ${code}\n`);
+} else if (typeArg === 'lifetime' || typeArg === 'l') {
+  const period = 'PERMANENT';
+  const code = generateCode(uuid, 'LIFETIME', period);
+  console.log(`\n🔑 CÓDIGO DE ACTIVACIÓN (PERMANENTE / DE POR VIda):`);
+  console.log(`👉 ${code}\n`);
 } else {
-  console.error('Tipo inválido. Usa "1w", "1m" o "demo".');
+  console.error('Tipo inválido. Usa "1w", "1m", "demo" o "lifetime".');
 }

@@ -1,17 +1,25 @@
 import { useState, useEffect, useRef, useTransition, useMemo } from 'react';
+import { useAutoTour } from '../common/tour/GuidedTour';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { usePOSStore } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import { getClientId } from '../../utils/clientId';
+import CategoryPickerModal from './CategoryPickerModal';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2 } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
 import GastosModal from './GastosModal';
 import ProveedoresModal from './ProveedoresModal';
 import PaymentModal from './PaymentModal';
 import CierreCajaModal from './CierreCajaModal';
+import QuickSaleIcon from './QuickSaleIcon';
+import { MangoLogo } from '../common/MangoLogo';
+import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
+import ScrollRow from '../common/ScrollRow';
+import { shortcutsLocked } from '../../utils/shortcutLock';
 import HistorialModal from './HistorialModal';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
 import CajaInfoModal from './CajaInfoModal';
@@ -80,6 +88,29 @@ export default function POSScreen() {
   const { discountsMap } = getCartItemsWithDiscounts();
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
+
+  // Código que no está en el inventario: el admin puede crearlo al toque, con los
+  // datos autocompletados desde la base de productos (ver ProductModal).
+  const notifyUnknownCode = (code: string) => {
+    if (!isAdmin) {
+      toast.error(`⚠️ Código no registrado: ${code}`, { id: code });
+      return;
+    }
+    toast(
+      (t) => (
+        <span className="flex items-center gap-3">
+          <span>Código no registrado: <b className="font-mono">{code}</b></span>
+          <button
+            onClick={() => { toast.dismiss(t.id); navigate(`/inventory?nuevo=${encodeURIComponent(code)}`); }}
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+          >
+            Crear producto
+          </button>
+        </span>
+      ),
+      { id: code, icon: '⚠️', duration: 7000 },
+    );
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -152,6 +183,14 @@ export default function POSScreen() {
   }, [theme]);
 
   const categories = cachedCategories;
+  // Con muchos rubros la tira horizontal no sirve: quedan a mano los más vendidos y el resto en un panel con buscador
+  const [topCategoryIds, setTopCategoryIds] = useState<string[]>([]);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  useEffect(() => {
+    api.get('/categories/top', { params: { days: 30, limit: 10 } })
+      .then(({ data }) => setTopCategoryIds(data.map((t: any) => t.categoryId)))
+      .catch(() => {});
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   useEffect(() => {
@@ -162,6 +201,25 @@ export default function POSScreen() {
   }, [searchQuery]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showPromosOnly, setShowPromosOnly] = useState(false);
+  // Sin promociones activas el botón "Promos" no tiene sentido y ocupa lugar
+  const hasActivePromos = useMemo(() => (cachedPromotions || []).some((p: any) => p.isActive), [cachedPromotions]);
+  useEffect(() => { if (!hasActivePromos && showPromosOnly) setShowPromosOnly(false); }, [hasActivePromos, showPromosOnly]);
+  const usableCategories = useMemo(
+    () => categories.filter((cat: any) => cat.name.toLowerCase() !== 'varios' && ((cat._count?.products ?? 0) > 0 || cachedProducts.some(p => p.categoryId === cat.id))),
+    [categories, cachedProducts],
+  );
+  const visibleCategories = useMemo(() => {
+    if (usableCategories.length <= 14) return usableCategories;
+    const byId = new Map(usableCategories.map((c: any) => [c.id, c]));
+    const chosen = topCategoryIds.map(id => byId.get(id)).filter(Boolean).slice(0, 8);
+    // Si no hay ventas todavía, se muestran los rubros con más productos
+    if (chosen.length === 0) {
+      chosen.push(...[...usableCategories].sort((a: any, b: any) => (b._count?.products ?? 0) - (a._count?.products ?? 0)).slice(0, 8));
+    }
+    const selected = selectedCategory ? byId.get(selectedCategory) : null;
+    if (selected && !chosen.some((c: any) => c.id === selected.id)) chosen.unshift(selected);
+    return chosen;
+  }, [usableCategories, topCategoryIds, selectedCategory]);
   const [currentSession, setCurrentSession] = useState<any>(null);
   const [pendingArqueos, setPendingArqueos] = useState<any[]>([]);
   const [sessionToArqueo, setSessionToArqueo] = useState<any | null>(null);
@@ -169,6 +227,7 @@ export default function POSScreen() {
   const [showGastos, setShowGastos] = useState(false);
   const [showProveedores, setShowProveedores] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
+  const [showQuickSale, setShowQuickSale] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
   const [showCajaInfo, setShowCajaInfo] = useState(false);
   const [showAbrirCaja, setShowAbrirCaja] = useState(false);
@@ -230,6 +289,7 @@ export default function POSScreen() {
   const [isLoading, setIsLoading] = useState(() => {
     return usePOSStore.getState().products.length === 0;
   });
+  useAutoTour('pos', !isLoading);
 
   // Profile Edit States
   const [showProfile, setShowProfile] = useState(false);
@@ -593,13 +653,15 @@ export default function POSScreen() {
   useEffect(() => {
     // 1. Regular Keyboard Shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Con la ventana de cobro abierta solo responde esa ventana (Esc la cierra).
+      if ((showPayment || shortcutsLocked()) && e.key !== 'Escape') return;
       // Hotkeys are ordered by how often each action is used mid-shift (most
       // frequent on the easiest-to-reach keys), NOT by menu position. F11 is
       // reserved exclusively for fullscreen — never repurpose it.
       if (e.key === 'F1') {
         e.preventDefault();
-        if (currentSession) setShowCajaInfo(true);
-        else setShowAbrirCaja(true);
+        if (currentSession) setShowQuickSale(true);
+        else toast.error('No hay caja abierta');
       }
       if (e.key === 'F2') {
         e.preventDefault();
@@ -610,10 +672,7 @@ export default function POSScreen() {
           toast('No hay productos en el ticket actual para pausar', { icon: 'ℹ️' });
         }
       }
-      if (e.key === 'F3') {
-        e.preventDefault();
-        setShowCalculator(true);
-      }
+      // F3 (calculadora) se maneja en MainLayout para que ande en toda la app
       if (e.key === 'F4') {
         e.preventDefault();
         handleReprintLastTicket();
@@ -634,7 +693,8 @@ export default function POSScreen() {
       }
       if (e.key === 'F8') {
         e.preventDefault();
-        handleOpenCellularModal();
+        if (currentSession) setShowCajaInfo(true);
+        else setShowAbrirCaja(true);
       }
       if (e.key === 'F9') {
         e.preventDefault();
@@ -671,6 +731,7 @@ export default function POSScreen() {
       }
 
       if (e.key === 'Escape') { 
+        setShowQuickSale(false);
         setShowPayment(false); 
         setShowGastos(false); 
         setShowProveedores(false); 
@@ -697,7 +758,7 @@ export default function POSScreen() {
 
     const handleGlobalKeyDown = async (e: KeyboardEvent) => {
       // If any modal/overlay is open, completely bypass global scanner and let elements handle events natively
-      if (showPayment || showGastos || showProveedores || showCierre || showHistorial || showCajaInfo || showAbrirCaja || showProfile || showCobroCtaCte) {
+      if (showPayment || showGastos || showProveedores || showCierre || showHistorial || showCajaInfo || showAbrirCaja || showProfile || showCobroCtaCte || showQuickSale) {
         buffer = '';
         return;
       }
@@ -783,7 +844,7 @@ export default function POSScreen() {
               checkPromoSuggestion(data);
             }
           } catch {
-            toast.error(`⚠️ Código no registrado: ${scannedCode}`, { id: scannedCode });
+            notifyUnknownCode(scannedCode);
             setTimeout(() => searchRef.current?.focus(), 50);
           } finally {
             setIsCartBusy(false);
@@ -800,7 +861,7 @@ export default function POSScreen() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keydown', handleGlobalKeyDown, true);
     };
-  }, [cart.length, currentSession, addToCart, cachedProducts, promotions, showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showCobroCtaCte, isCartBusy]);
+  }, [cart.length, currentSession, addToCart, cachedProducts, promotions, showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showCobroCtaCte, isCartBusy, showQuickSale]);
 
   // Removed refocus of Confirm button on cart change to prevent stealing focus from barcode search input
 
@@ -873,7 +934,6 @@ export default function POSScreen() {
     try {
       const { data } = await api.post('/cash/open', { terminalName, openingAmount: 0, openingNotes: '' });
       setCurrentSession(data);
-      toast.success('✅ Caja abierta correctamente');
       loadProducts(true);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al abrir caja');
@@ -908,7 +968,7 @@ export default function POSScreen() {
   };
   const handleInstantClose = async (sessionId: string, doZ: boolean = false) => {
     try {
-      await api.post(`/cash/${sessionId}/close`, {});
+      await api.post(`/cash/${sessionId}/close`, { clientId: getClientId() });
       toast.success('✅ Caja cerrada correctamente. Arqueo pendiente.');
       setCurrentSession(null);
       const { data } = await api.get('/cash/pending-arqueos');
@@ -1031,10 +1091,10 @@ export default function POSScreen() {
   };
 
   useEffect(() => {
-    if (!showPayment && !showGastos && !showProveedores && !showCierre && !showHistorial && !showCajaInfo && !showAbrirCaja && !showProfile && !showAdminPrompt && !showCobroCtaCte && !showHeldCartsModal && !showCalculator && !showCellularModal && !showHoldCartInputModal && !heldCartToDelete) {
+    if (!showPayment && !showGastos && !showProveedores && !showCierre && !showHistorial && !showCajaInfo && !showAbrirCaja && !showProfile && !showAdminPrompt && !showCobroCtaCte && !showHeldCartsModal && !showCalculator && !showCellularModal && !showHoldCartInputModal && !heldCartToDelete && !showQuickSale) {
       focusSearch();
     }
-  }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showAdminPrompt, showCobroCtaCte, showHeldCartsModal, showCalculator, showCellularModal, showHoldCartInputModal, heldCartToDelete]);
+  }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showAdminPrompt, showCobroCtaCte, showHeldCartsModal, showCalculator, showCellularModal, showHoldCartInputModal, heldCartToDelete, showQuickSale]);
 
   // Refocus search when clicking any toast notification
   useEffect(() => {
@@ -1173,6 +1233,13 @@ export default function POSScreen() {
       const code1 = (localStorage.getItem('virtual1_code') || 'VIRTUAL1').trim().toUpperCase();
       const code2 = (localStorage.getItem('virtual2_code') || 'VIRTUAL2').trim().toUpperCase();
 
+      if (codeClean === '1') {
+        e.preventDefault();
+        setSearchQuery('');
+        setShowQuickSale(true);
+        return;
+      }
+
       if (codeClean === code1 || codeClean === code2) {
         e.preventDefault();
         setSearchQuery('');
@@ -1305,7 +1372,7 @@ export default function POSScreen() {
         }
       } catch {
         playErrorBeep();
-        toast.error(`⚠️ Código no registrado: ${codeClean}`, { id: codeClean });
+        notifyUnknownCode(codeClean);
         setSearchQuery('');
         focusSearch();
       } finally {
@@ -1348,7 +1415,8 @@ export default function POSScreen() {
     return new Intl.NumberFormat('es-AR', { 
       style: 'currency', 
       currency: 'ARS', 
-      minimumFractionDigits: 0,
+      // Con decimales se muestran siempre los dos (3.564,60), como en modpresup
+      minimumFractionDigits: rounded % 1 === 0 ? 0 : 2,
       maximumFractionDigits: rounded % 1 === 0 ? 0 : 2
     }).format(rounded);
   };
@@ -1495,19 +1563,20 @@ export default function POSScreen() {
         <div className="relative z-30 flex flex-nowrap items-center gap-2 shrink-0 w-full overflow-x-auto scrollbar-hide pb-1.5 md:pb-0">
           {/* 1. Estado Caja */}
           <button
+            data-tour="pos-caja"
             onClick={() => { if (currentSession) setShowCajaInfo(true); else setShowAbrirCaja(true); }}
-            className={`group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[13px] tracking-normal transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
+            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[13px] tracking-normal transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
               currentSession 
-                ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700' 
-                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-250 dark:border-rose-800 hover:bg-rose-100'
+                ? 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border-transparent' 
+                : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
-            <Wallet className={`w-4 h-4 shrink-0 ${currentSession ? 'text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform' : 'text-rose-600 dark:text-rose-400'}`} />
+            <Wallet className={`w-4 h-4 shrink-0 group-hover:scale-110 transition-transform ${currentSession ? 'text-white' : 'text-amber-600'}`} />
             <span className="flex items-center gap-1.5">
               {currentSession ? 'Caja' : 'Abrir Caja'}
-              {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.7)]" />}
+              {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-400/40" />}
             </span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 ml-1 leading-none">F1</span>
+            <span className={`inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>
           </button>
 
           {/* Mobile hamburger menu trigger */}
@@ -1519,38 +1588,38 @@ export default function POSScreen() {
           </button>
 
           {/* Cobro Cta. Cte. */}
-          <button onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 font-semibold text-[13px] tracking-normal hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-amber-300 dark:hover:border-amber-800 transition-all active:scale-95 shadow-2xs whitespace-nowrap">
-            <CreditCard className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+            <CreditCard className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
             <span>Cobro Cta. Cte.</span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 ml-1 leading-none">F5</span>
+            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F5</span>
           </button>
 
           {/* Historial */}
-          <button onClick={() => setShowHistorial(true)} className="group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 font-semibold text-[13px] tracking-normal hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-sky-300 dark:hover:border-sky-800 transition-all active:scale-95 shadow-2xs whitespace-nowrap cursor-pointer">
-            <History className="w-4 h-4 text-sky-500 dark:text-sky-400 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <History className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
             <span>Historial</span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 ml-1 leading-none">F6</span>
+            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F6</span>
           </button>
 
           {/* Gastos */}
-          <button onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 font-semibold text-[13px] tracking-normal hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-rose-300 dark:hover:border-rose-800 transition-all active:scale-95 shadow-2xs whitespace-nowrap">
-            <Receipt className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+            <Receipt className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
             <span>Gastos</span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 ml-1 leading-none">F7</span>
+            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F7</span>
           </button>
 
           {/* Proveedores */}
-          <button onClick={() => setShowProveedores(true)} className="group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 font-semibold text-[13px] tracking-normal hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-teal-300 dark:hover:border-teal-800 transition-all active:scale-95 shadow-2xs whitespace-nowrap cursor-pointer">
-            <Truck className="w-4 h-4 text-teal-500 dark:text-teal-400 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <Truck className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
             <span>Proveedores</span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 ml-1 leading-none">F9</span>
+            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
           </button>
 
           {/* Presupuestos (Solo Ferretería) */}
           {isHardwareStore && (
             <button
-              onClick={() => setShowQuotesList(true)}
-              className="group relative hidden md:flex shrink-0 w-10 h-10 items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-300 border border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-amber-300 dark:hover:border-amber-800 hover:text-amber-600 dark:hover:text-amber-400 transition-all active:scale-95 shadow-2xs cursor-pointer"
+              data-tour="pos-presupuestos" onClick={() => setShowQuotesList(true)}
+              className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
             >
               <FileText className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
               <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
@@ -1562,8 +1631,8 @@ export default function POSScreen() {
           {/* Acopios (Solo Ferretería) */}
           {isHardwareStore && (
             <button
-              onClick={() => setShowAcopios(true)}
-              className="group relative hidden md:flex shrink-0 w-10 h-10 items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-300 border border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-rose-300 dark:hover:border-rose-800 hover:text-rose-600 dark:hover:text-rose-400 transition-all active:scale-95 shadow-2xs cursor-pointer"
+              data-tour="pos-acopios" onClick={() => setShowAcopios(true)}
+              className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
             >
               <Package className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
               <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
@@ -1572,91 +1641,105 @@ export default function POSScreen() {
             </button>
           )}
 
-          {/* Spacer: pushes the remaining utility buttons to the right, still on the same row */}
-          <div className="flex-1 min-w-2" />
 
-          {/* 6. Account Menu Button */}
-          <button
-            onClick={() => {
-              setProfileOldPassword('');
-              setProfileNewPassword('');
-              setShowPasswords(false);
-              setShowProfile(true);
-            }}
-            className="group relative hidden md:flex shrink-0 items-center gap-1.5 h-10 px-3 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-2xs max-w-[135px] justify-center whitespace-nowrap overflow-hidden"
-            title={`Usuario: ${user?.username || 'Usuario'}`}
-          >
-            <User className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
-            <span className="truncate max-w-[70px] font-medium">{user?.username || 'Usuario'}</span>
-            <span className="hidden group-hover:inline-flex items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 ml-0.5 leading-none shrink-0">F10</span>
-          </button>
+          {/* Utilidades: barra compacta de ancho fijo, separada de los botones de acción */}
+          <div className="hidden md:flex items-center gap-0.5 h-10 p-1 ml-1 rounded-xl bg-white dark:bg-slate-850 border border-slate-250 dark:border-slate-750 shadow-2xs shrink-0">
+            {/* Usuario (F10) */}
+            <button
+              data-tour="pos-usuario"
+              onClick={() => {
+                setProfileOldPassword('');
+                setProfileNewPassword('');
+                setShowPasswords(false);
+                setShowProfile(true);
+              }}
+              className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 pl-1 pr-2.5"
+              title={`Usuario: ${user?.username || 'Usuario'} [F10]`}
+            >
+              <span className="w-6 h-6 rounded-md bg-rose-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+                {(user?.username || 'U')[0].toUpperCase()}
+              </span>
+              <span className="truncate max-w-[90px] text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{user?.username || 'Usuario'}</span>
+            </button>
 
-          {/* 7. Cerrar Sesión (sin atajo de teclado: se saca del pool de hotkeys por ser sensible) */}
-          <button onClick={() => logout()} className="group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 dark:bg-slate-850 dark:hover:bg-rose-950/30 dark:hover:text-rose-300 border border-slate-250 dark:border-slate-750 text-slate-700 dark:text-slate-200 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-2xs whitespace-nowrap">
-            <LogOut className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
-            <span>Cerrar Sesión</span>
-          </button>
+            {/* Cerrar sesión (sin atajo: es una acción sensible) */}
+            <button
+              data-tour="pos-logout"
+              onClick={() => logout()}
+              className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8 hover:!bg-rose-50 hover:!text-rose-600 dark:hover:!bg-rose-950/40"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
 
-          {/* Reloj en tiempo real de la PC */}
-          <div className="hidden lg:flex items-center gap-2 h-10 px-3 rounded-xl bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border border-slate-250 dark:border-slate-750 font-bold text-[13px] tracking-tight shadow-2xs shrink-0 select-none whitespace-nowrap" title="Hora local del sistema">
-            <Clock className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
-            <span className="font-mono text-[13px] font-black tracking-tight">{currentTime}</span>
+            <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
+
+            {/* Reloj en tiempo real de la PC */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2 text-slate-700 dark:text-slate-200 select-none whitespace-nowrap" title="Hora local del sistema">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-mono text-[13px] font-bold tracking-tight">{currentTime}</span>
+            </div>
+
+            <span className="hidden lg:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
+
+            {/* Conectar celular (F8) */}
+            <button data-tour="pos-celular" onClick={handleOpenCellularModal} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Conectar celular">
+              <Smartphone className="w-4 h-4" />
+            </button>
+
+            {/* Pantalla completa (F11) */}
+            <button data-tour="pos-fullscreen" onClick={() => toggleFullscreen()} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Pantalla completa [F11]">
+              <Maximize2 className="w-4 h-4" />
+            </button>
+
+            {/* Panel de administración (F12) */}
+            <button
+              data-tour="pos-admin"
+              onClick={() => {
+                if (isAdmin) {
+                  navigate('/dashboard');
+                } else {
+                  setShowAdminPrompt(true);
+                }
+              }}
+              className="group relative flex items-center justify-center w-8 h-8 ml-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white transition-colors active:scale-95 cursor-pointer shrink-0"
+              title="Panel de administración [F12]"
+            >
+              <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
+            </button>
+
+            {/* Marca Ventra */}
+            <div className="keep-style flex items-center pl-2.5 ml-1 border-l border-slate-200 dark:border-slate-800 shrink-0 select-none">
+              <MangoLogo className="w-8 h-8" />
+            </div>
           </div>
-
-          {/* 8. Conectar Celular (a la izquierda de Configuración) */}
-          <button 
-            onClick={handleOpenCellularModal} 
-            className="group relative hidden md:flex w-10 h-10 items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 border border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-rose-300 dark:hover:border-rose-800 transition-all active:scale-95 shadow-2xs shrink-0 cursor-pointer"
-          >
-            <Smartphone className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
-            <span className="pointer-events-none absolute -bottom-8 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
-              Celular [F8]
-            </span>
-          </button>
-
-          {/* Fullscreen toggle (dedicated button, F11 also does this globally) */}
-          <button
-            onClick={() => toggleFullscreen()}
-            className="group relative hidden md:flex w-10 h-10 items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-300 border border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition-all active:scale-95 shadow-2xs shrink-0 cursor-pointer"
-          >
-            <Maximize2 className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
-            <span className="pointer-events-none absolute -bottom-8 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
-              Pantalla completa [F11]
-            </span>
-          </button>
-
-          {/* 9. Dashboard / Configuración (a la derecha del todo) */}
-          <button
-            onClick={() => {
-              if (isAdmin) {
-                navigate('/dashboard');
-              } else {
-                setShowAdminPrompt(true);
-              }
-            }}
-            className="group relative hidden md:flex w-10 h-10 items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-300 border border-slate-250 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition-all active:scale-95 shadow-2xs shrink-0 cursor-pointer"
-          >
-            <Settings className="w-4.5 h-4.5 group-hover:rotate-45 transition-transform" />
-            <span className="pointer-events-none absolute -bottom-8 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
-              Configuración [F12]
-            </span>
-          </button>
         </div>
 
         <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 overflow-hidden relative">
           {currentSession ? (
             <>
               {/* LEFT: Products Panel */}
-              <div className={`flex-1 min-w-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'products' ? 'flex' : 'hidden md:flex'}`}>
+              <div data-tour="pos-products" className={`flex-1 min-w-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'products' ? 'flex' : 'hidden md:flex'}`}>
             <div className="px-4 py-3 flex items-center gap-2.5 bg-white dark:bg-slate-900 z-10 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex-1 relative flex items-center">
+              <div data-tour="pos-search" className="flex-1 relative flex items-center">
                 <Search className="absolute left-3.5 w-4 h-4 text-rose-500/70 dark:text-rose-400/70 pointer-events-none" />
                 <input ref={searchRef} type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSearch} placeholder="Buscar por nombre o código de barra..." className="w-full bg-slate-50/70 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-9 h-10 text-xs sm:text-sm font-medium focus:bg-white dark:focus:bg-slate-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/15 outline-none text-slate-900 dark:text-white transition-all placeholder:text-slate-400 placeholder:font-normal" id="pos-search" autoFocus autoComplete="off" />
                 {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><X className="w-4 h-4" /></button>}
               </div>
+              {/* Venta rápida (F1 o código "1") */}
+              <button
+                data-tour="pos-rapida"
+                onClick={() => setShowQuickSale(true)}
+                title="Venta rápida: productos sin código [F1]"
+                className="group h-10 pl-3 pr-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/70 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-[13px] font-semibold flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer"
+              >
+                <QuickSaleIcon className="w-[18px] h-[18px]" />
+                <span className="hidden sm:inline">Rápida</span>
+                <kbd className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-rose-900/60 border border-rose-200 dark:border-rose-700 leading-none">F1</kbd>
+              </button>
               {/* Calculadora (replaces old refresh button) */}
               <button 
-                onClick={() => setShowCalculator(true)} 
+                data-tour="pos-calculadora" onClick={() => setShowCalculator(true)} 
                 className="group relative w-10 h-10 rounded-xl bg-white dark:bg-slate-850 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all active:scale-95 border border-slate-250 dark:border-slate-750 shadow-2xs flex items-center justify-center shrink-0 cursor-pointer" 
                 title="Calculadora [F3]"
               >
@@ -1666,7 +1749,7 @@ export default function POSScreen() {
                 </span>
               </button>
               <button 
-                onClick={() => {
+                data-tour="pos-vista" onClick={() => {
                   const nextMode = productViewMode === 'grid' ? 'list' : 'grid';
                   setProductViewMode(nextMode);
                   localStorage.setItem('pos_product_view_mode', nextMode);
@@ -1677,7 +1760,7 @@ export default function POSScreen() {
                 {productViewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid className="w-4 h-4" />}
               </button>
               <button
-                onClick={() => { setShowReturnModal(true); setReturnProductSelected(null); setReturnSearchQuery(''); setReturnQty(1); }}
+                data-tour="pos-devolucion" onClick={() => { setShowReturnModal(true); setReturnProductSelected(null); setReturnSearchQuery(''); setReturnQty(1); }}
                 className="h-10 px-3.5 rounded-xl bg-white dark:bg-slate-850 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 dark:hover:bg-rose-950/30 dark:hover:text-rose-300 text-slate-700 dark:text-slate-200 transition-all active:scale-95 border border-slate-250 dark:border-slate-750 flex items-center gap-1.5 font-semibold text-xs cursor-pointer shrink-0 shadow-2xs"
                 title="Registrar Devolución de Producto"
               >
@@ -1685,8 +1768,9 @@ export default function POSScreen() {
               </button>
             </div>
 
-            {/* Categories horizontal bar */}
-            <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+            {/* Categories horizontal bar: los rubros scrollean, el botón de "todos" queda siempre fijo */}
+            <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+            <ScrollRow data-tour="pos-categorias">
               <button 
                 onClick={() => { setSelectedCategory(null); setShowPromosOnly(false); }} 
                 className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ${
@@ -1698,8 +1782,9 @@ export default function POSScreen() {
                 Todos
               </button>
               
-              <button 
-                onClick={() => { setShowPromosOnly(true); setSelectedCategory(null); }} 
+              {hasActivePromos && (
+              <button
+                onClick={() => { setShowPromosOnly(true); setSelectedCategory(null); }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ${
                   showPromosOnly 
                     ? 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white font-bold shadow-xs border border-teal-700 dark:border-teal-600 ring-1 ring-teal-700/15'
@@ -1708,8 +1793,9 @@ export default function POSScreen() {
               >
                 <Tag className="w-3.5 h-3.5 text-amber-500" /> Promos
               </button>
+              )}
 
-              {categories.filter(cat => cat.name.toLowerCase() !== 'varios' && ((cat._count?.products ?? 0) > 0 || cachedProducts.some(p => p.categoryId === cat.id))).map((cat) => {
+              {visibleCategories.map((cat) => {
                 const isSelected = selectedCategory === cat.id;
                 return (
                   <button 
@@ -1725,6 +1811,19 @@ export default function POSScreen() {
                   </button>
                 );
               })}
+
+            </ScrollRow>
+
+              {usableCategories.length > visibleCategories.length && (
+                <button
+                  onClick={() => setShowCategoryPicker(true)}
+                  className="px-3 sm:px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer bg-teal-50 dark:bg-teal-950/40 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-bold border border-teal-300 dark:border-teal-800 shadow-2xs"
+                  title="Ver todos los rubros"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Todos los rubros</span> ({usableCategories.length})
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 custom-scrollbar bg-slate-50/30 dark:bg-slate-900/30">
@@ -1759,7 +1858,7 @@ export default function POSScreen() {
                       <div className="p-4 rounded-xl bg-rose-50/50 dark:bg-rose-900/20 border border-rose-100/50 dark:border-rose-800/30 flex items-start gap-2.5">
                         <span className="text-sm mt-0.5">🖥️</span>
                         <p className="text-[10px] text-rose-750 dark:text-rose-300 font-semibold leading-relaxed">
-                          La caja se inicializará automáticamente con **monto inicial cero ($0)**. Toda venta o movimiento de efectivo de este turno será registrado e integrado a las estadísticas.
+                          El fondo fijo que queda en el cajón no se registra: la caja cuenta solo las ventas y los movimientos de este turno.
                         </p>
                       </div>
 
@@ -2004,10 +2103,18 @@ export default function POSScreen() {
                               </span>
 
                               <div className="flex items-center gap-1.5">
+                                {/* No puede ser <button>: está dentro del botón de la tarjeta */}
                                 {isHardwareStore && product.stock <= 0 && !product.unlimitedStock && (
-                                  <button
-                                    type="button"
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSubstituteProduct(product);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                                      e.preventDefault();
                                       e.stopPropagation();
                                       setSubstituteProduct(product);
                                     }}
@@ -2015,7 +2122,7 @@ export default function POSScreen() {
                                     title="Ver productos sustitutos disponibles"
                                   >
                                     <Shuffle className="w-4 h-4 stroke-[2.5]" />
-                                  </button>
+                                  </span>
                                 )}
                                 <div className="w-8 h-8 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-sm">
                                   <Plus className="w-4 h-4 stroke-[2.8]" />
@@ -2089,10 +2196,18 @@ export default function POSScreen() {
 
                             {/* Price & Plus */}
                             <div className="flex items-center gap-2 ml-4 shrink-0">
+                              {/* No puede ser <button>: está dentro del botón de la fila */}
                               {isHardwareStore && product.stock <= 0 && !product.unlimitedStock && (
-                                <button
-                                  type="button"
+                                <span
+                                  role="button"
+                                  tabIndex={0}
                                   onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSubstituteProduct(product);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     setSubstituteProduct(product);
                                   }}
@@ -2100,7 +2215,7 @@ export default function POSScreen() {
                                   title="Ver productos sustitutos disponibles"
                                 >
                                   <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
-                                </button>
+                                </span>
                               )}
                               <span className="text-sm sm:text-base font-black text-slate-950 dark:text-white font-mono">
                                 {formatPrice(product.salePrice)}
@@ -2120,14 +2235,14 @@ export default function POSScreen() {
           </div>
 
           {/* RIGHT: Cart Panel - Widened for better layout */}
-          <div className={`w-full md:w-[350px] lg:w-[400px] xl:w-[480px] flex-shrink-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
+          <div data-tour="pos-cart" className={`w-full md:w-[350px] lg:w-[400px] xl:w-[480px] flex-shrink-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
             <div className="px-3.5 py-2.5 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Ticket en curso</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button 
-                  onClick={handleReprintLastTicket} 
+                  data-tour="pos-reimprimir" onClick={handleReprintLastTicket} 
                   title={lastSale ? `Reimprimir Ticket #${lastSale.saleNumber} [F4]` : 'Reimprimir último ticket [F4]'}
                   className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs border active:scale-95 ${
                     lastSale 
@@ -2183,7 +2298,7 @@ export default function POSScreen() {
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setShowClientSelector(!showClientSelector)}
+                      data-tour="pos-cliente" onClick={() => setShowClientSelector(!showClientSelector)}
                       className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-rose-400 text-slate-600 dark:text-slate-300 hover:text-rose-600 text-xs font-semibold flex items-center justify-between transition-all bg-white dark:bg-slate-800 cursor-pointer"
                     >
                       <span className="flex items-center gap-1.5">
@@ -2264,7 +2379,7 @@ export default function POSScreen() {
                 )}
                 
                 <button 
-                  onClick={() => setShowHeldCartsModal(true)} 
+                  data-tour="pos-espera" onClick={() => setShowHeldCartsModal(true)} 
                   className="flex-1 bg-white hover:bg-slate-50 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs active:scale-95"
                   title="Ver los tickets guardados en espera"
                 >
@@ -2288,9 +2403,7 @@ export default function POSScreen() {
               )}
               {cart.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-8 select-none my-auto">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center mb-3 text-slate-400 dark:text-slate-500 shadow-2xs">
-                    <ShoppingCart className="w-7 h-7 stroke-[1.5]" />
-                  </div>
+                  <MangoLogo className="w-20 h-20 mb-3 opacity-25 grayscale" />
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
                     Carrito vacío
                   </h4>
@@ -2331,6 +2444,11 @@ export default function POSScreen() {
                         className="py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5"
                       >
                         {/* Product Image */}
+                        {item.productId === QUICK_SALE_PRODUCT_ID ? (
+                        <div className="keep-style w-10 h-10 rounded-lg bg-gradient-to-br from-rose-400 to-rose-600 text-white flex-shrink-0 flex items-center justify-center shadow-xs">
+                          <QuickSaleIcon className="w-5 h-5" />
+                        </div>
+                        ) : (
                         <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-shrink-0 flex items-center justify-center overflow-hidden p-0.5 shadow-xs">
                           <img 
                             src={item.imageUrl || './product-placeholder.png'} 
@@ -2343,6 +2461,7 @@ export default function POSScreen() {
                             }}
                           />
                         </div>
+                        )}
 
                         {/* Product Name & High-Contrast Unit Price */}
                         <div className="flex-1 min-w-0">
@@ -2398,7 +2517,7 @@ export default function POSScreen() {
               )}
             </div>
 
-            <div className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div data-tour="pos-totales" className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
               <div className="bg-white dark:bg-slate-800/80 rounded-2xl p-3.5 border border-slate-200/90 dark:border-slate-700/80 shadow-xs space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Items / Cantidad</span>
@@ -2445,6 +2564,7 @@ export default function POSScreen() {
                 )}
 
                 <button
+                  data-tour="pos-confirm"
                   ref={confirmSaleRef}
                   onClick={() => { if (cart.length > 0 && currentSession && !isCartBusy) setShowPayment(true); }}
                   disabled={cart.length === 0 || !currentSession || isCartBusy}
@@ -2681,6 +2801,7 @@ export default function POSScreen() {
                   loadPendingArqueos();
                 } else {
                   await api.post(`/cash/${currentSession.id}/close`, {
+                    clientId: getClientId(),
                     closingAmountCounted,
                     closingNotes: serializedNotes,
                     posnetDeclarations: data.posnetDeclarations
@@ -2726,6 +2847,15 @@ export default function POSScreen() {
               clearCart();
               setShowCreateQuote(false);
             }}
+          />
+        )}
+        {showCategoryPicker && (
+          <CategoryPickerModal
+            categories={usableCategories}
+            selectedCategory={selectedCategory}
+            topCategoryIds={topCategoryIds}
+            onSelect={id => { setSelectedCategory(id); setShowPromosOnly(false); }}
+            onClose={() => setShowCategoryPicker(false)}
           />
         )}
         {showQuotesList && (
@@ -2887,12 +3017,10 @@ export default function POSScreen() {
                           try {
                             const { data } = await api.get(`/products/barcode/${code}`);
                             setReturnProductSelected(data);
-                            toast.success(`Producto encontrado: ${data.name}`);
                           } catch {
                             const found = cachedProducts.find(p => p.name.toUpperCase().includes(code) || p.barcode === code);
                             if (found) {
                               setReturnProductSelected(found);
-                              toast.success(`Producto encontrado: ${found.name}`);
                             } else {
                               toast.error('No se encontró el producto');
                             }
@@ -2947,7 +3075,6 @@ export default function POSScreen() {
                     onClick={() => {
                       if (!returnProductSelected) return;
                       addToCart(returnProductSelected, undefined, returnQty, true);
-                      toast.success(`Devolución de ${returnQty}x ${returnProductSelected.name} agregada`);
                       setShowReturnModal(false);
                       setReturnProductSelected(null);
                       setReturnSearchQuery('');
@@ -2964,6 +3091,17 @@ export default function POSScreen() {
           </MotionDiv>
         )}
         
+        {showQuickSale && (
+          <QuickSaleModal
+            onClose={() => setShowQuickSale(false)}
+            onConfirm={(price, qty) => {
+              addToCart(buildQuickSaleProduct(price), price, qty);
+              playBeep();
+              setShowQuickSale(false);
+            }}
+          />
+        )}
+
         {showVirtualPrompt && (
           <MotionDiv 
             initial={{ opacity: 0 }} 
@@ -3272,7 +3410,6 @@ export default function POSScreen() {
                             onClick={() => {
                               resumeCart(hc.id);
                               setShowHeldCartsModal(false);
-                              toast.success("Venta reanudada");
                               focusSearch();
                             }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider cursor-pointer active:scale-95 transition-all shadow-sm flex items-center gap-1"
@@ -3334,7 +3471,6 @@ export default function POSScreen() {
                   onClick={() => {
                     deleteHeldCart(heldCartToDelete.id);
                     setHeldCartToDelete(null);
-                    toast.success("Venta en espera eliminada");
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer transition-all active:scale-95 shadow-md shadow-rose-600/20"
                 >
@@ -3503,7 +3639,6 @@ export default function POSScreen() {
             addPromoToCart(comboVariantModalPromo, cachedProducts, metadata);
             playBeep();
             setComboVariantModalPromo(null);
-            toast.success(`✅ Combo ${comboVariantModalPromo.name} agregado`);
           };
 
           return (
@@ -3806,7 +3941,6 @@ export default function POSScreen() {
                   }
                   playBeep();
                   setSuggestedPromo(null);
-                  toast.success('✅ ¡Combo fusionado y agregado al carrito!');
                 }}
                 className="flex-1 bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 text-white py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center active:scale-95 shadow-sm"
               >

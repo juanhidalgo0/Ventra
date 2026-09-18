@@ -72,7 +72,7 @@ export class CashRegisterService {
     return session;
   }
 
-  async close(sessionId: string, userId: string, data: { closingAmountCounted?: number; closingNotes?: string }) {
+  async close(sessionId: string, userId: string, data: { closingAmountCounted?: number; closingNotes?: string; clientId?: string }) {
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Sesión de caja no encontrada');
     if (session.status !== 'OPEN') throw new BadRequestException('Esta caja ya está cerrada');
@@ -185,6 +185,8 @@ export class CashRegisterService {
 
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'CLOSE', newValues: JSON.stringify(closingSummary) } });
     this.events.emitCashUpdated({ action: 'CLOSE', sessionId });
+    // El turno terminó: las demás terminales de ese cajero cierran sesión
+    this.events.emitForceLogout({ userId: session.userId, reason: 'CASH_CLOSE', sessionId, clientId: data.clientId });
     return { ...updated, closingSummaryParsed: closingSummary };
   }
 
@@ -689,6 +691,11 @@ export class CashRegisterService {
       });
     } catch (bErr) {
       console.warn('[CashRegisterService] Error al disparar backup automático tras Cierre Z:', bErr);
+    }
+
+    // Cierre Z: ninguna terminal debe quedar con la sesión abierta de esos turnos
+    for (const userId of new Set(sessions.map((s: any) => s.userId).filter(Boolean))) {
+      this.events.emitForceLogout({ userId: userId as string, reason: 'Z_REPORT' });
     }
 
     return zReport;

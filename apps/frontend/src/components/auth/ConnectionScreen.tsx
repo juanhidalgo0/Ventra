@@ -46,7 +46,6 @@ export default function ConnectionScreen() {
     localStorage.setItem('server_ip', detectedIp);
     localStorage.setItem('saved_client_ip', detectedIp);
     localStorage.setItem('connection_mode', 'CLIENT');
-    toast.success(`¡Servidor detectado y conectado: ${detectedIp}!`);
     navigate('/login');
   };
 
@@ -64,7 +63,6 @@ export default function ConnectionScreen() {
           localStorage.setItem('server_ip', hostWithPort);
           localStorage.setItem('saved_client_ip', hostWithPort);
           localStorage.setItem('connection_mode', 'CLIENT');
-          toast.success(`Conectado automáticamente al servidor: ${hostWithPort}`);
           navigate('/login');
           return;
         } catch {
@@ -75,7 +73,6 @@ export default function ConnectionScreen() {
             localStorage.setItem('server_ip', host);
             localStorage.setItem('saved_client_ip', host);
             localStorage.setItem('connection_mode', 'CLIENT');
-            toast.success(`Conectado automáticamente al servidor: ${host}`);
             navigate('/login');
             return;
           } catch {}
@@ -218,7 +215,6 @@ export default function ConnectionScreen() {
       await api.get('/system/info');
       if (!isMounted.current || myOpId !== operationId.current) return;
       localStorage.setItem('connection_mode', 'CLIENT');
-      toast.success('Conexión exitosa');
       navigate('/login');
     } catch (err) {
       if (!isMounted.current || myOpId !== operationId.current) return;

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt, Edit, Sparkles } from 'lucide-react';
+import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt, Edit, Sparkles, Barcode } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewPurchaseScreen from './NewPurchaseScreen';
 import SuggestedReplenishmentModal from './SuggestedReplenishmentModal';
+import BarcodeLabelModal from './BarcodeLabelModal';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -15,6 +16,7 @@ export default function PurchasesScreen() {
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
   const [editingPurchase, setEditingPurchase] = useState<any | null>(null);
   const [showSuggestedReplenishment, setShowSuggestedReplenishment] = useState(false);
+  const [labelsPurchase, setLabelsPurchase] = useState<any | null>(null);
 
   const handleSetView = (newView: 'list' | 'new') => {
     setView(newView);
@@ -242,6 +244,15 @@ export default function PurchasesScreen() {
                                <Edit className="w-3 h-3" /> Confirmar
                             </button>
                           ) : null}
+                          {p.status !== 'PENDING' && p.items?.length > 0 && (
+                            <button 
+                              onClick={() => setLabelsPurchase(p)}
+                              className="p-1.5 hover:bg-slate-100 text-slate-700 rounded-lg border border-transparent hover:border-slate-300 transition-all cursor-pointer"
+                              title="Imprimir etiquetas con código de barras de esta compra"
+                            >
+                               <Barcode className="w-4 h-4" />
+                            </button>
+                          )}
                           <button 
                             onClick={() => handleDeletePurchase(p.id)}
                             className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
@@ -408,6 +419,14 @@ export default function PurchasesScreen() {
       {showSuggestedReplenishment && (
         <SuggestedReplenishmentModal
           onClose={() => setShowSuggestedReplenishment(false)}
+        />
+      )}
+
+      {labelsPurchase && (
+        <BarcodeLabelModal
+          title={`Etiquetas de la compra a ${labelsPurchase.supplier?.name || 'proveedor'}`}
+          initialItems={labelsPurchase.items.map((it: any) => ({ productId: it.productId, quantity: it.quantity, buyFormat: it.buyFormat }))}
+          onClose={() => setLabelsPurchase(null)}
         />
       )}
     </div>

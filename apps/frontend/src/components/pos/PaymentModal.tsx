@@ -3,9 +3,12 @@ import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle } from 'lucide-react';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import { MangoIcon } from '../common/MangoLogo';
+import { useAutoTour } from '../common/tour/GuidedTour';
+import { useTourStore } from '../common/tour/tourStore';
+import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -53,6 +56,21 @@ function playSaleSuccessSound() {
 export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void }) {
   const storeName = (localStorage.getItem('gd_store_name') || 'Ventra POS').toUpperCase();
   const { cart, getCartItemsWithDiscounts, getCheckoutPayload, products, setLastSale } = usePOSStore();
+  useAutoTour('payment', !isDebtPayment);
+
+  // Mientras se cobra, ningún atajo F del sistema responde (ni los del navegador,
+  // como F5 que recargaría la página): solo se usa esta ventana.
+  useEffect(() => {
+    const release = lockShortcuts();
+    const swallowFKeys = (e: KeyboardEvent) => {
+      if (isFunctionKey(e)) e.preventDefault();
+    };
+    window.addEventListener('keydown', swallowFKeys, true);
+    return () => {
+      release();
+      window.removeEventListener('keydown', swallowFKeys, true);
+    };
+  }, []);
   const posnets = (() => {
     const stored = localStorage.getItem('posnet_configs');
     if (stored) {
@@ -764,14 +782,23 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             <MangoIcon className="w-6 h-6" />
             <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">Confirmar Pago</h2>
           </div>
+          <div className="flex items-center gap-1">
+          <button
+            onClick={() => useTourStore.getState().start('payment')}
+            title="Ver recorrido de la ventana de cobro"
+            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 transition-colors"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
             <X className="w-5 h-5" />
           </button>
+          </div>
         </div>
 
         {/* Scrollable Modal Body */}
         <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3 pb-1">
-          <div className="text-center py-3.5 px-4 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 text-white dark:from-slate-950 dark:to-black border border-slate-800 shadow-inner shrink-0">
+          <div data-tour="pay-total" className="text-center py-3.5 px-4 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 text-white dark:from-slate-950 dark:to-black border border-slate-800 shadow-inner shrink-0">
             <p className="text-[10px] font-semibold text-slate-400 mb-1 uppercase tracking-[0.2em]">Total a Cobrar</p>
             <p className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">{formatPrice(finalTotal)}</p>
           </div>
@@ -779,7 +806,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           <div className="space-y-3">
             {finalTotal >= 0 ? (
               <>
-                <div className="grid grid-cols-4 gap-2.5">
+                <div data-tour="pay-metodos" className="grid grid-cols-4 gap-2.5">
                   {mainMethods.map((pm) => {
                     const isSelected = paymentType === pm.key;
                     return (
@@ -831,7 +858,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
                 {/* Venta a Acopio (Retiro Posterior / Obra) - Solo Ferretería */}
                 {!isDebtPayment && localStorage.getItem('business_type') === 'FERRETERIA' && (
-                  <div className="p-3 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-2xl flex items-center justify-between gap-3 transition-all">
+                  <div data-tour="pay-acopio" className="p-3 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-2xl flex items-center justify-between gap-3 transition-all">
                     <div className="flex items-center gap-2.5">
                       <span className="text-xl">📦</span>
                       <div>
@@ -863,7 +890,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           </div>
 
           {/* Payment Fields - Always rendered but only active based on paymentType */}
-          <div className="space-y-3">
+          <div data-tour="pay-detalle" className="space-y-3">
             {paymentType === 'CASH' && (
               <div className="animate-in slide-in-from-top-2 duration-200">
                 {!disableChangeCalc ? (
@@ -1157,7 +1184,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
         {/* Fixed Modal Footer */}
         <div className="shrink-0 pt-3 border-t border-slate-200 dark:border-slate-750">
-          <button onClick={handleConfirm}
+          <button data-tour="pay-finalizar" onClick={handleConfirm}
             disabled={isProcessing || !paymentType || (paymentType === 'CASH' && !disableChangeCalc && cashReceived < finalTotal) || (paymentType === 'MIXED' && !mixedValid) || (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment)}
             className="w-full btn-success py-3.5 px-4 text-base flex items-center justify-center gap-2.5 disabled:opacity-30 disabled:grayscale shadow-lg shadow-emerald-600/20 cursor-pointer transition-all active:scale-[0.98] rounded-2xl" id="confirm-payment-btn">
             {isProcessing ? (

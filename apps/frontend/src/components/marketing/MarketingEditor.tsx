@@ -123,7 +123,6 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
         if (match) {
           if (!items.find(i => i.id === match.id)) {
             setItems(prev => [...prev, match]);
-            toast.success(`Producto agregado: ${match.name}`);
           } else {
             toast.error('El producto ya está en la lista');
           }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Unlock, Lock, Laptop, DollarSign } from 'lucide-react';
+import { X, Unlock, Lock, Laptop, Info } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -11,15 +11,9 @@ interface AbrirCajaModalProps {
 }
 
 export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: AbrirCajaModalProps) {
-  const [openingAmount, setOpeningAmount] = useState(30000);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('default_opening_amount');
-    if (saved) {
-      setOpeningAmount(Number(saved));
-    }
-
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -35,10 +29,9 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
     try {
       const { data } = await api.post('/cash/open', { 
         terminalName, 
-        openingAmount, 
+        openingAmount: 0, 
         openingNotes: 'Apertura desde POS' 
       });
-      toast.success('✅ Caja abierta correctamente');
       onSuccess(data);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al abrir caja');
@@ -46,8 +39,6 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
       setIsSubmitting(false);
     }
   };
-
-  const fmt = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p);
 
   const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
@@ -89,13 +80,11 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
             </div>
           </div>
 
-          <div>
-            <label className="block text-[10px] font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1">Monto de Apertura ($)</label>
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-xl px-4 py-3 text-sm font-extrabold text-slate-450 dark:text-slate-300 select-none">
-              <DollarSign className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-              <span>{fmt(openingAmount)}</span>
-            </div>
-            <p className="text-[9px] text-amber-500 dark:text-amber-400 font-bold mt-1.5 ml-1">🔒 Monto bloqueado por la administración general.</p>
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <Info className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
+            <p className="text-[13px] text-slate-700 dark:text-slate-300 leading-snug">
+              El fondo fijo que queda en el cajón no se registra: la caja cuenta solo lo que se vende y lo que sale en el turno.
+            </p>
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 {
-  "name": "godelivery-pos-desktop",
+  "name": "ventra-pos-desktop",
   "version": "1.0.0",
-  "description": "GoDelivery POS Desktop",
+  "description": "Ventra POS Desktop",
   "main": "main.js",
   "author": "Antigravity",
   "license": "MIT",

@@ -214,6 +214,10 @@ model Product {
   isKit            Boolean @default(false) @map("is_kit")
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
+  listPrice        Float?  @map("list_price") // Precio de lista del proveedor, sin IVA
+  discount1        Float   @default(0) @map("discount1") // Descuentos del proveedor en cascada (%)
+  discount2        Float   @default(0) @map("discount2")
+  discount3        Float   @default(0) @map("discount3")
   isActive    Boolean @default(true) @map("is_active")
   isFavorite  Boolean @default(false) @map("is_favorite")
   allowCustomPrice Boolean @default(false) @map("allow_custom_price")
@@ -613,3 +617,23 @@ model DeliveryReceiptItem {
   @@map("delivery_receipt_items")
 }
 
+
+// Fotos sugeridas por el buscador para artículos sin código de barras (una fila por familia de medidas)
+model ImageSuggestion {
+  id          String   @id @default(uuid())
+  familyKey   String   @unique @map("family_key")
+  displayName String   @map("display_name")
+  brand       String?
+  productIds  String   @map("product_ids") // JSON: ids de los productos de la familia
+  query       String
+  candidates  String // JSON: fotos candidatas ordenadas por puntaje
+  bestScore   Float    @default(0) @map("best_score")
+  confidence  String // HIGH | MEDIUM | NONE
+  status      String   @default("PENDING") // PENDING | AUTO | ACCEPTED | REJECTED | NO_RESULTS
+  chosenUrl   String?  @map("chosen_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("image_suggestions")
+}

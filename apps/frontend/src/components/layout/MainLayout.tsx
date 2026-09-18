@@ -7,6 +7,15 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { MangoLogo as GoDeliveryLogo } from '../common/MangoLogo';
+import CalculatorModal from '../pos/CalculatorModal';
+import { wsService } from '../../services/websocket';
+import { getClientId } from '../../utils/clientId';
+import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
+import GuidedTour from '../common/tour/GuidedTour';
+import HelpMenu from '../common/tour/HelpMenu';
+import { shortcutsLocked } from '../../utils/shortcutLock';
+import { useSetupProgress } from '../../utils/setupProgress';
+import { Rocket, ArrowRight } from 'lucide-react';
 
 interface Props { children: React.ReactNode; }
 
@@ -22,6 +31,47 @@ export default function MainLayout({ children }: Props) {
   const [retryTrigger, setRetryTrigger] = useState(0);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [license, setLicense] = useState<any>(null);
+  const [showCalculator, setShowCalculator] = useState(false);
+
+  /**
+   * Cierre X o Z: el servidor avisa y todas las terminales de ese cajero cierran
+   * sesión, para que no quede ninguna abierta con el turno ya cerrado.
+   * La terminal que hizo el cierre se maneja sola (termina de imprimir y sale).
+   */
+  useEffect(() => {
+    wsService.connect();
+    const onForceLogout = (data: { userId: string; reason: string; clientId?: string }) => {
+      const current = useAuthStore.getState().user;
+      if (!current || current.id !== data.userId) return;
+      if (data.clientId && data.clientId === getClientId()) return;
+      toast.success(
+        data.reason === 'Z_REPORT'
+          ? 'Se generó el Cierre Z: se cerró la sesión en esta terminal'
+          : 'Se cerró la caja en otra terminal: se cerró la sesión acá también',
+        { duration: 6000 },
+      );
+      useAuthStore.getState().logout();
+    };
+    wsService.on('auth:force-logout', onForceLogout);
+    return () => wsService.off('auth:force-logout', onForceLogout);
+  }, []);
+
+  // Destraba la pantalla si queda una capa invisible tapando todo (ver overlayWatchdog)
+  useEffect(() => startOverlayWatchdog(count => {
+    toast.success(count === 1 ? 'Se destrabó la pantalla' : `Se destrabaron ${count} capas trabadas`, { id: 'overlay-watchdog' });
+  }), []);
+
+  // F3 abre la calculadora desde cualquier pantalla (se captura antes que otros atajos)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F3' || shortcutsLocked()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setShowCalculator(prev => !prev);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -147,6 +197,10 @@ export default function MainLayout({ children }: Props) {
 
   const location = useLocation();
   const isPOS = location.pathname === '/pos';
+  const navigate = useNavigate();
+  const isAdminUser = user?.role === 'ADMIN';
+  // Se recalcula al navegar, así refleja lo que se acaba de configurar.
+  const setupPct = useSetupProgress(isAdminUser, location.pathname);
 
   if (connectionFailed) {
     return (
@@ -307,6 +361,20 @@ export default function MainLayout({ children }: Props) {
                 <span>VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</span>
               </div>
             )}
+            {isAdminUser && setupPct !== null && setupPct < 100 && (
+              <button
+                onClick={() => navigate('/settings')}
+                title="Terminá de configurar tu sistema"
+                className="hidden md:flex items-center gap-2.5 h-8 pl-3 pr-2 rounded-full bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 transition-colors group"
+              >
+                <Rocket className="w-3.5 h-3.5 text-orange-600" />
+                <span className="text-[12px] font-semibold whitespace-nowrap">Configuración {setupPct}%</span>
+                <span className="w-16 h-1.5 rounded-full bg-orange-200/70 overflow-hidden">
+                  <span className="block h-full rounded-full bg-orange-600 transition-all" style={{ width: `${setupPct}%` }} />
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-orange-600 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            )}
             <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
 
             <div className="flex items-center gap-3 pl-2">
@@ -346,6 +414,13 @@ export default function MainLayout({ children }: Props) {
           </div>
         </main>
       </div>
+
+      {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
+      <HelpMenu pathname={location.pathname} side={isPOS ? 'left' : 'right'} />
+      <GuidedTour />
+
+      {/* La calculadora (F3) vive acá para que funcione en cualquier sección y también en modo admin */}
+      <CalculatorModal isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
     </div>
   );
 }

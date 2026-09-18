@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as path from 'path';
 import * as fs from 'fs';
+import { applyPendingRestore } from './modules/system/pending-restore';
 
 // Ensure critical env vars have fallbacks even if .env is missing/incomplete
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'paulos-pos-jwt-secret-2024-default';
@@ -10,7 +11,20 @@ process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'paulos-pos-r
 process.env.JWT_EXPIRATION = process.env.JWT_EXPIRATION || '15m';
 process.env.JWT_REFRESH_EXPIRATION = process.env.JWT_REFRESH_EXPIRATION || '7d';
 
+/** Aplica un backup que quedó en espera, antes de que nadie abra la base. */
+function applyPendingRestoreOnBoot() {
+  try {
+    const dbUrl = (process.env.DATABASE_URL || 'file:./dev.db').split('?')[0].replace('file:', '');
+    const dbPath = path.isAbsolute(dbUrl) ? dbUrl : path.resolve(__dirname, '../prisma', dbUrl);
+    applyPendingRestore(path.normalize(dbPath));
+  } catch (err: any) {
+    console.error('[Main] Error al aplicar el backup en espera:', err.message);
+  }
+}
+
 async function bootstrap() {
+  applyPendingRestoreOnBoot();
+
   const app = await NestFactory.create(AppModule, {
     bodyParser: true,
   });

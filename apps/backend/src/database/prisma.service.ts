@@ -1,15 +1,48 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
+// Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
+// una versión distinta a la última aplicada, se hace una copia completa de la base
+// ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
+const SCHEMA_VERSION = '2026-09-18';
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
     });
+
+    // Prisma reconnects lazily on ANY query after $disconnect(). During a restore that
+    // re-opens (and re-maps) dev.db-shm, so the stale -wal/-shm can never be deleted.
+    // While the gate is closed, every query (HTTP polling, license heartbeat, crons)
+    // waits here instead of touching the database file.
+    this.$use(async (params, next) => {
+      while (this.maintenanceGate) {
+        await this.maintenanceGate;
+      }
+      return next(params);
+    });
   }
 
   private initPromise: Promise<void> | null = null;
+  private maintenanceGate: Promise<void> | null = null;
+  private releaseMaintenanceGate: (() => void) | null = null;
+
+  /** Blocks all queries until endMaintenance() is called. */
+  beginMaintenance() {
+    if (this.maintenanceGate) return;
+    this.maintenanceGate = new Promise<void>((resolve) => {
+      this.releaseMaintenanceGate = resolve;
+    });
+  }
+
+  endMaintenance() {
+    const release = this.releaseMaintenanceGate;
+    this.maintenanceGate = null;
+    this.releaseMaintenanceGate = null;
+    release?.();
+  }
 
   async onModuleInit() {
     await this.ensureInitialized();
@@ -99,6 +132,27 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           console.error('[PrismaService] Error al verificar esquema en inicio:', err.message);
         }
 
+        // Copia de seguridad previa a la actualización del esquema (una vez por versión)
+        const markerFile = require('path').join(process.cwd(), 'backups', '.schema-version');
+        try {
+          const path = require('path');
+          const fs = require('fs');
+          const lastVersion = fs.existsSync(markerFile) ? fs.readFileSync(markerFile, 'utf8').trim() : '';
+          const hasData: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='table' AND name='users';`);
+          if (lastVersion !== SCHEMA_VERSION && hasData.length > 0) {
+            const dir = path.dirname(markerFile);
+            fs.mkdirSync(dir, { recursive: true });
+            const d = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            const dest = path.join(dir, `backup_preupdate_${ts}.db`).split(path.sep).join('/').replace(/'/g, "''");
+            await this.$executeRawUnsafe(`VACUUM INTO '${dest}';`);
+            console.log(`[PrismaService] Copia de seguridad previa a la actualización creada: ${dest}`);
+          }
+        } catch (err: any) {
+          console.error('[PrismaService] No se pudo crear la copia previa a la actualización:', err.message);
+        }
+
         // 1. Ensure app_licenses table exists first (for license status checks on start)
         try {
           await this.$executeRawUnsafe(`
@@ -113,6 +167,31 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           `);
         } catch (err) {
           console.error('[PrismaService] Failed to ensure app_licenses table:', err);
+        }
+
+        // 1.1 Tabla de fotos sugeridas (buscador de imágenes para ferretería)
+        try {
+          await this.$executeRawUnsafe(`
+            CREATE TABLE IF NOT EXISTS "image_suggestions" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "family_key" TEXT NOT NULL,
+              "display_name" TEXT NOT NULL,
+              "brand" TEXT,
+              "product_ids" TEXT NOT NULL,
+              "query" TEXT NOT NULL,
+              "candidates" TEXT NOT NULL,
+              "best_score" REAL NOT NULL DEFAULT 0,
+              "confidence" TEXT NOT NULL,
+              "status" TEXT NOT NULL DEFAULT 'PENDING',
+              "chosen_url" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+          await this.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "image_suggestions_family_key_key" ON "image_suggestions"("family_key");`);
+          await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "image_suggestions_status_idx" ON "image_suggestions"("status");`);
+        } catch (err) {
+          console.error('[PrismaService] Failed to ensure image_suggestions table:', err);
         }
 
         // 2. Auto-migrate products table if it exists
@@ -184,6 +263,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!hasTaxRate) {
               console.log('[PrismaService] Auto-migrating products table: adding tax_rate...');
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN tax_rate REAL NOT NULL DEFAULT 0;`);
+            }
+            const hasListPrice = productColumns.some(c => c.name === 'list_price');
+            if (!hasListPrice) {
+              console.log('[PrismaService] Auto-migrating products table: adding list_price and discounts...');
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN list_price REAL DEFAULT NULL;`);
+            }
+            for (const col of ['discount1', 'discount2', 'discount3']) {
+              if (!productColumns.some(c => c.name === col)) {
+                await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN ${col} REAL NOT NULL DEFAULT 0;`);
+              }
             }
           }
         } catch (err) {
@@ -580,6 +669,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         } catch (err) {
           console.error('Failed to apply SQLite PRAGMAs:', err);
         }
+
+        try {
+          require('fs').writeFileSync(markerFile, SCHEMA_VERSION);
+        } catch {}
       })();
     }
     await this.initPromise;

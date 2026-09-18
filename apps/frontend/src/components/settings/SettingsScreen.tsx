@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useAutoTour } from '../common/tour/GuidedTour';
+import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,10 +30,14 @@ import {
    Upload,
    Calculator,
    AlertCircle,
-   Link2
+   Link2,
+   ChevronRight,
+   Circle
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
+
+const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export default function SettingsScreen() {
   const { user, resetAdminUnlock, logout } = useAuthStore();
@@ -42,6 +48,7 @@ export default function SettingsScreen() {
   const [terminalName, setTerminalName] = useState('Terminal 1');
   const [isSavingName, setIsSavingName] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  useAutoTour('settings', !isLoading);
 
   // Backup states
   const [backups, setBackups] = useState<any[]>([]);
@@ -49,19 +56,17 @@ export default function SettingsScreen() {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [backupTime, setBackupTime] = useState('22:00');
   const [isSavingBackupSettings, setIsSavingBackupSettings] = useState(false);
+  const [savedAutoBackup, setSavedAutoBackup] = useState(false);
 
   // Restoration states
   const [isRestoring, setIsRestoring] = useState(false);
+  const [pendingRestartMessage, setPendingRestartMessage] = useState<string | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedBackupToRestore, setSelectedBackupToRestore] = useState<string | null>(null);
   const [restoreConfirmWord, setRestoreConfirmWord] = useState('');
   const [uploadedFileToRestore, setUploadedFileToRestore] = useState<File | null>(null);
 
   // System parameters
-  const [defaultOpeningAmount, setDefaultOpeningAmount] = useState(() => {
-    const saved = localStorage.getItem('default_opening_amount');
-    return saved ? Number(saved) : 30000;
-  });
   const [allowNegativeStock, setAllowNegativeStock] = useState(() => {
     const saved = localStorage.getItem('allow_negative_stock');
     return saved ? saved === 'true' : true;
@@ -76,7 +81,7 @@ export default function SettingsScreen() {
   });
   const [performanceMode, setPerformanceMode] = useState(() => {
     const saved = localStorage.getItem('performance_mode');
-    return saved ? saved === 'true' : false;
+    return saved ? saved === 'true' : true;
   });
   const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => {
     const saved = localStorage.getItem('pos_disable_change_calculator');
@@ -166,7 +171,6 @@ export default function SettingsScreen() {
     setPosnets(updated);
     localStorage.setItem('posnet_configs', JSON.stringify(updated));
     setNewPosnetName('');
-    toast.success('✅ Posnet agregado con éxito');
   };
 
   const handleRemovePosnet = (id: string) => {
@@ -177,7 +181,6 @@ export default function SettingsScreen() {
     const updated = posnets.filter(p => p.id !== id);
     setPosnets(updated);
     localStorage.setItem('posnet_configs', JSON.stringify(updated));
-    toast.success('🗑️ Posnet eliminado');
   };
 
   // Reset states
@@ -301,7 +304,6 @@ export default function SettingsScreen() {
     if (!window.confirm('¿Estás seguro de eliminar este recargo?')) return;
     try {
       await api.delete(`/surcharges/${id}`);
-      toast.success('🗑️ Recargo eliminado');
       loadSurchargesData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al eliminar recargo');
@@ -388,7 +390,6 @@ export default function SettingsScreen() {
     if (!confirm('¿Estás seguro de que deseas eliminar este usuario/cajero?')) return;
     try {
       await api.delete(`/users/${id}`);
-      toast.success('🗑️ Usuario eliminado');
       loadUsers();
     } catch {
       toast.error('Error al eliminar usuario');
@@ -429,6 +430,7 @@ export default function SettingsScreen() {
       const settingsRes = await api.get('/system/backup/settings');
       if (settingsRes.data) {
         setAutoBackupEnabled(settingsRes.data.autoBackupEnabled);
+        setSavedAutoBackup(!!settingsRes.data.autoBackupEnabled);
         setBackupTime(settingsRes.data.backupTime || '22:00');
       }
     } catch (err) {
@@ -489,16 +491,21 @@ export default function SettingsScreen() {
       if (uploadedFileToRestore) {
         const formData = new FormData();
         formData.append('file', uploadedFileToRestore);
-        await api.post('/system/backup/restore/upload', formData, {
+        const { data } = await api.post('/system/backup/restore/upload', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
+          // Un backup de cientos de MB tarda más que el límite general de 60 s en
+          // subirse y restaurarse; cortar antes mostraría un error falso.
+          timeout: RESTORE_TIMEOUT_MS,
         });
+        if (data?.requiresRestart) return finishPendingRestore(data.message);
         toast.success('🎉 Base de datos cargada y restaurada con éxito!');
       } else if (selectedBackupToRestore) {
-        await api.post('/system/backup/restore/select', {
+        const { data } = await api.post('/system/backup/restore/select', {
           filename: selectedBackupToRestore,
-        });
+        }, { timeout: RESTORE_TIMEOUT_MS });
+        if (data?.requiresRestart) return finishPendingRestore(data.message);
         toast.success('🎉 Base de datos restaurada con éxito desde copia local!');
       }
       
@@ -520,11 +527,27 @@ export default function SettingsScreen() {
     }
   };
 
+  /**
+   * La base estaba en uso y no se pudo reemplazar en caliente: el backup quedó
+   * preparado y se aplica solo al volver a abrir Ventra.
+   */
+  const finishPendingRestore = (message?: string) => {
+    setShowRestoreModal(false);
+    setSelectedBackupToRestore(null);
+    setUploadedFileToRestore(null);
+    setRestoreConfirmWord('');
+    setIsRestoring(false);
+    setPendingRestartMessage(message || 'El backup quedó preparado. Cerrá y volvé a abrir Ventra para completar la restauración.');
+  };
+
   const triggerFileRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Limpiar el input: así elegir el mismo archivo otra vez vuelve a disparar el cambio
+    e.target.value = '';
     if (!file) return;
     
-    if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite')) {
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.db') && !lowerName.endsWith('.sqlite')) {
       toast.error('Por favor, selecciona un archivo .db o .sqlite');
       return;
     }
@@ -555,7 +578,6 @@ export default function SettingsScreen() {
   };
 
   const handleSaveSystemConfig = () => {
-    localStorage.setItem('default_opening_amount', String(defaultOpeningAmount));
     localStorage.setItem('allow_negative_stock', String(allowNegativeStock));
     localStorage.setItem('low_stock_alerts', String(lowStockAlerts));
     localStorage.setItem('hourly_rate', String(hourlyRate));
@@ -674,98 +696,83 @@ export default function SettingsScreen() {
     }
   };
 
+  const settingsSections: { id: typeof activeTab; label: string; description: string; icon: any; adminOnly?: boolean; danger?: boolean }[] = [
+    { id: 'general', label: 'General y POS', description: 'Rubro, terminal, caja y comportamiento del punto de venta', icon: Laptop },
+    { id: 'posnets', label: 'Métodos de pago', description: 'Posnets y medios de cobro que aceptás', icon: Sliders },
+    { id: 'recargos', label: 'Recargos', description: 'Recargos por medio de pago y categoría', icon: Calculator },
+    { id: 'personal', label: 'Personal y cajeros', description: 'Usuarios, roles y contraseñas del equipo', icon: Users, adminOnly: true },
+    { id: 'backups', label: 'Backup y seguridad', description: 'Copias de seguridad automáticas y restauración', icon: Database, adminOnly: true },
+    { id: 'integraciones', label: 'Integraciones', description: 'Cuentas y servicios conectados', icon: Link2, adminOnly: true },
+    { id: 'mantenimiento', label: 'Mantenimiento', description: 'Reinicios y limpieza de datos', icon: ShieldAlert, danger: true },
+  ];
+
+  // Re-evaluated every render; saving posnets re-renders, so this stays current.
+  const setupSteps = buildSetupSteps({
+    posnetsSaved: posnetsSaved(),
+    userCount: users.length,
+    autoBackupEnabled: savedAutoBackup,
+    isAdmin,
+  });
+  const setupDone = setupSteps.filter((st) => st.done).length;
+  const setupPercent = calcSetupPercent(setupSteps);
+  // Keep the top-bar pill in sync live (it only shows for role ADMIN).
+  useEffect(() => {
+    if (user?.role === 'ADMIN') useSetupStore.getState().setPercent(setupPercent);
+  }, [setupPercent, user?.role]);
+
   if (isLoading) return <div className="h-full card flex items-center justify-center text-slate-600">Cargando configuración...</div>;
 
   return (
-    <div className="h-full flex flex-col bg-[#f8fafc] overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 p-6 pb-4 border-b border-slate-400 bg-white">
-        <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-          <Settings className="w-7 h-7 text-rose-500" /> Configuración General
-        </h1>
-        <p className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.3em] mt-1">Panel administrativo del maxikiosco</p>
-      </div>
-
-      {/* Main Layout Grid */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Settings Navigation Sidebar */}
-        <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-400 bg-white flex flex-row md:flex-col p-3 md:p-4 gap-1.5 shrink-0 overflow-x-auto md:overflow-y-auto custom-scrollbar whitespace-nowrap scrollbar-hide select-none">
-          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-2 hidden md:block">Grupos de Ajustes</span>
-          
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'general' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            <Laptop className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> General y POS
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('posnets')}
-            className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'posnets' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            <Sliders className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Métodos de Pago
-          </button>
-
-          <button
-            onClick={() => setActiveTab('recargos')}
-            className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'recargos' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            <Calculator className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Recargos
-          </button>
- 
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('personal')}
-              className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-                activeTab === 'personal' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              <Users className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Personal y Cajeros
-            </button>
-          )}
- 
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('backups')}
-              className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-                activeTab === 'backups' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              <Database className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Backup y Seguridad
-            </button>
-          )}
- 
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('integraciones')}
-              className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-                activeTab === 'integraciones' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              <Link2 className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Integraciones
-            </button>
-          )}
-
-          <div className="h-px bg-slate-100 my-2 hidden md:block" />
-
-          <button
-            onClick={() => setActiveTab('mantenimiento')}
-            className={`flex items-center gap-2 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
-              activeTab === 'mantenimiento' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-700 hover:bg-rose-50 hover:text-rose-800'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" /> Mantenimiento Crítico
-          </button>
+    <div className="h-full flex flex-col lg:flex-row bg-slate-50 overflow-hidden">
+      {/* ── Columna izquierda: encabezado + secciones ── */}
+      <aside className="w-full lg:w-[250px] xl:w-[280px] shrink-0 flex flex-col gap-4 p-4 lg:p-5 lg:overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50">
+        <div className="px-1">
+          <p className="eyebrow">Configuración</p>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-1">Centro de ajustes</h1>
+          <p className="text-[13px] text-slate-500 mt-1 leading-snug">Adaptá el sistema a la forma de trabajar de tu negocio.</p>
         </div>
 
+        <nav className="flex lg:flex-col gap-1.5 overflow-x-auto scrollbar-hide lg:overflow-visible lg:bg-white lg:p-1.5 rounded-2xl lg:border border-slate-200 lg:shadow-2xs">
+          {settingsSections.filter((sec) => !sec.adminOnly || isAdmin).map((sec) => {
+            const active = activeTab === sec.id;
+            const Icon = sec.icon;
+            return (
+              <button
+                key={sec.id}
+                data-tour={`settings-${sec.id}`}
+                onClick={() => setActiveTab(sec.id)}
+                className={`group relative shrink-0 lg:w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-left transition-all cursor-pointer border ${
+                  active
+                    ? sec.danger ? 'bg-red-50 border-red-200' : 'bg-rose-50 border-rose-200'
+                    : 'bg-white lg:bg-transparent border-slate-200 lg:border-transparent hover:bg-slate-50'
+                }`}
+              >
+                {active && <span className={`hidden lg:block absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${sec.danger ? 'bg-red-500' : 'bg-rose-600'}`} />}
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                  active
+                    ? sec.danger ? 'bg-red-100 text-red-600' : 'bg-white text-rose-600 shadow-2xs'
+                    : sec.danger ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-500 group-hover:text-slate-700'
+                }`}>
+                  <Icon className="w-4.5 h-4.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[13px] font-semibold whitespace-nowrap ${active ? (sec.danger ? 'text-red-700' : 'text-rose-800') : sec.danger ? 'text-red-600' : 'text-slate-800'}`}>{sec.label}</span>
+                  <span className="hidden lg:block text-[11.5px] text-slate-500 leading-snug mt-0.5">{sec.description}</span>
+                </span>
+                <ChevronRight className={`hidden lg:block w-4 h-4 shrink-0 transition-transform ${active ? 'text-rose-500 translate-x-0.5' : 'text-slate-300 group-hover:text-slate-400'}`} />
+              </button>
+            );
+          })}
+        </nav>
+
+        <p className="hidden lg:block text-[11.5px] text-slate-400 leading-relaxed px-1">
+          Los ajustes de este equipo se guardan al instante. Los que afectan a toda la red se confirman con <span className="font-semibold text-slate-500">Guardar</span>.
+        </p>
+      </aside>
+
+      <div className="flex-1 min-w-0 flex overflow-hidden">
         {/* Content Pane */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 bg-slate-50/50">
+        <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4 md:p-6">
           <AnimatePresence mode="wait">
             {activeTab === 'general' && (
               <motion.div
@@ -777,7 +784,7 @@ export default function SettingsScreen() {
               >
                 {/* PC Identity */}
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Laptop className="w-4.5 h-4.5 text-rose-500" /> Identidad de este Dispositivo
                   </h3>
                   
@@ -810,7 +817,7 @@ export default function SettingsScreen() {
 
                 {/* System Parameters */}
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Sliders className="w-4.5 h-4.5 text-emerald-500" /> Parámetros del Sistema (POS & Caja)
                   </h3>
 
@@ -865,19 +872,6 @@ export default function SettingsScreen() {
 
                     <div className="h-px bg-slate-100" />
 
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Monto Inicial de Caja por Defecto ($)</label>
-                      <input 
-                        type="number" 
-                        value={defaultOpeningAmount} 
-                        onChange={(e) => setDefaultOpeningAmount(Number(e.target.value))} 
-                        className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner" 
-                        placeholder="30000"
-                      />
-                      <p className="text-[9px] text-slate-405">Cajeros tendrán este monto bloqueado y pre-cargado al abrir turno.</p>
-                    </div>
-
-                    <div className="h-px bg-slate-100" />
 
                     <div className="space-y-3.5">
                       <label className="flex items-center justify-between cursor-pointer group">
@@ -967,7 +961,7 @@ export default function SettingsScreen() {
                 className="max-w-4xl"
               >
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Sliders className="w-4.5 h-4.5 text-rose-500" /> Posnets (Métodos de Pago POS)
                   </h3>
                   
@@ -1106,7 +1100,7 @@ export default function SettingsScreen() {
 
                 {/* Surcharges List */}
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     Recargos Configurados
                   </h3>
 
@@ -1141,7 +1135,7 @@ export default function SettingsScreen() {
 
                 {/* Cargas Virtuales Surcharges and Codes */}
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     Configuración de Cargas Virtuales (1 y 2)
                   </h3>
                   <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
@@ -1228,7 +1222,7 @@ export default function SettingsScreen() {
               >
                 {/* Users List */}
                 <div className="card p-6 space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-300">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-300">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                       <Users className="w-4.5 h-4.5 text-rose-500" /> Gestión de Personal y Cajeros
                     </h3>
@@ -1335,7 +1329,7 @@ export default function SettingsScreen() {
                 className="max-w-4xl"
               >
                 <div className="card p-6 space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-300">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-300">
                     <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2">
                       <Database className="w-4.5 h-4.5 text-rose-500" /> Copias de Seguridad Locales y Programadas (Backup Pro)
                     </h3>
@@ -1359,8 +1353,8 @@ export default function SettingsScreen() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                    <div className="p-5 rounded-2xl border border-rose-50 bg-rose-50/20 space-y-4 md:col-span-1">
+                  <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6 items-start">
+                    <div className="p-5 rounded-2xl border border-rose-50 bg-rose-50/20 space-y-4 2xl:col-span-1">
                       <div className="flex items-center gap-2">
                         <Clock className="w-5 h-5 text-rose-500" />
                         <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Backups Automáticos</span>
@@ -1403,7 +1397,7 @@ export default function SettingsScreen() {
                       </div>
                     </div>
 
-                    <div className="md:col-span-2 space-y-3">
+                    <div className="2xl:col-span-2 space-y-3">
                       <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Últimos Backups Guardados en Disco</span>
                       
                       {backups.length === 0 ? (
@@ -1478,7 +1472,7 @@ export default function SettingsScreen() {
                 className="space-y-6 max-w-4xl"
               >
                 <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-300">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Link2 className="w-4.5 h-4.5 text-rose-500" /> Integraciones Externas
                   </h3>
                   <p className="text-[10px] text-slate-500 font-semibold -mt-2">
@@ -1758,6 +1752,50 @@ export default function SettingsScreen() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* ── Columna derecha: estado de la configuración ── */}
+        <aside className="hidden 2xl:flex w-[300px] shrink-0 flex-col gap-4 py-6 pr-6 overflow-y-auto custom-scrollbar">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="eyebrow">Estado</p>
+                <h3 className="text-[15px] font-bold text-slate-900 mt-1">
+                  {setupDone === setupSteps.length ? '¡Todo configurado!' : 'Terminá de configurarlo'}
+                </h3>
+              </div>
+              <span className="text-[13px] font-bold text-slate-700 tabular-nums">{setupPercent}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 mt-3 overflow-hidden">
+              <div className="h-full rounded-full bg-rose-600 transition-all duration-500" style={{ width: `${setupPercent}%` }} />
+            </div>
+            <ul className="mt-4 space-y-1">
+              {setupSteps.map((step) => (
+                <li key={step.label}>
+                  <button
+                    onClick={() => setActiveTab(step.tab)}
+                    className="w-full flex items-center gap-2.5 px-2 py-1.5 -mx-2 rounded-lg text-left hover:bg-slate-50 transition-colors group"
+                  >
+                    {step.done
+                      ? <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0" />
+                      : <Circle className="w-4 h-4 text-amber-400 shrink-0" />}
+                    <span className={`flex-1 text-[12.5px] ${step.done ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700 font-medium'}`}>{step.label}</span>
+                    {!step.done && <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="bg-slate-900 text-white rounded-2xl p-5">
+            <p className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-lime-300">Este equipo</p>
+            <h3 className="text-[15px] font-bold mt-1 truncate">{terminalName}</h3>
+            <p className="text-[11.5px] text-slate-400 mt-1 font-mono truncate" title={terminalUuid}>{terminalUuid}</p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="chip-lime">{businessType === 'FERRETERIA' ? 'Ferretería' : 'Kiosco'}</span>
+              {performanceMode && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-white/10 text-slate-200">Modo rendimiento</span>}
+            </div>
+          </div>
+        </aside>
       </div>
       {/* Create User Modal */}
       <AnimatePresence>
@@ -1933,6 +1971,32 @@ export default function SettingsScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Backup preparado: se aplica al reiniciar */}
+      {pendingRestartMessage && (
+        <div className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-amber-50 flex items-center gap-2.5">
+              <span className="text-2xl">♻️</span>
+              <h2 className="text-base font-bold text-slate-800">Reiniciá Ventra para terminar</h2>
+            </div>
+            <div className="p-6 space-y-3 text-sm text-slate-700">
+              <p>{pendingRestartMessage}</p>
+              <p className="text-xs text-slate-500">
+                No se perdió nada: la base actual quedó guardada como copia de seguridad antes de reemplazarla.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setPendingRestartMessage(null)}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Restore Backup Modal */}
       <AnimatePresence>
         {showRestoreModal && (

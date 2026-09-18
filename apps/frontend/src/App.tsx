@@ -16,6 +16,7 @@ import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineSt
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { MangoLogo } from './components/common/MangoLogo';
 import { toggleFullscreen } from './utils/fullscreen';
+import { shortcutsLocked } from './utils/shortcutLock';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
@@ -85,6 +86,7 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F11') {
         e.preventDefault();
+        if (shortcutsLocked()) return;
         toggleFullscreen();
       }
     };

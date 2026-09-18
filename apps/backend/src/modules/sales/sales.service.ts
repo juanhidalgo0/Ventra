@@ -36,12 +36,15 @@ export class SalesService {
       
       // Ensure virtual products exist in the database
       for (const id of productIds) {
-        if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE') {
+        if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE' || id === 'VENTA_RAPIDA') {
           const exists = await tx.product.findUnique({ where: { id } });
           if (!exists) {
             let virtualName = 'Carga Virtual 1';
             if (id === 'VIRTUAL_LOAD_2') virtualName = 'Carga Virtual 2';
             else if (id === 'PAGO_CTA_CTE') virtualName = 'PAGO CUENTA CORRIENTE';
+            // Venta rápida (código "1" / F1 en el POS): precio libre, sin stock.
+            // Se recrea sola si se borra la base, así el atajo nunca deja de andar.
+            else if (id === 'VENTA_RAPIDA') virtualName = 'Venta Rápida';
 
             await tx.product.create({
               data: {

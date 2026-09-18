@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import api from '../../services/api';
 import { 
@@ -24,12 +24,20 @@ import {
   Bookmark,
   Megaphone,
   Image,
-  Percent
+  Percent,
+  Barcode,
+  ArrowUpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
 import BulkPriceModal from './BulkPriceModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
+import BarcodeLabelModal from './BarcodeLabelModal';
+import VentraImportModal from './VentraImportModal';
+import ToolbarMenu from '../common/ToolbarMenu';
+import { usePOSStore } from '../../stores/posStore';
+import ImageReviewModal from './ImageReviewModal';
+import { downloadFromApi } from '../../utils/download';
 import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
 
@@ -42,8 +50,73 @@ export default function ProductsScreen() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [showVentraImport, setShowVentraImport] = useState(false);
+  const [showRoundPrices, setShowRoundPrices] = useState(false);
+  const [isRoundingPrices, setIsRoundingPrices] = useState(false);
+
+  const handleRoundPrices = async () => {
+    setIsRoundingPrices(true);
+    const loadingToast = toast.loading('Redondeando precios...');
+    try {
+      const { data } = await api.post('/products/bulk-round-prices', { multiple: 10 }, { timeout: 0 });
+      toast.success(`${data.updated} precios redondeados de ${data.total}`, { id: loadingToast });
+      usePOSStore.getState().setProducts([]);
+      setShowRoundPrices(false);
+      loadProducts(true);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al redondear precios', { id: loadingToast });
+    } finally {
+      setIsRoundingPrices(false);
+    }
+  };
+  const isHardwareStore = localStorage.getItem('business_type') === 'FERRETERIA';
+  const [showImageReview, setShowImageReview] = useState(false);
+  const [pendingImageReviews, setPendingImageReviews] = useState(0);
+  const refreshImageReviewCount = () => {
+    if (!isHardwareStore) return;
+    api.get('/products/images/hardware/summary')
+      .then(({ data }) => {
+        setPendingImageReviews(data.pending || 0);
+        if (data.isRunning) setIsAssigningImages(true);
+      })
+      .catch(() => {});
+  };
+  useEffect(() => { refreshImageReviewCount(); }, []);
   const [showGaveteroLabels, setShowGaveteroLabels] = useState(false);
+  const [showBarcodeLabels, setShowBarcodeLabels] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
+  /**
+   * Código escaneado o escrito + Enter: abre "Editar producto" si ya existe
+   * (por código de barras, SKU o código alternativo) o "Agregar producto" con
+   * el código cargado si no existe. Devuelve false si no se pudo consultar.
+   */
+  const openProductByCode = async (rawCode: string): Promise<boolean> => {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return false;
+    try {
+      const { data } = await api.get(`/products/barcode/${encodeURIComponent(code)}`);
+      setSelectedProduct(data);
+    } catch (err: any) {
+      if (err?.response?.status !== 404) {
+        toast.error('No se pudo buscar el código. Revisá la conexión.');
+        return false;
+      }
+      setSelectedProduct({ barcode: code });
+    }
+    setShowModal(true);
+    return true;
+  };
+  // /inventory?nuevo=<código>: viene del POS al escanear un código desconocido
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const nuevo = searchParams.get('nuevo');
+    if (!nuevo) return;
+    setSelectedProduct({ barcode: nuevo.toUpperCase() });
+    setShowModal(true);
+    searchParams.delete('nuevo');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -212,6 +285,7 @@ export default function ProductsScreen() {
         setIsAssigningImages(false);
         setShowImageSyncModal(false);
         loadProducts(true);
+        refreshImageReviewCount();
       } else {
         setIsAssigningImages(true);
       }
@@ -267,15 +341,7 @@ export default function ProductsScreen() {
           e.stopPropagation();
           const scannedCode = buffer;
           buffer = '';
-          
-          try {
-            const { data } = await api.get(`/products/barcode/${scannedCode}`);
-            setSelectedProduct(data);
-            setShowModal(true);
-          } catch (err) {
-            setSelectedProduct({ barcode: scannedCode });
-            setShowModal(true);
-          }
+          await openProductByCode(scannedCode);
         } else {
           buffer = '';
         }
@@ -415,7 +481,6 @@ export default function ProductsScreen() {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
     try {
       await api.delete(`/products/${id}`);
-      toast.success('Producto eliminado');
       loadProducts();
     } catch (err) {
       toast.error('Error al eliminar producto');
@@ -423,6 +488,11 @@ export default function ProductsScreen() {
   };
 
   const handleImportClick = () => {
+    setShowVentraImport(true);
+  };
+
+  const handleLegacyImport = () => {
+    setShowVentraImport(false);
     fileInputRef.current?.click();
   };
 
@@ -432,7 +502,18 @@ export default function ProductsScreen() {
 
     const formData = new FormData();
     formData.append('file', file);
+    await runImport('/products/import', formData);
+  };
 
+  const handleVentraImport = async (file: File, updateStock: boolean) => {
+    setShowVentraImport(false);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('updateStock', String(updateStock));
+    await runImport('/products/import/ventra', formData);
+  };
+
+  const runImport = async (endpoint: string, formData: FormData) => {
     const initialStatus = {
       show: true,
       progress: 0,
@@ -449,13 +530,25 @@ export default function ProductsScreen() {
     window.dispatchEvent(new CustomEvent('import-progress-update'));
 
     try {
-      await api.post('/products/import', formData);
-      const completedStatus = {
-        ...((window as any).globalImportStatus || {}),
-        isComplete: true,
-        progress: 100,
-        status: '¡Importación finalizada con éxito!'
-      };
+      const { data: result } = await api.post(endpoint, formData, { timeout: 0 });
+      const previous = (window as any).globalImportStatus || {};
+      const failed: any[] = result?.failed || [];
+      const completedStatus = failed.length > 0
+        ? {
+            ...previous,
+            error: `${failed.length} productos no se pudieron guardar: ` +
+              failed.slice(0, 5).map(f => `fila ${f.row} ${f.codigo || ''} (${f.error})`).join('; '),
+            status: 'Importación con errores',
+          }
+        : {
+            ...previous,
+            isComplete: true,
+            progress: 100,
+            status: '¡Importación finalizada con éxito!',
+            ...(result?.created !== undefined && {
+              details: { ...(previous.details || {}), imported: result.created, updated: result.updated },
+            }),
+          };
       (window as any).globalImportStatus = completedStatus;
       setImportStatus(completedStatus);
       window.dispatchEvent(new CustomEvent('import-progress-update'));
@@ -471,6 +564,17 @@ export default function ProductsScreen() {
       window.dispatchEvent(new CustomEvent('import-progress-update'));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleVentraExport = async () => {
+    const loadingToast = toast.loading('Generando archivo de productos...');
+    try {
+      await downloadFromApi('/products/export/ventra', `ventra_productos_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Productos exportados (.xlsx)', { id: loadingToast });
+    } catch (err: any) {
+      toast.error('Error al exportar productos', { id: loadingToast });
+      console.error(err);
     }
   };
 
@@ -510,9 +614,15 @@ export default function ProductsScreen() {
       isComplete: false
     });
 
-    const loadingToast = toast.loading('Asignando fotos con IA...');
+    const loadingToast = toast.loading('Iniciando búsqueda de fotos...');
 
     try {
+      if (isHardwareStore) {
+        const { data } = await api.post('/products/images/hardware/start');
+        if (data?.started === false) toast(data.message, { icon: 'ℹ️' });
+        toast.success('Búsqueda de fotos iniciada', { id: loadingToast });
+        return;
+      }
       await api.post('/products/auto-assign-images');
       toast.success('Buscador de imágenes de alta precisión iniciado', { id: loadingToast });
     } catch (err: any) {
@@ -526,7 +636,7 @@ export default function ProductsScreen() {
   const handleCancelAssignImages = async () => {
     const loadingToast = toast.loading('Cancelando proceso de asignación...');
     try {
-      await api.post('/products/auto-assign-images/cancel');
+      await api.post(isHardwareStore ? '/products/images/hardware/cancel' : '/products/auto-assign-images/cancel');
       toast.success('Proceso de asignación cancelado con éxito', { id: loadingToast });
       setIsAssigningImages(false);
       setShowImageSyncModal(false);
@@ -676,9 +786,9 @@ export default function ProductsScreen() {
             <input 
               ref={searchInputRef}
               type="text" 
-              placeholder="Nombre o código... (Enter para buscar/editar)" 
+              placeholder="Buscá por nombre o código · Enter con un código abre el producto" 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
               onKeyDown={async (e) => {
                 if (e.code && e.code.startsWith('Digit') && e.shiftKey) {
                   e.preventDefault();
@@ -693,27 +803,17 @@ export default function ProductsScreen() {
                   return;
                 }
                 if (e.key === 'Enter') {
+                  e.preventDefault();
                   const trimmed = searchQuery.trim();
                   if (!trimmed) return;
-                  if (/^\d{5,}$/.test(trimmed)) {
-                    try {
-                      const { data } = await api.get(`/products/barcode/${trimmed}`);
-                      if (data) {
-                        setSelectedProduct(data);
-                        setShowModal(true);
-                        setSearchQuery('');
-                        return;
-                      }
-                    } catch (err) {
-                      setSelectedProduct({ barcode: trimmed });
-                      setShowModal(true);
-                      setSearchQuery('');
-                      return;
-                    }
-                  } else {
-                    e.preventDefault();
-                    setDebouncedSearchQuery(trimmed);
+                  // Un código (una sola "palabra" con al menos un número, ej. 7790895000997 o M01)
+                  // abre el producto para editarlo, o "Agregar producto" si no existe.
+                  // Texto sin números o con espacios ("coca cola") se busca por nombre.
+                  if (!/\s/.test(trimmed) && /\d/.test(trimmed)) {
+                    if (await openProductByCode(trimmed)) setSearchQuery('');
+                    return;
                   }
+                  setDebouncedSearchQuery(trimmed);
                 }
               }}
               className="w-full bg-slate-50 border border-slate-400 rounded-lg pl-10 pr-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-600 focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none"
@@ -783,74 +883,109 @@ export default function ProductsScreen() {
               >
                   <Plus className="w-3.5 h-3.5" /> <span>Nuevo Producto</span>
               </button>
-              <button 
-                onClick={() => { navigate('/marketing'); }}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-rose-600 text-white text-[11px] font-bold hover:from-purple-700 hover:to-rose-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
+              {/* Herramientas agrupadas por tema para que la barra no se llene de botones */}
+              <ToolbarMenu
+                label="Precios"
+                icon={<Percent className="w-3.5 h-3.5 text-rose-600" />}
+                items={[
+                  {
+                    label: 'Ajuste masivo por %',
+                    description: 'Aumentar o descontar precios por proveedor, rubro o marca',
+                    icon: <Percent className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowBulkPriceModal(true),
+                  },
+                  {
+                    label: 'Redondear precios',
+                    description: 'Hacia arriba, a múltiplos de 10, sin decimales',
+                    icon: <ArrowUpCircle className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowRoundPrices(true),
+                  },
+                ]}
+              />
+              <ToolbarMenu
+                label="Etiquetas"
+                icon={<Tag className="w-3.5 h-3.5 text-slate-700" />}
+                items={[
+                  {
+                    label: 'Etiquetas con código',
+                    description: 'Generar códigos internos e imprimir códigos de barra',
+                    icon: <Barcode className="w-3.5 h-3.5 text-slate-600" />,
+                    onClick: () => setShowBarcodeLabels(true),
+                  },
+                  {
+                    label: 'Etiquetas de gavetero',
+                    description: 'Para cajoneras y estanterías',
+                    icon: <Tag className="w-3.5 h-3.5 text-amber-600" />,
+                    onClick: () => setShowGaveteroLabels(true),
+                    disabled: !isHardwareStore,
+                  },
+                  {
+                    label: 'Marketing y promociones',
+                    description: 'Carteles, combos y difusión',
+                    icon: <Megaphone className="w-3.5 h-3.5 text-purple-600" />,
+                    onClick: () => navigate('/marketing'),
+                  },
+                ]}
+              />
+              <ToolbarMenu
+                label="Fotos"
+                icon={isAssigningImages ? <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" /> : <Image className="w-3.5 h-3.5 text-rose-600" />}
+                alert={pendingImageReviews > 0}
+                items={[
+                  {
+                    label: isAssigningImages ? 'Buscando fotos...' : 'Buscar y asignar fotos',
+                    description: isHardwareStore ? 'Solo asigna las seguras; las dudosas quedan para revisar' : 'Busca fotos por código de barras y nombre',
+                    icon: <Package className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => { if (!isAssigningImages) handleAssignImages(); else setShowImageSyncModal(true); },
+                  },
+                  {
+                    label: 'Revisar fotos sugeridas',
+                    description: 'Aceptar o descartar las dudosas',
+                    icon: <Image className="w-3.5 h-3.5 text-amber-600" />,
+                    badge: pendingImageReviews,
+                    onClick: () => setShowImageReview(true),
+                    disabled: !isHardwareStore || pendingImageReviews === 0,
+                  },
+                ]}
+              />
+              <ToolbarMenu
+                label="Datos"
+                icon={<Upload className="w-3.5 h-3.5 text-slate-700" />}
+                items={[
+                  {
+                    label: 'Importar productos',
+                    description: 'Formato Ventra (.xlsx) o base de modpresup (.mdb)',
+                    icon: <Upload className="w-3.5 h-3.5 text-slate-600" />,
+                    onClick: handleImportClick,
+                  },
+                  {
+                    label: 'Exportar productos',
+                    description: 'Formato Ventra (.xlsx), para editar y volver a importar',
+                    icon: <Download className="w-3.5 h-3.5 text-slate-600" />,
+                    onClick: handleVentraExport,
+                  },
+                  {
+                    label: 'Exportar para GoDelivery',
+                    description: 'Archivo .json de la tienda online',
+                    icon: <Download className="w-3.5 h-3.5 text-slate-600" />,
+                    onClick: handleExportClick,
+                  },
+                  {
+                    label: 'Actualizar lista',
+                    description: 'Volver a cargar los productos',
+                    icon: <RefreshCw className="w-3.5 h-3.5 text-slate-600" />,
+                    onClick: () => loadProducts(true),
+                  },
+                ]}
+              />
+              <button
+                onClick={() => { setBulkAction(null); setConfirmInput(''); setShowBulkModal(true); }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px] font-bold hover:bg-red-100 transition-all cursor-pointer active:scale-[0.97] shadow-sm"
+                title="Borrados y limpiezas masivas"
               >
-                  <Megaphone className="w-3.5 h-3.5" /> <span>Marketing & Etiquetas</span>
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                <span>Acciones</span>
               </button>
-              <button 
-                onClick={() => setShowBulkPriceModal(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
-                title="Actualización masiva de precios por porcentaje"
-              >
-                  <Percent className="w-3.5 h-3.5" /> <span>Ajuste Masivo %</span>
-              </button>
-              {localStorage.getItem('business_type') === 'FERRETERIA' && (
-                <button 
-                  onClick={() => setShowGaveteroLabels(true)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
-                  title="Imprimir etiquetas para cajoneras y estanterías"
-                >
-                    <Tag className="w-3.5 h-3.5" /> <span>Etiquetas Gavetero</span>
-                </button>
-              )}
-
-
-
-              <div className="col-span-2 flex items-center justify-between gap-1 w-full sm:w-auto mt-1 sm:mt-0 pt-2 sm:pt-0 border-t border-slate-300 sm:border-t-0">
-                <div className="flex items-center gap-1">
-                  <button 
-                    onClick={handleImportClick}
-                    className="p-2 rounded-lg bg-slate-50 border border-slate-400 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
-                    title="Importar"
-                  >
-                      <Upload className="w-3.5 h-3.5" />
-                  </button>
-                  <button 
-                    onClick={handleExportClick}
-                    className="p-2 rounded-lg bg-slate-50 border border-slate-400 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
-                    title="Exportar"
-                  >
-                      <Download className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => loadProducts(true)} className="p-2 rounded-lg border border-slate-400 bg-slate-50 text-slate-450 hover:text-rose-500 hover:bg-slate-100 transition-all cursor-pointer">
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button 
-                    onClick={handleAssignImages}
-                    disabled={isAssigningImages}
-                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[11px] font-semibold hover:bg-rose-100 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
-                  >
-                      {isAssigningImages ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                      ) : (
-                        <Package className="w-3.5 h-3.5 text-rose-500" />
-                      )}
-                      <span>Asignar Fotos</span>
-                  </button>
-                  <button 
-                    onClick={() => { setBulkAction(null); setConfirmInput(''); setShowBulkModal(true); }}
-                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-red-200 bg-red-50 text-red-655 text-[11px] font-semibold hover:bg-red-100 transition-all cursor-pointer active:scale-95"
-                  >
-                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                      <span>Acciones</span>
-                  </button>
-                </div>
-              </div>
            </div>
         </div>
       </div>
@@ -1201,8 +1336,12 @@ export default function ProductsScreen() {
               </div>
 
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-800">Buscador de Fotos por IA</h3>
-                <p className="text-xs text-slate-700">Asignando imágenes de alta precisión <span className="text-rose-500 font-bold">en base blanca</span></p>
+                <h3 className="text-lg font-bold text-slate-800">{isHardwareStore ? 'Buscador de Fotos' : 'Buscador de Fotos por IA'}</h3>
+                {isHardwareStore ? (
+                  <p className="text-xs text-slate-700">Solo se asignan las fotos seguras; las dudosas quedan <span className="text-amber-600 font-bold">para revisar</span></p>
+                ) : (
+                  <p className="text-xs text-slate-700">Asignando imágenes de alta precisión <span className="text-rose-500 font-bold">en base blanca</span></p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1215,7 +1354,7 @@ export default function ProductsScreen() {
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs text-slate-700 font-semibold">
-                  <span>{imageSyncStatus.current} de {imageSyncStatus.total} productos</span>
+                  <span>{imageSyncStatus.current} de {imageSyncStatus.total} {isHardwareStore ? 'artículos (las medidas comparten foto)' : 'productos'}</span>
                   <span className="text-rose-650 font-bold">{imageSyncStatus.progress}%</span>
                 </div>
                 <div className="flex items-center justify-center gap-1.5 bg-rose-50 border border-rose-100 p-2.5 rounded-xl">
@@ -1229,17 +1368,19 @@ export default function ProductsScreen() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-emerald-50 border border-emerald-250 p-4 rounded-xl text-center">
                     <p className="text-xl font-extrabold text-emerald-700">{imageSyncStatus.successCount || 0}</p>
-                    <p className="text-[10px] font-bold text-emerald-600 mt-0.5 uppercase tracking-wider">Exitosas</p>
+                    <p className="text-[10px] font-bold text-emerald-600 mt-0.5 uppercase tracking-wider">{isHardwareStore ? 'Productos con foto' : 'Exitosas'}</p>
                   </div>
                   <div className="bg-slate-50 border border-slate-400 p-4 rounded-xl text-center">
                     <p className="text-xl font-extrabold text-slate-700">{imageSyncStatus.noMatchCount || 0}</p>
-                    <p className="text-[10px] font-bold text-slate-700 mt-0.5 uppercase tracking-wider">Sin Coincidencia</p>
+                    <p className="text-[10px] font-bold text-slate-700 mt-0.5 uppercase tracking-wider">{isHardwareStore ? 'Artículos sin resultado' : 'Sin Coincidencia'}</p>
                   </div>
                 </div>
               </div>
 
               <p className="text-[10px] text-slate-600 font-medium">
-                🔒 Buscando en base de Open Food Facts Argentina y portales retail asociados (Carrefour, Coto, Día).
+                {isHardwareStore
+                  ? '🔒 Buscando en catálogos de Easy, Frávega, Carrefour, Más Online, OnCity y Jumbo. Las medidas de un mismo artículo comparten foto.'
+                  : '🔒 Buscando en base de Open Food Facts Argentina y portales retail asociados (Carrefour, Coto, Día).'}
               </p>
 
               {/* Action buttons inside Modal: Minimize & Cancel */}
@@ -1487,10 +1628,74 @@ export default function ProductsScreen() {
         )}
       </AnimatePresence>
 
+      {showRoundPrices && (
+        <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 15 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2.5">
+              <div className="p-2 bg-rose-100 text-rose-700 rounded-xl"><ArrowUpCircle className="w-5 h-5" /></div>
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Redondear precios</h2>
+                <p className="text-xs text-slate-500">Hacia arriba, a múltiplos de 10</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-3 text-sm text-slate-700">
+              <p>Se redondean los precios de venta de <b>todos los productos activos</b>, siempre hacia arriba, para que no queden con decimales.</p>
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs space-y-1">
+                <p className="flex justify-between"><span className="text-slate-500">$ 1.912,28</span> <b>$ 1.920</b></p>
+                <p className="flex justify-between"><span className="text-slate-500">$ 20.270,46</span> <b>$ 20.280</b></p>
+                <p className="flex justify-between"><span className="text-slate-500">$ 3.560</span> <b>$ 3.560 (sin cambios)</b></p>
+              </div>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                El costo y el margen no se tocan: al subir el precio, el margen queda un poco más alto.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
+              <button onClick={() => setShowRoundPrices(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                Cancelar
+              </button>
+              <button
+                onClick={handleRoundPrices}
+                disabled={isRoundingPrices}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isRoundingPrices ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpCircle className="w-4 h-4" />}
+                Redondear precios
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {showImageReview && (
+        <ImageReviewModal
+          onClose={() => { setShowImageReview(false); refreshImageReviewCount(); loadProducts(true); }}
+          onChanged={() => setPendingImageReviews(n => Math.max(0, n - 1))}
+        />
+      )}
+
+      {showVentraImport && (
+        <VentraImportModal
+          onClose={() => setShowVentraImport(false)}
+          onConfirm={handleVentraImport}
+          onLegacyImport={handleLegacyImport}
+        />
+      )}
+
       {showBulkPriceModal && (
         <BulkPriceModal
           onClose={() => setShowBulkPriceModal(false)}
           onSuccess={() => loadProducts(true)}
+        />
+      )}
+
+      {showBarcodeLabels && (
+        <BarcodeLabelModal
+          onClose={() => setShowBarcodeLabels(false)}
+          onBarcodesAssigned={() => loadProducts(true)}
         />
       )}
 

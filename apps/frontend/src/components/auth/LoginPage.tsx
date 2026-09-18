@@ -158,7 +158,6 @@ export default function LoginPage() {
       await api.post('/auth/register-first-admin', { username, password });
       toast.success('¡Administrador creado con éxito!');
       await login(username, password);
-      toast.success('¡Sesión iniciada!');
       navigate('/pos');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al registrar administrador');

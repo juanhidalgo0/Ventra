@@ -75,16 +75,18 @@ jobs:
       # Notify every running desktop app instantly (Firestore realtime push),
       # instead of each one waiting for its next periodic update check.
       - name: Push instant update notification
+        # Llama a la función publishDesktopVersion del proyecto de Ventra (ventra-9cba5).
+        # Requiere el secreto RELEASE_PUSH_SECRET en GitHub (Settings → Secrets → Actions),
+        # con el mismo valor que el secreto de la función. Si falla, no frena el release:
+        # los POS igual encuentran la versión en su chequeo periódico.
+        continue-on-error: true
+        env:
+          RELEASE_PUSH_SECRET: ${{ secrets.RELEASE_PUSH_SECRET }}
         run: |
           $version = "${{ github.ref_name }}" -replace '^v',''
-          $body = @{
-            fields = @{
-              version = @{ stringValue = $version }
-              publishedAt = @{ timestampValue = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ") }
-            }
-          } | ConvertTo-Json -Depth 5
-          Invoke-RestMethod -Method Patch `
-            -Uri "https://firestore.googleapis.com/v1/projects/godelivery-magdalena/databases/(default)/documents/ventra_desktop/latest_version?key=AIzaSyAldeFtUWWlEpcuEg1LSTko90cVEvnsMLA" `
+          Invoke-RestMethod -Method Post `
+            -Uri "https://us-central1-ventra-9cba5.cloudfunctions.net/publishDesktopVersion" `
+            -Headers @{ "x-release-secret" = $env:RELEASE_PUSH_SECRET } `
             -ContentType "application/json" `
-            -Body $body
+            -Body (@{ version = $version } | ConvertTo-Json)
         shell: pwsh

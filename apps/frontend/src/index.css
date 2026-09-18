@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -25,7 +25,7 @@
 }
 .pos-theme .pos-input:focus {
     border-color: #0E6E52;
-    box-shadow: 0 0 0 3px rgba(226, 96, 10, 0.2);
+    box-shadow: 0 0 0 3px rgba(14,110,82,0.2);
 }
 .pos-theme .pos-btn-secondary {
     background-color: #334155;
@@ -56,7 +56,7 @@
     overflow: hidden !important;
   }
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
@@ -124,6 +124,15 @@
 }
 
 @layer components {
+  /* ── Eyebrow: small spaced caps above section titles ── */
+  .eyebrow {
+    @apply text-[10.5px] font-bold uppercase tracking-[0.18em] text-rose-600;
+  }
+
+  /* ── Accent chip (lime) for plan / status highlights ── */
+  .chip-lime {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-lime-100 text-lime-800 border border-lime-200;
+  }
   /* ── Card ────────────────────────────────── */
   .card {
     @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none transition-all duration-200 ease-in-out;
@@ -199,7 +208,7 @@
   }
   .input-field:focus {
     border-color: #0E6E52;
-    box-shadow: 0 0 0 3px rgba(226, 96, 10, 0.2); /* Stronger focus ring */
+    box-shadow: 0 0 0 3px rgba(14,110,82,0.2); /* Stronger focus ring */
   }
   .input-field::placeholder {
     color: #64748b; /* Darker placeholder */
@@ -308,7 +317,7 @@ html.dark #pos-search {
 
 #pos-search:focus {
   border-color: #0E6E52 !important;
-  box-shadow: 0 0 0 2px rgba(226, 96, 10, 0.15) !important;
+  box-shadow: 0 0 0 2px rgba(14,110,82,0.15) !important;
 }
 
 /* Bypass gradients and transparencias to avoid alpha blending GPU lag */
@@ -320,9 +329,9 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-r {
 }
 
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary {
-  background: #C24F06 !important; /* Darker mango */
+  background: #0E6E52 !important;
   color: #ffffff !important;
-  border: 2px solid #7A3309 !important;
+  border: 2px solid #0A4736 !important;
   font-weight: bold !important;
 }
 
@@ -386,8 +395,8 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
 #product-modal-container input:focus,
 #product-modal-container select:focus,
 #product-modal-container textarea:focus {
-  border-color: #F97F1E !important; /* Mango 500 */
-  box-shadow: 0 0 0 4px rgba(226, 96, 10, 0.22) !important; /* Strong Mango focus ring */
-  background-color: rgba(255, 247, 237, 0.6) !important; /* Soft mango tint background */
+  border-color: #17925F !important;
+  box-shadow: 0 0 0 4px rgba(14,110,82,0.22) !important; 
+  background-color: rgba(234, 247, 241, 0.6) !important;
   outline: none !important;
 }

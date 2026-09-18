@@ -73,7 +73,6 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
       sessionStorage.setItem('adminAccessToken', data.accessToken);
       sessionStorage.setItem('adminRefreshToken', data.refreshToken);
       setShowAdminUnlockModal(false);
-      toast.success('🔓 Acceso de Administrador autorizado');
       
       const targetPath = pendingAdminPath || '/settings';
       navigate(targetPath);
@@ -181,7 +180,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         <div className="space-y-1.5">
           <button
             onClick={() => { navigate('/pos'); onCloseMobile?.(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] bg-rose-600 text-white hover:bg-rose-700 shadow-[0_6px_16px_-6px_rgba(226,96,10,0.55)] cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] bg-rose-600 text-white hover:bg-rose-700 shadow-[0_6px_16px_-6px_rgba(14,110,82,0.55)] cursor-pointer"
           >
             <ShoppingBag className="w-[18px] h-[18px] shrink-0" />
             {!isCollapsed && <span>Punto de Venta</span>}

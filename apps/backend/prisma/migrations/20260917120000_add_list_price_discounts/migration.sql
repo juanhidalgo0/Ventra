@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "products" ADD COLUMN "list_price" REAL;
+ALTER TABLE "products" ADD COLUMN "discount1" REAL NOT NULL DEFAULT 0;
+ALTER TABLE "products" ADD COLUMN "discount2" REAL NOT NULL DEFAULT 0;
+ALTER TABLE "products" ADD COLUMN "discount3" REAL NOT NULL DEFAULT 0;

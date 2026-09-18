@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Inject, forwardRef } from '@nestjs/common';
+import { stagePendingRestore } from './pending-restore';
 import { LicenseService } from '../auth/license.service';
 import { Cron, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
@@ -228,6 +229,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         if (file.includes('_manual_')) typeStr = 'MANUAL';
         else if (file.includes('_safety_')) typeStr = 'SEGURIDAD (PRE-RESTORE)';
         else if (file.includes('_uploaded_')) typeStr = 'SUBIDO';
+        else if (file.includes('_preupdate_')) typeStr = 'SEGURIDAD (PRE-ACTUALIZACIÓN)';
         return {
           filename: file,
           size: stats.size,
@@ -302,7 +304,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   /**
    * Restores a backup file by copying it over the active SQLite database file.
    */
-  async restoreBackup(filename: string): Promise<{ success: boolean; message: string }> {
+  async restoreBackup(filename: string): Promise<{ success: boolean; message: string; requiresRestart?: boolean }> {
     const backupFilePath = this.getBackupFilePath(filename);
 
     if (!fs.existsSync(backupFilePath)) {
@@ -331,7 +333,9 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         console.warn('[BackupService] Advertencia al ejecutar wal_checkpoint:', walErr.message);
       }
 
-      // 3. Disconnect Prisma
+      // 3. Hold every incoming query (polling, license heartbeat, crons) so nothing
+      // reconnects Prisma and re-locks the -wal/-shm files, then disconnect.
+      this.prismaService.beginMaintenance();
       console.log('[BackupService] Desconectando Prisma antes de restaurar...');
       await this.prismaService.$disconnect();
 
@@ -375,10 +379,22 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       ].every(Boolean);
 
       if (!preCleanOk) {
-        throw new Error(
-          'No se pudieron liberar los archivos temporales de la base de datos actual (-wal/-shm). ' +
-          'Para evitar corromper los datos, cerrá completamente la aplicación, volvé a abrirla, y probá restaurar el backup de nuevo.'
-        );
+        // La base sigue tomada por el sistema: reemplazarla ahora la corrompería.
+        // Se deja el backup en espera y se aplica solo al arrancar la aplicación.
+        console.warn('[BackupService] No se pudieron liberar -wal/-shm. Se deja la restauración en espera para el próximo inicio.');
+        stagePendingRestore(dbPath, backupFilePath, filename);
+
+        (this.prismaService as any).initPromise = null;
+        this.prismaService.endMaintenance();
+        await this.prismaService.ensureInitialized();
+
+        return {
+          success: true,
+          requiresRestart: true,
+          message:
+            'La base está en uso y no se puede reemplazar en caliente. El backup quedó preparado: ' +
+            'cerrá y volvé a abrir Ventra y se restaura solo al iniciar.',
+        } as any;
       }
 
       // 6. Overwrite active database file
@@ -415,6 +431,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         console.warn('[BackupService] Advertencia al desconectar Prisma antes de reconexión:', discErr.message);
       }
       (this.prismaService as any).initPromise = null;
+      this.prismaService.endMaintenance();
       await this.prismaService.ensureInitialized();
 
       // 9. Verify database integrity
@@ -451,6 +468,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     } catch (err: any) {
       console.error('[BackupService] Error durante la restauración:', err);
       // Try to reconnect no matter what
+      this.prismaService.endMaintenance();
       try {
         await this.prismaService.$connect();
       } catch {}
@@ -461,7 +479,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   /**
    * Recibe un buffer de archivo subido, lo guarda localmente y lo restaura.
    */
-  async restoreFromUploadedFile(fileBuffer: Buffer, originalName: string): Promise<{ success: boolean; message: string; filename: string }> {
+  async restoreFromUploadedFile(fileBuffer: Buffer, originalName: string): Promise<{ success: boolean; message: string; filename: string; requiresRestart?: boolean }> {
     const date = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
@@ -485,12 +503,15 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       throw new Error('El archivo cargado no es una base de datos SQLite válida.');
     }
 
-    // Ejecutar la restauración
+    // Ejecutar la restauración (puede quedar pendiente para el próximo inicio)
     const restoreResult = await this.restoreBackup(filename);
 
     return {
       success: true,
-      message: 'Base de datos subida y restaurada con éxito.',
+      requiresRestart: restoreResult.requiresRestart,
+      message: restoreResult.requiresRestart
+        ? restoreResult.message
+        : 'Base de datos subida y restaurada con éxito.',
       filename,
     };
   }

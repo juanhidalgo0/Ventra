@@ -292,15 +292,10 @@ pub fn run() {
                 .open(app_data_dir.join("backend-err.log"))
                 .ok();
 
-            // Desencriptar credenciales de Firebase en memoria para máxima seguridad
-            let encrypted_base64 = "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";
-            let credentials_json = {
-                use base64::{Engine as _, engine::general_purpose};
-                let decoded = general_purpose::STANDARD.decode(encrypted_base64).unwrap_or_default();
-                let key = 0x5F;
-                let decrypted: Vec<u8> = decoded.into_iter().map(|b| b ^ key).collect();
-                String::from_utf8(decrypted).unwrap_or_default()
-            };
+            // Las credenciales de Firebase NO van en el código ni en el instalador:
+            // la integración opcional con GoDelivery lee `firebase-credentials.json`
+            // desde la carpeta de datos de la app (app_data_dir) si el comercio la
+            // configuró. Sin ese archivo el backend arranca con la sincronización apagada.
 
             let gemini_api_key = std::env::var("GEMINI_API_KEY").unwrap_or_else(|_| {
                 // Try to find it in the local .env file in the current directory
@@ -333,7 +328,6 @@ pub fn run() {
                 .env("NODE_ENV", "production")
                 .env("PORT", port.to_string())
                 .env("DATABASE_URL", database_url)
-                .env("FIREBASE_CREDENTIALS_JSON", credentials_json)
                 .env("GODELIVERY_COMERCIO_ID", "7mdgE7txSCQqWQl1Hzrqa5PCo8C2")
                 .env("LOCAL_SYNC_TOKEN", "paulos-local-sync-token-secret-2026")
                 .env("GEMINI_API_KEY", gemini_api_key)

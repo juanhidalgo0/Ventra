@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useAutoTour } from '../common/tour/GuidedTour';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -44,7 +45,7 @@ import {
 // Dominio público de la tienda online de Ventra. Cuando se publique el sitio de
 // Firebase Hosting definitivo (ver README de despliegue), solo hay que actualizar
 // esta constante — nada más del código depende del dominio.
-const PUBLIC_STORE_BASE_URL = 'https://ventra-tienda.web.app';
+const PUBLIC_STORE_BASE_URL = 'https://tienda.ventra.store';
 
 const RUBROS = [
   { id: 'KIOSKO', label: 'Kiosco / Almacén', icon: Package },
@@ -86,6 +87,7 @@ export default function OnlineStoreScreen() {
 
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  useAutoTour('onlineStore', !isLoading);
   const [isSaving, setIsSaving] = useState(false);
   const [subdomainStatus, setSubdomainStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
 
@@ -186,7 +188,6 @@ export default function OnlineStoreScreen() {
     try {
       const compressed = await compressImageFile(file, 300, 300, 0.7);
       update({ logoUrl: compressed });
-      toast.success('Logo cargado');
     } catch {
       toast.error('No se pudo procesar la imagen del logo');
     } finally {
@@ -200,7 +201,6 @@ export default function OnlineStoreScreen() {
     try {
       const compressed = await compressImageFile(file, 1200, 400, 0.6);
       update({ bannerUrl: compressed });
-      toast.success('Banner cargado');
     } catch {
       toast.error('No se pudo procesar la imagen del banner');
     } finally {
@@ -364,6 +364,7 @@ export default function OnlineStoreScreen() {
             </a>
           )}
           <button
+            data-tour="store-save"
             onClick={handleSave}
             disabled={isSaving}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold text-white shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
@@ -378,7 +379,7 @@ export default function OnlineStoreScreen() {
       <div className="w-full max-w-5xl mx-auto space-y-6">
 
         {/* Identidad y Rubro */}
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+        <div data-tour="store-identity" className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
           <SectionHeader icon={Sparkles} title="Identidad de la Tienda" subtitle="El nombre y rubro que van a ver tus clientes" accent={accent} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -397,7 +398,7 @@ export default function OnlineStoreScreen() {
               <FieldLabel>Subdominio Público</FieldLabel>
               <div className="flex flex-col sm:flex-row sm:items-stretch rounded-xl overflow-hidden border border-slate-300 bg-white focus-within:border-[var(--accent)] focus-within:ring-[3px] focus-within:ring-[var(--accent)]/15 transition-all">
                 <div className="bg-slate-50 px-3 py-3 flex items-center justify-center text-[12.5px] font-semibold text-slate-500 border-b sm:border-b-0 sm:border-r border-slate-200 select-none whitespace-nowrap">
-                  ventra-tienda.web.app/
+                  tienda.ventra.store/
                 </div>
                 <input
                   type="text"
@@ -454,7 +455,7 @@ export default function OnlineStoreScreen() {
         </div>
 
         {/* Apariencia */}
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+        <div data-tour="store-appearance" className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
           <SectionHeader icon={Palette} title="Apariencia y Marca" subtitle="Colores, logo y banner que definen el look de tu tienda" accent={accent} />
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr,1.1fr] gap-8">
@@ -567,7 +568,7 @@ export default function OnlineStoreScreen() {
         </div>
 
         {/* Contacto */}
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+        <div data-tour="store-contact" className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
           <SectionHeader icon={MessageSquare} title="Contacto y Pedidos" subtitle="A dónde llegan los pedidos y cómo te encuentran" accent={accent} />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -636,7 +637,7 @@ export default function OnlineStoreScreen() {
 
         {/* Productos */}
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-5 mb-6 border-b border-slate-100">
+          <div data-tour="store-products" className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-5 mb-6 border-b border-slate-100">
             <div className="flex items-start gap-3.5">
               <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}14`, color: accent }}>
                 <ShoppingBag className="w-5 h-5" />

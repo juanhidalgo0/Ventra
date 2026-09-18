@@ -120,7 +120,6 @@ export default function SuppliersScreen() {
     e.preventDefault();
     try {
       await api.post('/suppliers', formData);
-      toast.success('Proveedor creado con éxito');
       setShowModal(false);
       setFormData({ name: '', contact: '', phone: '', email: '' });
       loadData();
@@ -147,7 +146,6 @@ export default function SuppliersScreen() {
     if (!confirm('¿Seguro que deseas eliminar este proveedor? Se borrarán sus datos asociados.')) return;
     try {
       await api.delete(`/suppliers/${id}`);
-      toast.success('Proveedor eliminado');
       if (selectedSupplier?.id === id) setSelectedSupplier(null);
       loadData();
     } catch {

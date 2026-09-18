@@ -105,7 +105,6 @@ export default function GastosScreen() {
     if (!window.confirm('¿Seguro que querés eliminar este gasto? Esto anulará el egreso del efectivo de caja.')) return;
     try {
       await api.delete(`/cash/movement/${id}`);
-      toast.success('Gasto eliminado correctamente');
       loadMovements();
       loadCurrentSession();
     } catch (err: any) {

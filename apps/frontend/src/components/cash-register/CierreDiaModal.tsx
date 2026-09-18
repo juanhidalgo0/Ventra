@@ -946,110 +946,118 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
 
       {/* 2. Screen Area Modal Portal */}
       {createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 no-print-screen">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 no-print-screen">
           {/* Screen Area */}
           {isHistory ? (
-        <motion.div 
-          initial={{ scale: 0.98, opacity: 0 }} 
-          animate={{ scale: 1, opacity: 1 }} 
+        <motion.div
+          initial={{ scale: 0.98, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.98, opacity: 0 }}
-          className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] no-print-screen"
+          className="bg-white rounded-2xl w-full max-w-6xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[calc(100dvh-16px)] no-print-screen tabular-nums"
         >
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-500 flex items-center justify-center">
+          {/* Header: título + datos del reporte */}
+          <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between gap-4 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
                 <Printer className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">Detalles de Cierre de Día (Z)</h3>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Reporte ID: #Z-{zReport.id?.substring(0, 8).toUpperCase()}</p>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-slate-900 leading-tight">Cierre del Día (Reporte Z)</h3>
+                <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+                  #Z-{zReport.id?.substring(0, 8).toUpperCase()} · {new Date(zReport.generatedAt).toLocaleString('es-AR')} · {summary.sessionCount ?? zReport.sessions?.length ?? 0} turno(s) · por {zReport.generatedBy?.fullName || 'Administrador'}
+                </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-450 transition-all font-bold">
-                Cerrar
-              </button>
-              <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-800 transition-colors shrink-0" aria-label="Cerrar">
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/20 text-slate-800">
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Fecha de Emisión</span>
-                <span className="text-xs font-bold text-slate-850">{new Date(zReport.generatedAt).toLocaleString('es-AR')}</span>
+          {/* Body: sin scroll general; solo las listas largas se desplazan por dentro */}
+          <div className="flex-1 min-h-0 flex flex-col gap-3 px-6 py-4 bg-slate-50/60 text-slate-800 overflow-hidden">
+            {/* 1. Números principales */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+              <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Venta sistema consolidada</span>
+                <span className="text-3xl font-black text-slate-900 leading-tight">
+                  {fmt(
+                    (summary.paymentBreakdown?.CASH || 0) +
+                    Object.values(summary.paymentBreakdown || {}).filter((_, i) => Object.keys(summary.paymentBreakdown || {})[i] !== 'CASH').reduce((a: any, b: any) => a + Number(b), 0)
+                  )}
+                </span>
               </div>
-              <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Turnos Consolidados</span>
-                <span className="text-xs font-extrabold text-slate-850 uppercase block">{summary.sessionCount ?? zReport.sessions?.length ?? 0}</span>
+              <div className={`rounded-xl px-4 py-3 border ${diferenciaTotalConsolidada >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                <span className={`text-xs font-bold uppercase tracking-wider block ${diferenciaTotalConsolidada >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>Diferencia total</span>
+                <span className={`text-3xl font-black leading-tight ${diferenciaTotalConsolidada >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  {diferenciaTotalConsolidada > 0 ? '+' : ''}{fmt(diferenciaTotalConsolidada)}
+                </span>
               </div>
-              <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Generado por</span>
-                <span className="text-xs font-semibold text-slate-700 block">{zReport.generatedBy?.fullName || 'Administrador'}</span>
+              <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Virtual 1 (aparte)</span>
+                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(zReport.virtual1Sales || 0)}</span>
+                {(zReport.virtual1Sales || 0) > 0 && (
+                  <span className="block text-xs text-slate-600 font-medium">{fmt(zReport.virtual1Base || 0)} + {fmt(zReport.virtual1Surcharge || 0)}</span>
+                )}
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Virtual 2 (aparte)</span>
+                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(zReport.virtual2Sales || 0)}</span>
+                {(zReport.virtual2Sales || 0) > 0 && (
+                  <span className="block text-xs text-slate-600 font-medium">{fmt(zReport.virtual2Base || 0)} + {fmt(zReport.virtual2Surcharge || 0)}</span>
+                )}
               </div>
             </div>
 
-            {/* Split Grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-              {/* Operations & Payments Summary */}
-              <div className="xl:col-span-5 bg-white rounded-xl border border-slate-200/80 p-5 space-y-4 shadow-sm">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
-                  Resumen de Operaciones
-                </h4>
-                <div className="space-y-3.5 text-xs text-slate-500 font-medium">
-                  <div className="flex justify-between">
-                    <span>Ingresos Efectivo (Caja Fuerte / Agregados)</span>
-                    <span className="font-bold text-emerald-600">+{fmt(summary.cashIncome || 0)}</span>
+            {/* 2. Operaciones | Declaración */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 shrink-0">
+              <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 px-4 py-3">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 mb-2 border-b border-slate-100">Resumen de operaciones</h4>
+                <div className="space-y-1.5 text-sm text-slate-700 font-medium">
+                  <div className="flex justify-between gap-3">
+                    <span>Ventas en efectivo</span>
+                    <span className="font-bold text-emerald-700">+{fmt(summary.paymentBreakdown?.CASH || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Egresos y Pagos (Salidas de caja)</span>
-                    <span className="font-bold text-rose-500">-{fmt(summary.cashExpense || 0)}</span>
+                  <div className="flex justify-between gap-3">
+                    <span>Ingresos a caja</span>
+                    <span className="font-bold text-emerald-700">+{fmt(summary.cashIncome || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Retiros a Caja Fuerte</span>
-                    <span className="font-bold text-rose-500">-{fmt(summary.cashWithdrawal || 0)}</span>
+                  <div className="flex justify-between gap-3">
+                    <span>Egresos y pagos</span>
+                    <span className="font-bold text-red-600">-{fmt(summary.cashExpense || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Ventas en Efectivo</span>
-                    <span className="font-bold text-emerald-600">+{fmt(summary.paymentBreakdown?.CASH || 0)}</span>
+                  <div className="flex justify-between gap-3">
+                    <span>Retiros a caja fuerte</span>
+                    <span className="font-bold text-red-600">-{fmt(summary.cashWithdrawal || 0)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Declarations (Esperado vs Fisico) */}
-              <div className="xl:col-span-7 bg-white rounded-xl border border-slate-200/80 p-5 space-y-4 shadow-sm">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">
-                  Declaración Consolidada
-                </h4>
-                <table className="w-full text-left text-xs">
+              <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 px-4 py-3">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 mb-1 border-b border-slate-100">Declaración consolidada</h4>
+                <table className="w-full text-left text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 text-slate-400 font-semibold">
-                      <th className="pb-2">Medio</th>
-                      <th className="pb-2 text-right px-3 whitespace-nowrap">Esperado</th>
-                      <th className="pb-2 text-right px-3 whitespace-nowrap">Declarado</th>
-                      <th className="pb-2 text-right pl-3 whitespace-nowrap">Diferencia</th>
+                    <tr className="text-slate-600 text-xs font-bold uppercase tracking-wide">
+                      <th className="py-1">Medio</th>
+                      <th className="py-1 text-right px-3 whitespace-nowrap">Esperado</th>
+                      <th className="py-1 text-right px-3 whitespace-nowrap">Declarado</th>
+                      <th className="py-1 text-right pl-3 whitespace-nowrap">Diferencia</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-slate-50 font-medium">
-                      <td className="py-2.5 font-bold text-slate-650">Total Efectivo Físico</td>
-                      <td className="py-2.5 text-right text-slate-700 px-3 whitespace-nowrap font-semibold">{fmt(cashExpectedTotal)}</td>
-                      <td className="py-2.5 text-right font-bold text-slate-800 px-3 whitespace-nowrap">{fmt(cashCountedTotal)}</td>
-                      <td className={`py-2.5 text-right font-extrabold pl-3 whitespace-nowrap ${cashDifferenceTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <tr className="border-t border-slate-100">
+                      <td className="py-1.5 font-bold text-slate-800">Efectivo físico</td>
+                      <td className="py-1.5 text-right text-slate-700 px-3 whitespace-nowrap font-semibold">{fmt(cashExpectedTotal)}</td>
+                      <td className="py-1.5 text-right font-bold text-slate-900 px-3 whitespace-nowrap">{fmt(cashCountedTotal)}</td>
+                      <td className={`py-1.5 text-right font-extrabold pl-3 whitespace-nowrap ${cashDifferenceTotal >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                         {cashDifferenceTotal > 0 ? '+' : ''}{fmt(cashDifferenceTotal)}
                       </td>
                     </tr>
                     {posnetRows.map(({ key, expected, declared, diff }) => (
-                      <tr key={key} className="border-b border-slate-50 last:border-0 font-medium">
-                        <td className="py-2.5 font-bold text-slate-650">{key} (Posnet)</td>
-                        <td className="py-2.5 text-right text-slate-700 px-3 whitespace-nowrap font-semibold">{fmt(expected)}</td>
-                        <td className="py-2.5 text-right font-bold text-slate-800 px-3 whitespace-nowrap">{fmt(declared)}</td>
-                        <td className={`py-2.5 text-right font-extrabold pl-3 whitespace-nowrap ${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <tr key={key} className="border-t border-slate-100">
+                        <td className="py-1.5 font-bold text-slate-800">{key}</td>
+                        <td className="py-1.5 text-right text-slate-700 px-3 whitespace-nowrap font-semibold">{fmt(expected)}</td>
+                        <td className="py-1.5 text-right font-bold text-slate-900 px-3 whitespace-nowrap">{fmt(declared)}</td>
+                        <td className={`py-1.5 text-right font-extrabold pl-3 whitespace-nowrap ${diff >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                           {diff > 0 ? '+' : ''}{fmt(diff)}
                         </td>
                       </tr>
@@ -1059,169 +1067,114 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
               </div>
             </div>
 
-            {/* Turn Detail Table */}
-            <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-4 shadow-sm">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
-                Detalle de Turnos (Reportes X)
-              </h4>
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-semibold">
-                    <th className="pb-2">Cajero / Terminal</th>
-                    <th className="pb-2">Apertura</th>
-                    <th className="pb-2">Cierre</th>
-                    <th className="pb-2 text-right">Venta Sistema</th>
-                    <th className="pb-2 text-right">Total Declarado</th>
-                    <th className="pb-2 text-right">Diferencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessionsToRender.map((session: any, idx: number) => {
-                    let totalSessionGross = 0;
-                    let countedCash = session.closingAmountCounted || 0;
-                    let posnetDeclared = 0;
+            {/* 3. Turnos | Gastos (las listas se desplazan por dentro si son largas) */}
+            <div className="flex-1 min-h-[120px] grid grid-cols-1 lg:grid-cols-12 gap-3">
+              <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-col min-h-0">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100 shrink-0">Detalle de turnos (cierres X)</h4>
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-slate-600 text-xs font-bold uppercase tracking-wide">
+                        <th className="py-1.5">Cajero</th>
+                        <th className="py-1.5">Horario</th>
+                        <th className="py-1.5 text-right">Venta</th>
+                        <th className="py-1.5 text-right">Declarado</th>
+                        <th className="py-1.5 text-right">Dif.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionsToRender.map((session: any, idx: number) => {
+                        let totalSessionGross = 0;
+                        let countedCash = session.closingAmountCounted || 0;
+                        let posnetDeclared = 0;
 
-                    if (session.closingSummary) {
-                      try {
-                        const sum = typeof session.closingSummary === 'string' ? JSON.parse(session.closingSummary) : session.closingSummary;
-                        totalSessionGross = sum.totalRevenue || 0;
-                        countedCash = sum.countedCash ?? session.closingAmountCounted ?? 0;
-                        if (sum.posnetDeclarations) {
-                          posnetDeclared = (Object.values(sum.posnetDeclarations) as any[]).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                        if (session.closingSummary) {
+                          try {
+                            const sum = typeof session.closingSummary === 'string' ? JSON.parse(session.closingSummary) : session.closingSummary;
+                            totalSessionGross = sum.totalRevenue || 0;
+                            countedCash = sum.countedCash ?? session.closingAmountCounted ?? 0;
+                            if (sum.posnetDeclarations) {
+                              posnetDeclared = (Object.values(sum.posnetDeclarations) as any[]).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                            }
+                          } catch (e) {}
                         }
-                      } catch (e) {}
-                    }
 
-                    if (posnetDeclared === 0 && session.closingNotes && session.closingNotes.includes('[METADATA]')) {
-                      try {
-                        const parts = session.closingNotes.split('[METADATA]');
-                        const meta = JSON.parse(parts[1]);
-                        const clover = meta.posnetDeclarations?.CLOVER || meta.virtualClover || 0;
-                        const mp = (meta.posnetDeclarations?.MERCADOPAGO || 0) || (meta.virtualMP1 || 0) + (meta.virtualMP2 || 0);
-                        posnetDeclared = clover + mp;
-                      } catch (e) {}
-                    }
+                        if (posnetDeclared === 0 && session.closingNotes && session.closingNotes.includes('[METADATA]')) {
+                          try {
+                            const parts = session.closingNotes.split('[METADATA]');
+                            const meta = JSON.parse(parts[1]);
+                            const clover = meta.posnetDeclarations?.CLOVER || meta.virtualClover || 0;
+                            const mp = (meta.posnetDeclarations?.MERCADOPAGO || 0) || (meta.virtualMP1 || 0) + (meta.virtualMP2 || 0);
+                            posnetDeclared = clover + mp;
+                          } catch (e) {}
+                        }
 
-                    if (!totalSessionGross) {
-                      if (session.totalRevenue) {
-                        totalSessionGross = session.totalRevenue;
-                      } else if (session.sales && session.sales.length > 0) {
-                        totalSessionGross = session.sales.reduce((acc: number, v: any) => acc + (v.total || 0), 0);
-                      } else if (session.closingAmountExpected) {
-                        totalSessionGross = session.closingAmountExpected;
-                      }
-                    }
+                        if (!totalSessionGross) {
+                          if (session.totalRevenue) {
+                            totalSessionGross = session.totalRevenue;
+                          } else if (session.sales && session.sales.length > 0) {
+                            totalSessionGross = session.sales.reduce((acc: number, v: any) => acc + (v.total || 0), 0);
+                          } else if (session.closingAmountExpected) {
+                            totalSessionGross = session.closingAmountExpected;
+                          }
+                        }
 
-                    const totalSessionDeclared = countedCash + posnetDeclared;
-                    const sessionDiff = session.difference ?? (totalSessionDeclared - (session.closingAmountExpected || 0));
+                        const totalSessionDeclared = countedCash + posnetDeclared;
+                        const sessionDiff = session.difference ?? (totalSessionDeclared - (session.closingAmountExpected || 0));
+                        const hhmm = (d: any) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-                    return (
-                      <tr key={idx} className="border-b border-slate-50 last:border-0 font-medium">
-                        <td className="py-2">
-                          <p className="font-bold text-slate-700">{session.user?.fullName || 'Desconocido'}</p>
-                          <p className="text-[9px] text-slate-400 uppercase">{session.terminalName}</p>
-                        </td>
-                        <td className="py-2 text-slate-650">{new Date(session.openedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="py-2 text-slate-650">{new Date(session.closedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="py-2 text-right font-bold text-slate-800">{fmt(totalSessionGross)}</td>
-                        <td className="py-2 text-right font-bold text-slate-800">{fmt(totalSessionDeclared)}</td>
-                        <td className={`py-2 text-right font-extrabold ${sessionDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {sessionDiff > 0 ? '+' : ''}{fmt(sessionDiff)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        return (
+                          <tr key={idx} className="border-t border-slate-100">
+                            <td className="py-1.5">
+                              <p className="font-bold text-slate-900 leading-tight">{session.user?.fullName || 'Desconocido'}</p>
+                              <p className="text-xs text-slate-600 uppercase">{session.terminalName}</p>
+                            </td>
+                            <td className="py-1.5 text-slate-700 whitespace-nowrap">{hhmm(session.openedAt)} – {hhmm(session.closedAt)}</td>
+                            <td className="py-1.5 text-right font-bold text-slate-900 whitespace-nowrap">{fmt(totalSessionGross)}</td>
+                            <td className="py-1.5 text-right font-bold text-slate-900 whitespace-nowrap">{fmt(totalSessionDeclared)}</td>
+                            <td className={`py-1.5 text-right font-extrabold whitespace-nowrap ${sessionDiff >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                              {sessionDiff > 0 ? '+' : ''}{fmt(sessionDiff)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-            {/* Expenses Detail */}
-            <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-4 shadow-sm">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
-                Detalle de Gastos y Egresos de Caja
-              </h4>
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-semibold">
-                    <th className="pb-2">Hora / Usuario</th>
-                    <th className="pb-2">Motivo</th>
-                    <th className="pb-2 text-right">Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-col min-h-0">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100 shrink-0">Gastos y egresos de caja</h4>
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                   {(summary.cashMovements || []).filter((m: any) => m.type === 'EXPENSE' || m.type === 'WITHDRAWAL').length > 0 ? (
-                    (summary.cashMovements || []).filter((m: any) => m.type === 'EXPENSE' || m.type === 'WITHDRAWAL').map((movement: any, idx: number) => (
-                      <tr key={idx} className="border-b border-slate-50 last:border-0 font-medium">
-                        <td className="py-2">
-                          <p className="font-bold text-slate-700">{movement.user?.fullName || 'Desconocido'}</p>
-                          <p className="text-[9px] text-slate-400">{new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</p>
-                        </td>
-                        <td className="py-2 text-slate-650">
-                          {formatMovementDescription(movement.description || (movement.type === 'WITHDRAWAL' ? 'Retiro a caja fuerte' : 'Gasto'))}
-                          {movement.type === 'WITHDRAWAL' && <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase">RETIRO</span>}
-                        </td>
-                        <td className="py-2 text-right font-bold text-rose-500">-{fmt(movement.amount)}</td>
-                      </tr>
-                    ))
+                    <ul className="divide-y divide-slate-100">
+                      {(summary.cashMovements || []).filter((m: any) => m.type === 'EXPENSE' || m.type === 'WITHDRAWAL').map((movement: any, idx: number) => (
+                        <li key={idx} className="py-1.5 flex items-center justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">
+                              {formatMovementDescription(movement.description || (movement.type === 'WITHDRAWAL' ? 'Retiro a caja fuerte' : 'Gasto'))}
+                              {movement.type === 'WITHDRAWAL' && <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-bold uppercase">Retiro</span>}
+                            </p>
+                            <p className="text-xs text-slate-600">{movement.user?.fullName || 'Desconocido'} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</p>
+                          </div>
+                          <span className="font-bold text-red-600 whitespace-nowrap">-{fmt(movement.amount)}</span>
+                        </li>
+                      ))}
+                    </ul>
                   ) : (
-                    <tr>
-                      <td colSpan={3} className="py-4 text-center text-slate-400 italic">
-                        No hubo egresos registrados en este cierre
-                      </td>
-                    </tr>
+                    <p className="py-6 text-center text-sm text-slate-600">No hubo egresos registrados en este cierre.</p>
                   )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Bottom summary and Action Buttons */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-150">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Venta Sistema Consolidada</span>
-                <span className="text-xl font-extrabold text-slate-800">
-                  {fmt(
-                    (summary.paymentBreakdown?.CASH || 0) + 
-                    Object.values(summary.paymentBreakdown || {}).filter((_, i, arr) => Object.keys(summary.paymentBreakdown || {})[i] !== 'CASH').reduce((a: any, b: any) => a + Number(b), 0)
-                  )}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Virtual 1 (Separado)</span>
-                <span className="text-xl font-extrabold text-rose-600 flex items-baseline gap-1">
-                  {fmt(zReport.virtual1Sales || 0)}
-                  {(zReport.virtual1Sales || 0) > 0 && (
-                    <span className="text-xs text-slate-500 font-medium">
-                      ({fmt(zReport.virtual1Base || 0)} + {fmt(zReport.virtual1Surcharge || 0)})
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Virtual 2 (Separado)</span>
-                <span className="text-xl font-extrabold text-rose-600 flex items-baseline gap-1">
-                  {fmt(zReport.virtual2Sales || 0)}
-                  {(zReport.virtual2Sales || 0) > 0 && (
-                    <span className="text-xs text-slate-500 font-medium">
-                      ({fmt(zReport.virtual2Base || 0)} + {fmt(zReport.virtual2Surcharge || 0)})
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1 sm:text-right">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Diferencia Total Consolidada</span>
-                <span className={`text-xl font-extrabold ${diferenciaTotalConsolidada >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {diferenciaTotalConsolidada > 0 ? '+' : ''}{fmt(diferenciaTotalConsolidada)}
-                </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Footer actions */}
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end shrink-0">
-            <button onClick={() => handlePrint('z-only')} className="px-4 py-2 border border-rose-600 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer">
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex gap-3 justify-end shrink-0">
+            <button onClick={() => handlePrint('z-only')} className="px-4 py-2.5 border-2 border-rose-600 text-rose-700 hover:bg-rose-50 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer">
               <Printer className="w-4 h-4" /> Imprimir Reporte Z
             </button>
-            <button onClick={() => handlePrint('z-and-x')} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer">
+            <button onClick={() => handlePrint('z-and-x')} className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer">
               <Printer className="w-4 h-4" /> Imprimir Z + Cierres X
             </button>
             <button onClick={onClose} className="btn-secondary">
@@ -1236,7 +1189,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
               <CheckCircle2 className="w-10 h-10 text-green-600" />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">¡Día Cerrado con Éxito!</h3>
-            <p className="text-slate-500 mb-8 max-w-sm">
+            <p className="text-slate-600 mb-8 max-w-sm">
               Se ha generado el Reporte Z maestro consolidando <b>{summary.sessionCount ?? zReport.sessions?.length ?? 0}</b> turnos. Puedes imprimir el comprobante consolidado y los cierres a continuación.
             </p>
             <div className="flex flex-col gap-4 w-full">
@@ -1264,7 +1217,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
               <AlertTriangle className="w-7 h-7" />
             </div>
             <h4 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">¿Confirmar Salida?</h4>
-            <p className="text-slate-500 dark:text-slate-400 text-xs font-semibold mb-6 leading-relaxed">
+            <p className="text-slate-600 dark:text-slate-400 text-xs font-semibold mb-6 leading-relaxed">
               Asegúrate de haber impreso o guardado los reportes necesarios (Reporte Z y Cierres X) antes de salir. No podrás volver a esta pantalla.
             </p>
             <div className="flex gap-3">

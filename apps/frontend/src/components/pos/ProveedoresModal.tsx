@@ -57,7 +57,6 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
         email: newEmail.trim(),
         contact: newContact.trim()
       });
-      toast.success('✅ Proveedor registrado con éxito');
       
       // Clear registration form and load updated list
       setNewName('');
