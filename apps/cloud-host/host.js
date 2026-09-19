@@ -38,7 +38,8 @@ const CFG = {
   devTenant: process.env.DEV_TENANT || '',
   portBase: Number(process.env.TENANT_PORT_BASE || 4100),
 };
-const SESSION_DAYS = 14;
+// El dueño entra una vez con Google en esa computadora; después cada cajero usa su usuario del POS
+const SESSION_DAYS = 90;
 const COOKIE = 'ventra_web';
 
 if (!CFG.devTenant && (!CFG.hostSecret || CFG.sessionSecret.length < 32)) {
