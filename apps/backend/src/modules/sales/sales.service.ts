@@ -38,6 +38,9 @@ export class SalesService {
       for (const id of productIds) {
         if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE' || id === 'VENTA_RAPIDA') {
           const exists = await tx.product.findUnique({ where: { id } });
+          if (exists && !exists.isActive) {
+            await tx.product.update({ where: { id }, data: { isActive: true } });
+          }
           if (!exists) {
             let virtualName = 'Carga Virtual 1';
             if (id === 'VIRTUAL_LOAD_2') virtualName = 'Carga Virtual 2';
@@ -50,7 +53,8 @@ export class SalesService {
               data: {
                 id,
                 name: virtualName,
-                barcode: id,
+                // Sin código si otro producto ya lo usa (ej. uno creado a mano como parche)
+                barcode: (await tx.product.findUnique({ where: { barcode: id } })) ? null : id,
                 salePrice: 0,
                 costPrice: 0,
                 stock: 999999,

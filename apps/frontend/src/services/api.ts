@@ -75,7 +75,7 @@ api.interceptors.response.use(
           }).catch(() => {
             localStorage.clear();
           }).finally(() => {
-            window.location.hash = '#/login';
+            goToLogin();
           });
         }
       } else {
@@ -84,12 +84,20 @@ api.interceptors.response.use(
         }).catch(() => {
           localStorage.clear();
         }).finally(() => {
-          window.location.hash = '#/login';
+          goToLogin();
         });
       }
     }
     return Promise.reject(error);
   }
 );
+
+// Si el usuario ya está en la pantalla de conexión o de login no lo movemos:
+// un 401 de un pedido en segundo plano lo sacaba de "Conectar Cliente" a los 1-2 s.
+function goToLogin() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#/setup') || hash.startsWith('#/login')) return;
+  window.location.hash = '#/login';
+}
 
 export default api;

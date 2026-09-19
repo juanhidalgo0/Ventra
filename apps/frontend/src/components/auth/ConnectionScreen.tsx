@@ -16,7 +16,13 @@ const BATCH_SIZE = 40;
 const HARD_SCAN_TIMEOUT_MS = 15000; // Never let a scan feel "stuck" forever
 
 export default function ConnectionScreen() {
-  const [mode, setMode] = useState<'SELECT' | 'CLIENT'>('SELECT');
+  // Se recuerda en la sesión para que un remontaje no devuelva al usuario a la selección
+  const [mode, setModeState] = useState<'SELECT' | 'CLIENT'>(() =>
+    sessionStorage.getItem('setup_mode') === 'CLIENT' ? 'CLIENT' : 'SELECT');
+  const setMode = (m: 'SELECT' | 'CLIENT') => {
+    sessionStorage.setItem('setup_mode', m);
+    setModeState(m);
+  };
   const [ip, setIp] = useState(() => localStorage.getItem('saved_client_ip') || '');
   const [isTesting, setIsTesting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -46,6 +52,7 @@ export default function ConnectionScreen() {
     localStorage.setItem('server_ip', detectedIp);
     localStorage.setItem('saved_client_ip', detectedIp);
     localStorage.setItem('connection_mode', 'CLIENT');
+    sessionStorage.removeItem('setup_mode');
     navigate('/login');
   };
 
@@ -63,6 +70,7 @@ export default function ConnectionScreen() {
           localStorage.setItem('server_ip', hostWithPort);
           localStorage.setItem('saved_client_ip', hostWithPort);
           localStorage.setItem('connection_mode', 'CLIENT');
+          sessionStorage.removeItem('setup_mode');
           navigate('/login');
           return;
         } catch {
@@ -73,6 +81,7 @@ export default function ConnectionScreen() {
             localStorage.setItem('server_ip', host);
             localStorage.setItem('saved_client_ip', host);
             localStorage.setItem('connection_mode', 'CLIENT');
+            sessionStorage.removeItem('setup_mode');
             navigate('/login');
             return;
           } catch {}
@@ -195,6 +204,7 @@ export default function ConnectionScreen() {
     operationId.current++;
     localStorage.setItem('server_ip', 'localhost');
     localStorage.setItem('connection_mode', 'SERVER');
+    sessionStorage.removeItem('setup_mode');
     navigate('/login');
   };
 
@@ -215,6 +225,7 @@ export default function ConnectionScreen() {
       await api.get('/system/info');
       if (!isMounted.current || myOpId !== operationId.current) return;
       localStorage.setItem('connection_mode', 'CLIENT');
+      sessionStorage.removeItem('setup_mode');
       navigate('/login');
     } catch (err) {
       if (!isMounted.current || myOpId !== operationId.current) return;

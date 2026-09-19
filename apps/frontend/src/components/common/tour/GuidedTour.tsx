@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { TOURS, type TourStep } from './tours';
 import { useTourStore, setTourKeyHandler } from './tourStore';
@@ -93,42 +92,48 @@ export default function GuidedTour() {
     if (!el) { setRect(null); return; }
     if (step.click) el.click();
     const r = el.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Scroll instantáneo: el "smooth" fuerza muchos repintados en PCs lentas
+    if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'center' });
   }, [step]);
 
-  // Follow the target while it moves (scroll, resize, animations).
+  // Seguir al objetivo SIN un bucle por cuadro: se mide al entrar al paso, al
+  // hacer scroll/resize (agrupado en un solo frame) y con un chequeo liviano
+  // cada 250 ms para animaciones o cambios de diseño. Antes medía 60 veces por
+  // segundo y re-renderizaba en cada una, lo que trababa las PCs viejas.
   useEffect(() => {
     if (!step) return;
     let raf = 0;
-    let missingFrames = 0;
-    const tick = () => {
+    let missingSince = 0;
+    const measure = () => {
+      raf = 0;
       const el = findTarget(step);
-      if (!el && step.target && ++missingFrames > 30) {
-        finish();
+      if (!el) {
+        if (step.target) {
+          if (!missingSince) missingSince = Date.now();
+          else if (Date.now() - missingSince > 1000) { finish(); return; }
+        }
+        setRect((prev) => (prev ? null : prev));
         return;
       }
-      if (el) {
-        missingFrames = 0;
-        const r = el.getBoundingClientRect();
-        setRect((prev) => {
-          if (!prev) return { top: r.top, left: r.left, width: r.width, height: r.height };
-          const ease = (a: number, b: number) => (Math.abs(b - a) < 0.5 ? b : a + (b - a) * 0.28);
-          const nextRect = {
-            top: ease(prev.top, r.top),
-            left: ease(prev.left, r.left),
-            width: ease(prev.width, r.width),
-            height: ease(prev.height, r.height),
-          };
-          return nextRect.top === prev.top && nextRect.left === prev.left &&
-            nextRect.width === prev.width && nextRect.height === prev.height ? prev : nextRect;
-        });
-      } else {
-        setRect(null);
-      }
-      raf = requestAnimationFrame(tick);
+      missingSince = 0;
+      const r = el.getBoundingClientRect();
+      setRect((prev) =>
+        prev && Math.abs(prev.top - r.top) < 1 && Math.abs(prev.left - r.left) < 1 &&
+        Math.abs(prev.width - r.width) < 1 && Math.abs(prev.height - r.height) < 1
+          ? prev
+          : { top: r.top, left: r.left, width: r.width, height: r.height });
     };
-    tick();
-    return () => cancelAnimationFrame(raf);
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    measure();
+    const interval = setInterval(schedule, 250);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
+    return () => {
+      clearInterval(interval);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule, true);
+    };
   }, [step, finish]);
 
   useLayoutEffect(() => {
@@ -182,22 +187,15 @@ export default function GuidedTour() {
 
       {spot && (
         <div
-          className="keep-style absolute pointer-events-none rounded-[14px] border-[3px] border-white"
-          style={{ ...spot, boxShadow: '0 0 0 5px rgba(52,172,126,0.45), 0 0 24px 4px rgba(52,172,126,0.35)' }}
-        >
-          <div className="keep-animated absolute -inset-[3px] rounded-[14px] border-2 border-emerald-400 animate-pulse" />
-        </div>
+          className="keep-style absolute pointer-events-none rounded-[14px] border-[3px] border-emerald-400"
+          style={spot}
+        />
       )}
 
-      <AnimatePresence mode="wait">
-        <motion.div
+        <div
           key={index}
           ref={popRef}
-          initial={{ opacity: 0, y: 6, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.08 } }}
-          transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="keep-style absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
+          className="keep-style absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
           style={{ top: pos.top, left: pos.left }}
         >
           <button
@@ -232,8 +230,7 @@ export default function GuidedTour() {
               </button>
             </div>
           </div>
-        </motion.div>
-      </AnimatePresence>
+        </div>
     </div>,
     document.body,
   );
