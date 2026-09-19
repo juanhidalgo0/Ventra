@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#08362A">
+<title>Ventra en la web</title>
+<link rel="icon" type="image/png" href="https://ventra.store/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<style>
+  :root{ --pine-850:#08362A; --pine-800:#0A4736; --mint:#34AC7E; --paper:#FBF9F5; --line:#E4DDD1; --ink:#0F1F1A; --ink-2:#56655F; --on-dark:#F6F2EC; --red:#B4412B; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; font-family:'Inter',system-ui,sans-serif; color:var(--ink);
+    background:var(--pine-850); background-image:radial-gradient(800px 520px at 75% -10%, rgba(52,172,126,.32), transparent 70%); -webkit-font-smoothing:antialiased; }
+  .card{ width:100%; max-width:400px; background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:38px 30px 30px; text-align:center; box-shadow:0 30px 80px -30px rgba(3,20,15,.6); }
+  .card img{ width:58px; height:58px; border-radius:16px; display:block; margin:0 auto 18px; }
+  h1{ margin:0; font-size:22px; letter-spacing:-.035em; }
+  p{ margin:8px 0 22px; color:var(--ink-2); font-size:14px; line-height:1.55; }
+  button{ width:100%; height:48px; border-radius:999px; border:1px solid var(--pine-850); background:var(--pine-850); color:var(--on-dark); font:600 15px 'Inter',sans-serif; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; }
+  button:hover{ background:var(--pine-800); }
+  button:disabled{ opacity:.6; cursor:default; }
+  .g{ width:18px; height:18px; background:#fff; border-radius:50%; padding:2px; }
+  .msg{ margin-top:14px; font-size:13px; min-height:18px; color:var(--ink-2); }
+  .msg.err{ color:var(--red); font-weight:600; }
+  .foot{ margin-top:18px; font-size:12px; color:var(--ink-2); }
+  .foot a{ color:inherit; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <img src="https://ventra.store/ventra-logo.png" alt="Ventra">
+    <h1>Ventra en la web</h1>
+    <p>Tu caja completa desde cualquier navegador. Entrá con la cuenta de Google de tu suscripción.</p>
+    <button id="login"><svg class="g" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>Entrar con Google</button>
+    <div class="msg" id="msg"></div>
+    <div class="foot">¿Todavía no tenés Ventra? <a href="https://ventra.store/#planes">Ver planes</a></div>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script>
+  (function(){
+    firebase.initializeApp({
+      apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
+      authDomain: "ventra-9cba5.firebaseapp.com",
+      projectId: "ventra-9cba5",
+      appId: "1:23136382753:web:5d2f4115a77a607435d860"
+    });
+    var btn = document.getElementById('login'), msg = document.getElementById('msg');
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    function say(text, err){ msg.textContent = text; msg.className = 'msg' + (err ? ' err' : ''); }
+    function enter(user){
+      btn.disabled = true; say('Preparando tu caja… la primera vez puede tardar un minuto.');
+      user.getIdToken(true).then(function(idToken){
+        return fetch('/_ventra/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ idToken: idToken }) });
+      }).then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.message || 'No se pudo entrar'); }); })
+        .then(function(){ location.replace('/'); })
+        .catch(function(e){ btn.disabled = false; say(e.message, true); firebase.auth().signOut(); });
+    }
+    btn.onclick = function(){
+      firebase.auth().signInWithPopup(provider).then(function(r){ enter(r.user); })
+        .catch(function(e){ if (e && e.code !== 'auth/popup-closed-by-user') say('No se pudo iniciar sesión con Google', true); });
+    };
+  })();
+  </script>
+</body>
+</html>
