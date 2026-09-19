@@ -38,8 +38,12 @@ const CFG = {
   devTenant: process.env.DEV_TENANT || '',
   portBase: Number(process.env.TENANT_PORT_BASE || 4100),
 };
-// El dueño entra una vez con Google en esa computadora; después cada cajero usa su usuario del POS
-const SESSION_DAYS = 90;
+// El dueño entra una vez con Google en esa computadora y la sesión no se cierra más:
+// dura el máximo que permiten los navegadores (400 días) y se renueva sola con el uso.
+// Cada cajero después entra con su usuario del POS. Para cerrar todas las sesiones
+// abiertas de todos los comercios, se cambia SESSION_SECRET.
+const SESSION_DAYS = 400;
+const RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 const COOKIE = 'ventra_web';
 
 if (!CFG.devTenant && (!CFG.hostSecret || CFG.sessionSecret.length < 32)) {
@@ -242,6 +246,10 @@ const server = http.createServer(async (req, res) => {
     if (url === '/_ventra/logout') { setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
 
     const session = readSession(req);
+    // Renovación automática: una vez por día de uso vuelve a durar 400 días
+    if (session && !CFG.devTenant && session.exp - Date.now() < SESSION_DAYS * 864e5 - RENEW_AFTER_MS) {
+      setCookie(res, signSession({ uid: session.uid, email: session.email, exp: Date.now() + SESSION_DAYS * 864e5 }), SESSION_DAYS * 86400);
+    }
     const isApi = url.startsWith('/api/') || url.startsWith('/socket.io/') || url.startsWith('/uploads/');
     if (!session) {
       if (isApi) return sendJson(res, 401, { message: 'Iniciá sesión con Google' });
