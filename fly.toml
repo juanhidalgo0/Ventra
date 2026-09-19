@@ -1,0 +1,30 @@
+# fly.toml app configuration file generated for go-portal-pos on 2026-09-10T11:44:50-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'go-portal-pos'
+primary_region = 'gru'
+
+[build]
+[env]
+  DISABLE_TUNNEL = 'true'
+  # La demo es pública y su base puede reiniciarse: nunca se controla la suscripción
+  VENTRA_SUBSCRIPTION_EXEMPT = 'true'
+
+[[mounts]]
+  source = 'data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512
