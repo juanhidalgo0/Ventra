@@ -8,7 +8,7 @@ import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import CategoryPickerModal from './CategoryPickerModal';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
 import GastosModal from './GastosModal';
@@ -1616,18 +1616,18 @@ export default function POSScreen() {
         )}
 
         {/* TOP: Quick Actions Bar */}
-        <div className="relative z-30 flex flex-nowrap items-center gap-2 shrink-0 w-full overflow-x-auto scrollbar-hide pb-1.5 md:pb-0">
+        <div className="pos-header font-sans relative z-30 flex flex-nowrap items-center gap-2 shrink-0 w-full overflow-x-auto scrollbar-hide pb-1.5 md:pb-0">
           {/* 1. Estado Caja */}
           <button
             data-tour="pos-caja"
             onClick={() => { if (currentSession) setShowCajaInfo(true); else setShowAbrirCaja(true); }}
-            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[13px] tracking-normal transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
+            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
               currentSession 
                 ? 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border-transparent' 
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
-            <Wallet className={`w-4 h-4 shrink-0 group-hover:scale-110 transition-transform ${currentSession ? 'text-white' : 'text-amber-600'}`} />
+            <Vault strokeWidth={2.25} className={`w-4 h-4 shrink-0 ${currentSession ? 'text-white' : 'text-amber-600'}`} />
             <span className="flex items-center gap-1.5">
               {currentSession ? 'Caja' : 'Abrir Caja'}
               {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-400/40" />}
@@ -1640,33 +1640,33 @@ export default function POSScreen() {
             onClick={() => setShowMobileMenu(true)} 
             className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-xs shrink-0"
           >
-            <Menu className="w-5 h-5" />
+            <Menu strokeWidth={2.25} className="w-5 h-5" />
           </button>
 
           {/* Cobro Cta. Cte. */}
-          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
-            <CreditCard className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+            <HandCoins strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
             <span>Cobro Cta. Cte.</span>
             <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F5</span>
           </button>
 
           {/* Historial */}
-          <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
-            <History className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <ReceiptText strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
             <span>Historial</span>
             <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F6</span>
           </button>
 
           {/* Gastos */}
-          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
-            <Receipt className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+            <TrendingDown strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
             <span>Gastos</span>
             <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F7</span>
           </button>
 
           {/* Proveedores */}
-          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-normal transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
-            <Truck className="w-4 h-4 text-white/90 shrink-0 group-hover:scale-110 transition-transform" />
+          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <Truck strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
             <span>Proveedores</span>
             <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
           </button>
@@ -1677,7 +1677,7 @@ export default function POSScreen() {
               data-tour="pos-presupuestos" onClick={() => setShowQuotesList(true)}
               className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
             >
-              <FileText className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
+              <ClipboardList strokeWidth={2.25} className="w-4 h-4" />
               <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
                 Presupuestos
               </span>
@@ -1690,7 +1690,7 @@ export default function POSScreen() {
               data-tour="pos-acopios" onClick={() => setShowAcopios(true)}
               className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
             >
-              <Package className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
+              <Boxes strokeWidth={2.25} className="w-4 h-4" />
               <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
                 Acopios
               </span>
@@ -1725,27 +1725,27 @@ export default function POSScreen() {
               className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8 hover:!bg-rose-50 hover:!text-rose-600 dark:hover:!bg-rose-950/40"
               title="Cerrar sesión"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut strokeWidth={2.25} className="w-4 h-4" />
             </button>
 
             <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
 
             {/* Reloj en tiempo real de la PC */}
             <div className="hidden lg:flex items-center gap-1.5 px-2 text-slate-700 dark:text-slate-200 select-none whitespace-nowrap" title="Hora local del sistema">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-mono text-[13px] font-bold tracking-tight">{currentTime}</span>
+              <Clock strokeWidth={2.25} className="w-4 h-4 text-slate-400" />
+              <span className="text-[13px] font-bold tabular-nums">{currentTime}</span>
             </div>
 
             <span className="hidden lg:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
 
             {/* Conectar celular (F8) */}
             <button data-tour="pos-celular" onClick={handleOpenCellularModal} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Conectar celular">
-              <Smartphone className="w-4 h-4" />
+              <Smartphone strokeWidth={2.25} className="w-4 h-4" />
             </button>
 
             {/* Pantalla completa (F11) */}
             <button data-tour="pos-fullscreen" onClick={() => toggleFullscreen()} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Pantalla completa [F11]">
-              <Maximize2 className="w-4 h-4" />
+              <Maximize2 strokeWidth={2.25} className="w-4 h-4" />
             </button>
 
             {/* Panel de administración (F12) */}
@@ -1761,7 +1761,7 @@ export default function POSScreen() {
               className="group relative flex items-center justify-center w-8 h-8 ml-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white transition-colors active:scale-95 cursor-pointer shrink-0"
               title="Panel de administración [F12]"
             >
-              <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
+              <Settings strokeWidth={2.25} className="w-4 h-4" />
             </button>
 
             {/* Marca Ventra */}
@@ -1790,7 +1790,7 @@ export default function POSScreen() {
                 className="group h-10 pl-3 pr-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/70 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-[13px] font-semibold flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer"
               >
                 <QuickSaleIcon className="w-[18px] h-[18px]" />
-                <span className="hidden sm:inline">Rápida</span>
+                <span className="hidden sm:inline">Venta rápida</span>
                 <kbd className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-rose-900/60 border border-rose-200 dark:border-rose-700 leading-none">F1</kbd>
               </button>
               {/* Calculadora (replaces old refresh button) */}
