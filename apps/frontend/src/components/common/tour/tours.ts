@@ -121,6 +121,8 @@ export const ROUTE_SHORTCUTS: Record<string, { group: string; keys: [string, str
         ['Enter', 'Agregar lo buscado · con el buscador vacío, cobrar'],
         ['+ / −', 'Cantidad del último producto'],
         ['F2', 'Pausar ticket'],
+        ['Shift + F2', 'Ver ventas en espera (↑ ↓ y Enter para reanudar)'],
+        ['Shift + Supr', 'Vaciar el ticket actual'],
         ['F3', 'Calculadora'],
         ['F4', 'Reimprimir último ticket'],
         ['Esc', 'Cerrar ventanas'],

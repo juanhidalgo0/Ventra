@@ -146,6 +146,7 @@ export default function POSScreen() {
   const [adminUsername, setAdminUsername] = useState('ADMIN');
   const [adminPassword, setAdminPassword] = useState('');
   const [showHeldCartsModal, setShowHeldCartsModal] = useState(false);
+  const [heldCartIndex, setHeldCartIndex] = useState(0);
   const [showHoldCartInputModal, setShowHoldCartInputModal] = useState(false);
   const [holdCartClientName, setHoldCartClientName] = useState('');
   const [comboVariantModalPromo, setComboVariantModalPromo] = useState<any | null>(null);
@@ -649,6 +650,45 @@ export default function POSScreen() {
     };
   }, []);
 
+  // Ventas en espera: flechas para moverse, Enter reanuda, Supr elimina, Esc cierra.
+  // Se escucha en captura para que Enter no dispare el cobro del POS.
+  useEffect(() => {
+    if (!showHeldCartsModal || heldCartToDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      const keys = ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Delete'];
+      if (!keys.includes(e.key)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const count = heldCarts.length;
+      if (e.key === 'Escape') { setShowHeldCartsModal(false); focusSearch(); return; }
+      if (count === 0) return;
+      if (e.key === 'ArrowDown') setHeldCartIndex((i) => (i + 1) % count);
+      else if (e.key === 'ArrowUp') setHeldCartIndex((i) => (i - 1 + count) % count);
+      else {
+        const target = heldCarts[Math.min(heldCartIndex, count - 1)];
+        if (!target) return;
+        if (e.key === 'Enter') {
+          resumeCart(target.id);
+          setShowHeldCartsModal(false);
+          focusSearch();
+        } else {
+          setHeldCartToDelete({ id: target.id, clientName: target.clientName });
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [showHeldCartsModal, heldCartToDelete, heldCarts, heldCartIndex, resumeCart]);
+
+  useEffect(() => {
+    if (heldCartIndex >= heldCarts.length && heldCarts.length > 0) setHeldCartIndex(heldCarts.length - 1);
+  }, [heldCarts.length, heldCartIndex]);
+
+  useEffect(() => {
+    if (!showHeldCartsModal) return;
+    document.querySelector(`[data-held-index="${heldCartIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [showHeldCartsModal, heldCartIndex]);
+
   // Keyboard shortcuts and global background barcode scanner
   useEffect(() => {
     // 1. Regular Keyboard Shortcuts
@@ -662,6 +702,21 @@ export default function POSScreen() {
         e.preventDefault();
         if (currentSession) setShowQuickSale(true);
         else toast.error('No hay caja abierta');
+      }
+      if (e.key === 'F2' && e.shiftKey) {
+        e.preventDefault();
+        setHeldCartIndex(0);
+        setShowHeldCartsModal(true);
+        return;
+      }
+      if (e.key === 'Delete' && e.shiftKey) {
+        e.preventDefault();
+        if (cart.length > 0) {
+          clearCart();
+          toast.success('Ticket vaciado');
+          focusSearch();
+        }
+        return;
       }
       if (e.key === 'F2') {
         e.preventDefault();
@@ -731,6 +786,7 @@ export default function POSScreen() {
       }
 
       if (e.key === 'Escape') { 
+        setQtyPromptProduct(null);
         setShowQuickSale(false);
         setShowPayment(false); 
         setShowGastos(false); 
@@ -2379,7 +2435,7 @@ export default function POSScreen() {
                 )}
                 
                 <button 
-                  data-tour="pos-espera" onClick={() => setShowHeldCartsModal(true)} 
+                  data-tour="pos-espera" onClick={() => { setHeldCartIndex(0); setShowHeldCartsModal(true); }} 
                   className="flex-1 bg-white hover:bg-slate-50 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs active:scale-95"
                   title="Ver los tickets guardados en espera"
                 >
@@ -3288,85 +3344,99 @@ export default function POSScreen() {
             </MotionDiv>
           </MotionDiv>
         )}
-        {qtyPromptProduct && (
-          <MotionDiv 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setQtyPromptProduct(null)}
+        {qtyPromptProduct && (() => {
+          const typedQty = parseFloat((promptQtyValue || '').replace(',', '.'));
+          const qty = promptQtyValue.trim() === '' ? 1 : typedQty;
+          const validQty = !isNaN(qty) && qty > 0;
+          const closeQtyPrompt = () => { setQtyPromptProduct(null); focusSearch(); };
+          const confirmQty = () => {
+            if (!validQty) return;
+            addToCart(qtyPromptProduct, undefined, qty);
+            playBeep();
+            setQtyPromptProduct(null);
+            setTimeout(() => searchRef.current?.focus(), 50);
+            checkPromoSuggestion(qtyPromptProduct);
+          };
+          const bump = (delta: number) => {
+            const base = promptQtyValue.trim() === '' || isNaN(typedQty) ? 1 : typedQty;
+            setPromptQtyValue(String(Math.max(1, Math.round((base + delta) * 1000) / 1000)));
+          };
+          const unitPrice = Number(qtyPromptProduct.salePrice) || 0;
+          return (
+          <div
+            className="fixed inset-0 z-[150] bg-slate-900/50 flex items-center justify-center p-4"
+            onClick={closeQtyPrompt}
           >
-            <MotionDiv 
-              initial={{ scale: 0.95, opacity: 0 }} 
-              animate={{ scale: 1, opacity: 1 }} 
-              exit={{ scale: 0.95, opacity: 0 }} 
-              onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4 font-sans text-slate-800"
+            <div
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label="Cantidad del producto"
+              className="keep-style bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 font-sans"
             >
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-rose-600" /> Cantidad del Producto
-                </h3>
-                <button onClick={() => setQtyPromptProduct(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
+              <div className="flex items-start justify-between gap-3 px-5 pt-5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Cantidad</p>
+                  <h3 className="mt-1 text-lg font-extrabold leading-snug text-slate-900 dark:text-white break-words">{qtyPromptProduct.name}</h3>
+                  {unitPrice > 0 && (
+                    <p className="mt-0.5 text-[13px] font-semibold text-slate-500 dark:text-slate-400">{formatPrice(unitPrice)} c/u</p>
+                  )}
+                </div>
+                <button onClick={closeQtyPrompt} className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0" aria-label="Cerrar">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-bold text-slate-700">{qtyPromptProduct.name}</p>
-                <p className="text-[10px] text-slate-600">Ingrese la cantidad de unidades que desea agregar al carrito.</p>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Cantidad</label>
-                <div className="relative flex items-center">
-                  <span className="absolute left-4 text-xl font-extrabold text-rose-500 select-none pointer-events-none">#</span>
-                  <input 
-                    type="number" 
-                    step="any"
-                    min="0.001"
+              <div className="px-5 pt-4">
+                <div className="flex items-stretch gap-2">
+                  <button type="button" onClick={() => bump(-1)} className="w-14 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform" aria-label="Restar uno">
+                    <Minus className="w-5 h-5" />
+                  </button>
+                  <input
+                    inputMode="decimal"
                     autoFocus
-                    value={promptQtyValue} 
-                    onChange={(e) => setPromptQtyValue(e.target.value)} 
+                    value={promptQtyValue}
+                    onChange={(e) => setPromptQtyValue(e.target.value.replace(/[^\d.,]/g, ''))}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const qty = parseFloat(promptQtyValue.replace(',', '.'));
-                        if (!isNaN(qty) && qty > 0) {
-                          addToCart(qtyPromptProduct, undefined, qty);
-                          playBeep();
-                          setQtyPromptProduct(null);
-                          setTimeout(() => searchRef.current?.focus(), 50);
-                          checkPromoSuggestion(qtyPromptProduct);
-                        }
-                      }
+                      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmQty(); }
+                      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQtyPrompt(); }
+                      else if (e.key === 'ArrowUp') { e.preventDefault(); bump(1); }
+                      else if (e.key === 'ArrowDown') { e.preventDefault(); bump(-1); }
                     }}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-10 pr-4 py-3.5 text-2xl font-extrabold text-slate-800 focus:bg-white focus:border-rose-500 focus:ring-4 focus:ring-rose-100 outline-none transition-all" 
                     placeholder="1"
+                    aria-label="Cantidad"
+                    className="flex-1 min-w-0 h-16 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-center text-3xl font-black tabular-nums text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-colors"
                   />
+                  <button type="button" onClick={() => bump(1)} className="w-14 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform" aria-label="Sumar uno">
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[13px]">
+                  <span className="text-slate-500 dark:text-slate-400">Subtotal</span>
+                  <span className="font-extrabold tabular-nums text-slate-900 dark:text-white">
+                    {validQty && unitPrice > 0 ? formatPrice(unitPrice * qty) : '—'}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <button 
-                  onClick={() => {
-                    const qty = parseFloat(promptQtyValue.replace(',', '.'));
-                    if (!isNaN(qty) && qty > 0) {
-                      addToCart(qtyPromptProduct, undefined, qty);
-                      playBeep();
-                      setQtyPromptProduct(null);
-                      setTimeout(() => searchRef.current?.focus(), 50);
-                      checkPromoSuggestion(qtyPromptProduct);
-                    }
-                  }}
-                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              <div className="px-5 pt-4 pb-5 grid grid-cols-[1fr_auto] gap-2">
+                <button
+                  onClick={confirmQty}
+                  disabled={!validQty}
+                  className="h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 text-white text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-colors"
                 >
-                  <Check className="w-4.5 h-4.5" /> Agregar al Carrito
+                  Agregar al carrito
+                  <kbd className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 leading-none">Enter</kbd>
                 </button>
-                <button onClick={() => setQtyPromptProduct(null)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer text-center">
+                <button onClick={closeQtyPrompt} className="h-12 px-4 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-semibold flex items-center gap-2">
                   Cancelar
+                  <kbd className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 leading-none">Esc</kbd>
                 </button>
               </div>
-            </MotionDiv>
-          </MotionDiv>
-        )}
+            </div>
+          </div>
+          );
+        })()}
 
         {showHeldCartsModal && (
           <div className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -3389,13 +3459,22 @@ export default function POSScreen() {
                     <p className="text-sm font-bold uppercase tracking-wider">No hay ventas en espera</p>
                   </div>
                 ) : (
-                  heldCarts.map((hc) => {
+                  heldCarts.map((hc, hcIndex) => {
                     const itemCount = hc.cart.reduce((s, i) => s + i.quantity, 0);
                     const totalAmount = hc.cart.reduce((s, i) => s + i.price * i.quantity, 0);
                     const formattedDate = new Date(hc.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                     return (
-                      <div key={hc.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center justify-between gap-4">
+                      <div
+                        key={hc.id}
+                        data-held-index={hcIndex}
+                        onMouseEnter={() => setHeldCartIndex(hcIndex)}
+                        className={`p-4 rounded-xl border-2 flex items-center justify-between gap-4 transition-colors ${
+                          hcIndex === heldCartIndex
+                            ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-400 dark:border-amber-600'
+                            : 'bg-slate-50 dark:bg-slate-800/50 border-transparent'
+                        }`}
+                      >
                         <div className="flex-1 min-w-0">
                           <p className="font-extrabold text-sm text-slate-800 dark:text-slate-200 truncate">{hc.clientName}</p>
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
@@ -3430,7 +3509,13 @@ export default function POSScreen() {
                 )}
               </div>
 
-              <div className="pt-2 text-right">
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span><kbd className="font-mono font-bold px-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">↑ ↓</kbd> elegir</span>
+                  <span><kbd className="font-mono font-bold px-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">Enter</kbd> reanudar</span>
+                  <span><kbd className="font-mono font-bold px-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">Supr</kbd> eliminar</span>
+                  <span><kbd className="font-mono font-bold px-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">Esc</kbd> cerrar</span>
+                </p>
                 <button onClick={() => { setShowHeldCartsModal(false); focusSearch(); }} className="px-5 py-2.5 rounded-xl border border-slate-400 dark:border-slate-750 text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs uppercase tracking-wider cursor-pointer">
                   Cerrar
                 </button>
