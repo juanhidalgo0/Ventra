@@ -22,3 +22,7 @@ github-recovery-codes.txt
 apps/backend/backups/
 *.secret
 .backups/
+
+# Estado local de suscripción y sincronización (contiene el secreto de la PC)
+ventra-subscription.json
+ventra-sync.json
