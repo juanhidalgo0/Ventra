@@ -19,10 +19,13 @@ export class LicenseGuard implements CanActivate {
     if (ALLOWED_WHEN_READ_ONLY.some((p) => path.startsWith(p))) return true;
 
     if (this.subscription.isReadOnly()) {
+      const needsLink = this.subscription.getStatus().state === 'NEEDS_LINK';
       throw new HttpException({
         statusCode: HttpStatus.FORBIDDEN,
         code: 'SUBSCRIPTION_READ_ONLY',
-        message: 'Tu suscripción de Ventra venció y terminaron los días de gracia: la app está en modo solo lectura. Renová en ventra.store para seguir vendiendo.',
+        message: needsLink
+          ? 'Esta PC todavía no está vinculada a tu cuenta de Ventra. Entrá a Configuración → Suscripción y nube y tocá "Vincular esta PC" para empezar a vender.'
+          : 'Tu suscripción de Ventra venció y terminaron los días de gracia: la app está en modo solo lectura. Renová en ventra.store para seguir vendiendo.',
       }, HttpStatus.FORBIDDEN);
     }
     return true;

@@ -4,7 +4,7 @@ import { BadgeCheck, Clock, ExternalLink, Link2, Loader2, Lock, RefreshCw } from
 import api from '../../services/api';
 
 export interface SubscriptionStatus {
-  state: 'EXEMPT' | 'UNLINKED' | 'ACTIVE' | 'GRACE' | 'READ_ONLY';
+  state: 'EXEMPT' | 'UNLINKED' | 'NEEDS_LINK' | 'ACTIVE' | 'GRACE' | 'READ_ONLY';
   enforced: boolean;
   email?: string | null;
   planName?: string | null;
@@ -102,6 +102,7 @@ export default function SubscriptionPanel() {
     GRACE: { text: 'En período de gracia', cls: 'bg-amber-50 text-amber-800 border-amber-200', Icon: Clock },
     READ_ONLY: { text: 'Vencida · solo lectura', cls: 'bg-red-50 text-red-700 border-red-200', Icon: Lock },
     UNLINKED: { text: 'PC sin vincular', cls: 'bg-slate-100 text-slate-700 border-slate-200', Icon: Link2 },
+    NEEDS_LINK: { text: 'Vinculá esta PC para vender', cls: 'bg-red-50 text-red-700 border-red-200', Icon: Lock },
     EXEMPT: { text: 'Sin control de suscripción', cls: 'bg-slate-100 text-slate-700 border-slate-200', Icon: Link2 },
   }[status.state];
 
@@ -112,7 +113,9 @@ export default function SubscriptionPanel() {
           <div>
             <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">Suscripción de Ventra</h3>
             <p className="text-[13px] text-slate-500 mt-0.5">
-              {status.enforced ? (status.email || 'Cuenta vinculada') : 'Vinculá esta PC con la cuenta con la que pagaste en ventra.store.'}
+              {status.state === 'NEEDS_LINK'
+                ? 'Esta PC está en modo solo lectura: vinculala con la cuenta con la que contrataste tu plan para poder vender.'
+                : status.enforced ? (status.email || 'Cuenta vinculada') : 'Vinculá esta PC con la cuenta con la que pagaste en ventra.store.'}
             </p>
           </div>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-semibold whitespace-nowrap ${badge.cls}`}>
@@ -120,7 +123,7 @@ export default function SubscriptionPanel() {
           </span>
         </div>
 
-        {status.enforced && (
+        {status.enforced && status.state !== 'NEEDS_LINK' && (
           <dl className="grid grid-cols-2 gap-3 text-[13px]">
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-3">
               <dt className="text-slate-500">Plan</dt>

@@ -54,6 +54,10 @@ export interface SyncStatus {
   phase: SyncPhase;
   pending: number;
   pendingImages: number;
+  /** Fotos que faltan subir a la nube / bajar de la nube */
+  imagesUp: number;
+  imagesDown: number;
+  imagesTotal: number;
   lastSyncAt: string | null;
   lastError: string | null;
   progress: { label: string; done: number; total: number } | null;
@@ -739,20 +743,29 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   async getStatus(): Promise<SyncStatus> {
     const enabled = !!this.subscription.getDeviceCredentials();
     let pending = 0;
-    let pendingImages = 0;
+    let imagesUp = 0;
+    let imagesDown = 0;
+    let imagesTotal = 0;
     if (enabled) {
       try {
         const a: any[] = await this.prisma.$queryRawUnsafe(`SELECT (SELECT COUNT(*) FROM sync_outbox) + (SELECT COUNT(*) FROM sync_deltas) AS n`);
-        const b: any[] = await this.prisma.$queryRawUnsafe(`SELECT (SELECT COUNT(*) FROM sync_images WHERE uploaded = 0) + (SELECT COUNT(*) FROM sync_img_fetch) AS n`);
+        const b: any[] = await this.prisma.$queryRawUnsafe(
+          `SELECT (SELECT COUNT(*) FROM sync_images WHERE uploaded = 0) AS up, (SELECT COUNT(*) FROM sync_img_fetch) AS down,
+                  (SELECT COUNT(*) FROM products WHERE image_url IS NOT NULL AND image_url <> '') AS total`);
         pending = Number(a[0].n);
-        pendingImages = Number(b[0].n);
+        imagesUp = Number(b[0].up);
+        imagesDown = Number(b[0].down);
+        imagesTotal = Number(b[0].total);
       } catch {}
     }
     return {
       enabled,
       phase: enabled ? this.phase : 'disabled',
       pending,
-      pendingImages,
+      pendingImages: imagesUp + imagesDown,
+      imagesUp,
+      imagesDown,
+      imagesTotal,
       lastSyncAt: this.lastSyncAt || this.readFile().lastSyncAt || null,
       lastError: this.lastError,
       progress: this.progress,

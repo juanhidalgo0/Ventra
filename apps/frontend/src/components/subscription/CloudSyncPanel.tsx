@@ -8,6 +8,9 @@ interface SyncStatus {
   phase: 'disabled' | 'idle' | 'syncing' | 'full' | 'restoring' | 'offline' | 'error' | 'waiting';
   pending: number;
   pendingImages: number;
+  imagesUp: number;
+  imagesDown: number;
+  imagesTotal: number;
   lastSyncAt: string | null;
   lastError: string | null;
   progress: { label: string; done: number; total: number } | null;
@@ -113,6 +116,19 @@ export default function CloudSyncPanel() {
         </div>
       )}
 
+      {status.imagesDown > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <div className="flex justify-between text-[12.5px] font-semibold text-sky-800 mb-1.5">
+            <span className="inline-flex items-center gap-1.5"><CloudDownload className="w-3.5 h-3.5" /> Descargando fotos de productos</span>
+            <span className="tabular-nums">faltan {status.imagesDown.toLocaleString('es-AR')}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-sky-100 overflow-hidden">
+            <div className="h-full bg-sky-500 transition-all" style={{ width: `${Math.max(3, Math.round((1 - status.imagesDown / Math.max(status.imagesTotal, status.imagesDown)) * 100))}%` }} />
+          </div>
+          <p className="text-[11.5px] text-sky-800/80 mt-1.5">Las fotos bajan de a poco mientras Ventra está abierto; el resto de la app funciona normal.</p>
+        </div>
+      )}
+
       <dl className="grid grid-cols-3 gap-3 text-[13px]">
         <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-3">
           <dt className="text-slate-500">Última subida</dt>
@@ -123,8 +139,8 @@ export default function CloudSyncPanel() {
           <dd className="font-bold text-slate-900 dark:text-white mt-0.5 tabular-nums">{status.pending.toLocaleString('es-AR')}</dd>
         </div>
         <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-3">
-          <dt className="text-slate-500">Fotos por subir</dt>
-          <dd className="font-bold text-slate-900 dark:text-white mt-0.5 tabular-nums">{status.pendingImages.toLocaleString('es-AR')}</dd>
+          <dt className="text-slate-500">{status.imagesDown > status.imagesUp ? 'Fotos por bajar' : 'Fotos por subir'}</dt>
+          <dd className="font-bold text-slate-900 dark:text-white mt-0.5 tabular-nums">{(status.imagesDown > status.imagesUp ? status.imagesDown : status.imagesUp).toLocaleString('es-AR')}</dd>
         </div>
       </dl>
 
