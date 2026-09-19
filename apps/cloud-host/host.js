@@ -82,6 +82,11 @@ const tenants = new Map(); // uid -> { proc, port, lastUsed, ready: Promise<numb
 const usedPorts = new Set();
 const tenantDir = (uid) => path.join(CFG.dataDir, uid);
 const credsFile = (uid) => path.join(tenantDir(uid), 'ventra-subscription.json');
+// La caja terminó de bajar los datos del comercio (lo escribe su sincronización)
+const isBootstrapped = (uid) => fs.existsSync(path.join(tenantDir(uid), 'ventra-sync.json'));
+function tenantStatus(uid) {
+  try { return JSON.parse(fs.readFileSync(path.join(tenantDir(uid), 'ventra-sync-status.json'), 'utf8')); } catch { return null; }
+}
 
 function freePort() {
   for (let p = CFG.portBase; p < CFG.portBase + 2000; p++) if (!usedPorts.has(p)) { usedPorts.add(p); return p; }
@@ -231,6 +236,15 @@ function readBody(req, limit = 64 * 1024) {
 
 // ── Servidor ───────────────────────────────────────────
 const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
+const PREPARING_HTML = fs.readFileSync(path.join(__dirname, 'preparing.html'), 'utf8');
+
+/** Archivo público de la app (JS, CSS, íconos, manifest): se sirve sin sesión. */
+function isPublicAsset(url) {
+  const p = decodeURIComponent(url.split('?')[0]);
+  if (p === '/' || p.endsWith('.html')) return false;
+  const file = path.normalize(path.join(CFG.frontendDir, p));
+  return file.startsWith(path.normalize(CFG.frontendDir)) && fs.existsSync(file) && fs.statSync(file).isFile();
+}
 
 const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
@@ -245,6 +259,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (url === '/_ventra/logout') { setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
 
+    if (!url.startsWith('/api/') && isPublicAsset(url)) return serveStatic(req, res);
+
     const session = readSession(req);
     // Renovación automática: una vez por día de uso vuelve a durar 400 días
     if (session && !CFG.devTenant && session.exp - Date.now() < SESSION_DAYS * 864e5 - RENEW_AFTER_MS) {
@@ -254,6 +270,19 @@ const server = http.createServer(async (req, res) => {
     if (!session) {
       if (isApi) return sendJson(res, 401, { message: 'Iniciá sesión con Google' });
       res.writeHead(302, { Location: '/_ventra/login' }); return res.end();
+    }
+    // Estado de la caja mientras se prepara (lo consulta la pantalla "Preparando tu caja")
+    if (url === '/_ventra/status') {
+      ensureTenant(session.uid).catch(() => {});
+      return sendJson(res, 200, { ready: isBootstrapped(session.uid), status: tenantStatus(session.uid) });
+    }
+    if (!isBootstrapped(session.uid)) {
+      // Hasta que la caja no tenga los datos del comercio, no se muestra la app
+      // (evita, por ejemplo, la pantalla de "crear administrador" de una base vacía)
+      ensureTenant(session.uid).catch(() => {});
+      if (isApi) return sendJson(res, 503, { message: 'Preparando tu caja en la nube…' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(PREPARING_HTML);
     }
     if (isApi) {
       const port = await ensureTenant(session.uid);
@@ -270,7 +299,7 @@ const server = http.createServer(async (req, res) => {
 server.on('upgrade', async (req, socket, head) => {
   try {
     const session = readSession(req);
-    if (!session || !req.url.startsWith('/socket.io/')) return socket.destroy();
+    if (!session || !req.url.startsWith('/socket.io/') || !isBootstrapped(session.uid)) return socket.destroy();
     proxyUpgrade(req, socket, head, await ensureTenant(session.uid));
   } catch { socket.destroy(); }
 });

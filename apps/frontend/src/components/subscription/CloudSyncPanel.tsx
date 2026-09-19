@@ -5,7 +5,7 @@ import api from '../../services/api';
 
 interface SyncStatus {
   enabled: boolean;
-  phase: 'disabled' | 'idle' | 'syncing' | 'full' | 'restoring' | 'offline' | 'error';
+  phase: 'disabled' | 'idle' | 'syncing' | 'full' | 'restoring' | 'offline' | 'error' | 'waiting';
   pending: number;
   pendingImages: number;
   lastSyncAt: string | null;
@@ -73,7 +73,9 @@ export default function CloudSyncPanel() {
 
   const working = status.phase === 'syncing' || status.phase === 'full' || status.phase === 'restoring';
   const upToDate = status.pending === 0 && status.pendingImages === 0 && !working && status.phase !== 'error';
-  const head = status.phase === 'offline'
+  const head = status.phase === 'waiting'
+    ? { Icon: AlertTriangle, text: 'Esperando', cls: 'text-amber-800 bg-amber-50 border-amber-200' }
+    : status.phase === 'offline'
     ? { Icon: CloudOff, text: 'Sin conexión', cls: 'text-slate-600 bg-slate-100 border-slate-200' }
     : status.phase === 'error'
       ? { Icon: AlertTriangle, text: 'Con error', cls: 'text-red-700 bg-red-50 border-red-200' }
@@ -126,7 +128,7 @@ export default function CloudSyncPanel() {
         </div>
       </dl>
 
-      {status.phase === 'error' && status.lastError && (
+      {(status.phase === 'error' || status.phase === 'waiting') && status.lastError && (
         <p className="text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{status.lastError}</p>
       )}
 

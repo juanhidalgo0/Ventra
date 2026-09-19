@@ -45,7 +45,7 @@ const NOT_APPLYING = `(SELECT value FROM sync_state WHERE key = 'applying') IS N
 // Ojo: Prisma lee las columnas INTEGER de SQLite como enteros de 32 bits. Las horas
 // en milisegundos no entran: siempre se leen con CAST(... AS REAL) (exacto hasta 2^53).
 
-type SyncPhase = 'disabled' | 'idle' | 'syncing' | 'full' | 'restoring' | 'offline' | 'error';
+type SyncPhase = 'disabled' | 'idle' | 'syncing' | 'full' | 'restoring' | 'offline' | 'error' | 'waiting';
 interface CloudRow { t: string; id: string; d?: any; x?: boolean; ts?: number }
 type Tx = Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>;
 
@@ -119,6 +119,15 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
   private readFile(): { deviceId?: string; watermark?: string; lastSyncAt?: string } {
     try { return JSON.parse(fs.readFileSync(this.stateFile, 'utf8')); } catch { return {}; }
+  }
+
+  /** Estado legible por el anfitrión de la nube mientras esta caja se prepara. */
+  private writeStatusFile() {
+    try {
+      fs.writeFileSync(path.join(process.cwd(), 'ventra-sync-status.json'), JSON.stringify({
+        phase: this.phase, message: this.lastError, progress: this.progress, at: new Date().toISOString(),
+      }));
+    } catch {}
   }
 
   /** Marca de agua en la base y en un archivo aparte: si no coinciden, la base cambió por fuera. */
@@ -329,6 +338,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.pullChanges(false);
         await this.bumpWatermark(creds.deviceId);
       }
+      if (this.phase === 'waiting') return;
       await this.uploadImages();
       await this.downloadImages();
 
@@ -342,6 +352,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.progress = null;
       this.running = false;
+      this.writeStatusFile();
     }
   }
 
@@ -352,6 +363,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    */
   private async bootstrap(tables: string[], deviceId: string, wasBootstrapped: boolean) {
     this.phase = 'full';
+    this.writeStatusFile();
     const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc' });
     this.nodeIndex = reg.nodeIndex;
     await this.setState('node_index', String(reg.nodeIndex));
@@ -369,10 +381,16 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       await this.pushAll(tables, 1, 'Actualizando tu copia en la nube');
       if ((await this.call('claimLedger')).claimed) await this.pushBaselines(tables);
       await this.pullChanges(false);
+    } else if (!reg.ledger && !hasData) {
+      // Caja nueva en un comercio cuya PC original todavía no cargó el saldo inicial de
+      // stock y saldos: se espera, si no esta caja vería los contadores en 0
+      this.phase = 'waiting';
+      this.lastError = 'Esperando que la PC del local se actualice a la última versión de Ventra y suba su stock';
+      return;
     } else {
       // Caja nueva o base restaurada: lo que solo tiene esta caja completa la nube; después manda la nube
       if (hasData && wasBootstrapped) await this.pushAll(tables, 0, 'Completando datos en la nube');
-      await this.pullChanges(true, !hasData);
+      await this.pullChanges(true, !hasData, reg.cloudRows);
     }
     await this.setState('bootstrap', 'done');
     await this.bumpWatermark(deviceId);
@@ -436,24 +454,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    *    recalculan como la suma de todas sus diferencias.
    *  - wipe: antes vacía las tablas locales (caja nueva / recuperar).
    */
-  private async pullChanges(full: boolean, wipe = false) {
+  private async pullChanges(full: boolean, wipe = false, expected = 0) {
     let after = full ? '0' : (await this.getState('pull_after')) || '0';
     const tables = await this.syncedTables();
     const counterSums = new Map<string, number>();
     let head = after;
     let applied = 0;
-    if (full) this.progress = { label: wipe ? 'Descargando tus datos' : 'Alineando con la nube', done: 0, total: 0 };
-
-    if (wipe) {
-      await this.prisma.$transaction(async (tx) => {
-        await this.setState('applying', '1', tx);
-        for (const t of await this.deleteOrder(tables)) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_images`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_img_fetch`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_stash`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
-      });
-    }
+    if (full) this.progress = { label: wipe ? 'Descargando tus datos' : 'Alineando con la nube', done: 0, total: expected };
 
     const applyPage = async (tx: Tx, rows: CloudRow[]) => {
       for (const r of rows) {
@@ -470,68 +477,57 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (full) {
-      // Se baja todo primero y se aplica junto: el orden de llegada da igual
-      // (las claves foráneas se controlan al final de la transacción)
-      const all: CloudRow[] = [];
-      for (;;) {
-        const page = await this.call('pull', { after, all: true });
-        head = page.head;
-        all.push(...(page.rows as CloudRow[]));
-        if (this.progress) this.progress.done = all.length;
-        after = page.last;
-        if (!page.more) break;
-      }
-      if (this.progress) this.progress = { label: 'Guardando en esta caja', done: 0, total: all.length };
+      // Todo en una transacción, bajando y aplicando de a tandas (sin juntar todo en
+      // memoria). Las claves foráneas se controlan al final, así el orden de llegada da igual.
+      const order = wipe ? await this.deleteOrder(tables) : [];
       await this.prisma.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
         await this.setState('applying', '1', tx);
-        for (let i = 0; i < all.length; i += 500) {
-          await applyPage(tx, all.slice(i, i + 500));
-          if (this.progress) this.progress.done = Math.min(all.length, i + 500);
+        if (wipe) {
+          for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
+          for (const t of ['sync_images', 'sync_img_fetch', 'sync_stash']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
         }
-        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
-      }, { timeout: 15 * 60 * 1000, maxWait: 30000 });
-      applied = all.length;
-    } else {
-      for (;;) {
-        const page = await this.call('pull', { after, all: false });
-        head = page.head;
-        if (page.rows.length) {
-          this.phase = 'syncing';
-          await this.prisma.$transaction(async (tx) => {
-            await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
-            await this.setState('applying', '1', tx);
-            await applyPage(tx, page.rows as CloudRow[]);
-            await this.setState('pull_after', String(page.last), tx);
-            await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
-          }, { timeout: 5 * 60 * 1000, maxWait: 30000 });
+        for (;;) {
+          const page = await this.call('pull', { after, all: true });
+          head = page.head;
+          await applyPage(tx, page.rows as CloudRow[]);
           applied += page.rows.length;
-        } else if (String(page.last) !== String(after)) {
-          // Sin cambios de otras cajas, pero el marcador avanzó sobre lo propio
-          await this.setState('pull_after', String(page.last));
+          if (this.progress) { this.progress.done = applied; this.writeStatusFile(); }
+          after = page.last;
+          if (!page.more) break;
         }
-        after = page.last;
-        if (!page.more) break;
-      }
-    }
-
-    if (full) {
-      // Contadores = suma de todas sus diferencias (incluye el saldo inicial)
-      await this.prisma.$transaction(async (tx) => {
-        await this.setState('applying', '1', tx);
-        for (const t of tables) {
-          for (const c of await this.counterCols(t)) {
-            await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = 0`);
-          }
-        }
+        // Contadores = suma de todas sus diferencias (incluye el saldo inicial)
+        for (const t of tables) for (const c of await this.counterCols(t)) await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = 0`);
         for (const [key, sum] of counterSums) {
           const [t, id, c] = key.split('|');
           if (!tables.includes(t) || !(await this.counterCols(t)).includes(c)) continue;
           await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = ? WHERE id = ?`, sum, id);
         }
+        await this.setState('pull_after', String(head), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
-      }, { timeout: 5 * 60 * 1000, maxWait: 30000 });
-      await this.setState('pull_after', String(head));
+      }, { timeout: 30 * 60 * 1000, maxWait: 30000 });
+      return;
+    }
+
+    for (;;) {
+      const page = await this.call('pull', { after, all: false });
+      head = page.head;
+      if (page.rows.length) {
+        this.phase = 'syncing';
+        await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+          await this.setState('applying', '1', tx);
+          await applyPage(tx, page.rows as CloudRow[]);
+          await this.setState('pull_after', String(page.last), tx);
+          await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+        }, { timeout: 5 * 60 * 1000, maxWait: 30000 });
+        applied += page.rows.length;
+      } else if (String(page.last) !== String(after)) {
+        // Sin cambios de otras cajas, pero el marcador avanzó sobre lo propio
+        await this.setState('pull_after', String(page.last));
+      }
+      after = page.last;
+      if (!page.more) break;
     }
   }
 

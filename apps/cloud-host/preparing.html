@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#08362A">
+<title>Preparando tu caja — Ventra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<style>
+  :root{ --pine-850:#08362A; --pine:#167160; --mint:#34AC7E; --paper:#FBF9F5; --line:#E4DDD1; --sand:#EFE9DF; --ink:#0F1F1A; --ink-2:#56655F; --ink-3:#8A958F; --amber:#A15C07; --amber-bg:#FDF3E1; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; font-family:'Inter',system-ui,sans-serif; color:var(--ink);
+    background:var(--pine-850); background-image:radial-gradient(800px 520px at 75% -10%, rgba(52,172,126,.32), transparent 70%); -webkit-font-smoothing:antialiased; }
+  .card{ width:100%; max-width:420px; background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:36px 30px 28px; text-align:center; box-shadow:0 30px 80px -30px rgba(3,20,15,.6); }
+  .card img{ width:56px; height:56px; border-radius:16px; display:block; margin:0 auto 18px; }
+  h1{ margin:0; font-size:21px; letter-spacing:-.035em; }
+  p{ margin:8px 0 0; color:var(--ink-2); font-size:14px; line-height:1.55; }
+  .bar{ margin:22px 0 8px; height:8px; border-radius:4px; background:var(--sand); overflow:hidden; }
+  .fill{ height:100%; width:8%; background:var(--pine); border-radius:4px; transition:width .6s ease; }
+  .fill.indet{ width:35%; animation:slide 1.4s ease-in-out infinite; }
+  @keyframes slide{ 0%{ transform:translateX(-100%);} 100%{ transform:translateX(300%);} }
+  .meta{ font-size:12.5px; color:var(--ink-3); min-height:18px; font-variant-numeric:tabular-nums; }
+  .wait{ margin-top:16px; padding:12px 14px; border-radius:14px; background:var(--amber-bg); color:var(--amber); font-size:13px; font-weight:500; text-align:left; }
+  .hidden{ display:none; }
+  a{ color:var(--ink-3); font-size:12px; display:inline-block; margin-top:16px; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <img src="https://ventra.store/ventra-logo.png" alt="Ventra">
+    <h1>Preparando tu caja en la nube</h1>
+    <p id="text">Estamos bajando los datos de tu negocio. Solo pasa la primera vez: no cierres esta página.</p>
+    <div class="bar"><div class="fill indet" id="fill"></div></div>
+    <div class="meta" id="meta">Conectando…</div>
+    <div class="wait hidden" id="wait"></div>
+    <a href="/_ventra/logout">Usar otra cuenta</a>
+  </main>
+  <script>
+  (function(){
+    var fill = document.getElementById('fill'), meta = document.getElementById('meta'), wait = document.getElementById('wait');
+    function tick(){
+      fetch('/_ventra/status', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.ready) { meta.textContent = '¡Lista!'; fill.className = 'fill'; fill.style.width = '100%'; setTimeout(function(){ location.replace('/'); }, 600); return; }
+        var s = d.status || {}, p = s.progress;
+        if (s.phase === 'waiting') {
+          wait.textContent = s.message || 'Esperando que la PC del local se actualice.';
+          wait.classList.remove('hidden');
+          meta.textContent = 'En espera';
+        } else {
+          wait.classList.add('hidden');
+          if (p && p.total > 0) {
+            fill.className = 'fill'; fill.style.width = Math.max(4, Math.min(99, p.done / p.total * 100)) + '%';
+            meta.textContent = (p.label || 'Descargando') + ' · ' + p.done.toLocaleString('es-AR') + ' de ' + p.total.toLocaleString('es-AR');
+          } else {
+            fill.className = 'fill indet';
+            meta.textContent = p && p.label ? p.label : 'Iniciando tu caja…';
+          }
+        }
+        setTimeout(tick, 2000);
+      }).catch(function(){ meta.textContent = 'Reconectando…'; setTimeout(tick, 4000); });
+    }
+    tick();
+  })();
+  </script>
+</body>
+</html>

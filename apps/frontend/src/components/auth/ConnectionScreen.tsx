@@ -63,7 +63,8 @@ export default function ConnectionScreen() {
       const host = window.location.hostname;
       if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('tauri') && !host.endsWith('.localhost')) {
         try {
-          const testApi = axios.create({ baseURL: `${window.location.origin}/api`, timeout: 1500 });
+          // En la web (Ventra en la nube) la caja puede tardar unos segundos en despertar
+          const testApi = axios.create({ baseURL: `${window.location.origin}/api`, timeout: 10000 });
           await testApi.get('/system/info');
           if (!isMounted.current || myOpId !== operationId.current) return;
           const hostWithPort = window.location.port ? `${host}:${window.location.port}` : host;
@@ -74,6 +75,8 @@ export default function ConnectionScreen() {
           navigate('/login');
           return;
         } catch {
+          // Una página https no puede llamar a http:// (el navegador lo bloquea)
+          if (window.location.protocol === 'https:') return;
           try {
             const testApi = axios.create({ baseURL: `http://${host}:${SCAN_PORT}/api`, timeout: 1500 });
             await testApi.get('/system/info');
