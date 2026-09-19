@@ -45,6 +45,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Suscripción vencida (pasada la gracia): el servidor rechaza cualquier registro
+    if (error.response?.status === 403 && error.response?.data?.code === 'SUBSCRIPTION_READ_ONLY') {
+      import('react-hot-toast').then(({ default: toast }) =>
+        toast.error(error.response.data.message, { id: 'subscription-read-only', duration: 8000 }));
+      return Promise.reject(error);
+    }
     const originalRequest = error.config;
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;

@@ -32,8 +32,10 @@ import {
    AlertCircle,
    Link2,
    ChevronRight,
-   Circle
+   Circle,
+  BadgeCheck,
 } from 'lucide-react';
+import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
 
@@ -140,7 +142,8 @@ export default function SettingsScreen() {
     setTimeout(() => clearInterval(pollInterval), 300000);
   };
 
-  const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'integraciones' | 'mantenimiento'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'suscripcion' | 'integraciones' | 'mantenimiento'>(() =>
+    /[?&]tab=suscripcion/.test(window.location.hash) ? 'suscripcion' : 'general');
 
   // Posnet Config States
   const [posnets, setPosnets] = useState<{ id: string; name: string }[]>(() => {
@@ -702,6 +705,7 @@ export default function SettingsScreen() {
     { id: 'recargos', label: 'Recargos', description: 'Recargos por medio de pago y categoría', icon: Calculator },
     { id: 'personal', label: 'Personal y cajeros', description: 'Usuarios, roles y contraseñas del equipo', icon: Users, adminOnly: true },
     { id: 'backups', label: 'Backup y seguridad', description: 'Copias de seguridad automáticas y restauración', icon: Database, adminOnly: true },
+    { id: 'suscripcion', label: 'Suscripción', description: 'Plan de Ventra y vinculación de esta PC', icon: BadgeCheck, adminOnly: true },
     { id: 'integraciones', label: 'Integraciones', description: 'Cuentas y servicios conectados', icon: Link2, adminOnly: true },
     { id: 'mantenimiento', label: 'Mantenimiento', description: 'Reinicios y limpieza de datos', icon: ShieldAlert, danger: true },
   ];
@@ -1461,6 +1465,10 @@ export default function SettingsScreen() {
                   </div>
                 </div>
               </motion.div>
+            )}
+
+            {activeTab === 'suscripcion' && isAdmin && (
+              <SubscriptionPanel />
             )}
 
             {activeTab === 'integraciones' && (

@@ -12,6 +12,7 @@ import { wsService } from '../../services/websocket';
 import { getClientId } from '../../utils/clientId';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
+import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useSetupProgress } from '../../utils/setupProgress';
@@ -392,6 +393,7 @@ export default function MainLayout({ children }: Props) {
 
         {/* Content Area */}
         <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-950 relative flex flex-col ${isPOS ? 'p-0 md:p-4' : 'p-4'}`}>
+          <SubscriptionBanner />
           {showUpdate && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mx-2 mb-3 p-3 bg-rose-600 rounded-xl flex items-center justify-between z-50">
               <div className="flex items-center gap-3 text-white">
