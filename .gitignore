@@ -26,3 +26,6 @@ apps/backend/backups/
 # Estado local de suscripción y sincronización (contiene el secreto de la PC)
 ventra-subscription.json
 ventra-sync.json
+
+# Copias movidas fuera del build (no van al repo)
+/backups-recuperados
