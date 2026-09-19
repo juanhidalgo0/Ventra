@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { resolveServerUrl } from '../services/api';
 
 export interface CartItem { 
   productId: string;
@@ -251,7 +252,14 @@ export const usePOSStore = create<POSState>()(
       },
 
       setPromotions: (promos) => set({ promotions: promos }),
-      setProducts: (products) => set({ products }),
+      // Las fotos del catálogo vienen como ruta del servidor ("/api/product-images/..."):
+      // acá se convierten a la dirección completa, para que se vean tanto en la app de
+      // escritorio (que sirve la pantalla desde otro origen) como en la web.
+      setProducts: (products) => set({
+        products: (products || []).map((p: any) => (p && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('/api/')
+          ? { ...p, imageUrl: resolveServerUrl(p.imageUrl) }
+          : p)),
+      }),
       setCategories: (categories) => set({ categories }),
       setClients: (clients) => set({ clients }),
       selectedClient: null,
