@@ -1,3 +1,4 @@
+import { ProductImagesController } from './product-images.controller';
 import { Module } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { FirebaseSyncService } from './firebase-sync.service';
@@ -10,7 +11,7 @@ import { WebsocketModule } from '../../websockets/websocket.module';
 
 @Module({
   imports: [WebsocketModule],
-  controllers: [ProductsController, SyncController],
+  controllers: [ProductsController, SyncController, ProductImagesController],
   providers: [ProductsService, FirebaseSyncService, SyncImageService, VentraImportService, HardwareImageService],
   exports: [ProductsService, FirebaseSyncService, SyncImageService],
 })

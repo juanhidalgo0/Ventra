@@ -13,10 +13,17 @@ fn clean_unc_path(path: std::path::PathBuf) -> String {
     }
 }
 
+// El backend escucha en 0.0.0.0: probar solo 127.0.0.1 puede dar "libre" en Windows
+// aunque otro proceso tenga el puerto en 0.0.0.0, y el backend moría con EADDRINUSE.
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
+        && std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
 fn find_available_port(start_port: u16) -> u16 {
     let mut port = start_port;
     loop {
-        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        if port_is_free(port) {
             return port;
         }
         port += 1;
@@ -206,12 +213,18 @@ pub fn run() {
                 {
                     child.wait().ok();
                 }
-                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+
+            // Esperar (hasta ~2 s) a que Windows libere el puerto del backend anterior,
+            // en vez de una pausa fija que a veces no alcanzaba.
+            for _ in 0..20 {
+                if port_is_free(3001) { break; }
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
 
             // Determine active port
             let mut port = 3001;
-            if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
+            if !port_is_free(port) {
                 port = find_available_port(3002);
             }
             println!("[Tauri] Using backend port: {}", port);

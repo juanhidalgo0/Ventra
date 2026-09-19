@@ -18,6 +18,12 @@ const getBaseUrl = () => {
   return '/api'; // Default proxy
 };
 
+/** Convierte una ruta del servidor ("/api/...") en una URL que una etiqueta <img> pueda cargar. */
+export const resolveServerUrl = (url?: string | null) => {
+  if (!url || !url.startsWith('/api/')) return url || undefined;
+  return getBaseUrl().replace(/\/api$/, '') + url;
+};
+
 const api = axios.create({ 
   baseURL: getBaseUrl(), 
   timeout: 60000, // 60 seconds

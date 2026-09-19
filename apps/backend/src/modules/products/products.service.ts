@@ -157,6 +157,47 @@ export class ProductsService {
     return this.firebaseSync.verifyGoogleEmailOwnsTerminalCommerce(email);
   }
 
+  /**
+   * Enlaces de foto para el catálogo del POS sin mandar las fotos en sí.
+   * Las URLs externas se devuelven tal cual; las guardadas en la base (data:...)
+   * se reemplazan por /api/product-images/:id, que las sirve de a una.
+   */
+  private async getCatalogImageUrls(ids: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (ids.length === 0) return map;
+    const rows: { id: string; inline: number; url: string | null; updatedAt: any }[] = await this.prisma.$queryRawUnsafe(`
+      SELECT id,
+             CASE WHEN substr(image_url, 1, 5) = 'data:' THEN 1 ELSE 0 END AS inline,
+             CASE WHEN substr(image_url, 1, 5) = 'data:' THEN NULL ELSE image_url END AS url,
+             updated_at AS updatedAt
+      FROM products
+      WHERE image_url IS NOT NULL AND image_url <> ''
+    `);
+    const wanted = new Set(ids);
+    for (const r of rows) {
+      if (!wanted.has(r.id)) continue;
+      if (Number(r.inline) === 1) {
+        const v = new Date(r.updatedAt).getTime() || 0;
+        map.set(r.id, `/api/product-images/${encodeURIComponent(r.id)}?v=${v}`);
+      } else if (r.url) {
+        map.set(r.id, r.url);
+      }
+    }
+    return map;
+  }
+
+  /** Foto de un producto guardada en la base, lista para servir como archivo. */
+  async getProductImage(id: string): Promise<{ mime: string; data: Buffer } | { redirect: string } | null> {
+    const product = await this.prisma.product.findUnique({ where: { id }, select: { imageUrl: true } });
+    const url = product?.imageUrl;
+    if (!url) return null;
+    const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url);
+    if (!m) return { redirect: url };
+    const mime = m[1] || 'image/jpeg';
+    const data = m[2] ? Buffer.from(m[3], 'base64') : Buffer.from(decodeURIComponent(m[3]));
+    return { mime, data };
+  }
+
   async getPOSCatalog(updatedAfter?: string) {
     // "Venta Rápida" is opened with code "1" / F1, never shown as a catalog card.
     const where: any = { isActive: true, id: { not: 'VENTA_RAPIDA' } };
@@ -178,7 +219,8 @@ export class ProductsService {
         stock: true,
         categoryId: true,
         category: { select: { id: true, name: true, color: true } },
-        imageUrl: true,
+        // imageUrl NO: las fotos guardadas en la base (base64) pesan ~65 MB en total.
+        // Se resuelven abajo como enlaces livianos que el navegador pide cuando las muestra.
         allowCustomPrice: true,
         unit: true,
         unitsPerPack: true,
@@ -192,6 +234,8 @@ export class ProductsService {
       },
       orderBy: { updatedAt: 'desc' }
     });
+
+    const imageById = await this.getCatalogImageUrls(products.map((p: any) => p.id));
 
     // Unidades vendidas en los últimos 60 días: es lo que ordena el catálogo del POS
     const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
@@ -218,7 +262,7 @@ export class ProductsService {
       stock: p.stock,
       categoryId: p.categoryId,
       category: p.category,
-      imageUrl: p.imageUrl,
+      imageUrl: imageById.get(p.id) ?? null,
       allowCustomPrice: p.allowCustomPrice,
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,

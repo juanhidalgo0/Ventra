@@ -102,10 +102,11 @@ async function bootstrap() {
   let port = Number(process.env.PORT || 3001);
   await app.listen(port, '0.0.0.0');
 
-  // Start localhost.run SSH tunnel in the background to automatically bypass Windows Firewall and router port-forwarding with ZERO landing pages
-  // Skipped when running from a real hosted deployment (Docker sets DISABLE_TUNNEL=true), where the server is already reachable on a public domain.
-  if (process.env.DISABLE_TUNNEL === 'true') {
-    console.log('[Tunnel] Skipped (DISABLE_TUNNEL=true) — server is expected to be reachable directly.');
+  // Túnel público de localhost.run: APAGADO por defecto. Exponía el POS a internet
+  // sin contraseña y ninguna pantalla lo usa (el celular se conecta por la IP local).
+  // Solo arranca si se pide a propósito con ENABLE_TUNNEL=true.
+  if (process.env.ENABLE_TUNNEL !== 'true') {
+    // sin túnel
   } else
   try {
     const { exec } = require('child_process');

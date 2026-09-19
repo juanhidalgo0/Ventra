@@ -7,7 +7,7 @@ import ConnectionScreen from './components/auth/ConnectionScreen';
 import MainLayout from './components/layout/MainLayout';
 import POSScreen from './components/pos/POSScreen';
 import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
-import api from './services/api';
+import api, { resolveServerUrl } from './services/api';
 import LicenseBlockScreen from './components/auth/LicenseBlockScreen';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
@@ -316,6 +316,7 @@ export default function App() {
           const barcodeList = [p.barcode, ...(p.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
           return {
             ...p,
+            imageUrl: resolveServerUrl(p.imageUrl),
             _searchToken: `${p.name.toLowerCase()} ${p.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim()
           };
         });
@@ -365,6 +366,7 @@ export default function App() {
           const barcodeList = [p.barcode, ...(p.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
           return {
             ...p,
+            imageUrl: resolveServerUrl(p.imageUrl),
             _searchToken: `${p.name.toLowerCase()} ${p.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim()
           };
         });
