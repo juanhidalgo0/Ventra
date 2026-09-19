@@ -124,15 +124,15 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
       <MotionDiv
         {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
         onClick={(e: any) => e.stopPropagation()}
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-6xl overflow-hidden shadow-xl flex flex-col max-h-[calc(100dvh-24px)] border border-slate-200 dark:border-slate-800 tabular-nums"
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl overflow-hidden shadow-xl flex flex-col max-h-[calc(100dvh-24px)] border border-slate-200 dark:border-slate-800 tabular-nums"
       >
         {/* Header */}
-        <div className="px-6 py-3 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+        <div className="px-5 py-2.5 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
           <div className="flex items-center gap-3">
-            <MangoIcon className="w-6 h-6" />
+            <MangoIcon className="w-5 h-5" />
             <div>
-              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-none">Estado Actual de la Caja</h2>
-              <p className="text-[12.5px] text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-widest mt-1">Auditoría rápida del turno activo</p>
+              <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-none">Estado Actual de la Caja</h2>
+              <p className="text-[10px] text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-widest mt-0.5">Auditoría rápida del turno activo</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
@@ -157,119 +157,119 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
         ) : (
           <>
             {/* Side-by-Side Area */}
-            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-5 px-6 py-4 overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 px-5 py-3 overflow-hidden">
               {/* Left Side: General Stats & breakdown */}
               <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
                 {/* General Info Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="p-3.5 rounded-xl bg-rose-50/40 dark:bg-rose-900/20 border border-rose-100/30 dark:border-rose-800/30">
-                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1.5">
+                  <div className="px-3 py-2 rounded-xl bg-rose-50/40 dark:bg-rose-900/20 border border-rose-100/30 dark:border-rose-800/30">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1">
                       <Calendar className="w-3.5 h-3.5" />
                       Apertura
                     </div>
-                    <p className="text-lg font-extrabold text-rose-900 dark:text-rose-100 leading-tight">{fmtDateTime(session.openedAt).date}</p>
-                    <p className="text-sm font-bold text-rose-700 dark:text-rose-300 mt-0.5">{fmtDateTime(session.openedAt).time}</p>
+                    <p className="text-sm font-extrabold text-rose-900 dark:text-rose-100 leading-tight">{fmtDateTime(session.openedAt).date}</p>
+                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300 mt-0.5">{fmtDateTime(session.openedAt).time}</p>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-emerald-50/40 dark:bg-emerald-900/20 border border-emerald-100/30 dark:border-emerald-800/30">
-                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1.5">
+                  <div className="px-3 py-2 rounded-xl bg-emerald-50/40 dark:bg-emerald-900/20 border border-emerald-100/30 dark:border-emerald-800/30">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1">
                       <Clock className="w-3.5 h-3.5" />
                       Transcurrido
                     </div>
-                    <p className="text-lg font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight leading-tight">{timeElapsed || 'Calculando...'}</p>
-                    <p className="text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300 mt-1 uppercase tracking-widest">EN CURSO</p>
+                    <p className="text-sm font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight leading-tight">{timeElapsed || 'Calculando...'}</p>
+                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-1 uppercase tracking-widest">EN CURSO</p>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-amber-50/40 dark:bg-amber-900/20 border border-amber-100/30 dark:border-amber-800/30">
-                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1.5">
+                  <div className="px-3 py-2 rounded-xl bg-amber-50/40 dark:bg-amber-900/20 border border-amber-100/30 dark:border-amber-800/30">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1">
                       <User className="w-3.5 h-3.5" />
                       Cajero Activo
                     </div>
-                    <p className="text-lg font-extrabold text-amber-900 dark:text-amber-100 truncate leading-tight mt-1">{session.user?.fullName || session.user?.username || 'Sin cajero'}</p>
-                    <p className="text-[11.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-widest mt-1">{session.user?.role || 'Empleado'}</p>
+                    <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 truncate leading-tight mt-1">{session.user?.fullName || session.user?.username || 'Sin cajero'}</p>
+                    <p className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-widest mt-1">{session.user?.role || 'Empleado'}</p>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
-                    <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
                       <Monitor className="w-3.5 h-3.5" />
                       Terminal
                     </div>
-                    <p className="text-lg font-extrabold text-slate-900 dark:text-slate-100 truncate leading-tight mt-1">{session.terminalName || 'Terminal 1'}</p>
-                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 uppercase tracking-widest mt-1">ID: #{session.id.substring(0, 6).toUpperCase()}</p>
+                    <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate leading-tight mt-1">{session.terminalName || 'Terminal 1'}</p>
+                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase tracking-widest mt-1">ID: #{session.id.substring(0, 6).toUpperCase()}</p>
                   </div>
                 </div>
 
                 {/* Financial Overview (Grand Totals) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex flex-col justify-between">
+                  <div className="px-3.5 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex flex-col justify-between">
                     <div>
-                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-1">Ventas en Efectivo</span>
-                      <p className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{fmt(cashPayments)}</p>
+                      <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-0.5">Ventas en Efectivo</span>
+                      <p className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{fmt(cashPayments)}</p>
                     </div>
-                    <div className="pt-3 border-t border-slate-300 dark:border-slate-600/50 mt-3 flex items-center justify-between text-sm text-slate-800 dark:text-slate-200 font-bold">
+                    <div className="pt-2 border-t border-slate-300 dark:border-slate-600/50 mt-2 flex items-center justify-between text-xs text-slate-800 dark:text-slate-200 font-bold">
                       <span>Gastos Registrados</span>
-                      <span className="text-red-600 dark:text-red-400 font-extrabold text-base">-{fmt(expenses + withdrawals)}</span>
+                      <span className="text-red-600 dark:text-red-400 font-extrabold text-sm">-{fmt(expenses + withdrawals)}</span>
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-md flex flex-col justify-between relative overflow-hidden">
+                  <div className="px-3.5 py-3 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-md flex flex-col justify-between relative overflow-hidden">
                     <div>
-                      <span className="text-xs font-bold text-white/85 uppercase tracking-widest block mb-1">Total Estimado en Caja</span>
-                      <p className="text-4xl font-black tracking-tight">{fmt(totalInDrawer)}</p>
+                      <span className="text-[10px] font-bold text-white/85 uppercase tracking-widest block mb-0.5">Total Estimado en Caja</span>
+                      <p className="text-2xl font-black tracking-tight">{fmt(totalInDrawer)}</p>
                     </div>
-                    <div className="pt-3 border-t border-white/25 mt-3 flex items-center justify-between text-sm text-white font-bold">
+                    <div className="pt-2 border-t border-white/25 mt-2 flex items-center justify-between text-xs text-white font-bold">
                       <span>Total Ventas Turno ({salesCount})</span>
-                      <span className="font-extrabold text-base">{fmt(salesTotal)}</span>
+                      <span className="font-extrabold text-sm">{fmt(salesTotal)}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Payment Methods breakdown */}
-                <div className="space-y-2.5">
-                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-[0.2em] ml-1">Monto según medio de pago</h4>
+                <div className="space-y-1.5">
+                  <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-[0.2em] ml-1">Monto según medio de pago</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* Cash */}
-                    <div className="p-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                        <Banknote className="w-5 h-5" />
+                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                        <Banknote className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Efectivo</span>
-                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cashPayments)}</span>
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">En Caja: {fmt(expectedCash)}</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Efectivo</span>
+                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cashPayments)}</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">En Caja: {fmt(expectedCash)}</span>
                       </div>
                     </div>
 
                     {/* Clover */}
-                    <div className="p-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
-                        <CreditCard className="w-5 h-5" />
+                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
+                        <CreditCard className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Clover POS</span>
-                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cloverPayments)}</span>
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Tarjetas comprobante</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Clover POS</span>
+                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cloverPayments)}</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Tarjetas comprobante</span>
                       </div>
                     </div>
 
                     {/* MP */}
-                    <div className="p-3.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
-                        <Smartphone className="w-5 h-5" />
+                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
+                        <Smartphone className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">MercadoPago</span>
-                        <span className="block text-2xl font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(mpPayments)}</span>
-                        <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Pagos QR en vivo</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">MercadoPago</span>
+                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(mpPayments)}</span>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Pagos QR en vivo</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Audit warning / footer info */}
-                <div className="p-3.5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 flex items-start gap-3">
-                  <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <div className="px-3 py-2 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 flex items-start gap-3">
+                  <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                     <span className="font-bold text-slate-900 dark:text-slate-100">Control de Caja:</span> Este informe es de carácter informativo. Para auditar diferencias concilia registros.
                   </div>
                 </div>
@@ -279,24 +279,24 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
               <div className="hidden md:block w-px bg-slate-100 dark:bg-slate-800 shrink-0 self-stretch" />
 
               {/* Right Side: Detailed Expenses list */}
-              <div className="w-full md:w-[420px] shrink-0 flex flex-col h-full overflow-hidden">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-[0.2em] ml-1 mb-2.5">Detalle de Gastos y Salidas</h4>
-                <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 rounded-2xl p-3.5 overflow-y-auto custom-scrollbar space-y-2">
+              <div className="w-full md:w-[300px] shrink-0 flex flex-col h-full overflow-hidden">
+                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] ml-1 mb-2">Detalle de Gastos y Salidas</h4>
+                <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 rounded-xl p-2.5 overflow-y-auto custom-scrollbar space-y-2">
                   {(!session.cashMovements || session.cashMovements.length === 0) ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium text-center py-8">No hay gastos o egresos registrados en este turno.</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-medium text-center py-6">No hay gastos o egresos registrados en este turno.</p>
                   ) : (
                     session.cashMovements.map((movement: any) => {
                       return (
-                        <div key={movement.id} onClick={() => setSelectedMovement(movement)} className="flex items-center justify-between bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm transition-all hover:border-rose-300 dark:hover:border-rose-555 cursor-pointer hover:shadow-md">
+                        <div key={movement.id} onClick={() => setSelectedMovement(movement)} className="flex items-center justify-between bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 shadow-sm transition-all hover:border-rose-300 dark:hover:border-rose-555 cursor-pointer hover:shadow-md">
                           <div className="min-w-0 flex-1 pr-2">
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate leading-snug">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate leading-snug">
                               {movement.description || 'Gasto general'}
                             </p>
-                            <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 mt-1 uppercase">
+                            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mt-1 uppercase">
                               {fmtDateTime(movement.createdAt).time} - {movement.type === 'EXPENSE' ? 'GASTO / PAGO' : 'RETIRO'}
                             </p>
                           </div>
-                          <span className="text-lg font-extrabold text-red-600 dark:text-red-400 shrink-0">
+                          <span className="text-sm font-extrabold text-red-600 dark:text-red-400 shrink-0">
                             -{fmt(movement.amount)}
                           </span>
                         </div>
@@ -308,13 +308,13 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
             </div>
 
             {/* Action Buttons Footer */}
-            <div className="px-6 py-3 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
+            <div className="px-5 py-2.5 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
               <div className="flex items-center gap-2 w-full md:w-auto">
                 <button 
                   type="button"
                   onClick={handlePrintLatestZ}
                   disabled={loadingLatestZ}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   title="Imprimir copia del último reporte Z emitido"
                 >
                   <Printer className="w-4 h-4 text-slate-600" />
@@ -329,13 +329,13 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                     setIsZAction(false);
                     setShowConfirmClose(true);
                   }}
-                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border-2 border-slate-300 hover:border-sky-400 dark:border-slate-700 dark:hover:border-sky-600 bg-white hover:bg-sky-50/50 dark:bg-slate-800 dark:hover:bg-sky-950/30 text-left transition-all active:scale-95 cursor-pointer shadow-xs group"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border-2 border-slate-300 hover:border-sky-400 dark:border-slate-700 dark:hover:border-sky-600 bg-white hover:bg-sky-50/50 dark:bg-slate-800 dark:hover:bg-sky-950/30 text-left transition-all active:scale-95 cursor-pointer shadow-xs group"
                 >
                   <div className="flex items-center gap-2">
                     <ArrowRightLeft className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                    <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Cambio de Turno (Cierre X)</span>
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Cambio de Turno (Cierre X)</span>
                   </div>
-                  <span className="block text-xs text-slate-600 dark:text-slate-400 font-semibold mt-0.5">
+                  <span className="block text-[10.5px] text-slate-600 dark:text-slate-400 font-semibold mt-0.5">
                     Para cuando entra otro cajero en el mismo día
                   </span>
                 </button>
@@ -346,13 +346,13 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                     setIsZAction(true);
                     setShowConfirmClose(true);
                   }}
-                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border-2 border-rose-600 bg-rose-600 hover:bg-rose-700 text-white text-left transition-all active:scale-95 cursor-pointer shadow-md shadow-rose-500/20 group"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border-2 border-rose-600 bg-rose-600 hover:bg-rose-700 text-white text-left transition-all active:scale-95 cursor-pointer shadow-md shadow-rose-500/20 group"
                 >
                   <div className="flex items-center gap-2">
                     <FileOutput className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
-                    <span className="text-sm font-black tracking-tight text-white">Cierre Final del Día (Cierre Z)</span>
+                    <span className="text-xs font-black tracking-tight text-white">Cierre Final del Día (Cierre Z)</span>
                   </div>
-                  <span className="block text-xs text-white/90 font-semibold mt-0.5">
+                  <span className="block text-[10.5px] text-white/90 font-semibold mt-0.5">
                     Para cuando el local cierra sus puertas
                   </span>
                 </button>
