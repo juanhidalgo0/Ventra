@@ -272,6 +272,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.pushRows(rows.map((r) => ({ t, id: r.id, d: r.data, ts })));
         lastId = rows[rows.length - 1].id;
         this.progress.done += rows.length;
+        this.writeStatusFile();
         if (rows.length < PAGE) break;
       }
     }

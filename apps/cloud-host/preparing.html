@@ -25,6 +25,15 @@
   .meta{ font-size:12.5px; color:var(--ink-3); min-height:18px; font-variant-numeric:tabular-nums; }
   .wait{ margin-top:16px; padding:12px 14px; border-radius:14px; background:var(--amber-bg); color:var(--amber); font-size:13px; font-weight:500; text-align:left; }
   .hidden{ display:none; }
+  .steps{ list-style:none; margin:18px 0 0; padding:0; text-align:left; display:grid; gap:8px; }
+  .steps li{ font-size:13px; color:var(--ink-3); display:flex; align-items:center; gap:9px; }
+  .steps li::before{ content:''; width:16px; height:16px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; box-sizing:border-box; }
+  .steps li.now{ color:var(--ink); font-weight:600; }
+  .steps li.now::before{ border-color:var(--pine); border-top-color:transparent; animation:spin 0.9s linear infinite; }
+  .steps li.done{ color:var(--ink-2); }
+  .steps li.done::before{ background:var(--pine); border-color:var(--pine); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .elapsed{ margin-top:14px; font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
   a{ color:var(--ink-3); font-size:12px; display:inline-block; margin-top:16px; }
 </style>
 </head>
@@ -35,21 +44,38 @@
     <p id="text">Estamos bajando los datos de tu negocio. Solo pasa la primera vez: no cierres esta página.</p>
     <div class="bar"><div class="fill indet" id="fill"></div></div>
     <div class="meta" id="meta">Conectando…</div>
+    <ol class="steps" id="steps">
+      <li id="s1">Iniciar tu caja en la nube</li>
+      <li id="s2">Esperar la copia de tu PC del local</li>
+      <li id="s3">Descargar los datos de tu negocio</li>
+    </ol>
+    <div class="elapsed" id="elapsed"></div>
     <div class="wait hidden" id="wait"></div>
     <a href="/_ventra/logout">Usar otra cuenta</a>
   </main>
   <script>
   (function(){
     var fill = document.getElementById('fill'), meta = document.getElementById('meta'), wait = document.getElementById('wait');
+    var started = Date.now();
+    setInterval(function(){
+      var s = Math.floor((Date.now() - started) / 1000);
+      document.getElementById('elapsed').textContent = 'Tiempo: ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 1000);
+    function step(n){ ['s1','s2','s3'].forEach(function(id, i){ var el = document.getElementById(id); el.className = i + 1 < n ? 'done' : i + 1 === n ? 'now' : ''; }); }
+    step(1);
     function tick(){
       fetch('/_ventra/status', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.needLogin) { location.replace('/_ventra/logout'); return; }
         if (d.ready) { meta.textContent = '¡Lista!'; fill.className = 'fill'; fill.style.width = '100%'; setTimeout(function(){ location.replace('/'); }, 600); return; }
         var s = d.status || {}, p = s.progress;
-        if (s.phase === 'waiting') {
-          wait.textContent = s.message || 'Esperando que la PC del local se actualice.';
+        if (!d.running && !s.phase) { step(1); meta.textContent = 'Iniciando tu caja…'; }
+        else if (s.phase === 'waiting') {
+          step(2);
+          wait.textContent = (s.message || 'Esperando que la PC del local se actualice.') + ' Tené abierta la app en la PC del local: esta pantalla sigue sola cuando termine.';
           wait.classList.remove('hidden');
-          meta.textContent = 'En espera';
+          meta.textContent = 'Esperando tu PC · se revisa cada pocos segundos';
         } else {
+          step(3);
           wait.classList.add('hidden');
           if (p && p.total > 0) {
             fill.className = 'fill'; fill.style.width = Math.max(4, Math.min(99, p.done / p.total * 100)) + '%';

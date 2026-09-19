@@ -272,9 +272,16 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(302, { Location: '/_ventra/login' }); return res.end();
     }
     // Estado de la caja mientras se prepara (lo consulta la pantalla "Preparando tu caja")
+    // Sesión válida pero la caja no está dada de alta (por ejemplo, se borró): hay que entrar de nuevo
+    if (!fs.existsSync(credsFile(session.uid))) {
+      if (url === '/_ventra/status') return sendJson(res, 200, { ready: false, needLogin: true });
+      if (isApi) return sendJson(res, 401, { message: 'Volvé a entrar con Google' });
+      setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end();
+    }
     if (url === '/_ventra/status') {
       ensureTenant(session.uid).catch(() => {});
-      return sendJson(res, 200, { ready: isBootstrapped(session.uid), status: tenantStatus(session.uid) });
+      const running = tenants.has(session.uid);
+      return sendJson(res, 200, { ready: isBootstrapped(session.uid), running, status: tenantStatus(session.uid) });
     }
     if (!isBootstrapped(session.uid)) {
       // Hasta que la caja no tenga los datos del comercio, no se muestra la app
