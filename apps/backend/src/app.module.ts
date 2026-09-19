@@ -17,6 +17,7 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { APP_GUARD } from '@nestjs/core';
 import { LicenseGuard } from './common/guards/license.guard';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { SyncModule } from './modules/sync/sync.module';
 
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { SurchargesModule } from './modules/surcharges/surcharges.module';
@@ -26,6 +27,7 @@ import { AcopioModule } from './modules/acopio/acopio.module';
 @Module({
   imports: [
     SubscriptionModule,
+    SyncModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],

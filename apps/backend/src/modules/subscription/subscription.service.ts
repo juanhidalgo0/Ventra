@@ -19,7 +19,8 @@ import axios from 'axios';
  * de la carpeta de datos (no en la base) para que restaurar un backup no lo pise.
  */
 
-const FUNCTIONS_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net';
+// VENTRA_FUNCTIONS_URL permite apuntar a una nube de pruebas
+const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 const ACCOUNT_URL = 'https://ventra.store/cuenta.html';
 const LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAQ/FfOROqai7PLh0ba7W4qeLWPbe63NY5WR5jc6fsZ7E=
@@ -166,6 +167,12 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       lastSyncAt: license.issuedAt,
       pending,
     };
+  }
+
+  /** Credenciales de la PC vinculada, para servicios que hablan con la nube (sincronización). */
+  getDeviceCredentials(): { deviceId: string; deviceSecret: string } | null {
+    if (this.exempt || !this.stored.deviceId || !this.stored.deviceSecret) return null;
+    return { deviceId: this.stored.deviceId, deviceSecret: this.stored.deviceSecret };
   }
 
   isReadOnly(): boolean {

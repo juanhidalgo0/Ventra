@@ -36,6 +36,7 @@ import {
   BadgeCheck,
 } from 'lucide-react';
 import SubscriptionPanel from '../subscription/SubscriptionPanel';
+import CloudSyncPanel from '../subscription/CloudSyncPanel';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
 
@@ -705,7 +706,7 @@ export default function SettingsScreen() {
     { id: 'recargos', label: 'Recargos', description: 'Recargos por medio de pago y categoría', icon: Calculator },
     { id: 'personal', label: 'Personal y cajeros', description: 'Usuarios, roles y contraseñas del equipo', icon: Users, adminOnly: true },
     { id: 'backups', label: 'Backup y seguridad', description: 'Copias de seguridad automáticas y restauración', icon: Database, adminOnly: true },
-    { id: 'suscripcion', label: 'Suscripción', description: 'Plan de Ventra y vinculación de esta PC', icon: BadgeCheck, adminOnly: true },
+    { id: 'suscripcion', label: 'Suscripción y nube', description: 'Plan de Ventra, vinculación de esta PC y copia en la nube', icon: BadgeCheck, adminOnly: true },
     { id: 'integraciones', label: 'Integraciones', description: 'Cuentas y servicios conectados', icon: Link2, adminOnly: true },
     { id: 'mantenimiento', label: 'Mantenimiento', description: 'Reinicios y limpieza de datos', icon: ShieldAlert, danger: true },
   ];
@@ -1468,7 +1469,10 @@ export default function SettingsScreen() {
             )}
 
             {activeTab === 'suscripcion' && isAdmin && (
-              <SubscriptionPanel />
+              <div className="space-y-4">
+                <SubscriptionPanel />
+                <CloudSyncPanel />
+              </div>
             )}
 
             {activeTab === 'integraciones' && (
