@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { nodeIndex } from '../sync/numbering';
 
 @Injectable()
 export class QuotesService {
@@ -46,8 +47,18 @@ export class QuotesService {
       quantity: number;
     }>;
   }) {
-    const count = await (this.prisma as any).quote.count();
-    const quoteNumber = `PRE-${String(count + 1).padStart(4, '0')}`;
+    // Cada caja tiene su serie: PRE-0001 en la original, PRE-2-0001 en la caja 2, etc.
+    const idx = await nodeIndex(this.prisma);
+    const prefix = idx ? `PRE-${idx}-` : 'PRE-';
+    const existing: { quoteNumber: string | null }[] = await (this.prisma as any).quote.findMany({
+      where: { quoteNumber: { startsWith: prefix } }, select: { quoteNumber: true },
+    });
+    const pattern = new RegExp(`^${prefix}(\\d+)$`);
+    const last = existing.reduce((max, q) => {
+      const m = pattern.exec(q.quoteNumber || '');
+      return m ? Math.max(max, Number(m[1])) : max;
+    }, 0);
+    const quoteNumber = `${prefix}${String(last + 1).padStart(4, '0')}`;
 
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + (data.validDays || 7));

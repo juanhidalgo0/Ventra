@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { numberRange } from '../sync/numbering';
 
 @Injectable()
 export class AcopioService {
@@ -149,10 +150,13 @@ export class AcopioService {
       }
 
       // Next remito number
+      // Cada caja numera en su propio rango (ver sync/numbering)
+      const range = await numberRange(tx);
       const maxRemito = await tx.deliveryReceipt.aggregate({
+        where: { remitoNumber: { gte: range.from, lt: range.to } },
         _max: { remitoNumber: true },
       });
-      const remitoNumber = (maxRemito._max.remitoNumber || 0) + 1;
+      const remitoNumber = (maxRemito._max.remitoNumber ?? range.from) + 1;
 
       // Create delivery receipt
       const receipt = await tx.deliveryReceipt.create({

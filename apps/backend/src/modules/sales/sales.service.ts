@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
+import { numberRange } from '../sync/numbering';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -147,8 +148,10 @@ export class SalesService {
       if (Math.abs(totalPayments - subtotal) > 0.01) throw new BadRequestException(`El total de pagos ($${totalPayments}) no coincide con el total de la venta ($${subtotal})`);
 
       const paymentMethodSummary = dto.payments.length === 1 ? dto.payments[0].method : 'MIXED';
-      const lastSale = await tx.sale.findFirst({ orderBy: { saleNumber: 'desc' } });
-      const saleNumber = (lastSale?.saleNumber || 0) + 1;
+      // Cada caja numera en su propio rango (ver sync/numbering)
+      const range = await numberRange(tx);
+      const lastSale = await tx.sale.findFirst({ where: { saleNumber: { gte: range.from, lt: range.to } }, orderBy: { saleNumber: 'desc' } });
+      const saleNumber = (lastSale ? lastSale.saleNumber : range.from) + 1;
 
       const newSale = await tx.sale.create({
         data: {
