@@ -121,13 +121,24 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     try { return JSON.parse(fs.readFileSync(this.stateFile, 'utf8')); } catch { return {}; }
   }
 
-  /** Estado legible por el anfitrión de la nube mientras esta caja se prepara. */
+  private lastReport = 0;
+
+  /**
+   * Estado de esta caja: en un archivo (lo lee el anfitrión de la nube) y, mientras
+   * sube o baja datos, informado a la nube cada pocos segundos (así otra caja que la
+   * espera puede mostrar su avance).
+   */
   private writeStatusFile() {
     try {
       fs.writeFileSync(path.join(process.cwd(), 'ventra-sync-status.json'), JSON.stringify({
         phase: this.phase, message: this.lastError, progress: this.progress, at: new Date().toISOString(),
       }));
     } catch {}
+    const busy = this.phase === 'full' || this.phase === 'syncing' || this.phase === 'restoring';
+    if (busy && this.progress && Date.now() - this.lastReport > 4000 && this.subscription.getDeviceCredentials()) {
+      this.lastReport = Date.now();
+      this.call('report', { status: { phase: this.phase, ...this.progress } }).catch(() => {});
+    }
   }
 
   /** Marca de agua en la base y en un archivo aparte: si no coinciden, la base cambió por fuera. */
@@ -351,7 +362,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       this.lastError = offline ? 'Sin conexión: los cambios se suben cuando vuelva internet' : (err.response?.data?.error || err.message);
       if (!offline) console.warn('[Sync] Error:', this.lastError);
     } finally {
-      this.progress = null;
+      if (this.phase !== 'waiting') this.progress = null;
       this.running = false;
       this.writeStatusFile();
     }
@@ -386,7 +397,20 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       // Caja nueva en un comercio cuya PC original todavía no cargó el saldo inicial de
       // stock y saldos: se espera, si no esta caja vería los contadores en 0
       this.phase = 'waiting';
-      this.lastError = 'Esperando que la PC del local se actualice a la última versión de Ventra y suba su stock';
+      // Si la PC original ya está subiendo, se muestra su avance
+      const origin = (reg.nodes || []).find((n: any) => n.idx === 0);
+      const st = origin?.status;
+      const fresh = st && Date.now() - Date.parse(st.at) < 2 * 60 * 1000;
+      if (fresh && st.total > 0) {
+        this.progress = { label: 'Tu PC del local está subiendo sus datos', done: Number(st.done) || 0, total: Number(st.total) || 0 };
+        this.lastError = 'La PC del local se está actualizando. Cuando termine, esta caja baja los datos sola.';
+      } else {
+        this.progress = null;
+        this.lastError = origin
+          ? 'Esperando que la PC del local termine de actualizarse (tiene que estar prendida y con Ventra abierto).'
+          : 'Esperando que la PC del local se actualice a la última versión de Ventra y suba su stock.';
+      }
+      this.writeStatusFile();
       return;
     } else {
       // Caja nueva o base restaurada: lo que solo tiene esta caja completa la nube; después manda la nube

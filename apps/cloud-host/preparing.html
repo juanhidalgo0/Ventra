@@ -71,9 +71,15 @@
         if (!d.running && !s.phase) { step(1); meta.textContent = 'Iniciando tu caja…'; }
         else if (s.phase === 'waiting') {
           step(2);
-          wait.textContent = (s.message || 'Esperando que la PC del local se actualice.') + ' Tené abierta la app en la PC del local: esta pantalla sigue sola cuando termine.';
+          wait.textContent = s.message || 'Esperando que la PC del local se actualice.';
           wait.classList.remove('hidden');
-          meta.textContent = 'Esperando tu PC · se revisa cada pocos segundos';
+          if (p && p.total > 0) {
+            fill.className = 'fill'; fill.style.width = Math.max(4, Math.min(99, p.done / p.total * 100)) + '%';
+            meta.textContent = p.label + ' · ' + p.done.toLocaleString('es-AR') + ' de ' + p.total.toLocaleString('es-AR');
+          } else {
+            fill.className = 'fill indet';
+            meta.textContent = 'Esperando tu PC · se revisa cada pocos segundos';
+          }
         } else {
           step(3);
           wait.classList.add('hidden');
