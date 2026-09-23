@@ -349,7 +349,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       ),
     );
 
-    // Stock mínimo es el último: Enter ahí guarda el producto
+    // Un campo marcado data-enter-submit guarda al instante (hoy ninguno: se guarda al pasar el último campo)
     if (target.hasAttribute('data-enter-submit')) {
       handleSubmit();
       return;
@@ -1470,7 +1470,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   <input
                     type="number"
                     step="any"
-                    data-enter-submit
                     value={formData.minStock}
                     onChange={e => setFormData({ ...formData, minStock: parseFloat(e.target.value) || 0 })}
                     onFocus={e => e.target.select()}

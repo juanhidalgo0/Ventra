@@ -140,8 +140,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             const fs = require('fs');
             const parts = ['..', '..', 'node_modules', 'prisma', 'build', 'index.js'];
             const prismaCliPath = path.resolve(__dirname, ...parts);
-            
-            if (fs.existsSync(prismaCliPath)) {
+            // App instalada: no trae la CLI de prisma, trae el esquema completo en SQL
+            // (generado al compilar por scripts/gen-init-schema.js).
+            const initSql = path.join(__dirname, 'init-schema.sql');
+
+            if (fs.existsSync(initSql)) {
+              console.log('[PrismaService] Base de datos vacía detectada. Creando las tablas...');
+              const statements = fs.readFileSync(initSql, 'utf8')
+                .split(/;\s*(?:\r?\n|$)/)
+                .map((st: string) => st.replace(/^\s*--.*$/gm, '').trim())
+                .filter(Boolean);
+              for (const st of statements) {
+                try {
+                  await this.$executeRawUnsafe(st);
+                } catch (e: any) {
+                  // Las tablas que ya existan (creadas en un arranque anterior) no frenan el resto
+                  if (!/already exists/i.test(e.message)) console.warn('[PrismaService] Esquema:', e.message);
+                }
+              }
+              console.log(`[PrismaService] Esquema inicial creado (${statements.length} sentencias).`);
+            } else if (fs.existsSync(prismaCliPath)) {
               const { execSync } = require('child_process');
               console.log('[PrismaService] Base de datos vacía detectada. Inicializando esquema...');
               execSync(`node "${prismaCliPath}" db push --accept-data-loss --skip-generate`, {
