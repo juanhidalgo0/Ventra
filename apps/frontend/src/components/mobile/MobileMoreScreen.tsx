@@ -8,6 +8,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
+import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 
 interface Tile { path: string; label: string; hint: string; icon: any; tint: string }
 
@@ -53,6 +54,8 @@ export default function MobileMoreScreen() {
       .catch(() => {});
   }, []);
 
+  const ordersVisible = useOrdersVisible();
+  const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder).length);
   const name = user?.fullName || user?.username || '';
   const store = localStorage.getItem('gd_store_name') || 'Tu comercio';
 
@@ -81,6 +84,17 @@ export default function MobileMoreScreen() {
 
       <div className="px-4 pt-5 space-y-6">
         <InstallAppCard />
+        {ordersVisible && (
+          <button onClick={() => navigate('/pedidos')} className="w-full flex items-center gap-3 rounded-2xl bg-white border border-slate-200/80 p-4 text-left active:scale-[0.99] transition-transform">
+            <span className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] font-semibold text-slate-900">Pedidos online</span>
+              <span className="block text-[12px] text-slate-500">{newOrders ? `${newOrders} ${newOrders === 1 ? 'pedido nuevo' : 'pedidos nuevos'}` : 'Lo que piden tus clientes en la tienda'}</span>
+            </span>
+            {newOrders > 0 && <span className="min-w-[24px] h-6 px-2 rounded-full bg-rose-600 text-white text-[12px] font-bold flex items-center justify-center">{newOrders}</span>}
+            <ChevronRight className="w-4 h-4 text-slate-300" />
+          </button>
+        )}
         {SECTIONS.map((section) => (
           <section key={section.title}>
             <p className="text-[12.5px] font-semibold text-slate-500 px-1 mb-2">{section.title}</p>

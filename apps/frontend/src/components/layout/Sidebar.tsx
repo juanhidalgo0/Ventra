@@ -1,4 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { ShoppingCart } from 'lucide-react';
+import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
   ShoppingBag, 
@@ -92,6 +94,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
     );
   };
 
+  const ordersVisible = useOrdersVisible();
+  const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder).length);
+
   const menuGroups = [
     {
       title: 'GENERAL',
@@ -124,6 +129,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Proveedores', icon: Truck, path: '/suppliers' },
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
+        ...(ordersVisible ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 
@@ -220,6 +226,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                     {!isCollapsed && (
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
                         <span className="text-[12.5px] font-semibold tracking-tight truncate">{item.label}</span>
+                        {!!(item as any).badge && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-600 text-white text-[10.5px] font-bold flex items-center justify-center">{(item as any).badge}</span>}
                         {item.collapsible && (
                           <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isGroupExpanded ? 'rotate-180' : ''}`} />
                         )}

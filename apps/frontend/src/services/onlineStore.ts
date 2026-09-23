@@ -168,6 +168,10 @@ export async function saveStoreConfig(storeId: string, config: Partial<StoreConf
   await claimStore(storeId);
   const { ownerUid: _o, claimed: _c, storeId: _s, ...editable } = config as any;
   await updateDoc(doc(getDb(), 'ventra_stores', storeId), { ...editable, updatedAt: serverTimestamp() });
+  // Avisa a la barra lateral y a la caja si la tienda quedó publicada o no
+  if (typeof config.isPublished === 'boolean') {
+    import('./onlineStoreOrders').then((m) => m.setStorePublished(!!config.isPublished)).catch(() => {});
+  }
 }
 
 // Verifica si un subdominio está disponible (o pertenece a esta misma tienda).
@@ -323,6 +327,8 @@ export interface StoreOrderItem {
   qty: number;
 }
 
+export type OrderStage = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+
 export interface StoreOrder {
   id: string;
   items: StoreOrderItem[];
@@ -337,6 +343,9 @@ export interface StoreOrder {
   paymentMethod?: string;
   deliveryCost?: number;
   status: 'PENDING' | 'SYNCED';
+  /** Seguimiento del pedido en el local (sin valor = recién llegado) */
+  stage?: OrderStage;
+  stageAt?: any;
   syncedLocal?: boolean;
   createdAt?: any;
 }
@@ -459,4 +468,10 @@ export async function publishOnlineCatalog(storeId: string, onProgress?: (done: 
     inStock: p.unlimitedStock || p.stock > 0,
   })));
   return online.length;
+}
+
+/** Cambia el estado de un pedido (Nuevo → Preparando → Listo → Entregado, o Cancelado). */
+export async function updateOrderStage(storeId: string, orderId: string, stage: OrderStage): Promise<void> {
+  await ensureVentraSession();
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId, 'orders', orderId), { stage, stageAt: serverTimestamp() });
 }

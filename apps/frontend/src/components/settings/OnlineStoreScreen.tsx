@@ -338,7 +338,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   }, [products, productSearch, categoryFilter, brandFilter]);
 
   const onlineCount = useMemo(() => products.filter(p => p.showOnline).length, [products]);
-  const pendingOrdersCount = useMemo(() => orders.filter(o => o.status !== 'SYNCED' && !o.syncedLocal).length, [orders]);
+  const pendingOrdersCount = useMemo(() => orders.filter(o => !o.stage || o.stage === 'NEW').length, [orders]);
 
   const publicUrl = config?.subdomain ? `${PUBLIC_STORE_BASE_URL}/${config.subdomain}` : '';
   const accent = config?.primaryColor || '#e11d48';
@@ -1009,9 +1009,11 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                       {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(o.total || 0)}
                     </span>
                     <span className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${
-                      o.syncedLocal ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      !o.stage || o.stage === 'NEW' ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                        : o.stage === 'CANCELLED' ? 'bg-slate-100 text-slate-500 border border-slate-200'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     }`}>
-                      {o.syncedLocal ? 'En Presupuestos' : 'Procesando...'}
+                      {({ NEW: 'Nuevo', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado', CANCELLED: 'Cancelado' } as Record<string, string>)[o.stage || 'NEW']}
                     </span>
                   </div>
                 </div>
@@ -1019,7 +1021,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
             </div>
           )}
           <p className="text-[12px] text-slate-400 font-medium flex items-center gap-1.5 mt-4">
-            <Clock className="w-3.5 h-3.5" /> Cada pedido nuevo se guarda automáticamente como Presupuesto mientras esta terminal esté abierta.
+            <Clock className="w-3.5 h-3.5" /> Los pedidos se gestionan en la sección Pedidos online (barra lateral o botón Pedidos de la caja).
           </p>
         </div>
       </div>

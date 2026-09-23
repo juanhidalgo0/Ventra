@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useTransition, useMemo } from 'react';
+import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { usePOSStore } from '../../stores/posStore';
@@ -87,6 +88,8 @@ const playErrorBeep = () => {
 };
 
 export default function POSScreen() {
+  const ordersVisible = useOrdersVisible();
+  const newOnlineOrders = useOnlineOrders((st) => st.orders.filter(isNewOrder).length);
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
   const { user, logout, login } = useAuthStore();
@@ -1698,6 +1701,18 @@ export default function POSScreen() {
             <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Proveedores [F9]</span>
             <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
           </button>
+
+          {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
+          {ordersVisible && (
+            <button onClick={() => navigate('/pedidos')} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+              <ShoppingCart strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              <span className="hidden xl:inline">Pedidos</span>
+              {newOnlineOrders > 0 && (
+                <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-orange-200 text-orange-900 text-[11px] font-bold flex items-center justify-center animate-pulse">{newOnlineOrders}</span>
+              )}
+              <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap xl:hidden">Pedidos online</span>
+            </button>
+          )}
 
           {/* Presupuestos (Solo Ferretería) */}
           {canQuote && (
