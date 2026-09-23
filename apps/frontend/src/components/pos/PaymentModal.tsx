@@ -704,40 +704,39 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                 >
                   <FileText className="w-6 h-6 stroke-[2.5]" />
                   <span className="text-[10px] uppercase tracking-widest text-teal-900 dark:text-teal-200 font-bold">Facturar</span>
-                  <span className="text-[8px] font-bold text-teal-500 dark:text-teal-300 opacity-80 uppercase tracking-wider bg-white dark:bg-teal-950 border border-teal-100 dark:border-teal-800 px-2 py-0.5 rounded-md mt-1 shadow-sm">[F]</span>
+                  <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-teal-800 bg-white border border-teal-300 dark:bg-teal-950 dark:text-teal-200">F</kbd>
                 </button>
               )
             )}
             <button onClick={handlePrint} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-rose-600 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm">
               <Printer className="w-6 h-6 stroke-[2.5]" />
               <span className="text-[10px] uppercase tracking-widest text-rose-900 dark:text-rose-200 font-bold">Imprimir Ticket</span>
-              <span className="text-[8px] font-bold text-rose-400 dark:text-rose-300 opacity-80 uppercase tracking-wider bg-white dark:bg-rose-950 border border-rose-100 dark:border-rose-800 px-2 py-0.5 rounded-md mt-1 shadow-sm">[F9]</span>
+              <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-rose-800 bg-white border border-rose-300 dark:bg-rose-950 dark:text-rose-200">F9</kbd>
             </button>
 
             <button onClick={handleNewSale} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-emerald-600 bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-emerald-200">
               <CornerDownLeft className="w-6 h-6 stroke-[3]" />
               <span className="text-[10px] uppercase tracking-widest text-white font-bold">Nueva Venta</span>
-              <span className="text-[8px] font-bold text-emerald-100 bg-emerald-600 border border-emerald-500 px-2 py-0.5 rounded-md mt-1 shadow-sm">[ENTER]</span>
+              <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-emerald-800 bg-white border border-emerald-200">Enter ↵</kbd>
             </button>
           </div>
 
           {/* Lo mismo que sale en papel, para revisarlo sin gastar un ticket */}
           <div className="mt-6 max-w-[300px] mx-auto text-left">
-            <div className="flex items-center justify-between mb-1.5 px-1">
-              <span className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400">Vista previa del ticket</span>
+            <div className="flex items-center justify-center gap-2 mb-2">
               <button
                 onClick={() => setShowPreview((v) => !v)}
-                className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
               >
-                {showPreview ? 'Ocultar' : 'Ver'}
+                <FileText className="w-3.5 h-3.5" /> {showPreview ? 'Ocultar ticket' : 'Ver ticket'}
+              </button>
+              <button
+                onClick={() => setBigPreview(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                <Maximize2 className="w-3.5 h-3.5" /> En grande
               </button>
             </div>
-            <button
-              onClick={() => setBigPreview(true)}
-              className="w-full mb-2 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 cursor-pointer"
-            >
-              <Maximize2 className="w-3.5 h-3.5" /> Ver ticket en grande
-            </button>
             {showPreview && (
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-3 max-h-72 overflow-y-auto custom-scrollbar shadow-inner">
                 <TicketReceipt
