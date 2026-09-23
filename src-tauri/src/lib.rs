@@ -13,6 +13,79 @@ fn clean_unc_path(path: std::path::PathBuf) -> String {
     }
 }
 
+const WEBVIEW2_DOWNLOAD_URL: &str = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+
+fn ventra_data_dir() -> std::path::PathBuf {
+    let base = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+    base.join("com.godelivery.pos")
+}
+
+/// Deja constancia de cualquier problema de arranque en %APPDATA%\com.godelivery.pos\startup-error.log,
+/// para poder diagnosticar una PC sin adivinar.
+fn log_startup_error(msg: &str) -> std::path::PathBuf {
+    use std::io::Write;
+    let dir = ventra_data_dir();
+    std::fs::create_dir_all(&dir).ok();
+    let path = dir.join("startup-error.log");
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        writeln!(f, "[{}] v{} {}", secs, env!("CARGO_PKG_VERSION"), msg).ok();
+    }
+    path
+}
+
+/// Cuadro de Windows nativo: funciona aunque falte WebView2 o la app no haya creado ninguna ventana.
+#[cfg(target_os = "windows")]
+fn native_dialog(title: &str, text: &str, yes_no: bool) -> bool {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    let style = MB_TOPMOST | MB_SETFOREGROUND | if yes_no { MB_YESNO | MB_ICONWARNING } else { MB_OK | MB_ICONERROR };
+    unsafe { MessageBoxW(None, &HSTRING::from(text), &HSTRING::from(title), style) == IDYES }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_dialog(title: &str, text: &str, _yes_no: bool) -> bool {
+    eprintln!("{}: {}", title, text);
+    false
+}
+
+/// Avisa sin frenar el arranque (el cuadro queda en su propio hilo).
+fn notify_error(title: &'static str, text: String) {
+    log_startup_error(&text);
+    std::thread::spawn(move || { native_dialog(title, &text, false); });
+}
+
+#[cfg(target_os = "windows")]
+fn webview2_installed() -> bool {
+    use webview2_com::Microsoft::Web::WebView2::Win32::GetAvailableCoreWebView2BrowserVersionString;
+    let mut version = windows::core::PWSTR::null();
+    unsafe { GetAvailableCoreWebView2BrowserVersionString(windows::core::PCWSTR::null(), &mut version).is_ok() && !version.is_null() }
+}
+
+/// Cierra el backend que haya quedado vivo de una sesión anterior de Ventra (por ejemplo,
+/// si la app se cerró de golpe). Solo se toca el proceso cuyo PID se anotó al lanzarlo y
+/// solo si sigue siendo un node.exe, así nunca se cierra un programa ajeno.
+#[cfg(target_os = "windows")]
+fn kill_orphan_backend(pid_file: &std::path::Path) {
+    use std::os::windows::process::CommandExt;
+    let Some(pid) = std::fs::read_to_string(pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) else { return };
+    std::fs::remove_file(pid_file).ok();
+    let is_node = std::process::Command::new("tasklist")
+        .args(&["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+        .creation_flags(0x08000000)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("\"node.exe\""))
+        .unwrap_or(false);
+    if is_node {
+        println!("[Tauri] Killing orphan backend from a previous session (PID {})", pid);
+        std::process::Command::new("taskkill")
+            .args(&["/F", "/PID", &pid.to_string()])
+            .creation_flags(0x08000000)
+            .output()
+            .ok();
+    }
+}
+
 // El backend escucha en 0.0.0.0: probar solo 127.0.0.1 puede dar "libre" en Windows
 // aunque otro proceso tenga el puerto en 0.0.0.0, y el backend moría con EADDRINUSE.
 fn port_is_free(port: u16) -> bool {
@@ -102,8 +175,15 @@ fn open_auth_window(app_handle: tauri::AppHandle, url: String) {
 }
 
 #[tauri::command]
-fn restart_app(app_handle: tauri::AppHandle) {
+fn restart_app(app_handle: tauri::AppHandle, state: tauri::State<'_, BackendChild>) {
     println!("[Tauri] Relaunching application...");
+    if let Some(mut child) = state.0.lock().unwrap().take() {
+        child.kill().ok();
+        child.wait().ok();
+    }
+    // Soltar el candado de instancia única antes de relanzar: si no, la copia nueva
+    // encuentra a esta todavía viva y se cierra, y la app no vuelve a abrir.
+    tauri_plugin_single_instance::destroy(&app_handle);
     app_handle.restart();
 }
 
@@ -211,6 +291,38 @@ unsafe fn start_silent_print(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Red de seguridad: si algo falla al arrancar, nunca cerrarse en silencio.
+    // Se explica el problema en pantalla y queda guardado en startup-error.log.
+    std::panic::set_hook(Box::new(|info| {
+        let detail = info.to_string();
+        let log_path = log_startup_error(&format!("PANIC: {}", detail));
+        if std::thread::current().name() == Some("main") {
+            native_dialog(
+                "Ventra no pudo iniciar",
+                &format!(
+                    "Ventra no pudo iniciar en esta PC.\n\nDetalle: {}\n\nProbá reiniciar la PC y volver a abrir Ventra. Si sigue pasando, mandá a soporte el archivo:\n{}",
+                    detail,
+                    log_path.display()
+                ),
+                false,
+            );
+        }
+    }));
+
+    #[cfg(target_os = "windows")]
+    if !webview2_installed() {
+        log_startup_error("WebView2 no está instalado");
+        let open = native_dialog(
+            "Falta un componente de Windows",
+            "Ventra necesita Microsoft WebView2 y no está instalado en esta PC.\n\n¿Querés descargarlo ahora? Al terminar de instalarlo, volvé a abrir Ventra.\n\n(Hace falta conexión a internet solo para esta descarga.)",
+            true,
+        );
+        if open {
+            open_browser(WEBVIEW2_DOWNLOAD_URL.to_string());
+        }
+        return;
+    }
+
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
@@ -231,6 +343,15 @@ pub fn run() {
     let child_process_state = Arc::clone(&child_process);
 
     let builder = tauri::Builder::default()
+        // Tiene que ir primero: si Ventra ya está abierta, la segunda copia solo trae al
+        // frente la ventana existente y se cierra antes de tocar el backend de la primera.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(main) = app.get_webview_window("main") {
+                main.unminimize().ok();
+                main.show().ok();
+                main.set_focus().ok();
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(BackendChild(child_process_state))
         .setup(move |app| {
@@ -285,20 +406,11 @@ pub fn run() {
             let backend_path_clean = clean_unc_path(backend_path);
             let database_url = format!("file:{}", db_path_clean.replace('\\', "/"));
 
-            // Kill any process currently occupying port 3001 on Windows to avoid conflicts
+            // Cerrar solo el backend huérfano de una sesión anterior de Ventra. Si el 3001 lo
+            // ocupa otro programa, no se lo toca: más abajo se elige otro puerto libre.
+            let pid_file = app_data_dir.join("backend.pid");
             #[cfg(target_os = "windows")]
-            {
-                use std::os::windows::process::CommandExt;
-                if let Ok(mut child) = std::process::Command::new("cmd")
-                    .args(&["/C", "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :3001') do taskkill /F /PID %a"])
-                    .creation_flags(0x08000000)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                {
-                    child.wait().ok();
-                }
-            }
+            kill_orphan_backend(&pid_file);
 
             // Esperar (hasta ~2 s) a que Windows libere el puerto del backend anterior,
             // en vez de una pausa fija que a veces no alcanzaba.
@@ -379,17 +491,6 @@ pub fn run() {
             let node_path = app.path().resolve("_up_/apps/backend/bin/node.exe", tauri::path::BaseDirectory::Resource).expect("failed to resolve node path");
             let node_path_clean = clean_unc_path(node_path);
 
-            let log_file_out = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(app_data_dir.join("backend.log"))
-                .ok();
-            let log_file_err = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(app_data_dir.join("backend-err.log"))
-                .ok();
-
             // Las credenciales de Firebase NO van en el código ni en el instalador:
             // la integración opcional con GoDelivery lee `firebase-credentials.json`
             // desde la carpeta de datos de la app (app_data_dir) si el comercio la
@@ -419,34 +520,129 @@ pub fn run() {
                 "".to_string()
             });
 
-            println!("[Tauri] Spawning Node backend using: {:?}", node_path_clean);
-            let mut cmd = std::process::Command::new(node_path_clean);
-            cmd.arg("--max-old-space-size=512")
-                .arg(backend_path_clean)
-                .env("NODE_ENV", "production")
-                .env("PORT", port.to_string())
-                .env("DATABASE_URL", database_url)
-                .env("GODELIVERY_COMERCIO_ID", "7mdgE7txSCQqWQl1Hzrqa5PCo8C2")
-                .env("LOCAL_SYNC_TOKEN", "paulos-local-sync-token-secret-2026")
-                .env("GEMINI_API_KEY", gemini_api_key)
-                .current_dir(&app_data_dir);
+            // Arma y lanza el proceso del backend. Se reusa para relanzarlo si se cae.
+            let spawn_backend = {
+                let node_path = node_path_clean.clone();
+                let app_data_dir = app_data_dir.clone();
+                move || -> std::io::Result<std::process::Child> {
+                    let log_file_out = std::fs::OpenOptions::new().create(true).append(true).open(app_data_dir.join("backend.log")).ok();
+                    let log_file_err = std::fs::OpenOptions::new().create(true).append(true).open(app_data_dir.join("backend-err.log")).ok();
 
-            #[cfg(target_os = "windows")]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000);
+                    println!("[Tauri] Spawning Node backend using: {:?}", node_path);
+                    let mut cmd = std::process::Command::new(&node_path);
+                    cmd.arg("--max-old-space-size=512")
+                        .arg(&backend_path_clean)
+                        .env("NODE_ENV", "production")
+                        .env("PORT", port.to_string())
+                        .env("DATABASE_URL", &database_url)
+                        .env("GODELIVERY_COMERCIO_ID", "7mdgE7txSCQqWQl1Hzrqa5PCo8C2")
+                        .env("LOCAL_SYNC_TOKEN", "paulos-local-sync-token-secret-2026")
+                        .env("GEMINI_API_KEY", &gemini_api_key)
+                        .current_dir(&app_data_dir);
+
+                    #[cfg(target_os = "windows")]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        cmd.creation_flags(0x08000000);
+                    }
+
+                    if let Some(file) = log_file_out {
+                        cmd.stdout(file);
+                    }
+                    if let Some(file) = log_file_err {
+                        cmd.stderr(file);
+                    }
+                    let child = cmd.spawn()?;
+                    std::fs::write(&pid_file, child.id().to_string()).ok();
+                    Ok(child)
+                }
+            };
+
+            // Si el backend no arranca, la ventana igual se abre y se explica el motivo,
+            // en vez de que la app se cierre sin decir nada.
+            if !std::path::Path::new(&node_path_clean).exists() {
+                notify_error(
+                    "Ventra: falta un archivo",
+                    format!(
+                        "Falta un archivo interno de Ventra:
+{}
+
+Casi siempre lo borra o bloquea el antivirus. Restauralo desde la cuarentena del antivirus, agregá la carpeta de Ventra a sus exclusiones y reinstalá Ventra.",
+                        node_path_clean
+                    ),
+                );
+                return Ok(());
+            }
+            match spawn_backend() {
+                Ok(child) => *child_process.lock().unwrap() = Some(child),
+                Err(e) => {
+                    notify_error(
+                        "Ventra no pudo iniciar el sistema",
+                        format!(
+                            "No se pudo iniciar el sistema interno de Ventra.
+
+Detalle: {}
+
+Suele ser el antivirus bloqueando Ventra. Agregá la carpeta de Ventra a las exclusiones del antivirus y volvé a abrirla.",
+                            e
+                        ),
+                    );
+                    return Ok(());
+                }
             }
 
-            if let Some(file) = log_file_out {
-                cmd.stdout(file);
-            }
-            if let Some(file) = log_file_err {
-                cmd.stderr(file);
-            }
+            // Vigilante: si el backend se cae, se relanza solo. Si se cae una y otra vez
+            // en poco tiempo, se deja de insistir y se avisa. Cuando la app se cierra o se
+            // instala una actualización, el proceso se saca del Mutex y el vigilante termina.
+            let watchdog_child = Arc::clone(&child_process);
+            std::thread::spawn(move || {
+                let mut restarts = 0u32;
+                let mut last_start = std::time::Instant::now();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    let mut lock = watchdog_child.lock().unwrap();
+                    let status = match lock.as_mut() {
+                        None => break,
+                        Some(child) => match child.try_wait() {
+                            Ok(Some(status)) => status,
+                            _ => continue,
+                        },
+                    };
+                    if last_start.elapsed() > std::time::Duration::from_secs(120) {
+                        restarts = 0;
+                    }
+                    if restarts >= 5 {
+                        *lock = None;
+                        notify_error(
+                            "Ventra: el sistema se detuvo",
+                            format!(
+                                "El sistema interno de Ventra se detuvo varias veces seguidas ({}).
 
-            let child = cmd.spawn().expect("failed to start backend process");
- 
-             *child_process.lock().unwrap() = Some(child);
+Cerrá Ventra y volvé a abrirla. Si sigue pasando, mandá a soporte el archivo:
+{}",
+                                status,
+                                app_data_dir.join("backend-err.log").display()
+                            ),
+                        );
+                        break;
+                    }
+                    restarts += 1;
+                    log_startup_error(&format!("Backend terminó ({}); relanzando, intento {}", status, restarts));
+                    match spawn_backend() {
+                        Ok(child) => {
+                            *lock = Some(child);
+                            last_start = std::time::Instant::now();
+                        }
+                        Err(e) => {
+                            *lock = None;
+                            notify_error("Ventra no pudo iniciar el sistema", format!("No se pudo relanzar el sistema interno de Ventra.
+
+Detalle: {}", e));
+                            break;
+                        }
+                    }
+                }
+            });
  
              Ok(())
          })

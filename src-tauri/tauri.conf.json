@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Ventra",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "identifier": "com.godelivery.pos",
   "build": {
     "frontendDist": "../apps/frontend/dist",
@@ -70,6 +70,7 @@
       "../.env"
     ],
     "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "headerImage": "installer-header.bmp",
