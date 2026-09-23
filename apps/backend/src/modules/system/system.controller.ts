@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import * as os from 'os';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
@@ -113,7 +113,12 @@ export class SystemController {
   async hardReset() {
     console.log('[SystemController] Starting DATABASE HARD RESET...');
     
+    // Primero lo que depende de otras tablas (si no, SQLite no deja borrar lo de arriba)
     const tables = [
+      'deliveryReceiptItem',
+      'deliveryReceipt',
+      'quoteItem',
+      'quote',
       'auditLog',
       'priceHistory',
       'inventoryMovement',
@@ -132,6 +137,8 @@ export class SystemController {
       'promotion',
       'marketingGroupItem',
       'marketingGroup',
+      'productKitItem',
+      'imageSuggestion',
       'product',
       'category',
       'brand',
@@ -162,7 +169,9 @@ export class SystemController {
     try {
       await this.prisma.user.deleteMany({});
     } catch (err: any) {
-      console.warn('[SystemController] Failed to delete users:', err.message);
+      // No se puede dejar el sistema a medias sin avisar: el usuario creería que se borró todo
+      console.error('[SystemController] Failed to delete users:', err.message);
+      throw new InternalServerErrorException('Se borraron los datos pero no los usuarios. Volvé a intentarlo o avisá a soporte.');
     }
 
     console.log('[SystemController] DATABASE HARD RESET completed.');
