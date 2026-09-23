@@ -3,9 +3,10 @@ import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText } from 'lucide-react';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2 } from 'lucide-react';
 import InvoiceModal from './InvoiceModal';
 import TicketReceipt from './TicketReceipt';
+import { canPrintSilently, getAutoPrintInvoice, printSilently } from '../../utils/ticketPrinter';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
@@ -108,7 +109,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
    /** Comprobante ya emitido para esta venta: bloquea volver a facturar e imprime el CAE */
    const [invoice, setInvoice] = useState<any | null>(null);
    const [invoiceQr, setInvoiceQr] = useState<string | null>(null);
-   const [showPreview, setShowPreview] = useState(true);
+   const [showPreview, setShowPreview] = useState(false);
+  const [bigPreview, setBigPreview] = useState(false);
    const [createdSale, setCreatedSale] = useState<any>(null);
 
   const [surcharges, setSurcharges] = useState<any[]>([]);
@@ -364,6 +366,10 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   useEffect(() => {
     if (!showSuccess) return;
     const handleSuccessKeys = (e: KeyboardEvent) => {
+      if (bigPreview) {
+        if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); setBigPreview(false); }
+        return;
+      }
       if (e.key === 'F9') {
         e.preventDefault();
         handlePrint();
@@ -377,7 +383,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     };
     window.addEventListener('keydown', handleSuccessKeys);
     return () => window.removeEventListener('keydown', handleSuccessKeys);
-  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice]);
+  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice, bigPreview]);
 
   /**
    * Manda el ticket a la impresora y avisa qué pasó.
@@ -726,6 +732,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                 {showPreview ? 'Ocultar' : 'Ver'}
               </button>
             </div>
+            <button
+              onClick={() => setBigPreview(true)}
+              className="w-full mb-2 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 cursor-pointer"
+            >
+              <Maximize2 className="w-3.5 h-3.5" /> Ver ticket en grande
+            </button>
             {showPreview && (
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-3 max-h-72 overflow-y-auto custom-scrollbar shadow-inner">
                 <TicketReceipt
@@ -742,6 +754,19 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           </MotionDiv>
         </MotionDiv>
 
+        {bigPreview && createdSale && (
+          <div className="fixed inset-0 z-[300] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setBigPreview(false)}>
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[520px] max-h-[92vh] overflow-y-auto custom-scrollbar p-8" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setBigPreview(false)} className="absolute top-3 right-3 w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center cursor-pointer" aria-label="Cerrar">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+              <div className="origin-top" style={{ zoom: 1.45 }}>
+                <TicketReceipt createdSale={createdSale} storeName={storeName} invoice={invoice} invoiceQr={invoiceQr} pickedUpBy={pickedUpBy} formatPrice={formatPrice} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {showInvoice && createdSale && (
           <InvoiceModal
             saleId={createdSale.id}
@@ -752,8 +777,18 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             onEmitted={(comprobante, qrDataUrl) => {
               setInvoice(comprobante);
               setInvoiceQr(qrDataUrl);
-              // El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE
-              setTimeout(() => handlePrint(), 400);
+              // El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE.
+              // En la app de escritorio sale directo; si falla (o en el navegador) se abre el cuadro de impresión.
+              setTimeout(() => {
+                if (!canPrintSilently() || !getAutoPrintInvoice()) { handlePrint(); return; }
+                const aviso = toast.loading('Imprimiendo la factura...');
+                printSilently()
+                  .then(() => toast.success('Factura impresa', { id: aviso, duration: 3000 }))
+                  .catch((err) => {
+                    toast.error(`${err?.message || err || 'No se pudo imprimir'}. Elegí la impresora en el cuadro.`, { id: aviso, duration: 6000 });
+                    handlePrint();
+                  });
+              }, 400);
             }}
           />
         )}

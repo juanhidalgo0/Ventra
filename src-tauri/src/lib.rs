@@ -129,6 +129,86 @@ fn open_browser(url: String) {
 }
 
 
+/// Impresoras instaladas en Windows, para elegir la de tickets en Configuración.
+#[tauri::command]
+fn list_printers() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell.exe")
+            .args(&["-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Printer | ForEach-Object { $_.Name }"])
+            .creation_flags(0x08000000)
+            .output();
+        if let Ok(o) = out {
+            return String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Imprime la página actual (con su CSS de impresión, igual que window.print) directo a la
+/// impresora, sin el cuadro de Windows. Sin nombre usa la impresora predeterminada.
+#[tauri::command]
+async fn silent_print(window: tauri::WebviewWindow, printer: Option<String>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let tx2 = tx.clone();
+        window
+            .with_webview(move |wv| {
+                if let Err(e) = unsafe { start_silent_print(wv, printer, tx2.clone()) } {
+                    let _ = tx2.send(Err(e));
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        drop(tx);
+        return tauri::async_runtime::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(90)).unwrap_or(Err("La impresora no respondió".into()))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, printer);
+        Err("Impresión directa no disponible".into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn start_silent_print(
+    wv: tauri::webview::PlatformWebview,
+    printer: Option<String>,
+    tx: std::sync::mpsc::Sender<Result<(), String>>,
+) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::*;
+    use webview2_com::PrintCompletedHandler;
+    use windows::core::{Interface, HSTRING};
+    let e = |x: windows::core::Error| x.message().to_string();
+    let core = wv.controller().CoreWebView2().map_err(e)?;
+    let core16: ICoreWebView2_16 = core.cast().map_err(|_| "WebView2 desactualizado".to_string())?;
+    let env6: ICoreWebView2Environment6 = wv.environment().cast().map_err(|_| "WebView2 desactualizado".to_string())?;
+    let settings = env6.CreatePrintSettings().map_err(e)?;
+    settings.SetShouldPrintHeaderAndFooter(false).map_err(e)?;
+    settings.SetShouldPrintBackgrounds(true).map_err(e)?;
+    if let Some(name) = printer.filter(|p| !p.trim().is_empty()) {
+        let s2: ICoreWebView2PrintSettings2 = settings.cast().map_err(e)?;
+        s2.SetPrinterName(&HSTRING::from(name)).map_err(e)?;
+    }
+    let handler = PrintCompletedHandler::create(Box::new(move |res, status| {
+        let r = match res {
+            Ok(()) if status == COREWEBVIEW2_PRINT_STATUS_SUCCEEDED => Ok(()),
+            Ok(()) if status == COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE => Err("La impresora no está disponible".to_string()),
+            Ok(()) => Err("No se pudo imprimir".to_string()),
+            Err(err) => Err(err.message().to_string()),
+        };
+        let _ = tx.send(r);
+        Ok(())
+    }));
+    core16.Print(&settings, &handler).map_err(e)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "windows")]
@@ -393,7 +473,7 @@ pub fn run() {
                  }
              }
          })
-         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser, restart_app, stop_backend_for_update]);
+         .invoke_handler(tauri::generate_handler![save_performance_mode, get_backend_port, toggle_fullscreen, open_auth_window, open_browser, restart_app, stop_backend_for_update, list_printers, silent_print]);
 
     let app = builder
         .build(tauri::generate_context!())
