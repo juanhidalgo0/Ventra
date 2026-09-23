@@ -11,6 +11,9 @@ interface UpdaterState {
   checkAndDownload: () => Promise<void>;
 }
 
+/** Se pidió un chequeo mientras había otro en curso: repetirlo al terminar. */
+let recheckAfter = false;
+
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   status: 'idle',
   version: null,
@@ -21,15 +24,28 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   // background right away — no user prompt to start the download. The user
   // is only ever asked once the file is fully downloaded and ready to apply.
   checkAndDownload: async () => {
-    if (get().status === 'downloading' || get().status === 'ready') return; // already in progress / done
+    // Si ya hay una descarga en curso, se vuelve a chequear cuando termine:
+    // así, si mientras tanto salió otra versión, se baja esa (la última).
+    if (get().status === 'downloading' || get().status === 'checking') {
+      recheckAfter = true;
+      return;
+    }
+    const readyVersion = get().status === 'ready' ? get().version : null;
     set({ status: 'checking' });
     try {
       const update = await check();
       if (!update) {
-        set({ status: 'idle' });
+        set({ status: readyVersion ? 'ready' : 'idle' });
+        return;
+      }
+      // La última publicada ya está descargada: nada que hacer
+      if (readyVersion && update.version === readyVersion) {
+        set({ status: 'ready' });
         return;
       }
 
+      // Hay una más nueva que la descargada (o ninguna descargada): se baja esa.
+      // Siempre se instala directo la última, nunca una por una.
       set({ status: 'downloading', version: update.version, progress: 0, update });
 
       let totalBytes = 0;
@@ -49,7 +65,12 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       set({ status: 'ready' });
     } catch (err) {
       console.error('[Updater] Check/download failed:', err);
-      set({ status: 'error' });
+      set({ status: readyVersion ? 'ready' : 'error' });
+    } finally {
+      if (recheckAfter) {
+        recheckAfter = false;
+        setTimeout(() => get().checkAndDownload(), 1000);
+      }
     }
   },
 }));
