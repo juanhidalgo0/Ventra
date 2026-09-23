@@ -25,7 +25,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (username, password) => {
     set({ isLoading: true });
     try {
-      const { data } = await api.post('/auth/login', { username, password });
+      // Instalada como app (PWA): sesión larga, para que el dueño no tenga que volver a entrar
+      const installed = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+      const { data } = await api.post('/auth/login', { username, password, ...(installed ? { longSession: true } : {}) });
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));

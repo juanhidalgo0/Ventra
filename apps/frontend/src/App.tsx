@@ -11,6 +11,7 @@ import api, { resolveServerUrl } from './services/api';
 import LicenseBlockScreen from './components/auth/LicenseBlockScreen';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
+import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
 
@@ -640,6 +641,7 @@ export default function App() {
     </Routes>
     <Updater />
     <SyncDownloadBanner />
+    <GlobalLoadingBar />
 
     {/* Floating global import progress overlay (minimized on the left) */}
     {globalImportStatus && globalImportStatus.show && !globalImportStatus.isComplete && !globalImportStatus.error && globalImportStatus.isMinimized && (

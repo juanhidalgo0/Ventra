@@ -805,7 +805,12 @@ export default function CashControlScreen() {
           </div>
         </div>
 
-        {activeSessions.length === 0 ? (
+        {isLoading && activeSessions.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center justify-center gap-3">
+             <div className="w-5 h-5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cargando cajas…</p>
+          </div>
+        ) : activeSessions.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center">
              <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center mb-2"><Lock className="w-5 h-5 text-slate-300" /></div>
              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No hay cajas abiertas en este momento</p>
@@ -937,7 +942,12 @@ export default function CashControlScreen() {
         </div>
 
         {activeHistoryTab === 'X' ? (
-          locallyFilteredClosedSessions.length === 0 ? (
+          isLoading && sessions.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
+              <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Cargando cierres…</p>
+            </div>
+          ) : locallyFilteredClosedSessions.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-4 shadow-xs">
                 <Search className="w-6 h-6 text-slate-200" />

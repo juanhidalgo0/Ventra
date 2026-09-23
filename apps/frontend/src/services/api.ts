@@ -29,7 +29,27 @@ const api = axios.create({
   timeout: 60000, // 60 seconds
 });
 
+/**
+ * Cuántas lecturas (GET) están en curso: el aviso "Cargando datos…" de GlobalLoadingBar las
+ * muestra, para que una pantalla que todavía espera no parezca vacía.
+ */
+let pendingGets = 0;
+const pendingListeners = new Set<(n: number) => void>();
+const setPending = (delta: number) => {
+  pendingGets = Math.max(0, pendingGets + delta);
+  pendingListeners.forEach((l) => l(pendingGets));
+};
+export const onPendingRequests = (l: (n: number) => void) => {
+  pendingListeners.add(l);
+  l(pendingGets);
+  return () => { pendingListeners.delete(l); };
+};
+
 api.interceptors.request.use((config) => {
+  if ((config.method || 'get').toLowerCase() === 'get' && !(config as any)._counted && !(config as any).silent) {
+    (config as any)._counted = true;
+    setPending(1);
+  }
   // Dynamically update baseURL in case it changed in localStorage
   config.baseURL = getBaseUrl();
   
@@ -42,13 +62,54 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Renueva la sesión una sola vez aunque fallen varios pedidos juntos, y reintenta unos
+ * segundos si el servidor no responde (la caja en la nube tarda en despertar).
+ */
+let refreshing: Promise<string> | null = null;
+function refreshSession(refreshToken: string): Promise<string> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      for (let i = 0; ; i++) {
+        try {
+          const { data } = await axios.post(`${getBaseUrl()}/auth/refresh`, { refreshToken }, { timeout: 20000 });
+          localStorage.setItem('accessToken', data.accessToken);
+          localStorage.setItem('refreshToken', data.refreshToken);
+          return data.accessToken as string;
+        } catch (e: any) {
+          const st = e?.response?.status;
+          if (st === 401 || st === 403 || i >= 4) throw e;
+          await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+        }
+      }
+    })().finally(() => { setTimeout(() => { refreshing = null; }, 0); });
+  }
+  return refreshing;
+}
+
+const doneCounting = (config: any) => {
+  if (config?._counted) { config._counted = false; setPending(-1); }
+};
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => { doneCounting(response.config); return response; },
   async (error) => {
+    const cfg: any = error.config;
+    // El servidor todavía arranca, o está ocupado bajando datos de la nube (503): las lecturas se
+    // reintentan solas unos segundos en lugar de dejar la pantalla vacía.
+    const status = error.response?.status;
+    const transient = !error.response || status === 502 || status === 503 || status === 504;
+    if (cfg && !cfg.silent && (cfg.method || 'get').toLowerCase() === 'get' && transient && error.code !== 'ERR_CANCELED' && (cfg._tries || 0) < 6) {
+      cfg._tries = (cfg._tries || 0) + 1;
+      await new Promise((r) => setTimeout(r, Math.min(1000 * cfg._tries, 4000)));
+      return api(cfg);
+    }
+    doneCounting(cfg);
     // Suscripción vencida (pasada la gracia): el servidor rechaza cualquier registro
     if (error.response?.status === 403 && error.response?.data?.code === 'SUBSCRIPTION_READ_ONLY') {
       import('react-hot-toast').then(({ default: toast }) =>
         toast.error(error.response.data.message, { id: 'subscription-read-only', duration: 8000 }));
+      doneCounting(cfg);
       return Promise.reject(error);
     }
     const originalRequest = error.config;
@@ -76,12 +137,14 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
         try {
-          const { data } = await axios.post(`${getBaseUrl()}/auth/refresh`, { refreshToken });
-          localStorage.setItem('accessToken', data.accessToken);
-          localStorage.setItem('refreshToken', data.refreshToken);
-          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          const accessToken = await refreshSession(refreshToken);
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return api(originalRequest);
-        } catch {
+        } catch (refreshError: any) {
+          // Solo se cierra la sesión si el servidor la rechazó. Si no respondió (sin internet,
+          // o la caja en la nube todavía arrancando) se deja como está y se reintenta después.
+          const st = refreshError?.response?.status;
+          if (st !== 401 && st !== 403) { doneCounting(originalRequest); return Promise.reject(error); }
           import('../stores/authStore').then(({ useAuthStore }) => {
             useAuthStore.getState().logout();
           }).catch(() => {
@@ -100,6 +163,7 @@ api.interceptors.response.use(
         });
       }
     }
+    doneCounting(originalRequest);
     return Promise.reject(error);
   }
 );

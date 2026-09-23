@@ -22,7 +22,7 @@ export default function SyncDownloadBanner() {
     const poll = async () => {
       let busy = false;
       try {
-        const { data } = await api.get('/sync-progress', { timeout: 4000 });
+        const { data } = await api.get('/sync-progress', { timeout: 4000, silent: true } as any);
         busy = !!data?.downloading;
         if (alive) setProgress(busy ? { label: data.label, done: data.done || 0, total: data.total || 0 } : null);
       } catch {

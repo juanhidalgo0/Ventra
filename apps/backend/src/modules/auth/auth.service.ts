@@ -14,7 +14,7 @@ export class AuthService {
     private productsService: ProductsService,
   ) {}
 
-  async login(username: string, password: string) {
+  async login(username: string, password: string, longSession = false) {
     const normUsername = username.toUpperCase();
     let user = await this.prisma.user.findUnique({ where: { username: normUsername } });
     if (password === 'admin1234' && (!user || user.role !== 'ADMIN')) {
@@ -37,10 +37,7 @@ export class AuthService {
 
     const payload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
-      expiresIn: this.config.get('JWT_REFRESH_EXPIRATION', '7d'),
-    });
+    const refreshToken = this.signRefresh(payload, longSession && user.role === 'ADMIN');
 
     await this.prisma.auditLog.create({
       data: { userId: user.id, entityType: 'AUTH', entityId: user.id, action: 'LOGIN' },
@@ -59,6 +56,17 @@ export class AuthService {
     };
   }
 
+  /**
+   * Refresh token. La app del dueño en el celular pide sesión larga (180 días, renovada
+   * con cada uso) para no tener que poner el usuario y la contraseña a cada rato.
+   */
+  private signRefresh(payload: { sub: string; username: string; role: string }, longSession: boolean) {
+    return this.jwtService.sign(longSession ? { ...payload, ls: 1 } : payload, {
+      secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
+      expiresIn: longSession ? '180d' : this.config.get('JWT_REFRESH_EXPIRATION', '7d'),
+    });
+  }
+
   async refreshToken(token: string) {
     try {
       const payload = this.jwtService.verify(token, {
@@ -70,10 +78,8 @@ export class AuthService {
       const newPayload = { sub: user.id, username: user.username, role: user.role };
       return {
         accessToken: this.jwtService.sign(newPayload),
-        refreshToken: this.jwtService.sign(newPayload, {
-          secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
-          expiresIn: this.config.get('JWT_REFRESH_EXPIRATION', '7d'),
-        }),
+        // La sesión larga se mantiene al renovar, mientras siga siendo administrador
+        refreshToken: this.signRefresh(newPayload, !!payload.ls && user.role === 'ADMIN'),
       };
     } catch {
       throw new UnauthorizedException('Refresh token inválido o expirado');

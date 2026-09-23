@@ -1043,7 +1043,7 @@ export default function POSScreen() {
   const loadPromotions = async () => { try { const { data } = await api.get('/promotions'); setCachedPromotions(data); } catch {} };
   const loadPendingArqueos = async () => {
     try {
-      const { data } = await api.get('/cash/pending-arqueos');
+      const { data } = await api.get('/cash/pending-arqueos', { silent: true } as any);
       setPendingArqueos(data);
     } catch (err) {
       console.error('Error loading pending arqueos', err);
@@ -1054,7 +1054,7 @@ export default function POSScreen() {
       await api.post(`/cash/${sessionId}/close`, { clientId: getClientId() });
       toast.success('✅ Caja cerrada correctamente. Arqueo pendiente.');
       setCurrentSession(null);
-      const { data } = await api.get('/cash/pending-arqueos');
+      const { data } = await api.get('/cash/pending-arqueos', { silent: true } as any);
       setPendingArqueos(data);
       const sessionToArqueo = data.find((a: any) => a.id === sessionId);
       if (sessionToArqueo) {

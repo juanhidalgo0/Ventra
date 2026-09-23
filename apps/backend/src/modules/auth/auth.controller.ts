@@ -2,12 +2,14 @@ import { Controller, Post, Body, Get, UseGuards, Request, BadRequestException, H
 import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 import { LicenseService } from './license.service';
 
 class LoginDto {
   @IsString() @IsNotEmpty() username: string;
   @IsString() @IsNotEmpty() password: string;
+  /** App instalada en el celular del dueño: la sesión dura meses en lugar de 7 días */
+  @IsOptional() @IsBoolean() longSession?: boolean;
 }
 
 class RefreshDto {
@@ -38,7 +40,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.username, dto.password);
+    return this.authService.login(dto.username, dto.password, !!dto.longSession);
   }
 
   @Post('google')

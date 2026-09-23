@@ -129,7 +129,7 @@ export default function MainLayout({ children }: Props) {
           if (!isMounted) return;
           setAttempts(i);
           try {
-            await api.get('/cash/current');
+            await api.get('/cash/current', { silent: true } as any);
             connected = true;
             break;
           } catch (e) {
@@ -152,7 +152,7 @@ export default function MainLayout({ children }: Props) {
       } else {
         // Standard background health checks
         try {
-          await api.get('/cash/current');
+          await api.get('/cash/current', { silent: true } as any);
           if (!isMounted) return;
           setIsOnline(true);
           if (wasOffline) {
