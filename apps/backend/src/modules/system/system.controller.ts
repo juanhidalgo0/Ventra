@@ -156,48 +156,13 @@ export class SystemController {
       console.warn('[SystemController] Failed to reset sqlite_sequence:', err.message);
     }
 
+    // Se borran TODOS los usuarios: al volver a entrar aparece "Crear administrador", igual
+    // que en una instalación nueva. Antes quedaba un ADMIN con clave 1234 que nadie conocía
+    // y parecía que el sistema no tenía usuarios.
     try {
-      // Delete all users except 'ADMIN'
-      await this.prisma.user.deleteMany({
-        where: {
-          NOT: {
-            username: 'ADMIN',
-          },
-        },
-      });
+      await this.prisma.user.deleteMany({});
     } catch (err: any) {
       console.warn('[SystemController] Failed to delete users:', err.message);
-    }
-
-    try {
-      // Create or reset default admin password to '1234'
-      const adminPasswordHash = await bcrypt.hash('1234', 10);
-      const existingAdmin = await this.prisma.user.findFirst({
-        where: { username: 'ADMIN' }
-      });
-      if (existingAdmin) {
-        await this.prisma.user.update({
-          where: { id: existingAdmin.id },
-          data: {
-            passwordHash: adminPasswordHash,
-            fullName: 'ADMIN',
-            role: 'ADMIN',
-            isActive: true,
-          }
-        });
-      } else {
-        await this.prisma.user.create({
-          data: {
-            username: 'ADMIN',
-            passwordHash: adminPasswordHash,
-            fullName: 'ADMIN',
-            role: 'ADMIN',
-            isActive: true,
-          }
-        });
-      }
-    } catch (err: any) {
-      console.error('[SystemController] Failed to recreate default ADMIN user:', err.message);
     }
 
     console.log('[SystemController] DATABASE HARD RESET completed.');
