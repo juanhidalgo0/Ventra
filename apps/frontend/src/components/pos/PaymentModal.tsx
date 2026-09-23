@@ -3,12 +3,14 @@ import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle } from 'lucide-react';
-import QRCode from 'qrcode';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText } from 'lucide-react';
+import InvoiceModal from './InvoiceModal';
+import TicketReceipt from './TicketReceipt';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
+import { hasFeature } from '../../stores/businessStore';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -99,8 +101,15 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   const [isAcopio, setIsAcopio] = useState(false);
 
    const [showSuccess, setShowSuccess] = useState(false);
+   // Facturación electrónica: sólo se ofrece si el comercio la tiene activada
+   const [fiscalEnabled, setFiscalEnabled] = useState(false);
+   const [fiscalConfig, setFiscalConfig] = useState<any | null>(null);
+   const [showInvoice, setShowInvoice] = useState(false);
+   /** Comprobante ya emitido para esta venta: bloquea volver a facturar e imprime el CAE */
+   const [invoice, setInvoice] = useState<any | null>(null);
+   const [invoiceQr, setInvoiceQr] = useState<string | null>(null);
+   const [showPreview, setShowPreview] = useState(true);
    const [createdSale, setCreatedSale] = useState<any>(null);
-   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
   const [surcharges, setSurcharges] = useState<any[]>([]);
   useEffect(() => {
@@ -342,6 +351,15 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isProcessing, showSuccess, paymentType, selectedClientId, onClose, isDebtPayment, disableChangeCalc, cashReceived, finalTotal, mixedValid, posnets]);
 
+  // ¿El comercio factura? Se consulta una vez al abrir el cobro, no en cada venta
+  useEffect(() => {
+    let vivo = true;
+    api.get('/fiscal/config')
+      .then(({ data }) => { if (vivo) { setFiscalEnabled(Boolean(data?.enabled)); setFiscalConfig(data); } })
+      .catch(() => { /* sin módulo fiscal configurado: el POS sigue como siempre */ });
+    return () => { vivo = false; };
+  }, []);
+
   // Success screen keyboard shortcut listener (F9 to print, Enter for new sale)
   useEffect(() => {
     if (!showSuccess) return;
@@ -352,14 +370,60 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       } else if (e.key === 'Enter') {
         e.preventDefault();
         handleNewSale();
+      } else if ((e.key === 'f' || e.key === 'F') && fiscalEnabled && !showInvoice && !invoice) {
+        e.preventDefault();
+        setShowInvoice(true);
       }
     };
     window.addEventListener('keydown', handleSuccessKeys);
     return () => window.removeEventListener('keydown', handleSuccessKeys);
-  }, [showSuccess, createdSale]);
+  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice]);
 
+  /**
+   * Manda el ticket a la impresora y avisa qué pasó.
+   *
+   * El navegador no permite saber si hay una impresora conectada ni si el papel salió:
+   * lo único observable es si el diálogo de impresión llegó a abrirse (`beforeprint`) y
+   * cuándo se cerró (`afterprint`). Eso es lo que se informa, sin prometer de más.
+   */
   const handlePrint = () => {
-    window.print();
+    const aviso = toast.loading('Enviando el ticket a la impresora...');
+    let abrio = false;
+
+    const alAbrir = () => { abrio = true; };
+    const alCerrar = () => {
+      limpiar();
+      toast.success('Ticket enviado a la impresora', { id: aviso, duration: 3000 });
+    };
+    const limpiar = () => {
+      window.removeEventListener('beforeprint', alAbrir);
+      window.removeEventListener('afterprint', alCerrar);
+      clearTimeout(vigilante);
+    };
+
+    // Si el diálogo nunca aparece, casi siempre es que el equipo no tiene ninguna impresora
+    const vigilante = setTimeout(() => {
+      if (!abrio) {
+        limpiar();
+        toast.error('No se abrió la impresión. Revisá que haya una impresora instalada en la PC.', {
+          id: aviso,
+          duration: 7000,
+        });
+      }
+    }, 3000);
+
+    window.addEventListener('beforeprint', alAbrir);
+    window.addEventListener('afterprint', alCerrar);
+
+    // Un respiro para que el aviso se dibuje: window.print() congela la pantalla mientras está abierto
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch (err) {
+        limpiar();
+        toast.error('No se pudo imprimir el ticket', { id: aviso });
+      }
+    }, 60);
   };
 
   const handleNewSale = () => {
@@ -430,15 +494,10 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         saleData = response.data;
         setCreatedSale(saleData);
       }
-      
-      // Generate offline QR code dynamically
-      try {
-        const qrData = `https://www.afip.gob.ar/fe/qr/?cuit=20359874529&tipoComprobante=11&puntoVenta=4&numeroComprobante=${saleData.saleNumber}&importe=${saleData.total}&cae=8372432392218`;
-        const dataUrl = await QRCode.toDataURL(qrData, { margin: 1, width: 200 });
-        setQrCodeUrl(dataUrl);
-      } catch (qrErr) {
-        console.error('Failed to generate local QR code:', qrErr);
-      }
+
+      // El ticket no lleva QR ni CAE: la facturación electrónica con ARCA todavía no
+      // está implementada, así que imprimirlos daría por autorizado un comprobante
+      // que ARCA nunca autorizó. Se agregan recién cuando exista la integración real.
 
       // Play sale confirmation chime
       playSaleSuccessSound();
@@ -521,7 +580,6 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   // Render Success State Screen
   if (showSuccess && createdSale) {
     const saleDate = new Date(createdSale.createdAt).toLocaleString('es-AR');
-    const qrData = `https://www.afip.gob.ar/fe/qr/?cuit=20359874529&tipoComprobante=11&puntoVenta=4&numeroComprobante=${createdSale.saleNumber}&importe=${createdSale.total}&cae=8372432392218`;
     return (
       <>
         <MotionDiv 
@@ -620,7 +678,30 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           )}
 
           {/* Action buttons */}
-          <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
+          <div className={`grid ${fiscalEnabled ? 'grid-cols-3 max-w-lg' : 'grid-cols-2 max-w-sm'} gap-3 mx-auto`}>
+            {fiscalEnabled && (
+              invoice ? (
+                // Ya facturada: el comprobante es uno solo, así que se muestra en vez de ofrecer otro
+                <div className="flex flex-col items-center justify-center gap-1 p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 dark:bg-emerald-950/30">
+                  <Check className="w-5 h-5 stroke-[3] text-emerald-600" />
+                  <span className="text-[10px] uppercase tracking-widest text-emerald-800 dark:text-emerald-300 font-bold text-center leading-tight">
+                    {(invoice.type || '').replace('FACTURA_', 'Factura ')}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                    {String(invoice.pointOfSale ?? 0).padStart(4, '0')}-{String(invoice.number ?? 0).padStart(8, '0')}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowInvoice(true)}
+                  className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-teal-600 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm"
+                >
+                  <FileText className="w-6 h-6 stroke-[2.5]" />
+                  <span className="text-[10px] uppercase tracking-widest text-teal-900 dark:text-teal-200 font-bold">Facturar</span>
+                  <span className="text-[8px] font-bold text-teal-500 dark:text-teal-300 opacity-80 uppercase tracking-wider bg-white dark:bg-teal-950 border border-teal-100 dark:border-teal-800 px-2 py-0.5 rounded-md mt-1 shadow-sm">[F]</span>
+                </button>
+              )
+            )}
             <button onClick={handlePrint} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-rose-600 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm">
               <Printer className="w-6 h-6 stroke-[2.5]" />
               <span className="text-[10px] uppercase tracking-widest text-rose-900 dark:text-rose-200 font-bold">Imprimir Ticket</span>
@@ -633,127 +714,59 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
               <span className="text-[8px] font-bold text-emerald-100 bg-emerald-600 border border-emerald-500 px-2 py-0.5 rounded-md mt-1 shadow-sm">[ENTER]</span>
             </button>
           </div>
+
+          {/* Lo mismo que sale en papel, para revisarlo sin gastar un ticket */}
+          <div className="mt-6 max-w-[300px] mx-auto text-left">
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <span className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400">Vista previa del ticket</span>
+              <button
+                onClick={() => setShowPreview((v) => !v)}
+                className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                {showPreview ? 'Ocultar' : 'Ver'}
+              </button>
+            </div>
+            {showPreview && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-3 max-h-72 overflow-y-auto custom-scrollbar shadow-inner">
+                <TicketReceipt
+                  createdSale={createdSale}
+                  storeName={storeName}
+                  invoice={invoice}
+                  invoiceQr={invoiceQr}
+                  pickedUpBy={pickedUpBy}
+                  formatPrice={formatPrice}
+                />
+              </div>
+            )}
+          </div>
           </MotionDiv>
         </MotionDiv>
 
+        {showInvoice && createdSale && (
+          <InvoiceModal
+            saleId={createdSale.id}
+            saleNumber={createdSale.saleNumber}
+            total={finalTotal}
+            cliente={createdSale.client}
+            onClose={() => setShowInvoice(false)}
+            onEmitted={(comprobante, qrDataUrl) => {
+              setInvoice(comprobante);
+              setInvoiceQr(qrDataUrl);
+              // El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE
+              setTimeout(() => handlePrint(), 400);
+            }}
+          />
+        )}
+
         <div id="printable-receipt" style={{ display: 'none' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', fontFamily: 'monospace', fontSize: '8pt', color: '#000', gap: '8px' }}>
-            
-            {/* Title & Info */}
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <h4 style={{ margin: 0, fontSize: '10.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>{storeName}</h4>
-              <p style={{ margin: 0, fontWeight: 'bold' }}>C.U.I.T. N° 20-35987452-9</p>
-              <p style={{ margin: 0 }}>Punto de Venta N° 00004</p>
-              <p style={{ margin: 0, fontWeight: 'bold', textTransform: 'uppercase' }}>RESPONSABLE INSCRIPTO</p>
-              <p style={{ margin: 0 }}>ING. BRUTOS: Convenio Multilateral</p>
-              <p style={{ margin: 0 }}>Inicio de Actividades: 10/12/2023</p>
-            </div>
-
-            {/* Invoice Main Meta */}
-            <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', display: 'flex', flexDirection: 'column', gap: '2px', fontWeight: 'bold' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>COMPROBANTE:</span>
-                <span>Factura C</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>N° COMP.:</span>
-                <span>{'00004-' + createdSale.saleNumber.toString().padStart(8, '0')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>FECHA EMISIÓN:</span>
-                <span>{new Date(createdSale.createdAt).toLocaleDateString('es-AR')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>HORA EMISIÓN:</span>
-                <span>{new Date(createdSale.createdAt).toLocaleTimeString('es-AR')}</span>
-              </div>
-            </div>
-
-            {/* Items Section */}
-            <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                <span style={{ width: '55%' }}>DETALLE</span>
-                <span style={{ width: '20%', textAlign: 'center' }}>CANT.</span>
-                <span style={{ width: '25%', textAlign: 'right' }}>TOTAL</span>
-              </div>
-              {createdSale.items.map((item: any, idx: number) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ width: '55%', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.productName}
-                  </span>
-                  <span style={{ width: '20%', textAlign: 'center' }}>{item.quantity.toFixed(1)}</span>
-                  <span style={{ width: '25%', textAlign: 'right' }}>{formatPrice(item.total)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Totals Section */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontWeight: 'bold', fontSize: '9pt' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>SUBTOTAL:</span>
-                <span>{formatPrice(createdSale.total * 0.79)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7.5pt', color: '#555' }}>
-                <span>IVA 21.00%:</span>
-                <span>{formatPrice(createdSale.total * 0.21)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5pt', fontWeight: '900', borderTop: '1px dashed #000', paddingTop: '4px', color: '#0E6E52' }}>
-                <span>TOTAL NETO:</span>
-                <span>{formatPrice(createdSale.total)}</span>
-              </div>
-            </div>
-
-            {/* Footer Text */}
-            <p style={{ margin: 0, fontSize: '7pt', textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '8px', fontWeight: 'bold' }}>
-              ¡Muchas gracias por su compra! - {storeName}
-            </p>
-
-            {pickedUpBy && (
-              <div style={{ borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '7.5pt' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 'bold' }}>RETIRADO POR:</span>
-                  <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{pickedUpBy}</span>
-                </div>
-                <div style={{ borderBottom: '1px solid #000', width: '70%', margin: '18px auto 4px auto' }} />
-                <div style={{ textAlign: 'center', fontSize: '6.5pt', color: '#555' }}>Firma y Aclaración de Quien Retira</div>
-              </div>
-            )}
-
-            {/* AFIP / ARCA Fiscal Barcode & QR Code simulation */}
-            <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
-                {/* QR Code Container */}
-                <div style={{ width: '50px', height: '50px', border: '1px solid #ccc', borderRadius: '4px', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0, backgroundColor: '#fff' }}>
-                  {qrCodeUrl ? (
-                    <img 
-                      src={qrCodeUrl} 
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
-                      alt="ARCA QR" 
-                    />
-                  ) : (
-                    <div style={{ fontSize: '6pt', color: '#999' }}>QR Error</div>
-                  )}
-                </div>
-                <div style={{ fontSize: '7pt', color: '#444', fontWeight: 'bold', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                  <p style={{ color: '#000', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '3px', textTransform: 'uppercase', margin: 0 }}>
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-                    Comprobante Autorizado
-                  </p>
-                  <p style={{ margin: 0 }}>CAE N°: <span style={{ color: '#000', fontWeight: '900' }}>8372432392218</span></p>
-                  <p style={{ margin: 0 }}>Vence CAE: <span style={{ color: '#000', fontWeight: '900' }}>14/06/2026</span></p>
-                </div>
-              </div>
-
-              {/* Simulated AFIP barcode text */}
-              <div style={{ width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-                <div style={{ fontFamily: 'monospace', fontSize: '7pt', letterSpacing: '0.2em', color: '#000', backgroundColor: '#f0f0f0', padding: '4px', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                  |||| | ||||| | ||| |||| | ||| | ||| ||||| |||| | |||| |||
-                </div>
-                <span style={{ fontSize: '6pt', color: '#666', fontFamily: 'monospace' }}>ARCA COD. 94 - REGISTRO N° 102492810</span>
-              </div>
-            </div>
-
-          </div>
+          <TicketReceipt
+            createdSale={createdSale}
+            storeName={storeName}
+            invoice={invoice}
+            invoiceQr={invoiceQr}
+            pickedUpBy={pickedUpBy}
+            formatPrice={formatPrice}
+          />
         </div>
       </>
     );
@@ -857,7 +870,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                 )}
 
                 {/* Venta a Acopio (Retiro Posterior / Obra) - Solo Ferretería */}
-                {!isDebtPayment && localStorage.getItem('business_type') === 'FERRETERIA' && (
+                {!isDebtPayment && hasFeature('acopio') && (
                   <div data-tour="pay-acopio" className="p-3 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-2xl flex items-center justify-between gap-3 transition-all">
                     <div className="flex items-center gap-2.5">
                       <span className="text-xl">📦</span>

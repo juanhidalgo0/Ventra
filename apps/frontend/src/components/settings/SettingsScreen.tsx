@@ -39,10 +39,15 @@ import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
+import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, type BusinessProfile } from '../../stores/businessStore';
 
 const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
 
-export default function SettingsScreen() {
+/**
+ * embedded + initialTab: en la app del celular, cada sección se abre sola (sin la
+ * columna de secciones), porque el índice lo muestra MobileSettingsScreen.
+ */
+export default function SettingsScreen({ initialTab, embedded = false }: { initialTab?: string; embedded?: boolean } = {}) {
   const { user, resetAdminUnlock, logout } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN' || localStorage.getItem('admin_unlocked') === 'true' || sessionStorage.getItem('admin_unlocked') === 'true';
 
@@ -90,10 +95,12 @@ export default function SettingsScreen() {
     const saved = localStorage.getItem('pos_disable_change_calculator');
     return saved ? saved === 'true' : false;
   });
-  const [businessType, setBusinessType] = useState<'KIOSKO' | 'FERRETERIA'>(() => {
-    const saved = localStorage.getItem('business_type');
-    return (saved as any) || 'KIOSKO';
-  });
+  const businessProfile = useBusinessStore((st) => st.profile);
+  const businessFeatures = useBusinessStore((st) => st.features);
+  const setBusinessProfile = useBusinessStore((st) => st.setProfile);
+  const setBusinessFeature = useBusinessStore((st) => st.setFeature);
+  // Si las funciones ya no coinciden con las del perfil, el comercio armó su propia combinación
+  const isCustomProfile = ALL_FEATURES.some((ft) => businessFeatures[ft] !== featuresOfProfile(businessProfile)[ft]);
 
   // Integraciones: vínculo de cuenta de Google con GoDelivery
   const [localGoogleUser, setLocalGoogleUser] = useState<any>(() => {
@@ -144,7 +151,7 @@ export default function SettingsScreen() {
   };
 
   const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'suscripcion' | 'integraciones' | 'mantenimiento'>(() =>
-    /[?&]tab=suscripcion/.test(window.location.hash) ? 'suscripcion' : 'general');
+    (initialTab as any) || (/[?&]tab=suscripcion/.test(window.location.hash) ? 'suscripcion' : 'general'));
 
   // Posnet Config States
   const [posnets, setPosnets] = useState<{ id: string; name: string }[]>(() => {
@@ -730,7 +737,7 @@ export default function SettingsScreen() {
   return (
     <div className="h-full flex flex-col lg:flex-row bg-slate-50 overflow-hidden">
       {/* ── Columna izquierda: encabezado + secciones ── */}
-      <aside className="w-full lg:w-[250px] xl:w-[280px] shrink-0 flex flex-col gap-4 p-4 lg:p-5 lg:overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50">
+      <aside className={`${embedded ? 'hidden' : 'flex'} w-full lg:w-[250px] xl:w-[280px] shrink-0 flex-col gap-4 p-4 lg:p-5 lg:overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50`}>
         <div className="px-1">
           <p className="eyebrow">Configuración</p>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-1">Centro de ajustes</h1>
@@ -831,47 +838,54 @@ export default function SettingsScreen() {
                     <div className="space-y-2 pb-2">
                       <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Rubro / Tipo de Comercio</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBusinessType('KIOSKO');
-                            localStorage.setItem('business_type', 'KIOSKO');
-                            toast.success('Modo Kiosco activado (interfaz simplificada)');
-                          }}
-                          className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                            businessType === 'KIOSKO'
-                              ? 'border-rose-600 bg-rose-50/70 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20'
-                              : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
-                          }`}
-                        >
-                          <span className="text-xs font-bold flex items-center gap-1.5">
-                            🍬 Kiosco / Almacén (Predeterminado)
-                          </span>
-                          <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                            Interfaz simple y limpia por unidades o packs. Oculta acopios, presupuestos y sustitutos para no saturar el mostrador.
-                          </span>
-                        </button>
+                        {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((profile) => {
+                          const info = PROFILE_LABELS[profile];
+                          const active = businessProfile === profile;
+                          return (
+                            <button
+                              key={profile}
+                              type="button"
+                              onClick={() => {
+                                setBusinessProfile(profile);
+                                toast.success(`Modo ${info.title} activado`);
+                              }}
+                              className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                                active
+                                  ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                                  : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <span className="text-xs font-bold flex items-center gap-1.5">
+                                {info.emoji} {info.title}
+                                {active && isCustomProfile && (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">A MEDIDA</span>
+                                )}
+                              </span>
+                              <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                                {info.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBusinessType('FERRETERIA');
-                            localStorage.setItem('business_type', 'FERRETERIA');
-                            toast.success('Modo Ferretería activado (Acopios, Presupuestos, Sustitutos y Fraccionados)');
-                          }}
-                          className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                            businessType === 'FERRETERIA'
-                              ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
-                              : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
-                          }`}
-                        >
-                          <span className="text-xs font-bold flex items-center gap-1.5">
-                            🔧 Ferretería / Corralón / Multirubro
-                          </span>
-                          <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                            Habilita Acopio y Remitos parciales, Presupuestos / Cotizaciones, Productos Sustitutos, Tarifas de Gremio y unidades de medida (Metros, Kilos, Litros).
-                          </span>
-                        </button>
+                      {/* El rubro es un punto de partida: cada comercio prende o apaga lo que usa */}
+                      <div className="mt-3 space-y-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-850/40">
+                        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Funciones activas</p>
+                        {ALL_FEATURES.map((feature) => (
+                          <label key={feature} className="flex items-center justify-between cursor-pointer group">
+                            <div className="max-w-[80%]">
+                              <span className="text-xs font-bold text-slate-700 block">{FEATURE_LABELS[feature].title}</span>
+                              <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">{FEATURE_LABELS[feature].description}</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={businessFeatures[feature]}
+                              onChange={(e) => setBusinessFeature(feature, e.target.checked)}
+                              className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
+                            />
+                          </label>
+                        ))}
                       </div>
                     </div>
 
@@ -1803,7 +1817,7 @@ export default function SettingsScreen() {
             <h3 className="text-[15px] font-bold mt-1 truncate">{terminalName}</h3>
             <p className="text-[11.5px] text-slate-400 mt-1 font-mono truncate" title={terminalUuid}>{terminalUuid}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="chip-lime">{businessType === 'FERRETERIA' ? 'Ferretería' : 'Kiosco'}</span>
+              <span className="chip-lime">{PROFILE_LABELS[businessProfile].title}</span>
               {performanceMode && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-white/10 text-slate-200">Modo rendimiento</span>}
             </div>
           </div>

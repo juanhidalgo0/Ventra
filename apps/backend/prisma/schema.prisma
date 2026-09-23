@@ -100,6 +100,30 @@ model Sale {
   acopioStatus         String   @default("NONE") @map("acopio_status") // NONE | PENDING | PARTIAL | COMPLETED
   createdAt            DateTime @default(now()) @map("created_at")
 
+  // ---- Facturación electrónica (ARCA) ----
+  // NONE = ticket común, sin comprobante fiscal. La venta nunca se frena por ARCA:
+  // queda PENDING y un proceso aparte pide el CAE cuando hay internet.
+  invoiceStatus        String    @default("NONE") @map("invoice_status") // NONE | PENDING | AUTHORIZED | REJECTED
+  invoiceType          String?   @map("invoice_type")  // FACTURA_A | FACTURA_B | FACTURA_C | NC_A | NC_B | NC_C
+  invoiceCbteTipo      Int?      @map("invoice_cbte_tipo") // Código de ARCA: 1=FacA, 6=FacB, 11=FacC...
+  invoicePointOfSale   Int?      @map("invoice_point_of_sale")
+  invoiceNumber        Int?      @map("invoice_number")
+  cae                  String?
+  caeExpiresAt         DateTime? @map("cae_expires_at")
+  invoiceDate          DateTime? @map("invoice_date")
+  invoiceRequestedAt   DateTime? @map("invoice_requested_at")
+  invoiceAttempts      Int       @default(0) @map("invoice_attempts")
+  invoiceError         String?   @map("invoice_error")
+  // Neto e IVA que se declararon: la factura A los imprime discriminados
+  invoiceNeto          Float?    @map("invoice_neto")
+  invoiceIva           Float?    @map("invoice_iva")
+  // Copia de los datos del receptor al momento de facturar: el cliente puede cambiar
+  // después y el comprobante tiene que seguir diciendo lo que se declaró.
+  receptorDocTipo      Int?      @map("receptor_doc_tipo") // 80=CUIT, 96=DNI, 99=Consumidor final
+  receptorDocNro       String?   @map("receptor_doc_nro")
+  receptorName         String?   @map("receptor_name")
+  receptorIvaCondition String?   @map("receptor_iva_condition")
+
   user     User                @relation(fields: [userId], references: [id])
   session  CashRegisterSession @relation(fields: [sessionId], references: [id])
   client   Client?             @relation(fields: [clientId], references: [id])
@@ -111,6 +135,7 @@ model Sale {
   @@index([createdAt])
   @@index([sessionId])
   @@index([clientId])
+  @@index([invoiceStatus])
   @@map("sales")
 }
 
@@ -212,6 +237,9 @@ model Product {
   showOnline       Boolean @default(false) @map("show_online") // Visible en la tienda online propia de Ventra
   tradePrice       Float?  @map("trade_price")
   isKit            Boolean @default(false) @map("is_kit")
+  baseName         String? @map("base_name") // Indumentaria: nombre del modelo, compartido por todas las variantes
+  variantGroupId   String? @map("variant_group_id") // Todas las variantes de un mismo modelo comparten este id
+  variantAttrs     String? @map("variant_attrs") // JSON con los atributos de la variante, ej. {"talle":"M","color":"Negro"}
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
   listPrice        Float?  @map("list_price") // Precio de lista del proveedor, sin IVA
@@ -245,6 +273,7 @@ model Product {
   @@index([categoryId])
   @@index([brandId])
   @@index([supplierId])
+  @@index([variantGroupId])
   @@map("products")
 }
 
@@ -433,6 +462,9 @@ model Client {
   id        String   @id @default(uuid())
   name      String
   dni       String?  @unique
+  cuit      String?
+  // Obligatoria en el comprobante y define si corresponde factura A o B
+  ivaCondition String @default("CONSUMIDOR_FINAL") @map("iva_condition") // RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL | NO_CATEGORIZADO
   phone     String?
   address   String?
   email     String?
@@ -475,6 +507,49 @@ model AccountMovement {
 }
 
 // ---- App Licensing ----
+// ---- Facturación electrónica (ARCA) ----
+
+// Configuración fiscal del comercio. Una sola fila: el comercio es uno solo por base.
+// El certificado puede ser de Ventra (delegación en ARCA: el comercio sólo autoriza
+// nuestra CUIT) o propio del comercio, que lo carga acá.
+model FiscalConfig {
+  id            String   @id @default("fiscal_config")
+  enabled       Boolean  @default(false)
+  cuit          String   @default("")
+  razonSocial   String   @default("") @map("razon_social")
+  ivaCondition  String   @default("MONOTRIBUTO") @map("iva_condition") // RESPONSABLE_INSCRIPTO | MONOTRIBUTO
+  pointOfSale   Int      @default(1) @map("point_of_sale")
+  environment   String   @default("HOMOLOGACION") // HOMOLOGACION | PRODUCCION
+  // DELEGATED = firma el servidor de Ventra con su certificado; OWN = certificado del comercio
+  certSource    String   @default("DELEGATED") @map("cert_source")
+  certPem       String?  @map("cert_pem")
+  keyPem        String?  @map("key_pem")
+  certExpiresAt DateTime? @map("cert_expires_at")
+  // Factura automática en cada venta, o sólo cuando el cliente la pide
+  autoInvoice   Boolean  @default(false) @map("auto_invoice")
+  startDate     DateTime? @map("start_date") // Desde cuándo factura: no se emite por ventas anteriores
+  lastError     String?  @map("last_error")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("fiscal_config")
+}
+
+// Ticket de acceso de WSAA. Dura 12 horas y hay que reusarlo: pedir uno nuevo
+// antes de que venza el anterior hace que ARCA rechace la solicitud.
+model FiscalToken {
+  id          String   @id @default(uuid())
+  cuit        String
+  service     String   @default("wsfe")
+  environment String
+  token       String
+  sign        String
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([cuit, service, environment])
+  @@map("fiscal_tokens")
+}
+
 model AppLicense {
   id            String   @id @default("license_config")
   licenseKey    String   @default("")

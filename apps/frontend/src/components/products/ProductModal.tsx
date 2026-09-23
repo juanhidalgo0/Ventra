@@ -23,6 +23,8 @@ import {
   Truck,
   Layers,
   Wrench,
+  Shirt,
+  Camera,
   Image as ImageIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -30,6 +32,7 @@ import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import ImageSearchPicker from './ImageSearchPicker';
+import { hasFeature, useFeature } from '../../stores/businessStore';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -66,16 +69,42 @@ interface ProductModalProps {
 }
 
 /** Sección del formulario: título chico en mayúsculas con ícono y una línea. */
+/**
+ * El formulario se reparte en hasta tres columnas, así que al saltar de un campo a
+ * otro es fácil perder de vista en qué bloque estás. La sección que contiene el
+ * campo enfocado se resalta sola con `focus-within`: el contorno usa `outline`
+ * (no ocupa espacio) para que no se mueva nada al encenderse.
+ */
 function FormSection({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
   return (
-    <section>
+    <section className="group rounded-2xl outline outline-2 outline-offset-[10px] outline-transparent transition-[outline-color] duration-200 focus-within:outline-rose-200">
       <div className="flex items-center gap-2 mb-2.5">
         <Icon className="w-4 h-4 text-rose-600" />
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{title}</h3>
-        <div className="flex-1 h-px bg-slate-100" />
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 transition-colors group-focus-within:text-rose-700">{title}</h3>
+        <div className="flex-1 h-px bg-slate-100 transition-colors group-focus-within:bg-rose-200" />
       </div>
       <div className="space-y-3">{children}</div>
     </section>
+  );
+}
+
+/** Bloque con el mismo aspecto que un Collapsible abierto, pero sin poder plegarse. */
+function FormPanel({ icon: Icon, title, hint, children }: {
+  icon: any; title: string; hint?: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-300 bg-white">
+      <div className="w-full flex items-center gap-3 px-3 py-2 text-left">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-rose-50 text-rose-600">
+          <Icon className="w-4 h-4" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] font-semibold text-slate-800">{title}</span>
+          {hint && <span className="block text-[11.5px] text-slate-500 truncate">{hint}</span>}
+        </span>
+      </div>
+      <div className="px-3 pb-3 pt-2.5 border-t border-slate-100 space-y-3">{children}</div>
+    </div>
   );
 }
 
@@ -179,7 +208,75 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const costInputRef = useRef<HTMLInputElement>(null);
   const unitSalePriceInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
-  const isHardwareStore = localStorage.getItem('business_type') === 'FERRETERIA' || (product?.unit && product.unit !== 'UNIT') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
+  const isHardwareStore = hasFeature('fractional') || (product?.unit && product.unit !== 'UNIT') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
+
+  // ---- Variantes (talle / color) ----
+  // En el celular conviene sacar la foto en el momento: `capture` abre la cámara directo
+  const hasCamera = typeof navigator !== 'undefined' &&
+    (navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+  const canUseVariants = useFeature('variants');
+  const [variantMode, setVariantMode] = useState(Boolean(product?.variantGroupId));
+  const [variantGroupId, setVariantGroupId] = useState<string | undefined>(product?.variantGroupId || undefined);
+  const [variantAxes, setVariantAxes] = useState<[string, string]>(['talle', 'color']);
+  const [variantValuesA, setVariantValuesA] = useState('');
+  const [variantValuesB, setVariantValuesB] = useState('');
+  // Cada celda de la grilla: clave "TALLE|COLOR" con el stock y el código de esa variante
+  const [variantCells, setVariantCells] = useState<Record<string, { id?: string; stock: string; barcode: string; price: string }>>({});
+  // Lo normal es un precio para todo el modelo; los talles especiales son la excepción
+  const [variantPriceMode, setVariantPriceMode] = useState(false);
+  // Una foto por color: la comparten todos los talles de ese color (y es la que va a la tienda online)
+  const [variantImages, setVariantImages] = useState<Record<string, string>>({});
+
+  const splitValues = (raw: string) => Array.from(new Set(
+    raw.split(/[,\n;]+/).map(v => v.trim().toUpperCase()).filter(Boolean)
+  ));
+  const listA = splitValues(variantValuesA);
+  const listB = splitValues(variantValuesB);
+  const cellKey = (a: string, b: string) => `${a}|${b}`;
+  const variantCombos = listA.length === 0 ? [] : (listB.length === 0
+    ? listA.map(a => ({ a, b: '' }))
+    : listA.flatMap(a => listB.map(b => ({ a, b }))));
+
+  // Al editar una variante existente se trae el modelo entero para llenar la grilla
+  useEffect(() => {
+    if (!product?.variantGroupId) return;
+    let alive = true;
+    api.get(`/products/variant-group/${product.variantGroupId}`)
+      .then(({ data }) => {
+        if (!alive || !Array.isArray(data) || data.length === 0) return;
+        const axes: string[] = [];
+        for (const v of data) for (const k of Object.keys(v.attrs || {})) if (!axes.includes(k)) axes.push(k);
+        const [axisA, axisB] = [axes[0] || 'talle', axes[1] || 'color'];
+        const valsA: string[] = [];
+        const valsB: string[] = [];
+        const cells: Record<string, { id?: string; stock: string; barcode: string; price: string }> = {};
+        const imagesByColor: Record<string, string> = {};
+        for (const v of data) {
+          const a = (v.attrs?.[axisA] || '').toUpperCase();
+          const b = (v.attrs?.[axisB] || '').toUpperCase();
+          if (a && !valsA.includes(a)) valsA.push(a);
+          if (b && !valsB.includes(b)) valsB.push(b);
+          cells[`${a}|${b}`] = { id: v.id, stock: String(v.stock ?? 0), barcode: v.barcode || '', price: String(v.salePrice ?? '') };
+          if (b && v.imageUrl && !imagesByColor[b]) imagesByColor[b] = v.imageUrl;
+        }
+        const base = data.find((v: any) => v.baseName)?.baseName;
+        if (base) setFormData(prev => ({ ...prev, name: base }));
+        setVariantAxes([axisA, axisB]);
+        setVariantValuesA(valsA.join(', '));
+        setVariantValuesB(valsB.join(', '));
+        setVariantCells(cells);
+        // Si el modelo ya tiene precios distintos (por ejemplo, importados), la columna se
+        // muestra sola: si no, al guardar se aplastarían todos al precio del modelo.
+        const precios = new Set(data.map((v: any) => Number(v.salePrice) || 0));
+        if (precios.size > 1) setVariantPriceMode(true);
+        setVariantImages(imagesByColor);
+        setVariantMode(true);
+      })
+      .catch(() => { /* si falla, la grilla queda vacía y el producto se edita como uno suelto */ });
+    return () => { alive = false; };
+  }, [product?.variantGroupId]);
+
 
   const [suggestedImageUrl, setSuggestedImageUrl] = useState<string | null>(null);
   const [isSearchingImage, setIsSearchingImage] = useState(false);
@@ -312,6 +409,34 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       setCategories(data);
     } catch {}
   };
+
+  /** Achica la foto a 180px y la deja como JPEG liviano en base64 (es como se guardan en la base). */
+  const compressImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('El archivo no es una imagen válida'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 180;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > MAX) { height *= MAX / width; width = MAX; }
+        } else if (height > MAX) {
+          width *= MAX / height; height = MAX;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('No se pudo procesar la imagen'));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.55));
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -659,6 +784,39 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           : null
       };
 
+      if (canUseVariants && variantMode) {
+        if (variantCombos.length === 0) {
+          toast.error(`Cargá al menos un ${variantAxes[0]} para el modelo`);
+          setIsSubmitting(false);
+          return;
+        }
+        // El modelo no tiene código ni stock propio: cada variante trae los suyos
+        const { name: _n, barcode: _b, sku: _s, additionalBarcodes: _ab, stock: _st, kitItems: _ki, isKit: _ik, margin: _mg, ...base } = sanitizedData as any;
+        const { data } = await api.post('/products/variant-matrix', {
+          variantGroupId,
+          baseName: formData.name,
+          base,
+          variants: variantCombos.map(({ a, b }) => {
+            const cell = variantCells[cellKey(a, b)] || { id: undefined, stock: '0', barcode: '', price: '' };
+            return {
+              id: cell.id,
+              attrs: b ? { [variantAxes[0]]: a, [variantAxes[1]]: b } : { [variantAxes[0]]: a },
+              stock: parseFloat(cell.stock) || 0,
+              barcode: cell.barcode?.trim() ? cell.barcode.trim().toUpperCase() : null,
+              imageUrl: (b && variantImages[b]) || formData.imageUrl || null,
+              // Sin precio propio, la variante hereda el del modelo
+              ...(variantPriceMode && parseFloat(cell.price) > 0 ? { salePrice: parseFloat(cell.price) } : {}),
+            };
+          }),
+        });
+        if (Array.isArray(data) && data[0]?.variantGroupId) setVariantGroupId(data[0].variantGroupId);
+        toast.success(`Modelo guardado con ${variantCombos.length} variantes`);
+        usePOSStore.getState().setProducts([]);
+        onSuccess(Array.isArray(data) ? data[0] : undefined);
+        onClose();
+        return;
+      }
+
       let savedProduct = null;
       if (product && product.id) {
         const res = await api.patch(`/products/${product.id}`, sanitizedData);
@@ -827,6 +985,18 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     >
                       <Plus className="w-3.5 h-3.5 text-rose-600" /> Subir imagen
                     </label>
+                    {hasCamera && (
+                      <>
+                        <input type="file" id="camera-image-upload" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
+                        <label
+                          htmlFor="camera-image-upload"
+                          className="h-9 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer select-none transition-colors"
+                          title="Sacar la foto con la cámara"
+                        >
+                          <Camera className="w-3.5 h-3.5 text-rose-600" /> Foto
+                        </label>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowImagePicker(true)}
@@ -1315,11 +1485,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
           {/* ── Más opciones ── */}
           <FormSection icon={Plus} title="Más opciones">
-            <Collapsible
+            <FormPanel
               icon={Ruler}
               title={isHardwareStore ? 'Presentación y medida' : 'Presentación'}
               hint={isHardwareStore ? 'Paquetes, metros, kilos, litros' : 'Unidad suelta o paquete de varias unidades'}
-              defaultOpen={formData.presentationType === 'PACK' || (!!formData.unit && formData.unit !== 'UNIT')}
             >
               <div className={`grid ${isHardwareStore || formData.presentationType === 'PACK' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
                 <div>
@@ -1385,7 +1554,214 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   </div>
                 )}
               </div>
-            </Collapsible>
+            </FormPanel>
+
+            {canUseVariants && (
+              <Collapsible
+                icon={Shirt}
+                title="Talles y colores"
+                hint="Un mismo modelo con varias variantes, cada una con su stock y su código"
+                defaultOpen={variantMode}
+                badge={variantMode && variantCombos.length > 0 ? `${variantCombos.length}` : undefined}
+              >
+                <label className="flex items-center justify-between cursor-pointer gap-3">
+                  <span className="text-[12.5px] font-semibold text-slate-800">
+                    Este producto se vende en varias variantes
+                    <span className="block text-[11.5px] font-medium text-slate-500 leading-snug">
+                      El nombre de arriba pasa a ser el del modelo; cada variante se guarda como un producto propio.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={variantMode}
+                    onChange={e => setVariantMode(e.target.checked)}
+                    className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer shrink-0"
+                  />
+                </label>
+
+                {variantMode && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block capitalize">{variantAxes[0]}s</label>
+                        <input
+                          value={variantValuesA}
+                          onChange={e => setVariantValuesA(e.target.value)}
+                          placeholder="S, M, L, XL"
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block capitalize">{variantAxes[1]}es (opcional)</label>
+                        <input
+                          value={variantValuesB}
+                          onChange={e => setVariantValuesB(e.target.value)}
+                          placeholder="NEGRO, BLANCO"
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Una foto por color: es lo que va a ver el cliente en la tienda online */}
+                    {listB.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[12px] font-semibold text-slate-700 block">Foto de cada color</span>
+                        <div className="flex flex-wrap gap-2">
+                          {listB.map((color) => {
+                            const slug = color.replace(/[^A-Z0-9]+/gi, '-');
+                            const cargar = async (file?: File | null) => {
+                              if (!file) return;
+                              try {
+                                const dataUrl = await compressImageFile(file);
+                                setVariantImages(prev => ({ ...prev, [color]: dataUrl }));
+                              } catch (err: any) {
+                                toast.error(err.message || 'No se pudo cargar la foto');
+                              }
+                            };
+                            return (
+                              <div
+                                key={color}
+                                className="w-[86px] rounded-xl border border-slate-300 bg-white p-1.5 flex flex-col items-center gap-1"
+                              >
+                                <label
+                                  htmlFor={`variant-img-${slug}`}
+                                  className="w-full h-[62px] rounded-lg bg-slate-50 border border-slate-100 overflow-hidden flex items-center justify-center cursor-pointer hover:border-rose-300 transition-colors"
+                                  title={`Elegir la foto de ${color}`}
+                                >
+                                  {variantImages[color] || formData.imageUrl ? (
+                                    <img
+                                      src={variantImages[color] || formData.imageUrl}
+                                      alt={color}
+                                      className={`w-full h-full object-contain ${variantImages[color] ? '' : 'opacity-40'}`}
+                                    />
+                                  ) : (
+                                    <ImageIcon className="w-5 h-5 text-slate-300" />
+                                  )}
+                                </label>
+                                <span className="text-[10px] font-bold text-slate-700 truncate max-w-full">{color}</span>
+
+                                <div className="flex items-center gap-1.5">
+                                  {hasCamera && (
+                                    <label
+                                      htmlFor={`variant-cam-${slug}`}
+                                      className="text-[9.5px] font-semibold text-rose-600 hover:underline cursor-pointer flex items-center gap-0.5"
+                                      title={`Sacar la foto de ${color} con la cámara`}
+                                    >
+                                      <Camera className="w-3 h-3" /> Foto
+                                    </label>
+                                  )}
+                                  {variantImages[color] ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setVariantImages(prev => { const next = { ...prev }; delete next[color]; return next; })}
+                                      className="text-[9.5px] font-semibold text-slate-500 hover:underline cursor-pointer"
+                                    >
+                                      Quitar
+                                    </button>
+                                  ) : (
+                                    !hasCamera && <span className="text-[9.5px] font-semibold text-slate-400">Sin foto</span>
+                                  )}
+                                </div>
+
+                                <input
+                                  type="file"
+                                  id={`variant-img-${slug}`}
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; cargar(f); }}
+                                />
+                                {hasCamera && (
+                                  <input
+                                    type="file"
+                                    id={`variant-cam-${slug}`}
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; cargar(f); }}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-snug">
+                          Los talles de un mismo color comparten la foto. Los colores sin foto propia usan la del modelo.
+                        </p>
+                      </div>
+                    )}
+
+                    {variantCombos.length > 0 && (
+                      <label className="flex items-center justify-between cursor-pointer gap-3">
+                        <span className="text-[12.5px] font-semibold text-slate-800">
+                          Precio distinto por talle
+                          <span className="block text-[11.5px] font-medium text-slate-500 leading-snug">
+                            Para talles especiales. Normalmente todo el modelo va al mismo precio.
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={variantPriceMode}
+                          onChange={e => setVariantPriceMode(e.target.checked)}
+                          className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer shrink-0"
+                        />
+                      </label>
+                    )}
+
+                    {variantCombos.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                        <div className={`grid ${variantPriceMode ? 'grid-cols-[1fr_4.5rem_6rem_1fr]' : 'grid-cols-[1fr_5rem_1fr]'} gap-2 px-3 py-1.5 bg-slate-50 border-b border-slate-200`}>
+                          <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Variante</span>
+                          <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Stock</span>
+                          {variantPriceMode && <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Precio</span>}
+                          <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Código de barras</span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                          {variantCombos.map(({ a, b }) => {
+                            const key = cellKey(a, b);
+                            const cell = variantCells[key] || { stock: '', barcode: '', price: '' };
+                            const setCell = (patch: Partial<{ stock: string; barcode: string; price: string }>) =>
+                              setVariantCells(prev => ({ ...prev, [key]: { ...(prev[key] || { stock: '', barcode: '', price: '' }), ...patch } }));
+                            return (
+                              <div key={key} className={`grid ${variantPriceMode ? 'grid-cols-[1fr_4.5rem_6rem_1fr]' : 'grid-cols-[1fr_5rem_1fr]'} gap-2 px-3 py-1.5 items-center`}>
+                                <span className="text-[12.5px] font-semibold text-slate-800 truncate">{b ? `${a} · ${b}` : a}</span>
+                                <input
+                                  type="number"
+                                  value={cell.stock}
+                                  onChange={e => setCell({ stock: e.target.value })}
+                                  placeholder="0"
+                                  className="w-full px-2 py-1 rounded-lg border border-slate-300 text-[12.5px] text-slate-800 outline-none focus:border-rose-500"
+                                />
+                                {variantPriceMode && (
+                                  <input
+                                    type="number"
+                                    value={cell.price}
+                                    onChange={e => setCell({ price: e.target.value })}
+                                    placeholder={formData.salePrice ? String(formData.salePrice) : '0'}
+                                    title="Vacío = usa el precio del modelo"
+                                    className="w-full px-2 py-1 rounded-lg border border-slate-300 text-[12.5px] text-slate-800 outline-none focus:border-rose-500"
+                                  />
+                                )}
+                                <input
+                                  value={cell.barcode}
+                                  onChange={e => setCell({ barcode: e.target.value })}
+                                  placeholder="El de la etiqueta del proveedor"
+                                  className="w-full px-2 py-1 rounded-lg border border-slate-300 text-[12.5px] text-slate-800 outline-none focus:border-rose-500"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[11.5px] text-slate-500 leading-snug">
+                      El rubro y los datos de arriba valen para todas las variantes. Si sacás una de la grilla, se da de baja
+                      pero se conserva su historial de ventas.
+                    </p>
+                  </>
+                )}
+              </Collapsible>
+            )}
 
             <Collapsible
               icon={Barcode}

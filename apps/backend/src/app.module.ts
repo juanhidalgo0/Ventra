@@ -9,6 +9,7 @@ import { BrandsModule } from './modules/brands/brands.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { SystemModule } from './modules/system/system.module';
+import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
@@ -43,6 +44,7 @@ import { AcopioModule } from './modules/acopio/acopio.module';
     SalesModule,
     SuppliersModule,
     SystemModule,
+    FiscalModule,
     UsersModule,
     WebsocketModule,
     PromotionsModule,

@@ -238,18 +238,18 @@ html.dark body[data-performance-mode="true"]:not(.on-auth-screen) {
   color: #f1f5f9 !important; /* Slate 100 */
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .card,
-body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.keep-style),
-body[data-performance-mode="true"]:not(.on-auth-screen) input,
-body[data-performance-mode="true"]:not(.on-auth-screen) select,
-body[data-performance-mode="true"]:not(.on-auth-screen) textarea,
-body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style):not(.keep-animated):not(.keep-animated *):not([class*="toast"]):not([id*="toast"]):not([class*="toast"] *):not([id*="toast"] *):not([class*="Go"]),
-body[data-performance-mode="true"]:not(.on-auth-screen) header,
-body[data-performance-mode="true"]:not(.on-auth-screen) main,
-body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar),
-body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated):not([class*="toast"]):not([class*="toast"] *),
-body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated):not([class*="toast"] *):not([id*="toast"] *),
-body[data-performance-mode="true"]:not(.on-auth-screen) img {
+body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.keep-style):not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style):not(.keep-animated):not(.keep-animated *):not([class*="toast"]):not([id*="toast"]):not([class*="toast"] *):not([id*="toast"] *):not([class*="Go"]):not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) header:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) main:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar):not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated):not([class*="toast"]):not([class*="toast"] *):not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated):not([class*="toast"] *):not([id*="toast"] *):not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) img:not(.mobile-app *) {
   transition: none !important;
   animation: none !important;
   box-shadow: none !important;
@@ -261,7 +261,7 @@ body[data-performance-mode="true"]:not(.on-auth-screen) img {
   scroll-behavior: auto !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel) {
+body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel):not(.mobile-app *) {
   border: 1px solid #e2e8f0 !important;
 }
 
@@ -271,7 +271,7 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-panel {
   outline: none !important;
 }
 
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel) {
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel):not(.mobile-app *) {
   border: 1px solid #334155 !important;
   background-color: #1e293b !important; /* Slate 800 */
 }
@@ -283,9 +283,9 @@ html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-pane
   outline: none !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) input,
-body[data-performance-mode="true"]:not(.on-auth-screen) select,
-body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
+body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
+body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *) {
   border: 1px solid #cbd5e1 !important;
   background-color: #ffffff !important;
   color: #000000 !important;
@@ -303,9 +303,9 @@ body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
   color: #94a3b8 !important;
 }
 
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) input,
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) select,
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) textarea {
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
+html.dark body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *) {
   border: 1px solid #334155 !important;
   background-color: #0f172a !important; /* Slate 900 */
   color: #ffffff !important;
@@ -357,8 +357,8 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary {
 }
 
 /* Disable Hover scaling and elevation layout recalculations */
-body[data-performance-mode="true"]:not(.on-auth-screen) .card:hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) button:hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.mobile-app *):hover,
+body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.mobile-app *):hover,
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary:hover,
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success:hover,
 body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger:hover,

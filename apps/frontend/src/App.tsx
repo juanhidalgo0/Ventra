@@ -17,6 +17,7 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { MangoLogo } from './components/common/MangoLogo';
 import { toggleFullscreen } from './utils/fullscreen';
 import { shortcutsLocked } from './utils/shortcutLock';
+import { useOwnerMobile } from './utils/ownerMobile';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
@@ -40,6 +41,28 @@ const EarningsDivisionScreen = lazy(() => import('./components/settings/Earnings
 const SettingsScreen = lazy(() => import('./components/settings/SettingsScreen'));
 const RemoteAccessScreen = lazy(() => import('./components/settings/RemoteAccessScreen'));
 const SuppliersScreen = lazy(() => import('./components/suppliers/SuppliersScreen'));
+const MobileHomeScreen = lazy(() => import('./components/mobile/MobileHomeScreen'));
+const MobileMoreScreen = lazy(() => import('./components/mobile/MobileMoreScreen'));
+const MobileSellScreen = lazy(() => import('./components/mobile/MobileSellScreen'));
+const MobileMovementsScreen = lazy(() => import('./components/mobile/MobileMovementsScreen'));
+const MobileProductsScreen = lazy(() => import('./components/mobile/MobileProductsScreen'));
+const MobileCashScreen = lazy(() => import('./components/mobile/MobileCashScreen'));
+const MobileExpensesScreen = lazy(() => import('./components/mobile/MobileExpensesScreen'));
+const MobileClientsScreen = lazy(() => import('./components/mobile/MobileClientsScreen'));
+const MobileSuppliersScreen = lazy(() => import('./components/mobile/MobileSuppliersScreen'));
+const MobilePurchasesScreen = lazy(() => import('./components/mobile/MobilePurchasesScreen'));
+const MobilePromosScreen = lazy(() => import('./components/mobile/MobilePromosScreen'));
+const MobileTreasuryScreen = lazy(() => import('./components/mobile/MobileTreasuryScreen'));
+const MobileStoreScreen = lazy(() => import('./components/mobile/MobileStoreScreen'));
+const MobileReportsScreen = lazy(() => import('./components/mobile/MobileReportsScreen'));
+const MobileFiscalScreen = lazy(() => import('./components/mobile/MobileFiscalScreen'));
+const MobileSettingsScreen = lazy(() => import('./components/mobile/MobileSettingsScreen'));
+const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSettingsScreen').then((m) => ({ default: m.MobileSettingsSection })));
+
+/** En la app del dueño en el celular, algunas pestañas tienen su propia pantalla. */
+function OwnerMobileOr({ mobile, children }: { mobile: React.ReactNode; children: React.ReactNode }) {
+  return <>{useOwnerMobile().active ? mobile : children}</>;
+}
 
 function ConnectionGuard({ children }: { children: React.ReactNode }) {
   const hasConnection = !!localStorage.getItem('server_ip');
@@ -563,32 +586,37 @@ export default function App() {
                 }>
                   <Routes>
                     <Route path="/" element={<Navigate to="/pos" />} />
-                    <Route path="/pos" element={<POSScreen />} />
+                    <Route path="/pos" element={<OwnerMobileOr mobile={<MobileSellScreen />}><POSScreen /></OwnerMobileOr>} />
                     <Route path="/dashboard" element={<DashboardScreen />} />
-                    <Route path="/products" element={<ProductsScreen />} />
-                    <Route path="/clients" element={<CuentasCorrientesScreen />} />
+                    <Route path="/products" element={<OwnerMobileOr mobile={<MobileProductsScreen />}><ProductsScreen /></OwnerMobileOr>} />
+                    <Route path="/clients" element={<OwnerMobileOr mobile={<MobileClientsScreen />}><CuentasCorrientesScreen /></OwnerMobileOr>} />
                     <Route path="/cash" element={<CashRegisterScreen />} />
-                    <Route path="/historial" element={<HistorialScreen />} />
-                    <Route path="/gastos" element={<GastosScreen />} />
-                    <Route path="/reports" element={<ReportsScreen />} />
+                    <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />
+                    <Route path="/gastos" element={<OwnerMobileOr mobile={<MobileExpensesScreen />}><GastosScreen /></OwnerMobileOr>} />
+                    <Route path="/reports" element={<OwnerMobileOr mobile={<MobileReportsScreen />}><ReportsScreen /></OwnerMobileOr>} />
                     
                     <Route path="/inventory" element={<ProductsScreen />} />
-                    <Route path="/promos" element={<PromosScreen />} />
-                    <Route path="/purchases" element={<PurchasesScreen />} />
-                    <Route path="/stock-control" element={<StockControlScreen />} />
+                    <Route path="/promos" element={<OwnerMobileOr mobile={<MobilePromosScreen />}><PromosScreen /></OwnerMobileOr>} />
+                    <Route path="/purchases" element={<OwnerMobileOr mobile={<MobilePurchasesScreen />}><PurchasesScreen /></OwnerMobileOr>} />
+                    <Route path="/stock-control" element={<OwnerMobileOr mobile={<MobileProductsScreen initialFilter="LOW" title="Control de stock" back />}><StockControlScreen /></OwnerMobileOr>} />
                     <Route path="/marketing" element={<MarketingScreen />} />
                     
                     {/* New Routes from Images */}
-                    <Route path="/cash-control" element={<CashControlScreen />} />
-                    <Route path="/treasury" element={<TreasuryScreen />} />
-                    <Route path="/online-store" element={<OnlineStoreScreen />} />
+                    <Route path="/cash-control" element={<OwnerMobileOr mobile={<MobileCashScreen />}><CashControlScreen /></OwnerMobileOr>} />
+                    <Route path="/treasury" element={<OwnerMobileOr mobile={<MobileTreasuryScreen />}><TreasuryScreen /></OwnerMobileOr>} />
+                    <Route path="/online-store" element={<OwnerMobileOr mobile={<MobileStoreScreen />}><OnlineStoreScreen /></OwnerMobileOr>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
                     <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />
-                    <Route path="/suppliers" element={<SuppliersScreen />} />
-                    <Route path="/fiscal" element={<FiscalScreen />} />
-                    <Route path="/settings" element={<AdminRoute><SettingsScreen /></AdminRoute>} />
+                    <Route path="/suppliers" element={<OwnerMobileOr mobile={<MobileSuppliersScreen />}><SuppliersScreen /></OwnerMobileOr>} />
+                    <Route path="/fiscal" element={<OwnerMobileOr mobile={<MobileFiscalScreen />}><FiscalScreen /></OwnerMobileOr>} />
+                    <Route path="/settings" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsScreen />}><SettingsScreen /></OwnerMobileOr></AdminRoute>} />
+                    <Route path="/settings/:tab" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsSection />}><Navigate to="/settings" replace /></OwnerMobileOr></AdminRoute>} />
                     <Route path="/remote-access" element={<RemoteAccessScreen />} />
+
+                    {/* App móvil del dueño (MainLayout decide cuándo se muestran) */}
+                    <Route path="/inicio" element={<AdminRoute><MobileHomeScreen /></AdminRoute>} />
+                    <Route path="/mas" element={<MobileMoreScreen />} />
 
                     {/* Fallback for other routes */}
                     <Route path="*" element={<div className="h-full flex flex-col items-center justify-center text-slate-300 gap-4">

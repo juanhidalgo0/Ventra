@@ -8,7 +8,7 @@ import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import CategoryPickerModal from './CategoryPickerModal';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
 import GastosModal from './GastosModal';
@@ -20,6 +20,9 @@ import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
+import { useFeature } from '../../stores/businessStore';
+import { collapseVariantGroups, variantsOfGroup, parseVariantAttrs, variantLabel } from '../../utils/variants';
+import VariantPickerModal from './VariantPickerModal';
 import HistorialModal from './HistorialModal';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
 import CajaInfoModal from './CajaInfoModal';
@@ -136,7 +139,10 @@ export default function POSScreen() {
     return map;
   }, [cachedProducts]);
 
-  const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
+  const [rawDisplayedProducts, setDisplayedProducts] = useState<Product[]>([]);
+  const [variantGroupToPick, setVariantGroupToPick] = useState<any | null>(null);
+  // Cambio de talle: se devuelve una variante y se lleva otra del mismo modelo en el mismo ticket
+  const [exchangeSource, setExchangeSource] = useState<any | null>(null);
   const [isPending, startTransition] = useTransition();
   const [perfMode] = useState(() => localStorage.getItem('performance_mode') === 'true');
   
@@ -237,7 +243,18 @@ export default function POSScreen() {
   const [showQuotesList, setShowQuotesList] = useState(false);
   const [showAcopios, setShowAcopios] = useState(false);
   const [substituteProduct, setSubstituteProduct] = useState<any | null>(null);
-  const isHardwareStore = localStorage.getItem('business_type') === 'FERRETERIA';
+  const canQuote = useFeature('quotes');
+  const canAcopio = useFeature('acopio');
+  const canTradePrice = useFeature('tradePricing');
+  const canSubstitute = useFeature('substitutes');
+  const isHardwareStore = useFeature('fractional');
+  const useVariants = useFeature('variants');
+
+  // Indumentaria: un modelo con talles aparece una sola vez, con el stock de todas sus variantes sumado
+  const displayedProducts = useMemo(
+    () => (useVariants ? collapseVariantGroups(rawDisplayedProducts, cachedProducts) : rawDisplayedProducts),
+    [useVariants, rawDisplayedProducts, cachedProducts],
+  );
   const [posClients, setPosClients] = useState<any[]>([]);
   const [showClientSelector, setShowClientSelector] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
@@ -576,6 +593,11 @@ export default function POSScreen() {
 
   const handleProductAdd = (product: any, e?: React.MouseEvent, customQty?: number) => {
     if (isCartBusy) return;
+    if (product?._isVariantGroup) {
+      setVariantGroupToPick(product);
+      setSearchQuery('');
+      return;
+    }
     let qty = customQty !== undefined ? customQty : 1;
     if (customQty === undefined && searchQuery.includes('*')) {
       const match = searchQuery.trim().match(/^(\d+(?:[.,]\d+)?)\*$/);
@@ -1621,7 +1643,7 @@ export default function POSScreen() {
           <button
             data-tour="pos-caja"
             onClick={() => { if (currentSession) setShowCajaInfo(true); else setShowAbrirCaja(true); }}
-            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
+            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3 xl:px-3.5 rounded-xl font-bold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
               currentSession 
                 ? 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border-transparent' 
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
@@ -1629,10 +1651,12 @@ export default function POSScreen() {
           >
             <Vault strokeWidth={2.25} className={`w-4 h-4 shrink-0 ${currentSession ? 'text-white' : 'text-amber-600'}`} />
             <span className="flex items-center gap-1.5">
-              {currentSession ? 'Caja' : 'Abrir Caja'}
+              {/* En móvil el rótulo vuelve: es el único botón visible y "Abrir Caja" es la acción a leer */}
+              <span className="inline md:hidden xl:inline">{currentSession ? 'Caja' : 'Abrir Caja'}</span>
               {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-400/40" />}
             </span>
-            <span className={`inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>
+            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">{currentSession ? 'Caja abierta [F8]' : 'Abrir caja [F8]'}</span>
+            <span className={`hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>
           </button>
 
           {/* Mobile hamburger menu trigger */}
@@ -1643,36 +1667,40 @@ export default function POSScreen() {
             <Menu strokeWidth={2.25} className="w-5 h-5" />
           </button>
 
-          {/* Cobro Cta. Cte. */}
-          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+          {/* Cuentas Corrientes */}
+          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
             <HandCoins strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span>Cobro Cta. Cte.</span>
-            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F5</span>
+            <span className="hidden xl:inline">Cuentas Corrientes</span>
+            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Cuentas Corrientes [F5]</span>
+            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F5</span>
           </button>
 
           {/* Historial */}
           <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
             <ReceiptText strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span>Historial</span>
-            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F6</span>
+            <span className="hidden xl:inline">Historial</span>
+            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Historial [F6]</span>
+            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F6</span>
           </button>
 
           {/* Gastos */}
-          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
             <TrendingDown strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span>Gastos</span>
-            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F7</span>
+            <span className="hidden xl:inline">Gastos</span>
+            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Gastos [F7]</span>
+            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F7</span>
           </button>
 
           {/* Proveedores */}
-          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
             <Truck strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span>Proveedores</span>
-            <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
+            <span className="hidden xl:inline">Proveedores</span>
+            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Proveedores [F9]</span>
+            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
           </button>
 
           {/* Presupuestos (Solo Ferretería) */}
-          {isHardwareStore && (
+          {canQuote && (
             <button
               data-tour="pos-presupuestos" onClick={() => setShowQuotesList(true)}
               className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
@@ -1685,7 +1713,7 @@ export default function POSScreen() {
           )}
 
           {/* Acopios (Solo Ferretería) */}
-          {isHardwareStore && (
+          {canAcopio && (
             <button
               data-tour="pos-acopios" onClick={() => setShowAcopios(true)}
               className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
@@ -1698,8 +1726,12 @@ export default function POSScreen() {
           )}
 
 
-          {/* Utilidades: barra compacta de ancho fijo, separada de los botones de acción */}
-          <div className="hidden md:flex items-center gap-0.5 h-10 p-1 ml-1 rounded-xl bg-white dark:bg-slate-850 border border-slate-250 dark:border-slate-750 shadow-2xs shrink-0">
+          {/* Utilidades: barra compacta, separada de los botones de acción.
+              Desde 1366px toma el mismo ancho que el panel del ticket (abajo a la derecha)
+              para que ambos bloques arranquen en la misma línea vertical. El corte no es xl
+              (1280) porque ahí la fila desborda: los botones de acción más la barra de 480px
+              no entran, y la barra se sale del borde derecho. */}
+          <div className="hidden md:flex items-center gap-0.5 h-10 p-1 ml-1 rounded-xl bg-white dark:bg-slate-850 border border-slate-250 dark:border-slate-750 shadow-2xs shrink-0 min-[1366px]:w-[480px] min-[1366px]:justify-between">
             {/* Usuario (F10) */}
             <button
               data-tour="pos-usuario"
@@ -2095,13 +2127,13 @@ export default function POSScreen() {
                             }`}
                           >
                             {/* Top: Image Container */}
-                            <div className="w-full h-[106px] rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-700/60 overflow-hidden flex-shrink-0 flex items-center justify-center relative mb-2 p-1.5 group-hover:bg-slate-100/70 dark:group-hover:bg-slate-850/60 transition-colors">
+                            <div className="w-full h-[106px] rounded-xl bg-slate-50 dark:bg-slate-100 border border-slate-100 dark:border-slate-300/70 overflow-hidden flex-shrink-0 flex items-center justify-center relative mb-2 p-1.5 group-hover:bg-slate-100/70 dark:group-hover:bg-white transition-colors">
                               <img 
                                 src={product.imageUrl || './product-placeholder.png'} 
                                 alt={product.name} 
                                 loading="lazy"
                                 decoding="async"
-                                className="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal"
+                                className="w-full h-full object-contain mix-blend-multiply"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = './product-placeholder.png';
                                 }}
@@ -2160,7 +2192,7 @@ export default function POSScreen() {
 
                               <div className="flex items-center gap-1.5">
                                 {/* No puede ser <button>: está dentro del botón de la tarjeta */}
-                                {isHardwareStore && product.stock <= 0 && !product.unlimitedStock && (
+                                {canSubstitute && product.stock <= 0 && !product.unlimitedStock && (
                                   <span
                                     role="button"
                                     tabIndex={0}
@@ -2204,13 +2236,13 @@ export default function POSScreen() {
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               {/* Compact Image */}
-                              <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 flex-shrink-0 flex items-center justify-center overflow-hidden p-1">
+                              <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300/70 flex-shrink-0 flex items-center justify-center overflow-hidden p-1">
                                 <img 
                                   src={product.imageUrl || './product-placeholder.png'} 
                                   alt={product.name} 
                                   loading="lazy"
                                   decoding="async"
-                                  className="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal"
+                                  className="w-full h-full object-contain mix-blend-multiply"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).src = './product-placeholder.png';
                                   }}
@@ -2253,7 +2285,7 @@ export default function POSScreen() {
                             {/* Price & Plus */}
                             <div className="flex items-center gap-2 ml-4 shrink-0">
                               {/* No puede ser <button>: está dentro del botón de la fila */}
-                              {isHardwareStore && product.stock <= 0 && !product.unlimitedStock && (
+                              {canSubstitute && product.stock <= 0 && !product.unlimitedStock && (
                                 <span
                                   role="button"
                                   tabIndex={0}
@@ -2324,7 +2356,7 @@ export default function POSScreen() {
             </div>
 
             {/* Cliente / Lista Gremio Selector (Solo Ferretería) */}
-            {isHardwareStore && (
+            {canTradePrice && (
               <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
                 {selectedClient ? (
                   <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
@@ -2505,7 +2537,7 @@ export default function POSScreen() {
                           <QuickSaleIcon className="w-5 h-5" />
                         </div>
                         ) : (
-                        <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-shrink-0 flex items-center justify-center overflow-hidden p-0.5 shadow-xs">
+                        <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300/70 flex-shrink-0 flex items-center justify-center overflow-hidden p-0.5 shadow-xs">
                           <img 
                             src={item.imageUrl || './product-placeholder.png'} 
                             alt={item.name} 
@@ -2600,7 +2632,7 @@ export default function POSScreen() {
               </div>
 
               <div className="flex gap-2">
-                {isHardwareStore && (
+                {canQuote && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2914,6 +2946,37 @@ export default function POSScreen() {
             onClose={() => setShowCategoryPicker(false)}
           />
         )}
+        {variantGroupToPick && (
+          <VariantPickerModal
+            group={variantGroupToPick}
+            title={exchangeSource ? 'Elegí el talle que se lleva' : undefined}
+            onSelect={(variant) => {
+              if (exchangeSource) {
+                // Un cambio son dos renglones: la prenda que vuelve y la que se lleva
+                addToCart(exchangeSource, undefined, returnQty, true);
+                addToCart(variant, undefined, returnQty);
+                const diferencia = ((variant.salePrice || 0) - (exchangeSource.salePrice || 0)) * returnQty;
+                const attrs = variantLabel(parseVariantAttrs(variant.variantAttrs));
+                toast.success(
+                  diferencia === 0
+                    ? `Cambio por ${attrs}: sin diferencia de precio`
+                    : diferencia > 0
+                      ? `Cambio por ${attrs}: el cliente abona $${diferencia.toLocaleString('es-AR')}`
+                      : `Cambio por ${attrs}: se le devuelven $${Math.abs(diferencia).toLocaleString('es-AR')}`,
+                );
+                setExchangeSource(null);
+                setShowReturnModal(false);
+                setReturnProductSelected(null);
+                setReturnSearchQuery('');
+                setReturnQty(1);
+                playBeep();
+                return;
+              }
+              handleProductAdd(variant);
+            }}
+            onClose={() => { setVariantGroupToPick(null); setExchangeSource(null); focusSearch(); }}
+          />
+        )}
         {showQuotesList && (
           <QuotesListModal
             onClose={() => setShowQuotesList(false)}
@@ -3102,6 +3165,31 @@ export default function POSScreen() {
                         <p className="text-sm font-extrabold text-rose-600 dark:text-rose-400">${returnProductSelected.salePrice}</p>
                       </div>
                     </div>
+
+                    {/* Indumentaria: lo más común no es devolver, es cambiar por otro talle */}
+                    {useVariants && returnProductSelected.variantGroupId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const hermanas = variantsOfGroup(cachedProducts, returnProductSelected.variantGroupId)
+                            .filter((v: any) => v.id !== returnProductSelected.id);
+                          if (hermanas.length === 0) {
+                            toast.error('Este modelo no tiene otros talles cargados');
+                            return;
+                          }
+                          setExchangeSource(returnProductSelected);
+                          setVariantGroupToPick({
+                            baseName: returnProductSelected.baseName || returnProductSelected.name,
+                            _isVariantGroup: true,
+                            _variants: hermanas,
+                          });
+                        }}
+                        className="w-full mt-1 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Repeat className="w-3.5 h-3.5" />
+                        Cambiar por otro talle o color
+                      </button>
+                    )}
                   </motion.div>
                 )}
 
@@ -3897,7 +3985,7 @@ export default function POSScreen() {
                   <Receipt className="w-4 h-4 text-slate-550" /> Gastos
                 </button>
                 <button onClick={() => { setShowMobileMenu(false); if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-750 font-bold text-sm transition-all text-left">
-                  <DollarSign className="w-4 h-4 text-emerald-500" /> Cobro Cta. Cte.
+                  <DollarSign className="w-4 h-4 text-emerald-500" /> Cuentas Corrientes
                 </button>
                 <button onClick={() => { setShowMobileMenu(false); setShowProveedores(true); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-750 font-bold text-sm transition-all text-left">
                   <Truck className="w-4 h-4 text-slate-550" /> Proveedores

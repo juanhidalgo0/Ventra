@@ -22,6 +22,7 @@ import {
   Download
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { hasFeature } from '../../stores/businessStore';
 
 export default function HistorialScreen() {
   const { user } = useAuthStore();
@@ -502,7 +503,7 @@ export default function HistorialScreen() {
           >
             Pedidos
           </button>
-          {localStorage.getItem('business_type') === 'FERRETERIA' && (
+          {hasFeature('quotes') && (
             <button 
               onClick={() => setActiveTab('QUOTES')} 
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'QUOTES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}

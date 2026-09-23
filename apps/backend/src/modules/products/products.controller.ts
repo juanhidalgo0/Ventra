@@ -79,9 +79,26 @@ export class ProductsController {
     return this.productsService.findByBarcode(barcode);
   }
 
+  /** Liviano (sin fotos): qué productos están en o por debajo del stock mínimo. Lo usa la app del celular. */
+  @Get('low-stock-ids')
+  getLowStockIds() {
+    return this.productsService.getLowStockIds();
+  }
+
   @Get('pos-catalog')
   getPOSCatalog(@Query('updatedAfter') updatedAfter?: string) {
     return this.productsService.getPOSCatalog(updatedAfter);
+  }
+
+  // Variantes (talle / color): se declaran antes de ':id' para que no las capture esa ruta
+  @Get('variant-group/:variantGroupId')
+  findVariantGroup(@Param('variantGroupId') variantGroupId: string) {
+    return this.productsService.findVariantGroup(variantGroupId);
+  }
+
+  @Post('variant-matrix')
+  saveVariantMatrix(@Body() data: any, @Request() req) {
+    return this.productsService.saveVariantMatrix(data, req.user.sub);
   }
 
   @Get(':id')

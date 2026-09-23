@@ -17,6 +17,9 @@ import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useSetupProgress } from '../../utils/setupProgress';
 import { Rocket, ArrowRight } from 'lucide-react';
+import MobileShell from '../mobile/MobileShell';
+import { useOwnerMobile } from '../../utils/ownerMobile';
+import { usePwaInstall } from '../../utils/pwaInstall';
 
 interface Props { children: React.ReactNode; }
 
@@ -35,9 +38,12 @@ export default function MainLayout({ children }: Props) {
   const [showCalculator, setShowCalculator] = useState(false);
 
   /**
-   * Cierre X o Z: el servidor avisa y todas las terminales de ese cajero cierran
-   * sesión, para que no quede ninguna abierta con el turno ya cerrado.
-   * La terminal que hizo el cierre se maneja sola (termina de imprimir y sale).
+   * Cierre Z: el servidor avisa y todas las terminales de los cajeros incluidos
+   * cierran sesión, para que no quede ninguna abierta con el turno ya cerrado.
+   * La terminal que generó el Z se excluye acá (clientId) y cierra su propia
+   * sesión sola, después de mostrar/imprimir el cartel "Imprimir Z".
+   * Cierre X (cambio de turno): no llega force-logout, solo cierra sesión
+   * la terminal que lo hizo, para no afectar a otros cajeros conectados.
    */
   useEffect(() => {
     wsService.connect();
@@ -203,6 +209,20 @@ export default function MainLayout({ children }: Props) {
   // Se recalcula al navegar, así refleja lo que se acaba de configurar.
   const setupPct = useSetupProgress(isAdminUser, location.pathname);
 
+  // Dueño en el celular: la app móvil arranca en Inicio (una vez por sesión; después "Vender" sí abre el POS)
+  const ownerMobile = useOwnerMobile();
+  const pwa = usePwaInstall();
+  useEffect(() => {
+    if (!ownerMobile.active || sessionStorage.getItem('owner_mobile_started')) return;
+    sessionStorage.setItem('owner_mobile_started', '1');
+    if (location.pathname === '/pos' || location.pathname === '/') navigate('/inicio', { replace: true });
+  }, [ownerMobile.active]);
+  const isMobileOnlyPath = location.pathname === '/inicio' || location.pathname === '/mas';
+  useEffect(() => {
+    // Las pantallas de la app móvil no existen en la versión completa
+    if (!ownerMobile.active && isMobileOnlyPath) navigate(isAdminUser ? '/dashboard' : '/pos', { replace: true });
+  }, [ownerMobile.active, isMobileOnlyPath]);
+
   if (connectionFailed) {
     return (
       <div className="h-screen w-full bg-[#f1f5f9] flex flex-col items-center justify-center relative overflow-hidden select-none">
@@ -291,6 +311,10 @@ export default function MainLayout({ children }: Props) {
     );
   }
 
+  if (ownerMobile.active) {
+    return <MobileShell>{children}</MobileShell>;
+  }
+
   return (
     <div className="h-[100dvh] w-full flex bg-slate-50 dark:bg-slate-950 overflow-hidden relative transition-colors duration-300">
       {!isPOS && (
@@ -374,6 +398,15 @@ export default function MainLayout({ children }: Props) {
                   <span className="block h-full rounded-full bg-orange-600 transition-all" style={{ width: `${setupPct}%` }} />
                 </span>
                 <ArrowRight className="w-3.5 h-3.5 text-orange-600 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            )}
+            {pwa.mode === 'prompt' && (
+              <button
+                onClick={() => pwa.install()}
+                title="Instalá Ventra como app: se abre en su propia ventana, sin el navegador"
+                className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-full bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[12px] font-semibold transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" /> Instalar app
               </button>
             )}
             <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />

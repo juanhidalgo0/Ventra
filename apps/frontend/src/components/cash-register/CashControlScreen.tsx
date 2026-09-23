@@ -207,7 +207,7 @@ export default function CashControlScreen() {
   const handleGenerateZReport = async () => {
     try {
       setIsGeneratingZ(true);
-      const { data } = await api.post('/cash/z-report/generate');
+      const { data } = await api.post('/cash/z-report/generate', { clientId: getClientId() });
       setZReportData(data);
       setIsHistoryZReport(false);
       loadSessions();

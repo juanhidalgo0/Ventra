@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Barcode, Printer, Search, Plus, Minus, Trash2, Wand2, RefreshCw, Info } from 'lucide-react';
+import { useFeature } from '../../stores/businessStore';
+import { variantsOfGroup } from '../../utils/variants';
 import { toast } from 'react-hot-toast';
 import api from '../../services/api';
 import { LABEL_FORMATS, buildLabelsDocument, type LabelOptions } from '../../utils/barcodeLabels';
@@ -39,6 +41,7 @@ function loadSettings(): { formatId: string; showName: boolean; showPrice: boole
 }
 
 export default function BarcodeLabelModal({ onClose, initialItems, title, onBarcodesAssigned }: BarcodeLabelModalProps) {
+  const useVariants = useFeature('variants');
   const initialSettings = useMemo(loadSettings, []);
   const [formatId, setFormatId] = useState(initialSettings.formatId);
   const [showName, setShowName] = useState(initialSettings.showName);
@@ -140,6 +143,23 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
 
   const addAllResults = () => {
     results.forEach((p) => addProduct(p, 1));
+  };
+
+  /**
+   * Indumentaria: cargar el modelo entero de una, con tantas etiquetas como unidades
+   * haya en stock de cada talle, que es lo que se necesita al recibir la temporada.
+   */
+  const addWholeModel = async (product: any) => {
+    let hermanas = variantsOfGroup(results, product.variantGroupId);
+    if (hermanas.length <= 1) {
+      try {
+        const { data } = await api.get(`/products/variant-group/${product.variantGroupId}`);
+        if (Array.isArray(data)) hermanas = data;
+      } catch {
+        hermanas = [product];
+      }
+    }
+    hermanas.forEach((v: any) => addProduct(v, Math.max(1, Math.min(999, Math.ceil(v.stock || 1)))));
   };
 
   const setQuantitiesToStock = () => {
@@ -279,6 +299,18 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
                       {p.barcode || 'Sin código'}
                     </p>
                   </div>
+                  {useVariants && p.variantGroupId && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); addWholeModel(p); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addWholeModel(p); } }}
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 shrink-0 cursor-pointer"
+                      title="Agregar todos los talles de este modelo, una etiqueta por unidad en stock"
+                    >
+                      Todo el modelo
+                    </span>
+                  )}
                   <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
                 </button>
               ))}

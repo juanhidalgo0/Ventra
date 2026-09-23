@@ -102,6 +102,10 @@ async function bootstrap() {
   let port = Number(process.env.PORT || 3001);
   await app.listen(port, '0.0.0.0');
 
+  // Puerto por el que un celular llega a la interfaz: en producción la sirve este mismo
+  // backend; en desarrollo la sirve Vite en 5180. Lo usa el QR de Acceso Remoto.
+  process.env.UI_PORT = String(frontendPath ? port : 5180);
+
   // Túnel público de localhost.run: APAGADO por defecto. Exponía el POS a internet
   // sin contraseña y ninguna pantalla lo usa (el celular se conecta por la IP local).
   // Solo arranca si se pide a propósito con ENABLE_TUNNEL=true.

@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 
 function getSearchVariants(token: string): string[] {
   const t = token.trim();
@@ -198,6 +199,13 @@ export class ProductsService {
     return { mime, data };
   }
 
+  async getLowStockIds() {
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, min_stock AS minStock FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND stock <= min_stock;`
+    );
+    return rows.map((r) => ({ id: r.id, minStock: Number(r.minStock) }));
+  }
+
   async getPOSCatalog(updatedAfter?: string) {
     // "Venta Rápida" is opened with code "1" / F1, never shown as a catalog card.
     const where: any = { isActive: true, id: { not: 'VENTA_RAPIDA' } };
@@ -225,6 +233,9 @@ export class ProductsService {
         unit: true,
         unitsPerPack: true,
         pieceSize: true,
+        baseName: true,
+        variantGroupId: true,
+        variantAttrs: true,
         updatedAt: true,
         additionalBarcodes: {
           select: {
@@ -267,6 +278,9 @@ export class ProductsService {
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,
       pieceSize: p.pieceSize,
+      baseName: p.baseName,
+      variantGroupId: p.variantGroupId,
+      variantAttrs: p.variantAttrs,
       additionalBarcodes: p.additionalBarcodes,
       salesCount: soldByProduct.get(p.id) ?? 0
     }));
@@ -542,7 +556,8 @@ export class ProductsService {
       'presentationType', 'unitsPerPack',
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
-      'listPrice', 'discount1', 'discount2', 'discount3'
+      'listPrice', 'discount1', 'discount2', 'discount3',
+      'baseName', 'variantGroupId', 'variantAttrs'
     ];
     
     const productData: any = {};
@@ -550,9 +565,9 @@ export class ProductsService {
       if (data[key] !== undefined) {
         if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           productData[key] = null;
-        } else if (['name', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
+        } else if (['name', 'baseName', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
           // Nombres y códigos siempre en mayúsculas
-          productData[key] = key === 'name' ? data[key].toUpperCase() : data[key].trim().toUpperCase();
+          productData[key] = ['name', 'baseName'].includes(key) ? data[key].toUpperCase() : data[key].trim().toUpperCase();
         } else {
           productData[key] = data[key];
         }
@@ -656,7 +671,8 @@ export class ProductsService {
       'presentationType', 'unitsPerPack',
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
-      'listPrice', 'discount1', 'discount2', 'discount3'
+      'listPrice', 'discount1', 'discount2', 'discount3',
+      'baseName', 'variantGroupId', 'variantAttrs'
     ];
     
     const updateData: any = {};
@@ -665,9 +681,9 @@ export class ProductsService {
         // Handle empty strings for optional relations
         if (['categoryId', 'brandId', 'supplierId', 'barcode', 'sku'].includes(key) && data[key] === '') {
           updateData[key] = null;
-        } else if (['name', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
+        } else if (['name', 'baseName', 'barcode', 'sku'].includes(key) && typeof data[key] === 'string') {
           // Nombres y códigos siempre en mayúsculas
-          updateData[key] = key === 'name' ? data[key].toUpperCase() : data[key].trim().toUpperCase();
+          updateData[key] = ['name', 'baseName'].includes(key) ? data[key].toUpperCase() : data[key].trim().toUpperCase();
         } else {
           updateData[key] = data[key];
         }
@@ -770,6 +786,96 @@ export class ProductsService {
     });
 
     return updated;
+  }
+
+  // ---- Variantes (talle / color) ----
+  // Cada variante es un producto más: comparten `variantGroupId` y se distinguen por `variantAttrs`.
+  // Así ventas, stock, compras y sincronización siguen funcionando sin saber que existen las variantes.
+
+  private variantSuffix(attrs: Record<string, string>) {
+    return Object.values(attrs || {}).map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+  }
+
+  async findVariantGroup(variantGroupId: string) {
+    const products = await this.prisma.product.findMany({
+      where: { variantGroupId, isActive: true },
+      include: { additionalBarcodes: true },
+      orderBy: { name: 'asc' },
+    });
+    return products.map((p) => ({ ...p, attrs: this.parseVariantAttrs(p.variantAttrs) }));
+  }
+
+  parseVariantAttrs(raw?: string | null): Record<string, string> {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Guarda la grilla completa de un modelo: crea las variantes nuevas, actualiza las que ya estaban
+   * y da de baja las que el comercio sacó. Devuelve el grupo entero ya guardado.
+   */
+  async saveVariantMatrix(dto: any, userId?: string) {
+    const baseName = String(dto?.baseName || '').trim().toUpperCase();
+    if (!baseName) throw new BadRequestException('Falta el nombre del modelo');
+    const variants = Array.isArray(dto?.variants) ? dto.variants : [];
+    if (variants.length === 0) throw new BadRequestException('El modelo no tiene ninguna variante');
+
+    const variantGroupId = dto.variantGroupId || randomUUID();
+    const shared = dto.base || {};
+
+    const existing = await this.prisma.product.findMany({ where: { variantGroupId } });
+    const byId = new Map(existing.map((p) => [p.id, p]));
+    const byAttrs = new Map(existing.map((p) => [JSON.stringify(this.parseVariantAttrs(p.variantAttrs)), p]));
+
+    const touched: string[] = [];
+    for (const v of variants) {
+      const attrs: Record<string, string> = {};
+      for (const [k, val] of Object.entries(v?.attrs || {})) {
+        const clean = String(val ?? '').trim();
+        if (clean) attrs[k] = clean.toUpperCase();
+      }
+      const key = JSON.stringify(attrs);
+      const current = (v.id && byId.get(v.id)) || byAttrs.get(key);
+
+      const suffix = this.variantSuffix(attrs);
+      const payload: any = {
+        ...shared,
+        name: suffix ? `${baseName} ${suffix}` : baseName,
+        baseName,
+        variantGroupId,
+        variantAttrs: key,
+        barcode: v.barcode ?? current?.barcode ?? null,
+        sku: v.sku ?? current?.sku ?? null,
+      };
+      // Foto propia de la variante (en indumentaria, una por color); si no trae, queda la del modelo
+      if (v.imageUrl !== undefined) payload.imageUrl = v.imageUrl || null;
+      if (v.salePrice !== undefined) payload.salePrice = Number(v.salePrice) || 0;
+      if (v.costPrice !== undefined) payload.costPrice = Number(v.costPrice) || 0;
+      if (v.stock !== undefined) payload.stock = Number(v.stock) || 0;
+
+      if (current) {
+        // El stock se edita desde Control de Stock: acá sólo se toca si vino explícito
+        if (v.stock === undefined) delete payload.stock;
+        const updated = await this.update(current.id, payload, userId);
+        touched.push(updated.id);
+      } else {
+        if (payload.salePrice === undefined) payload.salePrice = Number(shared.salePrice) || 0;
+        const created = await this.create(payload);
+        touched.push(created.id);
+      }
+    }
+
+    // Las variantes que ya no están en la grilla se dan de baja (nunca se borran: tienen historial de ventas)
+    for (const p of existing) {
+      if (!touched.includes(p.id) && p.isActive) await this.delete(p.id);
+    }
+
+    return this.findVariantGroup(variantGroupId);
   }
 
   async toggleFavorite(id: string) {

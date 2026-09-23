@@ -1,6 +1,6 @@
 import api from './api';
 import toast from 'react-hot-toast';
-import { STORE_ID_KEY, subscribeToStoreOrders, markOrderSyncedLocally, type StoreOrder } from './onlineStore';
+import { STORE_ID_KEY, subscribeToStoreOrders, claimOrder, releaseOrder, type StoreOrder } from './onlineStore';
 
 // Escucha en segundo plano los pedidos que llegan a la tienda online y crea un
 // Presupuesto (Quote) local por cada uno, para que el pedido quede visible en el
@@ -36,20 +36,34 @@ export function stopOnlineOrdersSync() {
 
 async function createLocalQuoteFromOrder(storeId: string, order: StoreOrder) {
   const itemsLine = order.items.map(i => `${i.qty}x ${i.name}`).join(', ');
-  const notes = `PEDIDO ONLINE (Tienda Web)${order.customerNote ? ` — ${order.customerNote}` : ''} — Items: ${itemsLine}`;
+  const details = [
+    order.orderCode ? `#${order.orderCode}` : '',
+    order.delivery === 'DELIVERY' ? `Envío a: ${order.address || 'sin dirección'}`
+      : order.delivery === 'GODELIVERY' ? `Envío con GoDelivery a: ${order.address || 'sin dirección'}`
+      : order.delivery === 'PICKUP' ? 'Retira en el local' : '',
+    order.deliveryCost ? `Costo de envío: $${order.deliveryCost}` : '',
+    order.paymentMethod ? `Paga con: ${order.paymentMethod}` : '',
+    order.customerNote || '',
+  ].filter(Boolean).join(' — ');
+  const notes = `PEDIDO ONLINE (Tienda Web)${details ? ` — ${details}` : ''} — Items: ${itemsLine}`;
 
-  await api.post('/quotes', {
-    clientName: order.customerName || 'Cliente Web',
-    clientPhone: order.customerPhone || undefined,
-    notes,
-    items: order.items.map(i => ({
-      productId: i.productId || undefined,
-      productName: i.name,
-      unitPrice: i.price,
-      quantity: i.qty,
-    })),
-  });
-
-  await markOrderSyncedLocally(storeId, order.id);
+  // Primero se toma el pedido (otro equipo de la misma cuenta puede estar escuchando)
+  if (!(await claimOrder(storeId, order.id))) return;
+  try {
+    await api.post('/quotes', {
+      clientName: order.customerName || 'Cliente Web',
+      clientPhone: order.customerPhone || undefined,
+      notes,
+      items: order.items.map(i => ({
+        productId: i.productId || undefined,
+        productName: i.name,
+        unitPrice: i.price,
+        quantity: i.qty,
+      })),
+    });
+  } catch (err) {
+    await releaseOrder(storeId, order.id).catch(() => {});
+    throw err;
+  }
   toast.success(`🛍️ Nuevo pedido online de ${order.customerName || 'un cliente'} — guardado como presupuesto`, { duration: 6000 });
 }

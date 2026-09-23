@@ -36,6 +36,13 @@ export class SalesController {
   @Roles('ADMIN')
   getTodaySummary(@Query('from') from?: string, @Query('to') to?: string) { return this.salesService.getTodaySummary(from, to); }
 
+  @Get('owner-summary')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getOwnerSummary(@Query('period') period?: 'day' | 'week' | 'month') {
+    return this.salesService.getOwnerSummary(period === 'week' || period === 'month' ? period : 'day');
+  }
+
   @Get('dashboard')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

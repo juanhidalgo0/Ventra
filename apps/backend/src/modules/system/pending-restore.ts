@@ -38,13 +38,27 @@ export function applyPendingRestore(dbPath: string): { applied: boolean; filenam
   } catch {}
 
   try {
-    // Guardar la base actual por las dudas, antes de reemplazarla
+    /*
+     * La copia previa tiene que incluir los archivos de transacción.
+     *
+     * En modo WAL, dev.db por sí solo puede estar casi vacío: lo vendido desde el
+     * último volcado vive en dev.db-wal. Copiar únicamente dev.db y después borrar
+     * el -wal deja una "copia de seguridad" sin los datos recientes, y el borrado
+     * es irreversible. Se guardan los tres juntos: así la copia se puede restaurar.
+     */
     if (fs.existsSync(dbPath)) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const prefijo = `${dbPath}.before-restore-${stamp}`;
       try {
-        fs.copyFileSync(dbPath, `${dbPath}.before-restore-${stamp}`);
+        fs.copyFileSync(dbPath, prefijo);
+        for (const suffix of ['-wal', '-shm']) {
+          const file = `${dbPath}${suffix}`;
+          if (fs.existsSync(file)) fs.copyFileSync(file, `${prefijo}${suffix}`);
+        }
       } catch (err: any) {
-        console.warn('[PendingRestore] No se pudo guardar copia previa:', err.message);
+        // Sin copia previa completa no se sigue: reemplazar la base sería irreversible.
+        console.error('[PendingRestore] No se pudo guardar la copia previa, se cancela:', err.message);
+        return { applied: false, filename, error: `No se pudo resguardar la base actual: ${err.message}` };
       }
     }
 

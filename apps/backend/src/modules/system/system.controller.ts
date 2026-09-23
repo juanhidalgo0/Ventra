@@ -98,6 +98,8 @@ export class SystemController {
     return {
       localIp,
       tailscaleIp,
+      // Puerto donde otro dispositivo encuentra la interfaz (producción: este backend; desarrollo: Vite)
+      uiPort: Number(process.env.UI_PORT) || Number(process.env.PORT) || 3001,
       serverTime: new Date(),
       platform: os.platform(),
       arch: os.arch(),

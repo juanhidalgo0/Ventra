@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { hasFeature } from '../../stores/businessStore';
 
 export default function StockControlScreen() {
   const [activeTab, setActiveTab] = useState<'register' | 'history'>('register');
@@ -261,7 +262,7 @@ export default function StockControlScreen() {
                           <div>
                              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Stock Actual</p>
                              <p className={`text-xl font-bold ${selectedProduct.stock <= selectedProduct.minStock ? 'text-rose-500' : 'text-rose-600'}`}>{selectedProduct.stock}</p>
-                             {localStorage.getItem('business_type') === 'FERRETERIA' && selectedProduct.pieceSize > 0 && (
+                             {hasFeature('fractional') && selectedProduct.pieceSize > 0 && (
                                <p className="text-[9.5px] font-bold text-emerald-600 mt-1">
                                  {Math.floor(selectedProduct.stock / selectedProduct.pieceSize)} pieza(s) completa(s)
                                  {(() => {

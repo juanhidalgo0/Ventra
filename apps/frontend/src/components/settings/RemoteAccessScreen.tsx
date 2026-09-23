@@ -8,6 +8,11 @@ import api from '../../services/api';
 export default function RemoteAccessScreen() {
   const [localIp, setLocalIp] = useState('localhost');
   const [tailscaleIp, setTailscaleIp] = useState<string | null>(null);
+  // El QR tiene que apuntar al puerto donde realmente se sirve la interfaz: en producción
+  // la sirve el backend (3001) y en desarrollo, Vite (5180). Si esta pantalla se está viendo
+  // en un navegador, ese mismo puerto es la respuesta; si corre dentro de la app de escritorio
+  // (sin puerto en la URL), lo dice el servidor.
+  const [uiPort, setUiPort] = useState<number>(() => Number(window.location.port) || 3001);
   const [loading, setLoading] = useState(true);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,6 +23,7 @@ export default function RemoteAccessScreen() {
         const { data } = await api.get('/system/info');
         setLocalIp(data.localIp || 'localhost');
         setTailscaleIp(data.tailscaleIp || null);
+        if (data.uiPort && !window.location.port) setUiPort(Number(data.uiPort));
       } catch (err) {
         console.error('Error fetching system info:', err);
       } finally {
@@ -48,7 +54,7 @@ export default function RemoteAccessScreen() {
     }
   };
 
-  const remoteUrl = tailscaleIp ? `http://${tailscaleIp}:5180` : `http://${localIp}:5180`;
+  const remoteUrl = `http://${tailscaleIp || localIp}:${uiPort}`;
 
   useEffect(() => {
     if (qrCanvasRef.current && !loading) {
@@ -122,7 +128,7 @@ export default function RemoteAccessScreen() {
               <div className="p-4 rounded-xl border border-slate-400/50 bg-slate-50 dark:bg-slate-950 dark:border-slate-800/80 space-y-1">
                 <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">Red Local Wi-Fi (LAN)</span>
                 <div className="text-base font-bold text-slate-700 dark:text-slate-300">
-                  {localIp}:5180
+                  {localIp}:{uiPort}
                 </div>
               </div>
             </div>

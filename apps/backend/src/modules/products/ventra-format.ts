@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
  * (modpresup, DBF, etc.) se convierte primero a este formato.
  */
 export const VENTRA_FORMAT_NAME = 'VENTRA_PRODUCTOS';
-export const VENTRA_FORMAT_VERSION = 1;
+export const VENTRA_FORMAT_VERSION = 2;
 export const PRODUCTS_SHEET = 'Productos';
 export const INFO_SHEET = 'Info';
 
@@ -27,6 +27,9 @@ export const VENTRA_COLUMNS: VentraColumn[] = [
   { key: 'codigos_adicionales', type: 'text', width: 18, help: 'Otros códigos de barras separados por "|".' },
   { key: 'nombre', type: 'text', width: 45, help: 'Nombre del producto. Obligatorio.' },
   { key: 'descripcion', type: 'text', width: 25, help: 'Descripción libre.' },
+  { key: 'modelo', type: 'text', width: 30, help: 'Indumentaria: nombre del modelo. Las filas con el mismo modelo son variantes del mismo artículo.' },
+  { key: 'talle', type: 'text', width: 8, help: 'Talle de la variante (S, M, L, 38, 40...). Necesita modelo.' },
+  { key: 'color', type: 'text', width: 12, help: 'Color de la variante. Necesita modelo.' },
   { key: 'rubro', type: 'text', width: 20, help: 'Rubro / categoría. Se crea si no existe.' },
   { key: 'marca', type: 'text', width: 16, help: 'Marca. Se crea si no existe.' },
   { key: 'proveedor', type: 'text', width: 18, help: 'Proveedor habitual. Se crea si no existe.' },
@@ -83,16 +86,33 @@ export interface ExportableProduct {
   minStock: number;
   location: string | null;
   isActive: boolean;
+  baseName?: string | null;
+  variantAttrs?: string | null;
+}
+
+/** Los atributos de una variante se guardan como JSON: {"talle":"M","color":"NEGRO"} */
+function attrsOf(raw?: string | null): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 export function productToRow(p: ExportableProduct): Record<string, string | number> {
   const margin = p.costPrice > 0 ? round2((p.salePrice / p.costPrice - 1) * 100) : '';
+  const attrs = attrsOf(p.variantAttrs);
   return {
     codigo: p.sku || '',
     codigo_barras: p.barcode || '',
     codigos_adicionales: (p.additionalBarcodes || []).map(b => b.barcode).join(' | '),
     nombre: p.name,
     descripcion: p.description || '',
+    modelo: p.baseName || '',
+    talle: attrs.talle || '',
+    color: attrs.color || '',
     rubro: p.category?.name || '',
     marca: p.brand?.name || '',
     proveedor: p.supplier?.name || '',
@@ -160,6 +180,9 @@ export interface ParsedProduct {
   codigos_adicionales: string[];
   nombre: string;
   descripcion: string | null;
+  modelo: string | null;
+  talle: string | null;
+  color: string | null;
   rubro: string | null;
   marca: string | null;
   proveedor: string | null;
@@ -250,8 +273,8 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
   }
   const dupHeader = header.filter((h, i) => h && header.indexOf(h) !== i);
   if (dupHeader.length > 0) throw new VentraFormatError(`Columnas repetidas: ${dupHeader.join(', ')}.`);
-  if (!header.includes('nombre') || !header.includes('precio_venta')) {
-    throw new VentraFormatError('Faltan columnas obligatorias: se requieren "nombre" y "precio_venta".');
+  if ((!header.includes('nombre') && !header.includes('modelo')) || !header.includes('precio_venta')) {
+    throw new VentraFormatError('Faltan columnas obligatorias: se requieren "nombre" (o "modelo" si son talles y colores) y "precio_venta".');
   }
   if (!header.includes('codigo') && !header.includes('codigo_barras')) {
     throw new VentraFormatError('Se requiere al menos una de las columnas "codigo" o "codigo_barras" para identificar los productos.');
@@ -290,9 +313,20 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
     const codigos_adicionales = (textCell(cell('codigos_adicionales')) || '')
       .split('|').map(s => s.trim()).filter(Boolean);
 
-    const nombre = textCell(cell('nombre'));
+    const modelo = textCell(cell('modelo'));
+    const talle = textCell(cell('talle'));
+    const color = textCell(cell('color'));
+    if (!modelo && (talle || color)) errors.push('Hay talle o color pero falta el modelo: no se sabe de qué artículo es la variante');
+
+    // En una planilla de indumentaria el nombre de cada variante sale del modelo: MODELO TALLE COLOR
+    const variantSuffix = [talle, color].filter(Boolean).join(' ');
+    let nombre = textCell(cell('nombre'));
+    if (!nombre && modelo) nombre = variantSuffix ? `${modelo} ${variantSuffix}` : modelo;
     if (!nombre) errors.push('Falta el nombre');
-    if (!codigo && !codigo_barras) errors.push('Falta código y código de barras: no se puede identificar el producto');
+    // Una variante queda identificada por modelo + talle + color aunque no traiga código propio
+    if (!codigo && !codigo_barras && !(modelo && variantSuffix)) {
+      errors.push('Falta código y código de barras: no se puede identificar el producto');
+    }
 
     let unidad = (textCell(cell('unidad')) || 'UNIT').toUpperCase();
     if (!VALID_UNITS.includes(unidad)) {
@@ -352,6 +386,9 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
         codigos_adicionales,
         nombre: nombre || '',
         descripcion: textCell(cell('descripcion')),
+        modelo: modelo ? modelo.toUpperCase() : null,
+        talle: talle ? talle.toUpperCase() : null,
+        color: color ? color.toUpperCase() : null,
         rubro: textCell(cell('rubro')),
         marca: textCell(cell('marca')),
         proveedor: textCell(cell('proveedor')),
@@ -374,12 +411,19 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
   // Duplicados dentro del mismo archivo: la primera aparición gana
   const seenCodes = new Map<string, number>();
   const seenBarcodes = new Map<string, number>();
+  const seenVariants = new Map<string, number>();
   for (const r of rows) {
     const { codigo, codigo_barras, codigos_adicionales } = r.data;
     if (codigo) {
       const key = codigo.toUpperCase();
       if (seenCodes.has(key)) r.errors.push(`Código "${codigo}" repetido (ya está en la fila ${seenCodes.get(key)})`);
       else seenCodes.set(key, r.row);
+    }
+    const { modelo, talle, color } = r.data;
+    if (modelo && (talle || color)) {
+      const key = `${modelo}|${talle || ''}|${color || ''}`;
+      if (seenVariants.has(key)) r.errors.push(`La variante ${[talle, color].filter(Boolean).join(' / ')} de "${modelo}" está repetida (ya está en la fila ${seenVariants.get(key)})`);
+      else seenVariants.set(key, r.row);
     }
     for (const bc of [codigo_barras, ...codigos_adicionales].filter(Boolean) as string[]) {
       if (seenBarcodes.has(bc) && seenBarcodes.get(bc) !== r.row) r.errors.push(`Código de barras "${bc}" repetido (ya está en la fila ${seenBarcodes.get(bc)})`);

@@ -185,8 +185,8 @@ export class CashRegisterService {
 
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'CLOSE', newValues: JSON.stringify(closingSummary) } });
     this.events.emitCashUpdated({ action: 'CLOSE', sessionId });
-    // El turno terminó: las demás terminales de ese cajero cierran sesión
-    this.events.emitForceLogout({ userId: session.userId, reason: 'CASH_CLOSE', sessionId, clientId: data.clientId });
+    // Cierre X (cambio de turno): solo afecta a la terminal que cerró la caja,
+    // las demás terminales del mismo cajero siguen con su sesión abierta.
     return { ...updated, closingSummaryParsed: closingSummary };
   }
 
@@ -618,7 +618,7 @@ export class CashRegisterService {
     };
   }
 
-  async generateZReport(userId: string) {
+  async generateZReport(userId: string, clientId?: string) {
     const summaryData = await this.getPendingZReportSummary();
     if (!summaryData) {
       throw new BadRequestException('No hay turnos pendientes de liquidar (Reportes X huérfanos).');
@@ -693,9 +693,12 @@ export class CashRegisterService {
       console.warn('[CashRegisterService] Error al disparar backup automático tras Cierre Z:', bErr);
     }
 
-    // Cierre Z: ninguna terminal debe quedar con la sesión abierta de esos turnos
-    for (const userId of new Set(sessions.map((s: any) => s.userId).filter(Boolean))) {
-      this.events.emitForceLogout({ userId: userId as string, reason: 'Z_REPORT' });
+    // Cierre Z: ninguna terminal debe quedar con la sesión abierta de esos turnos.
+    // La terminal que generó el Z se excluye del logout inmediato: primero debe
+    // terminar de mostrar/imprimir el cartel "Imprimir Z" y recién ahí cierra sesión
+    // (lo hace localmente al cerrar ese cartel, ver CashControlScreen).
+    for (const zUserId of new Set(sessions.map((s: any) => s.userId).filter(Boolean))) {
+      this.events.emitForceLogout({ userId: zUserId as string, reason: 'Z_REPORT', clientId });
     }
 
     return zReport;

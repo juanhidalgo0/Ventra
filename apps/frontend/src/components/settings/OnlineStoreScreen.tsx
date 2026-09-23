@@ -29,13 +29,21 @@ import {
   User as UserIcon,
   Eye,
   Check,
+  Truck,
+  Wallet,
+  Megaphone,
+  Copy,
 } from 'lucide-react';
 import {
-  getOrCreateStoreId,
+  resolveStoreId,
   loadStoreConfig,
   saveStoreConfig,
   isSubdomainAvailable,
   syncCatalogToStore,
+  publishProductImages,
+  PAYMENT_OPTIONS,
+  dayRanges,
+  withRanges,
   subscribeToStoreOrders,
   compressImageFile,
   type StoreConfig,
@@ -82,8 +90,33 @@ function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: stri
 
 const inputBase = "w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus:border-[var(--accent)] focus:ring-[3px] focus:ring-[var(--accent)]/15";
 
+/** Primero se resuelve la tienda del comercio (con la PC vinculada es la de la cuenta). */
 export default function OnlineStoreScreen() {
-  const storeId = useMemo(() => getOrCreateStoreId(), []);
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    resolveStoreId().then(setStoreId).catch((err) => { console.error(err); setFailed(true); });
+  }, []);
+  if (failed) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-slate-50 gap-3 p-6 text-center">
+        <AlertCircle className="w-8 h-8 text-rose-500" />
+        <p className="text-sm font-bold text-slate-800">No pudimos conectar con tu tienda online</p>
+        <p className="text-[13px] text-slate-500">Revisá la conexión a internet y volvé a entrar.</p>
+      </div>
+    );
+  }
+  if (!storeId) {
+    return (
+      <div className="h-full flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-6 h-6 text-rose-500 animate-spin" />
+      </div>
+    );
+  }
+  return <OnlineStoreEditor storeId={storeId} />;
+}
+
+function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,6 +128,7 @@ export default function OnlineStoreScreen() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
 
   const [orders, setOrders] = useState<StoreOrder[]>([]);
@@ -252,12 +286,14 @@ export default function OnlineStoreScreen() {
         setProducts(online);
       }
 
+      // Las fotos se suben a la nube (desde la PC no se pueden ver por internet)
+      const images = await publishProductImages(storeId, online, (done, total) => setSyncProgress({ done, total }));
       await syncCatalogToStore(storeId, online.map(p => ({
         productId: p.id,
         name: p.name,
         description: p.description || '',
         price: p.salePrice,
-        imageUrl: p.imageUrl || '',
+        imageUrl: images.get(p.id) || '',
         category: p.category?.name || 'Varios',
         brand: p.brand?.name || '',
         unit: p.unit || 'UNIT',
@@ -269,9 +305,12 @@ export default function OnlineStoreScreen() {
       toast.error('Error al sincronizar el inventario con la nube');
     } finally {
       setIsSyncingCatalog(false);
+      setSyncProgress(null);
     }
   };
 
+  // La tabla muestra de a 100: con miles de productos, dibujarlos todos hacía lento escribir en cualquier campo
+  const [visibleRows, setVisibleRows] = useState(100);
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [brandFilter, setBrandFilter] = useState('ALL');
 
@@ -353,6 +392,17 @@ export default function OnlineStoreScreen() {
 
         <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
           {publicUrl && (
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard?.writeText(publicUrl); toast.success('Enlace copiado: compartilo por WhatsApp o Instagram'); }}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-[13px] font-semibold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+              title={publicUrl}
+            >
+              <Copy className="w-4 h-4" />
+              <span className="hidden sm:inline">Copiar enlace</span>
+            </button>
+          )}
+          {publicUrl && (
             <a
               href={publicUrl}
               target="_blank"
@@ -418,6 +468,18 @@ export default function OnlineStoreScreen() {
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="mt-5">
+            <FieldLabel hint="Aparece debajo del nombre, en la portada de la tienda.">Descripción corta</FieldLabel>
+            <input
+              type="text"
+              maxLength={120}
+              value={config.description || ''}
+              onChange={(e) => update({ description: e.target.value })}
+              className={inputBase}
+              placeholder="Almacén de barrio · Envíos en el día"
+            />
           </div>
 
           <div className="mt-6">
@@ -635,6 +697,167 @@ export default function OnlineStoreScreen() {
           </div>
         </div>
 
+        {/* Pedidos, entregas y pagos */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <SectionHeader icon={Truck} title="Entregas, Pagos y Horarios" subtitle="Cómo reciben tus clientes lo que piden y cómo te pagan" accent={accent} />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <ToggleCard
+              title="Retiro en el local"
+              text="El cliente pasa a buscar su pedido."
+              on={config.pickupEnabled !== false}
+              onChange={(v) => update({ pickupEnabled: v })}
+            />
+            <ToggleCard
+              title="Envío a domicilio"
+              text="Le llevás el pedido al cliente."
+              on={!!config.deliveryEnabled}
+              onChange={(v) => update({ deliveryEnabled: v })}
+            />
+            <ToggleCard
+              title="Envío con GoDelivery"
+              text="Lo cobra GoDelivery al cliente, aparte."
+              on={!!config.goDeliveryEnabled}
+              onChange={(v) => update({ goDeliveryEnabled: v })}
+            />
+          </div>
+
+          {config.deliveryEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+              <div>
+                <FieldLabel hint="0 = sin cargo">Costo del envío</FieldLabel>
+                <MoneyField value={config.deliveryCost || 0} onChange={(v) => update({ deliveryCost: v })} />
+              </div>
+              <div>
+                <FieldLabel hint="0 = nunca es gratis">Envío gratis desde</FieldLabel>
+                <MoneyField value={config.freeDeliveryFrom || 0} onChange={(v) => update({ freeDeliveryFrom: v })} />
+              </div>
+              <div>
+                <FieldLabel hint="Se muestra al elegir envío">Zona de entrega</FieldLabel>
+                <input type="text" value={config.deliveryZone || ''} onChange={(e) => update({ deliveryZone: e.target.value })} className={inputBase} placeholder="Centro y barrios cercanos" />
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
+            <div>
+              <FieldLabel hint="0 = sin mínimo">Pedido mínimo</FieldLabel>
+              <MoneyField value={config.minOrder || 0} onChange={(v) => update({ minOrder: v })} />
+            </div>
+            <div>
+              <FieldLabel hint="Se le muestra al cliente si elige transferencia">Alias o CBU para transferencias</FieldLabel>
+              <input type="text" value={config.transferAlias || ''} onChange={(e) => update({ transferAlias: e.target.value })} className={inputBase} placeholder="mi.negocio.mp" />
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <FieldLabel>Medios de pago que aceptás</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_OPTIONS.map((m) => {
+                const selected = (config.paymentMethods || []).includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => update({
+                      paymentMethods: selected
+                        ? (config.paymentMethods || []).filter((x) => x !== m)
+                        : [...(config.paymentMethods || []), m],
+                    })}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-[13px] font-semibold transition-all cursor-pointer"
+                    style={selected ? { borderColor: accent, backgroundColor: `${accent}12`, color: accent } : { borderColor: '#cbd5e1', color: '#475569' }}
+                  >
+                    {selected ? <Check className="w-3.5 h-3.5" /> : <Wallet className="w-3.5 h-3.5" />} {m}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-7">
+            <FieldLabel hint="Con esto la tienda muestra &quot;Abierto ahora&quot; o &quot;Cerrado&quot;. Los pedidos se pueden hacer igual.">Horarios de atención</FieldLabel>
+            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+              {WEEK.map(({ idx, label }) => {
+                const allHours = config.hours || [0, 1, 2, 3, 4, 5, 6].map(() => ({ open: false, from: '09:00', to: '20:00' }));
+                const h = allHours[idx] || { open: false, from: '09:00', to: '20:00' };
+                const ranges = dayRanges(h);
+                const saveDay = (next: typeof h) => {
+                  const hours = [...allHours];
+                  hours[idx] = next;
+                  update({ hours });
+                };
+                const setRange = (i: number, patch: Partial<{ from: string; to: string }>) =>
+                  saveDay(withRanges(h, ranges.map((r, j) => (j === i ? { ...r, ...patch } : r))));
+                return (
+                  <div key={idx} className="flex items-start gap-3 px-4 py-2.5">
+                    <label className="flex items-center gap-2.5 w-32 h-9 cursor-pointer shrink-0">
+                      <input type="checkbox" checked={h.open} onChange={(e) => saveDay({ ...h, open: e.target.checked })} className="w-4 h-4 accent-[var(--accent)]" />
+                      <span className={`text-[13.5px] font-semibold ${h.open ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
+                    </label>
+                    {h.open ? (
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        {ranges.map((r, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[13px] text-slate-500">
+                            <input type="time" value={r.from} onChange={(e) => setRange(i, { from: e.target.value })} className="border border-slate-300 rounded-lg px-2 py-1.5 text-slate-800" />
+                            a
+                            <input type="time" value={r.to} onChange={(e) => setRange(i, { to: e.target.value })} className="border border-slate-300 rounded-lg px-2 py-1.5 text-slate-800" />
+                            {ranges.length > 1 && (
+                              <button type="button" onClick={() => saveDay(withRanges(h, ranges.filter((_, j) => j !== i)))} className="text-[12.5px] font-semibold text-slate-400 hover:text-rose-600 px-1.5 cursor-pointer" title="Quitar este horario">
+                                Quitar
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-3">
+                          {ranges.length < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const last = ranges[ranges.length - 1];
+                                saveDay(withRanges(h, [...ranges, { from: last && last.to < '17:00' ? '17:00' : '20:00', to: last && last.to < '17:00' ? '21:00' : '23:00' }]));
+                              }}
+                              className="text-[12.5px] font-semibold cursor-pointer"
+                              style={{ color: accent }}
+                            >
+                              + Agregar horario
+                            </button>
+                          )}
+                          {idx === 1 && (
+                            <button
+                              type="button"
+                              onClick={() => update({ hours: allHours.map((d, j) => (j === 0 ? d : { ...h, ranges: [...ranges] })) })}
+                              className="text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+                            >
+                              Copiar a lunes–sábado
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[13px] text-slate-400 h-9 flex items-center">Cerrado</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-5 mt-7 items-end">
+            <div>
+              <FieldLabel hint="Una frase destacada arriba de todo. Dejalo vacío para no mostrar nada.">
+                <span className="inline-flex items-center gap-1.5"><Megaphone className="w-3.5 h-3.5" /> Aviso destacado</span>
+              </FieldLabel>
+              <input type="text" maxLength={90} value={config.announcement || ''} onChange={(e) => update({ announcement: e.target.value })} className={inputBase} placeholder="Envío gratis en compras desde $30.000" />
+            </div>
+            <ToggleCard
+              title="Mostrar productos sin stock"
+              text="Aparecen como agotados."
+              on={config.showOutOfStock !== false}
+              onChange={(v) => update({ showOutOfStock: v })}
+            />
+          </div>
+        </div>
+
         {/* Productos */}
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
           <div data-tour="store-products" className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-5 mb-6 border-b border-slate-100">
@@ -656,7 +879,9 @@ export default function OnlineStoreScreen() {
               style={{ backgroundColor: accent }}
             >
               <RefreshCw className={`w-4 h-4 ${isSyncingCatalog ? 'animate-spin' : ''}`} />
-              {isSyncingCatalog ? 'Sincronizando...' : 'Sincronizar Todo el Inventario'}
+              {isSyncingCatalog
+                ? (syncProgress && syncProgress.total > 0 ? `Subiendo fotos ${syncProgress.done}/${syncProgress.total}...` : 'Sincronizando...')
+                : 'Sincronizar Todo el Inventario'}
             </button>
           </div>
 
@@ -706,7 +931,7 @@ export default function OnlineStoreScreen() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredProducts.map((p: any) => (
+                  {filteredProducts.slice(0, visibleRows).map((p: any) => (
                     <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4">
                         <p className="font-semibold text-[13.5px] text-slate-800 truncate max-w-xs">{p.name}</p>
@@ -733,6 +958,14 @@ export default function OnlineStoreScreen() {
                   ))}
                 </tbody>
               </table>
+            )}
+            {!isLoadingProducts && filteredProducts.length > visibleRows && (
+              <button
+                onClick={() => setVisibleRows((n) => n + 200)}
+                className="w-full py-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 border-t border-slate-200 cursor-pointer"
+              >
+                Mostrar más ({filteredProducts.length - visibleRows} restantes)
+              </button>
             )}
           </div>
         </div>
@@ -765,7 +998,10 @@ export default function OnlineStoreScreen() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[13.5px] font-bold text-slate-800 truncate">{o.customerName || 'Cliente Web'}</p>
-                      <p className="text-[12px] text-slate-500 font-medium truncate mt-0.5">{o.items?.length || 0} producto(s) · {o.customerPhone}</p>
+                      <p className="text-[12px] text-slate-500 font-medium truncate mt-0.5">
+                        {o.orderCode ? `#${o.orderCode} · ` : ''}{o.items?.length || 0} producto(s) · {o.customerPhone}
+                        {o.delivery ? ` · ${o.delivery === 'DELIVERY' ? 'Envío' : o.delivery === 'GODELIVERY' ? 'GoDelivery' : 'Retira'}` : ''}{o.paymentMethod ? ` · ${o.paymentMethod}` : ''}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -787,6 +1023,47 @@ export default function OnlineStoreScreen() {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+const WEEK = [
+  { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
+  { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
+];
+
+function ToggleCard({ title, text, on, onChange }: { title: string; text: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+      <div>
+        <p className="text-[14px] font-bold text-slate-800">{title}</p>
+        <p className="text-[12.5px] text-slate-500 mt-0.5">{text}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!on)}
+        className="keep-style relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full p-1 transition-colors"
+        style={{ backgroundColor: on ? '#10b981' : '#cbd5e1' }}
+        aria-pressed={on}
+      >
+        <span className={`keep-style block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`} />
+      </button>
+    </div>
+  );
+}
+
+function MoneyField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="relative flex items-center">
+      <span className="absolute left-4 text-[14px] font-semibold text-slate-400">$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value ? String(value) : ''}
+        onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, '')) || 0)}
+        className={`${inputBase} pl-8`}
+        placeholder="0"
+      />
     </div>
   );
 }

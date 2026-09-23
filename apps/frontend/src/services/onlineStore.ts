@@ -13,8 +13,11 @@ import {
   writeBatch,
   serverTimestamp,
   orderBy,
+  runTransaction,
 } from 'firebase/firestore';
-import { getVentraDb, ensureVentraSession } from './ventraFirebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
+import { resolveServerUrl } from './api';
 
 // Proyecto Firebase propio de Ventra (ver ventraFirebase.ts).
 const getDb = getVentraDb;
@@ -47,11 +50,15 @@ export async function claimStore(storeId: string): Promise<void> {
   }
 }
 
-export const STORE_ID_KEY = 'ventra_store_id';
+export { STORE_ID_KEY };
 
-// Cada terminal/instalación de Ventra tiene su propia tienda online, identificada
-// por un ID local generado una sola vez y persistido en localStorage.
-export function getOrCreateStoreId(): string {
+/**
+ * Id de la tienda online del comercio. Primero se abre la sesión (que, con la PC
+ * vinculada, trae la tienda de la cuenta); si todavía no existe ninguna, se crea
+ * un id nuevo y la tienda nace a nombre de esa sesión.
+ */
+export async function resolveStoreId(): Promise<string> {
+  await ensureVentraSession();
   let id = localStorage.getItem(STORE_ID_KEY);
   if (!id) {
     id = `store_${crypto.randomUUID().replace(/-/g, '')}`;
@@ -59,6 +66,26 @@ export function getOrCreateStoreId(): string {
   }
   return id;
 }
+
+/**
+ * Horario de un día (índice 0 = domingo). Puede tener varios turnos, por ejemplo
+ * 9 a 13 y 17 a 21 ("cortado"). from/to repiten el primer turno para las tiendas
+ * publicadas con la versión anterior, que solo conocen un horario.
+ */
+export interface TimeRange { from: string; to: string }
+export interface DayHours { open: boolean; from: string; to: string; ranges?: TimeRange[] }
+
+export const dayRanges = (h?: DayHours): TimeRange[] =>
+  !h ? [] : h.ranges && h.ranges.length ? h.ranges : [{ from: h.from, to: h.to }];
+
+export const withRanges = (h: DayHours, ranges: TimeRange[]): DayHours => ({
+  ...h,
+  ranges,
+  from: ranges[0]?.from ?? h.from,
+  to: ranges[0]?.to ?? h.to,
+});
+
+export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Mercado Pago', 'Tarjeta de débito', 'Tarjeta de crédito'];
 
 export interface StoreConfig {
   storeId: string;
@@ -73,6 +100,24 @@ export interface StoreConfig {
   address?: string;
   instagram?: string;
   isPublished: boolean;
+  /** Frase corta bajo el nombre ("Todo para tu casa, envíos en el día") */
+  description?: string;
+  /** Aviso destacado arriba de la tienda ("Envío gratis desde $30.000") */
+  announcement?: string;
+  hours?: DayHours[];
+  pickupEnabled?: boolean;
+  deliveryEnabled?: boolean;
+  /** Envío con GoDelivery: empresa independiente, el cliente le paga el envío a ella (no se informan precios). */
+  goDeliveryEnabled?: boolean;
+  deliveryCost?: number;
+  /** Desde este monto el envío es gratis (0 = nunca) */
+  freeDeliveryFrom?: number;
+  /** Zona de entrega, texto libre ("Centro y barrios cercanos") */
+  deliveryZone?: string;
+  minOrder?: number;
+  paymentMethods?: string[];
+  transferAlias?: string;
+  showOutOfStock?: boolean;
   ownerUid?: string;
   claimed?: boolean;
   updatedAt?: any;
@@ -94,6 +139,19 @@ const DEFAULT_CONFIG: Omit<StoreConfig, 'storeId'> = {
   address: '',
   instagram: '',
   isPublished: false,
+  description: '',
+  announcement: '',
+  hours: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, from: '09:00', to: '20:00' })),
+  pickupEnabled: true,
+  deliveryEnabled: false,
+  goDeliveryEnabled: false,
+  deliveryCost: 0,
+  freeDeliveryFrom: 0,
+  deliveryZone: '',
+  minOrder: 0,
+  paymentMethods: ['Efectivo', 'Transferencia'],
+  transferAlias: '',
+  showOutOfStock: true,
 };
 
 export async function loadStoreConfig(storeId: string): Promise<StoreConfig> {
@@ -133,6 +191,94 @@ export interface OnlineProduct {
   brand?: string;
   unit?: string;
   inStock: boolean;
+}
+
+/**
+ * Las fotos del POS viven en la PC (base64 en la base o enlaces /api/... del backend
+ * local): desde internet no se pueden ver. Antes de publicar, cada foto se achica
+ * y se sube a Firebase Storage; la tienda usa ese enlace público.
+ * Se recuerda qué se subió (por huella de la foto) para no volver a subir lo mismo.
+ */
+const imageCacheKey = (storeId: string) => `ventra_store_images_${storeId}`;
+
+async function fingerprint(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function shrinkToJpeg(blob: Blob, maxSide = 700, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { URL.revokeObjectURL(url); return reject(new Error('Sin canvas')); }
+      // Fondo blanco: las fotos con transparencia (PNG) no quedan negras en JPEG
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((out) => (out ? resolve(out) : reject(new Error('No se pudo convertir la foto'))), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Foto inválida')); };
+    img.src = url;
+  });
+}
+
+export async function publishProductImages(
+  storeId: string,
+  products: { id: string; imageUrl?: string | null }[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<Map<string, string>> {
+  await claimStore(storeId);
+  let cache: Record<string, { key: string; url: string }> = {};
+  try { cache = JSON.parse(localStorage.getItem(imageCacheKey(storeId)) || '{}'); } catch { /* caché vacía */ }
+
+  const result = new Map<string, string>();
+  const pending: { id: string; src: string }[] = [];
+  for (const p of products) {
+    const src = p.imageUrl || '';
+    if (!src) continue;
+    // Fotos que ya están en internet (enlaces https de terceros) se usan tal cual
+    if (/^https?:\/\//.test(src) && !src.includes('/api/')) { result.set(p.id, src); continue; }
+    pending.push({ id: p.id, src });
+  }
+
+  let done = 0;
+  onProgress?.(0, pending.length);
+  const storage = getVentraStorage();
+  const queue = [...pending];
+  const worker = async () => {
+    while (queue.length) {
+      const { id, src } = queue.shift()!;
+      try {
+        const key = await fingerprint(src.length > 4000 ? src.slice(0, 2000) + src.length + src.slice(-2000) : src);
+        if (cache[id]?.key === key) {
+          result.set(id, cache[id].url);
+        } else {
+          const res = await fetch(src.startsWith('data:') ? src : resolveServerUrl(src) || src);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const jpeg = await shrinkToJpeg(await res.blob());
+          const ref = storageRef(storage, `ventra_stores/${storeId}/products/${id}_${key}.jpg`);
+          await uploadBytes(ref, jpeg, { contentType: 'image/jpeg', cacheControl: 'public,max-age=31536000,immutable' });
+          const url = await getDownloadURL(ref);
+          cache[id] = { key, url };
+          result.set(id, url);
+        }
+      } catch (err) {
+        console.warn('[OnlineStore] No se pudo publicar la foto de', id, err);
+      }
+      done++;
+      onProgress?.(done, pending.length);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  try { localStorage.setItem(imageCacheKey(storeId), JSON.stringify(cache)); } catch { /* sin espacio: se resube la próxima */ }
+  return result;
 }
 
 // Sube (o reemplaza) el catálogo completo visible en la tienda online. Se usa
@@ -184,6 +330,12 @@ export interface StoreOrder {
   customerName: string;
   customerPhone: string;
   customerNote?: string;
+  /** Código corto que ve el cliente en WhatsApp (ej. "K7P2") */
+  orderCode?: string;
+  delivery?: 'PICKUP' | 'DELIVERY' | 'GODELIVERY';
+  address?: string;
+  paymentMethod?: string;
+  deliveryCost?: number;
   status: 'PENDING' | 'SYNCED';
   syncedLocal?: boolean;
   createdAt?: any;
@@ -212,6 +364,27 @@ export function subscribeToStoreOrders(storeId: string, onChange: (orders: Store
     cancelled = true;
     unsub?.();
   };
+}
+
+/**
+ * Toma un pedido para pasarlo a presupuesto. Como la tienda es de la cuenta, varios
+ * equipos pueden estar escuchando: la transacción asegura que lo tome uno solo.
+ * Devuelve false si otro equipo ya lo tomó.
+ */
+export async function claimOrder(storeId: string, orderId: string): Promise<boolean> {
+  await ensureVentraSession();
+  const ref = doc(getDb(), 'ventra_stores', storeId, 'orders', orderId);
+  return runTransaction(getDb(), async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists() || snap.data().syncedLocal) return false;
+    tx.update(ref, { syncedLocal: true, syncedLocalAt: serverTimestamp() });
+    return true;
+  });
+}
+
+/** Si no se pudo crear el presupuesto, el pedido vuelve a quedar pendiente. */
+export async function releaseOrder(storeId: string, orderId: string): Promise<void> {
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId, 'orders', orderId), { syncedLocal: false });
 }
 
 export async function markOrderSyncedLocally(storeId: string, orderId: string): Promise<void> {
@@ -257,4 +430,33 @@ export function compressImageFile(file: File, maxWidth: number, maxHeight: numbe
     };
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Publica en la tienda los productos marcados "mostrar en la tienda" (con sus
+ * fotos subidas a la nube). Es lo mismo que "Sincronizar" en la PC, usado desde el celular.
+ */
+export async function publishOnlineCatalog(storeId: string, onProgress?: (done: number, total: number) => void): Promise<number> {
+  const { default: api } = await import('./api');
+  const { data } = await api.get('/products', { params: { take: 5000 } });
+  const all = (data?.products || data || []) as any[];
+  let online = all.filter((p) => p.showOnline);
+  // Igual que "Sincronizar" en la PC: si todavía no se marcó ninguno, se publica todo el inventario
+  if (online.length === 0 && all.length > 0) {
+    await api.post('/products/bulk-set-show-online', { showOnline: true });
+    online = all;
+  }
+  const images = await publishProductImages(storeId, online, onProgress);
+  await syncCatalogToStore(storeId, online.map((p) => ({
+    productId: p.id,
+    name: p.name,
+    description: p.description || '',
+    price: p.salePrice,
+    imageUrl: images.get(p.id) || '',
+    category: p.category?.name || 'Varios',
+    brand: p.brand?.name || '',
+    unit: p.unit || 'UNIT',
+    inStock: p.unlimitedStock || p.stock > 0,
+  })));
+  return online.length;
 }

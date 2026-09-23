@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '../pos/PaymentModal';
+import { hasFeature } from '../../stores/businessStore';
 
 export default function CuentasCorrientesScreen() {
   const [clients, setClients] = useState<any[]>([]);
@@ -317,7 +318,7 @@ export default function CuentasCorrientesScreen() {
                             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-600 shrink-0">{initialLetter}</div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-slate-800">{displayName}</span>
-                              {localStorage.getItem('business_type') === 'FERRETERIA' && client.priceList === 'TRADE' && (
+                              {hasFeature('tradePricing') && client.priceList === 'TRADE' && (
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-850 border border-amber-300 shrink-0">
                                   🔧 GREMIO {client.tradeDiscountPercentage ? `(-${client.tradeDiscountPercentage}%)` : ''}
                                 </span>
@@ -495,7 +496,7 @@ export default function CuentasCorrientesScreen() {
                 </div>
 
                 {/* Lista de Precios / Gremio (Solo Ferretería) */}
-                {localStorage.getItem('business_type') === 'FERRETERIA' && (
+                {hasFeature('tradePricing') && (
                   <div className="grid grid-cols-2 gap-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl">
                     <div className="space-y-1">
                       <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">Lista de Precios</label>
@@ -670,7 +671,7 @@ export default function CuentasCorrientesScreen() {
                 </div>
 
                 {/* Lista de Precios / Gremio (Solo Ferretería) */}
-                {localStorage.getItem('business_type') === 'FERRETERIA' && (
+                {hasFeature('tradePricing') && (
                   <div className="grid grid-cols-2 gap-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl">
                     <div className="space-y-1">
                       <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">Lista de Precios</label>

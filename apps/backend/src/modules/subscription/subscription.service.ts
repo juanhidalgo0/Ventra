@@ -221,6 +221,18 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     return { deviceId: this.stored.deviceId, deviceSecret: this.stored.deviceSecret };
   }
 
+  /**
+   * Sesión de Firebase de la CUENTA para administrar la tienda online (ver
+   * ventraStoreSession). Devuelve null si este equipo no está vinculado: en ese
+   * caso la tienda sigue funcionando con la sesión anónima del navegador.
+   */
+  async storeSession(legacy: { legacyStoreId?: string; legacyIdToken?: string }) {
+    const creds = this.getDeviceCredentials();
+    if (!creds) return null;
+    const { data } = await axios.post(`${FUNCTIONS_URL}/ventraStoreSession`, { ...creds, ...legacy }, { timeout: 15000 });
+    return data as { uid: string; customToken: string; storeId: string | null };
+  }
+
   isReadOnly(): boolean {
     const state = this.getStatus().state;
     return state === 'READ_ONLY' || state === 'NEEDS_LINK';

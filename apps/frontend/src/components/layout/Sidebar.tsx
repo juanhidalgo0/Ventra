@@ -30,6 +30,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo as BrandLogo } from '../common/MangoLogo';
+import { hasFeature } from '../../stores/businessStore';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -124,7 +125,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
-        { label: 'Resumen Fiscal', icon: Calculator, path: '/fiscal', badge: 'FULL' },
+        { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 
           label: 'Tienda Online', 
           icon: Globe, 
@@ -136,7 +137,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           ]
         },
         { label: 'División de Ganancias', icon: Calculator, path: '/earnings-division' },
-        ...(localStorage.getItem('business_type') === 'FERRETERIA' ? [
+        ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
         ...(user?.role === 'ADMIN' ? [
@@ -222,7 +223,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                         {item.collapsible && (
                           <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isGroupExpanded ? 'rotate-180' : ''}`} />
                         )}
-                        {item.badge && <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[8.5px] font-bold shrink-0">{item.badge}</span>}
+                        {/* Ningún ítem tiene chapita hoy; queda listo para el próximo que la necesite */}
+                        {(item as any).badge && <span className={`px-1.5 py-0.5 rounded-md text-[8.5px] font-bold shrink-0 ${(item as any).badge === 'PRONTO' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{(item as any).badge}</span>}
                       </div>
                     )}
                   </button>

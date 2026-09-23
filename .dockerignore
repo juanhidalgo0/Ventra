@@ -1,0 +1,59 @@
+# Anything not listed here gets uploaded to the remote builder on every deploy.
+# Be explicit and generous — a slow deploy is annoying, a leaked credential or
+# customer database backup sent to a third-party build service is not.
+
+node_modules
+**/node_modules
+dist
+**/dist
+apps/desktop
+src-tauri
+*.rar
+*.dll
+*.DBF
+.git
+
+# Backend: local runtime data, secrets, backups, and dev scratch files —
+# none of this belongs in a build context. Backups alone were ~2.8GB and
+# the single biggest reason the last deploy's context upload took 35+ minutes.
+apps/backend/backups
+apps/backend/uploads
+apps/backend/scratch
+apps/backend/test_dist
+apps/backend/*.db
+apps/backend/*.db-journal
+apps/backend/*.db-wal
+apps/backend/*.db-shm
+apps/backend/prisma/*.db
+apps/backend/prisma/*.db-journal
+apps/backend/prisma/*.db-wal
+apps/backend/prisma/*.db-shm
+apps/backend/prisma/terminals.json
+apps/backend/*.log
+apps/backend/.env
+apps/backend/.env.*
+apps/backend/firebase-credentials.json
+apps/backend/godelivery_comercio_id.txt
+apps/backend/tsconfig.tsbuildinfo
+apps/backend/test_*.js
+apps/backend/scratch_*.js
+apps/backend/inspect_*.js
+apps/backend/check_*.js
+apps/backend/merge_*.js
+apps/backend/compress_*.js
+apps/backend/query-*.js
+apps/backend/import_debug.log
+
+# Frontend: build cache
+apps/frontend/tsconfig.tsbuildinfo
+
+# Root-level secrets and scratch — never needed by the image.
+PASSWORDS.txt
+updaterPASSWORD.txt
+github-recovery-codes.txt
+reset.txt
+*.key
+*.key.pub
+errores
+scratch
+app-error.txt

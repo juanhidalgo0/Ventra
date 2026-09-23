@@ -148,6 +148,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   /** Marca de agua en la base y en un archivo aparte: si no coinciden, la base cambió por fuera. */
   private async bumpWatermark(deviceId: string) {
     const wm = crypto.randomUUID();
+    // La marca anterior queda guardada: la base y el archivo se escriben en dos pasos
+    // y un corte brusco entre ambos los dejaba en desacuerdo, lo que se interpretaba
+    // como "la base cambió por fuera" y disparaba una bajada completa de todo el
+    // catálogo. Aceptando tambien la marca previa, un apagón a destiempo ya no cuesta
+    // una resincronización entera.
+    const anterior = await this.getState('watermark');
+    if (anterior) await this.setState('watermark_prev', anterior);
     await this.setState('watermark', wm);
     this.lastSyncAt = new Date().toISOString();
     try { fs.writeFileSync(this.stateFile, JSON.stringify({ deviceId, watermark: wm, lastSyncAt: this.lastSyncAt }, null, 2)); } catch {}
@@ -345,8 +352,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       const file = this.readFile();
       this.lastSyncAt = file.lastSyncAt || this.lastSyncAt;
       const dbWm = await this.getState('watermark');
+      const dbWmPrev = await this.getState('watermark_prev');
       const bootstrapped = (await this.getState('bootstrap')) === 'done';
-      const consistent = file.deviceId === creds.deviceId && !!dbWm && dbWm === file.watermark;
+      const consistent = file.deviceId === creds.deviceId && !!dbWm
+        && (dbWm === file.watermark || (!!dbWmPrev && dbWmPrev === file.watermark));
 
       if (!bootstrapped || !consistent || installedNow) await this.bootstrap(tables, creds.deviceId, bootstrapped);
       else {

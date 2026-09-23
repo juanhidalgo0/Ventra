@@ -13,65 +13,8 @@ export class CashRegisterController {
   }
 
   @Get('server-ip')
-  getServerIp() {
-    const os = require('os');
-    const interfaces = os.networkInterfaces();
-    let ip = '127.0.0.1';
-    
-    const isLocalPrivateIP = (ipStr: string) => {
-      const parts = ipStr.split('.');
-      if (parts.length !== 4) return false;
-      const p1 = parseInt(parts[0]);
-      const p2 = parseInt(parts[1]);
-      // Class C private: 192.168.x.x
-      if (p1 === 192 && p2 === 168) return true;
-      // Class B private: 172.16.x.x to 172.31.x.x
-      if (p1 === 172 && p2 >= 16 && p2 <= 31) return true;
-      // Class A private: 10.x.x.x (excluding CGNAT / Tailscale 100.x.x.x)
-      if (p1 === 10) return true;
-      return false;
-    };
-    
-    const privateIps: string[] = [];
-    const physicalIps: string[] = [];
-    const fallbackIps: string[] = [];
-    
-    for (const devName in interfaces) {
-      const isVirtual = devName.toLowerCase().includes('virtual') || 
-                        devName.toLowerCase().includes('vbox') || 
-                        devName.toLowerCase().includes('vmware') || 
-                        devName.toLowerCase().includes('wsl') || 
-                        devName.toLowerCase().includes('loopback') || 
-                        devName.toLowerCase().includes('host-only') ||
-                        devName.toLowerCase().includes('tailscale') ||
-                        devName.toLowerCase().includes('vethernet');
-                        
-      const iface = interfaces[devName];
-      if (iface) {
-        for (const alias of iface) {
-          if (alias.family === 'IPv4' && !alias.internal) {
-            const isPrivate = isLocalPrivateIP(alias.address);
-            if (isPrivate && !isVirtual) {
-              privateIps.push(alias.address);
-            } else if (!isVirtual) {
-              physicalIps.push(alias.address);
-            } else {
-              fallbackIps.push(alias.address);
-            }
-          }
-        }
-      }
-    }
-    
-    if (privateIps.length > 0) {
-      ip = privateIps[0];
-    } else if (physicalIps.length > 0) {
-      ip = physicalIps[0];
-    } else if (fallbackIps.length > 0) {
-      ip = fallbackIps[0];
-    }
-    
-    return { ip, tunnelUrl: process.env.PUBLIC_TUNNEL_URL || '' };
+  async getServerIp() {
+    return { ip: await outboundLanIp(), tunnelUrl: process.env.PUBLIC_TUNNEL_URL || '' };
   }
 
   @Post('open')
@@ -128,8 +71,8 @@ export class CashRegisterController {
   }
 
   @Post('z-report/generate')
-  generateZReport(@Request() req) {
-    return this.cashService.generateZReport(req.user.sub);
+  generateZReport(@Request() req, @Body() dto: { clientId?: string }) {
+    return this.cashService.generateZReport(req.user.sub, dto?.clientId);
   }
 
   @Get('movements')
@@ -173,4 +116,58 @@ export class CashRegisterController {
   addMovement(@Param('sessionId') sessionId: string, @Request() req, @Body() dto: { type: string; amount: number; description?: string }) {
     return this.cashService.addCashMovement(sessionId, req.user.sub, dto);
   }
+}
+
+/**
+ * IP de esta PC en la red local, la que tiene que escanear el celular.
+ *
+ * No se puede elegir por nombre de interfaz: Windows llama "Ethernet 2" al adaptador
+ * Host-Only de VirtualBox, que no contiene "virtual" ni "vbox" en el nombre y encima
+ * usa un rango 192.168.x.x igual de privado que el de la red real. Elegir la primera
+ * 192.168 que aparezca devuelve una dirección a la que el celular nunca llega.
+ *
+ * En vez de adivinar, se le pregunta al sistema operativo qué interfaz usaría para
+ * salir a internet: se abre un socket UDP hacia una dirección pública y se lee la IP
+ * local que el sistema eligió para la ruta. No se envía ningún paquete (UDP no
+ * establece conexión) y no hace falta tener internet: alcanza con que exista la ruta.
+ */
+async function outboundLanIp(): Promise<string> {
+  const dgram = require('dgram');
+  const elegida = await new Promise<string>((resolve) => {
+    let listo = false;
+    const socket = dgram.createSocket('udp4');
+    const terminar = (valor: string) => {
+      if (listo) return;
+      listo = true;
+      try { socket.close(); } catch {}
+      resolve(valor);
+    };
+    socket.once('error', () => terminar(''));
+    try {
+      socket.connect(53, '8.8.8.8', () => {
+        try { terminar(socket.address().address || ''); } catch { terminar(''); }
+      });
+    } catch { terminar(''); }
+    setTimeout(() => terminar(''), 700);
+  });
+  if (elegida && elegida !== '0.0.0.0' && !elegida.startsWith('127.')) return elegida;
+
+  // Respaldo: primera IPv4 privada no interna, descartando rangos que son siempre
+  // virtuales (192.168.56.x es el Host-Only por defecto de VirtualBox) y la CGNAT
+  // 100.64-127.x.x que usa Tailscale.
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  const candidatas: string[] = [];
+  for (const nombre in interfaces) {
+    for (const alias of interfaces[nombre] || []) {
+      if (alias.family !== 'IPv4' || alias.internal) continue;
+      const ip = alias.address as string;
+      const [a, b] = ip.split('.').map(Number);
+      if (ip.startsWith('192.168.56.')) continue;
+      if (a === 100 && b >= 64 && b <= 127) continue;
+      const privada = (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || a === 10;
+      if (privada) candidatas.push(ip);
+    }
+  }
+  return candidatas[0] || '127.0.0.1';
 }

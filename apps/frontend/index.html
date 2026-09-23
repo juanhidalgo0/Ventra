@@ -2,7 +2,8 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0E6E52" />
     <meta name="description" content="Ventra - Sistema de ventas para comercios argentinos: caja, inventario y tienda online." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -30,12 +31,15 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // La app instalable (PWA) solo existe en la web por https. En la app de escritorio
+      // (Tauri/Electron) y en desarrollo no hay service worker: se borra si quedó alguno.
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (let registration of registrations) {
-            registration.unregister();
-          }
-        });
+        const isWeb = location.protocol === 'https:' && !/tauri/.test(location.hostname) && !/electron/i.test(navigator.userAgent);
+        if (isWeb) {
+          window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+        } else {
+          navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()));
+        }
       }
     </script>
   </body>

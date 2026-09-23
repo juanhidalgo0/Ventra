@@ -40,6 +40,7 @@ import ImageReviewModal from './ImageReviewModal';
 import { downloadFromApi } from '../../utils/download';
 import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
+import { useFeature } from '../../stores/businessStore';
 
 export default function ProductsScreen() {
   const navigate = useNavigate();
@@ -69,7 +70,7 @@ export default function ProductsScreen() {
       setIsRoundingPrices(false);
     }
   };
-  const isHardwareStore = localStorage.getItem('business_type') === 'FERRETERIA';
+  const isHardwareStore = useFeature('hardwareImages');
   const [showImageReview, setShowImageReview] = useState(false);
   const [pendingImageReviews, setPendingImageReviews] = useState(0);
   const refreshImageReviewCount = () => {

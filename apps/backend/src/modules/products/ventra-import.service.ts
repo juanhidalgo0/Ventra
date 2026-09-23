@@ -9,6 +9,7 @@ import {
   VentraFormatError,
 } from './ventra-format';
 import { convertModpresup, isAccessDatabase, ModpresupFormatError } from './modpresup-converter';
+import { randomUUID } from 'crypto';
 
 type RowAction = 'CREATE' | 'UPDATE' | 'SKIP';
 
@@ -25,8 +26,15 @@ interface ExistingProduct {
   barcode: string | null;
   name: string;
   salePrice: number;
+  baseName: string | null;
+  variantGroupId: string | null;
+  variantAttrs: string | null;
   additionalBarcodes: { barcode: string }[];
 }
+
+/** Clave con la que se reconoce una variante sin código propio: MODELO|TALLE|COLOR */
+const variantKey = (modelo: string, talle: string | null, color: string | null) =>
+  `${modelo.toUpperCase()}|${(talle || '').toUpperCase()}|${(color || '').toUpperCase()}`;
 
 const MAX_ISSUES_RETURNED = 2000;
 const BATCH_SIZE = 200;
@@ -52,7 +60,7 @@ export class VentraImportService {
         supplier: { select: { name: true } },
         additionalBarcodes: { select: { barcode: true } },
       },
-      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      orderBy: [{ isActive: 'desc' }, { baseName: 'asc' }, { name: 'asc' }],
     });
     return buildVentraWorkbook(products.map(productToRow));
   }
@@ -91,15 +99,24 @@ export class VentraImportService {
   /** Decide qué hacer con cada fila comparando contra la base actual. */
   private async plan(rows: ParsedRow[]) {
     const products: ExistingProduct[] = await this.prisma.product.findMany({
-      select: { id: true, sku: true, barcode: true, name: true, salePrice: true, additionalBarcodes: { select: { barcode: true } } },
+      select: { id: true, sku: true, barcode: true, name: true, salePrice: true, baseName: true, variantGroupId: true, variantAttrs: true, additionalBarcodes: { select: { barcode: true } } },
     });
 
     const bySku = new Map<string, ExistingProduct>();
     const byBarcode = new Map<string, ExistingProduct>();
+    const byVariant = new Map<string, ExistingProduct>();
+    // Modelo -> id de grupo ya existente, para que reimportar no duplique el artículo
+    const groupByModel = new Map<string, string>();
     for (const p of products) {
       if (p.sku) bySku.set(p.sku.toUpperCase(), p);
       if (p.barcode) byBarcode.set(p.barcode, p);
       for (const ab of p.additionalBarcodes) byBarcode.set(ab.barcode, p);
+      if (p.baseName && p.variantGroupId) {
+        if (!groupByModel.has(p.baseName.toUpperCase())) groupByModel.set(p.baseName.toUpperCase(), p.variantGroupId);
+        let attrs: any = {};
+        try { attrs = JSON.parse(p.variantAttrs || '{}') || {}; } catch { attrs = {}; }
+        byVariant.set(variantKey(p.baseName, attrs.talle, attrs.color), p);
+      }
     }
 
     const describe = (p: ExistingProduct) => `"${p.name}"${p.sku ? ` (código ${p.sku})` : ''}`;
@@ -111,6 +128,10 @@ export class VentraImportService {
       const warnings = [...r.warnings];
 
       let existing: ExistingProduct | null = codigo ? bySku.get(codigo.toUpperCase()) ?? null : null;
+      // Una variante sin código propio se reconoce por modelo + talle + color
+      if (!existing && r.data.modelo && (r.data.talle || r.data.color)) {
+        existing = byVariant.get(variantKey(r.data.modelo, r.data.talle, r.data.color)) ?? null;
+      }
       if (!existing && codigo_barras) {
         const owner = byBarcode.get(codigo_barras);
         // Solo se reconoce por código de barras si el producto no tiene otro código interno
@@ -141,7 +162,7 @@ export class VentraImportService {
       return { ...r, errors, warnings, action, existingId: existing?.id ?? null, addableBarcodes };
     });
 
-    return { planned, existingCount: products.length, matchedCount: matchedIds.size };
+    return { planned, existingCount: products.length, matchedCount: matchedIds.size, groupByModel };
   }
 
   private async newNames(planned: PlannedRow[]) {
@@ -217,10 +238,16 @@ export class VentraImportService {
 
   private async runImport(buffer: Buffer, options: { updateStock: boolean }, userId?: string) {
     const { presentColumns, rows } = this.parse(buffer);
-    const { planned } = await this.plan(rows);
+    const { planned, groupByModel } = await this.plan(rows);
     const has = (col: string) => presentColumns.includes(col);
     const toProcess = planned.filter(r => r.action !== 'SKIP');
     const total = toProcess.length;
+
+    // Los modelos nuevos del archivo estrenan grupo; los que ya existen reutilizan el suyo
+    for (const r of toProcess) {
+      const modelo = r.data.modelo;
+      if (modelo && !groupByModel.has(modelo.toUpperCase())) groupByModel.set(modelo.toUpperCase(), randomUUID());
+    }
 
     const categoryIds = await this.ensureNamed('category', toProcess.map(r => r.data.rubro));
     const brandIds = await this.ensureNamed('brand', toProcess.map(r => r.data.marca));
@@ -243,7 +270,7 @@ export class VentraImportService {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
       try {
         await this.prisma.$transaction(async tx => {
-          for (const r of batch) await this.applyRow(tx, r, { has, options, categoryIds, brandIds, supplierIds, existingSales, userId });
+          for (const r of batch) await this.applyRow(tx, r, { has, options, categoryIds, brandIds, supplierIds, existingSales, userId, groupByModel });
         }, { timeout: 120000 });
         batch.forEach(r => (r.action === 'CREATE' ? created++ : updated++));
       } catch {
@@ -251,7 +278,7 @@ export class VentraImportService {
         for (const r of batch) {
           try {
             await this.prisma.$transaction(async tx => {
-              await this.applyRow(tx, r, { has, options, categoryIds, brandIds, supplierIds, existingSales, userId });
+              await this.applyRow(tx, r, { has, options, categoryIds, brandIds, supplierIds, existingSales, userId, groupByModel });
             }, { timeout: 30000 });
             r.action === 'CREATE' ? created++ : updated++;
           } catch (err: any) {
@@ -292,6 +319,7 @@ export class VentraImportService {
       supplierIds: Map<string, string>;
       existingSales: Map<string, number>;
       userId?: string;
+      groupByModel: Map<string, string>;
     },
   ) {
     const d = r.data;
@@ -323,6 +351,23 @@ export class VentraImportService {
     set('stock_minimo', 'minStock', d.stock_minimo);
     set('ubicacion', 'location', d.ubicacion);
     set('activo', 'isActive', d.activo);
+
+    // Variantes: el modelo agrupa, y talle/color distinguen a cada una
+    if (has('modelo')) {
+      if (d.modelo) {
+        const attrs: Record<string, string> = {};
+        if (d.talle) attrs.talle = d.talle;
+        if (d.color) attrs.color = d.color;
+        data.baseName = d.modelo;
+        data.variantGroupId = ctx.groupByModel.get(d.modelo.toUpperCase()) ?? null;
+        data.variantAttrs = Object.keys(attrs).length ? JSON.stringify(attrs) : null;
+      } else {
+        // La columna vino vacía: el producto deja de ser una variante
+        data.baseName = null;
+        data.variantGroupId = null;
+        data.variantAttrs = null;
+      }
+    }
 
     let productId: string;
     if (r.action === 'UPDATE' && r.existingId) {

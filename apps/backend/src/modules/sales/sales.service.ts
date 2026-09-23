@@ -631,6 +631,132 @@ export class SalesService {
     };
   }
 
+  /**
+   * Resumen para la app móvil del dueño: ventas, ganancia real (ventas − costo − gastos
+   * de caja), comparación con el período anterior equivalente y el estado del local.
+   * La comparación usa el mismo tramo de tiempo transcurrido (hoy hasta ahora vs. el
+   * mismo día de la semana pasada hasta la misma hora), para que sea justa a media jornada.
+   */
+  async getOwnerSummary(period: 'day' | 'week' | 'month' = 'day') {
+    const now = new Date();
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    if (period === 'week') from.setDate(from.getDate() - 6);
+    if (period === 'month') from.setDate(1);
+
+    const prevFrom = new Date(from);
+    if (period === 'month') prevFrom.setMonth(prevFrom.getMonth() - 1);
+    else prevFrom.setDate(prevFrom.getDate() - 7);
+    const prevTo = new Date(prevFrom.getTime() + (now.getTime() - from.getTime()));
+
+    const periodTotals = async (gte: Date, lte: Date) => {
+      const [sales, expensesAgg] = await Promise.all([
+        this.prisma.sale.findMany({
+          where: { createdAt: { gte, lte }, status: 'COMPLETED' },
+          select: {
+            total: true,
+            createdAt: true,
+            payments: { select: { method: true, amount: true } },
+            items: { select: { productId: true, productName: true, quantity: true, total: true, product: { select: { costPrice: true } } } },
+          },
+        }),
+        this.prisma.cashMovement.aggregate({ _sum: { amount: true }, where: { createdAt: { gte, lte }, type: 'EXPENSE' } }),
+      ]);
+      let revenue = 0;
+      let cost = 0;
+      for (const s of sales) {
+        revenue += s.total;
+        for (const it of s.items) cost += (it.product?.costPrice || 0) * it.quantity;
+      }
+      const expenses = expensesAgg._sum?.amount || 0;
+      return { sales, revenue, cost, expenses, profit: revenue - cost - expenses, tickets: sales.length };
+    };
+
+    const [cur, prev] = await Promise.all([periodTotals(from, now), periodTotals(prevFrom, prevTo)]);
+
+    // Por hora en el día; por día en semana y mes
+    const buckets: { key: string; label: string; revenue: number }[] = [];
+    if (period === 'day') {
+      for (let h = 0; h < 24; h++) buckets.push({ key: String(h), label: `${h} h`, revenue: 0 });
+    } else {
+      const d = new Date(from);
+      while (d <= now) {
+        buckets.push({
+          key: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
+          label: period === 'week' ? d.toLocaleDateString('es-AR', { weekday: 'short' }) : String(d.getDate()),
+          revenue: 0,
+        });
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    const bucketIndex = new Map(buckets.map((b, i) => [b.key, i]));
+
+    const paymentBreakdown: Record<string, number> = {};
+    const top: Record<string, { name: string; quantity: number; revenue: number }> = {};
+    for (const s of cur.sales) {
+      const t = s.createdAt;
+      const key = period === 'day' ? String(t.getHours()) : `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
+      const idx = bucketIndex.get(key);
+      if (idx !== undefined) buckets[idx].revenue += s.total;
+      for (const p of s.payments) paymentBreakdown[p.method] = (paymentBreakdown[p.method] || 0) + p.amount;
+      for (const it of s.items) {
+        if (!top[it.productId]) top[it.productId] = { name: it.productName, quantity: 0, revenue: 0 };
+        top[it.productId].quantity += it.quantity;
+        top[it.productId].revenue += it.total;
+      }
+    }
+
+    const [lowStockItems, lowStockCountRaw, openSessions] = await Promise.all([
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT id, name, stock, min_stock AS minStock FROM products
+         WHERE is_active = 1 AND unlimited_stock = 0 AND stock <= min_stock
+         ORDER BY stock ASC LIMIT 5;`
+      ).catch(() => []),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT COUNT(*) AS count FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND stock <= min_stock;`
+      ).catch(() => [{ count: 0 }]),
+      this.prisma.cashRegisterSession.findMany({
+        where: { status: 'OPEN' },
+        select: {
+          id: true,
+          terminalName: true,
+          openingAmount: true,
+          openedAt: true,
+          user: { select: { fullName: true } },
+          sales: { where: { status: 'COMPLETED' }, select: { payments: { where: { method: 'CASH' }, select: { amount: true } } } },
+          cashMovements: { select: { type: true, amount: true } },
+        },
+      }),
+    ]);
+
+    return {
+      period,
+      from: from.toISOString(),
+      to: now.toISOString(),
+      revenue: cur.revenue,
+      cost: cur.cost,
+      grossProfit: cur.revenue - cur.cost,
+      expenses: cur.expenses,
+      profit: cur.profit,
+      tickets: cur.tickets,
+      averageTicket: cur.tickets > 0 ? cur.revenue / cur.tickets : 0,
+      previous: { revenue: prev.revenue, profit: prev.profit, tickets: prev.tickets },
+      buckets: buckets.map(({ label, revenue }) => ({ label, revenue })),
+      paymentBreakdown,
+      topProducts: Object.values(top).sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+      lowStock: {
+        count: Number(lowStockCountRaw[0]?.count || 0),
+        items: lowStockItems.map((p) => ({ id: p.id, name: p.name, stock: Number(p.stock), minStock: Number(p.minStock) })),
+      },
+      openSessions: openSessions.map((s) => {
+        let cash = s.openingAmount;
+        for (const sale of s.sales) for (const p of sale.payments) cash += p.amount;
+        for (const m of s.cashMovements) cash += m.type === 'INCOME' ? m.amount : -m.amount;
+        return { id: s.id, terminalName: s.terminalName, userName: s.user?.fullName || '', openedAt: s.openedAt, expectedCash: cash };
+      }),
+    };
+  }
+
   async getDashboardData(period: 'day' | 'week' | 'month' = 'day', from?: string, to?: string) {
     let whereClause: any = { status: 'COMPLETED' };
     if (from || to) {

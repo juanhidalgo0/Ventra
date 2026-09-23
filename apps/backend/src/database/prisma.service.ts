@@ -6,6 +6,9 @@ import { PrismaClient } from '@prisma/client';
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
 const SCHEMA_VERSION = '2026-09-19';
 
+/** Cada cuánto se vuelca el WAL al archivo principal. */
+const CHECKPOINT_MS = 3 * 60 * 1000;
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
@@ -25,9 +28,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 
+  private checkpointTimer: NodeJS.Timeout | null = null;
   private initPromise: Promise<void> | null = null;
   private maintenanceGate: Promise<void> | null = null;
   private releaseMaintenanceGate: (() => void) | null = null;
+
+  /** Ruta absoluta del archivo SQLite, tal como la interpreta Prisma. */
+  static resolveDbPath(): string {
+    const path = require('path');
+    const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
+    let cleanPath = dbUrl.split('?')[0].replace('file:', '');
+    if (!path.isAbsolute(cleanPath)) {
+      cleanPath = path.resolve(__dirname, '../../prisma', cleanPath);
+    }
+    return path.normalize(cleanPath);
+  }
 
   /** Blocks all queries until endMaintenance() is called. */
   beginMaintenance() {
@@ -51,47 +66,55 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async ensureInitialized() {
     if (!this.initPromise) {
       this.initPromise = (async () => {
-        // Retry connect up to 3 times with 2s delay (handles DB lock on startup)
+        /*
+         * Conexión con reintentos.
+         *
+         * NUNCA se borra el -wal. El WAL no es un archivo de bloqueo: guarda las
+         * transacciones ya confirmadas que todavía no bajaron al archivo principal.
+         * Borrarlo no libera el lock (el proceso que lo tiene conserva su handle) y
+         * tira a la basura todo lo vendido desde el último checkpoint. Una base
+         * tomada es una condición pasajera: se espera, no se "repara".
+         */
         let connected = false;
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        let lastErr: any = null;
+        for (let attempt = 1; attempt <= 8; attempt++) {
           try {
             await this.$connect();
             connected = true;
             break;
           } catch (err) {
-            console.warn(`[PrismaService] $connect attempt ${attempt}/3 failed:`, err);
-            if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
-          }
-        }
-        if (!connected) {
-          console.warn('[PrismaService] Attempting self-healing: deleting WAL/SHM files to release locks...');
-          try {
-            const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
-            const dbUrlWithoutQuery = dbUrl.split('?')[0];
-            let cleanPath = dbUrlWithoutQuery.replace('file:', '');
-            const path = require('path');
-            const fs = require('fs');
-            if (!path.isAbsolute(cleanPath)) {
-              cleanPath = path.resolve(__dirname, '../../prisma', cleanPath);
-            }
-            const dbPath = path.normalize(cleanPath);
-            const walPath = `${dbPath}-wal`;
-            const shmPath = `${dbPath}-shm`;
-            const journalPath = `${dbPath}-journal`;
-            if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
-            if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
-            if (fs.existsSync(journalPath)) fs.unlinkSync(journalPath);
-            
-            console.log('[PrismaService] WAL/SHM files deleted. Trying final connection...');
-            await this.$connect();
-            connected = true;
-          } catch (selfHealError) {
-            console.error('[PrismaService] Self-healing failed:', selfHealError);
+            lastErr = err;
+            console.warn(`[PrismaService] Conexión fallida (intento ${attempt}/8):`, err);
+            if (attempt < 8) await new Promise(r => setTimeout(r, Math.min(500 * 2 ** attempt, 8000)));
           }
         }
 
         if (!connected) {
-          console.error('[PrismaService] CRITICAL: Could not connect to SQLite database after self-healing.');
+          // Último recurso: apartar los archivos de transacción SIN borrarlos, para
+          // que sigan siendo recuperables a mano si hiciera falta.
+          try {
+            const dbPath = PrismaService.resolveDbPath();
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fs = require('fs');
+            for (const suffix of ['-wal', '-shm', '-journal']) {
+              const file = `${dbPath}${suffix}`;
+              if (fs.existsSync(file)) {
+                const aside = `${file}.bloqueado-${stamp}`;
+                fs.renameSync(file, aside);
+                console.warn(`[PrismaService] ${suffix} apartado (NO borrado) en ${aside}`);
+              }
+            }
+            await this.$connect();
+            connected = true;
+            console.warn('[PrismaService] Conectado tras apartar los archivos de transacción. ' +
+              'Si faltan datos recientes, están en los archivos .bloqueado-* junto a la base.');
+          } catch (asideError) {
+            console.error('[PrismaService] No se pudo conectar ni apartando los archivos:', asideError);
+          }
+        }
+
+        if (!connected) {
+          console.error('[PrismaService] CRÍTICO: no se pudo abrir la base. Último error:', lastErr);
           return; // Exit early to prevent fatal crashes during schema checks
         }
 
@@ -274,6 +297,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN ${col} REAL NOT NULL DEFAULT 0;`);
               }
             }
+            // Indumentaria: variantes (talle / color) de un mismo modelo
+            for (const col of ['base_name', 'variant_group_id', 'variant_attrs']) {
+              if (!productColumns.some(c => c.name === col)) {
+                console.log(`[PrismaService] Auto-migrating products table: adding ${col}...`);
+                await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN ${col} TEXT DEFAULT NULL;`);
+              }
+            }
+            const variantIdx: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='index' AND name='products_variant_group_id_idx';`);
+            if (variantIdx.length === 0) {
+              await this.$executeRawUnsafe(`CREATE INDEX "products_variant_group_id_idx" ON "products"("variant_group_id");`);
+            }
           }
         } catch (err) {
           console.error('[PrismaService] Failed to auto-migrate products table:', err);
@@ -299,9 +333,73 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               console.log('[PrismaService] Auto-migrating sales table: adding acopio_status...');
               await this.$executeRawUnsafe(`ALTER TABLE sales ADD COLUMN acopio_status TEXT NOT NULL DEFAULT 'NONE';`);
             }
+            // Facturación electrónica (ARCA): datos del comprobante de cada venta
+            const fiscalSaleColumns: [string, string][] = [
+              ['invoice_status', "TEXT NOT NULL DEFAULT 'NONE'"],
+              ['invoice_type', 'TEXT DEFAULT NULL'],
+              ['invoice_cbte_tipo', 'INTEGER DEFAULT NULL'],
+              ['invoice_point_of_sale', 'INTEGER DEFAULT NULL'],
+              ['invoice_number', 'INTEGER DEFAULT NULL'],
+              ['cae', 'TEXT DEFAULT NULL'],
+              ['cae_expires_at', 'DATETIME DEFAULT NULL'],
+              ['invoice_date', 'DATETIME DEFAULT NULL'],
+              ['invoice_requested_at', 'DATETIME DEFAULT NULL'],
+              ['invoice_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+              ['invoice_error', 'TEXT DEFAULT NULL'],
+              ['receptor_doc_tipo', 'INTEGER DEFAULT NULL'],
+              ['receptor_doc_nro', 'TEXT DEFAULT NULL'],
+              ['receptor_name', 'TEXT DEFAULT NULL'],
+              ['receptor_iva_condition', 'TEXT DEFAULT NULL'],
+              ['invoice_neto', 'REAL DEFAULT NULL'],
+              ['invoice_iva', 'REAL DEFAULT NULL'],
+            ];
+            for (const [col, tipo] of fiscalSaleColumns) {
+              if (!saleColumns.some(c => c.name === col)) {
+                console.log(`[PrismaService] Auto-migrating sales table: adding ${col}...`);
+                await this.$executeRawUnsafe(`ALTER TABLE sales ADD COLUMN ${col} ${tipo};`);
+              }
+            }
+            const invoiceIdx: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='index' AND name='sales_invoice_status_idx';`);
+            if (invoiceIdx.length === 0) {
+              await this.$executeRawUnsafe(`CREATE INDEX "sales_invoice_status_idx" ON "sales"("invoice_status");`);
+            }
           }
         } catch (err) {
           console.error('[PrismaService] Failed to auto-migrate sales table:', err);
+        }
+
+        // 2.1.b Tablas del módulo fiscal (ARCA)
+        try {
+          await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "fiscal_config" (
+            "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'fiscal_config',
+            "enabled" BOOLEAN NOT NULL DEFAULT false,
+            "cuit" TEXT NOT NULL DEFAULT '',
+            "razon_social" TEXT NOT NULL DEFAULT '',
+            "iva_condition" TEXT NOT NULL DEFAULT 'MONOTRIBUTO',
+            "point_of_sale" INTEGER NOT NULL DEFAULT 1,
+            "environment" TEXT NOT NULL DEFAULT 'HOMOLOGACION',
+            "cert_source" TEXT NOT NULL DEFAULT 'DELEGATED',
+            "cert_pem" TEXT,
+            "key_pem" TEXT,
+            "cert_expires_at" DATETIME,
+            "auto_invoice" BOOLEAN NOT NULL DEFAULT false,
+            "start_date" DATETIME,
+            "last_error" TEXT,
+            "updated_at" DATETIME NOT NULL
+          );`);
+          await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "fiscal_tokens" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "cuit" TEXT NOT NULL,
+            "service" TEXT NOT NULL DEFAULT 'wsfe',
+            "environment" TEXT NOT NULL,
+            "token" TEXT NOT NULL,
+            "sign" TEXT NOT NULL,
+            "expires_at" DATETIME NOT NULL,
+            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );`);
+          await this.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "fiscal_tokens_cuit_service_environment_key" ON "fiscal_tokens"("cuit", "service", "environment");`);
+        } catch (err) {
+          console.error('[PrismaService] Failed to create fiscal tables:', err);
         }
 
         // 2.2 Auto-migrate sale_items table if it exists
@@ -338,6 +436,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!hasPriceList) {
               console.log('[PrismaService] Auto-migrating clients table: adding price_list...');
               await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN price_list TEXT NOT NULL DEFAULT 'RETAIL';`);
+            }
+            // Facturación: sin CUIT y condición frente al IVA no se puede emitir el comprobante
+            if (!clientColumns.some(c => c.name === 'cuit')) {
+              console.log('[PrismaService] Auto-migrating clients table: adding cuit...');
+              await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN cuit TEXT DEFAULT NULL;`);
+            }
+            if (!clientColumns.some(c => c.name === 'iva_condition')) {
+              console.log('[PrismaService] Auto-migrating clients table: adding iva_condition...');
+              await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN iva_condition TEXT NOT NULL DEFAULT 'CONSUMIDOR_FINAL';`);
             }
             const hasTradeDiscountPercentage = clientColumns.some(c => c.name === 'trade_discount_percentage');
             if (!hasTradeDiscountPercentage) {
@@ -673,12 +780,47 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         try {
           require('fs').writeFileSync(markerFile, SCHEMA_VERSION);
         } catch {}
+
+        this.startWalCheckpoints();
       })();
     }
     await this.initPromise;
   }
 
+  /**
+   * Vuelca el WAL al archivo principal cada pocos minutos.
+   *
+   * `wal_autocheckpoint` es pasivo: no puede volcar mientras una transacción larga
+   * (una sincronización completa, una importación) mantiene la base tomada, así que
+   * el WAL puede crecer hasta contener el negocio entero mientras dev.db queda casi
+   * vacío. Si ese archivo se pierde, se pierde todo lo que no bajó. Con un volcado
+   * periódico, lo peor que se pierde son los últimos minutos.
+   */
+  private startWalCheckpoints() {
+    if (this.checkpointTimer) return;
+    const run = async () => {
+      if (this.maintenanceGate) return;
+      try {
+        await this.$queryRawUnsafe(`PRAGMA wal_checkpoint(PASSIVE);`);
+      } catch (err: any) {
+        // Que esté tomada es normal: se reintenta en el próximo ciclo.
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[PrismaService] Checkpoint del WAL pospuesto:', err.message);
+        }
+      }
+    };
+    this.checkpointTimer = setInterval(run, CHECKPOINT_MS);
+    this.checkpointTimer.unref?.();
+  }
+
   async onModuleDestroy() {
+    if (this.checkpointTimer) clearInterval(this.checkpointTimer);
+    // Apagado ordenado: se vuelca todo para que dev.db quede completo por sí solo.
+    try {
+      await this.$queryRawUnsafe(`PRAGMA wal_checkpoint(TRUNCATE);`);
+    } catch (err: any) {
+      console.warn('[PrismaService] No se pudo volcar el WAL al cerrar:', err.message);
+    }
     await this.$disconnect();
   }
 }
