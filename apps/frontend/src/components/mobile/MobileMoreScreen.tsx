@@ -8,6 +8,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
+import PushCard from './PushCard';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 
 interface Tile { path: string; label: string; hint: string; icon: any; tint: string }
@@ -84,6 +85,7 @@ export default function MobileMoreScreen() {
 
       <div className="px-4 pt-5 space-y-6">
         <InstallAppCard />
+        <PushCard />
         {ordersVisible && (
           <button onClick={() => navigate('/pedidos')} className="w-full flex items-center gap-3 rounded-2xl bg-white border border-slate-200/80 p-4 text-left active:scale-[0.99] transition-transform">
             <span className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5" /></span>

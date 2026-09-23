@@ -598,7 +598,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                 <span className="text-[12px] font-bold uppercase tracking-wide">Vista Previa en Vivo</span>
               </div>
               <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm bg-white">
-                <div className="h-24 bg-slate-100 relative overflow-hidden">
+                <div className="aspect-[3/1] bg-slate-100 relative overflow-hidden">
                   {config.bannerUrl ? (
                     <img src={config.bannerUrl} alt="" className="w-full h-full object-cover" />
                   ) : (

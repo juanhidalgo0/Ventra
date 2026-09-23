@@ -4,6 +4,32 @@
 // muestran ventas o stock viejos desde el caché.
 const CACHE = 'ventra-shell-v1';
 
+// Avisos (pedidos online nuevos). Llegan desde Firebase Cloud Messaging como datos.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { const j = e.data ? e.data.json() : {}; d = j.data || j; } catch (err) { d = { title: 'Ventra', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Ventra', {
+    body: d.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: d.tag || 'ventra',
+    renotify: true,
+    vibrate: [80, 60, 80],
+    data: { url: d.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data && e.notification.data.url || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if (c.url.startsWith(self.registration.scope)) { c.focus(); return c.navigate(target).catch(() => {}); }
+    }
+    return self.clients.openWindow(target);
+  }));
+});
+
 self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', (e) => {

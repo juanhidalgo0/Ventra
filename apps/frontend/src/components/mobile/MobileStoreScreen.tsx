@@ -501,11 +501,11 @@ function LookSheet({ open, config, onClose, onSave }: { open: boolean; config: S
     <Sheet open={open} onClose={onClose} title="Apariencia" footer={<PrimaryButton onClick={run} loading={busy}>Guardar</PrimaryButton>}>
       <div className="space-y-4 pt-1">
         <div className="rounded-2xl overflow-hidden border border-slate-200">
-          <button onClick={() => bannerRef.current?.click()} className="w-full h-28 flex items-center justify-center relative" style={{ background: f.primaryColor }}>
+          <button onClick={() => bannerRef.current?.click()} className="w-full aspect-[3/1] flex items-center justify-center relative" style={{ background: f.primaryColor }}>
             {f.bannerUrl ? <img src={f.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <span className="text-white/80 text-[13px] font-medium flex items-center gap-1.5"><ImageIcon className="w-4 h-4" /> Tocá para poner una portada</span>}
           </button>
           <div className="p-3 flex items-center gap-3 bg-white">
-            <button onClick={() => logoRef.current?.click()} className="w-16 h-16 -mt-10 rounded-2xl border-4 border-white shadow flex items-center justify-center overflow-hidden shrink-0" style={{ background: f.primaryColor }}>
+            <button onClick={() => logoRef.current?.click()} className="w-16 h-16 -mt-7 rounded-2xl border-4 border-white shadow flex items-center justify-center overflow-hidden shrink-0" style={{ background: f.primaryColor }}>
               {f.logoUrl ? <img src={f.logoUrl} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-white/80" />}
             </button>
             <div className="min-w-0">

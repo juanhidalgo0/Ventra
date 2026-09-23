@@ -14,7 +14,7 @@ const firebaseConfig = {
   appId: '1:23136382753:web:5d2f4115a77a607435d860',
 };
 
-function getVentraApp(): FirebaseApp {
+export function getVentraApp(): FirebaseApp {
   const existing = getApps().find((a) => a.name === 'ventra');
   return existing ?? initializeApp(firebaseConfig, 'ventra');
 }

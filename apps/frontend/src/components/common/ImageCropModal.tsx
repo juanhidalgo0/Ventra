@@ -8,7 +8,7 @@ import { X, ZoomIn, ZoomOut, Check } from 'lucide-react';
  * recortada al tamaño final, lista para guardar.
  */
 export default function ImageCropModal({
-  file, aspect, outWidth, outHeight, title, hint, round, onCancel, onDone,
+  file, aspect, outWidth, outHeight, title, hint, round, logoZone, onCancel, onDone,
 }: {
   file: File;
   aspect: number; // ancho / alto del recorte
@@ -17,6 +17,8 @@ export default function ImageCropModal({
   title: string;
   hint: string; // resolución recomendada
   round?: boolean; // guía de logo
+  /** Zona que tapa el logo de la tienda sobre la portada, en % del recorte */
+  logoZone?: { left: number; width: number; height: number };
   onCancel: () => void;
   onDone: (dataUrl: string) => void;
 }) {
@@ -133,6 +135,14 @@ export default function ImageCropModal({
                 style={{ width: dw, height: dh, transform: `translate(${cur.x}px, ${cur.y}px)` }}
               />
             )}
+            {logoZone && (
+              <div
+                className="absolute bottom-0 pointer-events-none rounded-t-xl bg-white/85 border-2 border-dashed border-slate-400 flex items-center justify-center text-[11px] font-bold text-slate-500"
+                style={{ left: `${logoZone.left}%`, width: `${logoZone.width}%`, height: `${logoZone.height}%` }}
+              >
+                Logo
+              </div>
+            )}
             {/* Guía de tercios */}
             <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3">
               {Array.from({ length: 9 }).map((_, i) => <div key={i} className="border border-white/30" />)}
@@ -170,4 +180,9 @@ export default function ImageCropModal({
 
 /** Medidas de la tienda online */
 export const STORE_LOGO = { aspect: 1, outWidth: 400, outHeight: 400, hint: 'Recomendado: 512×512 px, cuadrado.' };
-export const STORE_BANNER = { aspect: 3, outWidth: 1500, outHeight: 500, hint: 'Recomendado: 1500×500 px (3 de ancho por 1 de alto).' };
+export const STORE_BANNER = {
+  aspect: 3, outWidth: 1500, outHeight: 500,
+  hint: 'Recomendado: 1500×500 px (3 de ancho por 1 de alto). Así se ve entera en la tienda; lo marcado como "Logo" queda tapado en el celular.',
+  // En un celular (unos 400 px de ancho) el logo asoma abajo a la izquierda sobre la portada
+  logoZone: { left: 6, width: 24, height: 18 },
+};

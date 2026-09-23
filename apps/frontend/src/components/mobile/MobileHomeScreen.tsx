@@ -9,6 +9,7 @@ import {
 import api from '../../services/api';
 import InstallAppCard from './InstallAppCard';
 import { PullToRefresh } from './ui';
+import PushCard from './PushCard';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -222,6 +223,8 @@ export default function MobileHomeScreen() {
             ))}
           </div>
         )}
+
+        <PushCard />
 
         {/* Ventas y gastos */}
         <div className="grid grid-cols-2 gap-3">
