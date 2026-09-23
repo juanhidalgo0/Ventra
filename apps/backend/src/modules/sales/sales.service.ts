@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
@@ -21,6 +22,7 @@ export class SalesService {
     private prisma: PrismaService,
     private events: EventsGateway,
     private firebaseSync: FirebaseSyncService,
+    private notify: NotifyService,
   ) {}
 
   async create(userId: string, dto: CreateSaleDto) {
@@ -28,6 +30,8 @@ export class SalesService {
     if (!session || session.status !== 'OPEN') throw new BadRequestException('No hay una caja abierta para esta sesión');
 
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
+    // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
+    const sold = new Map<string, number>();
 
     const sale = await this.prisma.$transaction(async (tx) => {
       let subtotal = 0;
@@ -99,6 +103,7 @@ export class SalesService {
                 where: { id: kitComp.childProductId },
                 data: { stock: { decrement: childQty } }
               });
+              sold.set(kitComp.childProductId, (sold.get(kitComp.childProductId) || 0) + childQty);
               const isItemReturn = item.quantity < 0;
               await tx.inventoryMovement.create({
                 data: {
@@ -122,7 +127,8 @@ export class SalesService {
           const stockBefore = product.stock;
           const newStock = stockBefore - item.quantity;
           await tx.product.update({ where: { id: product.id }, data: { stock: { decrement: item.quantity } } });
-          
+          sold.set(product.id, (sold.get(product.id) || 0) + item.quantity);
+
           const isItemReturn = item.quantity < 0;
           await tx.inventoryMovement.create({ 
             data: { 
@@ -224,6 +230,14 @@ export class SalesService {
       this.firebaseSync.syncProductToFirestore(p.barcode, p.newStock, p.salePrice).catch(err => {
         console.error(`Error syncing product ${p.barcode} to Firestore after sale:`, err);
       });
+    }
+
+    // Aviso al dueño si algún producto llegó a su stock mínimo con esta venta
+    const soldIds = [...sold.keys()].filter((id) => (sold.get(id) || 0) > 0);
+    if (soldIds.length) {
+      this.prisma.product.findMany({ where: { id: { in: soldIds } }, select: { id: true, name: true, stock: true, minStock: true, unlimitedStock: true } })
+        .then((ps) => this.notify.checkLowStock(ps, sold))
+        .catch(() => { /* el aviso no puede frenar la venta */ });
     }
 
     return sale;
@@ -357,6 +371,13 @@ export class SalesService {
     });
 
     this.events.emitStockUpdated([]);
+
+    // Aviso al dueño de anulaciones grandes (el umbral evita avisar por errores de tipeo chicos)
+    if (Math.abs(sale.total) >= 20000) {
+      this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } })
+        .then((u) => this.notify.enqueue('saleCancel', { saleId: sale.id, saleNumber: sale.saleNumber, total: sale.total, user: u?.fullName || u?.username }))
+        .catch(() => {});
+    }
 
     // Sync to Firestore outside transaction
     for (const p of productsToSync) {

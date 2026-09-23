@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { WsaaService, Credentials } from './wsaa.service';
 import { WsfeService } from './wsfe.service';
@@ -28,6 +29,7 @@ export class FiscalService {
     private prisma: PrismaService,
     private wsaa: WsaaService,
     private wsfe: WsfeService,
+    private notify: NotifyService,
   ) {}
 
   async getConfig() {
@@ -226,6 +228,7 @@ export class FiscalService {
         where: { id: saleId },
         data: { invoiceStatus: esRechazo ? 'REJECTED' : 'PENDING', invoiceError: mensaje },
       });
+      if (esRechazo) this.notify.enqueue('invoiceFail', { saleId, saleNumber: sale.saleNumber, total: sale.total, error: mensaje });
       throw err;
     }
   }

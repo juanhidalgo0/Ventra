@@ -1,5 +1,5 @@
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { getVentraApp, getVentraDb, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getVentraApp, getVentraDb, ensureVentraSession } from './ventraFirebase';
 
 /**
  * Avisos en el celular del dueño (pedidos online nuevos), aunque la app esté cerrada.
@@ -34,13 +34,32 @@ export async function registerPushToken(): Promise<void> {
   await navigator.serviceWorker.ready;
   const token = await getToken(getMessaging(getVentraApp()), { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
   if (!token) return;
-  await ensureVentraSession();
-  const storeId = localStorage.getItem(STORE_ID_KEY);
-  if (!storeId) throw new Error('Todavía no tenés una tienda online');
+  const user = await ensureVentraSession();
   // El id del documento es una huella del token (los tokens tienen caracteres raros para un id)
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   const id = [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
-  await setDoc(doc(getVentraDb(), 'ventra_stores', storeId, 'pushTokens', id), {
+  await setDoc(doc(getVentraDb(), 'ventra_push', user.uid, 'tokens', id), {
     token, userAgent: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp(),
   });
+}
+
+/** Qué avisos recibe la cuenta (se guardan en la nube, valen para todos sus celulares). */
+export interface NotifyPrefs {
+  orders: boolean; orderIdle: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean;
+  saleCancel: boolean; dailySummary: boolean; summaryHour: number; quietFrom: number; quietTo: number;
+}
+export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
+  orders: true, orderIdle: true, cashDiff: true, invoiceFail: true, lowStock: true,
+  saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8,
+};
+
+export async function loadNotifyPrefs(): Promise<NotifyPrefs> {
+  const user = await ensureVentraSession();
+  const snap = await getDoc(doc(getVentraDb(), 'ventra_push', user.uid));
+  return { ...DEFAULT_NOTIFY_PREFS, ...((snap.exists() && snap.data().prefs) || {}) };
+}
+
+export async function saveNotifyPrefs(prefs: NotifyPrefs): Promise<void> {
+  const user = await ensureVentraSession();
+  await setDoc(doc(getVentraDb(), 'ventra_push', user.uid), { prefs, updatedAt: serverTimestamp() }, { merge: true });
 }

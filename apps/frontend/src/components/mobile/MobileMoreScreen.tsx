@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
-  Landmark, FileText, Settings, LogOut, ChevronRight, Store,
+  Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -38,6 +38,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
       { path: '/reports', label: 'Reportes', hint: 'Análisis', icon: BarChart3, tint: 'bg-sky-50 text-sky-700' },
       { path: '/fiscal', label: 'Facturación', hint: 'ARCA', icon: FileText, tint: 'bg-slate-100 text-slate-700' },
       { path: '/online-store', label: 'Tienda online', hint: 'Tu catálogo web', icon: Store, tint: 'bg-emerald-50 text-emerald-700' },
+      { path: '/notificaciones', label: 'Notificaciones', hint: 'Avisos al celular', icon: Bell, tint: 'bg-amber-50 text-amber-700' },
       { path: '/settings', label: 'Configuración', hint: 'Sistema', icon: Settings, tint: 'bg-slate-100 text-slate-700' },
     ],
   },

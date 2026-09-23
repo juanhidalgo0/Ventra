@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { BackupService } from '../system/backup.service';
@@ -10,8 +11,19 @@ export class CashRegisterService {
   constructor(
     private prisma: PrismaService,
     private events: EventsGateway,
-    private backupService: BackupService
+    private backupService: BackupService,
+    private notify: NotifyService,
   ) {}
+
+  /** Aviso al dueño si la caja cerró con diferencia (se ignoran centavos de redondeo) */
+  private notifyCashDiff(s: any, expected: number) {
+    const diff = Number(s.difference);
+    if (!Number.isFinite(diff) || Math.abs(diff) < 50) return;
+    this.notify.enqueue('cashDiff', {
+      sessionId: s.id, terminal: s.terminalName, user: s.user?.fullName || s.user?.username,
+      difference: diff, expected, counted: s.closingAmountCounted,
+    });
+  }
 
   async getTerminalName(terminalId: string) {
     if (!terminalId) throw new BadRequestException('Se requiere terminalId');
@@ -185,6 +197,7 @@ export class CashRegisterService {
 
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'CLOSE', newValues: JSON.stringify(closingSummary) } });
     this.events.emitCashUpdated({ action: 'CLOSE', sessionId });
+    this.notifyCashDiff(updated, expectedCash);
     // Cierre X (cambio de turno): solo afecta a la terminal que cerró la caja,
     // las demás terminales del mismo cajero siguen con su sesión abierta.
     return { ...updated, closingSummaryParsed: closingSummary };
@@ -224,6 +237,7 @@ export class CashRegisterService {
 
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'ARQUEO_COMPLETE', newValues: JSON.stringify(summary) } });
     this.events.emitCashUpdated({ action: 'ARQUEO_COMPLETE', sessionId });
+    this.notifyCashDiff(updated, expectedCash);
 
     // Silent Automatic Backup upon Arqueo completion
     try {

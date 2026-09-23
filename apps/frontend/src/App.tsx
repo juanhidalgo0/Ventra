@@ -59,6 +59,7 @@ const MobileStoreScreen = lazy(() => import('./components/mobile/MobileStoreScre
 const OnlineOrdersScreen = lazy(() => import('./components/orders/OnlineOrdersScreen'));
 const MobileReportsScreen = lazy(() => import('./components/mobile/MobileReportsScreen'));
 const MobileFiscalScreen = lazy(() => import('./components/mobile/MobileFiscalScreen'));
+const MobileNotificationsScreen = lazy(() => import('./components/mobile/MobileNotificationsScreen'));
 const MobileSettingsScreen = lazy(() => import('./components/mobile/MobileSettingsScreen'));
 const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSettingsScreen').then((m) => ({ default: m.MobileSettingsSection })));
 
@@ -617,6 +618,7 @@ export default function App() {
                     <Route path="/stock-audit" element={<StockAuditScreen />} />
                     <Route path="/suppliers" element={<OwnerMobileOr mobile={<MobileSuppliersScreen />}><SuppliersScreen /></OwnerMobileOr>} />
                     <Route path="/fiscal" element={<OwnerMobileOr mobile={<MobileFiscalScreen />}><FiscalScreen /></OwnerMobileOr>} />
+                    <Route path="/notificaciones" element={<AdminRoute><MobileNotificationsScreen /></AdminRoute>} />
                     <Route path="/settings" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsScreen />}><SettingsScreen /></OwnerMobileOr></AdminRoute>} />
                     <Route path="/settings/:tab" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsSection />}><Navigate to="/settings" replace /></OwnerMobileOr></AdminRoute>} />
                     <Route path="/remote-access" element={<RemoteAccessScreen />} />
