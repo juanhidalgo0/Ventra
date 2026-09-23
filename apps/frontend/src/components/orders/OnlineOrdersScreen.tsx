@@ -56,10 +56,13 @@ function customerMessage(o: StoreOrder, stage: OrderStage) {
   return `¡Hola ${name}! Te escribimos de ${store} por tu pedido${code}.`;
 }
 
-/** Pedidos de la tienda online: los ve y los maneja cualquier usuario (admin o cajero). */
-export default function OnlineOrdersScreen() {
+/**
+ * modal: se abre desde el botón "Pedidos" de la caja (cajeros y admin) sin salir del POS.
+ * Sin modal es la página de administración (barra lateral / celular), solo para el admin.
+ */
+export default function OnlineOrdersScreen({ modal = false, onClose }: { modal?: boolean; onClose?: () => void } = {}) {
   const { orders, storeId, ready } = useOnlineOrders();
-  const mobile = useOwnerMobile().active;
+  const mobile = useOwnerMobile().active && !modal;
   const [tab, setTab] = useState<Tab>('ACTIVE');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = orders.find((o) => o.id === selectedId) || null;
@@ -103,7 +106,7 @@ export default function OnlineOrdersScreen() {
     </div>
   );
 
-  return (
+  const content = (
     <div className="h-full flex-1 min-h-0 flex flex-col bg-slate-50">
       {mobile ? (
         <ScreenHeader back title="Pedidos online" subtitle={counts.NEW ? `${counts.NEW} nuevos` : 'Tienda online'}>
@@ -113,10 +116,15 @@ export default function OnlineOrdersScreen() {
         <div className="shrink-0 px-5 pt-5 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center"><ShoppingBag className="w-5 h-5" /></div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="text-lg font-bold text-slate-900 tracking-tight">Pedidos online</h1>
               <p className="text-[13px] text-slate-500">Lo que piden tus clientes desde la tienda. Actualizá el estado y avisales por WhatsApp.</p>
             </div>
+            {modal && (
+              <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center shrink-0 cursor-pointer" aria-label="Cerrar">
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            )}
           </div>
           <div className="flex gap-2 mt-4 overflow-x-auto">
             {tabs.map((t) => (
@@ -132,7 +140,15 @@ export default function OnlineOrdersScreen() {
         </div>
       )}
       <div className={`flex-1 min-h-0 overflow-y-auto ${mobile ? 'px-4 py-4' : 'px-5 pb-6'}`}>{body}</div>
-      {selected && storeId && <OrderDetail order={selected} storeId={storeId} onClose={() => setSelectedId(null)} />}
+      {selected && storeId && <OrderDetail order={selected} storeId={storeId} onClose={() => setSelectedId(null)} onCharged={onClose} />}
+    </div>
+  );
+
+  if (!modal) return content;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 keep-style">
+      <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
+      <div className="relative w-full max-w-5xl h-[85vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col">{content}</div>
     </div>
   );
 }
@@ -177,7 +193,7 @@ function OrderCard({ order: o, onClick }: { order: StoreOrder; onClick: () => vo
   );
 }
 
-function OrderDetail({ order: o, storeId, onClose }: { order: StoreOrder; storeId: string; onClose: () => void }) {
+function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOrder; storeId: string; onClose: () => void; onCharged?: () => void }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<OrderStage | null>(null);
   const stage = stageOf(o);
@@ -211,7 +227,9 @@ function OrderDetail({ order: o, storeId, onClose }: { order: StoreOrder; storeI
     if (missing.length) toast.error(`No encontramos en el catálogo: ${missing.join(', ')}. Cargalos a mano.`, { duration: 7000 });
     if (stage === 'NEW') await updateOrderStage(storeId, o.id, 'PREPARING').catch(() => {});
     toast.success('Pedido cargado en la caja: cobralo como una venta.');
-    navigate('/pos');
+    onClose();
+    if (onCharged) onCharged(); // desde el modal de la caja: se cierra y queda el carrito listo
+    else navigate('/pos');
   };
 
   const next: { stage: OrderStage; label: string } | null =

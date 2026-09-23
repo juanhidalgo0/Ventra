@@ -129,7 +129,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Proveedores', icon: Truck, path: '/suppliers' },
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
-        ...(ordersVisible ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
+        ...(ordersVisible && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 

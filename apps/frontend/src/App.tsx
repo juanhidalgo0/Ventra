@@ -610,7 +610,7 @@ export default function App() {
                     <Route path="/cash-control" element={<OwnerMobileOr mobile={<MobileCashScreen />}><CashControlScreen /></OwnerMobileOr>} />
                     <Route path="/treasury" element={<OwnerMobileOr mobile={<MobileTreasuryScreen />}><TreasuryScreen /></OwnerMobileOr>} />
                     <Route path="/online-store" element={<OwnerMobileOr mobile={<MobileStoreScreen />}><OnlineStoreScreen /></OwnerMobileOr>} />
-                    <Route path="/pedidos" element={<OnlineOrdersScreen />} />
+                    <Route path="/pedidos" element={<AdminRoute><OnlineOrdersScreen /></AdminRoute>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
                     <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />

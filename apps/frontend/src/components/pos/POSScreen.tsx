@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useTransition, useMemo } from 'react';
+import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -89,6 +90,7 @@ const playErrorBeep = () => {
 
 export default function POSScreen() {
   const ordersVisible = useOrdersVisible();
+  const [showOnlineOrders, setShowOnlineOrders] = useState(false);
   const newOnlineOrders = useOnlineOrders((st) => st.orders.filter(isNewOrder).length);
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
@@ -1704,7 +1706,7 @@ export default function POSScreen() {
 
           {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
           {ordersVisible && (
-            <button onClick={() => navigate('/pedidos')} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <button onClick={() => setShowOnlineOrders(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
               <ShoppingCart strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
               <span className="hidden xl:inline">Pedidos</span>
               {newOnlineOrders > 0 && (
@@ -2791,6 +2793,7 @@ export default function POSScreen() {
             }} 
           />
         )}
+        {showOnlineOrders && <OnlineOrdersScreen key="online-orders" modal onClose={() => setShowOnlineOrders(false)} />}
         {showGastos && <GastosModal key="gastos-modal" sessionId={currentSession?.id} terminalName={terminalName} onClose={() => { setShowGastos(false); loadCurrentSession(); focusSearch(); }} />}
         {showProveedores && <ProveedoresModal key="proveedores-modal" sessionId={currentSession?.id} onClose={() => { setShowProveedores(false); loadCurrentSession(); focusSearch(); }} />}
         {showCobroCtaCte && currentSession && (
