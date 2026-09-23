@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
@@ -219,27 +220,16 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const compressed = await compressImageFile(file, 300, 300, 0.7);
-      update({ logoUrl: compressed });
-    } catch {
-      toast.error('No se pudo procesar la imagen del logo');
-    } finally {
-      e.target.value = '';
-    }
+    e.target.value = '';
+    setCrop({ file, kind: 'logo' });
   };
+  const [crop, setCrop] = useState<{ file: File; kind: 'logo' | 'banner' } | null>(null);
 
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const compressed = await compressImageFile(file, 1200, 400, 0.6);
-      update({ bannerUrl: compressed });
-    } catch {
-      toast.error('No se pudo procesar la imagen del banner');
-    } finally {
-      e.target.value = '';
-    }
+    e.target.value = '';
+    setCrop({ file, kind: 'banner' });
   };
 
   const toggleProductOnline = async (product: any) => {
@@ -552,6 +542,17 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel>Logo de la Tienda</FieldLabel>
+                  <p className="text-[11.5px] text-slate-400 -mt-1 mb-1.5">Recomendado 512×512 px, cuadrado</p>
+{crop && (
+        <ImageCropModal
+          file={crop.file}
+          {...(crop.kind === 'logo' ? STORE_LOGO : STORE_BANNER)}
+          round={crop.kind === 'logo'}
+          title={crop.kind === 'logo' ? 'Encuadrar logo' : 'Encuadrar portada'}
+          onCancel={() => setCrop(null)}
+          onDone={(url) => { update(crop.kind === 'logo' ? { logoUrl: url } : { bannerUrl: url }); setCrop(null); }}
+        />
+      )}
                   <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                   <button
                     type="button"
@@ -570,6 +571,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                 </div>
                 <div>
                   <FieldLabel>Banner de Portada</FieldLabel>
+                  <p className="text-[11.5px] text-slate-400 -mt-1 mb-1.5">Recomendado 1500×500 px (3 a 1)</p>
                   <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
                   <button
                     type="button"
@@ -854,6 +856,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               text="Aparecen como agotados."
               on={config.showOutOfStock !== false}
               onChange={(v) => update({ showOutOfStock: v })}
+            />
+            <ToggleCard
+              title="Vender todo como disponible"
+              text="Todos los productos se pueden pedir aunque figuren sin stock."
+              on={!!config.alwaysInStock}
+              onChange={(v) => update({ alwaysInStock: v })}
             />
           </div>
         </div>

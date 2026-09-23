@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { haptic } from '../../utils/haptics';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
@@ -81,8 +82,10 @@ export default function MobileSellScreen() {
     );
     if (p) {
       usePOSStore.getState().addToCart(p);
+      haptic(15);
       toast.success(p.name, { id: 'scan', duration: 1200 });
     } else {
+      haptic([40, 60, 40]);
       toast.error(`No hay un producto con el código ${code}`, { id: 'scan' });
     }
   }, []);
@@ -369,6 +372,7 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         appliedPromotions: appliedPromos(),
       });
       navigator.vibrate?.([20, 40, 20]);
+      haptic([20, 40, 30]);
       setDone({ total: finalTotal, change, number: data?.saleNumber });
       onDone(items);
     } catch (err: any) {

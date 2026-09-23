@@ -28,7 +28,17 @@
     <title>Ventra — POS</title>
   </head>
   <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen">
-    <div id="root"></div>
+    <div id="root"><div id="pwa-splash"><img src="./icon-192.png" alt="" width="84" height="84" /><span></span></div></div>
+    <style>
+      /* Pantalla de apertura verde solo en la app instalada; React la reemplaza al arrancar */
+      #pwa-splash { display: none; }
+      @media (display-mode: standalone) {
+        #pwa-splash { display: flex; position: fixed; inset: 0; background: #0E6E52; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+        #pwa-splash img { border-radius: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+        #pwa-splash span { width: 26px; height: 26px; border: 3px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: pwa-spin .8s linear infinite; }
+        @keyframes pwa-spin { to { transform: rotate(360deg); } }
+      }
+    </style>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       // La app instalable (PWA) solo existe en la web por https. En la app de escritorio

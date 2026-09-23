@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
 import toast from 'react-hot-toast';
 import {
   Store, Copy, Share2, ExternalLink, ShoppingBag, Info, Truck, Clock, Palette, RefreshCw, ChevronRight,
-  MessageCircle, Image as ImageIcon, Check,
+  MessageCircle, Image as ImageIcon, Check, Package, Search, Eye, EyeOff,
 } from 'lucide-react';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
   compressImageFile, publishOnlineCatalog, dayRanges, withRanges, PAYMENT_OPTIONS,
   type StoreConfig, type StoreOrder, type DayHours,
 } from '../../services/onlineStore';
+import api from '../../services/api';
 import { ScreenHeader, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
 
 const PUBLIC_BASE = 'https://tienda.ventra.store';
@@ -16,7 +18,7 @@ const WEEK = [
   { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
   { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
 ];
-type Panel = 'orders' | 'info' | 'delivery' | 'hours' | 'look' | null;
+type Panel = 'orders' | 'products' | 'info' | 'delivery' | 'hours' | 'look' | null;
 
 const input = 'w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white';
 const waLink = (phone: string, text = '') => {
@@ -45,7 +47,7 @@ export default function MobileStoreScreen() {
   }, [storeId]);
 
   const url = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : '';
-  const newOrders = orders.filter((o) => !o.syncedLocal).length;
+  const newOrders = orders.filter((o) => !o.stage || o.stage === 'NEW').length;
 
   /** Guarda un cambio parcial y lo refleja en pantalla. */
   const save = async (patch: Partial<StoreConfig>) => {
@@ -125,12 +127,14 @@ export default function MobileStoreScreen() {
             <Row icon={Clock} tint="bg-violet-50 text-violet-700" title="Horarios" text="Días y turnos de atención" onClick={() => setPanel('hours')} />
             <Row icon={Palette} tint="bg-pink-50 text-pink-700" title="Apariencia" text="Logo, portada y color" onClick={() => setPanel('look')} />
 
+            <Row icon={Package} tint="bg-emerald-50 text-emerald-700" title="Productos en la tienda" text="Elegí qué productos ven tus clientes" onClick={() => setPanel('products')} />
+
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4">
-              <p className="text-[14px] font-semibold text-slate-800">Catálogo</p>
-              <p className="text-[12.5px] text-slate-500 mt-0.5">Publica los productos marcados "mostrar en la tienda" (si no marcaste ninguno, todo el inventario), con sus fotos y precios actuales.</p>
-              <button onClick={publishCatalog} disabled={!!publishing} className="mt-3 w-full h-11 rounded-xl bg-rose-50 text-rose-700 text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
+              <p className="text-[14px] font-semibold text-slate-800">Publicar en la tienda</p>
+              <p className="text-[12.5px] text-slate-500 mt-0.5">Sube a la tienda los productos elegidos con sus fotos, precios y stock de ahora. Usalo cada vez que cambies precios o productos.</p>
+              <button onClick={publishCatalog} disabled={!!publishing} className="mt-3 w-full h-12 rounded-xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.99]">
                 <RefreshCw className={`w-4 h-4 ${publishing ? 'animate-spin' : ''}`} />
-                {publishing ? (publishing.total ? `Subiendo fotos ${publishing.done}/${publishing.total}…` : 'Actualizando…') : 'Actualizar catálogo'}
+                {publishing ? (publishing.total ? `Subiendo fotos ${publishing.done}/${publishing.total}…` : 'Publicando…') : 'Publicar productos'}
               </button>
             </div>
           </>
@@ -140,6 +144,7 @@ export default function MobileStoreScreen() {
       {config && (
         <>
           <OrdersSheet open={panel === 'orders'} orders={orders} onClose={() => setPanel(null)} store={config.businessName} />
+          <ProductsSheet open={panel === 'products'} onClose={() => setPanel(null)} onPublish={() => { setPanel(null); publishCatalog(); }} />
           <InfoSheet open={panel === 'info'} config={config} storeId={storeId!} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <DeliverySheet open={panel === 'delivery'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <HoursSheet open={panel === 'hours'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
@@ -147,6 +152,84 @@ export default function MobileStoreScreen() {
         </>
       )}
     </div>
+  );
+}
+
+type StoreProduct = { id: string; name: string; salePrice: number; showOnline: boolean; imageUrl?: string; category?: { name: string } };
+
+/** Lista de productos con un interruptor cada uno: se ven o no en la tienda. */
+function ProductsSheet({ open, onClose, onPublish }: { open: boolean; onClose: () => void; onPublish: () => void }) {
+  const [items, setItems] = useState<StoreProduct[] | null>(null);
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<'all' | 'on' | 'off'>('all');
+  const [changed, setChanged] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setItems(null); setChanged(false);
+    api.get('/products', { params: { take: 5000 } })
+      .then(({ data }) => setItems(((data?.products || data || []) as any[]).map((p) => ({ id: p.id, name: p.name, salePrice: p.salePrice, showOnline: !!p.showOnline, category: p.category }))))
+      .catch(() => { toast.error('No se pudieron cargar los productos'); setItems([]); });
+  }, [open]);
+
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return (items || []).filter((p) => (filter === 'all' || (filter === 'on') === p.showOnline) && (!t || p.name.toLowerCase().includes(t)));
+  }, [items, q, filter]);
+  const onCount = (items || []).filter((p) => p.showOnline).length;
+
+  const setShow = async (ids: string[], show: boolean) => {
+    const prev = items;
+    setItems((list) => (list || []).map((p) => (ids.includes(p.id) ? { ...p, showOnline: show } : p)));
+    setChanged(true);
+    try { await api.post('/products/bulk-set-show-online', { ids, showOnline: show }); }
+    catch { setItems(prev); toast.error('No se pudo guardar. Probá de nuevo.'); }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Productos en la tienda"
+      footer={
+        <PrimaryButton onClick={changed ? onPublish : onClose}>
+          {changed ? `Publicar cambios (${onCount} en la tienda)` : 'Listo'}
+        </PrimaryButton>
+      }
+    >
+      <p className="text-[13px] text-slate-500 -mt-1 mb-3">Activá los productos que querés vender online. Después tocá <b>Publicar cambios</b>.</p>
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto" className={`${input} pl-10`} />
+      </div>
+      <div className="flex gap-2 mt-3">
+        {([['all', `Todos (${items?.length ?? 0})`], ['on', `En la tienda (${onCount})`], ['off', 'Ocultos']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)} className={`h-9 px-3.5 rounded-full text-[13px] font-semibold ${filter === k ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{l}</button>
+        ))}
+      </div>
+      {items && shown.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <button onClick={() => setShow(shown.map((p) => p.id), true)} className="h-10 rounded-xl bg-emerald-50 text-emerald-700 text-[13px] font-semibold flex items-center justify-center gap-1.5"><Eye className="w-4 h-4" /> Mostrar {q ? 'estos' : 'todos'}</button>
+          <button onClick={() => setShow(shown.map((p) => p.id), false)} className="h-10 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold flex items-center justify-center gap-1.5"><EyeOff className="w-4 h-4" /> Ocultar {q ? 'estos' : 'todos'}</button>
+        </div>
+      )}
+      <div className="mt-3 divide-y divide-slate-100">
+        {!items ? <ListSkeleton rows={6} /> : shown.length === 0 ? (
+          <p className="py-10 text-center text-[13px] text-slate-400">No hay productos para mostrar</p>
+        ) : shown.slice(0, 200).map((p) => (
+          <button key={p.id} onClick={() => setShow([p.id], !p.showOnline)} className="w-full flex items-center gap-3 py-3 text-left">
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14.5px] font-medium text-slate-800 truncate">{p.name}</span>
+              <span className="block text-[12px] text-slate-500">{money(p.salePrice)}{p.category?.name ? ` · ${p.category.name}` : ''}</span>
+            </span>
+            <span className={`w-12 h-7 rounded-full p-0.5 transition-colors shrink-0 ${p.showOnline ? 'bg-rose-600' : 'bg-slate-300'}`}>
+              <span className={`block w-6 h-6 rounded-full bg-white shadow transition-transform ${p.showOnline ? 'translate-x-5' : ''}`} />
+            </span>
+          </button>
+        ))}
+        {shown.length > 200 && <p className="py-3 text-center text-[12px] text-slate-400">Mostrando 200 de {shown.length}. Buscá para encontrar el resto.</p>}
+      </div>
+    </Sheet>
   );
 }
 
@@ -311,7 +394,7 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
   const { busy, run } = useSaving(() => onSave({
     pickupEnabled: f.pickupEnabled !== false, deliveryEnabled: !!f.deliveryEnabled, goDeliveryEnabled: !!f.goDeliveryEnabled, deliveryCost: f.deliveryCost || 0,
     freeDeliveryFrom: f.freeDeliveryFrom || 0, deliveryZone: f.deliveryZone, minOrder: f.minOrder || 0,
-    paymentMethods: f.paymentMethods, transferAlias: f.transferAlias, showOutOfStock: f.showOutOfStock !== false,
+    paymentMethods: f.paymentMethods, transferAlias: f.transferAlias, showOutOfStock: f.showOutOfStock !== false, alwaysInStock: !!f.alwaysInStock,
   }));
   const pays = f.paymentMethods || [];
   return (
@@ -346,6 +429,7 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
           <Field label="Alias o CBU para transferencias"><input className={input} value={f.transferAlias || ''} onChange={(e) => setF({ ...f, transferAlias: e.target.value })} placeholder="mi.negocio.mp" /></Field>
         )}
         <Toggle title="Mostrar productos sin stock" text="Aparecen como agotados." on={f.showOutOfStock !== false} onChange={(v) => setF({ ...f, showOutOfStock: v })} />
+        <Toggle title="Vender todo como disponible" text="Todos los productos se pueden pedir aunque figuren sin stock." on={!!f.alwaysInStock} onChange={(v) => setF({ ...f, alwaysInStock: v })} />
       </div>
     </Sheet>
   );
@@ -408,13 +492,9 @@ function LookSheet({ open, config, onClose, onSave }: { open: boolean; config: S
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    try {
-      const url = kind === 'logo' ? await compressImageFile(file, 300, 300, 0.7) : await compressImageFile(file, 1200, 400, 0.6);
-      setF((x) => ({ ...x, [kind === 'logo' ? 'logoUrl' : 'bannerUrl']: url }));
-    } catch {
-      toast.error('No se pudo usar esa imagen');
-    }
+    setCrop({ file, kind });
   };
+  const [crop, setCrop] = useState<{ file: File; kind: 'logo' | 'banner' } | null>(null);
   const COLORS = ['#0E6E52', '#1D4ED8', '#B91C1C', '#C2410C', '#7C3AED', '#DB2777', '#0F766E', '#111827'];
 
   return (
@@ -431,9 +511,20 @@ function LookSheet({ open, config, onClose, onSave }: { open: boolean; config: S
             <div className="min-w-0">
               <p className="text-[15px] font-bold text-slate-900 truncate">{f.businessName}</p>
               <p className="text-[12px] text-slate-500">Tocá el logo o la portada para cambiarlos</p>
+              <p className="text-[11.5px] text-slate-400">Logo 512×512 px · Portada 1500×500 px</p>
             </div>
           </div>
         </div>
+{crop && (
+        <ImageCropModal
+          file={crop.file}
+          {...(crop.kind === 'logo' ? STORE_LOGO : STORE_BANNER)}
+          round={crop.kind === 'logo'}
+          title={crop.kind === 'logo' ? 'Encuadrar logo' : 'Encuadrar portada'}
+          onCancel={() => setCrop(null)}
+          onDone={(url) => { setF((x) => ({ ...x, [crop.kind === 'logo' ? 'logoUrl' : 'bannerUrl']: url })); setCrop(null); }}
+        />
+      )}
         <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e, 'logo')} />
         <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e, 'banner')} />
         <Field label="Color de la tienda">

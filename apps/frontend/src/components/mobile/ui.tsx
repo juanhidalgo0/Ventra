@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft } from 'lucide-react';
@@ -196,6 +196,58 @@ export function ListSkeleton({ rows = 6 }: { rows?: number }) {
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="h-16 rounded-2xl bg-white border border-slate-100 animate-pulse" />
       ))}
+    </div>
+  );
+}
+
+/**
+ * Deslizar hacia abajo para actualizar (como en las apps nativas). Funciona cuando la lista
+ * está arriba de todo; muestra una ruedita que gira y llama a onRefresh.
+ */
+export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promise<unknown> | void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pull, setPull] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const start = useRef<number | null>(null);
+  const LIMIT = 70;
+
+  const scroller = () => {
+    let el: HTMLElement | null = ref.current;
+    while (el && el !== document.body) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  return (
+    <div
+      ref={ref}
+      onTouchStart={(e) => { start.current = (scroller()?.scrollTop ?? 0) <= 0 && !busy ? e.touches[0].clientY : null; }}
+      onTouchMove={(e) => {
+        if (start.current === null) return;
+        const d = e.touches[0].clientY - start.current;
+        setPull(d > 0 ? Math.min(LIMIT + 20, d * 0.5) : 0);
+      }}
+      onTouchEnd={async () => {
+        const go = pull >= LIMIT;
+        start.current = null;
+        if (!go) { setPull(0); return; }
+        setBusy(true); setPull(48);
+        try { navigator.vibrate?.(10); } catch { /* */ }
+        try { await onRefresh(); } finally { setBusy(false); setPull(0); }
+      }}
+    >
+      <div className="flex justify-center overflow-hidden transition-[height] duration-200" style={{ height: pull }}>
+        <span className="mt-3 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
+          <span
+            className={`w-4 h-4 border-2 border-rose-600 border-t-transparent rounded-full ${busy ? 'animate-spin' : ''}`}
+            style={busy ? undefined : { transform: `rotate(${pull * 5}deg)`, opacity: Math.min(1, pull / LIMIT) }}
+          />
+        </span>
+      </div>
+      {children}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import toast from 'react-hot-toast';
+import { haptic } from '../utils/haptics';
 import { create } from 'zustand';
 import { STORE_ID_KEY, subscribeToStoreOrders, loadStoreConfig, type StoreOrder } from './onlineStore';
 import { ensureVentraSession } from './ventraFirebase';
@@ -77,6 +78,7 @@ export async function startOnlineOrdersSync() {
       // En el primer arranque solo se marcan como vistos (no suena por pedidos viejos)
       if (!first && fresh.length) {
         playChime();
+        haptic([60, 80, 60]);
         const o = fresh[0];
         toast.success(
           fresh.length === 1

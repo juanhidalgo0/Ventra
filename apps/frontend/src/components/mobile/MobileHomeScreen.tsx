@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import InstallAppCard from './InstallAppCard';
+import { PullToRefresh } from './ui';
+import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 
 type Period = 'day' | 'week' | 'month';
@@ -63,6 +65,7 @@ export default function MobileHomeScreen() {
   const [error, setError] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [now, setNow] = useState(Date.now());
+  const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder));
   const showInstall = localStorage.getItem('pwa_install_dismissed') !== '1';
 
   const storeName = localStorage.getItem('gd_store_name') || 'Tu comercio';
@@ -112,7 +115,34 @@ export default function MobileHomeScreen() {
   const paymentsTotal = payments.reduce((s, [, v]) => s + v, 0);
 
 
+  // Lo que conviene atender ya: aparece arriba de todo, cada aviso lleva a su pantalla
+  const alerts: { key: string; tone: 'green' | 'amber' | 'red'; title: string; text: string; to: string }[] = [];
+  if (newOrders.length) alerts.push({
+    key: 'orders', tone: 'green', to: '/pedidos',
+    title: newOrders.length === 1 ? '1 pedido online nuevo' : `${newOrders.length} pedidos online nuevos`,
+    text: newOrders.slice(0, 3).map((o) => o.customerName || 'Cliente').join(', '),
+  });
+  (data?.openSessions || []).forEach((s) => {
+    const hours = (now - new Date(s.openedAt).getTime()) / 3600000;
+    if (hours >= 12) alerts.push({
+      key: `cash-${s.id}`, tone: 'red', to: '/cash-control',
+      title: `${s.terminalName}: caja abierta hace ${Math.floor(hours)} h`,
+      text: `${s.userName} no la cerró. Revisala y cerrala.`,
+    });
+  });
+  if (data && data.lowStock.count > 0) alerts.push({
+    key: 'stock', tone: 'amber', to: '/stock-control',
+    title: `${data.lowStock.count} ${data.lowStock.count === 1 ? 'producto' : 'productos'} con stock bajo`,
+    text: data.lowStock.items.map((i) => i.name).join(', '),
+  });
+  const TONES = {
+    green: 'bg-emerald-50 border-emerald-200 text-emerald-900 [&_.ic]:bg-emerald-100 [&_.ic]:text-emerald-700',
+    amber: 'bg-amber-50 border-amber-200 text-amber-900 [&_.ic]:bg-amber-100 [&_.ic]:text-amber-700',
+    red: 'bg-red-50 border-red-200 text-red-900 [&_.ic]:bg-red-100 [&_.ic]:text-red-700',
+  };
+
   return (
+    <PullToRefresh onRefresh={() => load(period, true)}>
     <div className="min-h-full pb-6">
       {/* Encabezado verde con la ganancia */}
       <header className="bg-rose-600 text-white px-5 pt-[calc(env(safe-area-inset-top)+1rem)] pb-16 rounded-b-[28px]">
@@ -175,6 +205,24 @@ export default function MobileHomeScreen() {
           </div>
         )}
 
+        {/* Para atender */}
+        {alerts.length > 0 && (
+          <div className="space-y-2">
+            {alerts.map((a) => (
+              <button key={a.key} onClick={() => navigate(a.to)} className={`w-full text-left border rounded-2xl p-3.5 flex items-center gap-3 active:scale-[0.99] transition-transform shadow-sm ${TONES[a.tone]}`}>
+                <span className="ic w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
+                  {a.key === 'orders' ? <ShoppingCart className="w-[18px] h-[18px]" /> : <AlertTriangle className="w-[18px] h-[18px]" />}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13.5px] font-semibold">{a.title}</span>
+                  {a.text && <span className="block text-[12px] opacity-80 truncate">{a.text}</span>}
+                </span>
+                <ChevronRight className="w-4 h-4 opacity-60 shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Ventas y gastos */}
         <div className="grid grid-cols-2 gap-3">
           <StatCard label="Ventas" value={data?.revenue} sub={data ? `${data.tickets} ${data.tickets === 1 ? 'venta' : 'ventas'}` : ''} tone="text-emerald-700" loading={!data} />
@@ -234,24 +282,6 @@ export default function MobileHomeScreen() {
             ) : <div className="h-full rounded-xl bg-slate-100 animate-pulse" />}
           </div>
         </Card>
-
-        {/* Stock bajo */}
-        {data && data.lowStock.count > 0 && (
-          <button onClick={() => navigate('/stock-control')} className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 active:scale-[0.99] transition-transform">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-[18px] h-[18px] text-amber-700" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-amber-900">
-                  {data.lowStock.count} {data.lowStock.count === 1 ? 'producto' : 'productos'} con stock bajo
-                </p>
-                <p className="text-[12px] text-amber-800 truncate">{data.lowStock.items.map((i) => i.name).join(', ')}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-amber-700 shrink-0" />
-            </div>
-          </button>
-        )}
 
         {/* Cajas abiertas */}
         {data && data.openSessions.length > 0 && (
@@ -328,6 +358,7 @@ export default function MobileHomeScreen() {
         )}
       </div>
     </div>
+    </PullToRefresh>
   );
 }
 

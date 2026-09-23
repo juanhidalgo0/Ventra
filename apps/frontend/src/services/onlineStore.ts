@@ -118,6 +118,8 @@ export interface StoreConfig {
   paymentMethods?: string[];
   transferAlias?: string;
   showOutOfStock?: boolean;
+  /** Todos los productos se venden como disponibles, aunque figuren sin stock (apagado por defecto) */
+  alwaysInStock?: boolean;
   ownerUid?: string;
   claimed?: boolean;
   updatedAt?: any;
