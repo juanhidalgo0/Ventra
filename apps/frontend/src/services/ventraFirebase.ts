@@ -28,9 +28,12 @@ export function getVentraStorage(): FirebaseStorage {
 }
 
 let signingIn: Promise<User> | null = null;
-/** true cuando ya se sabe si hay cuenta (sesión de cuenta abierta o PC sin vincular). */
-let accountResolved = false;
-let lastAccountAttempt = 0;
+/**
+ * 'account': equipo vinculado, se entra con la cuenta del comercio.
+ * 'device': PC sin vincular (gratis), la tienda queda atada a este equipo.
+ * null: todavía no se sabe (se pregunta al backend).
+ */
+let mode: 'account' | 'device' | null = null;
 
 /** Clave donde cada equipo recuerda el id de su tienda online. */
 export const STORE_ID_KEY = 'ventra_store_id';
@@ -54,34 +57,39 @@ function waitForRestoredUser(): Promise<User | null> {
  */
 export function ensureVentraSession(): Promise<User> {
   const auth = getAuth(getVentraApp());
-  // Si el intento anterior falló por un error pasajero (sin internet, sesión del POS vencida)
-  // se reintenta, pero como mucho una vez por minuto.
-  const retryAccount = !accountResolved && Date.now() - lastAccountAttempt > 60_000;
-  if (auth.currentUser && (!auth.currentUser.isAnonymous || !retryAccount)) return Promise.resolve(auth.currentUser);
+  const current = auth.currentUser;
+  if (current && ((mode === 'account' && !current.isAnonymous) || mode === 'device')) return Promise.resolve(current);
   if (signingIn) return signingIn;
   signingIn = (async () => {
     const restored = await waitForRestoredUser();
-    if (!accountResolved && Date.now() - lastAccountAttempt > 60_000) {
-      lastAccountAttempt = Date.now();
-      try {
-        // Import dinámico: api.ts no se carga en el sitio público de la tienda
-        const { default: api } = await import('./api');
-        const legacyStoreId = localStorage.getItem(STORE_ID_KEY) || undefined;
-        const legacyIdToken = restored?.isAnonymous ? await restored.getIdToken() : undefined;
-        const { data } = await api.post('/subscription/store-session', { legacyStoreId, legacyIdToken });
-        if (data && data.linked === false) accountResolved = true; // PC sin vincular: sesión del equipo
-        if (data?.linked && data.customToken) {
-          accountResolved = true;
-          const user = restored && restored.uid === data.uid
-            ? restored
-            : (await signInWithCustomToken(auth, data.customToken)).user;
-          if (data.storeId) localStorage.setItem(STORE_ID_KEY, data.storeId);
-          return user;
-        }
-      } catch (err) {
-        console.warn('[Tienda online] Sin sesión de cuenta, se usa la del equipo:', err);
-      }
+    // Import dinámico: api.ts no se carga en el sitio público de la tienda
+    const { default: api } = await import('./api');
+    const legacyStoreId = localStorage.getItem(STORE_ID_KEY) || undefined;
+    const legacyIdToken = restored?.isAnonymous ? await restored.getIdToken() : undefined;
+    let data: any;
+    try {
+      ({ data } = await api.post('/subscription/store-session', { legacyStoreId, legacyIdToken }));
+    } catch (err) {
+      // Equipo vinculado sin conexión con la cuenta: NUNCA se sigue con una sesión del
+      // equipo, porque la tienda quedaría atada a este navegador y no a la cuenta.
+      console.warn('[Tienda online] No se pudo abrir la sesión de la cuenta:', err);
+      throw new Error('No pudimos conectar con tu cuenta de Ventra. Revisá internet y reintentá.');
     }
+
+    if (data?.linked && data.customToken) {
+      mode = 'account';
+      const user = restored && !restored.isAnonymous && restored.uid === data.uid
+        ? restored
+        : (await signInWithCustomToken(auth, data.customToken)).user;
+      // La tienda de la cuenta (o la de este equipo, si se acaba de pasar a la cuenta).
+      // Si no hay ninguna, se olvida la vieja del equipo y se crea una nueva de la cuenta.
+      if (data.storeId) localStorage.setItem(STORE_ID_KEY, data.storeId);
+      else localStorage.removeItem(STORE_ID_KEY);
+      return user;
+    }
+
+    // PC sin vincular: la tienda queda atada a este equipo (sesión anónima guardada)
+    mode = 'device';
     if (restored) return restored;
     return (await signInAnonymously(auth)).user;
   })().finally(() => { signingIn = null; });
