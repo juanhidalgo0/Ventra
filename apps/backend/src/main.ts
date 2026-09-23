@@ -68,7 +68,10 @@ async function bootstrap() {
   app.use((req: any, res: any, next: any) => {
     const lock = sync?.getWriteLock?.();
     const writes = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
-    const exempt = /^\/api\/(sync|auth|subscription)(\/|$)/.test(req.path || req.url || '');
+    // Se deja pasar el login y la sincronización; crear el primer administrador NO:
+    // en una PC nueva los usuarios llegan justamente con esta descarga.
+    const url = req.path || req.url || '';
+    const exempt = /^\/api\/(sync|subscription)(\/|$)/.test(url) || (/^\/api\/auth\//.test(url) && !/register-first-admin/.test(url));
     if (lock && writes && !exempt) {
       const pct = lock.total > 0 ? ` (${Math.round((lock.done / lock.total) * 100)}%)` : '';
       res.status(503).json({
