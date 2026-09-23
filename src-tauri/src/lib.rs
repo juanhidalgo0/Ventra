@@ -112,8 +112,13 @@ fn open_browser(url: String) {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(&["/C", "start", "", &url]);
+        // rundll32 abre la URL tal cual en el navegador predeterminado. Con "cmd /C start"
+        // los enlaces con "&" (por ejemplo WhatsApp con texto) se cortaban.
+        if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:") || url.starts_with("tel:")) {
+            return;
+        }
+        let mut cmd = std::process::Command::new("rundll32.exe");
+        cmd.args(&["url.dll,FileProtocolHandler", &url]);
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         cmd.spawn().ok();
     }

@@ -1,5 +1,6 @@
 import './perfModeDefault';
-import './utils/pwaInstall'; // escucha desde el arranque el aviso de "se puede instalar"
+import './utils/pwaInstall';
+import './utils/externalLinks'; // en la app de escritorio, los enlaces externos abren el navegador // escucha desde el arranque el aviso de "se puede instalar"
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
