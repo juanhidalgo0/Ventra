@@ -65,6 +65,13 @@ async function bootstrap() {
   // quedaba colgado y terminaba en "Internal server error": ahora se responde al
   // instante con un mensaje claro y el avance de la descarga.
   const sync = app.get(SyncService, { strict: false });
+  // Avance público de la descarga (sin datos del comercio): lo usa la pantalla de login
+  // para mostrar "Descargando tus datos" antes de que haya una sesión iniciada.
+  app.use('/api/sync-progress', (_req: any, res: any) => {
+    const lock = sync?.getWriteLock?.();
+    res.json(lock ? { downloading: true, label: lock.label, done: lock.done, total: lock.total } : { downloading: false });
+  });
+
   app.use((req: any, res: any, next: any) => {
     const lock = sync?.getWriteLock?.();
     const writes = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';

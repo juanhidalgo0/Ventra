@@ -510,6 +510,8 @@ export default function App() {
     }};
     const WarmDiv = (perfMode ? 'div' : motion.div) as any;
     return (
+      <>
+      <SyncDownloadBanner />
       <WarmDiv
         {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.25 } })}
         className="fixed inset-0 bg-slate-50/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50"
@@ -567,6 +569,7 @@ export default function App() {
           </WarmDiv>
         </WarmDiv>
       </WarmDiv>
+      </>
     );
   }
 
@@ -636,7 +639,7 @@ export default function App() {
       />
     </Routes>
     <Updater />
-    {isAuthenticated && <SyncDownloadBanner />}
+    <SyncDownloadBanner />
 
     {/* Floating global import progress overlay (minimized on the left) */}
     {globalImportStatus && globalImportStatus.show && !globalImportStatus.isComplete && !globalImportStatus.error && globalImportStatus.isMinimized && (
