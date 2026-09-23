@@ -6,12 +6,14 @@ import { BackupService } from './backup.service';
 import { DemoResetService } from './demo-reset.service';
 import { AuthModule } from '../auth/auth.module';
 import { ProductsModule } from '../products/products.module';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     AuthModule,
     ProductsModule,
+    SyncModule,
   ],
   controllers: [SystemController, BackupController],
   providers: [BackupService, DemoResetService],

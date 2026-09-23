@@ -38,6 +38,8 @@ const IMG_PREFIX = 'ventra-img:';
 const TRIGGER_PREFIX = 'ventra_sync2_';
 /** Tablas que no son datos del comercio. */
 const EXCLUDED = new Set(['app_licenses', 'image_suggestions', 'sync_outbox', 'sync_state', 'sync_images', 'sync_deltas', 'sync_stash', 'sync_img_fetch', '_prisma_migrations']);
+/** Lo que sobrevive a un reinicio de fábrica (igual que en la nube). */
+const KEEP_ON_RESET = new Set(['fiscal_config', 'fiscal_tokens', 'surcharges']);
 /** Columnas que varias cajas modifican sumando/restando. */
 const COUNTERS: Record<string, string[]> = { products: ['stock'], clients: ['balance'], promotions: ['sold_stock'] };
 const NOW_MS = `CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER)`;
@@ -98,6 +100,71 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  // ── Reinicio de fábrica de la cuenta ──────────────────────────────
+  private async knownGen(): Promise<number | null> {
+    const g = await this.getState('cloud_gen');
+    return g === null ? null : Number(g);
+  }
+
+  /** Si la cuenta se reinició desde otra caja, corta el ciclo para vaciar esta base. */
+  private async checkGen(gen: any) {
+    if (gen === undefined || gen === null) return;
+    const known = await this.knownGen();
+    if (known === null) { await this.setState('cloud_gen', String(gen)); return; }
+    if (Number(gen) > known) throw new AccountResetError(Number(gen));
+  }
+
+  /**
+   * Reinicio de fábrica desde ESTA caja: borra los datos de la cuenta en la nube (todas
+   * las cajas vinculadas se vacían solas en su próxima sincronización) y después esta base.
+   * Sin internet no se puede: quedaría esta caja vacía y las demás con los datos.
+   */
+  async resetAccount(): Promise<void> {
+    if (!this.subscription.getDeviceCredentials()) throw new Error('PC sin vincular');
+    for (let i = 0; this.running && i < 60; i++) await new Promise((r) => setTimeout(r, 1000));
+    this.running = true;
+    try {
+      const res = await this.call('reset');
+      await this.wipeLocal(Number(res.gen));
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async applyAccountReset(gen: number) {
+    console.warn(`[Sync] La cuenta se reinició desde otra caja (reinicio #${gen}): vaciando esta base`);
+    await this.wipeLocal(gen);
+  }
+
+  /** Vacía la base (sin anotar las bajas para subir) y la deja lista para arrancar de cero. */
+  private async wipeLocal(gen: number) {
+    this.phase = 'full';
+    this.progress = { label: 'Borrando los datos de esta caja', done: 0, total: 0 };
+    this.writeLock = true;
+    this.writeStatusFile();
+    try {
+      await this.ensureLocalTables();
+      const tables = (await this.syncedTables()).filter((t) => !KEEP_ON_RESET.has(t));
+      const order = await this.deleteOrder(tables);
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+        await this.setState('applying', '1', tx);
+        for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
+        for (const t of ['sync_outbox', 'sync_deltas', 'sync_images', 'sync_img_fetch', 'sync_stash']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
+        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev')`);
+        await this.setState('cloud_gen', String(gen), tx);
+        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+      }, { timeout: 10 * 60 * 1000, maxWait: 60000 });
+      this.registeredFor = null;
+      console.warn('[Sync] Base vaciada por reinicio de fábrica de la cuenta');
+    } finally {
+      this.writeLock = false;
+      this.progress = null;
+      this.phase = 'idle';
+      this.writeStatusFile();
+    }
   }
 
   // ── Nube ──────────────────────────────────────────────────────────
@@ -277,7 +344,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     let bytes = 0;
     const flush = async () => {
       if (!batch.length) return;
-      await this.call('push', { rows: batch });
+      const res = await this.call('push', { rows: batch, gen: await this.knownGen() });
+      if (res?.reset) throw new AccountResetError(res.gen);
       batch = []; bytes = 0;
     };
     for (const r of rows) {
@@ -357,6 +425,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc' });
         this.nodeIndex = reg.nodeIndex;
         await this.setState('node_index', String(reg.nodeIndex));
+        await this.checkGen(reg.gen);
         this.registeredFor = creds.deviceId;
       }
 
@@ -381,6 +450,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       this.phase = 'idle';
       this.lastError = null;
     } catch (err: any) {
+      if (err instanceof AccountResetError) {
+        await this.applyAccountReset(err.gen).catch((e) => console.error('[Sync] No se pudo vaciar la base tras el reinicio:', e));
+        return;
+      }
       const offline = !err.response && ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ECONNRESET'].includes(err.code);
       this.phase = offline ? 'offline' : 'error';
       this.lastError = offline ? 'Sin conexión: los cambios se suben cuando vuelva internet' : (err.response?.data?.error || err.message);
@@ -565,6 +638,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
     for (;;) {
       const page = await this.call('pull', { after, all: false });
+      await this.checkGen(page.gen);
       head = page.head;
       if (page.rows.length) {
         this.phase = 'syncing';
@@ -803,4 +877,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     await this.cycle();
     return this.getStatus();
   }
+}
+
+/** La cuenta se reinició (borrar todo) desde otra caja. */
+class AccountResetError extends Error {
+  constructor(public gen: number) { super('Reinicio de la cuenta'); }
 }

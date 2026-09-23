@@ -1,4 +1,6 @@
 import { Controller, Get, Post, UseGuards, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { SyncService } from '../sync/sync.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import * as os from 'os';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
@@ -8,7 +10,12 @@ import { DemoResetService } from './demo-reset.service';
 
 @Controller('system')
 export class SystemController {
-  constructor(private prisma: PrismaService, private demoResetService: DemoResetService) {}
+  constructor(
+    private prisma: PrismaService,
+    private demoResetService: DemoResetService,
+    private sync: SyncService,
+    private subscription: SubscriptionService,
+  ) {}
 
   // Manual trigger for the public demo's sample data reset — lets an admin
   // refresh the demo (e.g. after updating DEMO_PRODUCTS) without waiting for
@@ -112,6 +119,21 @@ export class SystemController {
   @Roles('ADMIN')
   async hardReset() {
     console.log('[SystemController] Starting DATABASE HARD RESET...');
+
+    // PC vinculada: la base es de la cuenta. Se borra en la nube y en TODAS las cajas
+    // vinculadas (cada una se vacía sola en su próxima sincronización, en segundos).
+    if (this.subscription.getDeviceCredentials()) {
+      try {
+        await this.sync.resetAccount();
+      } catch (err: any) {
+        console.error('[SystemController] Reinicio de la cuenta falló:', err?.message || err);
+        throw new BadRequestException('No se pudo borrar en la nube. Revisá la conexión a internet y volvé a intentarlo: sin internet no se puede borrar en todas tus cajas.');
+      }
+      console.log('[SystemController] DATABASE HARD RESET completed (cuenta completa).');
+      return { success: true, scope: 'account', message: 'Se borraron los datos de tu cuenta en todas tus cajas.' };
+    }
+
+    // PC sin vincular (uso gratuito): solo esta base
     
     // Primero lo que depende de otras tablas (si no, SQLite no deja borrar lo de arriba)
     const tables = [

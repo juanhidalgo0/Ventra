@@ -696,8 +696,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     }
     setIsHardResetting(true);
     try {
-      await api.post('/system/hard-reset');
-      toast.success('💥 Base de datos restablecida por completo.');
+      const { data } = await api.post('/system/hard-reset');
+      toast.success(data?.message || 'Base de datos restablecida por completo.');
       setShowHardReset(false);
       setHardResetConfirmWord('');
       logout();
@@ -1751,7 +1751,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                         {showHardReset && (
                           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 rounded-xl bg-red-50/50 border border-red-200 space-y-3 overflow-hidden">
                             <p className="text-[10px] text-red-700 font-bold leading-normal">
-                              ⚠️ ATENCIÓN: Se eliminará todo el historial, el catálogo y los usuarios. Al volver a entrar vas a crear un administrador nuevo. Para confirmar, escribí la palabra clave <b className="text-red-600 uppercase">"BORRAR TODO"</b> a continuación:
+                              ⚠️ ATENCIÓN: Se eliminará todo el historial, el catálogo y los usuarios. Si esta PC está vinculada a tu cuenta, se borra también en la nube y en TODAS tus cajas vinculadas y la web. Al volver a entrar vas a crear un administrador nuevo. Para confirmar, escribí la palabra clave <b className="text-red-600 uppercase">"BORRAR TODO"</b> a continuación:
                             </p>
                             <div className="flex gap-2">
                               <input 
