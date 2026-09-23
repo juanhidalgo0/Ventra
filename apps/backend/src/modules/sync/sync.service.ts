@@ -73,6 +73,17 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private lastSyncAt: string | null = null;
   private lastError: string | null = null;
   private progress: SyncStatus['progress'] = null;
+  /**
+   * true mientras una descarga completa tiene la base tomada en UNA transacción
+   * (puede durar minutos en una PC nueva). Mientras tanto no se puede escribir:
+   * main.ts responde los cambios con un mensaje claro en vez de dejarlos colgados.
+   */
+  private writeLock = false;
+
+  /** Lo que se muestra a quien intenta escribir mientras la base está tomada. */
+  getWriteLock(): { label: string; done: number; total: number } | null {
+    return this.writeLock ? (this.progress || { label: 'Descargando tus datos', done: 0, total: 0 }) : null;
+  }
   private tableCols = new Map<string, string[]>();
   private installedFor: string | null = null;
   private registeredFor: string | null = null;
@@ -518,6 +529,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       // Todo en una transacción, bajando y aplicando de a tandas (sin juntar todo en
       // memoria). Las claves foráneas se controlan al final, así el orden de llegada da igual.
       const order = wipe ? await this.deleteOrder(tables) : [];
+      this.writeLock = true;
+      try {
       await this.prisma.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
         await this.setState('applying', '1', tx);
@@ -544,6 +557,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.setState('pull_after', String(head), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
       }, { timeout: 30 * 60 * 1000, maxWait: 30000 });
+      } finally {
+        this.writeLock = false;
+      }
       return;
     }
 

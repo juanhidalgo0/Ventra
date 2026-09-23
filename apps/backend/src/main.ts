@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import * as path from 'path';
 import * as fs from 'fs';
 import { applyPendingRestore } from './modules/system/pending-restore';
+import { SyncService } from './modules/sync/sync.service';
 
 // Ensure critical env vars have fallbacks even if .env is missing/incomplete
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'paulos-pos-jwt-secret-2024-default';
@@ -58,6 +59,27 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api');
+
+  // Mientras una PC nueva baja todos sus datos de la nube, la base queda tomada en
+  // una sola transacción (puede tardar minutos). Cualquier cambio en ese momento se
+  // quedaba colgado y terminaba en "Internal server error": ahora se responde al
+  // instante con un mensaje claro y el avance de la descarga.
+  const sync = app.get(SyncService, { strict: false });
+  app.use((req: any, res: any, next: any) => {
+    const lock = sync?.getWriteLock?.();
+    const writes = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
+    const exempt = /^\/api\/(sync|auth|subscription)(\/|$)/.test(req.path || req.url || '');
+    if (lock && writes && !exempt) {
+      const pct = lock.total > 0 ? ` (${Math.round((lock.done / lock.total) * 100)}%)` : '';
+      res.status(503).json({
+        statusCode: 503,
+        message: `Ventra está bajando tus datos de la nube${pct}. Esperá a que termine para hacer cambios.`,
+        syncing: lock,
+      });
+      return;
+    }
+    next();
+  });
 
   // Serve static files from frontend/dist or Electron package layout
   const express = require('express');

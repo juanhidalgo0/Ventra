@@ -11,6 +11,7 @@ import api, { resolveServerUrl } from './services/api';
 import LicenseBlockScreen from './components/auth/LicenseBlockScreen';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
+import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
 
 import { CheckCircle2, XCircle } from 'lucide-react';
@@ -633,6 +634,7 @@ export default function App() {
       />
     </Routes>
     <Updater />
+    {isAuthenticated && <SyncDownloadBanner />}
 
     {/* Floating global import progress overlay (minimized on the left) */}
     {globalImportStatus && globalImportStatus.show && !globalImportStatus.isComplete && !globalImportStatus.error && globalImportStatus.isMinimized && (
