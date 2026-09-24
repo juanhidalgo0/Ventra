@@ -4,6 +4,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
 import { numberRange } from '../sync/numbering';
+import { CashRegisterService } from '../cash-register/cash-register.service';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -23,6 +24,7 @@ export class SalesService {
     private events: EventsGateway,
     private firebaseSync: FirebaseSyncService,
     private notify: NotifyService,
+    private cashRegister: CashRegisterService,
   ) {}
 
   async create(userId: string, dto: CreateSaleDto) {
@@ -317,6 +319,13 @@ export class SalesService {
     if (!sale) throw new NotFoundException('Venta no encontrada');
     if (sale.status !== 'COMPLETED') throw new BadRequestException('Solo se pueden cancelar ventas completadas');
 
+    // El Cierre Z es el cierre definitivo del día: si la venta ya entró en uno, anularla
+    // dejaría el Z con números que no coinciden con la caja.
+    const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: sale.sessionId }, select: { status: true, zReportId: true } });
+    if (session?.zReportId) {
+      throw new BadRequestException('Esta venta es de un turno que ya entró en un Cierre Z: no se puede anular.');
+    }
+
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
 
     const updatedSale = await this.prisma.$transaction(async (tx) => {
@@ -371,6 +380,16 @@ export class SalesService {
     });
 
     this.events.emitStockUpdated([]);
+
+    // La venta sale de la caja. Con la caja abierta ya no cuenta (los totales solo suman
+    // ventas COMPLETED); si el turno ya se cerró (Cierre X), se recalcula su resumen:
+    // ventas, efectivo esperado y diferencia, sin la venta anulada.
+    if (session?.status === 'CLOSED') {
+      await this.cashRegister.recalculateSessionSummary(sale.sessionId).catch((err) => {
+        console.error(`[Sales] No se pudo recalcular el cierre ${sale.sessionId} tras anular la venta #${sale.saleNumber}:`, err);
+      });
+    }
+    this.events.emitCashUpdated({ action: 'SALE_CANCEL', sessionId: sale.sessionId });
 
     // Aviso al dueño de anulaciones grandes (el umbral evita avisar por errores de tipeo chicos)
     if (Math.abs(sale.total) >= 20000) {

@@ -224,6 +224,7 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promis
   return (
     <div
       ref={ref}
+      data-pull-refresh
       onTouchStart={(e) => { start.current = (scroller()?.scrollTop ?? 0) <= 0 && !busy ? e.touches[0].clientY : null; }}
       onTouchMove={(e) => {
         if (start.current === null) return;
