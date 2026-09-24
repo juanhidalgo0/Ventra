@@ -3,8 +3,13 @@ import { createPortal } from 'react-dom';
 import { Printer, CheckCircle2, AlertTriangle, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
+import { cashClosingResult } from '../../utils/cashDifference';
 
-export default function CierreDiaModal({ zReport, isHistory = false, onClose }: { zReport: any, isHistory?: boolean, onClose: () => void }) {
+/**
+ * headless: solo arma la hoja para imprimir (oculta), sin la ventana de pantalla. La usa el
+ * celular para generar el PDF del Z con la misma hoja que imprime la PC.
+ */
+export default function CierreDiaModal({ zReport, isHistory = false, headless = false, onClose }: { zReport: any, isHistory?: boolean, headless?: boolean, onClose: () => void }) {
   const [printReady, setPrintReady] = useState(false);
   const [printMode, setPrintMode] = useState<'z-only' | 'z-and-x'>('z-only');
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -604,7 +609,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
                         }
 
                         const totalSessionDeclared = countedCash + posnetDeclared;
-                        const sessionDiff = session.difference ?? (totalSessionDeclared - (session.closingAmountExpected || 0));
+                        // Diferencia total del turno (efectivo + posnet), la misma que ve el cajero al cerrar
+                        const sessionDiff = cashClosingResult(session).totalDiff;
 
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #000000' }}>
@@ -944,8 +950,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
         document.body
       )}
 
-      {/* 2. Screen Area Modal Portal */}
-      {createPortal(
+      {/* 2. Screen Area Modal Portal (no se muestra en modo headless) */}
+      {!headless && createPortal(
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 no-print-screen">
           {/* Screen Area */}
           {isHistory ? (
@@ -1120,7 +1126,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, onClose }: 
                         }
 
                         const totalSessionDeclared = countedCash + posnetDeclared;
-                        const sessionDiff = session.difference ?? (totalSessionDeclared - (session.closingAmountExpected || 0));
+                        // Diferencia total del turno (efectivo + posnet), la misma que ve el cajero al cerrar
+                        const sessionDiff = cashClosingResult(session).totalDiff;
                         const hhmm = (d: any) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
                         return (

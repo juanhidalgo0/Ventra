@@ -15,14 +15,49 @@ export class CashRegisterService {
     private notify: NotifyService,
   ) {}
 
-  /** Aviso al dueño si la caja cerró con diferencia (se ignoran centavos de redondeo) */
+  /**
+   * Aviso al dueño si la caja cerró con diferencia (se ignoran centavos de redondeo).
+   * La diferencia es la total, como la ve el cajero al cerrar: efectivo + lo declarado en
+   * cada posnet contra lo esperado (misma regla que utils/cashDifference del frontend).
+   */
   private notifyCashDiff(s: any, expected: number) {
-    const diff = Number(s.difference);
-    if (!Number.isFinite(diff) || Math.abs(diff) < 50) return;
+    const cashDiff = Number(s.difference);
+    if (!Number.isFinite(cashDiff)) return;
+    const posnet = this.posnetDifference(s);
+    const diff = cashDiff + posnet.diff;
+    if (Math.abs(diff) < 50) return;
     this.notify.enqueue('cashDiff', {
       sessionId: s.id, terminal: s.terminalName, user: s.user?.fullName || s.user?.username,
-      difference: diff, expected, counted: s.closingAmountCounted,
+      difference: diff, expected: expected + posnet.expected, counted: (Number(s.closingAmountCounted) || 0) + posnet.declared,
     });
+  }
+
+  /** Posnet de un turno cerrado: lo declarado (resumen o notas [METADATA]) contra lo esperado. */
+  private posnetDifference(s: any) {
+    const json = (v: any) => { try { return typeof v === 'string' ? JSON.parse(v) : v || {}; } catch { return {}; } };
+    const sum = json(s.closingSummary);
+    const notes = String(s.closingNotes || '');
+    const at = notes.search(/\[\s*metadata\s*\]/i);
+    const meta = at >= 0 ? json(notes.slice(at).replace(/^\[\s*metadata\s*\]/i, '').trim()) : {};
+    const has = !!meta.posnetDeclarations || !!sum.posnetDeclarations || meta.virtualClover !== undefined || meta.virtualMP1 !== undefined;
+    if (!has) return { diff: 0, expected: 0, declared: 0 };
+    const n = (v: any) => (v === undefined || v === null || v === '' || isNaN(Number(v)) ? undefined : Number(v));
+    const declared: Record<string, number> = {};
+    const fromMeta = meta.posnetDeclarations || {};
+    const clover = n(fromMeta.CLOVER) ?? n(meta.virtualClover);
+    if (clover !== undefined) declared.CLOVER = clover;
+    const mp1 = n(fromMeta.MERCADOPAGO) ?? n(meta.virtualMP1);
+    const mp2 = n(meta.virtualMP2);
+    if (mp1 !== undefined || mp2 !== undefined) declared.MERCADOPAGO = (mp1 || 0) + (mp2 || 0);
+    for (const [k, v] of Object.entries(fromMeta)) if (declared[k] === undefined && n(v) !== undefined) declared[k] = Number(v);
+    for (const [k, v] of Object.entries(sum.posnetDeclarations || {})) if (n(v) !== undefined) declared[k] = Number(v);
+    const breakdown = sum.paymentBreakdown || {};
+    let exp = 0, dec = 0;
+    for (const k of new Set(['CLOVER', 'MERCADOPAGO', ...Object.keys(declared)])) {
+      exp += Number(breakdown[k]) || 0;
+      dec += declared[k] || 0;
+    }
+    return { diff: dec - exp, expected: exp, declared: dec };
   }
 
   async getTerminalName(terminalId: string) {

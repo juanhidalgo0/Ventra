@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Wallet, Lock, AlertTriangle, ChevronRight, CheckCircle2, History, FileText } from 'lucide-react';
+import { Wallet, Lock, AlertTriangle, ChevronRight, CheckCircle2, History, FileText, Download } from 'lucide-react';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
+import { cashClosingResult } from '../../utils/cashDifference';
+import { downloadPrintableAsPdf, afterPaint } from '../../utils/printToPdf';
+import XReportPrint from '../cash-register/XReportPrint';
+import CierreDiaModal from '../cash-register/CierreDiaModal';
 import { ScreenHeader, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount, METHOD_LABELS } from './ui';
 
 const time = (d: string) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -32,49 +36,6 @@ const parseJson = (v: any) => {
 /** Medios de pago con monto, de mayor a menor */
 const methodEntries = (b: Record<string, any> | null | undefined) =>
   Object.entries(b || {}).map(([k, v]) => [k, Number(v) || 0] as [string, number]).filter(([, v]) => Math.abs(v) >= 0.01).sort((a, b) => b[1] - a[1]);
-
-/**
- * Resultado de un turno cerrado (Cierre X), con la misma regla que el Cierre Z:
- * diferencia total = diferencia de efectivo + (declarado − esperado) de cada medio
- * electrónico (posnet, Mercado Pago…). Lo declarado en posnet puede estar en el resumen
- * (arqueo) o en las notas, después de "[METADATA]" (cierre desde la pantalla de ventas).
- */
-function closingResult(s: any) {
-  const sum = parseJson(s?.closingSummary) || {};
-  const raw = String(s?.closingNotes || '');
-  const at = raw.search(/\[\s*metadata\s*\]/i);
-  const notes = (at >= 0 ? raw.slice(0, at) : raw).trim();
-  let meta: any = {};
-  if (at >= 0) {
-    const json = raw.slice(at).replace(/^\[\s*metadata\s*\]/i, '').trim();
-    meta = parseJson(json) || {};
-  }
-
-  const declared: Record<string, number> = {};
-  const num = (v: any) => (v === undefined || v === null || v === '' || isNaN(Number(v)) ? undefined : Number(v));
-  const fromMeta = meta.posnetDeclarations || {};
-  const clover = num(fromMeta.CLOVER) ?? num(meta.virtualClover);
-  if (clover !== undefined) declared.CLOVER = clover;
-  const mp1 = num(fromMeta.MERCADOPAGO) ?? num(meta.virtualMP1);
-  const mp2 = num(meta.virtualMP2);
-  if (mp1 !== undefined || mp2 !== undefined) declared.MERCADOPAGO = (mp1 || 0) + (mp2 || 0);
-  for (const [k, v] of Object.entries(fromMeta)) if (declared[k] === undefined && num(v) !== undefined) declared[k] = Number(v);
-  // El arqueo posterior guarda lo declarado en el resumen: tiene prioridad
-  for (const [k, v] of Object.entries(sum.posnetDeclarations || {})) if (num(v) !== undefined) declared[k] = Number(v);
-
-  const expected: Record<string, number> = {};
-  for (const [k, v] of Object.entries(sum.paymentBreakdown || {})) if (k !== 'CASH' && k !== 'DEBT') expected[k] = Number(v) || 0;
-  // Si nunca se declaró nada de posnet (cierres viejos), no se inventa una diferencia
-  const hasPosnet = Object.keys(declared).length > 0;
-  const electronic = Array.from(new Set([...Object.keys(expected), ...Object.keys(declared)]))
-    .map((k) => ({ method: k, expected: expected[k] || 0, declared: declared[k] ?? 0 }))
-    .filter((r) => Math.abs(r.expected) >= 0.01 || Math.abs(r.declared) >= 0.01);
-  const posnetDiff = hasPosnet ? electronic.reduce((t, r) => t + (r.declared - r.expected), 0) : 0;
-
-  const counted = s?.closingAmountCounted !== null && s?.closingAmountCounted !== undefined;
-  const cashDiff = counted ? (s.difference ?? ((s.closingAmountCounted ?? 0) - (s.closingAmountExpected ?? 0))) : 0;
-  return { sum, notes, counted, cashDiff, hasPosnet, electronic, posnetDiff, totalDiff: cashDiff + posnetDiff };
-}
 
 const X_PAGE = 30;
 const Z_PAGE = 20;
@@ -132,6 +93,38 @@ export default function MobileCashScreen() {
   };
 
   useEffect(() => { load(); }, [load]);
+
+  // PDF: se monta oculta la misma hoja que imprime la PC y se convierte en archivo
+  const [pdfJob, setPdfJob] = useState<{ kind: 'X' | 'Z'; data: any } | null>(null);
+  const downloadX = async (s: any) => {
+    if (pdfJob) return;
+    // Con las ventas del turno (la hoja las usa para las cargas virtuales de cierres viejos)
+    const full = await api.get(`/cash/session/${s.id}`).then((r) => r.data).catch(() => null);
+    setPdfJob({ kind: 'X', data: full ? { ...s, ...full } : s });
+  };
+  const downloadZ = (r: any) => { if (!pdfJob) setPdfJob({ kind: 'Z', data: r }); };
+
+  useEffect(() => {
+    if (!pdfJob) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await afterPaint();
+        const el = document.getElementById(pdfJob.kind === 'X' ? 'printable-zreport' : 'printable-cierre-dia');
+        if (!el) throw new Error('No se armó la hoja');
+        const d = new Date(pdfJob.kind === 'X' ? (pdfJob.data.closedAt || pdfJob.data.openedAt) : pdfJob.data.generatedAt);
+        const p = (n: number) => String(n).padStart(2, '0');
+        const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+        const who = String(pdfJob.data.terminalName || '').replace(/[^\w-]+/g, '_');
+        await downloadPrintableAsPdf(el, pdfJob.kind === 'X' ? `Cierre_X_${who}_${stamp}.pdf` : `Cierre_Z_${stamp}.pdf`);
+      } catch {
+        toast.error('No se pudo generar el PDF');
+      } finally {
+        if (!cancelled) setPdfJob(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pdfJob]);
 
   const totalCash = (active || []).reduce((s, x) => s + (x.expectedAmount || 0), 0);
 
@@ -246,14 +239,16 @@ export default function MobileCashScreen() {
 
       <SessionSheet session={selected} onClose={() => setSelected(null)} onCloseCash={(s) => { setSelected(null); setClosing({ session: s, mode: 'close' }); }} />
       <CloseSheet data={closing} onClose={() => setClosing(null)} onDone={() => { setClosing(null); load(); }} />
-      <HistorySheet session={historyItem} onClose={() => setHistoryItem(null)} />
-      <ZSheet report={zItem} onClose={() => setZItem(null)} onOpenSession={(s) => { setZItem(null); setHistoryItem(s); }} />
+      <HistorySheet session={historyItem} onClose={() => setHistoryItem(null)} onPdf={downloadX} pdfBusy={!!pdfJob} />
+      <ZSheet report={zItem} onClose={() => setZItem(null)} onOpenSession={(s) => { setZItem(null); setHistoryItem(s); }} onPdf={downloadZ} pdfBusy={!!pdfJob} />
+      {pdfJob?.kind === 'X' && <XReportPrint session={pdfJob.data} />}
+      {pdfJob?.kind === 'Z' && <CierreDiaModal zReport={pdfJob.data} isHistory headless onClose={() => {}} />}
     </div>
   );
 }
 
 function XRow({ s, onClick }: { s: any; onClick: () => void }) {
-  const { counted, totalDiff: diff, sum } = closingResult(s);
+  const { counted, totalDiff: diff, summary: sum } = cashClosingResult(s);
   const ok = counted && Math.abs(diff) < 1;
   const revenue = sum.totalRevenue;
   return (
@@ -458,8 +453,12 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /** Detalle de un turno cerrado (Cierre X). */
-function HistorySheet({ session: s, onClose }: { session: any | null; onClose: () => void }) {
-  const { sum, notes, counted, cashDiff, hasPosnet, electronic, posnetDiff, totalDiff } = closingResult(s);
+function PdfButton({ onClick, busy }: { onClick: () => void; busy: boolean }) {
+  return <PrimaryButton onClick={onClick} loading={busy}><Download className="w-4 h-4" /> Descargar PDF</PrimaryButton>;
+}
+
+function HistorySheet({ session: s, onClose, onPdf, pdfBusy }: { session: any | null; onClose: () => void; onPdf: (s: any) => void; pdfBusy: boolean }) {
+  const { summary: sum, notes, counted, cashDiff, hasPosnet, posnets: electronic, posnetDiff, totalDiff } = cashClosingResult(s);
   const m = s ? movementTotals(s) : { income: 0, expense: 0, withdrawal: 0 };
   const income = sum.cashIncome ?? m.income;
   const expense = sum.cashExpense ?? m.expense;
@@ -467,7 +466,7 @@ function HistorySheet({ session: s, onClose }: { session: any | null; onClose: (
   const methods = methodEntries(sum.paymentBreakdown);
   const opening = sum.openingAmount ?? s?.openingAmount;
   return (
-    <Sheet open={!!s} onClose={onClose} title={s ? `Cierre X · ${s.terminalName}` : ''}>
+    <Sheet open={!!s} onClose={onClose} title={s ? `Cierre X · ${s.terminalName}` : ''} footer={s ? <PdfButton onClick={() => onPdf(s)} busy={pdfBusy} /> : undefined}>
       {s && (
         <div className="space-y-4 pt-1">
           <div>
@@ -559,14 +558,14 @@ function HistorySheet({ session: s, onClose }: { session: any | null; onClose: (
 }
 
 /** Detalle de un Cierre Z: el día completo, con todos sus turnos. */
-function ZSheet({ report: r, onClose, onOpenSession }: { report: any | null; onClose: () => void; onOpenSession: (s: any) => void }) {
+function ZSheet({ report: r, onClose, onOpenSession, onPdf, pdfBusy }: { report: any | null; onClose: () => void; onOpenSession: (s: any) => void; onPdf: (r: any) => void; pdfBusy: boolean }) {
   const sum = r ? parseJson(r.summary) || {} : {};
   const methods = methodEntries(sum.paymentBreakdown);
   const declared = sum.posnetDeclarations || {};
   const sold = methods.reduce((t, [, v]) => t + v, 0);
   const sessions: any[] = r?.sessions?.length ? r.sessions : sum.sessions || [];
   return (
-    <Sheet open={!!r} onClose={onClose} title={r ? `Cierre Z · ${dayTime(r.generatedAt)}` : ''}>
+    <Sheet open={!!r} onClose={onClose} title={r ? `Cierre Z · ${dayTime(r.generatedAt)}` : ''} footer={r ? <PdfButton onClick={() => onPdf(r)} busy={pdfBusy} /> : undefined}>
       {r && (
         <div className="space-y-4 pt-1">
           <p className="text-[13px] text-slate-500">Generado por {r.generatedBy?.fullName || '—'} · {sessions.length} {sessions.length === 1 ? 'turno' : 'turnos'}</p>
