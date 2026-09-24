@@ -9,6 +9,7 @@ import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { updateOrderStage, type OrderStage, type StoreOrder } from '../../services/onlineStore';
 import { usePOSStore } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { usePlanStore } from '../../stores/planStore';
 import { ScreenHeader, Chips } from '../mobile/ui';
 
 type Tab = 'ACTIVE' | 'NEW' | 'PREPARING' | 'READY' | 'DONE';
@@ -109,7 +110,7 @@ export default function OnlineOrdersScreen({ modal = false, onClose }: { modal?:
   const content = (
     <div className="h-full flex-1 min-h-0 flex flex-col bg-slate-50">
       {mobile ? (
-        <ScreenHeader back title="Pedidos online" subtitle={counts.NEW ? `${counts.NEW} nuevos` : 'Tienda online'}>
+        <ScreenHeader back title="Pedidos online" subtitle={counts.NEW ? `${counts.NEW} ${counts.NEW === 1 ? 'nuevo' : 'nuevos'}` : 'Tienda online'}>
           <Chips<Tab> options={tabs} value={tab} onChange={setTab} />
         </ScreenHeader>
       ) : (
@@ -232,6 +233,9 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
     else navigate('/pos');
   };
 
+  // Con el plan Tienda no hay caja: el pedido se gestiona solo por etapas
+  const hasCaja = usePlanStore((s) => s.features.caja);
+
   const next: { stage: OrderStage; label: string } | null =
     stage === 'NEW' ? { stage: 'PREPARING', label: 'Empezar a preparar' }
       : stage === 'PREPARING' ? { stage: 'READY', label: o.delivery && o.delivery !== 'PICKUP' ? 'Marcar como enviado' : 'Marcar listo para retirar' }
@@ -282,7 +286,7 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
         </div>
 
         <div className="px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] border-t border-slate-100 space-y-2">
-          {stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
+          {hasCaja && stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
             <button onClick={chargeInPos} className="w-full h-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
               <ShoppingCart className="w-4 h-4" /> Cobrar en la caja
             </button>
