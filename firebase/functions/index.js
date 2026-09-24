@@ -612,9 +612,31 @@ async function adminStoresByOwner() {
   return out;
 }
 
+/** Usuarios de Firebase Auth con email (los anónimos de las tiendas y PCs no cuentan). */
+async function listAuthUsersWithEmail() {
+  const out = [];
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    page.users.forEach((u) => {
+      if (!u.email || u.disabled) return;
+      out.push({
+        uid: u.uid,
+        email: u.email.toLowerCase(),
+        name: u.displayName || null,
+        photoUrl: u.photoURL || null,
+        createdAt: u.metadata.creationTime ? new Date(u.metadata.creationTime).toISOString() : null,
+        lastSignInAt: u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString() : null,
+      });
+    });
+    pageToken = page.pageToken;
+  } while (pageToken && out.length < 20000);
+  return out;
+}
+
 async function buildAdminOverview() {
   const now = Date.now();
-  const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid, storeByUid] = await Promise.all([
+  const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid, storeByUid, authUsers] = await Promise.all([
     db.collection("ventra_accounts").get(),
     db.collection("ventra_devices").get(),
     db.collectionGroup("payments").get(),
@@ -626,6 +648,10 @@ async function buildAdminOverview() {
     adminStoresByOwner().catch((err) => {
       logger.warn("Ventra admin: sin tiendas online", err.message);
       return {};
+    }),
+    listAuthUsersWithEmail().catch((err) => {
+      logger.warn("Ventra admin: sin lista de usuarios", err.message);
+      return [];
     }),
   ]);
 
@@ -692,6 +718,13 @@ async function buildAdminOverview() {
     };
   });
 
+  // Registrados (entraron con Google) que todavía no tienen cuenta: no eligieron plan
+  const withAccount = new Set(accountsSnap.docs.map((d) => d.id));
+  const registered = authUsers
+    .filter((u) => !withAccount.has(u.uid))
+    .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
+    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+
   const stateOrder = { GRACE: 0, READ_ONLY: 1, UNPAID: 2, ACTIVE: 3 };
   accounts.sort((x, y) => (stateOrder[x.state] - stateOrder[y.state]) || String(x.email).localeCompare(String(y.email)));
 
@@ -707,6 +740,7 @@ async function buildAdminOverview() {
       monthly: Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([month, amount]) => ({ month, amount })),
     },
     accounts,
+    registered,
   };
 }
 
