@@ -33,6 +33,49 @@ const parseJson = (v: any) => {
 const methodEntries = (b: Record<string, any> | null | undefined) =>
   Object.entries(b || {}).map(([k, v]) => [k, Number(v) || 0] as [string, number]).filter(([, v]) => Math.abs(v) >= 0.01).sort((a, b) => b[1] - a[1]);
 
+/**
+ * Resultado de un turno cerrado (Cierre X), con la misma regla que el Cierre Z:
+ * diferencia total = diferencia de efectivo + (declarado − esperado) de cada medio
+ * electrónico (posnet, Mercado Pago…). Lo declarado en posnet puede estar en el resumen
+ * (arqueo) o en las notas, después de "[METADATA]" (cierre desde la pantalla de ventas).
+ */
+function closingResult(s: any) {
+  const sum = parseJson(s?.closingSummary) || {};
+  const raw = String(s?.closingNotes || '');
+  const at = raw.search(/\[\s*metadata\s*\]/i);
+  const notes = (at >= 0 ? raw.slice(0, at) : raw).trim();
+  let meta: any = {};
+  if (at >= 0) {
+    const json = raw.slice(at).replace(/^\[\s*metadata\s*\]/i, '').trim();
+    meta = parseJson(json) || {};
+  }
+
+  const declared: Record<string, number> = {};
+  const num = (v: any) => (v === undefined || v === null || v === '' || isNaN(Number(v)) ? undefined : Number(v));
+  const fromMeta = meta.posnetDeclarations || {};
+  const clover = num(fromMeta.CLOVER) ?? num(meta.virtualClover);
+  if (clover !== undefined) declared.CLOVER = clover;
+  const mp1 = num(fromMeta.MERCADOPAGO) ?? num(meta.virtualMP1);
+  const mp2 = num(meta.virtualMP2);
+  if (mp1 !== undefined || mp2 !== undefined) declared.MERCADOPAGO = (mp1 || 0) + (mp2 || 0);
+  for (const [k, v] of Object.entries(fromMeta)) if (declared[k] === undefined && num(v) !== undefined) declared[k] = Number(v);
+  // El arqueo posterior guarda lo declarado en el resumen: tiene prioridad
+  for (const [k, v] of Object.entries(sum.posnetDeclarations || {})) if (num(v) !== undefined) declared[k] = Number(v);
+
+  const expected: Record<string, number> = {};
+  for (const [k, v] of Object.entries(sum.paymentBreakdown || {})) if (k !== 'CASH' && k !== 'DEBT') expected[k] = Number(v) || 0;
+  // Si nunca se declaró nada de posnet (cierres viejos), no se inventa una diferencia
+  const hasPosnet = Object.keys(declared).length > 0;
+  const electronic = Array.from(new Set([...Object.keys(expected), ...Object.keys(declared)]))
+    .map((k) => ({ method: k, expected: expected[k] || 0, declared: declared[k] ?? 0 }))
+    .filter((r) => Math.abs(r.expected) >= 0.01 || Math.abs(r.declared) >= 0.01);
+  const posnetDiff = hasPosnet ? electronic.reduce((t, r) => t + (r.declared - r.expected), 0) : 0;
+
+  const counted = s?.closingAmountCounted !== null && s?.closingAmountCounted !== undefined;
+  const cashDiff = counted ? (s.difference ?? ((s.closingAmountCounted ?? 0) - (s.closingAmountExpected ?? 0))) : 0;
+  return { sum, notes, counted, cashDiff, hasPosnet, electronic, posnetDiff, totalDiff: cashDiff + posnetDiff };
+}
+
 const X_PAGE = 30;
 const Z_PAGE = 20;
 
@@ -210,10 +253,9 @@ export default function MobileCashScreen() {
 }
 
 function XRow({ s, onClick }: { s: any; onClick: () => void }) {
-  const counted = s.closingAmountCounted !== null && s.closingAmountCounted !== undefined;
-  const diff = s.difference ?? ((s.closingAmountCounted ?? 0) - (s.closingAmountExpected ?? 0));
+  const { counted, totalDiff: diff, sum } = closingResult(s);
   const ok = counted && Math.abs(diff) < 1;
-  const revenue = parseJson(s.closingSummary)?.totalRevenue;
+  const revenue = sum.totalRevenue;
   return (
     <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
       <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${!counted ? 'bg-amber-50' : ok ? 'bg-emerald-50' : 'bg-red-50'}`}>
@@ -395,11 +437,11 @@ function CloseSheet({ data, onClose, onDone }: { data: { session: any; mode: 'cl
   );
 }
 
-function DiffRow({ diff }: { diff: number }) {
+function DiffRow({ diff, label = 'Diferencia' }: { diff: number; label?: string }) {
   const ok = Math.abs(diff) < 1;
   return (
     <Row
-      label="Diferencia"
+      label={label}
       value={ok ? 'Sin diferencia' : `${diff > 0 ? '+' : '−'}${money(Math.abs(diff))}`}
       tone={ok ? 'text-emerald-600' : diff > 0 ? 'text-amber-600' : 'text-red-600'}
     />
@@ -417,16 +459,13 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 
 /** Detalle de un turno cerrado (Cierre X). */
 function HistorySheet({ session: s, onClose }: { session: any | null; onClose: () => void }) {
-  const sum = s ? parseJson(s.closingSummary) || {} : {};
+  const { sum, notes, counted, cashDiff, hasPosnet, electronic, posnetDiff, totalDiff } = closingResult(s);
   const m = s ? movementTotals(s) : { income: 0, expense: 0, withdrawal: 0 };
   const income = sum.cashIncome ?? m.income;
   const expense = sum.cashExpense ?? m.expense;
   const withdrawal = sum.cashWithdrawal ?? m.withdrawal;
-  const counted = !!s && s.closingAmountCounted !== null && s.closingAmountCounted !== undefined;
-  const diff = s ? (s.difference ?? ((s.closingAmountCounted ?? 0) - (s.closingAmountExpected ?? 0))) : 0;
   const methods = methodEntries(sum.paymentBreakdown);
   const opening = sum.openingAmount ?? s?.openingAmount;
-  const notes = s?.closingNotes ? String(s.closingNotes).split('[METADATA]')[0].trim() : '';
   return (
     <Sheet open={!!s} onClose={onClose} title={s ? `Cierre X · ${s.terminalName}` : ''}>
       {s && (
@@ -460,12 +499,41 @@ function HistorySheet({ session: s, onClose }: { session: any | null; onClose: (
             {counted ? (
               <>
                 <Row label="Se contó" value={money(s.closingAmountCounted)} />
-                <DiffRow diff={diff} />
+                <DiffRow diff={cashDiff} label="Diferencia en efectivo" />
               </>
             ) : (
               <Row label="Se contó" value="Falta arqueo" tone="text-amber-600" />
             )}
           </Block>
+
+          {hasPosnet && electronic.length > 0 && (
+            <Block title="Posnet y otros medios">
+              {electronic.map((r) => (
+                <div key={r.method} className="py-1.5">
+                  <div className="flex items-center justify-between text-[14px]">
+                    <span className="text-slate-600">{METHOD_LABELS[r.method] || r.method}</span>
+                    <span className="font-semibold tabular-nums text-slate-900">{money(r.declared)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[12px] text-slate-500">
+                    <span>Esperado {money(r.expected)}</span>
+                    {Math.abs(r.declared - r.expected) >= 1 && (
+                      <span className={`font-medium tabular-nums ${r.declared > r.expected ? 'text-amber-600' : 'text-red-600'}`}>
+                        {r.declared > r.expected ? 'Sobran' : 'Faltan'} {money(Math.abs(r.declared - r.expected))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <DiffRow diff={posnetDiff} label="Diferencia en posnet" />
+            </Block>
+          )}
+
+          {counted && (
+            <div className={`rounded-2xl px-4 py-3 flex items-center justify-between ${Math.abs(totalDiff) < 1 ? 'bg-emerald-50 text-emerald-800' : totalDiff > 0 ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+              <span className="text-[14px] font-semibold">{Math.abs(totalDiff) < 1 ? 'Sin diferencia' : totalDiff > 0 ? 'Sobran en total' : 'Faltan en total'}</span>
+              <span className="text-[20px] font-bold tabular-nums">{Math.abs(totalDiff) < 1 ? '' : money(Math.abs(totalDiff))}</span>
+            </div>
+          )}
 
           {(s.cashMovements || []).length > 0 && (
             <Block title="Movimientos de caja">
@@ -483,7 +551,7 @@ function HistorySheet({ session: s, onClose }: { session: any | null; onClose: (
             </Block>
           )}
 
-          {notes && <p className="rounded-2xl bg-slate-50 px-4 py-3 text-[13.5px] text-slate-700 whitespace-pre-line">{notes}</p>}
+          {notes && <p className="rounded-2xl bg-slate-50 px-4 py-3 text-[13.5px] text-slate-700 whitespace-pre-line break-words">{notes}</p>}
         </div>
       )}
     </Sheet>

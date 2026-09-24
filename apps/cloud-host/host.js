@@ -253,7 +253,7 @@ function serveStatic(req, res, session) {
 const escHtml = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** Cartel fijo para que quede claro que se está dentro del sistema de un cliente. */
 function supportBanner(session) {
-  return `<div id="ventra-support-bar" style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:#7c2d12;color:#fff;font:600 12px/1.2 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100vw - 32px)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Soporte Ventra · sistema de ${escHtml(session.email || session.uid)}</span><a href="/_ventra/support-exit" style="flex:none;padding:5px 10px;border-radius:999px;background:#fff;color:#7c2d12;text-decoration:none">Salir</a></div>`;
+  return `<div id="ventra-support-bar" style="position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 88px);transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:#7c2d12;color:#fff;font:600 12px/1.2 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100vw - 32px)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Soporte Ventra · sistema de ${escHtml(session.email || session.uid)}</span><a href="/_ventra/support-exit" style="flex:none;padding:5px 10px;border-radius:999px;background:#fff;color:#7c2d12;text-decoration:none">Salir</a></div>`;
 }
 
 /** Página simple para los errores de la entrada de soporte (se abre en una pestaña nueva). */
