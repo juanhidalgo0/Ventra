@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SubscriptionService } from './subscription.service';
 
@@ -24,6 +24,12 @@ export class SubscriptionController {
   /** Sesión de la cuenta para la tienda online. { linked: false } si esta instalación no está vinculada. */
   @Post('store-session')
   async storeSession(@Body() body: { legacyStoreId?: string; legacyIdToken?: string }) {
+    if (!this.subscription.getStatus().features.tienda) {
+      throw new ForbiddenException({
+        code: 'PLAN_NO_TIENDA',
+        message: 'Tu plan Ventra Caja no incluye la tienda online. Pasate al plan Full en ventra.store para usarla.',
+      });
+    }
     try {
       const session = await this.subscription.storeSession({
         legacyStoreId: typeof body?.legacyStoreId === 'string' ? body.legacyStoreId : undefined,

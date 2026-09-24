@@ -60,10 +60,25 @@ interface StoredSubscription {
   pending?: { code: string; deviceId: string; deviceSecret: string; expiresAt: string };
 }
 
+/**
+ * Qué incluye el plan. Caja = sistema de ventas; Tienda = tienda online; Full = las dos.
+ * Sin plan conocido (PCs sin vincular, instalaciones viejas, cuentas sin plan) se habilita
+ * todo, igual que antes de que existieran los planes.
+ */
+export interface PlanFeatures { caja: boolean; tienda: boolean }
+
+export function planFeatures(plan: string | null | undefined): PlanFeatures {
+  if (plan === 'caja') return { caja: true, tienda: false };
+  if (plan === 'tienda') return { caja: false, tienda: true };
+  return { caja: true, tienda: true };
+}
+
 export interface SubscriptionStatus {
   state: SubscriptionState;
   enforced: boolean;
   email?: string | null;
+  plan?: string | null;
+  features: PlanFeatures;
   planName?: string | null;
   paidUntil?: string | null;
   graceEndsAt?: string | null;
@@ -191,13 +206,14 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       ? { code: this.stored.pending.code, url: `${ACCOUNT_URL}?code=${this.stored.pending.code}`, expiresAt: this.stored.pending.expiresAt }
       : null;
 
-    if (this.exempt) return { state: 'EXEMPT', enforced: false, pending };
+    const all = planFeatures(null);
+    if (this.exempt) return { state: 'EXEMPT', enforced: false, features: all, pending };
 
     const license = this.stored.license && this.stored.signature ? this.verify(this.stored.license, this.stored.signature) : null;
     if (!license || license.deviceId !== this.stored.deviceId) {
       // Instalación nueva: hay que vincularla con la cuenta que pagó el plan
-      if (this.stored.install?.kind === 'new') return { state: 'NEEDS_LINK', enforced: true, pending };
-      return { state: 'UNLINKED', enforced: false, pending };
+      if (this.stored.install?.kind === 'new') return { state: 'NEEDS_LINK', enforced: true, features: all, pending };
+      return { state: 'UNLINKED', enforced: false, features: all, pending };
     }
 
     const linkedAt = new Date(this.stored.linkedAt || license.issuedAt);
@@ -206,6 +222,9 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       state,
       enforced: true,
       email: license.email,
+      plan: license.plan,
+      // La licencia viene firmada por Ventra: el plan no se puede cambiar desde la PC
+      features: planFeatures(license.plan),
       planName: license.planName,
       paidUntil: license.paidUntil,
       graceEndsAt: graceEnd.toISOString(),

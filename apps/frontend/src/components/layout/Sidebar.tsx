@@ -33,6 +33,7 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo as BrandLogo } from '../common/MangoLogo';
 import { hasFeature } from '../../stores/businessStore';
+import { usePlanStore, planAllows } from '../../stores/planStore';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -153,6 +154,15 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
     }
   ];
 
+  // Solo lo que incluye el plan (Caja / Tienda / Full)
+  const planFeatures = usePlanStore((s) => s.features);
+  const visibleGroups = menuGroups.map((group) => ({
+    ...group,
+    items: group.items
+      .map((item: any) => (item.subItems ? { ...item, subItems: item.subItems.filter((sub: any) => planAllows(planFeatures, sub.path)) } : item))
+      .filter((item: any) => planAllows(planFeatures, item.path) || (item.subItems && item.subItems.length > 0)),
+  }));
+
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -186,25 +196,25 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         {/* Main Action Buttons */}
         <div className="space-y-1.5">
           <button
-            onClick={() => { navigate('/pos'); onCloseMobile?.(); }}
+            onClick={() => { navigate(planFeatures.caja ? '/pos' : '/online-store'); onCloseMobile?.(); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] bg-rose-600 text-white hover:bg-rose-700 shadow-[0_6px_16px_-6px_rgba(14,110,82,0.55)] cursor-pointer"
           >
-            <ShoppingBag className="w-[18px] h-[18px] shrink-0" />
-            {!isCollapsed && <span>Punto de Venta</span>}
+            {planFeatures.caja ? <ShoppingBag className="w-[18px] h-[18px] shrink-0" /> : <Globe className="w-[18px] h-[18px] shrink-0" />}
+            {!isCollapsed && <span>{planFeatures.caja ? 'Punto de Venta' : 'Tienda online'}</span>}
           </button>
 
-          <button
+          {planFeatures.caja && <button
             onClick={() => handleSidebarClick('/dashboard')}
             className={`relative w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] cursor-pointer ${isActive('/dashboard') ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
           >
             {isActive('/dashboard') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-rose-600 rounded-r-full" />}
             <LayoutDashboard className="w-[18px] h-[18px] shrink-0" />
             {!isCollapsed && <span>Dashboard</span>}
-          </button>
+          </button>}
         </div>
 
         {/* Dynamic Groups */}
-        {menuGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.title} className="space-y-0.5">
             {!isCollapsed && (
               <div className="flex items-center gap-2.5 px-2.5 mb-2.5 mt-5">

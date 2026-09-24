@@ -10,6 +10,7 @@ import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
 import PushCard from './PushCard';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
+import { usePlanStore, planAllows } from '../../stores/planStore';
 
 interface Tile { path: string; label: string; hint: string; icon: any; tint: string }
 
@@ -48,6 +49,11 @@ export default function MobileMoreScreen() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [owed, setOwed] = useState<number | null>(null);
+  const planFeatures = usePlanStore((s) => s.features);
+  // Solo las secciones que incluye el plan (Caja / Tienda / Full)
+  const sections = SECTIONS
+    .map((s) => ({ ...s, items: s.items.filter((i) => planAllows(planFeatures, i.path)) }))
+    .filter((s) => s.items.length > 0);
 
   // Un dato vivo en el encabezado: cuánto te deben por fiado
   useEffect(() => {
@@ -73,7 +79,7 @@ export default function MobileMoreScreen() {
             <p className="text-[12.5px] text-rose-100 truncate">{store} · Dueño</p>
           </div>
         </div>
-        {owed !== null && owed > 0 && (
+        {planFeatures.caja && owed !== null && owed > 0 && (
           <button onClick={() => navigate('/clients')} className="mt-4 w-full flex items-center justify-between rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 px-4 py-3 text-left active:bg-white/15">
             <span>
               <span className="block text-[12px] text-rose-100">Te deben por fiado</span>
@@ -98,7 +104,7 @@ export default function MobileMoreScreen() {
             <ChevronRight className="w-4 h-4 text-slate-300" />
           </button>
         )}
-        {SECTIONS.map((section) => (
+        {sections.map((section) => (
           <section key={section.title}>
             <p className="text-[12.5px] font-semibold text-slate-500 px-1 mb-2">{section.title}</p>
             <div className="grid grid-cols-2 gap-3">

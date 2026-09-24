@@ -18,6 +18,7 @@ import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useSetupProgress } from '../../utils/setupProgress';
 import { Rocket, ArrowRight } from 'lucide-react';
 import MobileShell from '../mobile/MobileShell';
+import PlanGate from '../subscription/PlanGate';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
 
@@ -312,7 +313,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell>{children}</MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate></MobileShell>;
   }
 
   return (
@@ -445,7 +446,7 @@ export default function MainLayout({ children }: Props) {
             </motion.div>
           )}
           <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
-            {children}
+            <PlanGate mobile={false}>{children}</PlanGate>
           </div>
         </main>
       </div>
