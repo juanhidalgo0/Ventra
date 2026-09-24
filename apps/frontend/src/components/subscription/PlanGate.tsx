@@ -19,7 +19,7 @@ function openUpgrade() {
  */
 export default function PlanGate({ mobile, children }: { mobile: boolean; children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const { features, planName, load } = usePlanStore();
+  const { features, planName, load, loaded } = usePlanStore();
 
   useEffect(() => {
     load();
@@ -27,6 +27,12 @@ export default function PlanGate({ mobile, children }: { mobile: boolean; childr
     const t = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Hasta saber el plan, las pantallas de un plan no se montan: si no, el POS alcanzaba a
+  // abrirse (y a lanzar su recorrido de bienvenida) antes de llevar a la tienda.
+  if (!loaded && planAreaOf(pathname)) {
+    return <div className="flex-1 flex items-center justify-center"><span className="w-7 h-7 border-[3px] border-rose-600 border-t-transparent rounded-full animate-spin" /></div>;
+  }
 
   if (planAllows(features, pathname)) return <>{children}</>;
 

@@ -19,6 +19,7 @@ import { useSetupProgress } from '../../utils/setupProgress';
 import { Rocket, ArrowRight } from 'lucide-react';
 import MobileShell from '../mobile/MobileShell';
 import PlanGate from '../subscription/PlanGate';
+import { usePlanStore } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
 
@@ -209,6 +210,8 @@ export default function MainLayout({ children }: Props) {
   const isAdminUser = user?.role === 'ADMIN';
   // Se recalcula al navegar, así refleja lo que se acaba de configurar.
   const setupPct = useSetupProgress(isAdminUser, location.pathname);
+  // Los pasos de configuración son de la caja: con el plan Tienda no aplican
+  const planHasCaja = usePlanStore((s) => s.features.caja);
 
   // Dueño en el celular: la app móvil arranca en Inicio (una vez por sesión; después "Vender" sí abre el POS)
   const ownerMobile = useOwnerMobile();
@@ -387,7 +390,7 @@ export default function MainLayout({ children }: Props) {
                 <span>VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</span>
               </div>
             )}
-            {isAdminUser && setupPct !== null && setupPct < 100 && (
+            {isAdminUser && planHasCaja && setupPct !== null && setupPct < 100 && (
               <button
                 onClick={() => navigate('/settings')}
                 title="Terminá de configurar tu sistema"

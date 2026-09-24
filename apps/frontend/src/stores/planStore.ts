@@ -40,7 +40,7 @@ export const usePlanStore = create<PlanState>((set) => ({
 /** Secciones que solo incluye el plan Caja (sistema de ventas). */
 const CAJA_PATHS = ['/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard', '/fiscal', '/earnings-division', '/quotes', '/inicio'];
 /** Secciones que solo incluye el plan Tienda (tienda online). */
-const TIENDA_PATHS = ['/online-store', '/pedidos'];
+const TIENDA_PATHS = ['/tienda', '/online-store', '/pedidos'];
 
 const under = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + '/'));
 
@@ -59,5 +59,5 @@ export function planAllows(features: PlanFeatures, path: string) {
 /** Pantalla de inicio según el plan: sin caja, la tienda online. */
 export function planHome(features: PlanFeatures, mobile: boolean) {
   if (features.caja) return mobile ? '/inicio' : '/pos';
-  return '/online-store';
+  return '/tienda';
 }

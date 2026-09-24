@@ -98,6 +98,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const ordersVisible = useOrdersVisible();
   const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder).length);
 
+  const planFeatures = usePlanStore((s) => s.features);
+
   const menuGroups = [
     {
       title: 'GENERAL',
@@ -130,7 +132,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Proveedores', icon: Truck, path: '/suppliers' },
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
-        ...(ordersVisible && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
+        ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 
@@ -155,7 +157,6 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   ];
 
   // Solo lo que incluye el plan (Caja / Tienda / Full)
-  const planFeatures = usePlanStore((s) => s.features);
   const visibleGroups = menuGroups.map((group) => ({
     ...group,
     items: group.items
@@ -174,7 +175,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           {!isCollapsed && (
             <div className="min-w-0 leading-none">
               <span className="block font-bold text-[16px] text-slate-900 tracking-tight truncate">Ventra</span>
-              <span className="block text-[10px] font-semibold text-slate-400 tracking-[0.14em] mt-1">SISTEMA DE VENTAS</span>
+              <span className="block text-[10px] font-semibold text-slate-400 tracking-[0.14em] mt-1">{planFeatures.caja ? 'SISTEMA DE VENTAS' : 'TIENDA ONLINE'}</span>
             </div>
           )}
         </div>
@@ -196,11 +197,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         {/* Main Action Buttons */}
         <div className="space-y-1.5">
           <button
-            onClick={() => { navigate(planFeatures.caja ? '/pos' : '/online-store'); onCloseMobile?.(); }}
+            onClick={() => { navigate(planFeatures.caja ? '/pos' : '/tienda'); onCloseMobile?.(); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] bg-rose-600 text-white hover:bg-rose-700 shadow-[0_6px_16px_-6px_rgba(14,110,82,0.55)] cursor-pointer"
           >
             {planFeatures.caja ? <ShoppingBag className="w-[18px] h-[18px] shrink-0" /> : <Globe className="w-[18px] h-[18px] shrink-0" />}
-            {!isCollapsed && <span>{planFeatures.caja ? 'Punto de Venta' : 'Tienda online'}</span>}
+            {!isCollapsed && <span>{planFeatures.caja ? 'Punto de Venta' : 'Mi tienda'}</span>}
           </button>
 
           {planFeatures.caja && <button

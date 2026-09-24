@@ -36,7 +36,7 @@ const SCREEN_TITLES: Record<string, string> = {
 
 /** Plan Tienda (sin sistema de ventas): la tienda y sus pedidos reemplazan a Inicio, Vender y Movimientos. */
 const TIENDA_TABS = [
-  { path: '/online-store', label: 'Tienda', icon: Store },
+  { path: '/tienda', label: 'Inicio', icon: Store },
   { path: '/pedidos', label: 'Pedidos', icon: ClipboardList },
   { path: '/products', label: 'Productos', icon: Package },
   { path: '/mas', label: 'Más', icon: LayoutGrid },
