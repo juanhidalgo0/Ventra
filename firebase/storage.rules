@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Storage guarda:
+//  - tenants/<uid>/products: fotos de la copia en la nube. Solo la función ventraSync
+//    lee y escribe (con permisos de administrador, que no pasan por estas reglas).
+//  - ventra_stores/<storeId>/...: fotos públicas de la tienda online. Las ve cualquiera;
+//    solo las sube o borra la sesión dueña de esa tienda (la misma de Firestore).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /ventra_stores/{storeId}/{allPaths=**} {
+      function isStoreOwner() {
+        return request.auth != null
+          && firestore.get(/databases/(default)/documents/ventra_stores/$(storeId)).data.get('ownerUid', null) == request.auth.uid;
+      }
+      allow read: if true;
+      allow create, update: if isStoreOwner()
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isStoreOwner();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

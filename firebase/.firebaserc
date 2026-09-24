@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "ventra-9cba5"
+  },
+  "targets": {
+    "ventra-9cba5": {
+      "hosting": {
+        "web": ["ventra-9cba5"],
+        "tienda": ["ventra-9cba5-tienda"]
+      }
+    }
+  }
+}

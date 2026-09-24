@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#08362A">
+<title>Mi cuenta — Ventra</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine-900:#06261D; --pine-850:#08362A; --pine-800:#0A4736; --pine:#167160; --mint:#34AC7E; --mint-100:#CDEEE0; --mint-50:#EAF7F1;
+    --cream:#F6F2EC; --paper:#FBF9F5; --sand:#EFE9DF; --line:#E4DDD1;
+    --ink:#0F1F1A; --ink-2:#56655F; --ink-3:#8A958F;
+    --on-dark:#F6F2EC; --on-dark-2:rgba(246,242,236,.66); --line-dark:rgba(246,242,236,.12);
+    --amber:#A15C07; --amber-bg:#FDF3E1; --amber-line:#F3D9A8;
+    --red:#B4412B; --red-bg:#FBECE8; --red-line:#F1C7BD;
+    --sans:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+    --shadow-sm:0 1px 2px rgba(15,31,26,.06), 0 2px 8px rgba(15,31,26,.04);
+    --shadow-lg:0 30px 80px -30px rgba(3,20,15,.55);
+    --ease:cubic-bezier(.2,.8,.2,1);
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; font-family:var(--sans); color:var(--ink); font-size:14.5px; line-height:1.55;
+    background:var(--pine-850);
+    background-image:radial-gradient(800px 520px at 75% -10%, rgba(52,172,126,.32), transparent 70%);
+    -webkit-font-smoothing:antialiased; font-feature-settings:'cv11','ss03';
+  }
+  a{ color:inherit; }
+  button,input{ font:inherit; color:inherit; }
+  button{ cursor:pointer; background:none; border:0; }
+  :focus-visible{ outline:2px solid var(--mint); outline-offset:2px; border-radius:6px; }
+  .hidden{ display:none !important; }
+  .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  .nav{ max-width:760px; margin:0 auto; padding:22px 20px; display:flex; align-items:center; gap:12px; color:var(--on-dark); }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:17px; letter-spacing:-.02em; text-decoration:none; }
+  .brand img{ width:32px; height:32px; border-radius:9px; }
+  .spacer{ flex:1; }
+  .who{ font-size:13px; color:var(--on-dark-2); }
+  .nav-btn{ height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--line-dark); color:var(--on-dark); font-size:13px; font-weight:600; }
+  .nav-btn:hover{ background:rgba(246,242,236,.08); }
+  a.nav-btn{ display:inline-flex; align-items:center; text-decoration:none; }
+
+  main{ max-width:760px; margin:0 auto; padding:8px 20px 64px; display:flex; flex-direction:column; gap:16px; }
+  .hero{ color:var(--on-dark); padding:8px 4px 10px; }
+  .hero h1{ margin:0; font-size:32px; font-weight:700; letter-spacing:-.04em; line-height:1.1; }
+  .hero p{ margin:8px 0 0; color:var(--on-dark-2); font-size:15px; }
+
+  .card{ background:var(--paper); border:1px solid var(--line); border-radius:24px; padding:26px; box-shadow:var(--shadow-lg); }
+  .card h2{ margin:0; font-size:16px; font-weight:700; letter-spacing:-.02em; }
+  .card .lead{ margin:4px 0 0; color:var(--ink-2); font-size:13.5px; }
+
+  .plan-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .plan-title{ font-size:22px; font-weight:700; letter-spacing:-.03em; margin:0; }
+  .pill{ display:inline-flex; align-items:center; gap:7px; height:28px; padding:0 12px; border-radius:999px; font-size:12.5px; font-weight:700; border:1px solid transparent; white-space:nowrap; }
+  .pill::before{ content:''; width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .pill.ACTIVE{ background:var(--mint-50); color:var(--pine); border-color:var(--mint-100); }
+  .pill.GRACE{ background:var(--amber-bg); color:var(--amber); border-color:var(--amber-line); }
+  .pill.READ_ONLY{ background:var(--red-bg); color:var(--red); border-color:var(--red-line); }
+  .pill.UNPAID{ background:var(--sand); color:var(--ink-2); border-color:var(--line); }
+  .facts{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:18px; }
+  .fact{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:13px 15px; }
+  .fact dt{ font-size:12px; color:var(--ink-3); }
+  .fact dd{ margin:4px 0 0; font-weight:700; font-size:15px; }
+  .notice{ margin-top:14px; border-radius:14px; padding:12px 14px; font-size:13.5px; font-weight:500; }
+  .notice.GRACE{ background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-line); }
+  .notice.READ_ONLY{ background:var(--red-bg); color:var(--red); border:1px solid var(--red-line); }
+  .notice.UNPAID{ background:var(--sand); color:var(--ink-2); border:1px solid var(--line); }
+  .notice.THANKS{ background:var(--mint-50); color:var(--pine); border:1px solid var(--mint-100); }
+
+  .btn{ height:44px; padding:0 20px; border-radius:999px; font-size:14px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--pine-850); color:var(--on-dark); text-decoration:none; border:1px solid var(--pine-850); transition:background .15s var(--ease); white-space:nowrap; }
+  .btn:hover{ background:var(--pine-800); }
+  .btn.ghost{ background:#fff; color:var(--ink); border-color:var(--line); }
+  .btn.ghost:hover{ border-color:var(--ink-3); background:#fff; }
+  .btn:disabled{ opacity:.6; cursor:default; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+
+  .steps{ margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+  .steps li{ display:flex; gap:12px; align-items:flex-start; font-size:13.5px; color:var(--ink-2); }
+  .steps b{ color:var(--ink); }
+  .step-n{ width:24px; height:24px; border-radius:8px; background:var(--mint-50); color:var(--pine); font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+  .code-row{ display:flex; gap:10px; margin-top:16px; }
+  .code-row input{ flex:1; min-width:0; height:48px; border-radius:14px; border:1px solid var(--line); background:#fff; text-align:center;
+    font-family:var(--mono); font-weight:600; font-size:19px; letter-spacing:.16em; text-transform:uppercase; }
+  .code-row input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
+  .msg{ margin-top:10px; font-size:13px; font-weight:600; min-height:20px; }
+  .msg.ok{ color:var(--pine); } .msg.err{ color:var(--red); }
+  .dl-meta{ margin-top:10px; font-size:12.5px; color:var(--ink-3); }
+
+  .gate{ text-align:center; padding:40px 26px; }
+  .gate img{ width:56px; height:56px; border-radius:16px; margin:0 auto 16px; display:block; }
+  .gate h2{ font-size:20px; }
+  .gate p{ color:var(--ink-2); margin:6px auto 20px; max-width:340px; }
+  .skeleton{ height:140px; border-radius:16px; background:linear-gradient(90deg,var(--sand),#F7F4EE,var(--sand)); background-size:200% 100%; animation:sk 1.2s infinite; }
+  @keyframes sk{ to{ background-position:-200% 0; } }
+
+  @media (max-width:640px){
+    .hero h1{ font-size:26px; }
+    .facts{ grid-template-columns:1fr 1fr; }
+    .card{ padding:20px; }
+    .who{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/" class="brand"><img src="/ventra-logo.png" alt=""> Ventra</a>
+    <div class="spacer"></div>
+    <a class="nav-btn nav-back" href="/">&#8592; Inicio</a>
+    <span class="who" id="who"></span>
+    <button class="nav-btn hidden" id="logoutBtn">Salir</button>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <h1 id="heroTitle">Mi cuenta</h1>
+      <p id="heroText">Tu plan de Ventra, la descarga de la app y tus PCs.</p>
+    </div>
+
+    <!-- Sin sesión -->
+    <section class="card gate hidden" id="gateCard">
+      <img src="/ventra-logo.png" alt="">
+      <h2>Ingresá a tu cuenta</h2>
+      <p>Usá la misma cuenta de Google con la que te suscribiste a Ventra.</p>
+      <button class="btn" id="loginBtn">Iniciar sesión con Google</button>
+    </section>
+
+    <!-- Cargando -->
+    <section class="card hidden" id="loadingCard"><div class="skeleton"></div></section>
+
+    <!-- Sin plan -->
+    <section class="card gate hidden" id="noPlanCard">
+      <img src="/ventra-logo.png" alt="">
+      <h2>Todavía no tenés un plan</h2>
+      <p>Elegí un plan para usar Ventra en tu negocio. Podés probar la demo gratis antes.</p>
+      <a class="btn" href="/#planes">Ver planes</a>
+    </section>
+
+    <!-- Plan -->
+    <section class="card hidden" id="planCard">
+      <div class="plan-head">
+        <div>
+          <div class="lead" style="margin:0 0 2px">Tu plan</div>
+          <h2 class="plan-title" id="planName">—</h2>
+        </div>
+        <span class="pill" id="statePill"></span>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt id="untilLabel">Paga hasta</dt><dd class="num" id="paidUntil">—</dd></div>
+        <div class="fact"><dt id="daysLabel">Días restantes</dt><dd class="num" id="daysLeft">—</dd></div>
+        <div class="fact"><dt>Precio</dt><dd class="num" id="price">—</dd></div>
+      </dl>
+      <div class="notice hidden" id="notice"></div>
+      <div class="row">
+        <a class="btn" id="openBtn" href="https://web.ventra.store">Abrir mi Ventra</a>
+        <a class="btn ghost" id="panelBtn" href="/panel">Ver mis números</a>
+        <a class="btn ghost hidden" id="renewBtn" href="/#planes">Renovar suscripción</a>
+      </div>
+      <div class="hidden" id="renewRow"></div>
+    </section>
+
+    <!-- Descarga -->
+    <section class="card hidden" id="downloadCard">
+      <h2>Descargá Ventra</h2>
+      <p class="lead">La app para Windows. Se actualiza sola cada vez que publicamos una versión nueva.</p>
+      <div class="row">
+        <a class="btn" id="downloadBtn" href="https://github.com/juanhidalgo0/Ventra/releases/latest" download>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Descargar para Windows <span id="dlVersion" style="opacity:.75;font-weight:500"></span>
+        </a>
+      </div>
+      <div class="dl-meta" id="dlMeta">Windows 10 u 11 · 64 bits</div>
+    </section>
+
+    <!-- Vincular -->
+    <section class="card hidden" id="linkCard">
+      <h2>Vincular una PC</h2>
+      <ol class="steps">
+        <li><span class="step-n">1</span><span>Abrí Ventra en la PC y entrá a <b>Configuración → Suscripción</b>.</span></li>
+        <li><span class="step-n">2</span><span>Tocá <b>Vincular esta PC</b>: aparece un código de 8 caracteres.</span></li>
+        <li><span class="step-n">3</span><span>Escribilo acá. La app se activa sola en unos segundos.</span></li>
+      </ol>
+      <div class="code-row">
+        <input id="codeInput" maxlength="9" placeholder="K7P4-QX9M" autocomplete="off" spellcheck="false" aria-label="Código de vinculación">
+        <button class="btn" id="linkBtn">Vincular</button>
+      </div>
+      <div class="msg" id="linkMsg"></div>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script>
+  (function(){
+    firebase.initializeApp({
+      apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
+      // En ventra.store (dominio propio) el login de Google muestra ventra.store;
+      // en la URL técnica de Firebase usa el dominio por defecto del proyecto.
+      authDomain: /(^|\.)ventra\.store$/.test(location.hostname) ? location.hostname : "ventra-9cba5.firebaseapp.com",
+      projectId: "ventra-9cba5",
+      storageBucket: "ventra-9cba5.firebasestorage.app",
+      messagingSenderId: "23136382753",
+      appId: "1:23136382753:web:5d2f4115a77a607435d860"
+    });
+
+    var LINK_CONFIRM_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/ventraLinkConfirm";
+    var GRACE_DAYS = 7, DAY = 864e5;
+    var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+    var STATE_LABEL = { ACTIVE:'Activa', GRACE:'En período de gracia', READ_ONLY:'Vencida · solo lectura', UNPAID:'Esperando el pago' };
+
+    var $ = function(id){ return document.getElementById(id); };
+    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','planCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
+    var fdate = function(d){ return d.toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' }); };
+    var money = function(n){ return '$ ' + Number(n).toLocaleString('es-AR'); };
+    var params = new URLSearchParams(location.search);
+    var fromCheckout = params.has('preapproval_id') || params.has('status');
+
+    // Mismas reglas que la app: vigente → gracia de 7 días → solo lectura
+    function stateOf(paidUntil){
+      if (!paidUntil) return { state:'UNPAID', days:null };
+      var now = Date.now(), until = paidUntil.getTime(), graceEnd = until + GRACE_DAYS * DAY;
+      if (now <= until) return { state:'ACTIVE', days:Math.ceil((until - now) / DAY) };
+      if (now <= graceEnd) return { state:'GRACE', days:Math.ceil((graceEnd - now) / DAY) };
+      return { state:'READ_ONLY', days:0 };
+    }
+
+    function renderAccount(data){
+      var plan = PLANS[data.plan] || {};
+      // Plan Tienda: se usa desde web.ventra.store (no hay app de Windows ni PCs que vincular)
+      var storeOnly = data.plan === 'tienda';
+      $('openBtn').textContent = storeOnly ? 'Abrir mi tienda' : 'Abrir mi Ventra';
+      $('panelBtn').classList.toggle('hidden', storeOnly);
+      var paidUntil = data.paidUntil && data.paidUntil.toDate ? data.paidUntil.toDate() : null;
+      var s = stateOf(paidUntil);
+
+      $('planName').textContent = data.planName || plan.name || 'Ventra';
+      $('statePill').className = 'pill ' + s.state; $('statePill').textContent = STATE_LABEL[s.state];
+      $('price').textContent = plan.amount ? money(plan.amount) + ' / mes' : '—';
+      $('paidUntil').textContent = paidUntil ? fdate(paidUntil) : 'Pendiente';
+      $('untilLabel').textContent = s.state === 'ACTIVE' || s.state === 'UNPAID' ? 'Paga hasta' : 'Venció el';
+      $('daysLabel').textContent = s.state === 'GRACE' ? 'Días de gracia' : 'Días restantes';
+      $('daysLeft').textContent = s.days == null ? '—' : String(s.days);
+
+      var notice = $('notice'), text = '';
+      if (s.state === 'GRACE') text = 'Tu suscripción venció. Ventra sigue funcionando ' + (s.days === 1 ? '1 día más' : s.days + ' días más') + '. Los días de gracia que uses se descuentan del próximo mes.';
+      else if (s.state === 'READ_ONLY') text = 'Terminaron los días de gracia: Ventra está en modo solo lectura y no permite vender. Renová para volver a usarlo normalmente.';
+      else if (s.state === 'UNPAID') text = fromCheckout ? '¡Gracias por suscribirte! Estamos esperando la confirmación de Mercado Pago; puede tardar unos minutos.' : 'Todavía no se acreditó el primer pago de tu suscripción.';
+      else if (fromCheckout) text = storeOnly
+        ? '¡Gracias por suscribirte! Tu tienda ya está activa: tocá "Abrir mi tienda" para armarla. No hace falta instalar nada.'
+        : '¡Gracias por suscribirte! Tu cuenta ya está activa: descargá la app y vinculá tu PC.';
+      notice.className = 'notice ' + (fromCheckout && (s.state === 'ACTIVE' || s.state === 'UNPAID') ? 'THANKS' : s.state);
+      notice.textContent = text; notice.classList.toggle('hidden', !text);
+      $('renewBtn').classList.toggle('hidden', !(s.state === 'GRACE' || s.state === 'READ_ONLY'));
+
+      $('heroTitle').textContent = fromCheckout ? '¡Bienvenido a Ventra!' : 'Mi cuenta';
+      show(storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']);
+    }
+
+    // Descarga directa del instalador. La versión la registra la compilación en la nube
+    // (ventra_desktop/latest_version) cada vez que publica: así no dependemos de la API de
+    // GitHub, que corta después de 60 consultas por hora.
+    var setDownload = function(v){
+      if (!/^\d+\.\d+\.\d+$/.test(v)) return;
+      $('downloadBtn').href = 'https://github.com/juanhidalgo0/Ventra/releases/download/v' + v + '/Ventra_' + v + '_x64-setup.exe';
+      $('downloadBtn').removeAttribute('target');
+      $('dlVersion').textContent = 'v' + v;
+      $('dlMeta').textContent = 'Versión ' + v + ' · Windows 10 u 11, 64 bits';
+    };
+    firebase.firestore().collection('ventra_desktop').doc('latest_version').get()
+      .then(function(doc){ if (doc.exists) setDownload(String(doc.data().version || '')); })
+      .catch(function(){});
+
+    // Vincular PC
+    var codeInput = $('codeInput'), linkMsg = $('linkMsg');
+    if (params.get('code')) codeInput.value = params.get('code').toUpperCase();
+    function msg(text, ok){ linkMsg.textContent = text; linkMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+    codeInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') $('linkBtn').click(); });
+    $('linkBtn').onclick = function(){
+      var user = firebase.auth().currentUser, code = codeInput.value.trim(), btn = this;
+      if (!user) return msg('Iniciá sesión con Google primero.', false);
+      if (!code) return msg('Ingresá el código que muestra la app.', false);
+      btn.disabled = true; msg('Vinculando…', true);
+      user.getIdToken().then(function(token){
+        return fetch(LINK_CONFIRM_URL, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body:JSON.stringify({ code:code }) });
+      }).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(res){
+          if (res.ok) { msg('¡Listo! ' + (res.d.deviceName || 'La PC') + ' quedó vinculada. Volvé a Ventra: se activa en unos segundos.', true); codeInput.value = ''; }
+          else msg(res.d.error || 'No se pudo vincular.', false);
+        })
+        .catch(function(){ msg('Sin conexión. Probá de nuevo.', false); })
+        .then(function(){ btn.disabled = false; });
+    };
+
+    // Sesión
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt:'select_account' });
+    $('loginBtn').onclick = function(){ firebase.auth().signInWithPopup(provider).catch(function(){ firebase.auth().signInWithRedirect(provider); }); };
+    $('logoutBtn').onclick = function(){ firebase.auth().signOut(); };
+
+    show(['loadingCard']);
+    // "Abrir mi Ventra": si ya entraste con Google acá, web.ventra.store te recibe con esa
+    // misma sesión (el token viaja en un formulario, nunca en la URL). Sin sesión, el link
+    // funciona normal y web.ventra.store pide entrar.
+    document.addEventListener('click', function(e){
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="https://web.ventra.store"]') : null;
+      var user = firebase.auth().currentUser;
+      if (!a || !user || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      var target = '_self';
+      if (a.target === '_blank') { target = 'ventra_web_' + Date.now(); window.open('about:blank', target); }
+      user.getIdToken().then(function(token){
+        var f = document.createElement('form');
+        f.method = 'POST'; f.action = 'https://web.ventra.store/_ventra/handoff'; f.target = target; f.style.display = 'none';
+        var i = document.createElement('input'); i.type = 'hidden'; i.name = 'idToken'; i.value = token;
+        f.appendChild(i); document.body.appendChild(f); f.submit(); f.remove();
+      }).catch(function(){ window.open(a.href, target); });
+    });
+
+    firebase.auth().onAuthStateChanged(function(user){
+      $('who').textContent = user ? user.email : '';
+      $('logoutBtn').classList.toggle('hidden', !user);
+      if (!user) return show(['gateCard']);
+      show(['loadingCard']);
+      firebase.firestore().collection('ventra_accounts').doc(user.uid).get().then(function(doc){
+        if (!doc.exists) return show(['noPlanCard', 'downloadCard']);
+        renderAccount(doc.data());
+      }).catch(function(){ show(['noPlanCard', 'downloadCard']); });
+    });
+  })();
+  </script>
+</body>
+</html>

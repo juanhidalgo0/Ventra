@@ -1,0 +1,99 @@
+rules_version = '2';
+
+// Reglas de Firestore del proyecto de Ventra (ventra-9cba5).
+// Todo lo que no está permitido explícitamente acá queda denegado.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ── Aviso de versión nueva del POS ──────────────────────────────
+    // Lectura pública; solo escribe la función publishDesktopVersion (admin).
+    match /ventra_desktop/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Cuentas / suscripciones (landing + cuenta.html) ─────────────
+    // Cada usuario lee solo su cuenta; solo las funciones escriben.
+    match /ventra_accounts/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ── Tiendas online ──────────────────────────────────────────────
+    // ownerUid = sesión (anónima) del POS dueño de la tienda.
+    // claimed  = la tienda ya tiene dueño y es visible públicamente.
+    // Avisos al celular: cada cuenta registra sus celulares y elige qué avisos recibir
+    match /ventra_push/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+      match /tokens/{tokenId} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    match /ventra_stores/{storeId} {
+      function isOwner() {
+        return signedIn() && resource.data.get('ownerUid', null) == request.auth.uid;
+      }
+      function keepsOwnerAs(uid) {
+        return request.resource.data.ownerUid == uid && request.resource.data.claimed == true;
+      }
+
+      // Por ID: se puede leer (hace falta conocer el ID). Listados: solo tiendas
+      // reclamadas, así las migradas sin dueño no quedan expuestas a que las reclame otro.
+      allow get: if true;
+      allow list: if resource.data.claimed == true;
+
+      allow create: if signedIn() && keepsOwnerAs(request.auth.uid);
+      // La tienda migrada sin dueño la reclama la primera sesión que la edita;
+      // después solo su dueño puede tocarla.
+      allow update: if signedIn() && keepsOwnerAs(request.auth.uid)
+        && (isOwner() || resource.data.get('ownerUid', null) == null);
+      allow delete: if isOwner();
+
+      function storeOwner() {
+        return signedIn()
+          && get(/databases/$(database)/documents/ventra_stores/$(storeId)).data.get('ownerUid', null) == request.auth.uid;
+      }
+
+      // Celulares del dueño que reciben avisos de pedidos nuevos
+      match /pushTokens/{tokenId} {
+        allow read, write: if storeOwner();
+      }
+
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if storeOwner();
+      }
+
+      match /orders/{orderId} {
+        // Cualquier cliente puede hacer un pedido, con formato válido.
+        allow create: if validNewOrder();
+        // Solo el dueño los ve y los marca como sincronizados.
+        allow read, update, delete: if storeOwner();
+
+        function validNewOrder() {
+          let o = request.resource.data;
+          return o.keys().hasOnly(['items', 'total', 'customerName', 'customerPhone', 'customerNote', 'status', 'syncedLocal', 'createdAt',
+                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost'])
+            && (!('orderCode' in o) || (o.orderCode is string && o.orderCode.size() <= 12))
+            && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY'])
+            && (!('address' in o) || (o.address is string && o.address.size() <= 300))
+            && (!('paymentMethod' in o) || (o.paymentMethod is string && o.paymentMethod.size() <= 60))
+            && (!('deliveryCost' in o) || (o.deliveryCost is number && o.deliveryCost >= 0))
+            && o.items is list && o.items.size() > 0 && o.items.size() <= 200
+            && o.total is number && o.total >= 0
+            && o.customerName is string && o.customerName.size() > 0 && o.customerName.size() <= 120
+            && o.customerPhone is string && o.customerPhone.size() <= 40
+            && (!('customerNote' in o) || (o.customerNote is string && o.customerNote.size() <= 1000))
+            && o.status == 'PENDING'
+            && o.syncedLocal == false
+            && o.createdAt == request.time;
+        }
+      }
+    }
+  }
+}

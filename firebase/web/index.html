@@ -1,0 +1,2084 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ventra — El sistema de ventas que ordena tu negocio</title>
+<meta name="description" content="Ventra es el sistema de ventas para comercios argentinos: caja, stock, cuentas corrientes, promos y tienda online sincronizados. Probá la demo gratis, sin tarjeta.">
+<meta name="theme-color" content="#08362A">
+<meta property="og:title" content="Ventra — Tu negocio, vendiendo solo">
+<meta property="og:description" content="Caja, stock, cuentas corrientes y tienda online en un solo sistema. Probá la demo gratis.">
+<meta property="og:image" content="https://ventra.store/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://ventra.store/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_AR">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://ventra.store/">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/ventra-icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Ventra",
+  "url": "https://ventra.store/",
+  "applicationCategory": "BusinessApplication",
+  "applicationSubCategory": "Point of Sale",
+  "operatingSystem": "Windows 10, Windows 11, Web",
+  "inLanguage": "es-AR",
+  "description": "Sistema de ventas para comercios argentinos: caja, stock, cuentas corrientes, promociones y tienda online sincronizada.",
+  "image": "https://ventra.store/og-image.jpg",
+  "softwareVersion": "1.0.20",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Ventra",
+    "url": "https://ventra.store/",
+    "logo": "https://ventra.store/ventra-logo.png"
+  },
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Ventra Caja",
+      "price": "14900",
+      "priceCurrency": "ARS",
+      "description": "Caja, stock y reportes para el mostrador, sin tienda online.",
+      "url": "https://ventra.store/#planes",
+      "availability": "https://schema.org/InStock"
+    },
+    {
+      "@type": "Offer",
+      "name": "Ventra Full",
+      "price": "24900",
+      "priceCurrency": "ARS",
+      "description": "Todo Ventra Caja mas tienda online sincronizada en vivo.",
+      "url": "https://ventra.store/#planes",
+      "availability": "https://schema.org/InStock"
+    },
+    {
+      "@type": "Offer",
+      "name": "Ventra Tienda",
+      "price": "9900",
+      "priceCurrency": "ARS",
+      "description": "Tienda online para vender sin instalar una caja registradora.",
+      "url": "https://ventra.store/#planes",
+      "availability": "https://schema.org/InStock"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "¿Necesito instalar algo?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Ventra corre en el navegador. Si preferís tenerlo instalado en la PC de la caja para trabajar sin depender de internet, también existe esa versión de escritorio."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Funciona sin conexión a internet?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "La versión de escritorio sigue vendiendo aunque se corte internet, y sincroniza apenas vuelve la conexión. La versión web necesita internet para operar."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Ventra emite factura electrónica (ARCA/AFIP)?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Todavía no. Hoy Ventra registra cada venta con su ticket, separa los montos por medio de pago y te arma el resumen fiscal del período, que es lo que tu contador necesita para liquidar. La emisión de comprobantes ante ARCA está en desarrollo y no está disponible para operar. Si facturar desde el sistema es indispensable para vos, escribinos por WhatsApp y te avisamos apenas esté lista."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Sirve con mi impresora de tickets y mi lector?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí. El ticket se imprime en formato de 80 mm con cualquier impresora térmica que ya esté instalada en la PC — no necesitás un modelo puntual ni un driver nuestro. También podés imprimir etiquetas de código de barras. El lector de código de barras funciona igual: los lectores USB se comportan como un teclado, así que andán apenas los conectás, sin configurar nada."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Cuántas cajas o PCs puedo usar?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Las que necesites. Podés tener varias terminales trabajando al mismo tiempo sobre el mismo negocio, cada una con su usuario, su rol y sus permisos, sin pagar por cada una."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Funciona en cualquier ciudad?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí. Ventra no está atado a ninguna ciudad — el sistema de ventas funciona en cualquier lado. La sincronización con plataformas de delivery depende de cuáles estén disponibles en tu zona."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Puedo cambiar de plan más adelante?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí, en cualquier momento. Si empezás con Ventra Caja o Ventra Tienda y después querés el combo, pasás a Ventra Full sin perder tu historial de ventas ni tu catálogo."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Cómo se paga la suscripción?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Con Mercado Pago, de forma mensual o anual. Iniciás sesión con tu cuenta de Google, elegís el plan y listo: en menos de 24 hs te contactamos para activar tu cuenta."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Qué pasa con lo que cargo en la demo?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "La demo tiene productos y ventas de ejemplo para que pruebes todo libremente — se reinicia sola cada pocas horas, así que no la uses para datos reales. Cuando contratás un plan, arrancás con tu catálogo propio, vacío y privado."
+      }
+    }
+  ]
+}
+</script>
+<style>
+  :root{
+    /* Ventra brand — sampled from the logo (#167160 pine + #F6F2EC cream) */
+    --pine-950:#03140F;
+    --pine-900:#06261D;
+    --pine-850:#08362A;
+    --pine-800:#0A4736;
+    --pine-700:#0E5E48;
+    --pine:#167160;
+    --pine-500:#17925F;
+    --mint:#34AC7E;
+    --mint-300:#67C7A0;
+    --mint-100:#CDEEE0;
+    --mint-50:#EAF7F1;
+    --cream:#F6F2EC;
+    --paper:#FBF9F5;
+    --sand:#EFE9DF;
+    --line:#E4DDD1;
+    --ink:#0F1F1A;
+    --ink-2:#56655F;
+    --ink-3:#8A958F;
+    --on-dark:#F6F2EC;
+    --on-dark-2:rgba(246,242,236,.66);
+    --on-dark-3:rgba(246,242,236,.42);
+    --line-dark:rgba(246,242,236,.10);
+    --danger:#C2553F;
+
+    --sans:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+
+    --r-sm:10px; --r:16px; --r-lg:24px; --r-xl:32px;
+    --shadow-sm:0 1px 2px rgba(15,31,26,.06), 0 2px 8px rgba(15,31,26,.04);
+    --shadow:0 2px 6px rgba(15,31,26,.05), 0 18px 40px -18px rgba(15,31,26,.22);
+    --shadow-lg:0 30px 80px -30px rgba(3,20,15,.55);
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --ease-out:cubic-bezier(.16,1,.3,1);
+  }
+  /* Ventra is a light brand page by design, with dark pine "stage" sections.
+     No automatic dark-mode swap on purpose — the brand colors are the identity. */
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.55;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; font-optical-sizing:auto; font-feature-settings:'cv11','ss03';
+    overflow-x:hidden;
+  }
+  h1,h2,h3,h4{ margin:0; font-weight:700; letter-spacing:-.03em; line-height:1.05; text-wrap:balance; }
+  p{ margin:0; text-wrap:pretty; }
+  a{ color:inherit; text-decoration:none; }
+  img{ display:block; max-width:100%; }
+  button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  ::selection{ background:var(--mint-100); color:var(--pine-900); }
+  :focus-visible{ outline:2px solid var(--mint); outline-offset:3px; border-radius:6px; }
+  em.s{ font-style:normal; }
+
+  .shell{ width:100%; max-width:1200px; margin:0 auto; padding:0 24px; }
+  @media (max-width:600px){ .shell{ padding:0 16px; } }
+
+  .grain::after{
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.07; mix-blend-mode:overlay; z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:10px; font-family:var(--sans); font-size:12px; font-weight:700;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--pine);
+  }
+  .eyebrow i{ width:22px; height:1px; background:currentColor; opacity:.6; }
+  .dark .eyebrow{ color:var(--mint-300); }
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    --bg:var(--pine-850); --fg:var(--cream);
+    position:relative; display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    height:50px; padding:0 22px; border-radius:999px; background:var(--bg); color:var(--fg);
+    font-weight:600; font-size:15px; letter-spacing:-.01em; white-space:nowrap; isolation:isolate; overflow:hidden;
+    transition:transform .35s var(--ease-out), box-shadow .35s var(--ease-out), background-color .2s ease, color .2s ease, border-color .2s ease;
+  }
+  .btn .arr{ display:inline-grid; place-items:center; width:26px; height:26px; margin-right:-10px; border-radius:50%; background:var(--fg); color:var(--bg); overflow:hidden; }
+  .btn .arr svg{ transition:transform .45s var(--ease-out); }
+  .btn:hover .arr svg{ animation:arr .55s var(--ease-out); }
+  @keyframes arr{ 0%{ transform:translateX(0); } 45%{ transform:translateX(18px); opacity:0; } 46%{ transform:translateX(-18px); opacity:0; } 100%{ transform:translateX(0); opacity:1; } }
+  .btn::before{
+    content:''; position:absolute; inset:0; z-index:-1; border-radius:inherit;
+    background:radial-gradient(120px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.22), transparent 60%);
+    opacity:0; transition:opacity .3s ease;
+  }
+  .btn:hover::before{ opacity:1; }
+  .btn:hover{ transform:translateY(-2px); box-shadow:0 14px 30px -14px rgba(8,54,42,.6); }
+  .btn:active{ transform:translateY(0) scale(.98); }
+  .btn:disabled{ opacity:.6; cursor:progress; transform:none; }
+  .btn-cream{ --bg:var(--cream); --fg:var(--pine-900); }
+  .btn-cream:hover{ box-shadow:0 18px 40px -16px rgba(103,199,160,.55); }
+  .btn-mint{ --bg:var(--mint); --fg:var(--pine-950); }
+  .btn-ghost{ background:transparent; color:var(--ink); border:1px solid var(--line); }
+  .btn-ghost:hover{ border-color:var(--ink); box-shadow:none; }
+  .dark .btn-ghost, .btn-ghost.on-dark{ color:var(--on-dark); border-color:rgba(246,242,236,.2); }
+  .dark .btn-ghost:hover, .btn-ghost.on-dark:hover{ border-color:var(--on-dark); background:rgba(246,242,236,.05); }
+  .btn-sm{ height:40px; padding:0 16px; font-size:14px; }
+  .btn-block{ width:100%; }
+
+  /* ---------- Scroll progress ---------- */
+  .progress{ position:fixed; top:0; left:0; right:0; height:2px; z-index:100; transform-origin:0 50%; transform:scaleX(0); background:linear-gradient(90deg, var(--mint), var(--mint-300)); }
+
+  /* ---------- Nav ---------- */
+  .nav{
+    position:fixed; top:14px; left:0; right:0; z-index:60; pointer-events:none;
+  }
+  .nav-inner{
+    pointer-events:auto; display:flex; align-items:center; justify-content:space-between; gap:16px;
+    max-width:1200px; margin:0 auto; height:64px; padding:0 10px 0 16px; border-radius:999px;
+    transition:background-color .4s ease, box-shadow .4s ease, border-color .4s ease, max-width .5s var(--ease-out), color .3s ease;
+    border:1px solid transparent; color:var(--on-dark);
+  }
+  .nav.scrolled .nav-inner{
+    max-width:1080px; background:rgba(251,249,245,.78); color:var(--ink); border-color:rgba(228,221,209,.8);
+    backdrop-filter:saturate(1.6) blur(18px); -webkit-backdrop-filter:saturate(1.6) blur(18px);
+    box-shadow:0 10px 30px -18px rgba(15,31,26,.35);
+  }
+  .nav.on-dark.scrolled .nav-inner{ background:rgba(6,38,29,.72); color:var(--on-dark); border-color:rgba(246,242,236,.08); }
+  @media (max-width:1240px){ .nav{ padding:0 12px; } }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:650; font-size:19px; letter-spacing:-.03em; }
+  .brand img{ width:34px; height:34px; border-radius:10px; box-shadow:0 0 0 1px rgba(246,242,236,.12); }
+  .nav-links{ display:flex; gap:4px; font-size:14.5px; }
+  .nav-links a{ padding:8px 14px; border-radius:999px; opacity:.78; transition:opacity .2s ease, background-color .2s ease; }
+  .nav-links a:hover{ opacity:1; background:rgba(127,127,127,.12); }
+  .nav-right{ display:flex; align-items:center; gap:8px; }
+  .nav .btn-ghost{ color:inherit; border-color:currentColor; border-color:rgba(127,127,127,.35); }
+  .nav:not(.scrolled) .btn-primary-nav, .nav.on-dark .btn-primary-nav{ --bg:var(--cream); --fg:var(--pine-900); }
+  .auth-area{ display:flex; align-items:center; }
+  .auth-btn{ display:flex; align-items:center; gap:8px; height:40px; padding:0 14px; border-radius:999px; font-size:14px; opacity:.85; transition:opacity .2s, background-color .2s; }
+  .auth-btn:hover{ opacity:1; background:rgba(127,127,127,.12); }
+  .auth-user{ display:flex; align-items:center; gap:8px; font-size:14px; padding-right:6px; }
+  .auth-user img{ width:28px; height:28px; border-radius:50%; }
+  .auth-user button{ font-size:13px; opacity:.65; text-decoration:underline; text-underline-offset:3px; }
+  .auth-user button:hover{ opacity:1; }
+  .auth-user .auth-name{ font-weight:600; text-decoration:none; }
+  .auth-user .auth-name:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .burger{ display:none; width:44px; height:44px; border-radius:50%; place-items:center; }
+  .burger span{ display:block; width:18px; height:1.5px; background:currentColor; position:relative; transition:transform .3s var(--ease-out), background-color .2s; }
+  .burger span::before,.burger span::after{ content:''; position:absolute; left:0; width:18px; height:1.5px; background:currentColor; transition:transform .3s var(--ease-out); }
+  .burger span::before{ top:-6px; } .burger span::after{ top:6px; }
+  .menu-open .burger span{ background:transparent; }
+  .menu-open .burger span::before{ transform:translateY(6px) rotate(45deg); }
+  .menu-open .burger span::after{ transform:translateY(-6px) rotate(-45deg); }
+  @media (max-width:980px){
+    .nav-links, .nav-right .hide-m{ display:none; }
+    .burger{ display:grid; }
+  }
+  @media (max-width:480px){ .nav-right .auth-area{ display:none; } }
+  .mobile-menu{
+    position:fixed; inset:0; z-index:55; background:var(--pine-900); color:var(--on-dark);
+    padding:110px 24px 32px; display:flex; flex-direction:column; gap:6px;
+    clip-path:circle(0 at calc(100% - 44px) 46px); transition:clip-path .6s var(--ease-out); visibility:hidden;
+  }
+  .menu-open .mobile-menu{ clip-path:circle(150% at calc(100% - 44px) 46px); visibility:visible; }
+  .mobile-menu a.l{ font-size:34px; font-weight:700; letter-spacing:-.035em; padding:6px 0; border-bottom:1px solid var(--line-dark); }
+  .mobile-menu .btn{ margin-top:22px; }
+  .mobile-menu .auth-slot{ margin-top:12px; }
+
+  /* ---------- Hero ---------- */
+  .hero{
+    position:relative; background:var(--pine-900); color:var(--on-dark); overflow:hidden;
+    padding:122px 0 0; border-radius:0 0 var(--r-xl) var(--r-xl);
+  }
+  @media (max-width:600px){ .hero{ padding-top:108px; border-radius:0 0 22px 22px; } }
+  .hero-bg{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+  .hero-bg .glow{
+    position:absolute; width:900px; height:900px; border-radius:50%; filter:blur(40px);
+    background:radial-gradient(closest-side, rgba(52,172,126,.45), rgba(22,113,96,.18) 55%, transparent);
+    top:-380px; right:-260px; animation:drift 18s ease-in-out infinite alternate;
+  }
+  .hero-bg .glow.b{ width:700px; height:700px; top:auto; bottom:-420px; left:-260px; right:auto; opacity:.55; animation-duration:22s; animation-direction:alternate-reverse; }
+  @keyframes drift{ from{ transform:translate(0,0) scale(1); } to{ transform:translate(-80px,60px) scale(1.12); } }
+  .hero-bg .grid{
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(246,242,236,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(246,242,236,.05) 1px, transparent 1px);
+    background-size:64px 64px; background-position:-1px -1px;
+    -webkit-mask-image:radial-gradient(ellipse 70% 60% at 60% 30%, #000 20%, transparent 75%);
+    mask-image:radial-gradient(ellipse 70% 60% at 60% 30%, #000 20%, transparent 75%);
+  }
+  .hero-bg .vmark{ position:absolute; right:-6%; bottom:-10%; width:760px; opacity:.035; transform:rotate(-8deg); }
+
+  .hero-copy{ position:relative; z-index:2; max-width:900px; margin:0 auto; display:flex; flex-direction:column; align-items:center; text-align:center; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:10px; padding:6px 14px 6px 6px; border-radius:999px;
+    background:rgba(246,242,236,.06); border:1px solid rgba(246,242,236,.12); font-size:13.5px; color:var(--on-dark-2);
+    transition:background-color .2s ease, border-color .2s ease;
+  }
+  .pill:hover{ background:rgba(246,242,236,.1); border-color:rgba(246,242,236,.22); }
+  .pill b{ font-weight:600; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; padding:3px 9px; border-radius:999px; background:var(--mint); color:var(--pine-950); }
+
+  h1.hero-title{ font-size:clamp(40px, 5.8vw, 76px); margin:22px 0 20px; font-weight:750; letter-spacing:-.045em; line-height:1; }
+  h1.hero-title em.s{ color:var(--mint-300); padding-right:.04em; }
+  .split .w{ display:inline-block; overflow:hidden; vertical-align:top; padding-bottom:.08em; margin-bottom:-.08em; }
+  .split .w > span{ display:inline-block; transform:translateY(105%); animation:rise 1s var(--ease-out) forwards; animation-delay:calc(var(--i) * 70ms + 150ms); }
+  @keyframes rise{ to{ transform:none; } }
+
+  .hero-sub{ font-size:clamp(16px,1.4vw,18px); color:var(--on-dark-2); max-width:58ch; margin-bottom:28px; }
+  .hero-sub b{ color:var(--on-dark); font-weight:600; }
+  .fade-up{ opacity:0; transform:translateY(18px); animation:fadeUp 1s var(--ease-out) forwards; animation-delay:var(--d,0ms); }
+  @keyframes fadeUp{ to{ opacity:1; transform:none; } }
+
+  .hero-ctas{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  .hero-ctas{ justify-content:center; }
+  .hero-trust{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px 22px; margin-top:22px; font-size:14px; color:var(--on-dark-2); }
+  .hero-trust span{ display:inline-flex; align-items:center; gap:8px; }
+  .hero-trust svg{ color:var(--mint-300); }
+
+  .for-line{ display:inline-flex; align-items:center; gap:8px; padding-left:22px; border-left:1px solid var(--line-dark); }
+  @media (max-width:600px){ .for-line{ border-left:0; padding-left:0; } }
+  .rotator{ position:relative; display:inline-block; height:22px; overflow:hidden; min-width:12ch; text-align:left; }
+  .rotator span{ position:absolute; left:0; top:0; white-space:nowrap; font-weight:650; font-size:14px; line-height:22px; color:var(--mint-300); transform:translateY(110%); opacity:0; transition:transform .7s var(--ease-out), opacity .7s var(--ease-out); }
+  .rotator span.on{ transform:none; opacity:1; }
+  .rotator span.out{ transform:translateY(-110%); opacity:0; }
+
+  .live{ display:inline-flex; align-items:center; gap:6px; }
+  .live i{ width:6px; height:6px; border-radius:50%; background:var(--mint); box-shadow:0 0 0 0 rgba(52,172,126,.6); animation:ping 1.8s infinite; }
+  @keyframes ping{ 0%{ box-shadow:0 0 0 0 rgba(52,172,126,.6); } 80%,100%{ box-shadow:0 0 0 8px rgba(52,172,126,0); } }
+  @keyframes blink{ 50%{ opacity:0; } }
+  @keyframes rowIn{ from{ opacity:0; transform:translateY(-8px) scale(.98); } to{ opacity:1; transform:none; } }
+  /* ---------- App replica (mirrors the real Ventra POS screen) ---------- */
+  .stage{ position:relative; margin:52px auto 0; max-width:1180px; perspective:2200px; z-index:2; }
+  .appfit{ position:relative; transform-origin:50% 0; transform:rotateX(var(--tilt,0deg)) scale(var(--sc,1)); will-change:transform; }
+  .appwin{ position:relative; border-radius:14px; overflow:hidden; background:#F8FAFC; box-shadow:0 0 0 1px rgba(246,242,236,.14), 0 50px 120px -30px rgba(0,0,0,.65), 0 0 120px -20px rgba(52,172,126,.25); }
+  .app{ position:absolute; top:0; left:0; width:1180px; height:720px; transform-origin:0 0; transform:scale(var(--k,1)); font-family:'Inter',system-ui,sans-serif; font-size:13px; color:#0F172A; letter-spacing:0; line-height:1.3; text-align:left; }
+  .a-title{ height:30px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 12px; font-size:11px; color:#334155; border-bottom:1px solid #EEF2F6; }
+  .a-title img{ width:14px; height:14px; border-radius:3px; }
+  .a-title .wc{ margin-left:auto; display:flex; gap:24px; color:#475569; }
+  .a-top{ display:flex; align-items:center; gap:8px; padding:10px 12px; height:56px; }
+  .a-pill{ height:36px; padding:0 13px; border-radius:10px; background:#fff; border:1px solid #E2E8F0; display:flex; align-items:center; gap:7px; font-weight:600; font-size:12px; color:#1E293B; box-shadow:0 1px 2px rgba(15,23,42,.04); white-space:nowrap; }
+  .a-pill.on{ border-color:#9ED8BF; background:#F0FAF5; }
+  .a-pill .dot{ width:6px; height:6px; border-radius:50%; background:#17925F; box-shadow:0 0 6px rgba(23,146,95,.7); }
+  .a-pill.ico{ width:36px; padding:0; justify-content:center; color:#475569; }
+  .a-pill svg{ color:#475569; }
+
+  /* Barra superior del POS actual: botones de color que llenan la fila + barra de utilidades */
+  .a-pill.solid{ flex:1 1 auto; justify-content:center; color:#fff; border-color:transparent; box-shadow:0 1px 2px rgba(15,23,42,.12); }
+  .a-pill.solid svg{ color:#fff; stroke:#fff; opacity:.92; }
+  .a-pill.solid .dot{ background:#34D399; box-shadow:0 0 0 2px rgba(52,211,153,.35); }
+  .c-slate{ background:#1E293B !important; } .c-indigo{ background:#4F46E5 !important; } .c-violet{ background:#7C3AED !important; }
+  .c-green{ background:#047857 !important; } .c-blue{ background:#2563EB !important; }
+  .a-util{ display:flex; align-items:center; gap:2px; height:36px; padding:3px; margin-left:4px; border-radius:10px; background:#fff; border:1px solid #E2E8F0; box-shadow:0 1px 2px rgba(15,23,42,.04); flex:none; }
+  .a-u{ height:28px; min-width:28px; padding:0 6px; border-radius:7px; display:flex; align-items:center; justify-content:center; gap:6px; color:#475569; font-size:11.5px; font-weight:600; white-space:nowrap; }
+  .a-u svg{ color:#475569; }
+  .a-user i{ font-style:normal; width:20px; height:20px; border-radius:6px; background:#0E6E52; color:#fff; font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .a-user span{ color:#1E293B; }
+  .a-time span{ color:#1E293B; font-weight:700; font-size:12px; }
+  .a-gear{ background:#1E293B; } .a-gear svg{ color:#fff; }
+  .a-sep{ width:1px; height:18px; background:#E2E8F0; margin:0 3px; }
+  .a-fast{ height:38px; padding:0 8px 0 11px; border-radius:10px; background:#EAF7F1; border:1px solid #9EDDC3; color:#0B5A43; font-weight:600; font-size:12px; display:flex; align-items:center; gap:6px; white-space:nowrap; flex:none; }
+  .a-fast .a-kbd{ background:#fff; }
+  .a-kbd{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:600; padding:1px 5px; border-radius:4px; background:#E7F6EF; color:#0E6E52; border:1px solid #BFE6D3; }
+  .a-sp{ flex:1; }
+  .a-body{ display:grid; grid-template-columns:1fr 340px; gap:12px; padding:0 12px 12px; height:634px; }
+  .a-left,.a-right{ position:relative; background:#fff; border:1px solid #E2E8F0; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+  .a-srow{ display:flex; gap:8px; padding:12px; border-bottom:1px solid #F1F5F9; }
+  .a-search{ flex:1; min-width:0; height:38px; border:1.5px solid #34AC7E; border-radius:10px; display:flex; align-items:center; gap:8px; padding:0 12px; color:#94A3B8; font-size:12.5px; box-shadow:0 0 0 3px rgba(52,172,126,.12); overflow:hidden; white-space:nowrap; }
+  .a-search .typed{ color:#0F172A; font-family:'IBM Plex Mono',monospace; font-weight:600; }
+  .a-search .car{ width:1.5px; height:15px; background:#0F172A; animation:blink 1s steps(1) infinite; }
+  .a-sq{ width:38px; height:38px; border:1px solid #E2E8F0; border-radius:10px; display:grid; place-items:center; color:#475569; flex:none; }
+  .a-btn{ height:38px; padding:0 12px; border:1px solid #E2E8F0; border-radius:10px; display:flex; align-items:center; gap:6px; font-weight:600; font-size:12px; color:#1E293B; flex:none; }
+  .a-chips{ display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid #F1F5F9; }
+  .a-chip{ height:28px; padding:0 12px; border-radius:999px; border:1px solid #E2E8F0; font-size:11.5px; font-weight:600; color:#334155; display:flex; align-items:center; gap:5px; }
+  .a-chip.on{ background:#0E6E52; border-color:#0E6E52; color:#fff; }
+  .a-chip svg{ color:#F59E0B; }
+  .a-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:12px; background:#FBFCFD; flex:1; overflow:hidden; align-content:start; }
+  .a-card{ background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:8px; display:flex; flex-direction:column; gap:6px; transition:border-color .25s, box-shadow .25s, transform .25s; }
+  .a-card.hit{ border-color:#34AC7E; box-shadow:0 0 0 3px rgba(52,172,126,.22); transform:translateY(-2px); }
+  .a-img{ position:relative; height:100px; border-radius:10px; background:#F5F7F9; display:grid; place-items:center; }
+  .a-img svg{ height:76px; width:76px; }
+  .a-tag,.a-st{ position:absolute; left:6px; font-size:9px; font-weight:700; color:#fff; padding:2px 6px; border-radius:5px; background:#334155; }
+  .a-tag{ top:6px; }
+  .a-st{ bottom:6px; background:#1E293B; font-family:'IBM Plex Mono',monospace; transition:background-color .3s; }
+  .a-st.tick{ background:#17925F; }
+  .a-name{ font-weight:700; font-size:11.5px; line-height:1.25; min-height:29px; text-transform:uppercase; }
+  .a-code{ align-self:flex-start; font-family:'IBM Plex Mono',monospace; font-size:9px; color:#475569; background:#F1F5F9; border:1px solid #E2E8F0; padding:1px 5px; border-radius:4px; }
+  .a-pr{ display:flex; justify-content:space-between; align-items:center; }
+  .a-pr b{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:700; }
+  .a-plus{ width:26px; height:26px; border-radius:7px; background:#0E6E52; color:#fff; display:grid; place-items:center; transition:transform .15s, background-color .15s; }
+  .a-plus.press{ transform:scale(.82); background:#17925F; }
+  .a-rh{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #F1F5F9; }
+  .a-rh b{ font-size:11px; font-weight:800; letter-spacing:.06em; }
+  .a-mini{ display:flex; gap:10px; align-items:center; font-size:10.5px; color:#94A3B8; }
+  .a-mini span{ display:flex; gap:4px; align-items:center; padding:3px 7px; border-radius:7px; border:1px dashed #E2E8F0; }
+  .a-pause{ display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 14px; border-bottom:1px solid #F1F5F9; }
+  .a-orange{ height:32px; border-radius:9px; background:#D9A70F; color:#fff; font-weight:700; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .a-orange .a-kbd{ background:rgba(255,255,255,.22); color:#fff; border-color:transparent; }
+  .a-wait{ height:32px; border-radius:9px; border:1px solid #E2E8F0; font-size:11px; font-weight:600; color:#334155; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .a-list{ position:relative; flex:1; padding:2px 14px; overflow:hidden; }
+  .a-row{ display:grid; grid-template-columns:34px 1fr auto 64px 10px; gap:9px; align-items:center; padding:9px 0; border-bottom:1px solid #F1F5F9; animation:rowIn .45s var(--ease-out) both; }
+  .a-thumb{ width:34px; height:34px; border-radius:8px; border:1px solid #E2E8F0; background:#F5F7F9; display:grid; place-items:center; }
+  .a-thumb svg{ width:28px; height:28px; }
+  .a-rn{ font-weight:700; font-size:11px; text-transform:uppercase; line-height:1.2; }
+  .a-qty{ display:flex; align-items:center; height:26px; border:1px solid #E2E8F0; border-radius:8px; background:#F8FAFC; }
+  .a-qty span{ width:22px; text-align:center; color:#475569; font-size:12px; }
+  .a-qty b{ width:18px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:11px; display:inline-block; }
+  .a-qty b.bump{ animation:bump .35s ease; }
+  @keyframes bump{ 50%{ transform:scale(1.5); color:#17925F; } }
+  .a-rp{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:12px; text-align:right; }
+  .a-x{ color:#94A3B8; font-size:12px; }
+  .a-empty{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; text-align:center; font-size:10.5px; color:#94A3B8; transition:opacity .3s; }
+  .a-empty i{ width:40px; height:40px; border-radius:12px; border:1px solid #E2E8F0; background:#F8FAFC; display:grid; place-items:center; color:#94A3B8; margin-bottom:4px; }
+  .a-empty b{ color:#0F172A; font-size:11.5px; }
+  .a-empty.hide{ opacity:0; }
+  .a-sum{ margin:10px 14px; border:1px solid #E2E8F0; border-radius:14px; padding:12px 14px; }
+  .a-sum .l{ display:flex; justify-content:space-between; align-items:center; font-size:9.5px; font-weight:800; letter-spacing:.08em; color:#64748B; }
+  .a-sum .l + .l{ margin-top:8px; }
+  .a-badge{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700; color:#0F172A; background:#F1F5F9; border:1px solid #E2E8F0; border-radius:6px; padding:1px 7px; }
+  .a-total{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:30px; letter-spacing:-.02em; color:#0F172A; }
+  .a-confirm{ margin:0 14px 14px; height:52px; border-radius:14px; background:#17925F; color:#fff; font-weight:800; font-size:15px; letter-spacing:.03em; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 12px 22px -12px rgba(23,146,95,.8); transition:background-color .3s, box-shadow .3s, transform .15s, filter .15s; }
+  .a-confirm.off{ background:#E2E8F0; box-shadow:none; }
+  .a-confirm.press{ transform:scale(.97); filter:brightness(1.12); }
+  .a-ov{ position:absolute; inset:30px 0 0; background:rgba(15,23,42,.28); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); display:grid; place-items:center; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .a-ov.on{ opacity:1; }
+  .a-modal{ width:440px; background:#fff; border-radius:18px; padding:18px; box-shadow:0 30px 60px -20px rgba(15,23,42,.45); transform:translateY(14px) scale(.96); transition:transform .45s var(--ease-out); }
+  .a-ov.on .a-modal{ transform:none; }
+  .a-mh{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; margin-bottom:12px; }
+  .a-mh img{ width:20px; height:20px; border-radius:5px; }
+  .a-mh .cl{ margin-left:auto; color:#64748B; font-size:16px; }
+  .a-dark{ background:linear-gradient(180deg,#0B1220,#020617); color:#fff; border-radius:12px; padding:12px; text-align:center; }
+  .a-dark small{ display:block; font-size:9.5px; letter-spacing:.14em; font-weight:700; color:#94A3B8; }
+  .a-dark b{ display:block; font-family:'IBM Plex Mono',monospace; font-size:30px; font-weight:700; margin-top:2px; }
+  .a-methods{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  .a-m{ position:relative; height:66px; border:1.5px solid #E2E8F0; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; font-size:9.5px; font-weight:800; letter-spacing:.04em; color:#1E293B; transition:all .25s; }
+  .a-m svg{ color:#334155; }
+  .a-m .n,.a-cc .n{ position:absolute; top:5px; right:5px; font-family:'IBM Plex Mono',monospace; font-size:9px; padding:0 5px; border-radius:4px; background:#F1F5F9; border:1px solid #E2E8F0; color:#334155; }
+  .a-m.on{ border-color:#17925F; background:#ECFDF5; color:#0E6E52; box-shadow:0 0 0 3px rgba(23,146,95,.15); }
+  .a-m.on svg{ color:#0E6E52; }
+  .a-cc{ position:relative; margin-top:8px; height:38px; border:1.5px solid #E2E8F0; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:9.5px; font-weight:800; letter-spacing:.06em; color:#1E293B; }
+  .a-cc .n{ top:50%; transform:translateY(-50%); right:8px; }
+  .a-cc svg{ color:#F59E0B; }
+  .a-fin{ margin-top:12px; padding-top:12px; border-top:1px solid #F1F5F9; }
+  .a-fin div{ height:44px; border-radius:12px; background:#D4D4D8; color:#fff; font-weight:800; font-size:13px; letter-spacing:.04em; display:flex; align-items:center; justify-content:center; gap:8px; transition:all .3s; }
+  .a-fin div.on{ background:#17925F; box-shadow:0 12px 22px -12px rgba(23,146,95,.8); }
+  .a-fin div.press{ transform:scale(.97); filter:brightness(1.1); }
+  .a-fin kbd{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; background:rgba(255,255,255,.22); border-radius:99px; padding:2px 7px; }
+  .a-toast{ position:absolute; right:16px; bottom:16px; z-index:3; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:10px 14px; box-shadow:0 18px 40px -16px rgba(15,23,42,.35); font-size:12px; opacity:0; transform:translateY(16px); transition:all .45s var(--ease-out); }
+  .a-toast.on{ opacity:1; transform:none; }
+  .a-toast i{ width:22px; height:22px; border-radius:50%; background:#17925F; color:#fff; display:grid; place-items:center; flex:none; }
+  .a-toast b{ display:block; font-weight:700; }
+  .a-toast small{ color:#64748B; }
+  /* compact layout for narrow screens: same app, fewer columns */
+  .app.compact{ width:760px; }
+  .app.compact .a-body{ grid-template-columns:1fr 300px; }
+  .app.compact .a-grid{ grid-template-columns:repeat(2,1fr); }
+  .app.compact .hm{ display:none; }
+  /* phones: just the ticket panel, at a readable size */
+  .a-mscan{ display:none; }
+  .app.mobile{ width:400px; height:600px; }
+  .app.mobile .a-body{ grid-template-columns:1fr; height:514px; }
+  .app.mobile .a-left, .app.mobile .a-top .a-pill:not(.keep){ display:none; }
+  .app.mobile .a-mscan{ display:flex; margin:10px 14px 0; flex:none; }
+  .app.mobile .a-modal{ width:364px; padding:14px; }
+  .app.mobile .a-m{ height:58px; font-size:8px; }
+  .app.mobile .a-toast{ left:16px; right:16px; }
+  @media (max-width:480px){ .pill .xs-hide{ display:none; } }
+
+  .float{
+    position:absolute; z-index:4; display:flex; align-items:center; gap:12px; padding:12px 16px 12px 12px; border-radius:16px;
+    background:rgba(255,255,255,.97); color:var(--ink); box-shadow:0 24px 50px -20px rgba(3,20,15,.6); font-size:13px; text-align:left;
+    opacity:0; transform:translateY(14px) scale(.96); transition:opacity .6s var(--ease-out), transform .6s var(--ease-out);
+  }
+  .float.on{ opacity:1; transform:none; }
+  .float .ic{ width:36px; height:36px; border-radius:11px; display:grid; place-items:center; flex:none; }
+  .float b{ display:block; font-weight:600; }
+  .float small{ color:var(--ink-2); font-size:12px; }
+  .float.f1{ left:-36px; bottom:90px; }
+  .float.f1 .ic{ background:var(--pine-850); color:var(--mint-300); }
+  .float.f2{ right:-30px; top:120px; }
+  .float.f2 .ic{ background:var(--mint-50); color:var(--pine); }
+  @media (max-width:1260px){ .float.f1{ left:8px; } .float.f2{ right:8px; } }
+  @media (max-width:700px){ .stage{ margin-top:56px; } .float{ font-size:12px; padding:9px 12px 9px 9px; } .float .ic{ width:28px; height:28px; } .float.f1{ left:6px; bottom:-30px; } .float.f2{ right:6px; top:-34px; } }
+
+  /* marquee */
+  .marquee{ position:relative; z-index:2; margin-top:96px; border-top:1px solid var(--line-dark); padding:26px 0 30px; overflow:hidden; -webkit-mask-image:linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image:linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+  .marquee-track{ display:flex; width:max-content; gap:42px; align-items:center; animation:marq 38s linear infinite; }
+  .marquee:hover .marquee-track{ animation-play-state:paused; }
+  @keyframes marq{ to{ transform:translateX(-50%); } }
+  .marquee span{ font-weight:600; letter-spacing:-.03em; font-size:clamp(22px,2.6vw,32px); color:var(--on-dark-3); white-space:nowrap; transition:color .3s; }
+  .marquee span:hover{ color:var(--cream); }
+  .marquee img{ width:22px; opacity:.35; }
+  @media (max-width:600px){ .marquee{ margin-top:72px; } }
+
+  /* ---------- Sections ---------- */
+  section{ position:relative; padding:130px 0; }
+  @media (max-width:760px){ section{ padding:88px 0; } }
+  .sec-head{ display:grid; grid-template-columns:1fr 1fr; gap:24px 60px; align-items:end; margin-bottom:64px; }
+  .sec-head h2{ font-size:clamp(34px,4.4vw,56px); font-weight:720; letter-spacing:-.04em; margin-top:16px; }
+  .sec-head p{ font-size:18px; color:var(--ink-2); max-width:46ch; justify-self:end; }
+  .sec-head.center{ grid-template-columns:1fr; text-align:center; justify-items:center; }
+  .sec-head.center p{ justify-self:center; }
+  @media (max-width:860px){ .sec-head{ grid-template-columns:1fr; margin-bottom:44px; } .sec-head p{ justify-self:start; } }
+  h2 em.s{ color:var(--pine); }
+  .dark h2 em.s{ color:var(--mint-300); }
+
+  .reveal{ opacity:0; transform:translateY(28px); transition:opacity 1s var(--ease-out), transform 1s var(--ease-out); transition-delay:var(--d,0ms); }
+  .reveal.in{ opacity:1; transform:none; }
+
+  /* ---------- Social proof ---------- */
+  .proof{ padding:96px 0 0; }
+  .proof-card{ display:grid; grid-template-columns:1.1fr .9fr; gap:48px; align-items:center; padding:48px; border-radius:var(--r-xl); background:#fff; border:1px solid var(--line); box-shadow:var(--shadow-sm); }
+  .proof-card h2{ font-size:clamp(30px,3.4vw,46px); font-weight:720; letter-spacing:-.04em; margin-top:16px; }
+  .proof-card p{ color:var(--ink-2); margin-top:16px; font-size:17px; max-width:48ch; }
+  .ig{ display:flex; align-items:center; gap:14px; padding:16px; border-radius:18px; border:1px solid var(--line); background:var(--paper); transition:transform .4s var(--ease-out), border-color .3s, box-shadow .4s; }
+  .ig:hover{ transform:translateY(-3px); border-color:var(--pine); box-shadow:var(--shadow); }
+  .av{ width:64px; height:64px; border-radius:50%; flex:none; display:grid; place-items:center; color:#fff; font-weight:800; font-size:17px; letter-spacing:-.02em; object-fit:cover; background:#fff; box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #6B21A8; }
+  .ig-t b{ display:block; font-weight:700; letter-spacing:-.01em; }
+  .ig-t small{ color:var(--ink-2); font-size:14px; }
+  .igb{ margin-left:auto; display:flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600; color:var(--pine); white-space:nowrap; }
+  .pc-stats{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  .pc-stats div{ padding:18px; border-radius:16px; background:var(--mint-50); }
+  .pc-stats b{ display:block; font-size:26px; font-weight:750; letter-spacing:-.035em; color:var(--pine-850); line-height:1.1; }
+  .pc-stats small{ display:block; margin-top:4px; color:var(--ink-2); font-size:13.5px; }
+  @media (max-width:900px){ .proof-card{ grid-template-columns:1fr; gap:28px; padding:28px; } .proof{ padding-top:64px; } }
+  @media (max-width:420px){ .igb span, .igb{ font-size:0; gap:0; } .igb svg{ width:20px; height:20px; } .pc-stats b{ font-size:21px; } }
+
+  /* ---------- Before / After ---------- */
+  .ba-switch{ display:inline-flex; position:relative; padding:5px; border-radius:999px; background:var(--sand); margin:0 auto 48px; }
+  .ba-switch button{ position:relative; z-index:1; height:44px; padding:0 22px; border-radius:999px; font-weight:600; font-size:15px; color:var(--ink-2); transition:color .3s ease; }
+  .ba-switch button[aria-pressed="true"]{ color:var(--cream); }
+  .ba-switch .knob{ position:absolute; top:5px; bottom:5px; left:5px; border-radius:999px; background:var(--pine-850); transition:transform .55s var(--ease-out), width .55s var(--ease-out), background-color .4s; }
+  .ba-switch.before .knob{ background:#6B5E52; }
+  .ba-wrap{ text-align:center; }
+  .ba-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; text-align:left; }
+  @media (max-width:980px){ .ba-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:520px){ .ba-grid{ grid-template-columns:1fr; } }
+  .ba{ position:relative; min-height:250px; perspective:1200px; }
+  .ba-in{ position:absolute; inset:0; transform-style:preserve-3d; transition:transform .9s var(--ease-out); transition-delay:var(--d,0ms); }
+  .ba-grid.before .ba-in{ transform:rotateY(180deg); }
+  .ba-face{ position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:var(--r-lg); padding:26px 24px; display:flex; flex-direction:column; }
+  .ba-face.after{ background:#fff; border:1px solid var(--line); box-shadow:var(--shadow-sm); }
+  .ba-face.before{ transform:rotateY(180deg); background:var(--sand); border:1px dashed #CFC4B3; }
+  .ba-face .tag{ font-family:var(--sans); font-weight:700; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; }
+  .ba-face.after .tag{ color:var(--pine); }
+  .ba-face.before .tag{ color:#8C7B69; }
+  .ba-face h3{ font-size:22px; font-weight:700; letter-spacing:-.025em; margin:auto 0 10px; line-height:1.1; }
+  .ba-face.before h3{ color:#5E5247; font-weight:600; }
+  .ba-face p{ font-size:14.5px; color:var(--ink-2); }
+  .ba-face.before p{ color:#7F7263; }
+  .ba-face .big{ font-size:40px; font-weight:750; letter-spacing:-.04em; line-height:1; margin-bottom:6px; }
+  .ba-face.after .big{ color:var(--pine); }
+  @media (max-width:520px){ .ba{ min-height:210px; } }
+
+  /* ---------- Bento ---------- */
+  .bento{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; }
+  .card{
+    position:relative; overflow:hidden; border-radius:var(--r-lg); background:#fff; border:1px solid var(--line);
+    padding:30px; display:flex; flex-direction:column; min-height:340px; box-shadow:var(--shadow-sm);
+    transition:transform .5s var(--ease-out), box-shadow .5s var(--ease-out), border-color .3s;
+  }
+  .card:hover{ transform:translateY(-4px); box-shadow:var(--shadow); border-color:#D6CEC0; }
+  .card::after{ content:''; position:absolute; inset:0; pointer-events:none; border-radius:inherit; background:radial-gradient(420px circle at var(--mx,50%) var(--my,0%), rgba(52,172,126,.08), transparent 45%); opacity:0; transition:opacity .4s; }
+  .card:hover::after{ opacity:1; }
+  .card h3{ font-size:22px; font-weight:700; letter-spacing:-.025em; line-height:1.15; }
+  .card p{ color:var(--ink-2); font-size:15px; margin-top:10px; max-width:40ch; }
+  .card .viz{ flex:1; display:flex; align-items:center; justify-content:center; margin:6px -8px 22px; min-height:150px; position:relative; }
+  .c-3{ grid-column:span 3; } .c-2{ grid-column:span 2; } .c-4{ grid-column:span 4; }
+  @media (max-width:980px){ .bento{ grid-template-columns:repeat(2,1fr); } .c-3,.c-2,.c-4{ grid-column:span 1; } .c-wide-m{ grid-column:span 2; } }
+  @media (max-width:640px){ .bento{ grid-template-columns:1fr; } .c-wide-m{ grid-column:span 1; } .card{ padding:24px; min-height:0; } }
+  .card.dark{ background:var(--pine-850); color:var(--on-dark); border-color:var(--pine-800); }
+  .card.dark p{ color:var(--on-dark-2); }
+  .card.dark::after{ background:radial-gradient(420px circle at var(--mx,50%) var(--my,0%), rgba(103,199,160,.14), transparent 45%); }
+
+  /* viz: fast checkout */
+  .keys{ display:flex; flex-direction:column; gap:12px; align-items:center; width:100%; }
+  .barcode{ position:relative; display:flex; gap:2px; height:64px; padding:0 18px; align-items:stretch; }
+  .barcode i{ display:block; background:var(--cream); border-radius:1px; }
+  .barcode::after{ content:''; position:absolute; left:6px; right:6px; top:0; height:2px; background:#7CF2BF; box-shadow:0 0 16px 3px rgba(124,242,191,.8); animation:sweep 2.2s ease-in-out infinite; }
+  @keyframes sweep{ 0%,100%{ top:0; } 50%{ top:calc(100% - 2px); } }
+  .kbd-row{ display:flex; gap:8px; }
+  .kbd{ min-width:46px; height:42px; padding:0 10px; border-radius:10px; display:grid; place-items:center; font-family:var(--mono); font-size:13px; color:var(--on-dark); background:linear-gradient(180deg, rgba(246,242,236,.1), rgba(246,242,236,.04)); border:1px solid rgba(246,242,236,.14); box-shadow:0 3px 0 rgba(3,20,15,.5); animation:keytap 3.6s infinite; animation-delay:var(--kd); }
+  @keyframes keytap{ 0%,12%,100%{ transform:none; box-shadow:0 3px 0 rgba(3,20,15,.5); background:linear-gradient(180deg, rgba(246,242,236,.1), rgba(246,242,236,.04)); } 4%{ transform:translateY(3px); box-shadow:0 0 0 rgba(3,20,15,.5); background:rgba(52,172,126,.4); } }
+  .speed{ font-weight:600; font-size:12.5px; color:var(--mint-300); display:flex; align-items:center; gap:8px; }
+
+  /* viz: cierre de caja */
+  .zrep{ width:100%; max-width:420px; background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:16px; font-size:13px; box-shadow:var(--shadow-sm); }
+  .zrep .zh{ display:flex; justify-content:space-between; font-size:10.5px; font-weight:800; color:var(--ink-2); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }
+  .zline{ display:grid; grid-template-columns:90px 1fr 72px; gap:10px; align-items:center; padding:5px 0; }
+  .zline .bar{ height:8px; border-radius:99px; background:var(--sand); overflow:hidden; }
+  .zline .bar i{ display:block; height:100%; width:0; border-radius:inherit; background:var(--pine); transition:width 1.4s var(--ease-out); transition-delay:var(--d); }
+  .in .zline .bar i{ width:var(--w); }
+  .zline span:last-child{ text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .zok{ display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); font-weight:600; }
+  .zok b{ font-size:12px; font-weight:600; color:var(--pine); background:var(--mint-50); padding:4px 10px; border-radius:99px; display:inline-flex; gap:6px; align-items:center; }
+
+  .dash{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  @media (max-width:640px){ .dash{ grid-template-columns:repeat(2,1fr); } }
+  .dt{ border-radius:12px; padding:12px 14px; color:#fff; display:flex; flex-direction:column; gap:4px; }
+  .dt small{ font-size:9.5px; font-weight:800; letter-spacing:.06em; opacity:.9; }
+  .dt b{ font-family:var(--mono); font-size:22px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .dt span{ font-size:10.5px; opacity:.8; }
+  .dt.g{ background:#0E6E52; } .dt.n{ background:#1E293B; } .dt.g2{ background:#17925F; } .dt.o{ background:#F59E0B; }
+  .mp{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .mp div{ border:1px solid var(--line); border-radius:12px; padding:10px; background:#fff; display:flex; flex-direction:column; gap:3px; }
+  .mp i{ font-style:normal; width:26px; height:26px; border-radius:8px; background:var(--mint-50); display:grid; place-items:center; color:var(--pine); margin-bottom:4px; }
+  .mp small{ font-size:9px; font-weight:800; letter-spacing:.05em; color:var(--ink-2); }
+  .mp b{ font-family:var(--mono); font-size:13.5px; font-weight:700; }
+  .zbtns{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  .zbtns span{ border-radius:10px; padding:9px 8px; font-size:10.5px; font-weight:700; text-align:center; }
+  .zbtns .x{ border:1.5px solid var(--line); color:var(--ink); background:#fff; }
+  .zbtns .zz{ background:#0E6E52; color:#fff; }
+  /* viz: stock */
+  .stock{ width:100%; max-width:330px; display:grid; gap:8px; }
+  .sitem{ display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center; padding:12px 14px; border-radius:12px; background:var(--paper); border:1px solid var(--line); font-size:13.5px; }
+  .sitem .sb{ grid-column:1/-1; height:5px; border-radius:99px; background:var(--sand); overflow:hidden; }
+  .sitem .sb i{ display:block; height:100%; border-radius:inherit; background:var(--pine); width:var(--w); transition:width .8s var(--ease-out), background-color .4s; }
+  .sitem .cnt{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-2); }
+  .sitem.low{ border-color:#EBC9BE; background:#FCF4F1; }
+  .sitem.low .sb i{ background:var(--danger); }
+  .sitem.low .cnt{ color:var(--danger); font-weight:600; }
+  .alert{ display:flex; gap:8px; align-items:center; font-size:12.5px; color:var(--danger); font-weight:500; opacity:0; transform:translateY(-4px); transition:all .4s var(--ease-out); }
+  .alert.on{ opacity:1; transform:none; }
+
+  /* viz: promos */
+  .tags{ position:relative; width:220px; height:150px; }
+  .ptag{ position:absolute; inset:0; margin:auto; width:200px; height:112px; border-radius:16px 16px 16px 16px; display:flex; flex-direction:column; justify-content:center; padding:0 22px 0 46px; color:var(--pine-950); transform-origin:50% 0; animation:tagcycle 7.5s infinite var(--ease); animation-delay:var(--td); opacity:0; }
+  .ptag::before{ content:''; position:absolute; left:16px; top:50%; width:12px; height:12px; margin-top:-6px; border-radius:50%; background:var(--paper); box-shadow:inset 0 1px 2px rgba(0,0,0,.2); }
+  .ptag b{ font-size:40px; font-weight:800; letter-spacing:-.05em; line-height:1; }
+  .ptag small{ font-size:12.5px; opacity:.72; margin-top:4px; }
+  @keyframes tagcycle{ 0%{ opacity:0; transform:rotate(-14deg) translateY(-10px); } 4%{ opacity:1; transform:rotate(3deg); } 8%,30%{ opacity:1; transform:rotate(-2deg); } 34%,100%{ opacity:0; transform:rotate(10deg) translateY(10px); } }
+
+  /* viz: cuenta corriente */
+  .cc{ display:flex; align-items:center; gap:22px; }
+  .ring{ position:relative; width:128px; height:128px; }
+  .ring svg{ transform:rotate(-90deg); }
+  .ring circle.v{ stroke-dasharray:339; stroke-dashoffset:339; transition:stroke-dashoffset 1.6s var(--ease-out) .2s; }
+  .in .ring circle.v{ stroke-dashoffset:calc(339 - 339 * .62); }
+  .ring .lbl{ position:absolute; inset:0; display:grid; place-content:center; text-align:center; }
+  .ring .lbl b{ font-size:26px; font-weight:700; letter-spacing:-.04em; }
+  .ring .lbl small{ font-size:11px; font-weight:600; color:var(--on-dark-3); }
+  .cc-list{ display:grid; gap:8px; font-size:13px; }
+  .cc-list div{ display:flex; justify-content:space-between; gap:18px; padding-bottom:8px; border-bottom:1px solid var(--line-dark); color:var(--on-dark-2); }
+  .cc-list div b{ color:var(--cream); font-weight:500; font-family:var(--mono); font-size:12.5px; }
+
+  /* viz: reports */
+  .chart{ width:100%; height:100%; min-height:170px; }
+  .chart .line{ stroke-dasharray:1200; stroke-dashoffset:1200; transition:stroke-dashoffset 2.4s var(--ease-out); }
+  .in .chart .line{ stroke-dashoffset:0; }
+  .chart .area{ opacity:0; transition:opacity 1.6s ease 1s; }
+  .in .chart .area{ opacity:1; }
+  .chart .dotp{ opacity:0; transition:opacity .4s ease 2.2s; }
+  .in .chart .dotp{ opacity:1; }
+  .kpis{ display:flex; gap:26px; flex-wrap:wrap; margin-bottom:6px; }
+  .kpi small{ display:block; font-family:var(--sans); font-weight:700; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .kpi b{ font-size:26px; font-weight:700; font-family:var(--mono); letter-spacing:-.02em; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+  .kpi .up{ font-size:12px; color:var(--pine); font-weight:600; margin-left:6px; }
+
+  /* viz: terminals */
+  .terms{ position:relative; width:100%; max-width:300px; height:160px; }
+  .term{ position:absolute; width:86px; height:62px; border-radius:10px; background:var(--pine-800); border:1px solid rgba(246,242,236,.12); display:grid; place-items:center; font-family:var(--mono); font-size:11px; color:var(--on-dark-2); }
+  .term::after{ content:''; position:absolute; bottom:-10px; left:50%; width:26px; height:6px; margin-left:-13px; border-radius:0 0 6px 6px; background:rgba(246,242,236,.12); }
+  .term.hub{ left:50%; top:50%; transform:translate(-50%,-50%); width:64px; height:64px; border-radius:50%; background:var(--mint); color:var(--pine-950); font-weight:600; box-shadow:0 0 0 10px rgba(52,172,126,.14), 0 0 40px rgba(52,172,126,.4); }
+  .term.hub::after{ display:none; }
+  .term.hub img{ width:30px; }
+  .term.t1{ left:0; top:0; } .term.t2{ right:0; top:0; } .term.t3{ left:50%; bottom:6px; transform:translateX(-50%); display:none; }
+  .terms svg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  .terms .pkt{ offset-rotate:0deg; animation:pkt 2.4s linear infinite; animation-delay:var(--pd); }
+  @keyframes pkt{ from{ offset-distance:0%; opacity:0; } 10%{ opacity:1; } 90%{ opacity:1; } to{ offset-distance:100%; opacity:0; } }
+
+  /* viz: phone */
+  .phone{ width:150px; height:210px; border-radius:26px; background:var(--pine-950); padding:8px; box-shadow:var(--shadow); transform:rotate(-6deg) translateY(18px); transition:transform .7s var(--ease-out); }
+  .card:hover .phone{ transform:rotate(-2deg) translateY(8px); }
+  .phone-s{ height:100%; border-radius:19px; background:var(--paper); padding:14px 10px; display:flex; flex-direction:column; gap:6px; overflow:hidden; }
+  .phone-s .ph1{ font-weight:700; font-size:8.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.08em; }
+  .phone-s .ph2{ font-size:22px; font-weight:600; letter-spacing:-.04em; }
+  .phone-s .bars{ display:flex; align-items:flex-end; gap:5px; height:60px; margin-top:6px; }
+  .phone-s .bars i{ flex:1; background:var(--mint-100); border-radius:4px 4px 2px 2px; height:var(--h); transform-origin:bottom; animation:grow 2.8s var(--ease-out) infinite alternate; animation-delay:var(--bd); }
+  .phone-s .bars i:last-child{ background:var(--pine); }
+  @keyframes grow{ from{ transform:scaleY(.35); } to{ transform:scaleY(1); } }
+  .phone-s .pl{ display:flex; justify-content:space-between; font-size:10px; padding:5px 0; border-top:1px solid var(--line); color:var(--ink-2); }
+
+  .extras{ display:flex; flex-wrap:wrap; gap:10px; margin-top:32px; justify-content:center; }
+  .chip{ display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:14px; color:var(--ink-2); transition:all .3s var(--ease-out); }
+  .chip:hover{ color:var(--ink); border-color:var(--pine); transform:translateY(-2px); }
+  .chip svg{ color:var(--pine); }
+
+  /* ---------- Sync (dark) ---------- */
+  .dark{ background:var(--pine-900); color:var(--on-dark); }
+  .sync-sec{ margin:0 12px; border-radius:var(--r-xl); overflow:hidden; }
+  @media (max-width:600px){ .sync-sec{ margin:0 8px; border-radius:22px; } }
+  .sync-sec .sec-head p{ color:var(--on-dark-2); }
+  @media (min-width:861px){ .sync-sec .sec-head{ grid-template-columns:1.5fr 1fr; } }
+  .sync-bg{ position:absolute; inset:0; pointer-events:none; background:radial-gradient(800px 400px at 50% 100%, rgba(52,172,126,.22), transparent 70%); }
+  .sync{ position:relative; display:grid; grid-template-columns:1fr 200px 1fr; align-items:center; gap:0; }
+  @media (max-width:900px){ .sync{ grid-template-columns:1fr; gap:0; } }
+  .panel{ position:relative; z-index:2; border-radius:var(--r-lg); padding:26px; background:rgba(246,242,236,.04); border:1px solid rgba(246,242,236,.1); }
+  .panel .ph{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+  .panel .ph span{ font-family:var(--sans); font-weight:700; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--on-dark-3); }
+  .panel .ph b{ font-size:12px; font-weight:500; padding:4px 10px; border-radius:99px; background:rgba(52,172,126,.16); color:var(--mint-300); }
+  .prod{ display:flex; align-items:center; gap:16px; }
+  .prod .thumb{ width:64px; height:64px; border-radius:14px; background:linear-gradient(135deg, #E9D9A8, #C9A45C); display:grid; place-items:center; flex:none; color:#6B4F1D; }
+  .prod h4{ font-size:18px; font-weight:700; letter-spacing:-.02em; }
+  .prod small{ display:block; margin-top:3px; font-family:var(--mono); font-size:12px; color:var(--on-dark-3); }
+  .stockbox{ margin-top:22px; display:flex; align-items:flex-end; justify-content:space-between; padding-top:18px; border-top:1px solid var(--line-dark); }
+  .stockbox small{ font-family:var(--sans); font-weight:700; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--on-dark-3); }
+  .odo{ display:inline-flex; font-family:var(--mono); font-size:58px; font-weight:700; letter-spacing:-.03em; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .odo .dg{ display:inline-block; position:relative; height:1.1em; overflow:hidden; }
+  .odo .dg span{ display:block; height:1.1em; transition:transform .7s var(--ease-out); }
+  .odo.bump{ color:var(--mint-300); transition:color .2s; }
+  .sim{ margin-top:20px; width:100%; }
+  .log{ margin-top:14px; min-height:44px; display:grid; gap:4px; font-size:13px; color:var(--on-dark-3); }
+  .log div{ animation:rowIn .5s var(--ease-out) both; }
+  .log div b{ color:var(--mint-300); font-weight:500; }
+
+  .wire{ position:relative; height:100%; min-height:120px; display:grid; place-items:center; }
+  .wire svg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  .wire .hub{ position:relative; z-index:2; width:84px; height:84px; border-radius:24px; background:var(--pine-850); border:1px solid rgba(246,242,236,.14); display:grid; place-items:center; box-shadow:0 0 0 12px rgba(52,172,126,.06), 0 0 70px rgba(52,172,126,.35); }
+  .wire .hub img{ width:52px; border-radius:14px; }
+  .wire .hub::before{ content:''; position:absolute; inset:-14px; border-radius:32px; border:1px solid rgba(103,199,160,.25); animation:halo 3s ease-out infinite; }
+  @keyframes halo{ from{ transform:scale(.85); opacity:1; } to{ transform:scale(1.35); opacity:0; } }
+  .pulse{ position:absolute; z-index:3; width:12px; height:12px; margin:-6px 0 0 -6px; border-radius:50%; background:#7CF2BF; box-shadow:0 0 18px 4px rgba(124,242,191,.8); top:50%; left:0; opacity:0; pointer-events:none; }
+  @media (max-width:900px){ .wire{ min-height:130px; } .wire svg{ display:none; } .wire::before{ content:''; position:absolute; top:0; bottom:0; left:50%; width:1px; background:linear-gradient(transparent, rgba(103,199,160,.5), transparent); } .pulse{ left:50%; margin-left:-6px; } }
+
+  .integr{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px; margin-top:44px; font-size:14px; color:var(--on-dark-3); }
+  .integr .chip{ background:rgba(246,242,236,.05); border-color:rgba(246,242,236,.12); color:var(--on-dark); }
+  .integr .chip.soon{ color:var(--on-dark-3); border-style:dashed; }
+  .integr .chip svg{ color:var(--mint-300); }
+
+  /* ---------- Steps ---------- */
+  .steps{ position:relative; display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+  .steps-line{ position:absolute; top:27px; left:28px; right:28px; height:2px; background:var(--line); overflow:hidden; border-radius:2px; }
+  .steps-line i{ display:block; height:100%; width:100%; background:var(--pine); transform-origin:0 50%; transform:scaleX(var(--p,0)); }
+  .step{ position:relative; }
+  .step .n{ position:relative; z-index:1; width:56px; height:56px; border-radius:50%; background:var(--paper); border:2px solid var(--line); display:grid; place-items:center; font-family:var(--mono); font-size:15px; color:var(--ink-3); transition:all .5s var(--ease-out); }
+  .step.lit .n{ background:var(--pine-850); border-color:var(--pine-850); color:var(--cream); box-shadow:0 0 0 8px var(--mint-50); }
+  .step h3{ font-size:24px; font-weight:700; margin:26px 0 10px; }
+  .step p{ color:var(--ink-2); max-width:34ch; }
+  .step .when{ display:inline-block; margin-top:16px; font-weight:600; font-size:12.5px; color:var(--pine); background:var(--mint-50); padding:4px 10px; border-radius:99px; }
+  @media (max-width:860px){
+    .steps{ grid-template-columns:1fr; gap:40px; padding-left:78px; }
+    .steps-line{ top:28px; bottom:28px; left:27px; right:auto; width:2px; height:auto; }
+    .steps-line i{ transform-origin:50% 0; transform:scaleY(var(--p,0)); }
+    .step .n{ position:absolute; left:-78px; top:0; }
+    .step h3{ margin-top:10px; }
+  }
+
+  /* ---------- Pricing ---------- */
+  .pricing{ background:var(--cream); }
+  .billing{ position:relative; display:inline-flex; padding:5px; border-radius:999px; background:#fff; border:1px solid var(--line); margin-bottom:56px; }
+  .billing button{ position:relative; z-index:1; height:42px; padding:0 20px; border-radius:999px; font-size:14.5px; font-weight:600; color:var(--ink-2); transition:color .3s; display:inline-flex; align-items:center; gap:8px; }
+  .billing button.active{ color:var(--cream); }
+  .billing button .save{ font-size:11.5px; font-weight:600; padding:3px 8px; border-radius:99px; background:var(--mint-100); color:var(--pine-800); transition:all .3s; }
+  .billing button.active .save{ background:var(--mint); color:var(--pine-950); }
+  .billing .knob{ position:absolute; top:5px; bottom:5px; left:5px; border-radius:999px; background:var(--pine-850); transition:transform .55s var(--ease-out), width .55s var(--ease-out); }
+  .plans{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; align-items:stretch; }
+  @media (max-width:980px){ .plans{ grid-template-columns:1fr; max-width:460px; margin:0 auto; } }
+  .plan{ position:relative; display:flex; flex-direction:column; padding:34px 30px 30px; border-radius:var(--r-lg); background:#fff; border:1px solid var(--line); transition:transform .5s var(--ease-out), box-shadow .5s var(--ease-out); }
+  .plan:hover{ transform:translateY(-6px); box-shadow:var(--shadow); }
+  .plan .pname{ font-size:15px; font-weight:600; letter-spacing:-.01em; display:flex; align-items:center; gap:10px; }
+  .plan .pname img{ width:24px; border-radius:7px; }
+  .plan .pfor{ margin-top:10px; font-size:14.5px; color:var(--ink-2); min-height:44px; }
+  .plan .price{ display:flex; align-items:baseline; gap:6px; margin-top:28px; }
+  .plan .amt{ font-size:50px; font-weight:750; letter-spacing:-.045em; line-height:1; font-variant-numeric:tabular-nums; display:inline-block; }
+  .plan .amt.swap{ animation:swap .5s var(--ease-out); }
+  @keyframes swap{ 0%{ opacity:0; transform:translateY(12px); filter:blur(4px); } 100%{ opacity:1; transform:none; filter:none; } }
+  .plan .per{ color:var(--ink-3); font-size:15px; }
+  .plan .price-note{ font-size:13px; color:var(--ink-3); margin-top:8px; min-height:20px; }
+  .plan .perday{ margin-top:14px; font-size:13.5px; padding:10px 12px; border-radius:12px; background:var(--paper); color:var(--ink-2); }
+  .plan .perday b{ color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+  .plan ul{ list-style:none; padding:0; margin:26px 0 30px; display:grid; gap:12px; flex:1; align-content:start; }
+  .plan li{ display:flex; gap:12px; font-size:15px; align-items:flex-start; }
+  .plan li .ck{ flex:none; width:20px; height:20px; border-radius:50%; background:var(--mint-50); color:var(--pine); display:grid; place-items:center; margin-top:1px; }
+  .plan li.off{ color:var(--ink-3); text-decoration:line-through; text-decoration-color:rgba(138,149,143,.5); }
+  .plan li.off .ck{ background:var(--sand); color:var(--ink-3); }
+  .plan.featured{ background:var(--pine-900); color:var(--on-dark); border-color:transparent; box-shadow:0 40px 80px -40px rgba(6,38,29,.7); isolation:isolate; }
+  .plan.featured::before{
+    content:''; position:absolute; inset:-1px; z-index:-2; border-radius:inherit; padding:1px;
+    background:conic-gradient(from var(--ang,0deg), transparent 0 60%, var(--mint-300) 75%, transparent 90%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude;
+    animation:spin 5s linear infinite;
+  }
+  @property --ang{ syntax:'<angle>'; inherits:false; initial-value:0deg; }
+  @keyframes spin{ to{ --ang:360deg; } }
+  .plan.featured::after{ content:''; position:absolute; inset:0; z-index:-1; border-radius:inherit; background:radial-gradient(500px 260px at 80% 0%, rgba(52,172,126,.3), transparent 60%); }
+  @media (min-width:981px){ .plan.featured{ transform:translateY(-14px); } .plan.featured:hover{ transform:translateY(-20px); } }
+  .plan.featured .pfor, .plan.featured .per, .plan.featured .price-note{ color:var(--on-dark-2); }
+  .plan.featured .perday{ background:rgba(246,242,236,.06); color:var(--on-dark-2); }
+  .plan.featured .perday b{ color:var(--cream); }
+  .plan.featured li .ck{ background:var(--mint); color:var(--pine-950); }
+  .plan .badge{ position:absolute; top:28px; right:26px; font-size:11.5px; font-weight:600; letter-spacing:.02em; padding:5px 11px; border-radius:99px; background:var(--mint); color:var(--pine-950); }
+  .plan.featured .btn{ --bg:var(--cream); --fg:var(--pine-900); }
+  .plan .btn-ghost{ border-color:var(--line); }
+
+  .guarantees{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:44px; }
+  @media (max-width:860px){ .guarantees{ grid-template-columns:1fr; } }
+  .g{ display:flex; gap:14px; align-items:flex-start; padding:20px; border-radius:var(--r); border:1px dashed #D4CBBC; }
+  .g .gi{ width:40px; height:40px; border-radius:12px; background:#fff; display:grid; place-items:center; color:var(--pine); flex:none; border:1px solid var(--line); }
+  .g b{ display:block; font-weight:600; letter-spacing:-.01em; }
+  .g span{ font-size:14px; color:var(--ink-2); }
+
+  /* ---------- FAQ ---------- */
+  .faq-grid{ display:grid; grid-template-columns:.8fr 1.2fr; gap:60px; align-items:start; }
+  @media (max-width:900px){ .faq-grid{ grid-template-columns:1fr; gap:36px; } }
+  .faq-side h2{ font-size:clamp(34px,4.2vw,54px); font-weight:720; letter-spacing:-.04em; margin:18px 0 18px; }
+  .faq-side p{ color:var(--ink-2); max-width:36ch; }
+  .faq-side .btn{ margin-top:26px; }
+  .faq{ border-top:1px solid var(--line); }
+  .qa{ border-bottom:1px solid var(--line); }
+  .qa button{ width:100%; display:flex; justify-content:space-between; align-items:center; gap:20px; padding:26px 0; text-align:left; font-size:clamp(17px,1.5vw,19px); font-weight:600; letter-spacing:-.015em; }
+  .qa .pm{ position:relative; width:32px; height:32px; border-radius:50%; border:1px solid var(--line); flex:none; transition:all .4s var(--ease-out); }
+  .qa .pm::before,.qa .pm::after{ content:''; position:absolute; left:50%; top:50%; width:12px; height:1.5px; margin:-.75px 0 0 -6px; background:currentColor; transition:transform .4s var(--ease-out); }
+  .qa .pm::after{ transform:rotate(90deg); }
+  .qa.open .pm{ background:var(--pine-850); border-color:var(--pine-850); color:var(--cream); transform:rotate(180deg); }
+  .qa.open .pm::after{ transform:rotate(0deg); }
+  .qa button:hover .pm{ border-color:var(--ink); }
+  .qa .ans{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .5s var(--ease-out); }
+  .qa.open .ans{ grid-template-rows:1fr; }
+  .qa .ans > div{ overflow:hidden; }
+  .qa .ans p{ padding:0 60px 26px 0; color:var(--ink-2); font-size:16px; }
+  .qa .ans p:not(:last-of-type){ padding-bottom:12px; }
+  .qa .ans a{ color:var(--pine); font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+  @media (max-width:600px){ .qa .ans p{ padding-right:0; } }
+
+  /* ---------- Final CTA ---------- */
+  .final{ margin:0 12px 12px; border-radius:var(--r-xl); overflow:hidden; padding:150px 0 0; text-align:center; }
+  @media (max-width:600px){ .final{ margin:0 8px 8px; border-radius:22px; padding-top:100px; } }
+  .final .bigv{ width:96px; height:96px; margin:0 auto 34px; border-radius:28px; box-shadow:0 0 0 1px rgba(246,242,236,.12), 0 30px 80px -10px rgba(52,172,126,.55); animation:bob 6s ease-in-out infinite; }
+  @keyframes bob{ 0%,100%{ transform:translateY(0) rotate(-4deg); } 50%{ transform:translateY(-10px) rotate(3deg); } }
+  .final h2{ font-size:clamp(40px,6vw,86px); font-weight:750; letter-spacing:-.05em; line-height:1.02; max-width:20ch; margin:0 auto; }
+  .final p.lead{ margin:28px auto 40px; color:var(--on-dark-2); font-size:19px; max-width:46ch; }
+  .final .hero-ctas{ justify-content:center; }
+  .final .rays{ position:absolute; left:50%; bottom:-520px; width:1300px; height:900px; margin-left:-650px; border-radius:50%; background:radial-gradient(closest-side, rgba(52,172,126,.45), rgba(22,113,96,.15) 60%, transparent); pointer-events:none; }
+  .wordmark{ position:relative; margin-top:120px; font-size:clamp(120px, 27vw, 380px); font-weight:800; letter-spacing:-.08em; line-height:.72; color:transparent; user-select:none; white-space:nowrap; transform:translateY(8%); }
+  .wordmark span{ background:linear-gradient(180deg, rgba(246,242,236,.13), rgba(246,242,236,0) 80%); -webkit-background-clip:text; background-clip:text; }
+
+  footer{ padding:36px 0 44px; }
+  .foot{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:18px 30px; }
+  .foot .brand{ font-size:17px; } .foot .brand img{ width:28px; height:28px; border-radius:8px; }
+  .foot nav{ display:flex; flex-wrap:wrap; gap:6px 22px; font-size:14px; color:var(--ink-2); }
+  .foot nav a:hover{ color:var(--ink); }
+  .foot small{ color:var(--ink-3); font-size:13px; }
+
+  /* ---------- Sticky mobile CTA ---------- */
+  .dock{ position:fixed; left:12px; right:12px; bottom:12px; z-index:50; display:none; align-items:center; gap:12px; padding:8px 8px 8px 16px; border-radius:999px; background:rgba(6,38,29,.9); color:var(--on-dark); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:0 20px 40px -16px rgba(3,20,15,.6); transform:translateY(140%); transition:transform .6s var(--ease-out); }
+  .dock.on{ transform:none; }
+  .dock span{ font-size:13.5px; line-height:1.2; flex:1; }
+  .dock span b{ display:block; font-weight:600; }
+  .dock .btn{ height:44px; }
+
+  /* Botón flotante de WhatsApp. En mobile el dock ocupa el borde inferior,
+     así que el botón sube para no taparlo. */
+  .wa-fab{ position:fixed; right:20px; bottom:20px; z-index:60; width:58px; height:58px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:0;
+    background:#25D366; color:#fff; text-decoration:none; overflow:hidden; white-space:nowrap;
+    box-shadow:0 12px 28px -8px rgba(37,211,102,.55), 0 4px 10px rgba(3,20,15,.18);
+    transition:width .35s var(--ease-out), padding .35s var(--ease-out), transform .2s var(--ease-out), box-shadow .2s var(--ease-out); }
+  .wa-fab svg{ flex:0 0 auto; }
+  .wa-fab .wa-t{ max-width:0; opacity:0; font-size:14.5px; font-weight:650; letter-spacing:-.01em;
+    transition:max-width .35s var(--ease-out), opacity .25s var(--ease-out); }
+  .wa-fab:hover, .wa-fab:focus-visible{ width:186px; padding:0 20px; transform:translateY(-2px);
+    box-shadow:0 16px 34px -8px rgba(37,211,102,.6), 0 6px 14px rgba(3,20,15,.2); }
+  .wa-fab:hover .wa-t, .wa-fab:focus-visible .wa-t{ max-width:130px; opacity:1; }
+  .wa-fab:active{ transform:translateY(0) scale(.96); }
+  @media (max-width:760px){
+    .wa-fab{ right:14px; bottom:84px; width:52px; height:52px; }
+    .wa-fab:hover, .wa-fab:focus-visible{ width:52px; padding:0; }
+    .wa-fab .wa-t{ display:none; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .wa-fab, .wa-fab .wa-t{ transition:none; }
+  }
+  @media (max-width:760px){ .dock{ display:flex; } }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important; }
+    .split .w > span, .fade-up{ transform:none; opacity:1; }
+    .reveal{ opacity:1; transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav on-dark" id="nav">
+  <div class="nav-inner">
+    <a href="#top" class="brand" aria-label="Ventra, inicio">
+      <img src="/ventra-logo.png" alt="" width="34" height="34">
+      Ventra
+    </a>
+    <nav class="nav-links" aria-label="Principal">
+      <a href="#producto">Producto</a>
+      <a href="#tienda">Tienda online</a>
+      <a href="#planes">Planes</a>
+      <a href="#preguntas">Preguntas</a>
+    </nav>
+    <div class="nav-right">
+      <div id="authArea" class="auth-area"></div>
+      <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-sm btn-primary-nav hide-m magnet">Probar demo</a>
+      <button class="burger" id="burger" aria-label="Abrir menú" aria-expanded="false"><span></span></button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+  <a class="l" href="#producto">Producto</a>
+  <a class="l" href="#tienda">Tienda online</a>
+  <a class="l" href="#planes">Planes</a>
+  <a class="l" href="#preguntas">Preguntas</a>
+  <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-cream btn-block">Probar demo gratis</a>
+  <div class="auth-slot" id="authAreaMobile"></div>
+</div>
+
+<main id="top">
+
+<!-- ============ HERO ============ -->
+<section class="hero grain" style="padding-bottom:0">
+  <div class="hero-bg" aria-hidden="true">
+    <div class="glow"></div><div class="glow b"></div>
+    <div class="grid"></div>
+  </div>
+
+  <div class="shell">
+    <div class="hero-copy">
+      <a href="#tienda" class="pill fade-up" style="--d:0ms"><b>Nuevo</b> Tienda online sincronizada<span class="xs-hide"> con tu caja</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+
+      <h1 class="hero-title split" aria-label="Tu negocio, vendiendo solo.">
+        <span class="w"><span style="--i:0">Tu</span></span>
+        <span class="w"><span style="--i:1">negocio,</span></span>
+        <span class="w"><span style="--i:2"><em class="s">vendiendo</em></span></span>
+        <span class="w"><span style="--i:3"><em class="s">solo.</em></span></span>
+      </h1>
+
+      <p class="hero-sub fade-up" style="--d:420ms">Ventra junta <b>caja, stock, cuentas corrientes y tienda online</b> en un solo sistema. Cobrás en segundos, cerrás la caja sin diferencias y sabés, todos los días, cuánto ganaste.</p>
+
+      <div class="hero-ctas fade-up" style="--d:540ms">
+        <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-cream magnet">Probar la demo gratis <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+        <a href="#planes" class="btn btn-ghost on-dark">Ver planes y precios</a>
+      </div>
+
+      <div class="hero-trust fade-up" style="--d:660ms">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Sin tarjeta</span>
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Sin instalar nada</span>
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Migramos tu catálogo</span>
+        <span class="for-line">Hecho para
+          <span class="rotator" id="rotator" aria-live="polite"><span class="on">kioscos</span><span>almacenes</span><span>ferreterías</span><span>dietéticas</span><span>librerías</span><span>despensas</span><span>maxikioscos</span></span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Replica of the real Ventra POS screen, animated -->
+    <div class="stage fade-up" style="--d:500ms" id="stage">
+      <div class="float f2" id="f2">
+        <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
+        <span><b>Pedido online #218</b><small>Tienda online · $ 8.450</small></span>
+      </div>
+      <div class="appfit" id="appfit">
+        <div class="appwin" id="appwin">
+          <div class="app" id="app" aria-hidden="true">
+            <div class="a-title"><img src="/ventra-logo.png" alt="">Ventra<span class="wc"><span>─</span><span>☐</span><span>✕</span></span></div>
+            <div class="a-top">
+              <span class="a-pill solid c-slate keep"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>Caja <i class="dot"></i></span>
+              <span class="a-pill solid c-indigo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Cobro Cta. Cte.</span>
+              <span class="a-pill solid c-violet"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></svg>Historial</span>
+              <span class="a-pill solid c-green hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 6v12M15 9h-4.5a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3H9"/></svg>Gastos</span>
+              <span class="a-pill solid c-blue hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>Proveedores</span>
+              <span class="a-util keep">
+                <span class="a-u a-user"><i>A</i><span class="hm">ADMIN</span></span>
+                <span class="a-u hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+                <span class="a-sep hm"></span>
+                <span class="a-u a-time"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="mono" id="aClock">16:41</span></span>
+                <span class="a-sep hm"></span>
+                <span class="a-u hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/></svg></span>
+                <span class="a-u hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span>
+                <span class="a-u a-gear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>
+              </span>
+            </div>
+            <div class="a-body">
+              <div class="a-left">
+                <div class="a-srow">
+                  <div class="a-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span id="aTyped" class="typed"></span><i class="car"></i><span id="aPh">Buscar por nombre o código de barra...</span></div>
+                  <span class="a-fast"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>Rápida <span class="a-kbd">F1</span></span>
+                  <span class="a-sq"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#17925F" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h8"/></svg></span>
+                  <span class="a-sq hm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+                  <span class="a-btn hm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#17925F" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Devolución</span>
+                </div>
+                <div class="a-chips">
+                  <span class="a-chip on">Todos</span>
+                  <span class="a-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>Promos</span>
+                  <span class="a-chip">BEBIDAS</span>
+                  <span class="a-chip hm">ALMACÉN</span>
+                </div>
+                <div class="a-grid" id="aGrid"></div>
+              </div>
+              <div class="a-right">
+                <div class="a-rh"><b>TICKET EN CURSO</b><span class="a-mini"><span>Reimprimir <span class="a-kbd" style="padding:0 4px">F4</span></span>Vaciar</span></div>
+                <div class="a-pause"><span class="a-orange">❚❚ Pausar Ticket <span class="a-kbd">F2</span></span><span class="a-wait">↺ En Espera</span></div>
+                <div class="a-search a-mscan"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span id="aTyped2" class="typed"></span><i class="car"></i><span id="aPh2">Escaneá un código de barra...</span></div>
+                <div class="a-list" id="aList">
+                  <div class="a-empty" id="aEmpty"><i><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></i><b>Carrito vacío</b>Escaneá un código o tocá un producto<br>del catálogo para sumar al ticket</div>
+                </div>
+                <div class="a-sum">
+                  <div class="l"><span>ITEMS / CANTIDAD</span><span class="a-badge" id="aCount">0</span></div>
+                  <div class="l"><span>TOTAL A PAGAR</span><span class="a-total" id="aTotal">$ 0</span></div>
+                </div>
+                <div class="a-confirm off" id="aConfirm">CONFIRMAR VENTA ↵</div>
+              </div>
+            </div>
+            <div class="a-ov" id="aOv">
+              <div class="a-modal">
+                <div class="a-mh"><img src="/ventra-logo.png" alt="">Confirmar Pago<span class="cl">✕</span></div>
+                <div class="a-dark"><small>TOTAL A COBRAR</small><b id="aModalTotal">$ 0</b></div>
+                <div class="a-methods">
+                  <div class="a-m"><span class="n">1</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>EFECTIVO</div>
+                  <div class="a-m"><span class="n">2</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>CLOVER</div>
+                  <div class="a-m"><span class="n">3</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/></svg>MERCADOPAGO</div>
+                  <div class="a-m"><span class="n">4</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4M2 6h1.9c1.5 0 2.9.9 3.6 2.2M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg>MIXTO</div>
+                </div>
+                <div class="a-cc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>CUENTA CORRIENTE (CLIENTE)<span class="n">5</span></div>
+                <div class="a-fin"><div id="aFin">✓ FINALIZAR VENTA <kbd>[ENTER]</kbd></div></div>
+              </div>
+            </div>
+            <div class="a-toast" id="aToast"><i><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></i><span><b id="aToastT">Venta registrada</b><small id="aToastS">Ticket #0143 · MercadoPago</small></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="float f1" id="f1">
+        <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></span>
+        <span><b>Stock sincronizado</b><small>Mostrador y tienda online</small></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Kioscos</span><img src="/ventra-v.png" alt=""><span>Almacenes</span><img src="/ventra-v.png" alt=""><span>Ferreterías</span><img src="/ventra-v.png" alt=""><span>Dietéticas</span><img src="/ventra-v.png" alt=""><span>Librerías</span><img src="/ventra-v.png" alt=""><span>Maxikioscos</span><img src="/ventra-v.png" alt=""><span>Despensas</span><img src="/ventra-v.png" alt=""><span>Pet shops</span><img src="/ventra-v.png" alt="">
+      <span>Kioscos</span><img src="/ventra-v.png" alt=""><span>Almacenes</span><img src="/ventra-v.png" alt=""><span>Ferreterías</span><img src="/ventra-v.png" alt=""><span>Dietéticas</span><img src="/ventra-v.png" alt=""><span>Librerías</span><img src="/ventra-v.png" alt=""><span>Maxikioscos</span><img src="/ventra-v.png" alt=""><span>Despensas</span><img src="/ventra-v.png" alt=""><span>Pet shops</span><img src="/ventra-v.png" alt="">
+    </div>
+  </div>
+</section>
+
+<!-- ============ SOCIAL PROOF ============ -->
+<section class="proof" id="clientes">
+  <div class="shell">
+    <div class="proof-card reveal">
+      <div>
+        <span class="eyebrow"><i></i>En uso real</span>
+        <h2>Maxikiosco Paulos ya vende <em class="s">con Ventra.</em></h2>
+        <p>Un maxikiosco real, con miles de productos en góndola, maneja su caja y su stock con Ventra. No es una maqueta: es el mismo sistema que vas a usar vos.</p>
+      </div>
+      <div>
+        <a class="ig" href="https://www.instagram.com/kiosco_paulos/" target="_blank" rel="noopener">
+          <img class="av" src="/paulos-logo.jpg" alt="Logo de Maxikiosco Paulos" width="64" height="64" loading="lazy">
+          <span class="ig-t"><b>Maxikiosco Paulos</b><small>@kiosco_paulos</small></span>
+          <span class="igb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>Ver en Instagram</span>
+        </a>
+        <div class="pc-stats">
+          <div><b>+5.500</b><small>productos gestionados</small></div>
+          <div><b>Caja y stock</b><small>todos los días en el mostrador</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BEFORE / AFTER ============ -->
+<section id="cambio">
+  <div class="shell">
+    <div class="sec-head center reveal">
+      <span class="eyebrow"><i></i>Lo que cambia<i></i></span>
+      <h2>Dejá de administrar a mano.<br><em class="s">Empezá a dirigir tu negocio.</em></h2>
+    </div>
+
+    <div class="ba-wrap reveal">
+      <div class="ba-switch" id="baSwitch" role="group" aria-label="Comparar">
+        <span class="knob"></span>
+        <button type="button" data-v="before" aria-pressed="false">Sin Ventra</button>
+        <button type="button" data-v="after" aria-pressed="true">Con Ventra</button>
+      </div>
+    </div>
+
+    <div class="ba-grid" id="baGrid">
+      <div class="ba reveal" style="--d:0ms"><div class="ba-in" style="--d:0ms">
+        <div class="ba-face after"><span class="tag">Caja</span><div class="big">1 clic</div><h3>Cierre de caja sin diferencias</h3><p>Arqueo y reporte Z automáticos, separados por efectivo, Mercado Pago y tarjeta.</p></div>
+        <div class="ba-face before"><span class="tag">Caja</span><h3>“¿Por qué no me cierra la caja?”</h3><p>Cuentas a mano al final del día y billetes que nunca coinciden con el cuaderno.</p></div>
+      </div></div>
+      <div class="ba reveal" style="--d:80ms"><div class="ba-in" style="--d:70ms">
+        <div class="ba-face after"><span class="tag">Stock</span><div class="big">Alertas</div><h3>Stock que se cuida solo</h3><p>Cada venta descuenta al instante y te avisa antes de que te quedes sin mercadería.</p></div>
+        <div class="ba-face before"><span class="tag">Stock</span><h3>“Creo que quedaba…”</h3><p>Reponés a ojo, perdés ventas por faltantes y te sobra lo que no rota.</p></div>
+      </div></div>
+      <div class="ba reveal" style="--d:160ms"><div class="ba-in" style="--d:140ms">
+        <div class="ba-face after"><span class="tag">Fiado</span><div class="big">Límite</div><h3>Cuentas corrientes claras</h3><p>Cada cliente con su límite de crédito, saldo e historial de pagos. Sin discusiones.</p></div>
+        <div class="ba-face before"><span class="tag">Fiado</span><h3>El cuaderno del fiado</h3><p>Hojas tachadas, montos que no se entienden y plata que nunca vuelve.</p></div>
+      </div></div>
+      <div class="ba reveal" style="--d:240ms"><div class="ba-in" style="--d:210ms">
+        <div class="ba-face after"><span class="tag">Precios</span><div class="big">Al día</div><h3>Aumentos en segundos</h3><p>Actualizás precios en masa y se reflejan en la caja y en tu tienda online a la vez.</p></div>
+        <div class="ba-face before"><span class="tag">Precios</span><h3>Etiquetas desactualizadas</h3><p>Cada aumento es una tarde entera remarcando, y siempre se escapa alguno.</p></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENTO ============ -->
+<section id="producto" style="padding-top:40px">
+  <div class="shell">
+    <div class="sec-head reveal">
+      <div>
+        <span class="eyebrow"><i></i>Producto</span>
+        <h2>Todo tu comercio,<br><em class="s">en una sola pantalla.</em></h2>
+      </div>
+      <p>Diseñado junto a comerciantes de mostrador: rápido cuando hay fila, simple para cualquier empleado y completo para el dueño que quiere números claros.</p>
+    </div>
+
+    <div class="bento">
+      <article class="card dark c-3 c-wide-m reveal spot">
+        <div class="viz">
+          <div class="keys">
+            <div class="barcode" id="barcode" aria-hidden="true"></div>
+            <div class="kbd-row" aria-hidden="true">
+              <span class="kbd" style="--kd:0s">F1</span><span class="kbd" style="--kd:.3s">×2</span><span class="kbd" style="--kd:.6s">Enter</span><span class="kbd" style="--kd:.9s">F12</span>
+            </div>
+            <span class="speed"><span class="live"><i></i></span>Venta cobrada en segundos</span>
+          </div>
+        </div>
+        <h3>Cobrá rápido, aunque haya fila</h3>
+        <p>Lector de código de barras, búsqueda instantánea y atajos de teclado. Unidad, kilo o pack en la misma venta.</p>
+      </article>
+
+      <article class="card c-3 c-wide-m reveal spot" style="--d:80ms">
+        <div class="viz">
+          <div class="zrep">
+            <div class="zh"><span>Monto según medio de pago</span><span>Turno activo</span></div>
+            <div class="mp">
+              <div><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg></i><small>EFECTIVO</small><b>$ 184.300</b></div>
+              <div><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></i><small>CLOVER POS</small><b>$ 86.120</b></div>
+              <div><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/></svg></i><small>MERCADOPAGO</small><b>$ 142.950</b></div>
+            </div>
+            <div class="zbtns"><span class="x">⇄ Cambio de Turno (Cierre X)</span><span class="zz">⎋ Cierre Final del Día (Cierre Z)</span></div>
+          </div>
+        </div>
+        <h3>Cierre de caja en un clic</h3>
+        <p>Apertura y cierre de turno, arqueo y reporte Z con el detalle por medio de pago. Tesorería y gastos incluidos.</p>
+      </article>
+
+      <article class="card c-2 reveal spot">
+        <div class="viz">
+          <div class="stock" id="stockViz">
+            <div class="sitem"><span>Yerba mate 1kg</span><span class="cnt" data-c="24">24 u.</span><span class="sb"><i style="--w:80%"></i></span></div>
+            <div class="sitem" id="lowItem"><span>Gaseosa cola 2,25L</span><span class="cnt" id="lowCnt">9 u.</span><span class="sb"><i id="lowBar" style="--w:45%"></i></span></div>
+            <div class="alert" id="stockAlert"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Stock mínimo: hacé el pedido al proveedor</div>
+          </div>
+        </div>
+        <h3>Stock bajo control</h3>
+        <p>Alertas de mínimo, compras a proveedores y auditoría de cada movimiento.</p>
+      </article>
+
+      <article class="card c-2 reveal spot" style="--d:80ms">
+        <div class="viz">
+          <div class="tags" aria-hidden="true">
+            <div class="ptag" style="--td:0s; background:var(--mint-300)"><b>2×1</b><small>en alfajores</small></div>
+            <div class="ptag" style="--td:2.5s; background:#E9D9A8"><b>−15%</b><small>pagando en efectivo</small></div>
+            <div class="ptag" style="--td:5s; background:var(--mint-100)"><b>Combo</b><small>mate + yerba · $6.900</small></div>
+          </div>
+        </div>
+        <h3>Promos que venden</h3>
+        <p>2×1, combos a precio fijo y descuentos, con tope de stock o fecha.</p>
+      </article>
+
+      <article class="card dark c-2 reveal spot" style="--d:160ms">
+        <div class="viz">
+          <div class="cc">
+            <div class="ring">
+              <svg width="128" height="128" viewBox="0 0 128 128"><circle cx="64" cy="64" r="54" fill="none" stroke="rgba(246,242,236,.1)" stroke-width="10"/><circle class="v" cx="64" cy="64" r="54" fill="none" stroke="#67C7A0" stroke-width="10" stroke-linecap="round"/></svg>
+              <div class="lbl"><b>62%</b><small>del límite</small></div>
+            </div>
+            <div class="cc-list">
+              <div>Saldo <b>$31.000</b></div>
+              <div>Límite <b>$50.000</b></div>
+              <div>Último pago <b>ayer</b></div>
+            </div>
+          </div>
+        </div>
+        <h3>Fiado, pero ordenado</h3>
+        <p>Cuentas corrientes con límite de crédito e historial.</p>
+      </article>
+
+      <article class="card c-4 c-wide-m reveal spot">
+        <div class="dash">
+          <div class="dt g"><small>TOTAL PRODUCTOS</small><b data-count="5585">0</b><span>5585 activos</span></div>
+          <div class="dt n"><small>VENTAS DEL MES</small><b data-count="4820000" data-prefix="$ ">$ 0</b><span>Mes de: Septiembre</span></div>
+          <div class="dt g2"><small>TRANSACCIONES</small><b data-count="1284">0</b><span>Ventas del mes</span></div>
+          <div class="dt o"><small>ALERTAS STOCK</small><b data-count="12">0</b><span>12 críticos</span></div>
+        </div>
+        <div class="viz" style="margin-bottom:14px">
+          <svg class="chart" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="ga" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#34AC7E" stop-opacity=".28"/><stop offset="1" stop-color="#34AC7E" stop-opacity="0"/></linearGradient></defs>
+            <g stroke="#EFE9DF" stroke-width="1"><line x1="0" x2="600" y1="45" y2="45"/><line x1="0" x2="600" y1="90" y2="90"/><line x1="0" x2="600" y1="135" y2="135"/></g>
+            <path class="area" d="M0 150 C40 140 60 120 100 126 S170 96 210 104 S280 70 320 82 S390 58 430 64 S500 30 540 38 S580 20 600 16 L600 180 L0 180Z" fill="url(#ga)"/>
+            <path class="line" d="M0 150 C40 140 60 120 100 126 S170 96 210 104 S280 70 320 82 S390 58 430 64 S500 30 540 38 S580 20 600 16" fill="none" stroke="#167160" stroke-width="3" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+            <circle class="dotp" cx="540" cy="38" r="6" fill="#167160" stroke="#fff" stroke-width="3"/>
+          </svg>
+        </div>
+        <h3>Números que se entienden</h3>
+        <p>Ventas por período, productos estrella, márgenes, historial de precios y división de ganancias entre socios.</p>
+      </article>
+
+      <article class="card dark c-2 reveal spot" style="--d:80ms">
+        <div class="viz">
+          <div class="terms" aria-hidden="true">
+            <svg viewBox="0 0 300 160"><path id="p1" d="M43 31 L150 80" stroke="rgba(103,199,160,.35)" stroke-dasharray="4 5" fill="none"/><path id="p2" d="M257 31 L150 80" stroke="rgba(103,199,160,.35)" stroke-dasharray="4 5" fill="none"/><path id="p3" d="M150 80 L150 150" stroke="rgba(103,199,160,.35)" stroke-dasharray="4 5" fill="none"/>
+              <circle class="pkt" r="4" fill="#7CF2BF" style="offset-path:path('M43 31 L150 80');--pd:0s"/><circle class="pkt" r="4" fill="#7CF2BF" style="offset-path:path('M257 31 L150 80');--pd:.8s"/><circle class="pkt" r="4" fill="#7CF2BF" style="offset-path:path('M150 80 L150 150');--pd:1.6s"/></svg>
+            <div class="term t1">Caja 1</div><div class="term t2">Caja 2</div>
+            <div class="term hub"><img src="/ventra-v.png" alt=""></div>
+          </div>
+        </div>
+        <h3>Varias cajas, un negocio</h3>
+        <p>Terminales en simultáneo, cada una con su usuario, rol y permisos.</p>
+      </article>
+
+      <article class="card c-3 reveal spot">
+        <div class="viz" style="margin-bottom:0; align-items:flex-end; overflow:hidden">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-s">
+              <span class="ph1">Ventas de hoy</span>
+              <span class="ph2">$448.770</span>
+              <div class="bars"><i style="--h:40%;--bd:0s"></i><i style="--h:62%;--bd:.2s"></i><i style="--h:48%;--bd:.4s"></i><i style="--h:80%;--bd:.6s"></i><i style="--h:100%;--bd:.8s"></i></div>
+              <div class="pl"><span>Caja 1</span><span>abierta</span></div>
+              <div class="pl"><span>Caja 2</span><span>abierta</span></div>
+            </div>
+          </div>
+        </div>
+        <h3 style="margin-top:22px">Tu negocio, en el bolsillo</h3>
+        <p>Mirá ventas y cajas desde el celular con acceso remoto, estés donde estés.</p>
+      </article>
+
+      <article class="card c-3 reveal spot" style="--d:80ms; background:var(--mint-50); border-color:var(--mint-100)">
+        <div class="viz">
+          <div style="text-align:center">
+            <div style="font-size:clamp(48px,5.6vw,72px); font-weight:800; line-height:1; color:var(--pine-850); letter-spacing:-.05em">Sin internet,</div>
+            <div style="font-size:22px; font-weight:650; letter-spacing:-.02em; color:var(--pine); margin-top:8px">seguís vendiendo.</div>
+          </div>
+        </div>
+        <h3>Nunca te deja con la fila esperando</h3>
+        <p>La versión de escritorio sigue cobrando aunque se corte internet y sincroniza apenas vuelve la conexión.</p>
+      </article>
+    </div>
+
+    <div class="extras reveal">
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Proveedores y compras</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Presupuestos</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>Tesorería y gastos</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Auditoría de stock</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Actualización masiva de precios</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Roles y permisos</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 5-5"/></svg>Resumen fiscal</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SYNC ============ -->
+<section class="dark sync-sec grain" id="tienda">
+  <div class="sync-bg" aria-hidden="true"></div>
+  <div class="shell" style="position:relative; z-index:1">
+    <div class="sec-head reveal">
+      <div>
+        <span class="eyebrow"><i></i>Tienda online</span>
+        <h2>Vendés en el mostrador y online.<br><em class="s">Un solo stock.</em></h2>
+      </div>
+      <p>Cada venta del local descuenta en tu tienda online, y cada pedido online descuenta en la caja. En vivo, sin cargar nada dos veces. Probalo:</p>
+    </div>
+
+    <div class="sync reveal" id="sync">
+      <div class="panel" id="panelA">
+        <div class="ph"><span>Mostrador · Caja 1</span><b>Ventra</b></div>
+        <div class="prod">
+          <div class="thumb"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12l-1 4H7Z"/><path d="M7 7v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7"/><path d="M10 12h4"/></svg></div>
+          <div><h4>Yerba mate 1kg</h4><small>$5.100 · cód. 7790387000012</small></div>
+        </div>
+        <div class="stockbox"><small>Stock disponible</small><span class="odo" data-odo="a"></span></div>
+        <button type="button" class="btn btn-cream sim" data-sim="a">Vender en el mostrador</button>
+        <div class="log" id="logA"></div>
+      </div>
+
+      <div class="wire" aria-hidden="true">
+        <svg viewBox="0 0 200 100" preserveAspectRatio="none"><line x1="0" y1="50" x2="200" y2="50" stroke="rgba(103,199,160,.35)" stroke-dasharray="3 6" vector-effect="non-scaling-stroke"/></svg>
+        <div class="hub"><img src="/ventra-logo.png" alt=""></div>
+        <span class="pulse" id="pulse"></span>
+      </div>
+
+      <div class="panel" id="panelB">
+        <div class="ph"><span>Tienda online</span><b>Pedidos en vivo</b></div>
+        <div class="prod">
+          <div class="thumb"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12l-1 4H7Z"/><path d="M7 7v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7"/><path d="M10 12h4"/></svg></div>
+          <div><h4>Yerba mate 1kg</h4><small>$5.100 · envío a domicilio</small></div>
+        </div>
+        <div class="stockbox"><small>Stock publicado</small><span class="odo" data-odo="b"></span></div>
+        <button type="button" class="btn btn-ghost sim" data-sim="b">Simular pedido online</button>
+        <div class="log" id="logB"></div>
+      </div>
+    </div>
+
+    <div class="integr reveal">
+      Integrado con
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Tienda online Ventra</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>GoDelivery</span>
+      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Mercado Pago</span>
+      <span class="chip soon">Próximamente: más plataformas</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STEPS ============ -->
+<section id="empezar">
+  <div class="shell">
+    <div class="sec-head reveal">
+      <div>
+        <span class="eyebrow"><i></i>Cómo empezar</span>
+        <h2>De cero a vender,<br><em class="s">en el mismo día.</em></h2>
+      </div>
+      <p>No tenés que frenar el negocio ni cargar mil productos a mano. Nosotros te acompañamos en cada paso.</p>
+    </div>
+    <div class="steps" id="steps">
+      <div class="steps-line"><i></i></div>
+      <div class="step reveal"><div class="n">01</div><h3>Elegís tu plan</h3><p>Te suscribís con Mercado Pago en un minuto. Sin contratos ni permanencia.</p><span class="when">1 minuto</span></div>
+      <div class="step reveal" style="--d:100ms"><div class="n">02</div><h3>Migramos tu catálogo</h3><p>Armamos tu instancia privada y te ayudamos a pasar tus productos y precios.</p><span class="when">Menos de 24 hs</span></div>
+      <div class="step reveal" style="--d:200ms"><div class="n">03</div><h3>Empezás a cobrar</h3><p>Abrís la caja y vendés. Tu tienda online queda publicada con el mismo stock.</p><span class="when">Listo</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRICING ============ -->
+<section class="pricing" id="planes">
+  <div class="shell">
+    <div class="sec-head center reveal">
+      <span class="eyebrow"><i></i>Planes<i></i></span>
+      <h2>Menos que lo que perdés<br><em class="s">en un faltante.</em></h2>
+      <p>Empezá solo con la caja, sumá la tienda online cuando quieras, o arrancá por la tienda si todavía no tenés sistema.</p>
+    </div>
+
+    <div style="text-align:center" class="reveal">
+      <div class="billing" id="billing" role="group" aria-label="Frecuencia de pago">
+        <span class="knob"></span>
+        <button type="button" class="active" data-period="monthly">Mensual</button>
+        <button type="button" data-period="annual">Anual <span class="save">2 meses gratis</span></button>
+      </div>
+    </div>
+
+    <div class="plans">
+      <div class="plan reveal">
+        <div class="pname">Ventra Caja</div>
+        <div class="pfor">Para el mostrador: caja, stock y reportes, sin tienda online.</div>
+        <div class="price"><span class="amt" data-monthly="$14.900" data-annual="$12.400">$14.900</span><span class="per">/ mes</span></div>
+        <div class="price-note" data-monthly-note="Facturado mes a mes" data-annual-note="Facturado anual · $148.800/año">Facturado mes a mes</div>
+        <div class="perday" data-monthly-day="$497" data-annual-day="$413">Equivale a <b>$497</b> por día</div>
+        <ul>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Caja, arqueo y reporte Z</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Stock, código de barras y kits</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Promos, combos y cuenta corriente</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Sin límite de cajas ni terminales</li>
+          <li class="off"><span class="ck"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6 6 18M6 6l12 12"/></svg></span>Tienda online</li>
+        </ul>
+        <button type="button" class="btn btn-ghost btn-block plan-btn" data-plan="caja">Elegir Ventra Caja</button>
+      </div>
+
+      <div class="plan featured reveal" style="--d:100ms">
+        <span class="badge">Más elegido</span>
+        <div class="pname"><img src="/ventra-logo.png" alt="">Ventra Full</div>
+        <div class="pfor">Todo Ventra Caja + tienda online sincronizada en vivo.</div>
+        <div class="price"><span class="amt" data-monthly="$24.900" data-annual="$20.750">$24.900</span><span class="per">/ mes</span></div>
+        <div class="price-note" data-monthly-note="Facturado mes a mes" data-annual-note="Facturado anual · $249.000/año">Facturado mes a mes</div>
+        <div class="perday" data-monthly-day="$830" data-annual-day="$692">Equivale a <b>$830</b> por día</div>
+        <ul>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Todo lo de Ventra Caja</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Tienda online sincronizada</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Stock y precios en vivo</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Panel de pedidos y estadísticas</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Sin límite de cajas ni terminales</li>
+        </ul>
+        <button type="button" class="btn btn-block plan-btn" data-plan="full">Elegir Ventra Full <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+      </div>
+
+      <div class="plan reveal" style="--d:200ms">
+        <div class="pname">Ventra Tienda</div>
+        <div class="pfor">Para vender online sin instalar una caja registradora.</div>
+        <div class="price"><span class="amt" data-monthly="$9.900" data-annual="$8.250">$9.900</span><span class="per">/ mes</span></div>
+        <div class="price-note" data-monthly-note="Facturado mes a mes" data-annual-note="Facturado anual · $99.000/año">Facturado mes a mes</div>
+        <div class="perday" data-monthly-day="$330" data-annual-day="$275">Equivale a <b>$330</b> por día</div>
+        <ul>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Tienda online</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Catálogo con fotos y categorías</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Recepción de pedidos en el momento</li>
+          <li class="off"><span class="ck"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6 6 18M6 6l12 12"/></svg></span>Caja registradora / arqueo</li>
+          <li class="off"><span class="ck"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6 6 18M6 6l12 12"/></svg></span>Control de stock avanzado</li>
+        </ul>
+        <button type="button" class="btn btn-ghost btn-block plan-btn" data-plan="tienda">Elegir Ventra Tienda</button>
+      </div>
+    </div>
+
+    <div class="guarantees">
+      <div class="g reveal"><span class="gi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></span><div><b>Probalo antes de pagar</b><span>La demo es gratis y sin tarjeta, con datos de ejemplo.</span></div></div>
+      <div class="g reveal" style="--d:80ms"><span class="gi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span><div><b>Cambiá de plan cuando quieras</b><span>Sin perder ventas, historial ni catálogo.</span></div></div>
+      <div class="g reveal" style="--d:160ms"><span class="gi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg></span><div><b>Te acompañamos</b><span>Te ayudamos a migrar y a arrancar desde el primer día.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="preguntas">
+  <div class="shell faq-grid">
+    <div class="faq-side reveal">
+      <span class="eyebrow"><i></i>Preguntas frecuentes</span>
+      <h2>Antes de que<br><em class="s">preguntes.</em></h2>
+      <p>¿Te quedó alguna duda? Escribinos y te respondemos personalmente.</p>
+      <a href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Ventra" target="_blank" rel="noopener" class="btn btn-ghost"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg>Hablar por WhatsApp</a>
+    </div>
+    <div class="faq reveal" style="--d:100ms">
+      <div class="qa open">
+        <button type="button" aria-expanded="true">¿Necesito instalar algo?<span class="pm"></span></button>
+        <div class="ans"><div><p>No. Ventra corre en el navegador. Si preferís tenerlo instalado en la PC de la caja para trabajar sin depender de internet, también existe esa versión de escritorio.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Funciona sin conexión a internet?<span class="pm"></span></button>
+        <div class="ans"><div><p>La versión de escritorio sigue vendiendo aunque se corte internet, y sincroniza apenas vuelve la conexión. La versión web necesita internet para operar.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Ventra emite factura electrónica (ARCA/AFIP)?<span class="pm"></span></button>
+        <div class="ans"><div><p>Todavía no. Hoy Ventra registra cada venta con su ticket, separa los montos por medio de pago y te arma el resumen fiscal del período, que es lo que tu contador necesita para liquidar. La emisión de comprobantes ante ARCA está en desarrollo y no está disponible para operar.</p><p>Si facturar desde el sistema es indispensable para vos, <a href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20que%20me%20avisen%20cuando%20Ventra%20emita%20factura%20electr%C3%B3nica" target="_blank" rel="noopener">escribinos por WhatsApp</a> y te avisamos apenas esté lista.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Sirve con mi impresora de tickets y mi lector?<span class="pm"></span></button>
+        <div class="ans"><div><p>Sí. El ticket se imprime en formato de 80 mm con cualquier impresora térmica que ya esté instalada en la PC — no necesitás un modelo puntual ni un driver nuestro. También podés imprimir etiquetas de código de barras.</p><p>El lector de código de barras funciona igual: los lectores USB se comportan como un teclado, así que andán apenas los conectás, sin configurar nada.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Cuántas cajas o PCs puedo usar?<span class="pm"></span></button>
+        <div class="ans"><div><p>Las que necesites. Podés tener varias terminales trabajando al mismo tiempo sobre el mismo negocio, cada una con su usuario, su rol y sus permisos, sin pagar por cada una.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Funciona en cualquier ciudad?<span class="pm"></span></button>
+        <div class="ans"><div><p>Sí. Ventra no está atado a ninguna ciudad — el sistema de ventas funciona en cualquier lado. La sincronización con plataformas de delivery depende de cuáles estén disponibles en tu zona.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Puedo cambiar de plan más adelante?<span class="pm"></span></button>
+        <div class="ans"><div><p>Sí, en cualquier momento. Si empezás con Ventra Caja o Ventra Tienda y después querés el combo, pasás a Ventra Full sin perder tu historial de ventas ni tu catálogo.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Cómo se paga la suscripción?<span class="pm"></span></button>
+        <div class="ans"><div><p>Con Mercado Pago, de forma mensual o anual. Iniciás sesión con tu cuenta de Google, elegís el plan y listo: en menos de 24 hs te contactamos para activar tu cuenta.</p></div></div>
+      </div>
+      <div class="qa">
+        <button type="button" aria-expanded="false">¿Qué pasa con lo que cargo en la demo?<span class="pm"></span></button>
+        <div class="ans"><div><p>La demo tiene productos y ventas de ejemplo para que pruebes todo libremente — se reinicia sola cada pocas horas, así que no la uses para datos reales. Cuando contratás un plan, arrancás con tu catálogo propio, vacío y privado.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="dark final grain" id="contacto">
+  <div class="rays" aria-hidden="true"></div>
+  <div class="shell" style="position:relative; z-index:1">
+    <img class="bigv reveal" src="/ventra-logo.png" alt="">
+    <h2 class="reveal">Tu negocio merece <em class="s">un sistema a su altura.</em></h2>
+    <p class="lead reveal">Probá Ventra hoy con datos de ejemplo. Si te gusta, armamos tu caja y tu tienda online en el día.</p>
+    <div class="hero-ctas reveal">
+      <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-cream magnet">Probar la demo gratis <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Ventra" target="_blank" rel="noopener" class="btn btn-ghost"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg>Hablar por WhatsApp</a>
+    </div>
+  </div>
+  <div class="wordmark" aria-hidden="true"><span>ventra</span></div>
+</section>
+
+</main>
+
+<footer>
+  <div class="shell foot">
+    <a href="#top" class="brand"><img src="/ventra-logo.png" alt="" width="28" height="28">Ventra</a>
+    <nav aria-label="Pie de página">
+      <a href="#producto">Producto</a><a href="#tienda">Tienda online</a><a href="#planes">Planes</a><a href="#preguntas">Preguntas</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
+    </nav>
+    <small>© <span id="year">2026</span> Ventra · El sistema de ventas para comercios argentinos</small>
+  </div>
+</footer>
+
+<div class="dock" id="dock">
+  <span><b>Probá Ventra gratis</b>Sin tarjeta, en 1 minuto</span>
+  <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-cream btn-sm">Probar demo</a>
+</div>
+
+<a class="wa-fab" href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Ventra"
+   target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp" title="Escribinos por WhatsApp">
+  <svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg>
+  <span class="wa-t">Escribinos</span>
+</a>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function(s, r){ return (r||document).querySelector(s); };
+  var $$ = function(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var money = function(n){ return '$' + Math.round(n).toLocaleString('es-AR'); };
+  $('#year').textContent = new Date().getFullYear();
+
+  /* ---------- Nav state, progress, dock ---------- */
+  var nav = $('#nav'), prog = $('#progress'), dock = $('#dock');
+  var darkZones = $$('.hero, .sync-sec, .final');
+  function onScroll(){
+    var y = window.scrollY, h = document.documentElement.scrollHeight - innerHeight;
+    prog.style.transform = 'scaleX(' + (h > 0 ? y / h : 0) + ')';
+    nav.classList.toggle('scrolled', y > 30);
+    var probe = 46, overDark = darkZones.some(function(z){ var r = z.getBoundingClientRect(); return r.top <= probe && r.bottom >= probe; });
+    nav.classList.toggle('on-dark', overDark);
+    var heroB = darkZones[0].getBoundingClientRect().bottom, finalT = darkZones[2].getBoundingClientRect().top;
+    dock.classList.toggle('on', heroB < 0 && finalT > innerHeight * .6);
+    stepsProgress();
+  }
+  window.addEventListener('scroll', onScroll, { passive:true });
+
+  /* ---------- Mobile menu ---------- */
+  var burger = $('#burger'), mm = $('#mobileMenu');
+  function setMenu(open){
+    document.body.classList.toggle('menu-open', open);
+    burger.setAttribute('aria-expanded', open); mm.setAttribute('aria-hidden', !open);
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  burger.addEventListener('click', function(){ setMenu(!document.body.classList.contains('menu-open')); });
+  $$('#mobileMenu a').forEach(function(a){ a.addEventListener('click', function(){ setMenu(false); }); });
+
+  /* ---------- Reveal ---------- */
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in'); io.unobserve(e.target);
+      $$('[data-count]', e.target).forEach(countUp);
+    });
+  }, { threshold:.14, rootMargin:'0px 0px -60px 0px' });
+  $$('.reveal').forEach(function(el){ io.observe(el); });
+
+  function countUp(el){
+    var to = +el.dataset.count, pre = el.dataset.prefix || '', suf = el.dataset.suffix || '', t0 = null, dur = 1600;
+    if (reduce){ el.textContent = pre + to.toLocaleString('es-AR') + suf; return; }
+    function f(t){ if (!t0) t0 = t; var k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 4);
+      el.textContent = pre + Math.round(to * e).toLocaleString('es-AR') + suf; if (k < 1) requestAnimationFrame(f); }
+    requestAnimationFrame(f);
+  }
+
+  /* ---------- Spotlight & magnetic ---------- */
+  $$('.spot, .btn').forEach(function(el){
+    el.addEventListener('pointermove', function(e){
+      var r = el.getBoundingClientRect();
+      el.style.setProperty('--mx', (e.clientX - r.left) + 'px'); el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+  if (!reduce && matchMedia('(pointer:fine)').matches){
+    $$('.magnet').forEach(function(el){
+      el.addEventListener('pointermove', function(e){ var r = el.getBoundingClientRect();
+        el.style.transform = 'translate(' + (e.clientX - r.left - r.width/2) * .18 + 'px,' + ((e.clientY - r.top - r.height/2) * .25 - 2) + 'px)'; });
+      el.addEventListener('pointerleave', function(){ el.style.transform = ''; });
+    });
+  }
+
+  /* ---------- Rotator ---------- */
+  (function(){
+    var items = $$('#rotator span'), i = 0;
+    var w = 0; items.forEach(function(s){ w = Math.max(w, s.getBoundingClientRect().width); });
+    $('#rotator').style.minWidth = Math.ceil(w + 4) + 'px';
+    if (reduce) return;
+    setInterval(function(){
+      var cur = items[i]; cur.classList.remove('on'); cur.classList.add('out');
+      setTimeout(function(){ cur.classList.remove('out'); }, 700);
+      i = (i + 1) % items.length; items[i].classList.add('on');
+    }, 2200);
+  })();
+
+  /* ---------- Hero: replica of the real Ventra POS ---------- */
+  (function(){
+    var ART = {
+      bottle: '<svg viewBox="0 0 60 60"><path d="M26 3h8v11c0 3 5 5 5 12v28a3 3 0 0 1-3 3H24a3 3 0 0 1-3-3V26c0-7 5-9 5-12Z" fill="#1C1917"/><rect x="21" y="30" width="18" height="15" fill="#EDE6DA"/><rect x="24" y="34" width="12" height="3" fill="#B91C1C"/><rect x="25" y="1.5" width="10" height="4" rx="1" fill="#57534E"/></svg>',
+      salami: '<svg viewBox="0 0 60 60"><path d="M9 43C5 32 16 14 31 9c11-4 20 3 18 14-2 13-15 25-28 25-6 0-10-1-12-5Z" fill="#9F3A30"/><g fill="#F3D3C4"><circle cx="24" cy="24" r="2"/><circle cx="33" cy="18" r="1.6"/><circle cx="37" cy="29" r="2"/><circle cx="26" cy="36" r="1.7"/><circle cx="17" cy="33" r="1.4"/></g><path d="M47 13c3-4 6-5 8-4" stroke="#78350F" stroke-width="2" fill="none"/></svg>',
+      can: '<svg viewBox="0 0 60 60"><rect x="20" y="8" width="20" height="46" rx="4" fill="#E2E8F0"/><rect x="20" y="18" width="20" height="24" fill="#DC2626"/><rect x="20" y="24" width="20" height="6" fill="#fff" opacity=".9"/><rect x="22" y="6" width="16" height="4" rx="2" fill="#94A3B8"/></svg>',
+      pack: '<svg viewBox="0 0 60 60"><g><rect x="6" y="14" width="15" height="38" rx="3" fill="#E2E8F0"/><rect x="6" y="22" width="15" height="18" fill="#2563EB"/><rect x="22.5" y="14" width="15" height="38" rx="3" fill="#E2E8F0"/><rect x="22.5" y="22" width="15" height="18" fill="#2563EB"/><rect x="39" y="14" width="15" height="38" rx="3" fill="#E2E8F0"/><rect x="39" y="22" width="15" height="18" fill="#2563EB"/></g><rect x="4" y="30" width="52" height="5" fill="#fff" opacity=".85"/></svg>',
+      chips: '<svg viewBox="0 0 60 60"><path d="M15 8h30l-2 6 2 6-2 26 2 6H15l2-6-2-26 2-6Z" fill="#F97316"/><circle cx="30" cy="32" r="9" fill="#FACC15"/><rect x="18" y="16" width="24" height="5" rx="1" fill="#B91C1C"/></svg>',
+      soda: '<svg viewBox="0 0 60 60"><path d="M26 4h8v7c0 3 6 6 6 13v30a3 3 0 0 1-3 3H23a3 3 0 0 1-3-3V24c0-7 6-10 6-13Z" fill="#BBF7D0" opacity=".9"/><rect x="20" y="28" width="20" height="13" fill="#16A34A"/><rect x="25" y="2" width="10" height="4" rx="1" fill="#15803D"/></svg>',
+      alfajor: '<svg viewBox="0 0 60 60"><path d="M10 24 30 14l20 10v20L30 54 10 44Z" fill="#EFE7DC"/><path d="M10 24 30 34l20-10M30 34v20" stroke="#D6CBBB" stroke-width="1.5" fill="none"/><circle cx="21" cy="36" r="4" fill="#E8B4B8" opacity=".7"/></svg>',
+      milk: '<svg viewBox="0 0 60 60"><path d="M20 14 25 6h10l5 8v40a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2Z" fill="#F8FAFC" stroke="#CBD5E1"/><rect x="20" y="26" width="20" height="16" fill="#2563EB"/><path d="M24 36c3-4 9-4 12 0" stroke="#fff" stroke-width="2" fill="none"/></svg>',
+      cookies: '<svg viewBox="0 0 60 60"><rect x="8" y="20" width="44" height="22" rx="4" fill="#7C2D12"/><rect x="8" y="26" width="44" height="10" fill="#FDBA74"/><circle cx="20" cy="31" r="3" fill="#7C2D12"/><circle cx="40" cy="31" r="3" fill="#7C2D12"/></svg>',
+      yerba: '<svg viewBox="0 0 60 60"><path d="M14 10h32v42a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2Z" fill="#FDE68A"/><path d="M14 10h32l-3 6H17Z" fill="#CA8A04"/><rect x="18" y="24" width="24" height="14" rx="2" fill="#15803D"/><path d="M22 34c4-8 10-8 16-6" stroke="#FDE68A" stroke-width="2" fill="none"/></svg>'
+    };
+    var P = [
+      { n:'Fernet x 750', c:'7790139002879', p:8700, s:48, a:'bottle' },
+      { n:'Salamín fino', c:'214S', p:5800, s:31, a:'salami' },
+      { n:'Cerveza lata pack x 6', c:'PACK3', p:6400, s:64, a:'pack' },
+      { n:'Cerveza lata x 473', c:'7798054013291', p:1250, s:120, a:'can' },
+      { n:'Alfajor artesanal', c:'28F', p:1550, s:86, a:'alfajor' },
+      { n:'Papas fritas x 85 gr', c:'7790310985830', p:3500, s:42, a:'chips' },
+      { n:'Gaseosa lima 2.25 L', c:'7791813434450', p:3200, s:57, a:'soda' },
+      { n:'Yerba mate x 1 kg', c:'7790387000012', p:5100, s:73, a:'yerba' },
+      { n:'Leche entera 1 L', c:'7790742000118', p:1450, s:66, a:'milk' },
+      { n:'Galletitas surtidas', c:'7790040000672', p:1890, s:38, a:'cookies' },
+      { n:'Cerveza negra lata x 473', c:'7798054013307', p:1300, s:92, a:'can' },
+      { n:'Agua sin gas 2 L', c:'7798113300015', p:1200, s:140, a:'soda' }
+    ];
+    var app = $('#app'), fit = $('#appfit'), win = $('#appwin'), grid = $('#aGrid'), list = $('#aList'), empty = $('#aEmpty');
+    var typed = $('#aTyped'), ph = $('#aPh'), typed2 = $('#aTyped2'), ph2 = $('#aPh2'), total = $('#aTotal'), count = $('#aCount'), confirm = $('#aConfirm');
+    var ov = $('#aOv'), mTotal = $('#aModalTotal'), methods = $$('.a-m'), fin = $('#aFin'), toast = $('#aToast'), f1 = $('#f1'), f2 = $('#f2');
+    var fmt = function(n){ return '$ ' + Math.round(n).toLocaleString('es-AR'); };
+
+    grid.innerHTML = P.map(function(p, i){
+      return '<div class="a-card" data-i="' + i + '"><div class="a-img"><span class="a-tag">Varios</span>' + ART[p.a] + '<span class="a-st">ST: ' + p.s + '</span></div>' +
+        '<div class="a-name">' + p.n + '</div><span class="a-code">' + p.c + '</span>' +
+        '<div class="a-pr"><b>' + fmt(p.p) + '</b><span class="a-plus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg></span></div></div>';
+    }).join('');
+    var cards = $$('.a-card', grid);
+
+    // fit the fixed-size app canvas into the available width
+    function layout(){
+      var w = fit.offsetWidth, mobile = w < 560, compact = !mobile && w < 700;
+      var base = mobile ? 400 : compact ? 760 : 1180, h = mobile ? 600 : 720;
+      app.classList.toggle('mobile', mobile); app.classList.toggle('compact', compact);
+      var k = w / base; app.style.setProperty('--k', k); win.style.height = (h * k) + 'px';
+    }
+    layout(); window.addEventListener('resize', layout);
+
+    // scroll-linked tilt: the window lies back and straightens as it comes into view
+    function tilt(){
+      if (reduce) return;
+      var r = fit.getBoundingClientRect(), p = Math.max(0, Math.min(1, (innerHeight - r.top) / (innerHeight * .75)));
+      fit.style.setProperty('--tilt', (1 - p) * 22 + 'deg'); fit.style.setProperty('--sc', .94 + p * .06);
+    }
+    tilt(); window.addEventListener('scroll', tilt, { passive:true });
+
+    var clock = $('#aClock'); function tickClock(){ var d = new Date(); clock.textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
+    tickClock(); setInterval(tickClock, 30000);
+
+    var cart = [], visible = true;
+    new IntersectionObserver(function(es){ visible = es[0].isIntersecting; }).observe(win);
+    function wait(ms){ return new Promise(function(res){ (function t(){ if (!visible) return setTimeout(t, 300); setTimeout(res, ms); })(); }); }
+    function sum(){ return cart.reduce(function(a, it){ return a + P[it.i].p * it.q; }, 0); }
+    function units(){ return cart.reduce(function(a, it){ return a + it.q; }, 0); }
+    function animTotal(from, to){ return new Promise(function(res){ var t0 = null; function f(t){ if (!t0) t0 = t; var k = Math.min(1, (t - t0) / 450);
+      total.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(f); else res(); } requestAnimationFrame(f); }); }
+    function rowHTML(it){ var p = P[it.i];
+      return '<span class="a-thumb">' + ART[p.a] + '</span><span class="a-rn">' + p.n + '</span><span class="a-qty"><span>−</span><b>' + it.q + '</b><span>+</span></span><span class="a-rp">' + fmt(p.p * it.q) + '</span><span class="a-x">✕</span>'; }
+    async function add(i, viaScan){
+      var card = cards[i], before = sum();
+      if (viaScan){
+        ph.style.display = ph2.style.display = 'none'; typed.textContent = typed2.textContent = '';
+        for (var k = 0; k < P[i].c.length; k++){ typed.textContent += P[i].c[k]; typed2.textContent = typed.textContent; await wait(35); }
+        await wait(180);
+      } else {
+        var plus = $('.a-plus', card); plus.classList.add('press'); await wait(160); plus.classList.remove('press');
+      }
+      card.classList.add('hit');
+      var ex = cart.filter(function(it){ return it.i === i; })[0];
+      if (ex){ ex.q++; var b = $('b', ex.el); b.textContent = ex.q; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); $('.a-rp', ex.el).textContent = fmt(P[i].p * ex.q); }
+      else { var it = { i:i, q:1 }; it.el = document.createElement('div'); it.el.className = 'a-row'; it.el.innerHTML = rowHTML(it); list.appendChild(it.el); cart.push(it); }
+      empty.classList.add('hide'); confirm.classList.remove('off');
+      count.textContent = units();
+      await animTotal(before, sum());
+      typed.textContent = typed2.textContent = ''; ph.style.display = ph2.style.display = '';
+      setTimeout(function(){ card.classList.remove('hit'); }, 500);
+      await wait(420);
+    }
+    var scripts = [
+      [[0,1],[2,1],[6,0],[4,0],[4,0]],
+      [[7,1],[3,0],[3,0],[5,1],[1,0]],
+      [[2,0],[0,1],[5,0],[6,1]]
+    ];
+    var ticket = 143, run = 0, methodPick = [2, 0, 1];
+
+    if (reduce){
+      [[0],[2],[6],[4],[4]].forEach(function(s){ var i = s[0], ex = cart.filter(function(it){ return it.i === i; })[0];
+        if (ex){ ex.q++; ex.el.innerHTML = rowHTML(ex); } else { var it = { i:i, q:1 }; it.el = document.createElement('div'); it.el.className = 'a-row'; it.el.innerHTML = rowHTML(it); list.appendChild(it.el); cart.push(it); } });
+      empty.classList.add('hide'); confirm.classList.remove('off'); total.textContent = fmt(sum()); count.textContent = units(); f1.classList.add('on'); f2.classList.add('on');
+      return;
+    }
+
+    async function loop(){
+      while (true){
+        var script = scripts[run % scripts.length], pm = methodPick[run % methodPick.length]; run++;
+        await wait(900);
+        for (var s = 0; s < script.length; s++) await add(script[s][0], !!script[s][1] || app.classList.contains('mobile'));
+        await wait(500);
+        confirm.classList.add('press'); await wait(160); confirm.classList.remove('press');
+        mTotal.textContent = fmt(sum()); methods.forEach(function(m){ m.classList.remove('on'); }); fin.classList.remove('on');
+        ov.classList.add('on');
+        await wait(900); methods[pm].classList.add('on'); fin.classList.add('on');
+        await wait(800); fin.classList.add('press'); await wait(170); fin.classList.remove('press');
+        ov.classList.remove('on');
+        $('#aToastS').textContent = 'Ticket #0' + (ticket++) + ' · ' + ['Efectivo','Clover','MercadoPago'][pm] + ' · ' + fmt(sum());
+        toast.classList.add('on');
+        // stock badges tick down for what was sold
+        cart.forEach(function(it){ var p = P[it.i]; p.s -= it.q; var st = $('.a-st', cards[it.i]); st.textContent = 'ST: ' + p.s; st.classList.add('tick'); setTimeout(function(){ st.classList.remove('tick'); }, 1400); });
+        await wait(250);
+        cart.forEach(function(it){ it.el.remove(); }); cart = [];
+        empty.classList.remove('hide'); confirm.classList.add('off'); total.textContent = '$ 0'; count.textContent = '0';
+        await wait(500); f1.classList.add('on');
+        await wait(900); f2.classList.add('on');
+        await wait(2300);
+        toast.classList.remove('on'); f1.classList.remove('on');
+        await wait(500); f2.classList.remove('on');
+      }
+    }
+    setTimeout(loop, 1200);
+  })();
+
+  /* ---------- Barcode ---------- */
+  (function(){
+    var bc = $('#barcode'), seq = [2,1,1,3,1,2,2,1,3,1,1,2,1,1,3,2,1,2,1,1,2,3,1,1,2,1,3,1,2,1,1,2];
+    seq.forEach(function(w, i){ var s = document.createElement('i'); s.style.width = w + 'px'; if (i % 2) s.style.background = 'transparent'; bc.appendChild(s); });
+  })();
+
+  /* ---------- Stock viz ---------- */
+  (function(){
+    var c = 9, cnt = $('#lowCnt'), bar = $('#lowBar'), item = $('#lowItem'), alert = $('#stockAlert'), vis = false;
+    new IntersectionObserver(function(es){ vis = es[0].isIntersecting; }, { threshold:.3 }).observe($('#stockViz'));
+    if (reduce){ cnt.textContent = '3 u.'; bar.style.setProperty('--w','15%'); item.classList.add('low'); alert.classList.add('on'); return; }
+    setInterval(function(){
+      if (!vis) return;
+      c = c <= 3 ? 9 : c - 1;
+      cnt.textContent = c + ' u.'; bar.style.setProperty('--w', (c * 5) + '%');
+      item.classList.toggle('low', c <= 4); alert.classList.toggle('on', c <= 4);
+    }, 1100);
+  })();
+
+  /* ---------- Before / After ---------- */
+  (function(){
+    var sw = $('#baSwitch'), grid = $('#baGrid'), knob = $('.knob', sw), btns = $$('button', sw), touched = false;
+    function set(v){
+      btns.forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.v === v); });
+      var on = btns.filter(function(b){ return b.dataset.v === v; })[0];
+      knob.style.width = on.offsetWidth + 'px'; knob.style.transform = 'translateX(' + (on.offsetLeft - 5) + 'px)';
+      sw.classList.toggle('before', v === 'before'); grid.classList.toggle('before', v === 'before');
+    }
+    btns.forEach(function(b){ b.addEventListener('click', function(){ touched = true; set(b.dataset.v); }); });
+    set('after');
+    window.addEventListener('resize', function(){ set(grid.classList.contains('before') ? 'before' : 'after'); });
+    if (reduce) return;
+    // Tell the story once: start on "sin Ventra", then flip to "con Ventra"
+    var once = new IntersectionObserver(function(es){
+      if (!es[0].isIntersecting) return; once.disconnect();
+      if (touched) return; set('before');
+      setTimeout(function(){ if (!touched) set('after'); }, 2200);
+    }, { threshold:.45 });
+    once.observe(grid);
+  })();
+
+  /* ---------- Sync demo ---------- */
+  (function(){
+    var stock = 24, odos = $$('.odo'), pulse = $('#pulse'), sync = $('#sync'), auto = true, busy = false, order = 219;
+    function renderOdo(el, n, animate){
+      var s = String(n).padStart(2, '0');
+      if (!el.children.length || el.children.length !== s.length){
+        el.innerHTML = s.split('').map(function(){ var h = '<span class="dg">'; for (var d = 0; d <= 9; d++) h += '<span>' + d + '</span>'; return h + '</span>'; }).join('');
+      }
+      $$('.dg', el).forEach(function(dg, i){
+        $$('span', dg).forEach(function(x){ x.style.transform = 'translateY(' + (-s[i] * 100) + '%)'; if (!animate) x.style.transition = 'none'; });
+        if (!animate){ void dg.offsetWidth; $$('span', dg).forEach(function(x){ x.style.transition = ''; }); }
+      });
+    }
+    odos.forEach(function(o){ renderOdo(o, stock, false); });
+    function log(id, html){ var l = $(id); var d = document.createElement('div'); d.innerHTML = html; l.prepend(d); while (l.children.length > 2) l.lastChild.remove(); }
+    function travel(fromA){
+      return new Promise(function(res){
+        if (reduce) return res();
+        var w = $('.wire', sync), vertical = innerWidth <= 900, len = vertical ? w.offsetHeight : w.offsetWidth;
+        var a = fromA ? 0 : len, bb = fromA ? len : 0;
+        pulse.animate([
+          { transform: vertical ? 'translateY(' + (a - len/2) + 'px)' : 'translateX(' + a + 'px)', opacity:0 },
+          { opacity:1, offset:.15 }, { opacity:1, offset:.85 },
+          { transform: vertical ? 'translateY(' + (bb - len/2) + 'px)' : 'translateX(' + bb + 'px)', opacity:0 }
+        ], { duration:750, easing:'cubic-bezier(.6,0,.4,1)' }).onfinish = res;
+      });
+    }
+    async function sale(side){
+      if (busy) return; busy = true;
+      if (stock <= 1) stock = 25;
+      var first = side === 'a' ? odos[0] : odos[1], second = side === 'a' ? odos[1] : odos[0];
+      stock--;
+      renderOdo(first, stock, true); first.classList.add('bump'); setTimeout(function(){ first.classList.remove('bump'); }, 600);
+      if (side === 'a') log('#logA', '<b>−1</b> Venta en mostrador · Caja 1');
+      else log('#logB', '<b>−1</b> Pedido online #' + (order++) + ' recibido');
+      await travel(side === 'a');
+      renderOdo(second, stock, true); second.classList.add('bump'); setTimeout(function(){ second.classList.remove('bump'); }, 600);
+      if (side === 'a') log('#logB', '<b>sync</b> Stock publicado actualizado');
+      else log('#logA', '<b>sync</b> Stock de la caja actualizado');
+      busy = false;
+    }
+    $$('.sim').forEach(function(btn){ btn.addEventListener('click', function(){ auto = false; sale(btn.dataset.sim); }); });
+    var vis = false;
+    new IntersectionObserver(function(es){ vis = es[0].isIntersecting; }, { threshold:.35 }).observe(sync);
+    var turn = 0;
+    if (!reduce) setInterval(function(){ if (auto && vis) sale(turn++ % 3 === 2 ? 'b' : 'a'); }, 2600);
+  })();
+
+  /* ---------- Steps progress ---------- */
+  var stepsEl = $('#steps'), stepEls = $$('.step', stepsEl), line = $('.steps-line', stepsEl);
+  function stepsProgress(){
+    var r = stepsEl.getBoundingClientRect(), p = Math.max(0, Math.min(1, (innerHeight * .75 - r.top) / (r.height + innerHeight * .1)));
+    line.style.setProperty('--p', p);
+    stepEls.forEach(function(s, i){ s.classList.toggle('lit', p >= (stepEls.length === 1 ? 0 : i / (stepEls.length - 1)) * .92 + .02); });
+  }
+
+  /* ---------- Billing toggle ---------- */
+  (function(){
+    var wrap = $('#billing'), knob = $('.knob', wrap), buttons = $$('button', wrap);
+    function place(btn){ knob.style.width = btn.offsetWidth + 'px'; knob.style.transform = 'translateX(' + (btn.offsetLeft - 5) + 'px)'; }
+    buttons.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        buttons.forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active'); place(btn);
+        var period = btn.getAttribute('data-period');
+        $$('.plan .amt').forEach(function(el){ el.textContent = el.getAttribute('data-' + period) || el.textContent; el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); });
+        $$('.price-note').forEach(function(el){ el.textContent = el.getAttribute('data-' + period + '-note') || el.textContent; });
+        $$('.perday').forEach(function(el){ el.innerHTML = 'Equivale a <b>' + el.getAttribute('data-' + period + '-day') + '</b> por día'; });
+      });
+    });
+    place(buttons[0]);
+    window.addEventListener('resize', function(){ place($('button.active', wrap)); });
+    if (document.fonts) document.fonts.ready.then(function(){ place($('button.active', wrap)); });
+  })();
+
+  /* ---------- FAQ ---------- */
+  $$('.qa button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var qa = btn.parentElement, open = !qa.classList.contains('open');
+      $$('.qa').forEach(function(q){ q.classList.remove('open'); $('button', q).setAttribute('aria-expanded', 'false'); });
+      qa.classList.toggle('open', open); btn.setAttribute('aria-expanded', open);
+    });
+  });
+
+  onScroll();
+})();
+</script>
+
+<script>
+  // Ventra accounts: Google sign-in + subscription checkout, on Ventra's own
+  // Firebase project (public client config, safe to expose). The Firebase SDK (~200KB) is loaded lazily — on the first
+  // sign-in/plan click, or once the page is idle — so it never slows first paint.
+  (function(){
+    var FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
+      // En ventra.store (dominio propio) el login de Google muestra ventra.store;
+      // en la URL técnica de Firebase usa el dominio por defecto del proyecto.
+      authDomain: /(^|\.)ventra\.store$/.test(location.hostname) ? location.hostname : "ventra-9cba5.firebaseapp.com",
+      projectId: "ventra-9cba5",
+      storageBucket: "ventra-9cba5.firebasestorage.app",
+      messagingSenderId: "23136382753",
+      appId: "1:23136382753:web:5d2f4115a77a607435d860"
+    };
+    var DEMO_URL = 'https://app.ventra.store';
+    var CREATE_SUBSCRIPTION_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/createVentraSubscription";
+    var GOOGLE_ICON = '<svg width="15" height="15" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 16.3 3 9.7 7.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.6 0 10.7-2.1 14.5-5.6l-6.7-5.6C29.7 35.5 27 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.6 40.6 16.2 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.7 5.6C41.1 36.5 45 30.8 45 24c0-1.4-.1-2.7-.4-3.5z"/></svg>';
+    var authAreas = [document.getElementById('authArea'), document.getElementById('authAreaMobile')];
+    var auth = null, pendingPlan = null, loading = null, firstState = null;
+
+    function loadScript(src){
+      return new Promise(function(res, rej){ var el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+    }
+    function ensureFirebase(){
+      if (loading) return loading;
+      loading = loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js')
+        .then(function(){ return loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js'); })
+        .then(function(){ return loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js'); })
+        .then(function(){
+          firebase.initializeApp(FIREBASE_CONFIG);
+          auth = firebase.auth();
+          firstState = new Promise(function(res){
+            var done = false;
+            auth.onAuthStateChanged(function(user){
+              renderAuthArea(user);
+              applyPlanLinks(user);
+              if (!done){ done = true; res(user); }
+              if (user && pendingPlan){ var plan = pendingPlan; pendingPlan = null; startCheckout(user, plan); }
+            });
+          });
+          return firstState;
+        })
+        .catch(function(err){ loading = null; throw err; });
+      return loading;
+    }
+
+    // Con un plan al día, los botones de demo pasan a abrir el Ventra del cliente
+    // "Abrir mi Ventra": si ya entraste con Google acá, web.ventra.store te recibe con esa
+    // misma sesión (el token viaja en un formulario, nunca en la URL). Sin sesión, el link
+    // funciona normal y web.ventra.store pide entrar.
+    document.addEventListener('click', function(e){
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="https://web.ventra.store"]') : null;
+      var user = firebase.auth().currentUser;
+      if (!a || !user || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      var target = '_self';
+      if (a.target === '_blank') { target = 'ventra_web_' + Date.now(); window.open('about:blank', target); }
+      user.getIdToken().then(function(token){
+        var f = document.createElement('form');
+        f.method = 'POST'; f.action = 'https://web.ventra.store/_ventra/handoff'; f.target = target; f.style.display = 'none';
+        var i = document.createElement('input'); i.type = 'hidden'; i.name = 'idToken'; i.value = token;
+        f.appendChild(i); document.body.appendChild(f); f.submit(); f.remove();
+      }).catch(function(){ window.open(a.href, target); });
+    });
+
+    var WEB_APP_URL = 'https://web.ventra.store';
+    function applyPlanLinks(user){
+      if (!user) return;
+      firebase.firestore().collection('ventra_accounts').doc(user.uid).get().then(function(doc){
+        if (!doc.exists) return;
+        var d = doc.data(), until = d.paidUntil && d.paidUntil.toDate ? d.paidUntil.toDate() : null;
+        // Vigente o dentro de los 7 días de gracia
+        if (!until || Date.now() > until.getTime() + 7 * 864e5) return;
+        document.querySelectorAll('a[href="' + DEMO_URL + '"]').forEach(function(a){
+          a.href = WEB_APP_URL;
+          var arrow = a.querySelector('.arr');
+          a.textContent = /demo gratis/i.test(a.textContent) ? 'Abrir mi Ventra' : 'Mi Ventra';
+          if (arrow) a.appendChild(arrow);
+        });
+      }).catch(function(){});
+    }
+
+    function renderAuthArea(user){
+      authAreas.forEach(function(area){
+        if (!area) return;
+        area.innerHTML = '';
+        if (!user) {
+          var b = document.createElement('button');
+          b.type = 'button'; b.className = 'auth-btn'; b.innerHTML = GOOGLE_ICON + 'Iniciar sesión';
+          b.addEventListener('click', function(){ signIn(); });
+          area.appendChild(b);
+          return;
+        }
+        var wrap = document.createElement('div'); wrap.className = 'auth-user';
+        if (user.photoURL) { var img = document.createElement('img'); img.src = user.photoURL; img.alt = ''; img.referrerPolicy = 'no-referrer'; wrap.appendChild(img); }
+        var name = document.createElement('a'); name.className = 'auth-name'; name.href = '/cuenta.html'; name.title = 'Mi cuenta';
+        name.textContent = (user.displayName || user.email || '').split(' ')[0] + ' · Mi cuenta';
+        var out = document.createElement('button'); out.type = 'button'; out.textContent = 'Salir';
+        out.addEventListener('click', function(){ auth.signOut(); });
+        wrap.appendChild(name); wrap.appendChild(out); area.appendChild(wrap);
+      });
+    }
+
+    function signIn(){
+      // A popup must open inside the click itself. If the SDK is already loaded we
+      // can do that; otherwise the click's "user gesture" is gone by the time it
+      // loads, so use a full-page redirect instead (the chosen plan survives it).
+      var viaPopup = !!auth;
+      if (!viaPopup && pendingPlan){ try { sessionStorage.setItem('ventra_pending_plan', pendingPlan); } catch(e){} }
+      return ensureFirebase().then(function(){
+        var provider = new firebase.auth.GoogleAuthProvider();
+        return viaPopup ? auth.signInWithPopup(provider) : auth.signInWithRedirect(provider);
+      }).catch(function(err){
+        console.error('Ventra auth error:', err);
+        pendingPlan = null;
+        alert('No se pudo iniciar sesión con Google. Probá de nuevo.');
+      });
+    }
+
+    /* Mercado Pago ata la suscripción a un correo y después exige que quien paga entre
+       con la cuenta de MP de ESE correo. El de Google rara vez coincide con el de
+       Mercado Pago, y el checkout rechaza con "el correo no coincide con la
+       suscripción". Por eso se pregunta antes de salir del sitio. */
+    function pedirCorreoMercadoPago(sugerido){
+      var msg = '¿Con qué correo entrás a Mercado Pago?\n\n' +
+                'Tiene que ser el de tu cuenta de Mercado Pago. Si no es el mismo que usás acá, ' +
+                'el pago te va a dar error.';
+      var valor = window.prompt(msg, sugerido || '');
+      if (valor === null) return null;              // canceló
+      valor = valor.trim().toLowerCase();
+      if (!valor) return sugerido || '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(valor)) {
+        alert('Ese correo no parece válido. Revisalo y probá de nuevo.');
+        return pedirCorreoMercadoPago(sugerido);
+      }
+      return valor;
+    }
+
+    function startCheckout(user, plan){
+      var btn = document.querySelector('.plan-btn[data-plan="' + plan + '"]');
+      var originalHTML = btn ? btn.innerHTML : '';
+
+      var correoMp = pedirCorreoMercadoPago(user.email || '');
+      if (correoMp === null) return;                // canceló: no se toca el botón
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Redirigiendo a Mercado Pago…'; }
+
+      user.getIdToken().then(function(token){
+        return fetch(CREATE_SUBSCRIPTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ plan: plan, payerEmail: correoMp })
+        });
+      })
+        .then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+        .then(function(result){
+          if (!result.ok || !result.data.initPoint) throw new Error(result.data.error || 'Error desconocido');
+          window.location.href = result.data.initPoint;
+        })
+        .catch(function(err){
+          console.error('Ventra checkout error:', err);
+          alert('No se pudo iniciar la suscripción. Probá de nuevo en un momento.');
+          if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+        });
+    }
+
+    document.querySelectorAll('.plan-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var plan = btn.getAttribute('data-plan');
+        if (auth && auth.currentUser) return startCheckout(auth.currentUser, plan);
+        if (auth) { pendingPlan = plan; return signIn(); }
+        // SDK not loaded yet: the session may still exist, so check before asking to sign in.
+        btn.disabled = true;
+        ensureFirebase().then(function(user){
+          btn.disabled = false;
+          if (user) startCheckout(user, plan);
+          else { pendingPlan = plan; try { sessionStorage.setItem('ventra_pending_plan', plan); } catch(e){} auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()); }
+        }).catch(function(){ btn.disabled = false; alert('No se pudo conectar. Revisá tu conexión y probá de nuevo.'); });
+      });
+    });
+
+    renderAuthArea(null);
+    // Hovering or focusing a sign-in/plan button warms the SDK up before the click lands.
+    document.addEventListener('pointerover', function(e){ if (e.target.closest && e.target.closest('.plan-btn, .auth-btn')) ensureFirebase().catch(function(){}); }, { passive:true });
+    document.addEventListener('focusin', function(e){ if (e.target.closest && e.target.closest('.plan-btn, .auth-btn')) ensureFirebase().catch(function(){}); });
+    try { var saved = sessionStorage.getItem('ventra_pending_plan'); if (saved){ sessionStorage.removeItem('ventra_pending_plan'); pendingPlan = saved; ensureFirebase().catch(function(){}); } } catch(e){}
+    // Plan de prueba oculto (solo administradores): ventra.store/?plan=prueba
+    try {
+      if (new URLSearchParams(location.search).get('plan') === 'prueba' && !pendingPlan) {
+        pendingPlan = 'prueba';
+        ensureFirebase().then(function(user){
+          if (!user && pendingPlan) { try { sessionStorage.setItem('ventra_pending_plan', 'prueba'); } catch(e){} auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()); }
+        }).catch(function(){});
+      }
+    } catch(e){}
+    // Restore a returning visitor's session without blocking the first render.
+    var idle = window.requestIdleCallback || function(cb){ return setTimeout(cb, 2500); };
+    window.addEventListener('load', function(){ idle(function(){ ensureFirebase().catch(function(){}); }, { timeout:4000 }); });
+  })();
+</script>
+</body></html>

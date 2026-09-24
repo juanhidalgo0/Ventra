@@ -1,0 +1,15 @@
+{
+  "name": "ventra-functions",
+  "description": "Cloud Functions de Ventra (suscripciones y avisos de versi\u00f3n)",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0",
+    "mercadopago": "^2.0.6",
+    "@neondatabase/serverless": "^0.10.4"
+  },
+  "private": true
+}

@@ -1,0 +1,13 @@
+# Claves de cuentas de servicio: nunca a git
+*-key.json
+*credentials*.json
+service-account*.json
+node_modules/
+.firebase/
+*.log
+
+# Secreto del aviso de versiones (copiar a GitHub y borrar)
+*.secret
+
+# Clave privada que firma las licencias de Ventra
+*.pem

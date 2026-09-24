@@ -1,0 +1,8 @@
+{
+  "name": "ventra-migration-scripts",
+  "private": true,
+  "description": "Scripts de una sola vez para mover los datos de Ventra al proyecto ventra-9cba5",
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}

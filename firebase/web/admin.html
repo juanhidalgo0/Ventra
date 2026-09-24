@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#08362A">
+<title>Administración — Ventra</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine-950:#03140F; --pine-900:#06261D; --pine-850:#08362A; --pine-800:#0A4736; --pine-700:#0E5E48;
+    --pine:#167160; --mint:#34AC7E; --mint-100:#CDEEE0; --mint-50:#EAF7F1;
+    --cream:#F6F2EC; --paper:#FBF9F5; --sand:#EFE9DF; --line:#E4DDD1; --line-2:#EFE9DF;
+    --ink:#0F1F1A; --ink-2:#56655F; --ink-3:#8A958F;
+    --on-dark:#F6F2EC; --on-dark-2:rgba(246,242,236,.66); --line-dark:rgba(246,242,236,.12);
+    --amber:#A15C07; --amber-bg:#FDF3E1; --amber-line:#F3D9A8;
+    --red:#B4412B; --red-bg:#FBECE8; --red-line:#F1C7BD;
+    --gray-bg:#F1EEE8;
+    --sans:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+    --r-sm:10px; --r:14px; --r-lg:20px;
+    --shadow-sm:0 1px 2px rgba(15,31,26,.06), 0 2px 8px rgba(15,31,26,.04);
+    --shadow:0 2px 6px rgba(15,31,26,.05), 0 18px 40px -18px rgba(15,31,26,.22);
+    --shadow-lg:0 30px 80px -30px rgba(3,20,15,.55);
+    --ease:cubic-bezier(.2,.8,.2,1);
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; font-feature-settings:'cv11','ss03';
+  }
+  button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  input,textarea{ font:inherit; color:inherit; }
+  :focus-visible{ outline:2px solid var(--mint); outline-offset:2px; border-radius:6px; }
+  .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  .muted{ color:var(--ink-2); }
+  .hidden{ display:none !important; }
+
+  /* ── Barra superior ───────────────────────────── */
+  .topbar{ background:var(--pine-850); color:var(--on-dark); border-bottom:1px solid var(--line-dark); }
+  .topbar-in{ max-width:1240px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:14px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; font-size:16px; }
+  .brand img{ width:30px; height:30px; border-radius:8px; }
+  .brand .tag{ font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--on-dark-2);
+    border:1px solid var(--line-dark); padding:3px 8px; border-radius:999px; }
+  .spacer{ flex:1; }
+  .who{ font-size:13px; color:var(--on-dark-2); }
+  .btn-dark{ height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--line-dark); color:var(--on-dark);
+    font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:7px; transition:background .15s var(--ease); }
+  .btn-dark:hover{ background:rgba(246,242,236,.08); }
+
+  main{ max-width:1240px; margin:0 auto; padding:28px 24px 64px; }
+  .page-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; }
+  h1{ margin:0; font-size:26px; font-weight:700; letter-spacing:-.035em; line-height:1.1; }
+  .sub{ margin-top:4px; font-size:13px; color:var(--ink-2); }
+
+  /* ── Métricas ─────────────────────────────────── */
+  .kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+  .kpi{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); padding:18px 20px; box-shadow:var(--shadow-sm); }
+  .kpi.hero{ background:var(--pine-850); border-color:var(--pine-850); color:var(--on-dark); box-shadow:var(--shadow); }
+  .kpi-label{ font-size:12px; font-weight:600; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
+  .kpi.hero .kpi-label{ color:var(--on-dark-2); }
+  .kpi-value{ margin-top:8px; font-size:28px; font-weight:600; letter-spacing:-.03em; line-height:1; }
+  .kpi-foot{ margin-top:10px; font-size:12px; color:var(--ink-3); }
+  .kpi.hero .kpi-foot{ color:var(--on-dark-2); }
+  .state-bar{ margin-top:12px; display:flex; height:6px; border-radius:999px; overflow:hidden; background:var(--line-2); }
+  .state-bar span{ display:block; height:100%; }
+  .legend{ margin-top:8px; display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11.5px; color:var(--ink-2); }
+  .legend i{ display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:0; }
+
+  .panels{ display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:14px; margin-top:14px; }
+  .panel{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); padding:18px 20px; box-shadow:var(--shadow-sm); }
+  .panel h2{ margin:0; font-size:14px; font-weight:700; letter-spacing:-.01em; }
+  .panel .panel-sub{ font-size:12px; color:var(--ink-3); margin-top:2px; }
+  .chart{ margin-top:16px; height:170px; display:flex; align-items:flex-end; gap:8px; border-bottom:1px solid var(--line); padding-bottom:0; }
+  .bar-col{ flex:1; min-width:0; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; position:relative; }
+  .bar{ width:100%; max-width:38px; background:var(--pine); border-radius:6px 6px 2px 2px; min-height:2px; transition:background .15s; }
+  .bar-col.current .bar{ background:var(--mint); }
+  .bar-col:hover .bar{ background:var(--pine-800); }
+  .bar-tip{ position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; font-weight:600;
+    background:var(--pine-900); color:var(--on-dark); padding:3px 7px; border-radius:6px; opacity:0; pointer-events:none; transition:opacity .12s; }
+  .bar-col:hover .bar-tip{ opacity:1; }
+  .bar-labels{ display:flex; gap:8px; margin-top:6px; }
+  .bar-labels span{ flex:1; min-width:0; text-align:center; font-size:11px; color:var(--ink-3); text-transform:capitalize; }
+  .empty-chart{ height:170px; display:flex; align-items:center; justify-content:center; color:var(--ink-3); font-size:13px; }
+  .plan-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line-2); }
+  .plan-row:last-child{ border-bottom:0; }
+  .plan-name{ flex:1; font-weight:600; }
+  .plan-price{ font-size:12px; color:var(--ink-3); }
+  .plan-count{ font-weight:600; }
+
+  /* ── Clientes ─────────────────────────────────── */
+  .clients{ margin-top:28px; }
+  .toolbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 12px; }
+  .search{ flex:1; min-width:220px; max-width:360px; position:relative; }
+  .search input{ width:100%; height:38px; border-radius:999px; border:1px solid var(--line); background:#fff; padding:0 14px 0 36px; font-size:13.5px; }
+  .search input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
+  .search svg{ position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--ink-3); }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ height:32px; padding:0 12px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:12.5px; font-weight:600; color:var(--ink-2);
+    display:inline-flex; align-items:center; gap:6px; transition:all .15s var(--ease); }
+  .chip:hover{ border-color:var(--ink-3); color:var(--ink); }
+  .chip.on{ background:var(--pine-850); border-color:var(--pine-850); color:var(--on-dark); }
+  .chip .c{ font-family:var(--mono); font-size:11px; opacity:.75; }
+
+  .table-wrap{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-sm); overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; }
+  th{ text-align:left; font-size:11.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.05em;
+    padding:11px 16px; background:var(--cream); border-bottom:1px solid var(--line); white-space:nowrap; }
+  th.r, td.r{ text-align:right; }
+  td{ padding:13px 16px; border-bottom:1px solid var(--line-2); vertical-align:middle; }
+  tbody tr{ cursor:pointer; transition:background .12s; }
+  tbody tr:hover{ background:#FDFCF9; }
+  tbody tr:last-child td{ border-bottom:0; }
+  .client{ display:flex; align-items:center; gap:11px; min-width:0; }
+  .avatar{ width:34px; height:34px; border-radius:10px; background:var(--mint-50); color:var(--pine-800); font-weight:700; font-size:13px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; text-transform:uppercase; }
+  .client-email{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px; }
+  .client-plan{ font-size:12px; color:var(--ink-3); }
+  .pill{ display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; border:1px solid transparent; }
+  .pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .pill.ACTIVE{ background:var(--mint-50); color:var(--pine); border-color:var(--mint-100); }
+  .pill.GRACE{ background:var(--amber-bg); color:var(--amber); border-color:var(--amber-line); }
+  .pill.READ_ONLY{ background:var(--red-bg); color:var(--red); border-color:var(--red-line); }
+  .pill.UNPAID{ background:var(--gray-bg); color:var(--ink-2); border-color:var(--line); }
+  .days{ font-weight:600; }
+  .days-sub{ font-size:12px; color:var(--ink-3); }
+  .pcs{ display:inline-flex; align-items:center; gap:6px; color:var(--ink-2); }
+  .empty{ padding:48px 20px; text-align:center; color:var(--ink-3); }
+
+  /* ── Botones ─────────────────────────────────── */
+  .btn{ height:36px; padding:0 14px; border-radius:999px; font-size:13px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    border:1px solid var(--line); background:#fff; color:var(--ink); transition:all .15s var(--ease); white-space:nowrap; }
+  .btn:hover{ border-color:var(--ink-3); }
+  .btn.primary{ background:var(--pine-850); border-color:var(--pine-850); color:var(--on-dark); }
+  .btn.primary:hover{ background:var(--pine-800); }
+  .btn.danger{ color:var(--red); border-color:var(--red-line); }
+  .btn.danger:hover{ background:var(--red-bg); }
+  .btn:disabled{ opacity:.55; cursor:default; }
+  .btn.sm{ height:30px; padding:0 11px; font-size:12px; }
+
+  /* ── Panel lateral ───────────────────────────── */
+  .scrim{ position:fixed; inset:0; background:rgba(3,20,15,.38); opacity:0; pointer-events:none; transition:opacity .2s var(--ease); z-index:40; }
+  .scrim.open{ opacity:1; pointer-events:auto; }
+  .drawer{ position:fixed; top:0; right:0; bottom:0; width:min(480px,100vw); background:var(--paper); z-index:50; box-shadow:var(--shadow-lg);
+    transform:translateX(100%); transition:transform .25s var(--ease); display:flex; flex-direction:column; }
+  .drawer.open{ transform:none; }
+  .drawer-head{ padding:20px 22px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:flex-start; background:#fff; }
+  .drawer-head .avatar{ width:42px; height:42px; font-size:15px; border-radius:12px; }
+  .drawer-title{ flex:1; min-width:0; }
+  .drawer-title h3{ margin:0; font-size:16px; font-weight:700; letter-spacing:-.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .drawer-title p{ margin:3px 0 0; font-size:12.5px; color:var(--ink-3); }
+  .icon-btn{ width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--ink-2); }
+  .icon-btn:hover{ background:var(--sand); color:var(--ink); }
+  .drawer-body{ flex:1; overflow-y:auto; padding:18px 22px 28px; display:flex; flex-direction:column; gap:18px; }
+  .section h4{ margin:0 0 10px; font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); }
+  .facts{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fact{ background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:11px 13px; }
+  .fact dt{ font-size:11.5px; color:var(--ink-3); }
+  .fact dd{ margin:3px 0 0; font-weight:600; font-size:14px; }
+  .actions{ display:flex; flex-wrap:wrap; gap:8px; }
+  .date-row{ display:flex; gap:8px; margin-top:8px; }
+  .date-row input{ flex:1; height:36px; border:1px solid var(--line); border-radius:999px; padding:0 14px; background:#fff; }
+  .list{ background:#fff; border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
+  .list-row{ display:flex; align-items:center; gap:10px; padding:11px 13px; border-bottom:1px solid var(--line-2); font-size:13px; }
+  .list-row:last-child{ border-bottom:0; }
+  .list-row .grow{ flex:1; min-width:0; }
+  .list-empty{ padding:14px; color:var(--ink-3); font-size:13px; text-align:center; }
+  textarea{ width:100%; min-height:80px; resize:vertical; border:1px solid var(--line); border-radius:var(--r); padding:10px 12px; background:#fff; font-size:13px; }
+  textarea:focus, .date-row input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
+  .warn{ font-size:12px; color:var(--ink-3); margin-top:8px; }
+  select, .field input{ height:36px; border:1px solid var(--line); border-radius:999px; padding:0 14px; background:#fff; font:inherit; font-size:13px; color:var(--ink); }
+  select:focus, .field input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{ font-size:12px; font-weight:600; color:var(--ink-2); }
+  .field.full{ grid-column:1 / -1; }
+  .field input, .field select{ width:100%; }
+  .pay-box{ background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:14px; }
+  .modal{ position:fixed; inset:0; z-index:55; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal-card{ width:min(440px,100%); background:var(--paper); border-radius:22px; box-shadow:var(--shadow-lg); padding:22px; }
+  .modal-card h3{ margin:0 0 4px; font-size:17px; letter-spacing:-.02em; }
+  .modal-card p{ margin:0 0 16px; font-size:13px; color:var(--ink-2); }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .section-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+
+  /* ── Pantallas de acceso y carga ─────────────── */
+  .gate{ min-height:calc(100vh - 60px); display:flex; align-items:center; justify-content:center; padding:24px; }
+  .gate-card{ max-width:400px; width:100%; background:#fff; border:1px solid var(--line); border-radius:24px; padding:36px 32px; text-align:center; box-shadow:var(--shadow); }
+  .gate-card img{ width:56px; height:56px; border-radius:16px; margin:0 auto 18px; display:block; }
+  .gate-card h2{ margin:0 0 6px; font-size:20px; letter-spacing:-.03em; }
+  .gate-card p{ margin:0 0 20px; color:var(--ink-2); font-size:13.5px; }
+  .skeleton{ background:linear-gradient(90deg,var(--line-2),#F7F4EE,var(--line-2)); background-size:200% 100%; animation:sk 1.2s infinite; border-radius:8px; }
+  @keyframes sk{ to{ background-position:-200% 0; } }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translate(-50%,20px); background:var(--pine-900); color:var(--on-dark); padding:11px 18px; border-radius:999px;
+    font-size:13px; font-weight:600; box-shadow:var(--shadow-lg); opacity:0; transition:all .2s var(--ease); z-index:60; pointer-events:none; }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  .toast.err{ background:var(--red); }
+  .demo-flag{ background:var(--amber-bg); color:var(--amber); border-bottom:1px solid var(--amber-line); text-align:center; font-size:12.5px; font-weight:600; padding:7px 12px; }
+
+  @media (max-width: 960px){
+    .kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .panels{ grid-template-columns:1fr; }
+  }
+  @media (max-width: 720px){
+    main{ padding:20px 16px 48px; }
+    .topbar-in{ padding:12px 16px; }
+    .who{ display:none; }
+    .kpi-value{ font-size:22px; }
+    .hide-sm{ display:none; }
+    td, th{ padding:11px 12px; }
+    .client-email{ max-width:130px; }
+    .avatar{ display:none; }
+    table{ min-width:460px; }
+  }
+</style>
+</head>
+<body>
+  <div id="demoFlag" class="demo-flag hidden">Modo demostración: datos inventados, las acciones no se guardan.</div>
+  <header class="topbar">
+    <div class="topbar-in">
+      <div class="brand"><img src="/ventra-logo.png" alt=""> Ventra <span class="tag">Administración</span></div>
+      <div class="spacer"></div>
+      <span class="who" id="who"></span>
+      <button class="btn-dark hidden" id="refreshBtn" title="Actualizar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        <span class="hide-sm">Actualizar</span>
+      </button>
+      <button class="btn-dark hidden" id="logoutBtn">Salir</button>
+    </div>
+  </header>
+
+  <!-- Acceso -->
+  <section class="gate hidden" id="gate">
+    <div class="gate-card">
+      <img src="/ventra-logo.png" alt="">
+      <h2 id="gateTitle">Panel de administración</h2>
+      <p id="gateText">Ingresá con la cuenta de Google de administrador.</p>
+      <button class="btn primary" id="loginBtn">Iniciar sesión con Google</button>
+    </div>
+  </section>
+
+  <main id="app" class="hidden">
+    <div class="page-head">
+      <div>
+        <h1>Resumen</h1>
+        <div class="sub" id="updatedAt">Cargando…</div>
+      </div>
+    </div>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="panels">
+      <div class="panel">
+        <h2>Cobrado por mes</h2>
+        <div class="panel-sub">Últimos 12 meses · montos brutos, antes de la comisión de Mercado Pago</div>
+        <div id="chart"></div>
+      </div>
+      <div class="panel">
+        <h2>Clientes por plan</h2>
+        <div class="panel-sub">Cuentas creadas en ventra.store</div>
+        <div id="plans" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <section class="clients">
+      <div class="section-head"><h1 style="font-size:20px">Clientes</h1><button class="btn primary" id="newClientBtn">+ Nuevo cliente</button></div>
+      <div class="toolbar">
+        <label class="search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" placeholder="Buscar por email o plan" autocomplete="off">
+        </label>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Estado</th>
+              <th>Vencimiento</th>
+              <th class="hide-sm">PCs</th>
+              <th class="r hide-sm">Total cobrado</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-label="Detalle del cliente"></aside>
+  <div class="toast" id="toast"></div>
+  <div class="modal hidden" id="newModal" role="dialog" aria-label="Nuevo cliente">
+    <div class="modal-card">
+      <h3>Nuevo cliente</h3>
+      <p>Para quien te paga por fuera de la web. Cuando entre a ventra.store con Google usando este email, ya tiene la cuenta activa.</p>
+      <div class="form-grid">
+        <div class="field full"><label for="ncEmail">Email de Google del cliente</label><input id="ncEmail" type="email" placeholder="cliente@gmail.com" autocomplete="off"></div>
+        <div class="field"><label for="ncPlan">Plan</label><select id="ncPlan"></select></div>
+        <div class="field"><label for="ncDays">Días de acceso</label><input id="ncDays" type="number" min="0" max="3650" value="30"></div>
+      </div>
+      <p class="warn" style="margin:10px 0 0">Si ya te pagó, después registrá el pago desde su ficha para que sume en lo cobrado.</p>
+      <div class="modal-actions"><button class="btn" id="ncCancel">Cancelar</button><button class="btn primary" id="ncSave">Crear cliente</button></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script>
+  (function(){
+    var ADMIN_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraAdmin';
+    var DEMO = /[?&]demo\b/.test(location.search);
+    var STATE = {
+      ACTIVE: { label:'Activa', color:'#167160' },
+      GRACE: { label:'En gracia', color:'#D08A1E' },
+      READ_ONLY: { label:'Solo lectura', color:'#B4412B' },
+      UNPAID: { label:'Sin pago', color:'#B9B2A6' }
+    };
+    var data = null, filter = 'ALL', query = '', openUid = null, auth = null;
+
+    var $ = function(id){ return document.getElementById(id); };
+    var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); };
+    var money = function(n){ return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR'); };
+    var fdate = function(iso){ return iso ? new Date(iso).toLocaleDateString('es-AR', { day:'2-digit', month:'short', year:'numeric' }).replace('.', '') : '—'; };
+    var ago = function(iso){
+      if (!iso) return 'nunca';
+      var m = Math.round((Date.now() - new Date(iso)) / 60000);
+      if (m < 2) return 'recién'; if (m < 60) return 'hace ' + m + ' min';
+      var h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h';
+      var d = Math.round(h / 24); return 'hace ' + d + (d === 1 ? ' día' : ' días');
+    };
+    var toastTimer;
+    function toast(msg, err){
+      var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.className = 'toast'; }, 2800);
+    }
+
+    function daysText(a){
+      if (a.state === 'UNPAID') return { main:'Sin fecha', sub:'Esperando el primer cobro' };
+      if (a.state === 'ACTIVE') return { main: a.daysLeft === 0 ? 'Vence hoy' : a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:'Paga hasta el ' + fdate(a.paidUntil) };
+      if (a.state === 'GRACE') return { main: a.daysLeft === 0 ? 'Último día de gracia' : a.daysLeft + (a.daysLeft === 1 ? ' día de gracia' : ' días de gracia'), sub:'Venció el ' + fdate(a.paidUntil) };
+      var d = Math.abs(a.daysLeft); return { main: d === 0 ? 'Bloqueada hoy' : 'Hace ' + d + (d === 1 ? ' día' : ' días'), sub:'Venció el ' + fdate(a.paidUntil) };
+    }
+
+    // ── Datos ──────────────────────────────────────
+    function api(method, body){
+      if (DEMO) return demoApi(method, body);
+      return auth.currentUser.getIdToken().then(function(token){
+        return fetch(ADMIN_URL, {
+          method: method,
+          headers: Object.assign({ 'Authorization': 'Bearer ' + token }, body ? { 'Content-Type': 'application/json' } : {}),
+          body: body ? JSON.stringify(body) : undefined
+        });
+      }).then(function(r){ return r.json().then(function(d){ if (!r.ok) throw Object.assign(new Error(d.error || 'Error'), { status: r.status }); return d; }); });
+    }
+
+    function load(){
+      $('refreshBtn').disabled = true;
+      return api('GET').then(function(d){
+        data = d; render(); showApp();
+      }).catch(function(err){
+        if (err.status === 403) return showGate('Sin acceso', 'La cuenta ' + (auth.currentUser && auth.currentUser.email || '') + ' no es administradora de Ventra.', true);
+        toast('No se pudo cargar el panel', true);
+      }).then(function(){ $('refreshBtn').disabled = false; });
+    }
+
+    function act(body, okMsg){
+      return api('POST', body).then(function(){ toast(okMsg); return load(); })
+        .catch(function(err){ toast(err.message || 'No se pudo aplicar el cambio', true); });
+    }
+
+    // ── Render ─────────────────────────────────────
+    function render(){
+      var m = data.metrics;
+      $('updatedAt').textContent = 'Actualizado ' + new Date(data.generatedAt).toLocaleString('es-AR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+
+      var s = m.byState, total = Math.max(1, m.accounts);
+      var bar = ['ACTIVE','GRACE','READ_ONLY','UNPAID'].map(function(k){ return '<span style="width:' + (100 * (s[k] || 0) / total) + '%;background:' + STATE[k].color + '"></span>'; }).join('');
+      var legend = ['ACTIVE','GRACE','READ_ONLY','UNPAID'].filter(function(k){ return s[k]; }).map(function(k){ return '<span><i style="background:' + STATE[k].color + '"></i>' + STATE[k].label + ' ' + s[k] + '</span>'; }).join('');
+      $('kpis').innerHTML =
+        '<div class="kpi hero"><div class="kpi-label">Ingreso mensual recurrente</div><div class="kpi-value num">' + money(m.mrr) + '</div><div class="kpi-foot">Suscripciones activas que se renuevan</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Cobrado este mes</div><div class="kpi-value num">' + money(m.monthRevenue) + '</div><div class="kpi-foot">Desde el 1° del mes</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Cobrado en total</div><div class="kpi-value num">' + money(m.totalRevenue) + '</div><div class="kpi-foot">Histórico de pagos acreditados</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Clientes</div><div class="kpi-value num">' + m.accounts + '</div><div class="state-bar">' + bar + '</div><div class="legend">' + (legend || '<span>Sin clientes todavía</span>') + '</div></div>';
+
+      renderChart(m.monthly);
+      renderPlans(m.byPlan);
+      renderChips();
+      renderRows();
+      if (openUid) openDrawer(openUid);
+    }
+
+    function renderChart(monthly){
+      var months = [], now = new Date();
+      for (var i = 11; i >= 0; i--){
+        var d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        months.push(d.toISOString().slice(0, 7));
+      }
+      var map = {}; (monthly || []).forEach(function(x){ map[x.month] = x.amount; });
+      var max = Math.max.apply(null, months.map(function(k){ return map[k] || 0; }));
+      if (!max){ $('chart').innerHTML = '<div class="empty-chart">Todavía no hay cobros acreditados</div>'; return; }
+      var cur = now.toISOString().slice(0, 7);
+      $('chart').innerHTML = '<div class="chart">' + months.map(function(k){
+        var v = map[k] || 0;
+        return '<div class="bar-col' + (k === cur ? ' current' : '') + '"><div class="bar-tip num">' + money(v) + '</div><div class="bar" style="height:' + Math.max(1, 100 * v / max) + '%"></div></div>';
+      }).join('') + '</div><div class="bar-labels">' + months.map(function(k){
+        return '<span>' + new Date(k + '-15').toLocaleDateString('es-AR', { month:'short' }).replace('.', '') + '</span>';
+      }).join('') + '</div>';
+    }
+
+    function renderPlans(byPlan){
+      var plans = data.plans, keys = Object.keys(plans).filter(function(k){ return k !== 'prueba' || byPlan[k]; });
+      $('plans').innerHTML = keys.map(function(k){
+        return '<div class="plan-row"><div class="plan-name">' + esc(plans[k].name) + '<div class="plan-price num">' + money(plans[k].amount) + ' / mes</div></div><div class="plan-count num">' + (byPlan[k] || 0) + '</div></div>';
+      }).join('');
+    }
+
+    function counts(){
+      var c = { ALL: data.accounts.length, ACTIVE:0, GRACE:0, READ_ONLY:0, UNPAID:0 };
+      data.accounts.forEach(function(a){ c[a.state]++; }); return c;
+    }
+
+    function renderChips(){
+      var c = counts();
+      var items = [['ALL','Todos'],['ACTIVE','Activas'],['GRACE','En gracia'],['READ_ONLY','Solo lectura'],['UNPAID','Sin pago']];
+      $('chips').innerHTML = items.map(function(it){
+        return '<button class="chip' + (filter === it[0] ? ' on' : '') + '" data-f="' + it[0] + '">' + it[1] + ' <span class="c">' + c[it[0]] + '</span></button>';
+      }).join('');
+    }
+
+    function renderRows(){
+      var q = query.trim().toLowerCase();
+      var rows = data.accounts.filter(function(a){
+        if (filter !== 'ALL' && a.state !== filter) return false;
+        return !q || String(a.email).toLowerCase().indexOf(q) >= 0 || String(a.planName).toLowerCase().indexOf(q) >= 0;
+      });
+      if (!rows.length){
+        $('rows').innerHTML = '<tr><td colspan="5" class="empty">' + (data.accounts.length ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay clientes. Cuando alguien se suscriba en ventra.store va a aparecer acá.') + '</td></tr>';
+        return;
+      }
+      $('rows').innerHTML = rows.map(function(a){
+        var dt = daysText(a);
+        return '<tr data-uid="' + esc(a.uid) + '">' +
+          '<td><div class="client"><div class="avatar">' + esc((a.email || '?')[0]) + '</div><div style="min-width:0"><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · <span class="num">' + money(a.planAmount) + '</span>' : '') + (a.mpStatus === 'cancelled' ? ' · cancelada en MP' : '') + '</div></div></div></td>' +
+          '<td><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span></td>' +
+          '<td><div class="days">' + dt.main + '</div><div class="days-sub">' + dt.sub + '</div></td>' +
+          '<td class="hide-sm"><span class="pcs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span class="num">' + a.devices.length + '</span></span></td>' +
+          '<td class="r hide-sm num">' + money(a.totalPaid) + '</td></tr>';
+      }).join('');
+    }
+
+    // ── Detalle del cliente ─────────────────────────
+    function openDrawer(uid){
+      var a = data.accounts.filter(function(x){ return x.uid === uid; })[0];
+      if (!a) return closeDrawer();
+      openUid = uid;
+      var dt = daysText(a);
+      var devices = a.devices.length ? a.devices.map(function(d){
+        return '<div class="list-row"><div class="grow"><div style="font-weight:600">' + esc(d.name) + '</div><div class="muted" style="font-size:12px">Vinculada ' + fdate(d.linkedAt) + ' · última conexión ' + ago(d.lastSeenAt) + '</div></div><button class="btn sm danger" data-unlink="' + esc(d.deviceId) + '">Desvincular</button></div>';
+      }).join('') : '<div class="list-empty">Ninguna PC vinculada todavía</div>';
+      var payments = a.payments.length ? a.payments.map(function(p){
+        var how = p.method && p.method !== 'mercadopago' ? esc(p.method) + (p.months > 1 ? ' · ' + p.months + ' meses' : '') : 'Mercado Pago';
+        return '<div class="list-row"><div class="grow">' + fdate(p.paidAt) + '<div class="muted" style="font-size:12px">' + how + '</div></div><div class="num" style="font-weight:600">' + money(p.amount) + '</div></div>';
+      }).join('') : '<div class="list-empty">Sin cobros acreditados</div>';
+
+      $('drawer').innerHTML =
+        '<div class="drawer-head"><div class="avatar">' + esc((a.email || '?')[0]) + '</div><div class="drawer-title"><h3>' + esc(a.email || 'Sin email') + '</h3><p>' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · ' + money(a.planAmount) + ' / mes' : '') + '</p></div>' +
+        '<button class="icon-btn" id="closeDrawer" aria-label="Cerrar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>' +
+        '<div class="drawer-body">' +
+          '<div class="section"><dl class="facts">' +
+            '<div class="fact"><dt>Estado</dt><dd><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span></dd></div>' +
+            '<div class="fact"><dt>Vencimiento</dt><dd>' + dt.main + '</dd></div>' +
+            '<div class="fact"><dt>Paga hasta</dt><dd class="num">' + fdate(a.paidUntil) + '</dd></div>' +
+            '<div class="fact"><dt>Total cobrado</dt><dd class="num">' + money(a.totalPaid) + '</dd></div>' +
+            '<div class="fact"><dt>Cobro</dt><dd>' + esc({ active:'Mercado Pago activo', pending_payment:'MP: esperando pago', cancelled:'MP: cancelada', paused:'MP: pausada', manual:'Pago manual' }[a.mpStatus] || a.mpStatus || '—') + '</dd></div>' +
+            '<div class="fact"><dt>Cliente desde</dt><dd class="num">' + fdate(a.createdAt) + '</dd></div>' +
+            '<div class="fact"><dt>Datos en la nube</dt><dd>' + (a.cloud ? '<span class="num">' + (a.cloud.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB</span> · ' + a.cloud.rows.toLocaleString('es-AR') + ' registros' : 'Sin copia todavía') + '</dd></div>' +
+            '<div class="fact"><dt>Última sincronización</dt><dd>' + (a.cloud ? ago(a.cloud.lastPushAt) : '—') + '</dd></div>' +
+          '</dl></div>' +
+          '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
+            '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado.</p></div>' +
+          '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
+          '<div class="section"><h4>Registrar pago manual</h4><div class="pay-box"><div class="form-grid">' +
+            '<div class="field"><label for="payMonths">Meses</label><input id="payMonths" type="number" min="1" max="36" value="1"></div>' +
+            '<div class="field"><label for="payAmount">Monto cobrado ($)</label><input id="payAmount" type="number" min="0" step="1" value="' + (a.planAmount || '') + '"></div>' +
+            '<div class="field full"><label for="payMethod">Forma de pago</label><select id="payMethod"><option>Transferencia</option><option>Efectivo</option><option>Mercado Pago (link)</option><option>Otro</option></select></div>' +
+          '</div><div style="margin-top:10px;display:flex;justify-content:flex-end"><button class="btn primary" id="payBtn">Registrar pago</button></div>' +
+          '<p class="warn">Extiende el acceso con las mismas reglas que Mercado Pago (si estaba en gracia, desde el vencimiento original) y suma en lo cobrado.</p></div></div>' +
+          '<div class="section"><h4>Acceso</h4><div class="actions">' +
+            '<button class="btn" data-extend="7">+ 7 días</button><button class="btn" data-extend="30">+ 30 días</button><button class="btn" data-extend="365">+ 1 año</button>' +
+            '<button class="btn danger" id="readOnlyBtn">Pasar a solo lectura</button></div>' +
+            '<div class="date-row"><input type="date" id="dateInput" value="' + (a.paidUntil ? a.paidUntil.slice(0, 10) : '') + '"><button class="btn primary" id="setDateBtn">Guardar fecha</button></div>' +
+            '<p class="warn">Los días se suman al vencimiento actual, o desde hoy si ya venció. Pasado el vencimiento hay ' + data.graceDays + ' días de gracia.</p></div>' +
+          '<div class="section"><h4>PCs vinculadas</h4><div class="list">' + devices + '</div>' +
+            '<p class="warn">Desvincular libera la PC: vuelve a funcionar sin control de suscripción. Para cortar el acceso usá “Pasar a solo lectura”.</p></div>' +
+          '<div class="section"><h4>Cobros</h4><div class="list">' + payments + '</div></div>' +
+          '<div class="section"><h4>Notas internas</h4><textarea id="notes" placeholder="Datos de contacto, acuerdos, recordatorios…">' + esc(a.notes) + '</textarea>' +
+            '<div style="margin-top:8px;text-align:right"><button class="btn sm" id="saveNotes">Guardar notas</button></div></div>' +
+        '</div>';
+
+      $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('open');
+      $('closeDrawer').onclick = closeDrawer;
+      $('supportBtn').onclick = function(){
+        if (DEMO) return toast('No disponible en la demo', true);
+        // La pestaña se abre ya (si no, el navegador la bloquea) y se carga cuando llega el pase
+        var win = window.open('about:blank', '_blank');
+        if (win) {
+          win.opener = null;
+          try { win.document.write('<title>Abriendo…</title><p style="font:15px system-ui,sans-serif;color:#475569;padding:24px">Abriendo el sistema de ' + esc(a.email || 'este cliente') + '…</p>'); } catch (e) {}
+        }
+        $('supportBtn').disabled = true;
+        api('POST', { action:'supportAccess', uid:a.uid }).then(function(d){
+          if (win) win.location.href = d.url; else location.href = d.url;
+        }).catch(function(err){
+          if (win) win.close();
+          toast(err.message || 'No se pudo abrir su sistema', true);
+        }).then(function(){ $('supportBtn').disabled = false; });
+      };
+      Array.prototype.forEach.call(document.querySelectorAll('[data-extend]'), function(b){
+        b.onclick = function(){ act({ action:'extend', uid:a.uid, days:Number(b.getAttribute('data-extend')) }, 'Se sumaron ' + b.getAttribute('data-extend') + ' días'); };
+      });
+      $('setDateBtn').onclick = function(){
+        var v = $('dateInput').value; if (!v) return toast('Elegí una fecha', true);
+        act({ action:'setPaidUntil', uid:a.uid, date: v + 'T23:59:59-03:00' }, 'Fecha actualizada');
+      };
+      $('readOnlyBtn').onclick = function(){
+        if (confirm('¿Pasar a ' + (a.email || 'este cliente') + ' a solo lectura?\nNo va a poder vender ni registrar nada hasta que le des días o renueve.'))
+          act({ action:'readOnly', uid:a.uid }, 'Cliente en solo lectura');
+      };
+      Array.prototype.forEach.call(document.querySelectorAll('[data-unlink]'), function(b){
+        b.onclick = function(){
+          if (confirm('¿Desvincular esta PC?\nVa a quedar libre, sin control de suscripción, hasta que la vuelvan a vincular.'))
+            act({ action:'unlinkDevice', deviceId:b.getAttribute('data-unlink') }, 'PC desvinculada');
+        };
+      });
+      $('saveNotes').onclick = function(){ act({ action:'notes', uid:a.uid, notes:$('notes').value }, 'Notas guardadas'); };
+      $('savePlanBtn').onclick = function(){ act({ action:'setPlan', uid:a.uid, plan:$('planSelect').value }, 'Plan actualizado'); };
+      var syncAmount = function(){ var pl = data.plans[$('planSelect').value]; if (pl) $('payAmount').value = pl.amount * (Number($('payMonths').value) || 1); };
+      $('payMonths').oninput = syncAmount; $('planSelect').onchange = syncAmount;
+      $('payBtn').onclick = function(){
+        var months = Number($('payMonths').value), amount = Number($('payAmount').value);
+        if (!(months >= 1)) return toast('Indicá los meses', true);
+        if (!(amount >= 0) || $('payAmount').value === '') return toast('Indicá el monto', true);
+        if (confirm('¿Registrar ' + money(amount) + ' (' + months + (months === 1 ? ' mes' : ' meses') + ', ' + $('payMethod').value + ') para ' + (a.email || 'este cliente') + '?'))
+          act({ action:'manualPayment', uid:a.uid, months:months, amount:amount, method:$('payMethod').value, plan:$('planSelect').value }, 'Pago registrado');
+      };
+    }
+
+    function closeDrawer(){
+      openUid = null;
+      $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); $('scrim').classList.remove('open');
+    }
+
+    // ── Pantallas ──────────────────────────────────
+    function showApp(){ $('gate').classList.add('hidden'); $('app').classList.remove('hidden'); $('refreshBtn').classList.remove('hidden'); $('logoutBtn').classList.toggle('hidden', DEMO); }
+    function showGate(title, text, signedIn){
+      $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); $('refreshBtn').classList.add('hidden');
+      $('gateTitle').textContent = title; $('gateText').textContent = text;
+      $('loginBtn').textContent = signedIn ? 'Usar otra cuenta' : 'Iniciar sesión con Google';
+      $('logoutBtn').classList.toggle('hidden', !signedIn);
+    }
+
+    $('rows').addEventListener('click', function(e){ var tr = e.target.closest('tr[data-uid]'); if (tr) openDrawer(tr.getAttribute('data-uid')); });
+    $('chips').addEventListener('click', function(e){ var b = e.target.closest('[data-f]'); if (!b) return; filter = b.getAttribute('data-f'); renderChips(); renderRows(); });
+    $('search').addEventListener('input', function(e){ query = e.target.value; renderRows(); });
+    $('scrim').onclick = function(){ if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
+    function closeNew(){ $('newModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
+    $('newClientBtn').onclick = function(){
+      $('ncPlan').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba'; }).map(function(k){ return '<option value="' + k + '">' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('');
+      $('ncEmail').value = ''; $('ncDays').value = 30;
+      $('newModal').classList.remove('hidden'); $('scrim').classList.add('open'); $('ncEmail').focus();
+    };
+    $('ncCancel').onclick = closeNew;
+    $('ncSave').onclick = function(){
+      var email = $('ncEmail').value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Email inválido', true);
+      var btn = this; btn.disabled = true;
+      api('POST', { action:'createAccount', email:email, plan:$('ncPlan').value, days:Number($('ncDays').value) || 0 })
+        .then(function(r){ closeNew(); toast('Cliente creado'); return load().then(function(){ if (r && r.uid) openDrawer(r.uid); }); })
+        .catch(function(err){ toast(err.message || 'No se pudo crear', true); })
+        .then(function(){ btn.disabled = false; });
+    };
+    document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
+    $('refreshBtn').onclick = function(){ load().then(function(){ toast('Datos actualizados'); }); };
+
+    if (DEMO){
+      $('demoFlag').classList.remove('hidden'); $('who').textContent = 'demo@ventra.store';
+      load(); return;
+    }
+
+    firebase.initializeApp({
+      apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
+      authDomain: /(^|\.)ventra\.store$/.test(location.hostname) ? location.hostname : "ventra-9cba5.firebaseapp.com",
+      projectId: "ventra-9cba5",
+      storageBucket: "ventra-9cba5.firebasestorage.app",
+      messagingSenderId: "23136382753",
+      appId: "1:23136382753:web:5d2f4115a77a607435d860"
+    });
+    auth = firebase.auth();
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    $('loginBtn').onclick = function(){ auth.signInWithPopup(provider).catch(function(){ auth.signInWithRedirect(provider); }); };
+    $('logoutBtn').onclick = function(){ auth.signOut(); };
+    auth.onAuthStateChanged(function(user){
+      $('who').textContent = user ? user.email : '';
+      if (!user){ data = null; closeDrawer(); return showGate('Panel de administración', 'Ingresá con la cuenta de Google de administrador.', false); }
+      load();
+    });
+
+    // ── Datos de demostración (solo con ?demo) ──────
+    function demoApi(method, body){
+      if (method === 'POST') return Promise.resolve({ ok:true });
+      var day = 864e5, now = Date.now(), iso = function(ms){ return new Date(ms).toISOString(); };
+      var plans = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+      var mk = function(email, plan, paidInDays, state, daysLeft, nPay, pcs, mp){
+        var payments = []; for (var i = 0; i < nPay; i++) payments.push({ id:'p' + i, amount:plans[plan].amount, paidAt:iso(now - (i * 30 + 3) * day) });
+        var devices = []; for (var j = 0; j < pcs; j++) devices.push({ deviceId:email + j, name:['CAJA-1','MOSTRADOR','DEPOSITO'][j], linkedAt:iso(now - 80 * day), lastSeenAt:iso(now - (j + 1) * 37 * 60000) });
+        return { cloud: pcs ? { rows: 4000 + nPay * 2100, bytes: (3 + nPay) * 1048576, lastPushAt: iso(now - pcs * 11 * 60000) } : null, uid:email, email:email, plan:plan, planName:plans[plan].name, planAmount:plans[plan].amount, mpStatus:mp || 'active', paidUntil: paidInDays == null ? null : iso(now + paidInDays * day), state:state, daysLeft:daysLeft, totalPaid:payments.reduce(function(s,p){ return s + p.amount; }, 0), payments:payments, devices:devices, createdAt:iso(now - nPay * 30 * day), notes:'' };
+      };
+      var accounts = [
+        mk('kiosco.lucia@gmail.com', 'full', -3, 'GRACE', 4, 5, 2),
+        mk('almacen.donpepe@gmail.com', 'caja', -12, 'READ_ONLY', -5, 3, 1, 'cancelled'),
+        mk('nuevo.cliente@gmail.com', 'caja', null, 'UNPAID', null, 0, 0, 'pending_payment'),
+        mk('ferreteria.central@gmail.com', 'full', 21, 'ACTIVE', 21, 8, 3),
+        mk('maxikiosco.sol@hotmail.com', 'caja', 9, 'ACTIVE', 9, 6, 1),
+        mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1)
+      ];
+      var monthly = [], nowD = new Date();
+      for (var k = 11; k >= 0; k--){ var d = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth() - k, 1)); monthly.push({ month:d.toISOString().slice(0,7), amount: Math.max(0, Math.round((12 - k) * 11800 + (k % 3) * 4200 - 20000)) }); }
+      return Promise.resolve({
+        generatedAt: iso(now), graceDays: 7, plans: plans,
+        metrics: { mrr: 14900 * 1 + 24900 * 2 + 9900, totalRevenue: accounts.reduce(function(s,a){ return s + a.totalPaid; }, 0), monthRevenue: 64600,
+          accounts: accounts.length, devices: 8, byState:{ ACTIVE:3, GRACE:1, READ_ONLY:1, UNPAID:1 }, byPlan:{ caja:3, full:2, tienda:1 }, monthly: monthly },
+        accounts: accounts
+      });
+    }
+  })();
+  </script>
+</body>
+</html>
