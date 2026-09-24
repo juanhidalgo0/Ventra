@@ -104,7 +104,7 @@
   .cat.on{background:var(--ink);border-color:var(--ink);color:#fff}
 
   /* Productos */
-  main{padding-bottom:140px}
+  main{padding-bottom:36px}
   .section{padding-top:18px;scroll-margin-top:170px}
   .section h2{margin:0 0 12px;font-size:19px;font-weight:800;display:flex;align-items:baseline;gap:8px}
   .section h2 small{font:600 13px 'Inter';color:var(--ink-3)}
@@ -210,16 +210,40 @@
   .done p{color:var(--ink-2);margin:6px 0 0}
   .code{display:inline-block;margin-top:12px;background:var(--line-2);border-radius:10px;padding:6px 12px;font:700 15px ui-monospace,monospace;letter-spacing:.08em}
 
-  footer{background:var(--surface);border-top:1px solid var(--line);padding:32px 0 calc(110px + var(--safe-b));font-size:14px;color:var(--ink-2)}
-  footer .cols{display:grid;gap:24px}
-  @media(min-width:760px){footer .cols{grid-template-columns:1.3fr 1fr 1fr}}
-  footer h4{margin:0 0 10px;color:var(--ink);font-size:15px}
-  footer a{color:inherit}
-  .hours-row{display:flex;justify-content:space-between;gap:16px;max-width:320px;padding:2px 0}
-  .hours-row.today{color:var(--ink);font-weight:700}
-  .made{margin-top:28px;font-size:12.5px;color:var(--ink-3);text-align:center}
-  .made a{color:var(--brand);font-weight:700;text-decoration:none}
-
+  /* Pie */
+  footer{background:var(--surface);border-top:1px solid var(--line);padding:28px 0 calc(28px + var(--safe-b));font-size:14px;color:var(--ink-2)}
+  body:has(.cartbar.show) footer{padding-bottom:calc(104px + var(--safe-b))}
+  .f-grid{display:grid;gap:22px}
+  @media(min-width:760px){.f-grid{grid-template-columns:1fr 1fr;gap:40px;align-items:start}}
+  .f-brand{display:flex;gap:14px;align-items:center}
+  .f-logo{width:52px;height:52px;border-radius:15px;object-fit:cover;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font:800 22px 'Plus Jakarta Sans',sans-serif;flex-shrink:0;box-shadow:0 4px 14px -8px rgba(0,0,0,.35)}
+  .f-name{margin:0;font-size:18px;font-weight:800;color:var(--ink);line-height:1.2}
+  .f-desc{margin:2px 0 0;font-size:13.5px;color:var(--ink-2)}
+  .f-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:16px}
+  .f-actions .btn{height:48px;width:100%}
+  .btn-ig{background:linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF);color:#fff}
+  .f-addr{display:flex;gap:8px;align-items:flex-start;margin-top:14px;color:var(--ink-2);text-decoration:none;font-size:13.5px}
+  .f-addr svg.i{width:18px;height:18px;margin-top:1px;color:var(--brand)}
+  .f-addr span{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+  .hours{background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-md);padding:14px 14px 8px}
+  .hours-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .hours-head h4{margin:0;display:flex;align-items:center;gap:7px;font-size:15px;color:var(--ink)}
+  .hours-head h4 svg.i{width:18px;height:18px;color:var(--brand)}
+  .hours-head .chip{height:28px;font-size:12px;padding:0 10px}
+  .hours-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:8px 10px;margin:0 -6px;border-radius:10px;font-size:14px}
+  .hours-row + .hours-row{border-top:1px solid var(--line-2)}
+  .hours-row .h-day{color:var(--ink);font-weight:600}
+  .hours-row .h-times{text-align:right;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:2px}
+  .hours-row .h-closed{color:var(--ink-3)}
+  .hours-row.today{background:var(--brand-soft);border-top-color:transparent}
+  .hours-row.today + .hours-row{border-top-color:transparent}
+  .hours-row.today .h-day,.hours-row.today .h-times{color:var(--brand-ink);font-weight:700}
+  .hours-row.today .h-day small{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;background:var(--brand);color:#fff;border-radius:6px;padding:1px 6px;vertical-align:1px}
+  .made{margin-top:26px;padding-top:18px;border-top:1px solid var(--line-2);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 14px;font-size:12.5px;color:var(--ink-3)}
+  .made a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+  .made img{width:18px;height:18px;border-radius:5px}
+  .made b{color:var(--ink-2)}
+  .made .cta{color:var(--brand);font-weight:700}
   .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 72px);transform:translate(-50%,-12px);background:var(--ink);color:#fff;padding:11px 16px;border-radius:14px;font-size:14px;font-weight:600;z-index:80;opacity:0;transition:.25s;pointer-events:none;white-space:nowrap}
   .toast.show{opacity:1;transform:translate(-50%,0)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -289,7 +313,21 @@ function toMin(hhmm){ var p=String(hhmm||'0:0').split(':'); return (+p[0])*60+(+
 function dayRanges(h){
   if(!h||!h.open) return [];
   var r=(h.ranges&&h.ranges.length)?h.ranges:[{from:h.from,to:h.to}];
-  return r.filter(function(x){return x&&x.from&&x.to;}).sort(function(a,b){return toMin(a.from)-toMin(b.from);});
+  return mergeRanges(r.filter(function(x){return x&&x.from&&x.to;}));
+}
+/* Junta los turnos repetidos o que se pisan (9 a 20 y 17 a 21 = 9 a 21). Los que pasan la medianoche quedan aparte. */
+function mergeRanges(list){
+  var day=[], night=[];
+  list.forEach(function(x){ (toMin(x.to)>toMin(x.from)?day:night).push({from:x.from,to:x.to}); });
+  day.sort(function(a,b){return toMin(a.from)-toMin(b.from);});
+  var out=[];
+  day.forEach(function(x){
+    var last=out[out.length-1];
+    if(last && toMin(x.from)<=toMin(last.to)){ if(toMin(x.to)>toMin(last.to)) last.to=x.to; }
+    else out.push(x);
+  });
+  night.forEach(function(x){ if(!out.some(function(o){return o.from===x.from&&o.to===x.to;})) out.push(x); });
+  return out;
 }
 function openStatus(hours){
   if(!hours || !hours.length) return null;
@@ -478,24 +516,45 @@ function renderList(){
   box.innerHTML=html;
 }
 
+var DAYS_SHORT=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+/* Horarios agrupados: los días seguidos con el mismo horario van en una sola línea (Lun a Vie). */
+function hoursHtml(c,st){
+  if(!c.hours || !c.hours.length) return '';
+  var today=new Date().getDay(), groups=[];
+  [1,2,3,4,5,6,0].forEach(function(i){
+    var r=dayRanges(c.hours[i]), key=r.map(function(x){return x.from+'-'+x.to;}).join('|');
+    var g=groups[groups.length-1];
+    if(g && g.key===key) g.days.push(i); else groups.push({key:key,ranges:r,days:[i]});
+  });
+  var rows=groups.map(function(g){
+    var n=g.days.length, first=g.days[0], last=g.days[n-1];
+    var label=n===7?'Todos los días':n===1?DAYS_CAP[first]:n===2?DAYS_SHORT[first]+' y '+DAYS_SHORT[last]:DAYS_SHORT[first]+' a '+DAYS_SHORT[last];
+    var isToday=g.days.indexOf(today)>=0;
+    return '<div class="hours-row'+(isToday?' today':'')+'"><span class="h-day">'+label+(isToday?'<small>Hoy</small>':'')+'</span>'
+      +'<span class="h-times">'+(g.ranges.length?g.ranges.map(function(x){return '<span>'+esc(x.from)+' – '+esc(x.to)+'</span>';}).join(''):'<span class="h-closed">Cerrado</span>')+'</span></div>';
+  }).join('');
+  return '<div class="hours"><div class="hours-head"><h4>'+ic('clock')+'Horarios</h4>'
+    +(st?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+(st.open?'Abierto ahora':'Cerrado ahora')+'</span>':'')
+    +'</div>'+rows+'</div>';
+}
 function footerHtml(){
-  var c=S.cfg, d=new Date().getDay(), rows='';
-  if(c.hours && c.hours.length){
-    [1,2,3,4,5,6,0].forEach(function(i){
-      var r=dayRanges(c.hours[i]);
-      rows+='<div class="hours-row'+(i===d?' today':'')+'"><span>'+DAYS_CAP[i]+'</span><span>'+(r.length?r.map(function(x){return esc(x.from)+' – '+esc(x.to);}).join(' y '):'Cerrado')+'</span></div>';
-    });
-  }
+  var c=S.cfg, st=openStatus(c.hours);
   var ig=(c.instagram||'').replace(/^@/,'').trim();
-  return '<footer><div class="wrap"><div class="cols">'
-    +'<div><h4 class="display">'+esc(c.businessName)+'</h4>'+(c.description?'<p style="margin:0 0 8px">'+esc(c.description)+'</p>':'')
-    +(c.address?'<p style="margin:0;display:flex;gap:6px;align-items:center">'+ic('pin')+'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.address)+'" target="_blank" rel="noopener">'+esc(c.address)+'</a></p>':'')+'</div>'
-    +(rows?'<div><h4>Horarios</h4>'+rows+'</div>':'')
-    +'<div><h4>Contacto</h4>'
-    +(c.whatsappNumber?'<p style="margin:0 0 6px"><a href="https://wa.me/'+esc(String(c.whatsappNumber).replace(/\D/g,''))+'" target="_blank" rel="noopener">WhatsApp</a></p>':'')
-    +(ig?'<p style="margin:0"><a href="https://instagram.com/'+encodeURIComponent(ig)+'" target="_blank" rel="noopener">@'+esc(ig)+'</a></p>':'')
-    +'</div></div>'
-    +'<p class="made">Tienda hecha con <a href="https://ventra.store" target="_blank" rel="noopener">Ventra</a></p></div></footer>';
+  var wa=String(c.whatsappNumber||'').replace(/\D/g,'');
+  var actions=(wa?'<a class="btn btn-wa" href="https://wa.me/'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'WhatsApp</a>':'')
+    +(ig?'<a class="btn btn-ig" href="https://instagram.com/'+encodeURIComponent(ig)+'" target="_blank" rel="noopener">'+ic('ig')+'Instagram</a>':'');
+  return '<footer><div class="wrap"><div class="f-grid">'
+    +'<div>'
+    +  '<div class="f-brand">'+(c.logoUrl?'<img class="f-logo" src="'+esc(c.logoUrl)+'" alt="">':'<div class="f-logo">'+initial(c.businessName)+'</div>')
+    +    '<div><h4 class="f-name display">'+esc(c.businessName)+'</h4>'+(c.description?'<p class="f-desc">'+esc(c.description)+'</p>':'')+'</div></div>'
+    +  (actions?'<div class="f-actions">'+actions+'</div>':'')
+    +  (c.address?'<a class="f-addr" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.address)+'" target="_blank" rel="noopener">'+ic('pin')+'<span>'+esc(c.address)+'</span></a>':'')
+    +'</div>'
+    + hoursHtml(c,st)
+    +'</div>'
+    +'<div class="made"><a href="https://ventra.store" target="_blank" rel="noopener"><img src="ventra-logo.png" alt="">Tienda hecha con <b>Ventra</b></a>'
+    +'<a class="cta" href="https://ventra.store" target="_blank" rel="noopener">¿Tenés un negocio? Creá tu tienda</a></div>'
+    +'</div></footer>';
 }
 
 function refreshCartBar(){

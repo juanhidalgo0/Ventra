@@ -217,6 +217,17 @@
     .avatar{ display:none; }
     table{ min-width:460px; }
   }
+  /* ── Tienda online ─────────────────────────────── */
+  .store-tag{ display:inline-flex; align-items:center; gap:4px; height:18px; padding:0 7px; border-radius:999px; background:var(--mint-50); color:var(--pine); font-size:11px; font-weight:600; vertical-align:1px; }
+  .store-tag.off{ background:var(--gray-bg); color:var(--ink-3); }
+  .store-card{ border:1px solid var(--line); border-radius:var(--r); background:#fff; padding:14px; display:flex; gap:12px; align-items:center; }
+  .store-logo{ width:48px; height:48px; border-radius:12px; object-fit:cover; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:20px; }
+  .store-info{ flex:1; min-width:0; }
+  .store-name{ font-weight:700; font-size:15px; }
+  .store-url{ font-size:12.5px; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .store-stats{ font-size:12px; color:var(--ink-3); margin-top:2px; }
+  .pill.pub{ background:var(--mint-50); color:var(--pine); border-color:var(--mint-100); }
+  .pill.unpub{ background:var(--gray-bg); color:var(--ink-2); border-color:var(--line); }
 </style>
 </head>
 <body>
@@ -272,7 +283,7 @@
       <div class="toolbar">
         <label class="search">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="search" placeholder="Buscar por email o plan" autocomplete="off">
+          <input id="search" placeholder="Buscar por email, plan o tienda" autocomplete="off">
         </label>
         <div class="chips" id="chips"></div>
       </div>
@@ -438,7 +449,8 @@
       var q = query.trim().toLowerCase();
       var rows = data.accounts.filter(function(a){
         if (filter !== 'ALL' && a.state !== filter) return false;
-        return !q || String(a.email).toLowerCase().indexOf(q) >= 0 || String(a.planName).toLowerCase().indexOf(q) >= 0;
+        var st = a.store ? (a.store.name || '') + ' ' + (a.store.subdomain || '') : '';
+        return !q || String(a.email).toLowerCase().indexOf(q) >= 0 || String(a.planName).toLowerCase().indexOf(q) >= 0 || st.toLowerCase().indexOf(q) >= 0;
       });
       if (!rows.length){
         $('rows').innerHTML = '<tr><td colspan="5" class="empty">' + (data.accounts.length ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay clientes. Cuando alguien se suscriba en ventra.store va a aparecer acá.') + '</td></tr>';
@@ -447,7 +459,7 @@
       $('rows').innerHTML = rows.map(function(a){
         var dt = daysText(a);
         return '<tr data-uid="' + esc(a.uid) + '">' +
-          '<td><div class="client"><div class="avatar">' + esc((a.email || '?')[0]) + '</div><div style="min-width:0"><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · <span class="num">' + money(a.planAmount) + '</span>' : '') + (a.mpStatus === 'cancelled' ? ' · cancelada en MP' : '') + '</div></div></div></td>' +
+          '<td><div class="client"><div class="avatar">' + esc((a.email || '?')[0]) + '</div><div style="min-width:0"><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · <span class="num">' + money(a.planAmount) + '</span>' : '') + (a.mpStatus === 'cancelled' ? ' · cancelada en MP' : '') + (a.store && a.store.subdomain ? ' <span class="store-tag' + (a.store.published ? '' : ' off') + '" title="' + esc(a.store.url) + '">Tienda' + (a.store.published ? '' : ' (sin publicar)') + '</span>' : '') + '</div></div></div></td>' +
           '<td><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span></td>' +
           '<td><div class="days">' + dt.main + '</div><div class="days-sub">' + dt.sub + '</div></td>' +
           '<td class="hide-sm"><span class="pcs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span class="num">' + a.devices.length + '</span></span></td>' +
@@ -485,6 +497,7 @@
           '</dl></div>' +
           '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
             '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado.</p></div>' +
+          storeSection(a) +
           '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
           '<div class="section"><h4>Registrar pago manual</h4><div class="pay-box"><div class="form-grid">' +
             '<div class="field"><label for="payMonths">Meses</label><input id="payMonths" type="number" min="1" max="36" value="1"></div>' +
@@ -506,6 +519,10 @@
 
       $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('open');
       $('closeDrawer').onclick = closeDrawer;
+      if ($('copyStoreBtn')) $('copyStoreBtn').onclick = function(){
+        var u = a.store.url;
+        (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ toast('Link copiado'); }, function(){ prompt('Link de la tienda', u); });
+      };
       $('supportBtn').onclick = function(){
         if (DEMO) return toast('No disponible en la demo', true);
         // La pestaña se abre ya (si no, el navegador la bloquea) y se carga cuando llega el pase
@@ -550,6 +567,24 @@
         if (confirm('¿Registrar ' + money(amount) + ' (' + months + (months === 1 ? ' mes' : ' meses') + ', ' + $('payMethod').value + ') para ' + (a.email || 'este cliente') + '?'))
           act({ action:'manualPayment', uid:a.uid, months:months, amount:amount, method:$('payMethod').value, plan:$('planSelect').value }, 'Pago registrado');
       };
+    }
+
+    function storeSection(a){
+      var st = a.store;
+      if (!st || !st.subdomain){
+        return '<div class="section"><h4>Tienda online</h4><div class="list"><div class="list-empty">' +
+          (a.plan === 'caja' ? 'Su plan (Ventra Caja) no incluye tienda online' : (st ? 'Empezó a armar su tienda pero todavía no eligió la dirección web' : 'Todavía no armó su tienda online')) + '</div></div></div>';
+      }
+      var color = /^#[0-9a-f]{6}$/i.test(st.primaryColor || '') ? st.primaryColor : '#167160';
+      var stats = [st.products != null ? st.products + (st.products === 1 ? ' producto' : ' productos') : null, st.orders != null ? st.orders + (st.orders === 1 ? ' pedido' : ' pedidos') : null, st.updatedAt ? 'editada ' + ago(st.updatedAt) : null].filter(Boolean).join(' · ');
+      return '<div class="section"><h4>Tienda online</h4>' +
+        '<div class="store-card">' +
+          (st.logoUrl ? '<img class="store-logo" src="' + esc(st.logoUrl) + '" alt="">' : '<div class="store-logo" style="background:' + color + '">' + esc((st.name || '?').trim()[0] || '?') + '</div>') +
+          '<div class="store-info"><div class="store-name">' + esc(st.name || st.subdomain) + '</div><div class="store-url">tienda.ventra.store/' + esc(st.subdomain) + '</div>' + (stats ? '<div class="store-stats">' + esc(stats) + '</div>' : '') + '</div>' +
+          '<span class="pill ' + (st.published ? 'pub' : 'unpub') + '">' + (st.published ? 'Publicada' : 'Sin publicar') + '</span>' +
+        '</div>' +
+        '<div class="actions" style="margin-top:10px"><a class="btn primary" style="flex:1" target="_blank" rel="noopener" href="' + esc(st.url) + '">Ver su tienda ↗</a><button class="btn" style="flex:1" id="copyStoreBtn">Copiar link</button></div>' +
+        '<p class="warn">' + (st.published ? 'Es la tienda pública, como la ven sus clientes.' : 'Todavía no la publicó: sus clientes ven “Tienda en preparación”.') + ' Para cambiar productos, fotos o la configuración, usá “Entrar a su sistema” → Tienda online.</p></div>';
     }
 
     function closeDrawer(){
@@ -631,6 +666,8 @@
         mk('maxikiosco.sol@hotmail.com', 'caja', 9, 'ACTIVE', 9, 6, 1),
         mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1)
       ];
+      accounts[3].store = { id:'s1', name:'Ferretería Central', subdomain:'ferreteria-central', published:true, url:'https://tienda.ventra.store/ferreteria-central', logoUrl:null, primaryColor:'#C2410C', products:342, orders:57, updatedAt:iso(now - 2 * day) };
+      accounts[5].store = { id:'s2', name:'Tienda Rosario', subdomain:'tienda-rosario', published:false, url:'https://tienda.ventra.store/tienda-rosario', logoUrl:null, primaryColor:'#DB2777', products:18, orders:0, updatedAt:iso(now - 5 * 3600000) };
       var monthly = [], nowD = new Date();
       for (var k = 11; k >= 0; k--){ var d = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth() - k, 1)); monthly.push({ month:d.toISOString().slice(0,7), amount: Math.max(0, Math.round((12 - k) * 11800 + (k % 3) * 4200 - 20000)) }); }
       return Promise.resolve({

@@ -572,15 +572,59 @@ function accountState(paidUntil, now) {
 
 const tsToIso = (ts) => (ts && ts.toDate ? ts.toDate().toISOString() : null);
 
+/**
+ * La tienda online de cada cuenta (si armó una), con el mismo criterio que usa la app:
+ * la que tiene dirección web y, entre esas, la más reciente.
+ */
+async function adminStoresByOwner() {
+  const snap = await db.collection("ventra_stores").where("claimed", "==", true).get();
+  const ms = (t) => (t && t.toMillis ? t.toMillis() : 0);
+  const best = {};
+  snap.forEach((doc) => {
+    const x = doc.data();
+    if (!x.ownerUid) return;
+    const cur = best[x.ownerUid];
+    const score = (d) => [Number(!!d.data().subdomain), ms(d.data().updatedAt)];
+    if (!cur) { best[x.ownerUid] = doc; return; }
+    const [a1, a2] = score(doc), [b1, b2] = score(cur);
+    if (a1 > b1 || (a1 === b1 && a2 > b2)) best[x.ownerUid] = doc;
+  });
+  const out = {};
+  await Promise.all(Object.entries(best).map(async ([uid, doc]) => {
+    const x = doc.data();
+    const [products, orders] = await Promise.all([
+      doc.ref.collection("products").count().get().then((r) => r.data().count).catch(() => null),
+      doc.ref.collection("orders").count().get().then((r) => r.data().count).catch(() => null),
+    ]);
+    out[uid] = {
+      id: doc.id,
+      name: x.businessName || null,
+      subdomain: x.subdomain || null,
+      published: !!x.isPublished,
+      url: x.subdomain ? `https://tienda.ventra.store/${x.subdomain}` : null,
+      logoUrl: x.logoUrl || null,
+      primaryColor: x.primaryColor || null,
+      products,
+      orders,
+      updatedAt: tsToIso(x.updatedAt),
+    };
+  }));
+  return out;
+}
+
 async function buildAdminOverview() {
   const now = Date.now();
-  const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid] = await Promise.all([
+  const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid, storeByUid] = await Promise.all([
     db.collection("ventra_accounts").get(),
     db.collection("ventra_devices").get(),
     db.collectionGroup("payments").get(),
     // Datos replicados en Neon: si la base no responde, el panel igual carga
     cloudSync.adminSummary(String(NEON_DATABASE_URL.value() || "").trim()).catch((err) => {
       logger.warn("Ventra admin: sin resumen de la nube", err.message);
+      return {};
+    }),
+    adminStoresByOwner().catch((err) => {
+      logger.warn("Ventra admin: sin tiendas online", err.message);
       return {};
     }),
   ]);
@@ -642,6 +686,7 @@ async function buildAdminOverview() {
       payments: payments.slice(0, 24),
       devices: devicesByUid[doc.id] || [],
       cloud: cloudByUid[doc.id] || null,
+      store: storeByUid[doc.id] || null,
       createdAt: tsToIso(a.createdAt) || tsToIso(a.updatedAt),
       notes: a.adminNotes || "",
     };

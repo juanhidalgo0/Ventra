@@ -188,6 +188,7 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
   const [delta, setDelta] = useState(0);
   const [savingPrice, setSavingPrice] = useState(false);
   const [savingStock, setSavingStock] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
 
   useEffect(() => {
     if (!productId) return;
@@ -240,6 +241,20 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
       toast.error(err.response?.data?.message || 'No se pudo ajustar el stock');
     } finally {
       setSavingStock(false);
+    }
+  };
+
+  const saveCategory = async (c: { id: string; name: string } | null) => {
+    setSavingCategory(true);
+    try {
+      await api.patch(`/products/${product.id}`, { categoryId: c ? c.id : '' });
+      setProduct({ ...product, categoryId: c?.id ?? null, category: c });
+      onChanged(product.id, { categoryId: c?.id ?? null, category: c });
+      toast.success(c ? `Categoría: ${c.name}` : 'Sin categoría');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo cambiar la categoría');
+    } finally {
+      setSavingCategory(false);
     }
   };
 
@@ -327,6 +342,11 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
               )}
             </section>
           )}
+
+          <section>
+            <p className="mb-1.5 text-[12.5px] font-medium text-slate-500">Categoría</p>
+            <CategoryPicker value={product.categoryId ?? null} onChange={saveCategory} disabled={savingCategory} />
+          </section>
         </div>
       )}
     </Sheet>
@@ -353,11 +373,12 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
   const [stock, setStock] = useState('');
+  const [category, setCategory] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (open) { setName(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); }
+    if (open) { setName(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null); }
   }, [open]);
 
   const save = async () => {
@@ -371,9 +392,10 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
         salePrice: parseAmount(price),
         costPrice: parseAmount(cost),
         stock: parseAmount(stock),
+        categoryId: category?.id,
       });
       toast.success('Producto creado');
-      onCreated(data);
+      onCreated({ ...data, category: data.category || category });
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'No se pudo crear el producto');
     } finally {
@@ -407,11 +429,92 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
           <Field label="Stock inicial">
             <input value={stock} onChange={(e) => setStock(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" placeholder="0" className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white tabular-nums" />
           </Field>
-          <p className="text-[12px] text-slate-400">Fotos, categoría y el resto de los datos se cargan desde la PC.</p>
+          <div>
+            <span className="block mb-1.5 text-[12.5px] font-medium text-slate-500">Categoría</span>
+            <CategoryPicker value={category?.id ?? null} onChange={setCategory} />
+            <p className="mt-1.5 text-[11.5px] text-slate-400">En la tienda online los productos se agrupan por categoría.</p>
+          </div>
         </div>
       </Sheet>
       {scanning && <BarcodeScanner onCode={onCode} onClose={() => setScanning(false)} />}
     </>
+  );
+}
+
+/** Categorías activas (las borradas quedan con isActive=false). Se cargan una vez por sesión. */
+let categoriesCache: Promise<{ id: string; name: string }[]> | null = null;
+function loadCategories() {
+  if (!categoriesCache) {
+    categoriesCache = api.get('/categories')
+      .then(({ data }) => ((data || []) as any[]).filter((c) => c.isActive !== false).map((c) => ({ id: c.id, name: c.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      .catch(() => { categoriesCache = null; return []; });
+  }
+  return categoriesCache;
+}
+
+/**
+ * Elegir la categoría del producto (o crear una nueva). En la tienda online los productos
+ * se agrupan por categoría, así que conviene que el comercio pueda ordenarlos desde el celular.
+ */
+function CategoryPicker({ value, onChange, disabled }: { value: string | null; onChange: (c: { id: string; name: string } | null) => void; disabled?: boolean }) {
+  const [cats, setCats] = useState<{ id: string; name: string }[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { loadCategories().then(setCats); }, []);
+
+  const create = async () => {
+    const n = name.trim();
+    if (!n) return setAdding(false);
+    const existing = cats.find((c) => c.name.toLowerCase() === n.toLowerCase());
+    if (existing) { onChange(existing); setAdding(false); setName(''); return; }
+    setBusy(true);
+    try {
+      const { data } = await api.post('/categories', { name: n });
+      const c = { id: data.id, name: data.name };
+      const next = [...cats, c].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      setCats(next);
+      categoriesCache = Promise.resolve(next);
+      onChange(c);
+      setAdding(false); setName('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo crear la categoría');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`flex flex-wrap gap-2 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+      {cats.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onChange(value === c.id ? null : c)}
+          className={`h-9 px-3.5 rounded-full text-[13px] font-medium border transition-colors ${value === c.id ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}
+        >
+          {c.name}
+        </button>
+      ))}
+      {adding ? (
+        <div className="flex items-center gap-1.5 h-9 pl-3 pr-1 rounded-full border border-rose-400 bg-white">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); create(); } }}
+            autoFocus
+            placeholder="Nombre"
+            className="w-28 bg-transparent outline-none text-[13px]"
+          />
+          <button type="button" onClick={create} disabled={busy} className="h-7 px-2.5 rounded-full bg-rose-600 text-white text-[12px] font-semibold">{busy ? '…' : 'Crear'}</button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="h-9 px-3 rounded-full border border-dashed border-slate-300 text-[13px] font-medium text-slate-500 flex items-center gap-1">
+          <Plus className="w-4 h-4" /> Nueva
+        </button>
+      )}
+    </div>
   );
 }
 
