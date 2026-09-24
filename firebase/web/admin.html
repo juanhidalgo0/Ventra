@@ -567,6 +567,7 @@
           '<div class="section"><h4>Acceso</h4><div class="actions">' +
             '<button class="btn" data-extend="7">+ 7 días</button><button class="btn" data-extend="30">+ 30 días</button><button class="btn" data-extend="365">+ 1 año</button>' +
             '<button class="btn danger" id="readOnlyBtn">Pasar a solo lectura</button></div>' +
+            '<div class="date-row" style="align-items:center"><label for="daysLeftInput" class="muted" style="font-size:13px;white-space:nowrap">Días restantes</label><input type="number" id="daysLeftInput" min="0" max="3650" style="width:110px" value="' + (a.state === 'ACTIVE' ? a.daysLeft : 0) + '"><button class="btn primary" id="setDaysBtn">Guardar días</button></div>' +
             '<div class="date-row"><input type="date" id="dateInput" value="' + (a.paidUntil ? a.paidUntil.slice(0, 10) : '') + '"><button class="btn primary" id="setDateBtn">Guardar fecha</button></div>' +
             '<p class="warn">Los días se suman al vencimiento actual, o desde hoy si ya venció. Pasado el vencimiento hay ' + data.graceDays + ' días de gracia.</p></div>' +
           '<div class="section"><h4>PCs vinculadas</h4><div class="list">' + devices + '</div>' +
@@ -604,6 +605,14 @@
       $('setDateBtn').onclick = function(){
         var v = $('dateInput').value; if (!v) return toast('Elegí una fecha', true);
         act({ action:'setPaidUntil', uid:a.uid, date: v + 'T23:59:59-03:00' }, 'Fecha actualizada');
+      };
+      // Deja exactamente esos días desde ahora (reemplaza el vencimiento, no suma)
+      $('setDaysBtn').onclick = function(){
+        var raw = $('daysLeftInput').value, n = Number(raw);
+        if (raw === '' || !Number.isInteger(n) || n < 0 || n > 3650) return toast('Indicá los días (0 a 3650)', true);
+        if (!confirm('¿Dejarle a ' + (a.email || 'este cliente') + ' ' + n + (n === 1 ? ' día' : ' días') + ' de suscripción desde hoy?' + (n === 0 ? '\nVence hoy y después empiezan los días de gracia.' : '')))
+          return;
+        act({ action:'setPaidUntil', uid:a.uid, date: new Date(Date.now() + n * 864e5).toISOString() }, 'Ahora tiene ' + n + (n === 1 ? ' día' : ' días'));
       };
       $('readOnlyBtn').onclick = function(){
         if (confirm('¿Pasar a ' + (a.email || 'este cliente') + ' a solo lectura?\nNo va a poder vender ni registrar nada hasta que le des días o renueve.'))
