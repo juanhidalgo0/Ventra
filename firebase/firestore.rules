@@ -69,6 +69,18 @@ service cloud.firestore {
         allow write: if storeOwner();
       }
 
+      // Agenda de turnos: los turnos (con datos del cliente) solo los ve el dueño.
+      // El público reserva por la función agendaBook, que evita turnos superpuestos.
+      match /bookings/{bookingId} {
+        allow read, write: if storeOwner();
+      }
+      // Horarios ocupados por día (sin datos personales), para mostrar los libres.
+      // Los mantiene la función ventraBookingWritten.
+      match /agenda_busy/{dateKey} {
+        allow read: if true;
+        allow write: if false;
+      }
+
       match /orders/{orderId} {
         // Cualquier cliente puede hacer un pedido, con formato válido.
         allow create: if validNewOrder();

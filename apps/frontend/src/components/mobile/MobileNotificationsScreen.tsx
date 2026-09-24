@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ShoppingBag, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon } from 'lucide-react';
+import { ShoppingBag, CalendarDays, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon } from 'lucide-react';
 import { ScreenHeader, ListSkeleton } from './ui';
 import PushCard from './PushCard';
 import { loadNotifyPrefs, saveNotifyPrefs, pushState, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
 
-type BoolKey = 'orders' | 'orderIdle' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'saleCancel' | 'dailySummary';
+type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'saleCancel' | 'dailySummary';
 
 const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: string }[] = [
   { key: 'orders', icon: ShoppingBag, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedidos online nuevos', text: 'Apenas un cliente hace un pedido en tu tienda.' },
   { key: 'orderIdle', icon: Timer, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedido sin atender', text: 'Si pasan 15 minutos y nadie lo empezó a preparar.' },
+  { key: 'bookings', icon: CalendarDays, tint: 'bg-rose-50 text-rose-700', title: 'Turnos nuevos', text: 'Cuando un cliente reserva un turno desde tu tienda.' },
   { key: 'cashDiff', icon: Wallet, tint: 'bg-red-50 text-red-700', title: 'Cierre de caja con diferencia', text: 'Cuando el efectivo contado no coincide con el esperado.' },
   { key: 'lowStock', icon: PackageMinus, tint: 'bg-amber-50 text-amber-700', title: 'Stock mínimo', text: 'Cuando un producto llega a su stock mínimo. Se agrupan en un solo aviso y cada producto avisa una vez hasta que lo repongas.' },
   { key: 'invoiceFail', icon: FileWarning, tint: 'bg-red-50 text-red-700', title: 'Factura rechazada', text: 'Si ARCA no acepta una factura.' },

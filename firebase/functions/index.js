@@ -1049,3 +1049,32 @@ exports.ventraNightlyBackup = onSchedule(
     logger.info("Ventra copia de seguridad lista", { file: file.name, bytes: Number(meta.size), counts, pruned, ms: Date.now() - started });
   }
 );
+
+// ─── Agenda de turnos (ver agenda.js) ───
+const agenda = require("./agenda");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+
+/** Reserva pública desde la tienda: valida y crea el turno sin superponerse con otro. */
+exports.agendaBook = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.book(db, req, res));
+
+/** Cada cambio de un turno: actualiza lo ocupado del día y avisa al dueño si es una reserva online nueva. */
+exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookings/{bookingId}", async (event) => {
+  const before = event.data && event.data.before.exists ? event.data.before.data() : null;
+  const after = event.data && event.data.after.exists ? event.data.after.data() : null;
+  const { storeId } = event.params;
+  const days = new Set([before && before.dateKey, after && after.dateKey].filter(Boolean));
+  const changed = !before || !after || before.dateKey !== after.dateKey || before.startMin !== after.startMin || before.endMin !== after.endMin
+    || before.staffId !== after.staffId || before.status !== after.status;
+  if (changed) await Promise.all([...days].map((d) => agenda.refreshBusy(db, storeId, d)));
+
+  if (!before && after && after.kind === "booking" && after.source === "online") {
+    const store = await db.collection("ventra_stores").doc(storeId).get();
+    const uid = store.exists && store.data().ownerUid;
+    if (!uid) return;
+    await notify.sendToAccount(db, uid, "bookings", {
+      title: `Nuevo turno: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
+      body: `${after.customerName || "Un cliente"}${after.staffName ? " con " + after.staffName : ""}${after.status === "PENDING" ? " · para confirmar" : ""}`,
+      url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+    }, { storeId });
+  }
+});

@@ -16,6 +16,7 @@ const TZ = "America/Argentina/Buenos_Aires";
 const DEFAULT_PREFS = {
   orders: true,        // pedido online nuevo
   orderIdle: true,     // pedido sin atender hace 15 min
+  bookings: true,      // turno reservado desde la tienda
   cashDiff: true,      // caja cerrada con diferencia
   invoiceFail: true,   // factura rechazada por ARCA
   lowStock: true,      // productos que llegaron al stock mínimo (agrupados)

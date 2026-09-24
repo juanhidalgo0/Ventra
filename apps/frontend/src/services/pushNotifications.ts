@@ -45,11 +45,11 @@ export async function registerPushToken(): Promise<void> {
 
 /** Qué avisos recibe la cuenta (se guardan en la nube, valen para todos sus celulares). */
 export interface NotifyPrefs {
-  orders: boolean; orderIdle: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean;
+  orders: boolean; orderIdle: boolean; bookings: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean;
   saleCancel: boolean; dailySummary: boolean; summaryHour: number; quietFrom: number; quietTo: number;
 }
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
-  orders: true, orderIdle: true, cashDiff: true, invoiceFail: true, lowStock: true,
+  orders: true, orderIdle: true, bookings: true, cashDiff: true, invoiceFail: true, lowStock: true,
   saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8,
 };
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Store, ClipboardList, Package, Tag, Settings, ExternalLink, Share2, ChevronRight, AlertTriangle, Clock, CheckCircle2, Globe } from 'lucide-react';
+import { Store, ClipboardList, Package, Tag, Settings, ExternalLink, Share2, ChevronRight, AlertTriangle, Clock, CheckCircle2, Globe, CalendarDays } from 'lucide-react';
 import api from '../../services/api';
 import { useOnlineOrders, isNewOrder, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, type StoreConfig, type StoreOrder, type OrderStage } from '../../services/onlineStore';
@@ -143,6 +143,7 @@ export default function StoreHomeScreen() {
           <Shortcut icon={Package} label="Productos" hint="Precios, fotos y stock" onClick={() => navigate('/products')} />
           <Shortcut icon={Tag} label="Promociones" hint="Ofertas y combos" onClick={() => navigate('/promos')} />
           <Shortcut icon={ClipboardList} label="Pedidos" hint="Preparar y entregar" onClick={() => navigate('/pedidos')} />
+          <Shortcut icon={CalendarDays} label="Agenda" hint="Turnos online" onClick={() => navigate('/agenda')} />
         </div>
       </section>
     </div>

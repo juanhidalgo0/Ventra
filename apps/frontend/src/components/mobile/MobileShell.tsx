@@ -30,6 +30,7 @@ const SCREEN_TITLES: Record<string, string> = {
   '/fiscal': 'Facturación',
   '/online-store': 'Tienda online',
   '/pedidos': 'Pedidos online',
+  '/agenda': 'Agenda',
   '/notificaciones': 'Notificaciones',
   '/settings': 'Configuración',
 };
@@ -45,7 +46,7 @@ const TIENDA_TABS = [
 type Tab = typeof TABS[number];
 const isTab = (tabs: Tab[], pathname: string) => tabs.some((t) => t.path === pathname);
 /** Pantallas de "Más" que ya tienen su versión móvil (traen su propio encabezado con "volver"). */
-export const NATIVE_MOBILE_PATHS = ['/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/notificaciones'];
+export const NATIVE_MOBILE_PATHS = ['/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/notificaciones'];
 /** Las pantallas que no son pestañas se abren desde "Más" y la marcan activa. */
 const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : '/mas');
 

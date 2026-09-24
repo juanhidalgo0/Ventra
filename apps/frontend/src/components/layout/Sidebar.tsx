@@ -25,6 +25,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Globe,
+  CalendarDays,
   Smartphone,
   X
 } from 'lucide-react';
@@ -133,6 +134,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
+        ...(user?.role === 'ADMIN' ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 

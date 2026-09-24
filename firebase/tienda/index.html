@@ -79,7 +79,10 @@
   [hidden]{display:none!important}
   .btn-brand{background:var(--brand);color:#fff}
   .btn-soft{background:var(--brand-soft);color:var(--brand-ink)}
-  .btn-ghost{background:var(--surface);border:1px solid var(--line)}
+  .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+  .hero-actions{flex-wrap:wrap}
+  .hero-actions .btn{white-space:nowrap}
+  @media(max-width:759px){.hero-actions .btn-book{flex:1 1 100%}}
   .btn-wa{background:#1FAF55;color:#fff}
   .btn-block{width:100%;height:54px;border-radius:16px;font-size:16px}
   .btn[disabled]{opacity:.45;pointer-events:none}
@@ -209,6 +212,42 @@
   .done h3{margin:0;font-size:22px;font-weight:800}
   .done p{color:var(--ink-2);margin:6px 0 0}
   .code{display:inline-block;margin-top:12px;background:var(--line-2);border-radius:10px;padding:6px 12px;font:700 15px ui-monospace,monospace;letter-spacing:.08em}
+
+  /* Turnos */
+  .svc-list{display:grid;gap:10px}
+  @media(min-width:640px){.svc-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .svc{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-md);padding:14px 14px 14px 16px;display:flex;gap:12px;align-items:center;text-align:left;width:100%;transition:box-shadow .2s,border-color .2s}
+  @media(hover:hover){.svc:hover{box-shadow:var(--shadow);border-color:var(--line)}}
+  .svc-info{flex:1;min-width:0}
+  .svc-name{font-weight:700;font-size:15px;line-height:1.25}
+  .svc-meta{font-size:13px;color:var(--ink-2);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .svc-meta svg.i{width:14px;height:14px}
+  .svc-desc{font-size:12.5px;color:var(--ink-3);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .svc .go{height:38px;padding:0 14px;border-radius:12px;background:var(--brand);color:#fff;font-weight:700;font-size:13.5px;display:flex;align-items:center;flex-shrink:0}
+  .svc.on{border-color:var(--brand);background:var(--brand-soft)}
+  .bk-steps{display:flex;gap:6px;padding:0 18px 10px;flex-shrink:0}
+  .bk-steps span{flex:1;height:4px;border-radius:2px;background:var(--line)}
+  .bk-steps span.on{background:var(--brand)}
+  .who-list{display:grid;gap:8px}
+  .who{display:flex;align-items:center;gap:12px;padding:12px;border:1.5px solid var(--line);border-radius:14px;background:#fff;text-align:left;width:100%}
+  .who.on{border-color:var(--brand);background:var(--brand-soft)}
+  .who-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex-shrink:0;background:var(--brand)}
+  .days{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:2px 18px 8px}
+  .days::-webkit-scrollbar{display:none}
+  .day{flex-shrink:0;width:58px;height:68px;border-radius:14px;border:1.5px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+  .day small{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase}
+  .day b{font:800 19px 'Plus Jakarta Sans',sans-serif}
+  .day.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .day.on small{color:rgba(255,255,255,.8)}
+  .day[disabled]{opacity:.35}
+  .slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  @media(min-width:420px){.slots{grid-template-columns:repeat(5,minmax(0,1fr))}}
+  .slot{height:44px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:14.5px;font-variant-numeric:tabular-nums}
+  .slot.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .slot-group{font-size:12.5px;font-weight:700;color:var(--ink-3);margin:14px 0 8px;text-transform:uppercase;letter-spacing:.04em}
+  .bk-sum{background:var(--line-2);border-radius:14px;padding:12px 14px;font-size:14px;display:grid;gap:6px;margin-bottom:14px}
+  .bk-sum div{display:flex;gap:8px;align-items:center}
+  .bk-sum svg.i{width:17px;height:17px;color:var(--brand)}
 
   /* Pie */
   footer{background:var(--surface);border-top:1px solid var(--line);padding:28px 0 calc(28px + var(--safe-b));font-size:14px;color:var(--ink-2)}
@@ -445,12 +484,13 @@ function render(){
     +   (c.minOrder>0?'<span class="chip">Pedido mínimo '+money(c.minOrder)+'</span>':'')
     + '</div>'
     + '<div class="hero-actions">'
+    +   (agendaOn()?'<button class="btn btn-brand btn-book" data-act="book-open">'+ic('clock')+'Reservar turno</button>':'')
     +   (c.whatsappNumber?'<a class="btn btn-wa" href="https://wa.me/'+esc(String(c.whatsappNumber).replace(/\D/g,''))+'" target="_blank" rel="noopener">'+ic('wa')+'Consultar</a>':'')
     +   '<button class="btn btn-ghost" data-act="share">'+ic('share')+'Compartir</button>'
     + '</div>'
     +'</div></div></section>';
 
-  h+='<div class="toolbar"><div class="wrap">'
+  if(S.products.length || !agendaOn()) h+='<div class="toolbar"><div class="wrap">'
     +'<div class="search'+(S.q?' has':'')+'" id="searchBox">'+ic('search')
     +'<label class="sr" for="q">Buscar productos</label><input id="q" type="search" placeholder="Buscar en '+esc(c.businessName)+'" value="'+esc(S.q)+'" autocomplete="off" enterkeyhint="search">'
     +'<button class="clear" data-act="clear-search" aria-label="Borrar búsqueda">'+ic('x')+'</button></div>'
@@ -465,11 +505,13 @@ function render(){
   h+='<div class="scrim" id="scrim" data-act="close"></div>';
   h+='<div class="sheet" id="productSheet" role="dialog" aria-modal="true"></div>';
   h+='<div class="sheet side" id="cartSheet" role="dialog" aria-modal="true"></div>';
+  h+='<div class="sheet" id="bookSheet" role="dialog" aria-modal="true"></div>';
   $('#app').innerHTML=h;
 
   renderList(); refreshCartBar();
   var q=$('#q');
-  q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
+  if(q) q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
+  if(location.hash==='#turnos' && agendaOn()) setTimeout(function(){ openBooking(null); },200);
   var tb=$('#topbar');
   var onScroll=function(){ tb.classList.toggle('scrolled',window.scrollY>200); };
   window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
@@ -499,6 +541,8 @@ function refreshProduct(id){
 
 function renderList(){
   var box=$('#list'), q=normalize(S.q.trim()), html='';
+  var svc=(!q && S.cat==='ALL' && agendaOn()) ? servicesHtml() : '';
+  if(!S.products.length && svc){ box.innerHTML=svc; return; }
   if(!S.products.length){ box.innerHTML='<div class="empty"><b>Pronto vas a ver los productos acá</b>El comercio está cargando su catálogo.</div>'; return; }
   if(q){
     var terms=q.split(/\s+/);
@@ -513,7 +557,7 @@ function renderList(){
       html+='<section class="section" data-cat-section="'+esc(ct)+'"><h2 class="display">'+esc(ct)+' <small>'+items.length+'</small></h2><div class="grid">'+items.map(productCard).join('')+'</div></section>';
     });
   }
-  box.innerHTML=html;
+  box.innerHTML=svc+html;
 }
 
 var DAYS_SHORT=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -716,6 +760,201 @@ async function sendOrder(btn){
   window.location.href=url;
 }
 
+/* ───────── turnos ─────────
+   Misma lógica de horarios libres que firebase/functions/agenda.js (que valida la reserva). */
+var BOOK_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/agendaBook';
+var TZ_OFFSET_MIN=-180;
+function AG(){ return (S.cfg && S.cfg.agenda) || {}; }
+function agServices(){ return (AG().services||[]).filter(function(x){ return x && x.active!==false && x.name; }); }
+function agStaff(){ return (AG().staff||[]).filter(function(x){ return x && x.active!==false && x.name; }); }
+function agendaOn(){ return !!AG().enabled && agServices().length>0 && agStaff().length>0; }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function hhmm(m){ return pad2(Math.floor(m/60))+':'+pad2(m%60); }
+function localNow(ms){ var d=new Date((ms||Date.now())+TZ_OFFSET_MIN*60000); return {dateKey:d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate()),min:d.getUTCHours()*60+d.getUTCMinutes()}; }
+function addDays(k,n){ var d=new Date(k+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function wday(k){ return new Date(k+'T12:00:00Z').getUTCDay(); }
+function durLabel(m){ return m<60?m+' min':Math.floor(m/60)+' h'+(m%60?' '+(m%60)+' min':''); }
+function canDo(st,sv){ return !sv.staffIds||!sv.staffIds.length||sv.staffIds.indexOf(st.id)>=0; }
+function staffRanges(h){ return dayRanges(h).map(function(r){ return {s:toMin(r.from),e:toMin(r.to)}; }).filter(function(r){ return r.e>r.s; }); }
+function minStartFor(k){
+  var a=AG(), now=localNow(), maxDays=Math.max(1,Math.min(180,Number(a.maxDaysAhead)||30));
+  if(k<now.dateKey || k>addDays(now.dateKey,maxDays-1)) return Infinity;
+  var e=localNow(Date.now()+Math.max(0,Number(a.minNoticeMin)||0)*60000);
+  if(k<e.dateKey) return Infinity;
+  return k===e.dateKey?e.min:0;
+}
+function freeStarts(st,sv,k,busy,minStart){
+  var a=AG(), step=Math.max(5,Number(a.slotStepMin)||15), buf=Math.max(0,Number(a.bufferMin)||0), dur=Math.max(5,Number(sv.durationMin)||30), out=[];
+  staffRanges((st.hours||[])[wday(k)]).forEach(function(r){
+    for(var t=r.s;t+dur<=r.e;t+=step){
+      if(t<minStart) continue;
+      var clash=busy.some(function(b){ return (b.staffId===st.id||b.staffId==='ALL') && t<b.e+buf && b.s<t+dur+buf; });
+      if(!clash) out.push(t);
+    }
+  });
+  return out;
+}
+var DAYS_LONG=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+var MONTHS=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function capFirst(t){ return t.charAt(0).toUpperCase()+t.slice(1); }
+function dayText(k){ var t=localNow().dateKey, d=+k.slice(8), m=+k.slice(5,7); return (k===t?'hoy':k===addDays(t,1)?'mañana':DAYS_LONG[wday(k)])+' '+d+' de '+MONTHS[m-1]; }
+
+function servicesHtml(){
+  return '<section class="section" id="turnos"><h2 class="display">Reservá tu turno</h2><div class="svc-list">'
+    +agServices().map(function(v){
+      return '<button class="svc" data-act="book-svc" data-id="'+esc(v.id)+'"><div class="svc-info"><div class="svc-name">'+esc(v.name)+'</div>'
+        +'<div class="svc-meta">'+ic('clock')+durLabel(Number(v.durationMin)||30)+(v.price>0?' · <b style="color:var(--ink)">'+money(v.price)+'</b>':'')+'</div>'
+        +(v.description?'<div class="svc-desc">'+esc(v.description)+'</div>':'')+'</div><span class="go">Reservar</span></button>';
+    }).join('')+'</div></section>';
+}
+
+S.bk={step:'service'}; S.bkBusy={};
+function bkService(){ return agServices().filter(function(x){ return x.id===S.bk.serviceId; })[0]; }
+function bkStaffFor(sv){ return agStaff().filter(function(st){ return canDo(st,sv); }); }
+function openBooking(serviceId){
+  S.bk={step:serviceId?'staff':'service',serviceId:serviceId||null,staffId:null,day:null,time:null};
+  if(serviceId && bkStaffFor(bkService()).length===1){ S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; }
+  renderBooking(); openSheet('bookSheet');
+}
+function loadBusy(k){
+  if(S.bkBusy[k]) return Promise.resolve(S.bkBusy[k]);
+  return db.collection('ventra_stores').doc(S.storeId).collection('agenda_busy').doc(k).get()
+    .then(function(d){ S.bkBusy[k]=(d.exists&&d.data().items)||[]; return S.bkBusy[k]; })
+    .catch(function(){ return []; });
+}
+/* Horarios libres del día: con "cualquiera", la unión de los profesionales que hacen el servicio */
+function slotsFor(k){
+  var sv=bkService(), busy=S.bkBusy[k]||[], min=minStartFor(k), set={};
+  if(min===Infinity) return [];
+  bkStaffFor(sv).filter(function(st){ return !S.bk.staffId||S.bk.staffId==='ANY'||st.id===S.bk.staffId; }).forEach(function(st){
+    freeStarts(st,sv,k,busy,min).forEach(function(t){ set[t]=1; });
+  });
+  return Object.keys(set).map(Number).sort(function(a,b){return a-b;});
+}
+/* Días con algún horario de atención (sin mirar lo ocupado todavía) */
+function workDays(){
+  var sv=bkService(), out=[], now=localNow().dateKey, n=Math.max(1,Math.min(60,Number(AG().maxDaysAhead)||30));
+  var staff=bkStaffFor(sv).filter(function(st){ return !S.bk.staffId||S.bk.staffId==='ANY'||st.id===S.bk.staffId; });
+  for(var i=0;i<n;i++){
+    var k=addDays(now,i);
+    if(minStartFor(k)===Infinity) continue;
+    if(staff.some(function(st){ return staffRanges((st.hours||[])[wday(k)]).length>0; })) out.push(k);
+  }
+  return out;
+}
+
+function bkHead(title,back){
+  var steps=['service','staff','time','data'], idx=steps.indexOf(S.bk.step);
+  return '<div class="grab"></div><div class="sheet-head">'+(back?'<button class="sheet-close" data-act="bk-back" aria-label="Volver">'+ic('back')+'</button>':'')
+    +'<h3 class="display">'+title+'</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
+    +(idx>=0?'<div class="bk-steps">'+steps.map(function(x,i){ return '<span class="'+(i<=idx?'on':'')+'"></span>'; }).join('')+'</div>':'');
+}
+function renderBooking(){
+  var el=$('#bookSheet'), b=S.bk, sv=bkService();
+  if(b.step==='service'){
+    el.innerHTML=bkHead('¿Qué te querés hacer?',false)+'<div class="sheet-body"><div class="svc-list" style="grid-template-columns:1fr">'
+      +agServices().map(function(v){ return '<button class="svc" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><div class="svc-info"><div class="svc-name">'+esc(v.name)+'</div><div class="svc-meta">'+ic('clock')+durLabel(Number(v.durationMin)||30)+(v.price>0?' · <b style="color:var(--ink)">'+money(v.price)+'</b>':'')+'</div>'+(v.description?'<div class="svc-desc">'+esc(v.description)+'</div>':'')+'</div></button>'; }).join('')
+      +'</div></div>';
+    return;
+  }
+  if(b.step==='staff'){
+    var list=bkStaffFor(sv);
+    el.innerHTML=bkHead('¿Con quién?',true)+'<div class="sheet-body"><p style="margin:0 0 12px;color:var(--ink-2);font-size:14px">'+esc(sv.name)+' · '+durLabel(Number(sv.durationMin)||30)+'</p><div class="who-list">'
+      +(list.length>1?'<button class="who" data-act="bk-pick-staff" data-id="ANY"><span class="who-av" style="background:var(--ink-3)">'+ic('clock')+'</span><span><b>Cualquiera</b><br><small style="color:var(--ink-3)">El primer horario libre</small></span></button>':'')
+      +list.map(function(st){ return '<button class="who" data-act="bk-pick-staff" data-id="'+esc(st.id)+'"><span class="who-av" style="background:'+esc(st.color||'var(--brand)')+'">'+initial(st.name)+'</span><b>'+esc(st.name)+'</b></button>'; }).join('')
+      +'</div></div>';
+    return;
+  }
+  if(b.step==='time'){
+    var days=workDays();
+    if(!b.day || days.indexOf(b.day)<0) b.day=days[0]||null;
+    var body='';
+    if(!days.length){ body='<div class="empty"><b>No hay turnos disponibles</b>Escribinos por WhatsApp y lo coordinamos.</div>'; }
+    else {
+      body='<div class="days">'+days.map(function(k){ return '<button class="day'+(k===b.day?' on':'')+'" data-act="bk-day" data-v="'+k+'"><small>'+(k===localNow().dateKey?'Hoy':DAYS_LONG[wday(k)].slice(0,3))+'</small><b>'+(+k.slice(8))+'</b><small>'+MONTHS[+k.slice(5,7)-1].slice(0,3)+'</small></button>'; }).join('')+'</div>';
+      if(!S.bkBusy[b.day]){ body+='<div style="display:flex;justify-content:center;padding:30px"><div class="spin"></div></div>'; loadBusy(b.day).then(function(){ if(S.bk.step==='time') renderBooking(); }); }
+      else {
+        var slots=slotsFor(b.day);
+        if(!slots.length) body+='<div class="empty" style="padding:30px 10px"><b>No quedan horarios este día</b>Probá con otro día.</div>';
+        else {
+          var parts=[['Mañana',0,720],['Tarde',720,1200],['Noche',1200,1440]];
+          parts.forEach(function(pt){
+            var g=slots.filter(function(t){ return t>=pt[1]&&t<pt[2]; });
+            if(!g.length) return;
+            body+='<div class="slot-group">'+pt[0]+'</div><div class="slots">'+g.map(function(t){ return '<button class="slot'+(b.time===t?' on':'')+'" data-act="bk-time" data-v="'+t+'">'+hhmm(t)+'</button>'; }).join('')+'</div>';
+          });
+        }
+      }
+    }
+    var st=agStaff().filter(function(x){ return x.id===b.staffId; })[0];
+    el.innerHTML=bkHead('Elegí día y horario',true)+'<div class="sheet-body"><p style="margin:0 0 12px;color:var(--ink-2);font-size:14px">'+esc(sv.name)+(st?' · con '+esc(st.name):'')+'</p>'+body+'</div>';
+    return;
+  }
+  if(b.step==='data'){
+    var saved={}; try{ saved=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); }catch(e){}
+    var st2=agStaff().filter(function(x){ return x.id===b.staffId; })[0];
+    el.innerHTML=bkHead('Tus datos',true)+'<div class="sheet-body">'
+      +'<div class="bk-sum"><div>'+ic('check')+'<b>'+esc(sv.name)+'</b>'+(sv.price>0?'<span style="margin-left:auto">'+money(sv.price)+'</span>':'')+'</div>'
+      +'<div>'+ic('clock')+esc(capFirst(dayText(b.day)))+', '+hhmm(b.time)+' hs</div>'
+      +(st2?'<div>'+ic('store')+'Con '+esc(st2.name)+'</div>':'')+'</div>'
+      +'<div class="field" id="b-name"><label for="bName">Nombre y apellido</label><input id="bName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
+      +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área.</div></div>'
+      +'<div class="field"><label for="bNote">Algo que quieras aclarar (opcional)</label><textarea id="bNote" placeholder="Ej: es para mi hija de 8 años"></textarea></div>'
+      +'</div><div class="sheet-foot"><button class="btn btn-brand btn-block" data-act="bk-confirm">Confirmar turno</button></div>';
+    return;
+  }
+  if(b.step==='done'){
+    var r=b.result, pending=r.status==='PENDING';
+    var start=r.date.replace(/-/g,'')+'T'+r.time.replace(':','')+'00';
+    var endMin=toMin(r.time)+(Number(sv.durationMin)||30);
+    var gcal='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(r.serviceName+' · '+S.cfg.businessName)
+      +'&dates='+start+'/'+r.date.replace(/-/g,'')+'T'+hhmm(endMin).replace(':','')+'00&ctz=America/Argentina/Buenos_Aires'
+      +(S.cfg.address?'&location='+encodeURIComponent(S.cfg.address):'')+'&details='+encodeURIComponent('Turno #'+r.code+(r.staffName?' con '+r.staffName:''));
+    var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+r.serviceName+'*'+(r.staffName?' con '+r.staffName:''),'*Día:* '+dayText(r.date)+', '+r.time+' hs','*Turno:* #'+r.code,'*Nombre:* '+b.name];
+    var wa=S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
+    el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('check')+'</div>'
+      +'<h3 class="display">'+(pending?'¡Turno pedido!':'¡Turno reservado!')+'</h3>'
+      +'<p><b style="color:var(--ink)">'+esc(r.serviceName)+'</b>'+(r.staffName?' con '+esc(r.staffName):'')+'<br>'+esc(capFirst(dayText(r.date)))+', '+esc(r.time)+' hs</p>'
+      +(pending?'<p>'+esc(S.cfg.businessName)+' te lo va a confirmar por WhatsApp.</p>':'')
+      +'<span class="code">#'+esc(r.code)+'</span>'
+      +(S.cfg.address?'<p style="font-size:13px">'+esc(S.cfg.address)+'</p>':'')+'</div></div>'
+      +'<div class="sheet-foot">'
+      +(wa?'<a class="btn btn-wa btn-block" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
+      +'<a class="btn btn-ghost btn-block" style="margin-top:8px;height:48px" href="'+esc(gcal)+'" target="_blank" rel="noopener">'+ic('clock')+'Agregar a mi calendario</a>'
+      +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px;border:0" data-act="close">Listo</button></div>';
+  }
+}
+function bkBack(){
+  var b=S.bk;
+  if(b.step==='data'){ b.step='time'; }
+  else if(b.step==='time'){ b.step=bkStaffFor(bkService()).length>1?'staff':'service'; b.time=null; if(b.step==='service') b.staffId=null; }
+  else if(b.step==='staff'){ b.step='service'; }
+  renderBooking();
+}
+async function confirmBooking(btn){
+  var b=S.bk, name=$('#bName').value.trim(), phone=$('#bPhone').value.trim(), note=$('#bNote').value.trim(), ok=true;
+  $('#b-name').classList.toggle('invalid',name.length<2); if(name.length<2) ok=false;
+  var digits=phone.replace(/\D/g,'');
+  $('#b-phone').classList.toggle('invalid',digits.length<8); if(digits.length<8) ok=false;
+  if(!ok){ toast('Revisá los datos marcados'); return; }
+  try{ var prev=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); localStorage.setItem('ventra_customer',JSON.stringify(Object.assign(prev,{name:name,phone:phone}))); }catch(e){}
+  btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
+  try{
+    var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,note:note})});
+    var data=await res.json().catch(function(){ return {}; });
+    if(!res.ok){
+      toast(data.error||'No se pudo reservar');
+      if(res.status===409){ delete S.bkBusy[b.day]; b.step='time'; b.time=null; renderBooking(); return; }
+      btn.disabled=false; btn.textContent='Confirmar turno'; return;
+    }
+    delete S.bkBusy[b.day];
+    b.name=name; b.result=data; b.step='done'; renderBooking();
+  }catch(e){
+    toast('Sin conexión. Probá de nuevo.');
+    btn.disabled=false; btn.textContent='Confirmar turno';
+  }
+}
+
 /* ───────── eventos ───────── */
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]'); if(!t) return;
@@ -736,6 +975,14 @@ document.addEventListener('click',function(e){
     case 'pay': snapshotForm(); S.payment=t.getAttribute('data-v'); renderCartSheet(); restoreForm(); break;
     case 'copy-alias': if(navigator.clipboard) navigator.clipboard.writeText(S.cfg.transferAlias); toast('Alias copiado'); break;
     case 'send': sendOrder(t); break;
+    case 'book-open': openBooking(null); break;
+    case 'book-svc': openBooking(id); break;
+    case 'bk-pick-svc': S.bk.serviceId=id; S.bk.staffId=null; S.bk.time=null; if(bkStaffFor(bkService()).length>1){ S.bk.step='staff'; } else { S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; } renderBooking(); break;
+    case 'bk-pick-staff': S.bk.staffId=id; S.bk.time=null; S.bk.step='time'; renderBooking(); break;
+    case 'bk-day': S.bk.day=t.getAttribute('data-v'); S.bk.time=null; renderBooking(); break;
+    case 'bk-time': S.bk.time=Number(t.getAttribute('data-v')); S.bk.step='data'; renderBooking(); break;
+    case 'bk-back': bkBack(); break;
+    case 'bk-confirm': confirmBooking(t); break;
     case 'new-order': S.step='cart'; closeSheets(); break;
     case 'cat':
       S.cat=t.getAttribute('data-cat'); S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has');
