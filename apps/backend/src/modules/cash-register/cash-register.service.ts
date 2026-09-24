@@ -198,8 +198,11 @@ export class CashRegisterService {
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'CLOSE', newValues: JSON.stringify(closingSummary) } });
     this.events.emitCashUpdated({ action: 'CLOSE', sessionId });
     this.notifyCashDiff(updated, expectedCash);
-    // Cierre X (cambio de turno): solo afecta a la terminal que cerró la caja,
-    // las demás terminales del mismo cajero siguen con su sesión abierta.
+    // Cierre X (cambio de turno): el cajero de esa caja queda deslogueado en todas las
+    // demás PCs donde tenga sesión (cada usuario tiene una sola caja abierta, así que no
+    // corta otra caja suya). La terminal que cerró se excluye por clientId: sigue con su
+    // flujo (imprimir el X, abrir caja nueva o generar el Z).
+    this.events.emitForceLogout({ userId: session.userId, reason: 'CASH_CLOSED', sessionId, clientId: data.clientId });
     return { ...updated, closingSummaryParsed: closingSummary };
   }
 
@@ -443,9 +446,10 @@ export class CashRegisterService {
         user: { select: { fullName: true, username: true } },
         cashMovements: true
       }, 
-      orderBy: { openedAt: 'desc' }, 
-      skip: params?.skip ?? 0,
-      take: params?.limit ?? 40 
+      orderBy: { openedAt: 'desc' },
+      // Sin ?skip en la URL llega NaN (no undefined) y Prisma rechaza la consulta
+      skip: Number(params?.skip) > 0 ? Number(params?.skip) : 0,
+      take: Number(params?.limit) > 0 ? Number(params?.limit) : 40
     });
   }
 

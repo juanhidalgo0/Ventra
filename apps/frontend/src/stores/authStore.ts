@@ -9,6 +9,8 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
+  /** Soporte de Ventra en la caja en la nube: entra como el administrador del comercio */
+  supportLogin: () => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
   checkAuth: () => void;
@@ -36,6 +38,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (error: any) {
       set({ isLoading: false });
       throw new Error(error.response?.data?.message || 'Error al iniciar sesión');
+    }
+  },
+
+  supportLogin: async () => {
+    set({ isLoading: true });
+    try {
+      const { data } = await api.post('/auth/support-login');
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      set({ user: data.user, isAuthenticated: true, isLoading: false });
+      wsService.connect();
+    } catch (error: any) {
+      set({ isLoading: false });
+      throw new Error(error.response?.data?.message || 'No se pudo entrar como soporte');
     }
   },
 

@@ -2921,7 +2921,9 @@ export default function POSScreen() {
                   setGenerateZAfterArqueo(false);
                   setShowCierre(false);
                   try {
-                    const res = await api.post('/cash/z-report/generate');
+                    // clientId: el servidor no le cierra la sesión a esta terminal, así
+                    // primero se muestra el cartel para imprimir el Z (cierra al salir de él)
+                    const res = await api.post('/cash/z-report/generate', { clientId: getClientId() });
                     setZReportData(res.data);
                   } catch (err: any) {
                     toast.error(err.response?.data?.message || 'Error al generar cierre Z');

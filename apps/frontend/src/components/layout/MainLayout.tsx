@@ -42,8 +42,8 @@ export default function MainLayout({ children }: Props) {
    * cierran sesión, para que no quede ninguna abierta con el turno ya cerrado.
    * La terminal que generó el Z se excluye acá (clientId) y cierra su propia
    * sesión sola, después de mostrar/imprimir el cartel "Imprimir Z".
-   * Cierre X (cambio de turno): no llega force-logout, solo cierra sesión
-   * la terminal que lo hizo, para no afectar a otros cajeros conectados.
+   * Cierre X (cambio de turno): igual, pero solo para el cajero de esa caja; los
+   * demás cajeros conectados no se ven afectados.
    */
   useEffect(() => {
     wsService.connect();

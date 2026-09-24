@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Request, BadRequestException, Header } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request, BadRequestException, Header, Headers } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -41,6 +41,12 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto.username, dto.password, !!dto.longSession);
+  }
+
+  /** Entrada de soporte en la caja en la nube (ver AuthService.supportLogin) */
+  @Post('support-login')
+  async supportLogin(@Headers('x-ventra-support-key') key: string) {
+    return this.authService.supportLogin(key);
   }
 
   @Post('google')

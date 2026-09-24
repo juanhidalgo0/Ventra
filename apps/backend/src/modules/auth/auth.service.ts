@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -36,6 +36,31 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    return this.issueSession(user, longSession && user.role === 'ADMIN', 'LOGIN');
+  }
+
+  /**
+   * Soporte de Ventra desde ventra.store/admin: entra como el administrador del comercio
+   * sin contraseña. Solo en la caja en la nube, y solo si el pedido trae la llave que el
+   * anfitrión le dio a esta caja al arrancarla (el anfitrión la agrega él mismo y descarta
+   * cualquiera que mande el navegador). En las PCs no hay llave y esto siempre se rechaza.
+   */
+  async supportLogin(key: string | undefined) {
+    const expected = Buffer.from(process.env.VENTRA_SUPPORT_KEY || '');
+    const given = Buffer.from(String(key || ''));
+    if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      throw new UnauthorizedException('Acceso de soporte no autorizado');
+    }
+    const user = await this.prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true }, orderBy: { createdAt: 'asc' } });
+    if (!user) throw new UnauthorizedException('El comercio no tiene un administrador activo');
+    return this.issueSession(user, false, 'SUPPORT_LOGIN');
+  }
+
+  private async issueSession(
+    user: { id: string; username: string; fullName: string; role: string; avatarUrl: string | null },
+    longSession: boolean,
+    action: string,
+  ) {
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
@@ -43,10 +68,10 @@ export class AuthService {
 
     const payload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.signRefresh(payload, longSession && user.role === 'ADMIN');
+    const refreshToken = this.signRefresh(payload, longSession);
 
     await this.prisma.auditLog.create({
-      data: { userId: user.id, entityType: 'AUTH', entityId: user.id, action: 'LOGIN' },
+      data: { userId: user.id, entityType: 'AUTH', entityId: user.id, action },
     });
 
     return {

@@ -32,7 +32,7 @@ export default function LoginPage() {
 
   const [loadingMessage, setLoadingMessage] = useState('Iniciando servidores locales...');
 
-  const { login, isLoading } = useAuthStore();
+  const { login, supportLogin, isLoading } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,6 +48,26 @@ export default function LoginPage() {
     // http://<domain>:3001-3005 — that scan can never succeed off a real domain and
     // used to leave this screen "loading" for up to 150 seconds before falling back.
     if (!isLocalDesktopContext) {
+      // Soporte desde ventra.store/admin: el anfitrión de la nube ya validó el acceso,
+      // así que se entra directo como el administrador del comercio.
+      // Fuera de la caja en la nube (la demo, por ejemplo) esa ruta no existe y vuelve
+      // la página de la app en vez de JSON: se ignora sin avisar nada.
+      fetch('/_ventra/whoami', { credentials: 'same-origin' })
+        .then((r) => (r.ok && (r.headers.get('content-type') || '').includes('application/json') ? r.json() : null))
+        .catch(() => null)
+        .then((who) => {
+          if (!who?.support) return;
+          return supportLogin()
+            .then(() => {
+              const host = window.location.port ? `${rawHost}:${window.location.port}` : rawHost;
+              localStorage.setItem('server_ip', host);
+              localStorage.setItem('saved_client_ip', host);
+              localStorage.setItem('connection_mode', 'CLIENT');
+              navigate('/pos');
+            })
+            .catch((err: any) => toast.error(err?.message || 'No se pudo entrar como soporte'));
+        });
+
       Promise.all([
         api.get('/auth/init-status').then(({ data }) => setIsInitialized(data.initialized)),
         api.get('/system/info').then(({ data }) => setIsDemo(!!data.isDemo)).catch(() => {}),
