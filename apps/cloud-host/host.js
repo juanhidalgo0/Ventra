@@ -50,6 +50,8 @@ const SUPPORT_HOURS = 8;
 // Llave con la que la caja acepta la entrada automática de soporte. Cada caja recibe
 // una distinta al arrancar; solo la conoce este anfitrión y nunca llega al navegador.
 const SUPPORT_HEADER = 'x-ventra-support-key';
+// Sitios desde los que se puede entrar directo con la sesión de Google ya iniciada
+const HANDOFF_ORIGINS = ['https://ventra.store', 'https://www.ventra.store', 'https://ventra-9cba5.web.app', 'https://ventra-9cba5.firebaseapp.com'];
 
 if (!CFG.devTenant && (!CFG.hostSecret || CFG.sessionSecret.length < 32)) {
   console.error('[Host] Faltan CLOUD_HOST_SECRET y/o SESSION_SECRET (32+ caracteres).');
@@ -311,6 +313,22 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(302, { Location: '/#/login', 'Cache-Control': 'no-store' }); return res.end();
       } catch (err) {
         return sendSupportError(res, err.status || 500, err.message || 'No se pudo entrar al sistema del comercio.');
+      }
+    }
+    // Entrada directa desde ventra.store ("Abrir mi Ventra"): la página, donde el dueño ya
+    // entró con Google, manda su token en un formulario (nunca en la URL). Solo se acepta
+    // desde ventra.store, así otro sitio no puede meter a alguien en una cuenta ajena.
+    if (url === '/_ventra/handoff' && req.method === 'POST') {
+      const origin = String(req.headers.origin || '');
+      if (!HANDOFF_ORIGINS.includes(origin)) { res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
+      try {
+        const idToken = new URLSearchParams(await readBody(req)).get('idToken') || '';
+        const session = await createSession({ idToken });
+        setCookie(res, signSession(session), SESSION_DAYS * 86400);
+        res.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); return res.end();
+      } catch (err) {
+        log('Entrada desde ventra.store rechazada:', err.message);
+        res.writeHead(303, { Location: '/_ventra/login' }); return res.end();
       }
     }
     if (url === '/_ventra/support-exit') {
