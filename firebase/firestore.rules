@@ -90,7 +90,8 @@ service cloud.firestore {
         function validNewOrder() {
           let o = request.resource.data;
           return o.keys().hasOnly(['items', 'total', 'customerName', 'customerPhone', 'customerNote', 'status', 'syncedLocal', 'createdAt',
-                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost'])
+                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount'])
+            && (!('discount' in o) || (o.discount is number && o.discount >= 0))
             && (!('orderCode' in o) || (o.orderCode is string && o.orderCode.size() <= 12))
             && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY'])
             && (!('address' in o) || (o.address is string && o.address.size() <= 300))

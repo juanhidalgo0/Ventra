@@ -13,9 +13,9 @@ export type BusinessFeature =
   | 'substitutes'    // Productos sustitutos / equivalentes
   | 'fractional'     // Unidades MT/KG/L, tamaño de pieza, ubicación, precio mayorista
   | 'hardwareImages' // Buscador de fotos por medida (las medidas comparten foto)
-  | 'variants';      // Talles y colores
+  | 'variants';      // Variantes: talles y colores, o tamaños (gastronomía)
 
-export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'MULTIRUBRO';
+export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO';
 
 export const ALL_FEATURES: BusinessFeature[] = [
   'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants',
@@ -28,13 +28,14 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   substitutes:    { title: 'Sustitutos', description: 'Sugerir equivalentes cuando un artículo no tiene stock.' },
   fractional:     { title: 'Medidas y fraccionado', description: 'Vender por metro, kilo o litro, con tamaño de pieza y ubicación.' },
   hardwareImages: { title: 'Fotos por medida', description: 'Buscador de fotos donde todas las medidas de un artículo comparten imagen.' },
-  variants:       { title: 'Talles y colores', description: 'Un modelo con varias variantes, cada una con su stock y su código.' },
+  variants:       { title: 'Variantes (talles, colores, tamaños)', description: 'Un producto con varias opciones, cada una con su precio, su stock y su código.' },
 };
 
 export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   KIOSKO: [],
   FERRETERIA: ['quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages'],
   INDUMENTARIA: ['variants'],
+  GASTRONOMIA: ['variants'],
   MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants'],
 };
 
@@ -53,6 +54,11 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     emoji: '👕',
     title: 'Indumentaria / Calzado',
     description: 'Cada modelo con sus talles y colores, con stock y código de barras propio por variante.',
+  },
+  GASTRONOMIA: {
+    emoji: '🍕',
+    title: 'Gastronomía',
+    description: 'Pizzerías, rotiserías, cafeterías: productos con tamaños a distinto precio y promos por cantidad (docena de empanadas).',
   },
   MULTIRUBRO: {
     emoji: '🏪',

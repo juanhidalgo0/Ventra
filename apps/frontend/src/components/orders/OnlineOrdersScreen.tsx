@@ -268,10 +268,13 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
             {o.items.map((i, k) => (
               <div key={k} className="flex justify-between gap-3 px-4 py-2.5 text-[13.5px]">
-                <span className="text-slate-800">{i.qty} × {i.name}</span>
+                <span className="text-slate-800">{i.qty} × {i.name}{i.note && <span className="block text-[12.5px] text-amber-700 italic">“{i.note}”</span>}</span>
                 <span className="font-medium text-slate-800 tabular-nums shrink-0">{money(i.price * i.qty)}</span>
               </div>
             ))}
+            {!!o.discount && (
+              <div className="flex justify-between px-4 py-2.5 text-[13.5px] text-emerald-700"><span>Promos</span><span className="tabular-nums">-{money(o.discount)}</span></div>
+            )}
             {!!o.deliveryCost && (
               <div className="flex justify-between px-4 py-2.5 text-[13.5px] text-slate-600"><span>Envío</span><span className="tabular-nums">{money(o.deliveryCost)}</span></div>
             )}

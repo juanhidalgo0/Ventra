@@ -32,7 +32,7 @@ import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import ImageSearchPicker from './ImageSearchPicker';
-import { hasFeature, useFeature } from '../../stores/businessStore';
+import { hasFeature, useFeature, useBusinessStore } from '../../stores/businessStore';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -216,15 +216,17 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     (navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 
   const canUseVariants = useFeature('variants');
+  // Gastronomía: la opción es el tamaño y cada uno tiene su precio (pizza chica / grande)
+  const isFood = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
   const [variantMode, setVariantMode] = useState(Boolean(product?.variantGroupId));
   const [variantGroupId, setVariantGroupId] = useState<string | undefined>(product?.variantGroupId || undefined);
-  const [variantAxes, setVariantAxes] = useState<[string, string]>(['talle', 'color']);
+  const [variantAxes, setVariantAxes] = useState<[string, string]>(isFood ? ['tamaño', 'variedad'] : ['talle', 'color']);
   const [variantValuesA, setVariantValuesA] = useState('');
   const [variantValuesB, setVariantValuesB] = useState('');
   // Cada celda de la grilla: clave "TALLE|COLOR" con el stock y el código de esa variante
   const [variantCells, setVariantCells] = useState<Record<string, { id?: string; stock: string; barcode: string; price: string }>>({});
   // Lo normal es un precio para todo el modelo; los talles especiales son la excepción
-  const [variantPriceMode, setVariantPriceMode] = useState(false);
+  const [variantPriceMode, setVariantPriceMode] = useState(isFood);
   // Una foto por color: la comparten todos los talles de ese color (y es la que va a la tienda online)
   const [variantImages, setVariantImages] = useState<Record<string, string>>({});
 
@@ -247,7 +249,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         if (!alive || !Array.isArray(data) || data.length === 0) return;
         const axes: string[] = [];
         for (const v of data) for (const k of Object.keys(v.attrs || {})) if (!axes.includes(k)) axes.push(k);
-        const [axisA, axisB] = [axes[0] || 'talle', axes[1] || 'color'];
+        const [axisA, axisB] = [axes[0] || (isFood ? 'tamaño' : 'talle'), axes[1] || (isFood ? 'variedad' : 'color')];
         const valsA: string[] = [];
         const valsB: string[] = [];
         const cells: Record<string, { id?: string; stock: string; barcode: string; price: string }> = {};
@@ -1558,8 +1560,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
             {canUseVariants && (
               <Collapsible
                 icon={Shirt}
-                title="Talles y colores"
-                hint="Un mismo modelo con varias variantes, cada una con su stock y su código"
+                title={isFood ? 'Tamaños y opciones' : 'Talles y colores'}
+                hint={isFood ? 'Un mismo producto en varios tamaños, cada uno con su precio (ej. pizza chica y grande)' : 'Un mismo modelo con varias variantes, cada una con su stock y su código'}
                 defaultOpen={variantMode}
                 badge={variantMode && variantCombos.length > 0 ? `${variantCombos.length}` : undefined}
               >
@@ -1586,16 +1588,16 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                         <input
                           value={variantValuesA}
                           onChange={e => setVariantValuesA(e.target.value)}
-                          placeholder="S, M, L, XL"
+                          placeholder={isFood ? "CHICA, GRANDE" : "S, M, L, XL"}
                           className={inputCls}
                         />
                       </div>
                       <div>
-                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block capitalize">{variantAxes[1]}es (opcional)</label>
+                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block capitalize">{variantAxes[1].endsWith("d") ? variantAxes[1] + "es" : variantAxes[1] + "es"} (opcional)</label>
                         <input
                           value={variantValuesB}
                           onChange={e => setVariantValuesB(e.target.value)}
-                          placeholder="NEGRO, BLANCO"
+                          placeholder={isFood ? "" : "NEGRO, BLANCO"}
                           className={inputCls}
                         />
                       </div>
@@ -1692,9 +1694,9 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     {variantCombos.length > 0 && (
                       <label className="flex items-center justify-between cursor-pointer gap-3">
                         <span className="text-[12.5px] font-semibold text-slate-800">
-                          Precio distinto por talle
+                          Precio distinto por {variantAxes[0]}
                           <span className="block text-[11.5px] font-medium text-slate-500 leading-snug">
-                            Para talles especiales. Normalmente todo el modelo va al mismo precio.
+                            {isFood ? 'Cada tamaño con su propio precio.' : 'Para talles especiales. Normalmente todo el modelo va al mismo precio.'}
                           </span>
                         </span>
                         <input

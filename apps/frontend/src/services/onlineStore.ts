@@ -87,10 +87,17 @@ export const withRanges = (h: DayHours, ranges: TimeRange[]): DayHours => ({
 
 export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Mercado Pago', 'Tarjeta de débito', 'Tarjeta de crédito'];
 
+export const ORDER_CHANNELS: { id: 'BOTH' | 'APP' | 'WHATSAPP'; title: string; text: string }[] = [
+  { id: 'BOTH', title: 'App y WhatsApp', text: 'El pedido te llega a la app y el cliente además te lo manda por WhatsApp.' },
+  { id: 'APP', title: 'Solo la app', text: 'Te llega a la app con aviso al celular. El cliente no tiene que pasar por WhatsApp.' },
+  { id: 'WHATSAPP', title: 'Solo WhatsApp', text: 'El cliente te lo manda por WhatsApp. No queda guardado en la app.' },
+];
+
+
 export interface StoreConfig {
   storeId: string;
   businessName: string;
-  rubro: string; // KIOSKO | FERRETERIA | INDUMENTARIA | OTRO
+  rubro: string; // KIOSKO | FERRETERIA | INDUMENTARIA | GASTRONOMIA | OTRO
   subdomain: string;
   whatsappNumber: string;
   primaryColor: string;
@@ -120,6 +127,15 @@ export interface StoreConfig {
   showOutOfStock?: boolean;
   /** Todos los productos se venden como disponibles, aunque figuren sin stock (apagado por defecto) */
   alwaysInStock?: boolean;
+  /**
+   * Cómo llegan los pedidos: BOTH = a la app y además el cliente lo manda por WhatsApp (lo de siempre),
+   * APP = solo a la app (aviso al celular, sin pasar por WhatsApp), WHATSAPP = solo por WhatsApp (no queda en la app).
+   */
+  orderChannel?: 'BOTH' | 'APP' | 'WHATSAPP';
+  /** Productos pausados ("hoy no hay"): se ven como no disponibles sin volver a publicar */
+  pausedIds?: string[];
+  /** Promos por cantidad publicadas desde Promociones (ej. docena de empanadas de cualquier gusto) */
+  onlinePromos?: OnlinePromo[];
   ownerUid?: string;
   claimed?: boolean;
   updatedAt?: any;
@@ -170,6 +186,12 @@ export async function saveStoreConfig(storeId: string, config: Partial<StoreConf
   await claimStore(storeId);
   const { ownerUid: _o, claimed: _c, storeId: _s, ...editable } = config as any;
   await updateDoc(doc(getDb(), 'ventra_stores', storeId), { ...editable, updatedAt: serverTimestamp() });
+  if (config.rubro === 'GASTRONOMIA') {
+    import('../stores/businessStore').then(({ useBusinessStore }) => {
+      const b = useBusinessStore.getState();
+      if (b.profile === 'KIOSKO') b.setProfile('GASTRONOMIA');
+    }).catch(() => {});
+  }
   // Avisa a la barra lateral y a la caja si la tienda quedó publicada o no
   if (typeof config.isPublished === 'boolean') {
     import('./onlineStoreOrders').then((m) => m.setStorePublished(!!config.isPublished)).catch(() => {});
@@ -197,6 +219,62 @@ export interface OnlineProduct {
   brand?: string;
   unit?: string;
   inStock: boolean;
+  /** Opciones de un mismo producto (tamaño, talle): la tienda las muestra juntas en una ficha */
+  variantGroupId?: string;
+  baseName?: string;
+  /** "GRANDE", "M · NEGRO" */
+  variantLabel?: string;
+}
+
+/** Combo "N unidades de estos productos (mezclados) a precio fijo", para aplicar en la tienda. */
+export interface OnlinePromo { id: string; name: string; qty: number; price: number; productIds: string[] }
+
+/** Un producto del sistema tal como se publica en la tienda. */
+export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
+  let attrs: Record<string, string> = {};
+  try { attrs = p.variantAttrs ? (typeof p.variantAttrs === 'string' ? JSON.parse(p.variantAttrs) : p.variantAttrs) : {}; } catch { /* sin opciones */ }
+  const variantLabel = Object.values(attrs || {}).map((v) => String(v || '').trim()).filter(Boolean).join(' · ');
+  return {
+    productId: p.id,
+    name: p.name,
+    description: p.description || '',
+    price: p.salePrice,
+    imageUrl,
+    category: p.category?.name || 'Varios',
+    brand: p.brand?.name || '',
+    unit: p.unit || 'UNIT',
+    inStock: !!p.unlimitedStock || p.stock > 0,
+    ...(p.variantGroupId ? { variantGroupId: p.variantGroupId, baseName: p.baseName || p.name, variantLabel } : {}),
+  };
+}
+
+/**
+ * Publica en la tienda las promos por cantidad de Promociones: combos de un solo grupo
+ * ("12 empanadas de cualquier gusto a $12.000"). Los combos de varios productos distintos
+ * (pizza + gaseosa) por ahora solo se aplican en la caja.
+ */
+export async function publishOnlinePromos(storeId: string, onlineIds: Set<string>): Promise<number> {
+  const { default: api } = await import('./api');
+  const { data } = await api.get('/promotions').catch(() => ({ data: [] }));
+  const now = Date.now();
+  const promos: OnlinePromo[] = [];
+  for (const pr of (data || []) as any[]) {
+    if (!pr.isActive || pr.type !== 'FIXED_COMBO' || !(pr.fixedPrice > 0)) continue;
+    if (pr.endDate && new Date(pr.endDate).getTime() < now) continue;
+    if (pr.startDate && new Date(pr.startDate).getTime() > now) continue;
+    const items = (pr.products || []) as any[];
+    const groups = new Set(items.map((x) => x.groupId || `single_${x.productId}`));
+    if (groups.size !== 1 || !items.length) continue;
+    const qty = Math.max(1, Number(items[0].quantity) || 1);
+    // Un combo de un solo producto sin cantidad no es una promo por cantidad
+    if (qty < 2) continue;
+    const productIds = items.map((x) => String(x.productId)).filter((id) => onlineIds.has(id));
+    if (!productIds.length) continue;
+    promos.push({ id: pr.id, name: pr.name, qty, price: Number(pr.fixedPrice), productIds });
+  }
+  await claimStore(storeId);
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId), { onlinePromos: promos, updatedAt: serverTimestamp() });
+  return promos.length;
 }
 
 /**
@@ -327,6 +405,8 @@ export interface StoreOrderItem {
   name: string;
   price: number;
   qty: number;
+  /** Aclaración del cliente ("sin aceitunas") */
+  note?: string;
 }
 
 export type OrderStage = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
@@ -344,6 +424,8 @@ export interface StoreOrder {
   address?: string;
   paymentMethod?: string;
   deliveryCost?: number;
+  /** Descuento de promos por cantidad (docena de empanadas) */
+  discount?: number;
   status: 'PENDING' | 'SYNCED';
   /** Seguimiento del pedido en el local (sin valor = recién llegado) */
   stage?: OrderStage;
@@ -458,17 +540,8 @@ export async function publishOnlineCatalog(storeId: string, onProgress?: (done: 
     online = all;
   }
   const images = await publishProductImages(storeId, online, onProgress);
-  await syncCatalogToStore(storeId, online.map((p) => ({
-    productId: p.id,
-    name: p.name,
-    description: p.description || '',
-    price: p.salePrice,
-    imageUrl: images.get(p.id) || '',
-    category: p.category?.name || 'Varios',
-    brand: p.brand?.name || '',
-    unit: p.unit || 'UNIT',
-    inStock: p.unlimitedStock || p.stock > 0,
-  })));
+  await syncCatalogToStore(storeId, online.map((p) => toOnlineProduct(p, images.get(p.id) || '')));
+  await publishOnlinePromos(storeId, new Set(online.map((p) => String(p.id)))).catch((e) => console.warn('[OnlineStore] Promos sin publicar', e));
   return online.length;
 }
 

@@ -24,6 +24,7 @@ import {
   Package,
   Wrench,
   Shirt,
+  UtensilsCrossed,
   LayoutGrid,
   Clock,
   Phone,
@@ -41,6 +42,9 @@ import {
   saveStoreConfig,
   isSubdomainAvailable,
   syncCatalogToStore,
+  toOnlineProduct,
+  publishOnlinePromos,
+  ORDER_CHANNELS,
   publishProductImages,
   PAYMENT_OPTIONS,
   dayRanges,
@@ -60,6 +64,7 @@ const RUBROS = [
   { id: 'KIOSKO', label: 'Kiosco / Almacén', icon: Package },
   { id: 'FERRETERIA', label: 'Ferretería / Corralón', icon: Wrench },
   { id: 'INDUMENTARIA', label: 'Indumentaria y Calzado', icon: Shirt },
+  { id: 'GASTRONOMIA', label: 'Gastronomía', icon: UtensilsCrossed },
   { id: 'OTRO', label: 'Otro Rubro', icon: LayoutGrid },
 ];
 
@@ -278,17 +283,8 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
       // Las fotos se suben a la nube (desde la PC no se pueden ver por internet)
       const images = await publishProductImages(storeId, online, (done, total) => setSyncProgress({ done, total }));
-      await syncCatalogToStore(storeId, online.map(p => ({
-        productId: p.id,
-        name: p.name,
-        description: p.description || '',
-        price: p.salePrice,
-        imageUrl: images.get(p.id) || '',
-        category: p.category?.name || 'Varios',
-        brand: p.brand?.name || '',
-        unit: p.unit || 'UNIT',
-        inStock: p.unlimitedStock || p.stock > 0,
-      })));
+      await syncCatalogToStore(storeId, online.map(p => toOnlineProduct(p, images.get(p.id) || '')));
+      await publishOnlinePromos(storeId, new Set(online.map(p => String(p.id)))).catch(e => console.warn('[OnlineStore] Promos sin publicar', e));
       toast.success(`🚀 Inventario sincronizado: ${online.length} producto(s) publicado(s) en la tienda`);
     } catch (err) {
       console.error(err);
@@ -676,6 +672,23 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                   placeholder="Av. Siempreviva 742"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <FieldLabel hint="Elegí por dónde querés recibir los pedidos de la tienda.">¿Cómo te llegan los pedidos?</FieldLabel>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {ORDER_CHANNELS.map((ch) => {
+                const on = (config.orderChannel || 'BOTH') === ch.id;
+                return (
+                  <button key={ch.id} type="button" onClick={() => update({ orderChannel: ch.id })}
+                    className="text-left rounded-xl border-2 p-4 transition-colors"
+                    style={{ borderColor: on ? accent : '#e2e8f0', backgroundColor: on ? `${accent}0d` : '#fff' }}>
+                    <span className="block text-[14px] font-bold text-slate-800">{ch.title}</span>
+                    <span className="block text-[12.5px] text-slate-500 mt-1 leading-snug">{ch.text}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

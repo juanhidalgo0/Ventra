@@ -213,6 +213,62 @@
   .done p{color:var(--ink-2);margin:6px 0 0}
   .code{display:inline-block;margin-top:12px;background:var(--line-2);border-radius:10px;padding:6px 12px;font:700 15px ui-monospace,monospace;letter-spacing:.08em}
 
+  /* Pantalla de carga con el logo del comercio */
+  #splash{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity .45s ease,visibility .45s}
+  #splash.out{opacity:0;visibility:hidden}
+  .sp-stage{position:relative;width:132px;height:132px;display:flex;align-items:center;justify-content:center}
+  .sp-ring{position:absolute;inset:14px;border-radius:34px;border:3px solid var(--brand);opacity:0;animation:spRing 1.8s cubic-bezier(.2,.7,.3,1) .5s infinite}
+  .sp-ring.r2{animation-delay:1.4s}
+  .sp-logo{width:104px;height:104px;border-radius:28px;background:var(--brand);box-shadow:0 18px 40px -16px color-mix(in srgb,var(--brand) 70%,transparent);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#fff;font:800 44px 'Plus Jakarta Sans',sans-serif;animation:spDrop .9s cubic-bezier(.3,1.6,.5,1) both,spFloat 2.4s ease-in-out .9s infinite}
+  .sp-logo img{width:100%;height:100%;object-fit:cover}
+  .sp-logo svg.i{width:46px;height:46px;stroke-width:1.8}
+  .sp-logo.pop{animation:spPop .55s cubic-bezier(.3,1.6,.5,1) both,spFloat 2.4s ease-in-out .55s infinite}
+  .sp-shadow{position:absolute;bottom:-4px;width:70px;height:10px;border-radius:50%;background:rgba(16,21,18,.12);animation:spShadow 2.4s ease-in-out .9s infinite}
+  .sp-name{font:800 19px 'Plus Jakarta Sans',sans-serif;letter-spacing:-.02em;color:var(--ink);min-height:24px;opacity:0;animation:spFade .5s ease .45s forwards}
+  .sp-dots{display:flex;gap:7px;margin-top:-10px}
+  .sp-dots span{width:8px;height:8px;border-radius:50%;background:var(--brand);animation:spDot 1s ease-in-out infinite}
+  .sp-dots span:nth-child(2){animation-delay:.15s}.sp-dots span:nth-child(3){animation-delay:.3s}
+  @keyframes spDrop{0%{transform:translateY(-120px) scale(.6,1.2);opacity:0}55%{transform:translateY(0) scale(1.18,.82);opacity:1}75%{transform:translateY(-10px) scale(.95,1.06)}100%{transform:none}}
+  @keyframes spPop{0%{transform:scale(.5) rotate(-12deg)}60%{transform:scale(1.12) rotate(4deg)}100%{transform:none}}
+  @keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  @keyframes spShadow{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(.78);opacity:.6}}
+  @keyframes spRing{0%{transform:scale(.85);opacity:.55}100%{transform:scale(1.45);opacity:0}}
+  @keyframes spDot{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-7px);opacity:1}}
+  @keyframes spFade{to{opacity:1}}
+
+  /* Gastronomía: formato carta */
+  .food .grid{grid-template-columns:1fr;gap:10px}
+  @media(min-width:760px){.food .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
+  .food .card{flex-direction:row-reverse;min-height:124px}
+  .food .card-img{width:124px;aspect-ratio:auto;border-bottom:0;border-left:1px solid var(--line-2);flex-shrink:0}
+  .food .card-img img{object-fit:cover;padding:0}
+  .food .card-img .ph{font-size:34px}
+  .food .card-body{padding:12px 14px}
+  .food .tag-out{left:auto;right:10px}
+  .food .card-name{min-height:0;font-size:15px}
+  .card-desc{font-size:12.5px;color:var(--ink-3);line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .price small.from{font:600 12px 'Inter';color:var(--ink-3);margin-right:3px}
+  .add .cnt{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--ink);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+  .add{position:relative}
+  .closed-bar{grid-column:1/-1;background:#FDEEEE;color:var(--bad);border-radius:var(--r-md);padding:12px 14px;margin-top:14px;font-size:13.5px;font-weight:600;display:flex;gap:10px;align-items:center}
+  .closed-bar svg.i{flex-shrink:0}
+  .opts{display:grid;gap:8px;margin-top:14px}
+  .opt-row{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1.5px solid var(--line);border-radius:14px;background:#fff;text-align:left;width:100%}
+  .opt-row .rad{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .opt-row.on{border-color:var(--brand);background:var(--brand-soft)}
+  .opt-row.on .rad{border-color:var(--brand)}
+  .opt-row.on .rad::after{content:'';width:10px;height:10px;border-radius:50%;background:var(--brand)}
+  .opt-row b{flex:1;font-size:15px}
+  .opt-row span.p{font:800 15px 'Plus Jakarta Sans',sans-serif}
+  .opt-row[disabled]{opacity:.45}
+  .opt-title{font-size:13px;font-weight:700;color:var(--ink-2);margin:16px 0 0;text-transform:uppercase;letter-spacing:.04em}
+  .pd-note{margin-top:14px}
+  .pd-note textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:11px 13px;font-size:14.5px;min-height:58px;resize:vertical;outline:none}
+  .pd-note textarea:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+  .line-note{font-size:12.5px;color:var(--ink-3);margin-top:1px;font-style:italic}
+  .sum.promo{color:var(--ok);font-weight:600}
+  .promo-hint{background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:10px}
+
   /* Turnos */
   .svc-list{display:grid;gap:10px}
   @media(min-width:640px){.svc-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -289,7 +345,8 @@
 </style>
 </head>
 <body>
-<div id="app"><div class="center"><div class="spin"></div></div></div>
+<div id="splash"><div class="sp-stage"><span class="sp-ring"></span><span class="sp-ring r2"></span><div class="sp-logo" id="spLogo"></div><span class="sp-shadow"></span></div><div class="sp-name" id="spName"></div><div class="sp-dots"><span></span><span></span><span></span></div></div>
+<div id="app"></div>
 <div class="toast" id="toast" role="status"></div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -343,7 +400,7 @@ function normalize(s){ return String(s||'').toLowerCase().normalize('NFD').repla
 var S = {
   storeId:null, cfg:null, products:[], byId:{}, cats:[],
   cart:{}, q:'', cat:'ALL',
-  step:'cart', delivery:null, payment:null, lastOrder:null
+  step:'cart', delivery:null, payment:null, lastOrder:null, notes:{}, food:false
 };
 
 /* ───────── horarios ───────── */
@@ -394,10 +451,41 @@ function loadCart(){
     return out;
   }catch(e){ return {}; }
 }
-function saveCart(){ try{ localStorage.setItem(cartKey(),JSON.stringify(S.cart)); }catch(e){} }
+function saveCart(){ try{ localStorage.setItem(cartKey(),JSON.stringify(S.cart)); localStorage.setItem(cartKey()+'_notes',JSON.stringify(S.notes)); }catch(e){} }
 function cartItems(){ return Object.keys(S.cart).map(function(id){ return {p:S.byId[id],qty:S.cart[id]}; }).filter(function(x){return x.p;}); }
 function cartCount(){ return cartItems().reduce(function(a,x){return a+x.qty;},0); }
 function subtotal(){ return cartItems().reduce(function(a,x){return a+x.qty*x.p.price;},0); }
+/* Promos por cantidad (ej. 12 empanadas de cualquier gusto a precio fijo). Se toman primero las
+   unidades más caras. Devuelve [{name, times, discount, missing}] */
+function promoLines(){
+  // Primero las de más unidades: con 18 empanadas se arma una docena y después una media docena
+  var promos=(S.cfg.onlinePromos||[]).slice().sort(function(a,b){ return b.qty-a.qty; }), left={}, out=[];
+  Object.keys(S.cart).forEach(function(id){ left[id]=S.cart[id]; });
+  promos.forEach(function(pr){
+    var units=[];
+    pr.productIds.forEach(function(id){ var p=S.byId[id]; for(var i=0;i<(left[id]||0);i++) if(p) units.push({id:id,price:p.price}); });
+    var n=units.length, times=Math.floor(n/pr.qty);
+    if(!times){ if(n>0) out.push({name:pr.name,times:0,discount:0,missing:pr.qty-n,price:pr.price,qty:pr.qty}); return; }
+    units.sort(function(a,b){ return b.price-a.price; });
+    var used=units.slice(0,times*pr.qty), regular=used.reduce(function(a,u){ return a+u.price; },0);
+    var discount=regular-times*pr.price;
+    if(discount<=0) return;
+    used.forEach(function(u){ left[u.id]--; });
+    var rest=n-times*pr.qty;
+    out.push({name:pr.name,times:times,discount:discount,missing:rest>0?pr.qty-rest:0,price:pr.price,qty:pr.qty});
+  });
+  return out;
+}
+function promoDiscount(){ return promoLines().reduce(function(a,x){ return a+x.discount; },0); }
+function itemsTotal(){ return subtotal()-promoDiscount(); }
+function promoHtml(){
+  var lines=promoLines(), hint=null;
+  // Un solo aviso: la promo a la que le falta menos (ej. "sumá 2 más y es una docena")
+  lines.forEach(function(x){ if(x.missing>0 && x.missing<x.qty && (!hint || x.missing<hint.missing)) hint=x; });
+  return lines.map(function(x){
+    return x.discount?'<div class="sum promo"><span>'+esc(x.name)+(x.times>1?' x'+x.times:'')+'</span><span>-'+money(x.discount)+'</span></div>':'';
+  }).join('')+(hint?'<div class="promo-hint">Sumá '+hint.missing+' más y aprovechás la promo “'+esc(hint.name)+'” ('+hint.qty+' a '+money(hint.price)+')</div>':'');
+}
 function deliveryCost(){
   var c=S.cfg; if(S.delivery!=='DELIVERY') return 0;
   var sub=subtotal();
@@ -405,7 +493,7 @@ function deliveryCost(){
   return c.deliveryCost||0;
 }
 function setQty(id,qty){
-  if(qty<=0) delete S.cart[id]; else S.cart[id]=qty;
+  if(qty<=0){ delete S.cart[id]; delete S.notes[id]; } else S.cart[id]=qty;
   saveCart(); refreshProduct(id); refreshCartBar();
   if($('#cartSheet').classList.contains('show') && S.step==='cart') renderCartSheet();
 }
@@ -413,35 +501,117 @@ function setQty(id,qty){
 /* ───────── arranque ───────── */
 async function init(){
   var slug=decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g,''));
-  if(!slug){ return notFound('Tiendas online de Ventra','Para ver una tienda, entrá con el enlace que te compartió el comercio.'); }
+  if(!slug){ hideSplash(); return notFound('Tiendas online de Ventra','Para ver una tienda, entrá con el enlace que te compartió el comercio.'); }
   try{
     var snap=await db.collection('ventra_stores').where('claimed','==',true).where('subdomain','==',slug).limit(1).get();
-    if(snap.empty) return notFound('No encontramos esta tienda','Revisá que el enlace esté bien escrito.');
+    if(snap.empty){ hideSplash(); return notFound('No encontramos esta tienda','Revisá que el enlace esté bien escrito.'); }
     var doc=snap.docs[0], cfg=doc.data();
-    if(!cfg.isPublished) return notFound('Tienda en preparación','El comercio todavía no la publicó. Volvé a entrar en un rato.');
+    if(!cfg.isPublished){ hideSplash(); return notFound('Tienda en preparación','El comercio todavía no la publicó. Volvé a entrar en un rato.'); }
     S.storeId=doc.id; S.cfg=cfg;
+    S.food = cfg.rubro==='GASTRONOMIA';
+    splashBrand(cfg,slug);
     cfg.pickupEnabled = cfg.pickupEnabled!==false;
     cfg.paymentMethods = (cfg.paymentMethods&&cfg.paymentMethods.length)?cfg.paymentMethods:['Efectivo','Transferencia'];
     applyBrand(cfg);
 
     var ps=await db.collection('ventra_stores').doc(doc.id).collection('products').get();
-    var list=ps.docs.map(function(d){ var x=d.data(); x.id=d.id; x._q=normalize(x.name+' '+(x.brand||'')+' '+(x.category||'')); return x; });
-    // Opción de la tienda: vender todo aunque en el sistema figure sin stock
-    if(cfg.alwaysInStock) list.forEach(function(p){ p.inStock=true; });
-    if(cfg.showOutOfStock===false) list=list.filter(function(p){return p.inStock!==false;});
+    var list=ps.docs.map(function(d){ var x=d.data(); x.id=d.id; return x; });
+    // Opción de la tienda: vender todo aunque en el sistema figure sin stock. En gastronomía se cocina a pedido: el stock no cuenta
+    if(cfg.alwaysInStock || S.food) list.forEach(function(p){ p.inStock=true; });
+    // Pausados a mano ("hoy no hay"): se ven, pero no se pueden pedir
+    var paused=cfg.pausedIds||[];
+    list.forEach(function(p){ if(paused.indexOf(p.id)>=0){ p.inStock=false; p.paused=true; } });
+    list=groupVariants(list);
+    list.forEach(function(p){ p._q=normalize(p.name+' '+(p.brand||'')+' '+(p.category||'')+' '+(p.description||'')); });
+    if(cfg.showOutOfStock===false) list=list.filter(function(p){return p.inStock!==false || p.paused;});
     list.sort(function(a,b){ return (b.inStock!==false)-(a.inStock!==false) || String(a.name).localeCompare(String(b.name),'es'); });
     S.products=list;
     list.forEach(function(p){ S.byId[p.id]=p; });
     var cs={}; list.forEach(function(p){ var c=p.category||'Otros'; cs[c]=(cs[c]||0)+1; });
-    S.cats=Object.keys(cs).sort(function(a,b){ return a==='Varios'||a==='Otros'?1:b==='Varios'||b==='Otros'?-1:a.localeCompare(b,'es'); });
+    // En la carta, bebidas y postres van al final (como en cualquier menú)
+    var rank=function(c){ return c==='Varios'||c==='Otros'?3:S.food&&/postre|dulce|helad/i.test(c)?2:S.food&&/bebida|gaseosa|cerveza|vino|trago/i.test(c)?1:0; };
+    S.cats=Object.keys(cs).sort(function(a,b){ return rank(a)-rank(b) || a.localeCompare(b,'es'); });
     S.cart=loadCart();
+    try{ var nt=JSON.parse(localStorage.getItem(cartKey()+'_notes')||'{}'); Object.keys(nt).forEach(function(id){ if(S.cart[id]) S.notes[id]=nt[id]; }); }catch(e){}
     S.delivery = cfg.pickupEnabled ? 'PICKUP' : (cfg.deliveryEnabled ? 'DELIVERY' : (cfg.goDeliveryEnabled ? 'GODELIVERY' : null));
     render();
+    hideSplash();
   }catch(err){
     console.error(err);
+    hideSplash();
     notFound('No pudimos cargar la tienda','Revisá tu conexión e intentá de nuevo en unos minutos.');
   }
 }
+
+/* ───────── pantalla de carga ───────── */
+var SPLASH_T0=Date.now();
+function splashKey(slug){ return 'ventra_splash_'+slug; }
+(function(){
+  // Vuelve a mostrar enseguida el logo y el color de la última visita
+  var slug=decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g,'')), c=null;
+  try{ c=JSON.parse(localStorage.getItem(splashKey(slug))||'null'); }catch(e){}
+  if(c&&c.color) document.documentElement.style.setProperty('--brand',c.color);
+  $('#spLogo').innerHTML=c&&c.logo?'<img src="'+esc(c.logo)+'" alt="">':(c&&c.name?initial(c.name):ic('bag'));
+  $('#spName').textContent=c&&c.name?c.name:'';
+})();
+function splashBrand(cfg,slug){
+  var brand=/^#[0-9a-f]{6}$/i.test(cfg.primaryColor||'')?cfg.primaryColor:'#0E6E52';
+  document.documentElement.style.setProperty('--brand',brand);
+  var lg=$('#spLogo'), prev=lg.getAttribute('data-src')||'';
+  if(!lg.querySelector('img') || prev!==(cfg.logoUrl||'')){
+    lg.innerHTML=cfg.logoUrl?'<img src="'+esc(cfg.logoUrl)+'" alt="">':initial(cfg.businessName);
+    lg.setAttribute('data-src',cfg.logoUrl||'');
+    lg.classList.remove('pop'); void lg.offsetWidth; lg.classList.add('pop');
+  }
+  $('#spName').textContent=cfg.businessName||'';
+  try{ localStorage.setItem(splashKey(slug),JSON.stringify({logo:cfg.logoUrl||'',color:brand,name:cfg.businessName||''})); }catch(e){}
+}
+function hideSplash(){
+  var el=$('#splash'); if(!el||el.classList.contains('out')) return;
+  // Se deja ver la animación al menos un momento, sin demorar de más la tienda
+  var wait=Math.max(0,1100-(Date.now()-SPLASH_T0));
+  setTimeout(function(){ el.classList.add('out'); setTimeout(function(){ el.remove(); },500); },wait);
+}
+
+/* ───────── productos con opciones ─────────
+   Las variantes (tamaño, talle) de un mismo producto se muestran juntas en una sola tarjeta. */
+function nice(t){
+  t=String(t||'').trim();
+  // En gastronomía los nombres del sistema (en mayúsculas) se ven como en una carta
+  if(!S.food || t!==t.toUpperCase() || !/[A-ZÁÉÍÓÚÑ]/.test(t)) return t;
+  var l=t.toLowerCase(); return l.charAt(0).toUpperCase()+l.slice(1);
+}
+function groupVariants(list){
+  var groups={}, out=[];
+  list.forEach(function(p){
+    if(!p.variantGroupId){ p.name=nice(p.name); out.push(p); return; }
+    var g=groups[p.variantGroupId];
+    if(!g){ g=groups[p.variantGroupId]={id:'g_'+p.variantGroupId,isGroup:true,variants:[],name:nice(p.baseName||p.name),category:p.category,brand:p.brand,unit:p.unit,description:''}; out.push(g); }
+    p.optLabel=nice(p.variantLabel||p.name);
+    p.name=g.name+' ('+p.optLabel+')';
+    p.groupId=g.id;
+    g.variants.push(p);
+    S.byId[p.id]=p;
+  });
+  out.forEach(function(g){
+    if(!g.isGroup) return;
+    g.variants.sort(function(a,b){ return a.price-b.price || String(a.optLabel).localeCompare(String(b.optLabel),'es'); });
+    var avail=g.variants.filter(function(v){ return v.inStock!==false; });
+    g.price=(avail[0]||g.variants[0]).price;
+    g.fromPrice=g.variants.some(function(v){ return v.price!==g.price; });
+    g.inStock=avail.length>0;
+    g.paused=!avail.length && g.variants.every(function(v){ return v.paused; });
+    var withImg=g.variants.filter(function(v){ return v.imageUrl; })[0];
+    g.imageUrl=withImg?withImg.imageUrl:'';
+    g.description=(g.variants.filter(function(v){ return v.description; })[0]||{}).description||'';
+    if(g.variants.length===1){ var only=g.variants[0]; only.name=g.name; }
+  });
+  return out;
+}
+/* Tarjeta donde se ve un producto (la del grupo si es una opción) */
+function cardIdOf(id){ var p=S.byId[id]; return p&&p.groupId?p.groupId:id; }
+function groupQty(g){ return g.variants.reduce(function(a,v){ return a+(S.cart[v.id]||0); },0); }
+function kitchenClosed(){ if(!S.food) return null; var st=openStatus(S.cfg.hours); return st&&!st.open?st:null; }
 
 function applyBrand(cfg){
   var brand=/^#[0-9a-f]{6}$/i.test(cfg.primaryColor||'')?cfg.primaryColor:'#0E6E52';
@@ -462,6 +632,7 @@ function notFound(title,text){
 /* ───────── render principal ───────── */
 function render(){
   var c=S.cfg, st=openStatus(c.hours), h='';
+  document.body.classList.toggle('food',S.food);
   if(c.announcement) h+='<div class="announce">'+esc(c.announcement)+'</div>';
   h+='<div class="topbar" id="topbar"><div class="wrap">'
     + (c.logoUrl?'<img class="tb-logo" src="'+esc(c.logoUrl)+'" alt="">':'<div class="tb-logo"></div>')
@@ -475,7 +646,7 @@ function render(){
     +'<div class="wrap"><div class="hero-card">'
     + (c.logoUrl?'<img class="hero-logo" src="'+esc(c.logoUrl)+'" alt="Logo de '+esc(c.businessName)+'">':'<div class="hero-logo">'+initial(c.businessName)+'</div>')
     + '<h1 class="hero-name display">'+esc(c.businessName)+'</h1>'
-    + '<p class="hero-desc">'+esc(c.description||'Hacé tu pedido y te lo confirmamos por WhatsApp.')+'</p>'
+    + '<p class="hero-desc">'+esc(c.description||(c.orderChannel==='APP'?'Hacé tu pedido online y te lo confirmamos.':'Hacé tu pedido y te lo confirmamos por WhatsApp.'))+'</p>'
     + '<div class="hero-meta">'
     +   (st?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
     +   (c.deliveryEnabled?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
@@ -488,6 +659,7 @@ function render(){
     +   (c.whatsappNumber?'<a class="btn btn-wa" href="https://wa.me/'+esc(String(c.whatsappNumber).replace(/\D/g,''))+'" target="_blank" rel="noopener">'+ic('wa')+'Consultar</a>':'')
     +   '<button class="btn btn-ghost" data-act="share">'+ic('share')+'Compartir</button>'
     + '</div>'
+    + (kitchenClosed()?'<div class="closed-bar">'+ic('clock')+'<span>Ahora estamos cerrados ('+esc(st.text.replace(/^Cerrado · /,''))+'). Podés ver la carta y armar tu pedido; lo enviás cuando abramos.</span></div>':'')
     +'</div></div></section>';
 
   if(S.products.length || !agendaOn()) h+='<div class="toolbar"><div class="wrap">'
@@ -518,25 +690,30 @@ function render(){
 }
 
 function productCard(p){
-  var qty=S.cart[p.id]||0, out=p.inStock===false;
+  var qty=p.isGroup?groupQty(p):(S.cart[p.id]||0), out=p.inStock===false;
   return '<article class="card'+(out?' out':'')+'" id="p-'+esc(p.id)+'">'
-    + (out?'<span class="tag-out">Agotado</span>':'')
+    + (out?'<span class="tag-out">'+(p.paused?'No disponible hoy':'Agotado')+'</span>':'')
     + '<div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div>'
     + '<div class="card-body">'
-    +   (p.brand?'<span class="card-brand">'+esc(p.brand)+'</span>':'')
+    +   (p.brand&&!S.food?'<span class="card-brand">'+esc(p.brand)+'</span>':'')
     +   '<h3 class="card-name" data-act="product" data-id="'+esc(p.id)+'">'+esc(p.name)+'</h3>'
-    +   '<div class="card-foot"><span class="price">'+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'+buyControl(p.id,qty,out)+'</div>'
+    +   (S.food&&p.description?'<div class="card-desc">'+esc(p.description)+'</div>':'')
+    +   '<div class="card-foot">'+priceHtml(p)+buyControl(p.id,qty,out)+'</div>'
     + '</div></article>';
 }
+function priceHtml(p){ return '<span class="price">'+(p.isGroup&&p.fromPrice?'<small class="from">desde</small>':'')+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'; }
 function buyControl(id,qty,out){
   if(out) return '';
+  // Con opciones (o en la carta, para poder aclarar) se elige en la ficha
+  var p=S.byId[id];
+  if(p&&p.isGroup) return '<button class="add" data-act="product" data-id="'+esc(id)+'" aria-label="Elegir">'+ic('plus')+(qty?'<span class="cnt">'+qty+'</span>':'')+'</button>';
   if(!qty) return '<button class="add" data-act="add" data-id="'+esc(id)+'" aria-label="Agregar">'+ic('plus')+'</button>';
   return '<div class="stepper"><button data-act="dec" data-id="'+esc(id)+'" aria-label="Quitar uno">'+ic(qty===1?'trash':'minus')+'</button><span>'+qty+'</span><button data-act="inc" data-id="'+esc(id)+'" aria-label="Agregar uno">'+ic('plus')+'</button></div>';
 }
 function refreshProduct(id){
-  var card=document.getElementById('p-'+id), p=S.byId[id];
-  if(card && p){ var foot=card.querySelector('.card-foot'); foot.innerHTML='<span class="price">'+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'+buyControl(id,S.cart[id]||0,p.inStock===false); }
-  if($('#productSheet').classList.contains('show') && S.openProduct===id) renderProductSheet(id);
+  var cid=cardIdOf(id), card=document.getElementById('p-'+cid), p=S.byId[cid];
+  if(card && p){ var foot=card.querySelector('.card-foot'); foot.innerHTML=priceHtml(p)+buyControl(cid,p.isGroup?groupQty(p):(S.cart[cid]||0),p.inStock===false); }
+  if($('#productSheet').classList.contains('show') && S.openProduct===cid) renderProductSheet(cid);
 }
 
 function renderList(){
@@ -605,7 +782,7 @@ function refreshCartBar(){
   var n=cartCount(), bar=$('#cartbar'), b=$('#tbBadge');
   if(!bar) return;
   bar.classList.toggle('show',n>0);
-  $('#cbCount').textContent=n; $('#cbTotal').textContent=money(subtotal());
+  $('#cbCount').textContent=n; $('#cbTotal').textContent=money(itemsTotal());
   b.hidden=!n; b.textContent=n;
 }
 
@@ -614,22 +791,38 @@ function openSheet(id){ $('#scrim').classList.add('show'); $('#'+id).classList.a
 function closeSheets(){ $('#scrim').classList.remove('show'); document.querySelectorAll('.sheet.show').forEach(function(s){s.classList.remove('show');}); document.body.style.overflow=''; S.openProduct=null; }
 
 function renderProductSheet(id){
-  var p=S.byId[id], qty=S.cart[id]||0, out=p.inStock===false;
+  var p=S.byId[id], sel=p, opts='';
   S.pdQty = S.pdQty || 1;
+  if(p.isGroup){
+    var avail=p.variants.filter(function(v){ return v.inStock!==false; });
+    if(!S.pdOpt || !S.byId[S.pdOpt] || S.byId[S.pdOpt].groupId!==p.id) S.pdOpt=(avail[0]||p.variants[0]).id;
+    sel=S.byId[S.pdOpt];
+    if(p.variants.length>1){
+      opts='<p class="opt-title">Elegí una opción</p><div class="opts">'+p.variants.map(function(v){
+        var off=v.inStock===false;
+        return '<button class="opt-row'+(v.id===sel.id?' on':'')+'" data-act="pd-opt" data-id="'+esc(v.id)+'"'+(off?' disabled':'')+'><span class="rad"></span><b>'+esc(v.optLabel)+(off?' <small style="font-weight:600;color:var(--ink-3)">· no disponible</small>':'')+'</b><span class="p">'+money(v.price)+'</span></button>';
+      }).join('')+'</div>';
+    }
+  }
+  var qty=S.cart[sel.id]||0, out=sel.inStock===false;
+  var note=S.pdNote!=null?S.pdNote:(S.notes[sel.id]||'');
   $('#productSheet').innerHTML='<div class="grab"></div>'
     +'<div class="sheet-head"><h3></h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
-    +'<div class="sheet-body"><div class="pd-img">'+imgOrPh(p.imageUrl,p.name)+'</div>'
-    +(p.brand?'<div class="card-brand" style="margin-top:14px">'+esc(p.brand)+'</div>':'')
-    +'<h2 class="pd-name display" style="'+(p.brand?'margin-top:2px':'')+'">'+esc(p.name)+'</h2>'
-    +'<div class="pd-price">'+money(p.price)+'<small style="font:600 13px Inter;color:var(--ink-3)"> '+unitLabel(p.unit)+'</small></div>'
+    +'<div class="sheet-body">'+(S.food&&!(sel.imageUrl||p.imageUrl)?'':'<div class="pd-img">'+imgOrPh(sel.imageUrl||p.imageUrl,p.name)+'</div>')
+    +(p.brand&&!S.food?'<div class="card-brand" style="margin-top:14px">'+esc(p.brand)+'</div>':'')
+    +'<h2 class="pd-name display" style="'+(p.brand&&!S.food?'margin-top:2px':'')+'">'+esc(p.name)+'</h2>'
+    +'<div class="pd-price">'+money(sel.price)+'<small style="font:600 13px Inter;color:var(--ink-3)"> '+unitLabel(p.unit)+'</small></div>'
     +(p.description?'<p class="pd-desc">'+esc(p.description)+'</p>':'')
+    +opts
+    +(S.food&&!out?'<div class="pd-note field"><label for="pdNote">Aclaración (opcional)</label><textarea id="pdNote" maxlength="140" placeholder="Ej: sin aceitunas, bien cocida">'+esc(note)+'</textarea></div>':'')
     +(qty?'<p class="pd-desc" style="color:var(--brand-ink);font-weight:600">Ya tenés '+qty+' en tu pedido.</p>':'')
     +'</div>'
     +'<div class="sheet-foot" style="display:flex;gap:10px">'
-    +(out?'<button class="btn btn-block" disabled>Agotado</button>'
+    +(out?'<button class="btn btn-block" disabled>'+(sel.paused?'No disponible hoy':'Agotado')+'</button>'
       :'<div class="qty-big"><button data-act="pd-dec" aria-label="Menos">'+ic('minus')+'</button><span>'+S.pdQty+'</span><button data-act="pd-inc" aria-label="Más">'+ic('plus')+'</button></div>'
-       +'<button class="btn btn-brand btn-block" style="flex:1" data-act="pd-add">Agregar '+money(p.price*S.pdQty)+'</button>')
+       +'<button class="btn btn-brand btn-block" style="flex:1" data-act="pd-add">Agregar '+money(sel.price*S.pdQty)+'</button>')
     +'</div>';
+  S.pdNote=null;
 }
 
 function renderCartSheet(){
@@ -642,23 +835,25 @@ function renderCartSheet(){
   } else {
     body=items.map(function(x){
       return '<div class="line"><div class="line-img">'+imgOrPh(x.p.imageUrl,x.p.name)+'</div>'
-        +'<div class="line-info"><p class="line-name">'+esc(x.p.name)+'</p><div class="line-price">'+money(x.p.price)+' · <b style="color:var(--ink)">'+money(x.p.price*x.qty)+'</b></div></div>'
+        +'<div class="line-info"><p class="line-name">'+esc(x.p.name)+'</p>'+(S.notes[x.p.id]?'<div class="line-note">“'+esc(S.notes[x.p.id])+'”</div>':'')+'<div class="line-price">'+money(x.p.price)+' · <b style="color:var(--ink)">'+money(x.p.price*x.qty)+'</b></div></div>'
         +'<div class="stepper"><button data-act="dec" data-id="'+esc(x.p.id)+'" aria-label="Quitar uno">'+ic(x.qty===1?'trash':'minus')+'</button><span>'+x.qty+'</span><button data-act="inc" data-id="'+esc(x.p.id)+'" aria-label="Agregar uno">'+ic('plus')+'</button></div></div>';
     }).join('');
   }
-  var missing=c.minOrder>0?Math.max(0,c.minOrder-sub):0;
+  var disc=promoDiscount(), missing=c.minOrder>0?Math.max(0,c.minOrder-(sub-disc)):0, closed=kitchenClosed();
   el.innerHTML='<div class="grab"></div>'
     +'<div class="sheet-head"><h3 class="display">Tu pedido</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +'<div class="sheet-body">'+body+'</div>'
     +(items.length?'<div class="sheet-foot">'
       +(missing>0?'<div class="note">El pedido mínimo es '+money(c.minOrder)+'. Te faltan '+money(missing)+'.</div>':'')
       +(c.deliveryEnabled&&c.freeDeliveryFrom>0&&c.deliveryCost>0&&sub<c.freeDeliveryFrom?'<div class="sum" style="padding-bottom:8px">Sumá '+money(c.freeDeliveryFrom-sub)+' y el envío es gratis</div>':'')
-      +'<div class="sum total"><span>Subtotal</span><span>'+money(sub)+'</span></div>'
-      +'<button class="btn btn-brand btn-block" style="margin-top:12px" data-act="to-checkout"'+(missing>0?' disabled':'')+'>Continuar</button></div>':'');
+      +(disc?'<div class="sum"><span>Productos</span><span>'+money(sub)+'</span></div>':'')+promoHtml()
+      +'<div class="sum total"><span>Subtotal</span><span>'+money(sub-disc)+'</span></div>'
+      +(closed?'<div class="note" style="margin:10px 0 0">Ahora estamos cerrados ('+esc(closed.text.replace(/^Cerrado · /,''))+'). Podés dejar el pedido armado y enviarlo cuando abramos.</div>':'')
+      +'<button class="btn btn-brand btn-block" style="margin-top:12px" data-act="to-checkout"'+(missing>0||closed?' disabled':'')+'>Continuar</button></div>':'');
 }
 
 function renderCheckout(){
-  var c=S.cfg, el=$('#cartSheet'), sub=subtotal(), dc=deliveryCost(), saved={};
+  var c=S.cfg, el=$('#cartSheet'), sub=itemsTotal(), dc=deliveryCost(), saved={};
   try{ saved=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); }catch(e){}
   if(!S.payment) S.payment=c.paymentMethods[0];
   var modes=[];
@@ -691,22 +886,25 @@ function renderCheckout(){
     +'<div class="field"><label for="cNote">Aclaraciones (opcional)</label><textarea id="cNote" placeholder="Ej: tocar timbre 2B, sin cebolla, pago con $20.000…"></textarea></div>'
     +'</div>'
     +'<div class="sheet-foot">'
-    +'<div class="sum"><span>Productos</span><span>'+money(sub)+'</span></div>'
+    +'<div class="sum"><span>Productos</span><span>'+money(subtotal())+'</span></div>'+promoHtml().replace(/<div class="promo-hint">.*?<\/div>/g,'')
     +(S.delivery==='DELIVERY'?'<div class="sum"><span>Envío</span><span>'+(dc?money(dc):'Gratis')+'</span></div>':'')
     +(S.delivery==='GODELIVERY'?'<div class="sum"><span>Envío</span><span>Lo cobra GoDelivery</span></div>':'')
     +'<div class="sum total"><span>Total</span><span>'+money(sub+dc)+'</span></div>'
-    +'<button class="btn btn-wa btn-block" style="margin-top:12px" data-act="send">'+ic('wa')+'Enviar pedido por WhatsApp</button></div>';
+    +(c.orderChannel==='APP'?'<button class="btn btn-brand btn-block" style="margin-top:12px" data-act="send">'+ic('check')+'Enviar pedido</button></div>'
+      :'<button class="btn btn-wa btn-block" style="margin-top:12px" data-act="send">'+ic('wa')+'Enviar pedido por WhatsApp</button></div>');
   el.innerHTML=h;
 }
 
 function renderDone(){
-  var o=S.lastOrder;
+  var o=S.lastOrder, app=o.viaApp;
   $('#cartSheet').innerHTML='<div class="grab"></div><div class="sheet-head"><h3></h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('check')+'</div>'
-    +'<h3 class="display">¡Pedido armado!</h3>'
-    +'<p>Terminá de enviarlo en WhatsApp. '+esc(S.cfg.businessName)+' te va a confirmar el pedido por ahí.</p>'
+    +'<h3 class="display">'+(app?'¡Pedido enviado!':'¡Pedido armado!')+'</h3>'
+    +(app?'<p>'+esc(S.cfg.businessName)+' ya lo recibió. Te va a contactar al '+esc(o.phone)+' para confirmarlo.</p>'
+         :'<p>Terminá de enviarlo en WhatsApp. '+esc(S.cfg.businessName)+' te va a confirmar el pedido por ahí.</p>')
     +'<span class="code">#'+esc(o.code)+'</span></div></div>'
-    +'<div class="sheet-foot"><a class="btn btn-wa btn-block" href="'+esc(o.url)+'" target="_blank" rel="noopener">'+ic('wa')+'Abrir WhatsApp</a>'
+    +'<div class="sheet-foot">'+(app?(o.url?'<a class="btn btn-ghost btn-block" style="height:48px" href="'+esc(o.url)+'" target="_blank" rel="noopener">'+ic('wa')+'Escribirles por WhatsApp</a>':'')
+      :'<a class="btn btn-wa btn-block" href="'+esc(o.url)+'" target="_blank" rel="noopener">'+ic('wa')+'Abrir WhatsApp</a>')
     +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px" data-act="new-order">Hacer otro pedido</button></div>';
 }
 
@@ -722,18 +920,22 @@ async function sendOrder(btn){
   if(!ok){ toast('Revisá los datos marcados'); return; }
   try{ localStorage.setItem('ventra_customer',JSON.stringify({name:name,phone:phone,address:addr||undefined})); }catch(e){}
 
-  var items=cartItems().map(function(x){ return {productId:x.p.id,name:x.p.name,price:x.p.price,qty:x.qty}; });
-  var sub=subtotal(), dc=deliveryCost(), total=sub+dc, code=orderCode();
+  var items=cartItems().map(function(x){ var it={productId:x.p.id,name:x.p.name,price:x.p.price,qty:x.qty}; if(S.notes[x.p.id]) it.note=S.notes[x.p.id]; return it; });
+  var promos=promoLines().filter(function(x){ return x.discount>0; }), disc=promoDiscount();
+  var sub=subtotal(), dc=deliveryCost(), total=sub-disc+dc, code=orderCode(), channel=c.orderChannel||'BOTH';
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
 
   var base={items:items,total:total,customerName:name,customerPhone:phone,customerNote:note,status:'PENDING',syncedLocal:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc});
-  var orders=db.collection('ventra_stores').doc(S.storeId).collection('orders');
-  try{ await orders.add(rich); }
-  catch(e){
-    // Reglas viejas: se guarda con el formato anterior y los detalles en la nota
-    var extra=['#'+code, S.delivery==='DELIVERY'?'Envío a: '+addr:S.delivery==='GODELIVERY'?'Envío con GoDelivery a: '+addr:'Retira en el local', 'Paga con: '+(S.payment||'-'), note].filter(Boolean).join(' — ');
-    try{ await orders.add(Object.assign({},base,{customerNote:extra.slice(0,1000)})); }catch(e2){ console.warn('El pedido se envía solo por WhatsApp',e2); }
+  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc},disc?{discount:disc}:{});
+  var orders=db.collection('ventra_stores').doc(S.storeId).collection('orders'), saved=false;
+  // "Solo WhatsApp": el pedido no se guarda en la app, llega únicamente por WhatsApp
+  if(channel!=='WHATSAPP'){
+    try{ await orders.add(rich); saved=true; }
+    catch(e){
+      // Reglas viejas: se guarda con el formato anterior y los detalles en la nota
+      var extra=['#'+code, S.delivery==='DELIVERY'?'Envío a: '+addr:S.delivery==='GODELIVERY'?'Envío con GoDelivery a: '+addr:'Retira en el local', 'Paga con: '+(S.payment||'-'), note].filter(Boolean).join(' — ');
+      try{ await orders.add(Object.assign({},base,{customerNote:extra.slice(0,1000)})); saved=true; }catch(e2){ console.warn('El pedido se envía solo por WhatsApp',e2); }
+    }
   }
 
   var L=[];
@@ -741,9 +943,10 @@ async function sendOrder(btn){
   L.push('Hola! Quiero hacer este pedido en *'+c.businessName+'*');
   L.push('');
   L.push('*PEDIDO #'+code+'*');
-  items.forEach(function(i){ L.push('- '+i.qty+' x '+i.name+': '+money(i.price*i.qty)); });
+  items.forEach(function(i){ L.push('- '+i.qty+' x '+i.name+': '+money(i.price*i.qty)+(i.note?' ('+i.note+')':'')); });
   L.push('');
-  if(S.delivery==='DELIVERY'){ L.push('Subtotal: '+money(sub)); L.push('Envio: '+(dc?money(dc):'gratis')); }
+  promos.forEach(function(x){ L.push('Promo '+x.name+(x.times>1?' x'+x.times:'')+': -'+money(x.discount)); });
+  if(S.delivery==='DELIVERY'){ L.push('Subtotal: '+money(sub-disc)); L.push('Envio: '+(dc?money(dc):'gratis')); }
   L.push('*TOTAL: '+money(total)+'*');
   L.push('');
   L.push('*Cliente:* '+name);
@@ -753,11 +956,14 @@ async function sendOrder(btn){
   if(note) L.push('*Nota:* '+note);
   var url='https://wa.me/'+String(c.whatsappNumber||'').replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n'));
 
-  S.lastOrder={code:code,url:url};
-  S.cart={}; saveCart(); refreshCartBar();
+  // "Solo la app": si se guardó, llega al celular del comercio sin pasar por WhatsApp
+  var viaApp=channel==='APP' && saved;
+  if(channel==='APP' && !saved) toast('No pudimos enviarlo online: mandalo por WhatsApp');
+  S.lastOrder={code:code,url:c.whatsappNumber?url:'',viaApp:viaApp,phone:phone};
+  S.cart={}; S.notes={}; saveCart(); refreshCartBar();
   S.products.forEach(function(p){ refreshProduct(p.id); });
   S.step='done'; renderCartSheet();
-  window.location.href=url;
+  if(!viaApp) window.location.href=url;
 }
 
 /* ───────── turnos ─────────
@@ -960,13 +1166,17 @@ document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]'); if(!t) return;
   var act=t.getAttribute('data-act'), id=t.getAttribute('data-id');
   switch(act){
-    case 'add': setQty(id,1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
+    case 'add': if(S.byId[id]&&S.byId[id].isGroup) break; setQty(id,1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'inc': setQty(id,(S.cart[id]||0)+1); break;
     case 'dec': setQty(id,(S.cart[id]||0)-1); break;
-    case 'product': S.openProduct=id; S.pdQty=1; renderProductSheet(id); openSheet('productSheet'); break;
-    case 'pd-inc': S.pdQty++; renderProductSheet(S.openProduct); break;
-    case 'pd-dec': if(S.pdQty>1){ S.pdQty--; renderProductSheet(S.openProduct); } break;
-    case 'pd-add': setQty(S.openProduct,(S.cart[S.openProduct]||0)+S.pdQty); closeSheets(); toast('Agregado al pedido'); break;
+    case 'product': S.openProduct=id; S.pdQty=1; S.pdOpt=null; renderProductSheet(id); openSheet('productSheet'); break;
+    case 'pd-opt': if(!t.disabled){ var nEl=$('#pdNote'); S.pdNote=nEl?nEl.value:null; S.pdOpt=id; renderProductSheet(S.openProduct); } break;
+    case 'pd-inc': var n1=$('#pdNote'); S.pdNote=n1?n1.value:null; S.pdQty++; renderProductSheet(S.openProduct); break;
+    case 'pd-dec': if(S.pdQty>1){ var n2=$('#pdNote'); S.pdNote=n2?n2.value:null; S.pdQty--; renderProductSheet(S.openProduct); } break;
+    case 'pd-add':
+      var target=S.byId[S.openProduct].isGroup?S.pdOpt:S.openProduct, nEl2=$('#pdNote');
+      if(nEl2){ var nv=nEl2.value.trim(); if(nv) S.notes[target]=nv; else delete S.notes[target]; }
+      setQty(target,(S.cart[target]||0)+S.pdQty); closeSheets(); toast('Agregado al pedido'); break;
     case 'open-cart': S.step='cart'; renderCartSheet(); openSheet('cartSheet'); break;
     case 'close': closeSheets(); break;
     case 'to-checkout': S.step='checkout'; renderCartSheet(); break;

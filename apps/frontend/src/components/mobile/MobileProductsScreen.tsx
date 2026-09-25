@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { Search, Plus, X, Package, ScanLine, Minus, Star, ChevronRight, AlertTriangle } from 'lucide-react';
 import api, { resolveServerUrl } from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
+import { useBusinessStore } from '../../stores/businessStore';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, money, qty, parseAmount } from './ui';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 
@@ -376,13 +377,46 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   const [category, setCategory] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // Gastronomía: sin stock (se cocina a pedido) y con tamaños a distinto precio
+  const isFood = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
+  const [withOptions, setWithOptions] = useState(false);
+  const [optionName, setOptionName] = useState('Tamaño');
+  const [options, setOptions] = useState<{ label: string; price: string }[]>([{ label: '', price: '' }, { label: '', price: '' }]);
 
   useEffect(() => {
-    if (open) { setName(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null); }
+    if (open) {
+      setName(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null);
+      setWithOptions(false); setOptionName(isFood ? 'Tamaño' : 'Opción');
+      setOptions(isFood ? [{ label: 'Chica', price: '' }, { label: 'Grande', price: '' }] : [{ label: '', price: '' }, { label: '', price: '' }]);
+    }
   }, [open]);
+
+  /** Un producto con opciones: cada opción se guarda como una variante con su precio */
+  const saveWithOptions = async () => {
+    const rows = options.map((o) => ({ label: o.label.trim(), price: parseAmount(o.price) })).filter((o) => o.label);
+    if (rows.length < 2) return toast.error('Cargá al menos dos opciones');
+    if (rows.some((o) => o.price <= 0)) return toast.error('Cada opción necesita su precio');
+    if (new Set(rows.map((o) => o.label.toUpperCase())).size !== rows.length) return toast.error('Hay opciones repetidas');
+    const axis = (optionName.trim() || 'opción').toLowerCase();
+    setBusy(true);
+    try {
+      const { data } = await api.post('/products/variant-matrix', {
+        baseName: name.trim(),
+        base: { costPrice: parseAmount(cost), categoryId: category?.id, ...(isFood ? { unlimitedStock: true } : {}) },
+        variants: rows.map((o) => ({ attrs: { [axis]: o.label }, salePrice: o.price, ...(isFood ? {} : { stock: parseAmount(stock) }) })),
+      });
+      toast.success(`${name.trim()}: ${rows.length} opciones creadas`);
+      (Array.isArray(data) ? data : []).forEach((p: any) => onCreated({ ...p, category: p.category || category }));
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo crear el producto');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     if (!name.trim()) return toast.error('Poné un nombre');
+    if (withOptions) return saveWithOptions();
     if (parseAmount(price) <= 0) return toast.error('Poné el precio de venta');
     setBusy(true);
     try {
@@ -393,6 +427,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
         costPrice: parseAmount(cost),
         stock: parseAmount(stock),
         categoryId: category?.id,
+        ...(isFood ? { unlimitedStock: true } : {}),
       });
       toast.success('Producto creado');
       onCreated({ ...data, category: data.category || category });
@@ -410,8 +445,9 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
       <Sheet open={open} onClose={onClose} title="Nuevo producto" footer={<PrimaryButton onClick={save} loading={busy}>Crear producto</PrimaryButton>}>
         <div className="space-y-4 pt-1">
           <Field label="Nombre">
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Coca-Cola 2,25 L" className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
+            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder={isFood ? 'Pizza muzzarella' : 'Coca-Cola 2,25 L'} className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
           </Field>
+{!isFood && (
           <Field label="Código de barras (opcional)">
             <div className="flex gap-2">
               <input value={barcode} onChange={(e) => setBarcode(e.target.value)} inputMode="numeric" placeholder="7790895000997" className="flex-1 min-w-0 h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white tabular-nums" />
@@ -422,13 +458,41 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
               )}
             </div>
           </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Precio de venta"><SmallMoney value={price} onChange={setPrice} /></Field>
-            <Field label="Costo"><SmallMoney value={cost} onChange={setCost} /></Field>
-          </div>
-          <Field label="Stock inicial">
-            <input value={stock} onChange={(e) => setStock(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" placeholder="0" className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white tabular-nums" />
-          </Field>
+          )}
+          <button type="button" onClick={() => setWithOptions(!withOptions)} className="w-full flex items-center justify-between gap-3 text-left rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3">
+            <span>
+              <span className="block text-[14px] font-semibold text-slate-800">{isFood ? 'Tiene tamaños' : 'Tiene opciones'} con distinto precio</span>
+              <span className="block text-[12px] text-slate-500">{isFood ? 'Ej.: pizza chica y grande' : 'Ej.: chico, mediano y grande'}</span>
+            </span>
+            <span className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${withOptions ? 'bg-rose-600' : 'bg-slate-300'}`}>
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${withOptions ? 'left-6' : 'left-1'}`} />
+            </span>
+          </button>
+          {withOptions ? (
+            <div className="space-y-2">
+              <Field label="Nombre de la opción">
+                <input value={optionName} onChange={(e) => setOptionName(e.target.value)} placeholder="Tamaño" className="w-full h-11 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
+              </Field>
+              {options.map((o, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input value={o.label} onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder={i === 0 ? 'Chica' : i === 1 ? 'Grande' : 'Otra'} className="flex-1 min-w-0 h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
+                  <div className="w-36 shrink-0"><SmallMoney value={o.price} onChange={(v) => setOptions(options.map((x, j) => (j === i ? { ...x, price: v } : x)))} /></div>
+                  {options.length > 2 && <button type="button" onClick={() => setOptions(options.filter((_, j) => j !== i))} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0" aria-label="Quitar"><X className="w-4 h-4 text-slate-500" /></button>}
+                </div>
+              ))}
+              {options.length < 8 && <button type="button" onClick={() => setOptions([...options, { label: '', price: '' }])} className="text-[13px] font-semibold text-rose-700">+ Agregar opción</button>}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Precio de venta"><SmallMoney value={price} onChange={setPrice} /></Field>
+              <Field label="Costo"><SmallMoney value={cost} onChange={setCost} /></Field>
+            </div>
+          )}
+          {!isFood && (
+            <Field label={withOptions ? 'Stock inicial de cada opción' : 'Stock inicial'}>
+              <input value={stock} onChange={(e) => setStock(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" placeholder="0" className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white tabular-nums" />
+            </Field>
+          )}
           <div>
             <span className="block mb-1.5 text-[12.5px] font-medium text-slate-500">Categoría</span>
             <CategoryPicker value={category?.id ?? null} onChange={setCategory} />

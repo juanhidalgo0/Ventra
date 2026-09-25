@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
-  compressImageFile, publishOnlineCatalog, dayRanges, withRanges, PAYMENT_OPTIONS,
+  compressImageFile, publishOnlineCatalog, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
   type StoreConfig, type StoreOrder, type DayHours,
 } from '../../services/onlineStore';
 import api from '../../services/api';
@@ -123,7 +123,7 @@ export default function MobileStoreScreen() {
           <>
             <Row icon={ShoppingBag} tint="bg-rose-50 text-rose-700" title="Pedidos" text={orders.length ? `${orders.length} recibidos${newOrders ? ` · ${newOrders} nuevos` : ''}` : 'Todavía no llegó ninguno'} badge={newOrders} onClick={() => setPanel('orders')} />
             <Row icon={Info} tint="bg-sky-50 text-sky-700" title="Datos de la tienda" text="Nombre, dirección web, WhatsApp, aviso" onClick={() => setPanel('info')} />
-            <Row icon={Truck} tint="bg-amber-50 text-amber-700" title="Entregas y pagos" text={[config.pickupEnabled !== false && 'Retiro', config.deliveryEnabled && 'Envío', config.goDeliveryEnabled && 'GoDelivery', (config.paymentMethods || []).length && `${(config.paymentMethods || []).length} medios de pago`].filter(Boolean).join(' · ')} onClick={() => setPanel('delivery')} />
+            <Row icon={Truck} tint="bg-amber-50 text-amber-700" title="Pedidos, entregas y pagos" text={[config.orderChannel === 'APP' ? 'Solo app' : config.orderChannel === 'WHATSAPP' ? 'Solo WhatsApp' : 'App y WhatsApp', config.pickupEnabled !== false && 'Retiro', config.deliveryEnabled && 'Envío', config.goDeliveryEnabled && 'GoDelivery', (config.paymentMethods || []).length && `${(config.paymentMethods || []).length} medios de pago`].filter(Boolean).join(' · ')} onClick={() => setPanel('delivery')} />
             <Row icon={Clock} tint="bg-violet-50 text-violet-700" title="Horarios" text="Días y turnos de atención" onClick={() => setPanel('hours')} />
             <Row icon={Palette} tint="bg-pink-50 text-pink-700" title="Apariencia" text="Logo, portada y color" onClick={() => setPanel('look')} />
 
@@ -144,7 +144,8 @@ export default function MobileStoreScreen() {
       {config && (
         <>
           <OrdersSheet open={panel === 'orders'} orders={orders} onClose={() => setPanel(null)} store={config.businessName} />
-          <ProductsSheet open={panel === 'products'} onClose={() => setPanel(null)} onPublish={() => { setPanel(null); publishCatalog(); }} />
+          <ProductsSheet open={panel === 'products'} onClose={() => setPanel(null)} onPublish={() => { setPanel(null); publishCatalog(); }}
+            paused={config.pausedIds || []} onPause={(ids) => save({ pausedIds: ids }).catch(() => {})} />
           <InfoSheet open={panel === 'info'} config={config} storeId={storeId!} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <DeliverySheet open={panel === 'delivery'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <HoursSheet open={panel === 'hours'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
@@ -158,7 +159,7 @@ export default function MobileStoreScreen() {
 type StoreProduct = { id: string; name: string; salePrice: number; showOnline: boolean; imageUrl?: string; category?: { name: string } };
 
 /** Lista de productos con un interruptor cada uno: se ven o no en la tienda. */
-function ProductsSheet({ open, onClose, onPublish }: { open: boolean; onClose: () => void; onPublish: () => void }) {
+function ProductsSheet({ open, onClose, onPublish, paused, onPause }: { open: boolean; onClose: () => void; onPublish: () => void; paused: string[]; onPause: (ids: string[]) => void }) {
   const [items, setItems] = useState<StoreProduct[] | null>(null);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'on' | 'off'>('all');
@@ -197,7 +198,7 @@ function ProductsSheet({ open, onClose, onPublish }: { open: boolean; onClose: (
         </PrimaryButton>
       }
     >
-      <p className="text-[13px] text-slate-500 -mt-1 mb-3">Activá los productos que querés vender online. Después tocá <b>Publicar cambios</b>.</p>
+      <p className="text-[13px] text-slate-500 -mt-1 mb-3">Activá los productos que querés vender online. Después tocá <b>Publicar cambios</b>. Con <b>Pausar</b> se ven como “no disponible hoy” al instante, sin publicar.</p>
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto" className={`${input} pl-10`} />
@@ -217,15 +218,21 @@ function ProductsSheet({ open, onClose, onPublish }: { open: boolean; onClose: (
         {!items ? <ListSkeleton rows={6} /> : shown.length === 0 ? (
           <p className="py-10 text-center text-[13px] text-slate-400">No hay productos para mostrar</p>
         ) : shown.slice(0, 200).map((p) => (
-          <button key={p.id} onClick={() => setShow([p.id], !p.showOnline)} className="w-full flex items-center gap-3 py-3 text-left">
+          <div key={p.id} role="button" tabIndex={0} onClick={() => setShow([p.id], !p.showOnline)} className="w-full flex items-center gap-3 py-3 text-left cursor-pointer">
             <span className="flex-1 min-w-0">
               <span className="block text-[14.5px] font-medium text-slate-800 truncate">{p.name}</span>
-              <span className="block text-[12px] text-slate-500">{money(p.salePrice)}{p.category?.name ? ` · ${p.category.name}` : ''}</span>
+              <span className="block text-[12px] text-slate-500">{money(p.salePrice)}{p.category?.name ? ` · ${p.category.name}` : ''}{paused.includes(p.id) ? ' · pausado' : ''}</span>
             </span>
+            {p.showOnline && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onPause(paused.includes(p.id) ? paused.filter((x) => x !== p.id) : [...paused, p.id]); }}
+                className={`h-8 px-2.5 rounded-lg text-[12px] font-semibold shrink-0 ${paused.includes(p.id) ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                {paused.includes(p.id) ? 'Reanudar' : 'Pausar'}
+              </button>
+            )}
             <span className={`w-12 h-7 rounded-full p-0.5 transition-colors shrink-0 ${p.showOnline ? 'bg-rose-600' : 'bg-slate-300'}`}>
               <span className={`block w-6 h-6 rounded-full bg-white shadow transition-transform ${p.showOnline ? 'translate-x-5' : ''}`} />
             </span>
-          </button>
+          </div>
         ))}
         {shown.length > 200 && <p className="py-3 text-center text-[12px] text-slate-400">Mostrando 200 de {shown.length}. Buscá para encontrar el resto.</p>}
       </div>
@@ -318,10 +325,11 @@ function OrdersSheet({ open, orders, onClose, store }: { open: boolean; orders: 
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
             {selected.items.map((i, k) => (
               <div key={k} className="flex justify-between px-3.5 py-2.5 text-[13.5px]">
-                <span className="text-slate-800">{i.qty} × {i.name}</span>
+                <span className="text-slate-800">{i.qty} × {i.name}{i.note && <span className="block text-[12px] text-amber-700 italic">“{i.note}”</span>}</span>
                 <span className="font-medium text-slate-800 tabular-nums">{money(i.price * i.qty)}</span>
               </div>
             ))}
+            {!!selected.discount && <div className="flex justify-between px-3.5 py-2.5 text-[13.5px] text-emerald-700"><span>Promos</span><span className="tabular-nums">-{money(selected.discount)}</span></div>}
             {!!selected.deliveryCost && <div className="flex justify-between px-3.5 py-2.5 text-[13.5px] text-slate-600"><span>Envío</span><span className="tabular-nums">{money(selected.deliveryCost)}</span></div>}
           </div>
           {selected.customerPhone && (
@@ -363,12 +371,19 @@ function InfoSheet({ open, config, storeId, onClose, onSave }: { open: boolean; 
   }, [f.subdomain, open]);
   const { busy, run } = useSaving(async () => {
     if (slugState === 'taken') { toast.error('Esa dirección ya la usa otra tienda'); throw new Error('taken'); }
-    await onSave({ businessName: f.businessName, subdomain: f.subdomain, description: f.description, whatsappNumber: f.whatsappNumber, instagram: f.instagram, address: f.address, announcement: f.announcement });
+    await onSave({ businessName: f.businessName, rubro: f.rubro, subdomain: f.subdomain, description: f.description, whatsappNumber: f.whatsappNumber, instagram: f.instagram, address: f.address, announcement: f.announcement });
   });
   return (
     <Sheet open={open} onClose={onClose} title="Datos de la tienda" footer={<PrimaryButton onClick={run} loading={busy}>Guardar</PrimaryButton>}>
       <div className="space-y-4 pt-1">
         <Field label="Nombre"><input className={input} value={f.businessName} onChange={(e) => setF({ ...f, businessName: e.target.value })} /></Field>
+        <Field label="Rubro" hint={f.rubro === 'GASTRONOMIA' ? 'La tienda se ve como una carta, con tamaños, aclaraciones y horario de cocina.' : undefined}>
+          <div className="flex flex-wrap gap-2">
+            {[['KIOSKO', 'Kiosco / Almacén'], ['GASTRONOMIA', 'Gastronomía'], ['INDUMENTARIA', 'Indumentaria'], ['FERRETERIA', 'Ferretería'], ['OTRO', 'Otro']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setF({ ...f, rubro: id })} className={`h-9 px-3.5 rounded-full text-[13px] font-semibold border ${f.rubro === id ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{label}</button>
+            ))}
+          </div>
+        </Field>
         <Field label="Dirección web" hint={slugState === 'checking' ? 'Verificando…' : slugState === 'ok' ? 'Disponible' : slugState === 'taken' ? 'Ya la usa otra tienda' : undefined}>
           <div className="flex items-center h-12 rounded-xl bg-slate-50 border border-slate-200 focus-within:border-rose-500 overflow-hidden">
             <span className="pl-3.5 text-[13px] text-slate-400 shrink-0">tienda.ventra.store/</span>
@@ -395,11 +410,25 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
     pickupEnabled: f.pickupEnabled !== false, deliveryEnabled: !!f.deliveryEnabled, goDeliveryEnabled: !!f.goDeliveryEnabled, deliveryCost: f.deliveryCost || 0,
     freeDeliveryFrom: f.freeDeliveryFrom || 0, deliveryZone: f.deliveryZone, minOrder: f.minOrder || 0,
     paymentMethods: f.paymentMethods, transferAlias: f.transferAlias, showOutOfStock: f.showOutOfStock !== false, alwaysInStock: !!f.alwaysInStock,
+    orderChannel: f.orderChannel || 'BOTH',
   }));
   const pays = f.paymentMethods || [];
   return (
     <Sheet open={open} onClose={onClose} title="Entregas y pagos" footer={<PrimaryButton onClick={run} loading={busy}>Guardar</PrimaryButton>}>
       <div className="space-y-4 pt-1">
+        <Field label="¿Cómo te llegan los pedidos?">
+          <div className="space-y-2">
+            {ORDER_CHANNELS.map((ch) => {
+              const on = (f.orderChannel || 'BOTH') === ch.id;
+              return (
+                <button key={ch.id} type="button" onClick={() => setF({ ...f, orderChannel: ch.id })} className={`w-full text-left rounded-xl border-2 px-3.5 py-3 ${on ? 'border-rose-600 bg-rose-50' : 'border-slate-200 bg-white'}`}>
+                  <span className="block text-[14px] font-semibold text-slate-800">{ch.title}</span>
+                  <span className="block text-[12px] text-slate-500 leading-snug">{ch.text}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
         <Toggle title="Retiro en el local" on={f.pickupEnabled !== false} onChange={(v) => setF({ ...f, pickupEnabled: v })} />
         <Toggle title="Envío a domicilio" text="Lo llevás vos." on={!!f.deliveryEnabled} onChange={(v) => setF({ ...f, deliveryEnabled: v })} />
         <Toggle title="Envío con GoDelivery" text="Lo cobra GoDelivery al cliente, aparte. No se informan precios." on={!!f.goDeliveryEnabled} onChange={(v) => setF({ ...f, goDeliveryEnabled: v })} />
