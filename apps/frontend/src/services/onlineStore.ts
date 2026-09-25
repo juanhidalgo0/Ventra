@@ -121,6 +121,9 @@ export interface StoreConfig {
   freeDeliveryFrom?: number;
   /** Zona de entrega, texto libre ("Centro y barrios cercanos") */
   deliveryZone?: string;
+  /** Tiempo estimado que ve el cliente ("30-45 min") */
+  deliveryEta?: string;
+  pickupEta?: string;
   minOrder?: number;
   paymentMethods?: string[];
   transferAlias?: string;

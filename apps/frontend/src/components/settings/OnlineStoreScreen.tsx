@@ -784,6 +784,17 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
             <div>
+              <FieldLabel hint="Lo ve el cliente en la portada">Demora del envío</FieldLabel>
+              <input type="text" value={config.deliveryEta || ''} onChange={(e) => update({ deliveryEta: e.target.value })} className={inputBase} placeholder="30-45 min" />
+            </div>
+            <div>
+              <FieldLabel hint="Lo ve el cliente en la portada">Demora para retirar</FieldLabel>
+              <input type="text" value={config.pickupEta || ''} onChange={(e) => update({ pickupEta: e.target.value })} className={inputBase} placeholder="20 min" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
+            <div>
               <FieldLabel hint="0 = sin mínimo">Pedido mínimo</FieldLabel>
               <MoneyField value={config.minOrder || 0} onChange={(v) => update({ minOrder: v })} />
             </div>

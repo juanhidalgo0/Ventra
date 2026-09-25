@@ -415,7 +415,7 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
     pickupEnabled: f.pickupEnabled !== false, deliveryEnabled: !!f.deliveryEnabled, goDeliveryEnabled: !!f.goDeliveryEnabled, deliveryCost: f.deliveryCost || 0,
     freeDeliveryFrom: f.freeDeliveryFrom || 0, deliveryZone: f.deliveryZone, minOrder: f.minOrder || 0,
     paymentMethods: f.paymentMethods, transferAlias: f.transferAlias, showOutOfStock: f.showOutOfStock !== false, alwaysInStock: !!f.alwaysInStock,
-    orderChannel: f.orderChannel || 'BOTH',
+    orderChannel: f.orderChannel || 'BOTH', deliveryEta: (f.deliveryEta || '').trim(), pickupEta: (f.pickupEta || '').trim(),
   }));
   const pays = f.paymentMethods || [];
   return (
@@ -446,6 +446,10 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
             <Field label="Zona de entrega"><input className={input} value={f.deliveryZone || ''} onChange={(e) => setF({ ...f, deliveryZone: e.target.value })} placeholder="Centro y barrios cercanos" /></Field>
           </div>
         )}
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Demora del envío"><input className={input} value={f.deliveryEta || ''} onChange={(e) => setF({ ...f, deliveryEta: e.target.value })} placeholder="30-45 min" /></Field>
+          <Field label="Demora para retirar"><input className={input} value={f.pickupEta || ''} onChange={(e) => setF({ ...f, pickupEta: e.target.value })} placeholder="20 min" /></Field>
+        </div>
         <Field label="Pedido mínimo"><input className={input} inputMode="numeric" value={f.minOrder ? String(f.minOrder) : ''} onChange={(e) => setF({ ...f, minOrder: num(e.target.value) })} placeholder="0 = sin mínimo" /></Field>
         <Field label="Medios de pago que aceptás">
           <div className="flex flex-wrap gap-2">

@@ -253,7 +253,7 @@
   .food .card.out .fc-media .card-img img{filter:grayscale(1);opacity:.5}
   .food .tag-out{position:static;display:inline-block;align-self:flex-start;font-size:10.5px;padding:3px 8px;margin-bottom:5px}
   .food .card:not(.noimg) .card-foot{padding-top:6px}
-  .food .card.noimg{flex-direction:column;gap:0}
+  .food .card.noimg{flex-direction:column;gap:0;align-items:stretch}
   .food .card.noimg .card-body{min-height:0}
   .food .card.noimg .tag-out{position:static;align-self:flex-start;margin:0 0 6px}
   .subcats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:14px 0 2px}
@@ -292,6 +292,29 @@
   .line-note{font-size:12.5px;color:var(--ink-3);margin-top:1px;font-style:italic}
   .sum.promo{color:var(--ok);font-weight:600}
   .promo-hint{background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:10px}
+
+  /* Promos destacadas */
+  .promo-strip{grid-column:1/-1;display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:14px 0 0;padding:2px 0 4px;min-width:0}
+  .promo-strip::-webkit-scrollbar{display:none}
+  .promo-card{flex-shrink:0;min-width:230px;max-width:280px;border-radius:16px;padding:12px 14px;background:linear-gradient(135deg,var(--brand),var(--brand-ink));color:#fff;text-align:left;box-shadow:0 10px 24px -14px var(--brand)}
+  .promo-card small{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.8}
+  .promo-card b{display:block;font:800 17px 'Plus Jakarta Sans',sans-serif;margin-top:2px;line-height:1.2}
+  .promo-card span{display:block;font-size:12.5px;opacity:.9;margin-top:3px}
+  /* ¿Le sumás algo? */
+  .upsell{margin:6px 0 2px}
+  .upsell h4{margin:0 0 8px;font-size:14px}
+  .ups-row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:0 18px 4px}
+  .ups-row::-webkit-scrollbar{display:none}
+  .ups{flex-shrink:0;width:132px;border:1px solid var(--line-2);border-radius:14px;padding:8px;background:#fff;display:flex;flex-direction:column;gap:6px}
+  .ups .ui{width:100%;aspect-ratio:1.4;border-radius:10px;overflow:hidden;background:var(--line-2)}
+  .ups .ui img{width:100%;height:100%;object-fit:cover}
+  .ups .un{font-size:12.5px;font-weight:600;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.5em}
+  .ups .uf{display:flex;align-items:center;justify-content:space-between}
+  .ups .uf b{font-size:13px}
+  .ups .add{width:30px;height:30px;border-radius:50%}
+  .ups .add svg.i{width:16px;height:16px}
+  .sec-subs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:-4px 0 6px}
+  .sec-subs::-webkit-scrollbar{display:none}
 
   /* Turnos */
   .svc-list{display:grid;gap:10px}
@@ -681,6 +704,26 @@ function extrasFor(p,sel){
 function hasExtras(p){ return extrasFor(p,null).length>0; }
 /* Nombre de categoría para mostrar: en la carta, "AGUA SABORIZADA" se ve "Agua saborizada" */
 function catName(c){ return nice(c); }
+function promoStripHtml(){
+  var pr=(S.cfg.onlinePromos||[]).slice().sort(function(a,b){ return a.qty-b.qty; });
+  if(!pr.length) return '';
+  return '<div class="promo-strip">'+pr.map(function(x){
+    var first=S.byId[x.productIds[0]], cat=first?(first.top||first.category):'';
+    return '<button class="promo-card" data-act="promo-go" data-cat="'+esc(cat)+'"><small>Promo</small><b>'+esc(x.name)+'</b><span>'+x.qty+' a '+money(x.price)+(x.productIds.length>1?' · mezclá como quieras':'')+'</span></button>';
+  }).join('')+'</div>';
+}
+/* ¿Le sumás algo? En el carrito, bebidas y postres que todavía no están en el pedido */
+function upsellHtml(){
+  if(!S.food) return '';
+  var inCart={}; Object.keys(S.cart).forEach(function(k){ inCart[pidOf(k)]=1; });
+  var pick=S.products.filter(function(p){
+    return !p.isGroup && p.inStock!==false && !inCart[p.id] && !hasExtras(p) && /bebida|gaseosa|cerveza|agua|jugo|vino|postre|helad|dulce/i.test((p.top||'')+' '+(p.category||''));
+  }).slice(0,8);
+  if(!pick.length) return '';
+  return '<div class="upsell"><h4 class="display">¿Le sumás algo?</h4><div class="ups-row">'+pick.map(function(p){
+    return '<div class="ups">'+(p.imageUrl?'<div class="ui"><img src="'+esc(p.imageUrl)+'" alt="" loading="lazy"></div>':'')+'<div class="un">'+esc(p.name)+'</div><div class="uf"><b>'+money(p.price)+'</b><button class="add" data-act="ups-add" data-id="'+esc(p.id)+'" aria-label="Agregar">'+ic('plus')+'</button></div></div>';
+  }).join('')+'</div></div>';
+}
 function kitchenClosed(){ if(!S.food) return null; var st=openStatus(S.cfg.hours); return st&&!st.open?st:null; }
 
 /* Si el color de la marca es muy claro (rosa pastel, amarillo) el texto blanco de los botones no se lee:
@@ -728,9 +771,9 @@ function render(){
     + '<p class="hero-desc">'+esc(c.description||(c.orderChannel==='APP'?'Hacé tu pedido online y te lo confirmamos.':'Hacé tu pedido y te lo confirmamos por WhatsApp.'))+'</p>'
     + '<div class="hero-meta">'
     +   (st&&!kitchenClosed()?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
-    +   (c.deliveryEnabled?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
+    +   (c.deliveryEnabled?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.deliveryEta?' · '+esc(c.deliveryEta):'')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
     +   (c.goDeliveryEnabled?'<span class="chip">'+ic('truck')+'Envíos con GoDelivery</span>':'')
-    +   (c.pickupEnabled?'<span class="chip">'+ic('store')+'Retiro en el local</span>':'')
+    +   (c.pickupEnabled?'<span class="chip">'+ic('store')+'Retiro en el local'+(c.pickupEta?' · '+esc(c.pickupEta):'')+'</span>':'')
     +   (c.minOrder>0?'<span class="chip">Pedido mínimo '+money(c.minOrder)+'</span>':'')
     + '</div>'
     + '<div class="hero-actions">'
@@ -738,6 +781,7 @@ function render(){
     +   (c.whatsappNumber?'<a class="btn btn-wa" href="https://wa.me/'+esc(String(c.whatsappNumber).replace(/\D/g,''))+'" target="_blank" rel="noopener">'+ic('wa')+'Consultar</a>':'')
     +   '<button class="btn btn-ghost" data-act="share">'+ic('share')+'Compartir</button>'
     + '</div>'
+    + promoStripHtml()
     + (kitchenClosed()?'<div class="closed-bar">'+ic('clock')+'<span>Ahora estamos cerrados ('+esc(st.text.replace(/^Cerrado · /,''))+'). Podés ver la carta y armar tu pedido; lo enviás cuando abramos.</span></div>':'')
     +'</div></div></section>';
 
@@ -815,23 +859,18 @@ function renderList(){
     html='<div class="section"><h2 class="display">Resultados <small>'+found.length+'</small></h2>'
       +(found.length?'<div class="grid">'+found.slice(0,200).map(productCard).join('')+'</div>':'<div class="empty"><b>No encontramos “'+esc(S.q)+'”</b>Probá con otra palabra o escribinos por WhatsApp.</div>')+'</div>';
   } else {
-    var cats=S.cat==='ALL'?S.cats:[S.cat];
-    // Dentro de una categoría principal: sus subcategorías para filtrar (Bebidas > Agua, Cerveza, Gaseosas)
-    if(S.cat!=='ALL' && (S.subs[S.cat]||[]).length>1){
-      html+='<div class="subcats">'+['ALL'].concat(S.subs[S.cat]).map(function(sc){
-        return '<button class="subcat'+(S.sub===sc?' on':'')+'" data-act="subcat" data-cat="'+esc(sc)+'">'+(sc==='ALL'?'Todas':esc(catName(sc)))+'</button>';
-      }).join('')+'</div>';
-    }
-    cats.forEach(function(ct){
-      var items=S.products.filter(function(p){ return p.top===ct && (S.cat==='ALL' || S.sub==='ALL' || p.category===S.sub); });
+    var cats=S.cats;
+    cats.forEach(function(ct,ci){
+      var items=S.products.filter(function(p){ return p.top===ct; });
       if(!items.length) return;
       var subs=S.subs[ct]||[], body='';
       if(subs.length>1){
-        // Agrupado por subcategoría, con un título chico para cada una
+        // Agrupado por subcategoría: accesos a cada una y un título chico en cada grupo
         var rest=items.filter(function(p){ return subs.indexOf(p.category)<0; });
-        subs.forEach(function(sc){
+        body+='<div class="sec-subs">'+subs.map(function(sc,si){ return '<button class="subcat" data-act="subjump" data-target="sub-'+ci+'-'+si+'">'+esc(catName(sc))+'</button>'; }).join('')+'</div>';
+        subs.forEach(function(sc,si){
           var its=items.filter(function(p){ return p.category===sc; });
-          if(its.length) body+='<h3 class="sub-h">'+esc(catName(sc))+' <small>'+its.length+'</small></h3><div class="grid">'+its.map(productCard).join('')+'</div>';
+          if(its.length) body+='<h3 class="sub-h" id="sub-'+ci+'-'+si+'">'+esc(catName(sc))+' <small>'+its.length+'</small></h3><div class="grid">'+its.map(productCard).join('')+'</div>';
         });
         if(rest.length) body+='<div class="grid" style="margin-top:12px">'+rest.map(productCard).join('')+'</div>';
       } else body='<div class="grid">'+items.map(productCard).join('')+'</div>';
@@ -959,7 +998,7 @@ function renderCartSheet(){
   var disc=promoDiscount(), missing=c.minOrder>0?Math.max(0,c.minOrder-(sub-disc)):0, closed=kitchenClosed();
   el.innerHTML='<div class="grab"></div>'
     +'<div class="sheet-head"><h3 class="display">Tu pedido</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
-    +'<div class="sheet-body">'+body+'</div>'
+    +'<div class="sheet-body">'+body+(items.length?upsellHtml():'')+'</div>'
     +(items.length?'<div class="sheet-foot">'
       +(missing>0?'<div class="note">El pedido mínimo es '+money(c.minOrder)+'. Te faltan '+money(missing)+'.</div>':'')
       +(c.deliveryEnabled&&c.freeDeliveryFrom>0&&c.deliveryCost>0&&sub<c.freeDeliveryFrom?'<div class="sum" style="padding-bottom:8px">Sumá '+money(c.freeDeliveryFrom-sub)+' y el envío es gratis</div>':'')
@@ -1283,6 +1322,32 @@ async function confirmBooking(btn){
   }
 }
 
+/* ───────── categorías con scroll ───────── */
+function toolbarBottom(){ var tb=document.querySelector('.toolbar'); return tb?tb.getBoundingClientRect().bottom:120; }
+function goCat(ct){
+  if(S.q){ S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has'); renderList(); }
+  if(ct==='ALL'){ var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); return; }
+  var sec=document.querySelector('[data-cat-section="'+(window.CSS&&CSS.escape?CSS.escape(ct):ct)+'"]');
+  if(!sec) return;
+  S.lockSpy=Date.now();
+  markCat(ct);
+  window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-toolbarBottom()+4,behavior:'smooth'});
+}
+function markCat(ct){
+  var on=null;
+  document.querySelectorAll('.cat').forEach(function(b){ var m=b.getAttribute('data-cat')===ct; b.classList.toggle('on',m); if(m) on=b; });
+  if(on){ var box=$('#cats'); if(box) box.scrollTo({left:on.offsetLeft-box.clientWidth/2+on.clientWidth/2,behavior:'smooth'}); }
+}
+/* Marca la categoría de la sección que se está viendo */
+function spyCats(){
+  if(S.q || !document.querySelector('.cat')) return;
+  if(S.lockSpy && Date.now()-S.lockSpy<700) return;
+  var line=toolbarBottom()+20, cur='ALL';
+  document.querySelectorAll('[data-cat-section]').forEach(function(sec){ if(sec.getBoundingClientRect().top<=line) cur=sec.getAttribute('data-cat-section'); });
+  if(cur!==S.spyCat){ S.spyCat=cur; markCat(cur); }
+}
+window.addEventListener('scroll',function(){ if(!spyCats._t) spyCats._t=requestAnimationFrame(function(){ spyCats._t=null; spyCats(); }); },{passive:true});
+
 /* ───────── eventos ───────── */
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]'); if(!t) return;
@@ -1340,13 +1405,10 @@ document.addEventListener('click',function(e){
     case 'bk-confirm': confirmBooking(t); break;
     case 'new-order': S.step='cart'; closeSheets(); break;
     case 'subcat': S.sub=t.getAttribute('data-cat'); renderList(); break;
-    case 'cat':
-      S.cat=t.getAttribute('data-cat'); S.sub='ALL'; S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has');
-      document.querySelectorAll('.cat').forEach(function(b){ b.classList.toggle('on',b===t); });
-      t.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
-      renderList();
-      var tbar=document.querySelector('.toolbar'); window.scrollTo({top:tbar.offsetTop-60+1,behavior:'smooth'});
-      break;
+    case 'cat': goCat(t.getAttribute('data-cat')); break;
+    case 'promo-go': goCat(t.getAttribute('data-cat')); break;
+    case 'subjump': var sj=document.getElementById(t.getAttribute('data-target')); if(sj) window.scrollTo({top:sj.getBoundingClientRect().top+window.scrollY-toolbarBottom()-8,behavior:'smooth'}); break;
+    case 'ups-add': setQty(id,(S.cart[id]||0)+1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'clear-search': S.q=''; $('#q').value=''; $('#searchBox').classList.remove('has'); renderList(); $('#q').focus(); break;
     case 'focus-search': var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); setTimeout(function(){ $('#q').focus(); },300); break;
     case 'share':
