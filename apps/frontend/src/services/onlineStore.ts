@@ -277,7 +277,9 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
  */
 export async function publishOnlinePromos(storeId: string, onlineIds: Set<string>): Promise<number> {
   const { default: api } = await import('./api');
-  const { data } = await api.get('/promotions').catch(() => ({ data: [] }));
+  // Si no se pudieron leer las promociones, se deja la tienda como estaba (nunca se borran por un error)
+  const { data } = await api.get('/promotions');
+  if (!Array.isArray(data)) throw new Error('Respuesta inválida de promociones');
   const now = Date.now();
   const promos: OnlinePromo[] = [];
   for (const pr of (data || []) as any[]) {
