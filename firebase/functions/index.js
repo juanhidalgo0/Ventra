@@ -512,9 +512,18 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
       const ticket = await db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         const t = snap.exists ? snap.data() : null;
-        if (!t || t.usedAt || t.expiresAt.toMillis() < Date.now()) return null;
-        tx.update(ref, { usedAt: admin.firestore.FieldValue.serverTimestamp() });
-        return t;
+        if (!t || t.expiresAt.toMillis() < Date.now()) return null;
+        if (!t.usedAt) {
+          tx.update(ref, { usedAt: admin.firestore.FieldValue.serverTimestamp() });
+          return t;
+        }
+        // Segundo y último uso, enseguida del primero: el anfitrión da de alta la caja en la
+        // nube de un comercio que nunca entró a web.ventra.store
+        if (needCredentials && !t.setupAt && t.usedAt.toMillis && Date.now() - t.usedAt.toMillis() < 60 * 1000) {
+          tx.update(ref, { setupAt: admin.firestore.FieldValue.serverTimestamp() });
+          return t;
+        }
+        return null;
       });
       if (!ticket) return res.status(401).json({ error: "El acceso de soporte venció o ya se usó. Generá otro desde el panel." });
       supportAdmin = ticket.admin;
@@ -782,6 +791,55 @@ exports.ventraAdmin = onRequest(
         });
         await log({ uid: String(uid) });
         return res.status(200).json({ url: `${CLOUD_APP_URL}/_ventra/support?t=${ticket}` });
+      }
+
+      // Tienda online armada por Ventra para el comercio (planes Tienda y Full). Nace a nombre
+      // de su cuenta: cuando el comercio entra a la app, la sesión la encuentra por ownerUid.
+      if (action === "createStore") {
+        if (!uid) return res.status(400).json({ error: "Falta el cliente" });
+        const acc = await db.collection("ventra_accounts").doc(String(uid)).get();
+        if (!acc.exists) return res.status(404).json({ error: "Cliente inexistente" });
+        if (acc.data().plan === "caja") return res.status(400).json({ error: "Su plan (Ventra Caja) no incluye tienda online" });
+        const name = String((req.body && req.body.name) || "").trim().slice(0, 80);
+        const slug = String((req.body && req.body.subdomain) || "").trim().toLowerCase();
+        const wa = String((req.body && req.body.whatsapp) || "").replace(/\D/g, "").slice(0, 20);
+        if (name.length < 2) return res.status(400).json({ error: "Poné el nombre de la tienda" });
+        if (!/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) return res.status(400).json({ error: "Dirección web inválida: solo minúsculas, números y guiones (3 a 40)" });
+        const stores = db.collection("ventra_stores");
+        const owned = await stores.where("ownerUid", "==", String(uid)).get();
+        if (owned.docs.some((d) => d.data().subdomain)) return res.status(409).json({ error: "Ya tiene una tienda con dirección web" });
+        const taken = await stores.where("subdomain", "==", slug).limit(1).get();
+        if (!taken.empty) return res.status(409).json({ error: `La dirección tienda.ventra.store/${slug} ya está en uso` });
+        // Si empezó a armarla (sin dirección) se completa esa; si no, una nueva
+        const ref = owned.docs[0] ? owned.docs[0].ref : stores.doc(`store_${crypto.randomUUID().replace(/-/g, "")}`);
+        const base = owned.docs[0] ? {} : {
+          rubro: "OTRO", primaryColor: "#0E6E52", secondaryColor: "#1e293b", logoUrl: "", bannerUrl: "", address: "", instagram: "",
+          description: "", announcement: "",
+          hours: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, from: "09:00", to: "20:00" })),
+          pickupEnabled: true, deliveryEnabled: false, goDeliveryEnabled: false, deliveryCost: 0, freeDeliveryFrom: 0, deliveryZone: "",
+          minOrder: 0, paymentMethods: ["Efectivo", "Transferencia"], transferAlias: "", showOutOfStock: true, isPublished: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(), createdByAdmin: user.email,
+        };
+        await ref.set({
+          ...base,
+          businessName: name, subdomain: slug, ...(wa ? { whatsappNumber: wa } : {}),
+          ownerUid: String(uid), claimed: true, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        await log({ uid: String(uid), storeId: ref.id, subdomain: slug });
+        return res.status(200).json({ ok: true, storeId: ref.id, url: `https://tienda.ventra.store/${slug}` });
+      }
+
+      if (action === "setStorePublished") {
+        if (!uid) return res.status(400).json({ error: "Falta el cliente" });
+        const storeId = String((req.body && req.body.storeId) || "");
+        const ref = db.collection("ventra_stores").doc(storeId);
+        const snap = storeId ? await ref.get() : null;
+        if (!snap || !snap.exists || snap.data().ownerUid !== String(uid)) return res.status(404).json({ error: "Tienda inexistente" });
+        if (!snap.data().subdomain) return res.status(400).json({ error: "La tienda no tiene dirección web" });
+        const published = !!(req.body && req.body.published);
+        await ref.update({ isPublished: published, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        await log({ uid: String(uid), storeId, published });
+        return res.status(200).json({ ok: true });
       }
 
       if (action === "unlinkDevice") {

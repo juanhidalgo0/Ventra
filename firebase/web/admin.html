@@ -579,10 +579,7 @@
 
       $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('open');
       $('closeDrawer').onclick = closeDrawer;
-      if ($('copyStoreBtn')) $('copyStoreBtn').onclick = function(){
-        var u = a.store.url;
-        (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ toast('Link copiado'); }, function(){ prompt('Link de la tienda', u); });
-      };
+      bindStoreSection(a);
       $('supportBtn').onclick = function(){
         if (DEMO) return toast('No disponible en la demo', true);
         // La pestaña se abre ya (si no, el navegador la bloquea) y se carga cuando llega el pase
@@ -640,8 +637,21 @@
     function storeSection(a){
       var st = a.store;
       if (!st || !st.subdomain){
-        return '<div class="section"><h4>Tienda online</h4><div class="list"><div class="list-empty">' +
-          (a.plan === 'caja' ? 'Su plan (Ventra Caja) no incluye tienda online' : (st ? 'Empezó a armar su tienda pero todavía no eligió la dirección web' : 'Todavía no armó su tienda online')) + '</div></div></div>';
+        if (!a.plan || a.plan === 'caja'){
+          return '<div class="section"><h4>Tienda online</h4><div class="list"><div class="list-empty">' +
+            (a.plan === 'caja' ? 'Su plan (Ventra Caja) no incluye tienda online' : 'Sin plan: habilitale uno para armarle la tienda') + '</div></div></div>';
+        }
+        // Plan con tienda: se la podés armar vos
+        var guess = String((st && st.name) || (a.email || '').split('@')[0] || '').trim();
+        var slug = guess.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        return '<div class="section"><h4>Tienda online</h4><div class="enable-box">' +
+          '<p class="muted" style="margin:0 0 10px;font-size:13px">' + (st ? 'Empezó a armarla pero no eligió la dirección web.' : 'Todavía no tiene tienda online.') + ' Creásela vos:</p>' +
+          '<div class="form-grid">' +
+            '<div class="field full"><label for="csName">Nombre de la tienda</label><input id="csName" value="' + esc((st && st.name) || '') + '" placeholder="Dany\'s Pizza"></div>' +
+            '<div class="field full"><label for="csSlug">Dirección web</label><div style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:13px;white-space:nowrap">tienda.ventra.store/</span><input id="csSlug" value="' + esc(slug) + '" placeholder="danys-pizza" style="flex:1"></div></div>' +
+            '<div class="field full"><label for="csWa">WhatsApp donde recibe los pedidos (opcional)</label><input id="csWa" inputmode="tel" placeholder="5491122334455"></div>' +
+          '</div><div style="margin-top:10px;display:flex;justify-content:flex-end"><button class="btn primary" id="createStoreBtn">Crear tienda</button></div>' +
+          '<p class="warn">Queda a su nombre y sin publicar. Después, con “Entrar a su sistema” → Tienda online, le cargás productos, logo y colores, y la publicás.</p></div></div>';
       }
       var color = /^#[0-9a-f]{6}$/i.test(st.primaryColor || '') ? st.primaryColor : '#167160';
       var stats = [st.products != null ? st.products + (st.products === 1 ? ' producto' : ' productos') : null, st.orders != null ? st.orders + (st.orders === 1 ? ' pedido' : ' pedidos') : null, st.updatedAt ? 'editada ' + ago(st.updatedAt) : null].filter(Boolean).join(' · ');
@@ -651,8 +661,32 @@
           '<div class="store-info"><div class="store-name">' + esc(st.name || st.subdomain) + '</div><div class="store-url">tienda.ventra.store/' + esc(st.subdomain) + '</div>' + (stats ? '<div class="store-stats">' + esc(stats) + '</div>' : '') + '</div>' +
           '<span class="pill ' + (st.published ? 'pub' : 'unpub') + '">' + (st.published ? 'Publicada' : 'Sin publicar') + '</span>' +
         '</div>' +
-        '<div class="actions" style="margin-top:10px"><a class="btn primary" style="flex:1" target="_blank" rel="noopener" href="' + esc(st.url) + '">Ver su tienda ↗</a><button class="btn" style="flex:1" id="copyStoreBtn">Copiar link</button></div>' +
+        '<div class="actions" style="margin-top:10px"><a class="btn primary" style="flex:1" target="_blank" rel="noopener" href="' + esc(st.url) + '">Ver su tienda ↗</a><button class="btn" style="flex:1" id="copyStoreBtn">Copiar link</button>' +
+          (a.plan && a.plan !== 'caja' ? '<button class="btn' + (st.published ? ' danger' : '') + '" style="flex:1" id="publishStoreBtn">' + (st.published ? 'Despublicar' : 'Publicar') + '</button>' : '') + '</div>' +
         '<p class="warn">' + (st.published ? 'Es la tienda pública, como la ven sus clientes.' : 'Todavía no la publicó: sus clientes ven “Tienda en preparación”.') + ' Para cambiar productos, fotos o la configuración, usá “Entrar a su sistema” → Tienda online.</p></div>';
+    }
+
+    function bindStoreSection(a){
+      if ($('copyStoreBtn')) $('copyStoreBtn').onclick = function(){
+        var u = a.store.url;
+        (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ toast('Link copiado'); }, function(){ prompt('Link de la tienda', u); });
+      };
+      if ($('publishStoreBtn')) $('publishStoreBtn').onclick = function(){
+        var pub = !a.store.published;
+        if (!confirm(pub ? '¿Publicar la tienda de ' + (a.email || 'este cliente') + '? Sus clientes van a poder verla y hacer pedidos.' : '¿Despublicar la tienda? Sus clientes van a ver “Tienda en preparación”.')) return;
+        act({ action:'setStorePublished', uid:a.uid, storeId:a.store.id, published:pub }, pub ? 'Tienda publicada' : 'Tienda despublicada');
+      };
+      if ($('csSlug')) $('csSlug').oninput = function(){ this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-{2,}/g, '-'); };
+      if ($('createStoreBtn')) $('createStoreBtn').onclick = function(){
+        var name = $('csName').value.trim(), slug = $('csSlug').value.trim().replace(/^-+|-+$/g, ''), wa = $('csWa').value.trim();
+        if (name.length < 2) return toast('Poné el nombre de la tienda', true);
+        if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) return toast('Dirección web: solo minúsculas, números y guiones (3 a 40)', true);
+        var btn = this; btn.disabled = true;
+        api('POST', { action:'createStore', uid:a.uid, name:name, subdomain:slug, whatsapp:wa })
+          .then(function(){ toast('Tienda creada: tienda.ventra.store/' + slug); return load(); })
+          .catch(function(err){ toast(err.message || 'No se pudo crear la tienda', true); })
+          .then(function(){ btn.disabled = false; });
+      };
     }
 
     function closeDrawer(){

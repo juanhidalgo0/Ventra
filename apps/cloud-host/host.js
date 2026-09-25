@@ -182,10 +182,18 @@ async function createSession(auth) {
   const uid = data.uid;
   if (!/^[A-Za-z0-9_-]{6,128}$/.test(uid)) throw Object.assign(new Error('Cuenta inválida'), { status: 400 });
   if (auth.supportTicket) {
-    // El pase ya se usó: no se puede volver a llamar a la función para dar de alta la caja
+    // Comercio que nunca entró a web.ventra.store: el mismo pase (segundo y último uso)
+    // da de alta su caja en la nube, así soporte puede entrar igual
     if (!fs.existsSync(credsFile(uid))) {
-      log(`Soporte: ${data.supportAdmin} no pudo entrar a ${uid} (sin caja en la nube)`);
-      throw Object.assign(new Error('Este comercio todavía no abrió su caja en la nube: tiene que entrar una vez a web.ventra.store con su cuenta.'), { status: 409 });
+      const r = await cloudAccess(true);
+      const setup = await r.json().catch(() => ({}));
+      if (!r.ok || !setup.deviceId || setup.uid !== uid) {
+        log(`Soporte: ${data.supportAdmin} no pudo dar de alta la caja de ${uid}: ${setup.error || r.status}`);
+        throw Object.assign(new Error(setup.error || 'No se pudo preparar la caja en la nube de este comercio.'), { status: r.status || 500 });
+      }
+      fs.mkdirSync(tenantDir(uid), { recursive: true });
+      fs.writeFileSync(credsFile(uid), JSON.stringify({ deviceId: setup.deviceId, deviceSecret: setup.deviceSecret }), { mode: 0o600 });
+      log(`Soporte: ${data.supportAdmin} dio de alta la caja en la nube de ${uid}`);
     }
     log(`Soporte: ${data.supportAdmin} entró a la caja de ${uid}`);
     return { uid, email: data.email || null, support: data.supportAdmin, exp: Date.now() + SUPPORT_HOURS * 3600e3 };
