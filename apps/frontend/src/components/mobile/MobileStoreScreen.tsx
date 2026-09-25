@@ -3,7 +3,7 @@ import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropMod
 import toast from 'react-hot-toast';
 import {
   Store, Copy, Share2, ExternalLink, ShoppingBag, Info, Truck, Clock, Palette, RefreshCw, ChevronRight,
-  MessageCircle, Image as ImageIcon, Check, Package, Search, Eye, EyeOff,
+  MessageCircle, Image as ImageIcon, Check, Package, Search, Eye, EyeOff, Plus,
 } from 'lucide-react';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
@@ -12,13 +12,14 @@ import {
 } from '../../services/onlineStore';
 import api from '../../services/api';
 import { ScreenHeader, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
+import ExtrasEditor from '../store/ExtrasEditor';
 
 const PUBLIC_BASE = 'https://tienda.ventra.store';
 const WEEK = [
   { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
   { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
 ];
-type Panel = 'orders' | 'products' | 'info' | 'delivery' | 'hours' | 'look' | null;
+type Panel = 'orders' | 'products' | 'info' | 'delivery' | 'hours' | 'look' | 'extras' | null;
 
 const input = 'w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white';
 const waLink = (phone: string, text = '') => {
@@ -127,6 +128,7 @@ export default function MobileStoreScreen() {
             <Row icon={Clock} tint="bg-violet-50 text-violet-700" title="Horarios" text="Días y turnos de atención" onClick={() => setPanel('hours')} />
             <Row icon={Palette} tint="bg-pink-50 text-pink-700" title="Apariencia" text="Logo, portada y color" onClick={() => setPanel('look')} />
 
+            <Row icon={Plus} tint="bg-orange-50 text-orange-700" title="Extras y agregados" text={(config.extraGroups || []).length ? (config.extraGroups || []).map((g) => g.name).join(' · ') : 'Borde relleno, agregados con precio'} onClick={() => setPanel('extras')} />
             <Row icon={Package} tint="bg-emerald-50 text-emerald-700" title="Productos en la tienda" text="Elegí qué productos ven tus clientes" onClick={() => setPanel('products')} />
 
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4">
@@ -149,6 +151,9 @@ export default function MobileStoreScreen() {
           <InfoSheet open={panel === 'info'} config={config} storeId={storeId!} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <DeliverySheet open={panel === 'delivery'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <HoursSheet open={panel === 'hours'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
+          <Sheet open={panel === 'extras'} onClose={() => setPanel(null)} title="Extras y agregados">
+            <ExtrasEditor storeId={storeId!} initial={config.extraGroups || []} onSaved={(g) => setConfig({ ...config, extraGroups: g })} />
+          </Sheet>
           <LookSheet open={panel === 'look'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
         </>
       )}

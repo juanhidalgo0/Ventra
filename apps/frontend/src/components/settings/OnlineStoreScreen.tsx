@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import ExtrasEditor from '../store/ExtrasEditor';
 import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,6 +26,7 @@ import {
   Wrench,
   Shirt,
   UtensilsCrossed,
+  Plus,
   LayoutGrid,
   Clock,
   Phone,
@@ -710,6 +712,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               }`} />
             </button>
           </div>
+        </div>
+
+        {/* Extras con precio (borde relleno, agregados) */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-16px_rgba(0,0,0,0.08)]">
+          <SectionHeader icon={Plus} title="Extras y agregados" subtitle="Opciones con precio que el cliente suma al producto: borde relleno, agregados, salsas" accent={accent} />
+          <ExtrasEditor storeId={storeId} initial={config.extraGroups || []} onSaved={(g) => setConfig((c: any) => (c ? { ...c, extraGroups: g } : c))} />
         </div>
 
         {/* Pedidos, entregas y pagos */}

@@ -132,6 +132,8 @@ export interface StoreConfig {
    * APP = solo a la app (aviso al celular, sin pasar por WhatsApp), WHATSAPP = solo por WhatsApp (no queda en la app).
    */
   orderChannel?: 'BOTH' | 'APP' | 'WHATSAPP';
+  /** Extras con precio (borde relleno, agregados) que el cliente elige en la ficha del producto */
+  extraGroups?: ExtraGroup[];
   /** Productos pausados ("hoy no hay"): se ven como no disponibles sin volver a publicar */
   pausedIds?: string[];
   /** Promos por cantidad publicadas desde Promociones (ej. docena de empanadas de cualquier gusto) */
@@ -224,6 +226,18 @@ export interface OnlineProduct {
   baseName?: string;
   /** "GRANDE", "M · NEGRO" */
   variantLabel?: string;
+}
+
+/** Grupo de extras: min 0 = opcional, 1 = obligatorio; max = cuántas opciones puede elegir. Se ofrece en categorías o productos. */
+export interface ExtraGroup {
+  id: string;
+  name: string;
+  min: number;
+  max: number;
+  options: { id: string; name: string; price: number }[];
+  categories: string[];
+  productIds: string[];
+  active?: boolean;
 }
 
 /** Combo "N unidades de estos productos (mezclados) a precio fijo", para aplicar en la tienda. */
