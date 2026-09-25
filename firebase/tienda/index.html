@@ -550,6 +550,9 @@ async function init(){
     // Pausados a mano ("hoy no hay"): se ven, pero no se pueden pedir
     var paused=cfg.pausedIds||[];
     list.forEach(function(p){ if(paused.indexOf(p.id)>=0){ p.inStock=false; p.paused=true; } });
+    // Foto por categoría: la usan los productos que todavía no tienen foto propia
+    var ci=cfg.categoryImages||{};
+    list.forEach(function(p){ if(!p.imageUrl){ var u=ci[p.category]||ci[p.parentCategory]; if(u) p.imageUrl=u; } });
     list=groupVariants(list);
     list.forEach(function(p){ p._q=normalize(p.name+' '+(p.brand||'')+' '+(p.category||'')+' '+(p.description||'')); });
     if(cfg.showOutOfStock===false) list=list.filter(function(p){return p.inStock!==false || p.paused;});
