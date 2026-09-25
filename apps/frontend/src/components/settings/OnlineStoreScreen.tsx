@@ -326,6 +326,26 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   }, [products, productSearch, categoryFilter, brandFilter]);
 
   const onlineCount = useMemo(() => products.filter(p => p.showOnline).length, [products]);
+  const allShown = filteredProducts.length > 0 && filteredProducts.every((p: any) => p.showOnline);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleAllShown = async () => {
+    const ids = filteredProducts.map((p: any) => p.id);
+    const next = !allShown;
+    const filtered = categoryFilter !== 'ALL' || brandFilter !== 'ALL' || productSearch.trim();
+    if (!confirm(`¿${next ? 'Mostrar' : 'Ocultar'} ${filtered ? 'estos' : 'todos los'} ${ids.length} producto(s) en la tienda?`)) return;
+    const prev = products;
+    setProducts(list => list.map(p => (ids.includes(p.id) ? { ...p, showOnline: next } : p)));
+    setBulkBusy(true);
+    try {
+      await api.post('/products/bulk-set-show-online', { ids, showOnline: next });
+      toast.success(`${ids.length} producto(s) ${next ? 'marcados' : 'desmarcados'}. Tocá "Sincronizar productos" para publicarlos.`);
+    } catch {
+      setProducts(prev);
+      toast.error('No se pudo guardar');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
   const pendingOrdersCount = useMemo(() => orders.filter(o => !o.stage || o.stage === 'NEW').length, [orders]);
 
   const publicUrl = config?.subdomain ? `${PUBLIC_STORE_BASE_URL}/${config.subdomain}` : '';
@@ -910,7 +930,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               <RefreshCw className={`w-4 h-4 ${isSyncingCatalog ? 'animate-spin' : ''}`} />
               {isSyncingCatalog
                 ? (syncProgress && syncProgress.total > 0 ? `Subiendo fotos ${syncProgress.done}/${syncProgress.total}...` : 'Sincronizando...')
-                : 'Sincronizar Todo el Inventario'}
+                : 'Sincronizar productos'}
             </button>
           </div>
 
@@ -956,7 +976,15 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                   <tr className="text-[11.5px] uppercase text-slate-500 font-bold tracking-wide">
                     <th className="py-3 px-4">Producto</th>
                     <th className="py-3 px-4 text-right">Precio</th>
-                    <th className="py-3 px-4 text-center">Mostrar en Tienda</th>
+                    <th className="py-3 px-4 text-center">
+                      {/* Marca o desmarca de una vez todos los productos de la lista (respeta la búsqueda y los filtros) */}
+                      <button type="button" onClick={toggleAllShown} disabled={bulkBusy || filteredProducts.length === 0} className="inline-flex items-center gap-2 normal-case disabled:opacity-50" title="Marcar o desmarcar todos">
+                        <span className="text-[11.5px] uppercase font-bold tracking-wide">{allShown ? 'Desmarcar todos' : 'Marcar todos'}</span>
+                        <span className="keep-style relative inline-flex h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors" style={{ backgroundColor: allShown ? '#10b981' : '#cbd5e1' }}>
+                          <span className={`keep-style block h-4 w-4 rounded-full bg-white shadow transition-transform ${allShown ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

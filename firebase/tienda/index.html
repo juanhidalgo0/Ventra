@@ -245,6 +245,16 @@
   .food .card-img .ph{font-size:34px}
   .food .card-body{padding:12px 14px}
   .food .tag-out{left:auto;right:10px}
+  .food .card.noimg{min-height:0}
+  .food .card.noimg .tag-out{position:static;align-self:flex-start;margin:12px 0 -4px 14px}
+  .food .card.noimg{flex-direction:column}
+  .subcats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:14px 0 2px}
+  .subcats::-webkit-scrollbar{display:none}
+  .subcat{flex-shrink:0;height:32px;padding:0 13px;border-radius:999px;background:transparent;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
+  .subcat.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink)}
+  .sub-h{margin:16px 0 10px;font-size:14px;font-weight:700;color:var(--ink-2);display:flex;align-items:baseline;gap:6px}
+  .sub-h small{font-size:12px;color:var(--ink-3);font-weight:600}
+  .section .sub-h:first-of-type{margin-top:4px}
   .food .card-name{min-height:0;font-size:15px}
   .card-desc{font-size:12.5px;color:var(--ink-3);line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .price small.from{font:600 12px 'Inter';color:var(--ink-3);margin-right:3px}
@@ -406,7 +416,7 @@ function normalize(s){ return String(s||'').toLowerCase().normalize('NFD').repla
 var S = {
   storeId:null, cfg:null, products:[], byId:{}, cats:[],
   cart:{}, q:'', cat:'ALL',
-  step:'cart', delivery:null, payment:null, lastOrder:null, notes:{}, lines:{}, food:false
+  step:'cart', delivery:null, payment:null, lastOrder:null, notes:{}, lines:{}, food:false, subs:{}, sub:'ALL'
 };
 
 /* ───────── horarios ───────── */
@@ -546,9 +556,16 @@ async function init(){
     list.sort(function(a,b){ return (b.inStock!==false)-(a.inStock!==false) || String(a.name).localeCompare(String(b.name),'es'); });
     S.products=list;
     list.forEach(function(p){ S.byId[p.id]=p; });
-    var cs={}; list.forEach(function(p){ var c=p.category||'Otros'; cs[c]=(cs[c]||0)+1; });
+    // Categoría principal (Bebidas) y subcategoría (Cerveza). Sin categoría principal, la categoría es la principal.
+    var cs={}; S.subs={};
+    list.forEach(function(p){
+      p.top=p.parentCategory||p.category||'Otros';
+      cs[p.top]=(cs[p.top]||0)+1;
+      if(p.parentCategory && p.category && p.category!==p.parentCategory){ (S.subs[p.top]=S.subs[p.top]||{})[p.category]=1; }
+    });
+    Object.keys(S.subs).forEach(function(t){ S.subs[t]=Object.keys(S.subs[t]).sort(function(a,b){ return a.localeCompare(b,'es'); }); });
     // En la carta, bebidas y postres van al final (como en cualquier menú)
-    var rank=function(c){ return c==='Varios'||c==='Otros'?3:S.food&&/postre|dulce|helad/i.test(c)?2:S.food&&/bebida|gaseosa|cerveza|vino|trago/i.test(c)?1:0; };
+    var rank=function(c){ return c==='Varios'||c==='Otros'?3:S.food&&/postre|dulce|helad/i.test(c)?2:S.food&&/bebida|gaseosa|cerveza|vino|trago|agua|jugo/i.test(c)?1:0; };
     S.cats=Object.keys(cs).sort(function(a,b){ return rank(a)-rank(b) || a.localeCompare(b,'es'); });
     S.cart=loadCart();
     try{ var nt=JSON.parse(localStorage.getItem(cartKey()+'_notes')||'{}'); Object.keys(nt).forEach(function(id){ if(S.cart[id]) S.notes[id]=nt[id]; }); }catch(e){}
@@ -574,7 +591,7 @@ function splashKey(slug){ return 'ventra_splash_'+slug; }
   $('#spName').textContent=c&&c.name?c.name:'';
 })();
 function splashBrand(cfg,slug){
-  var brand=/^#[0-9a-f]{6}$/i.test(cfg.primaryColor||'')?cfg.primaryColor:'#0E6E52';
+  var brand=legibleBrand(cfg.primaryColor);
   document.documentElement.style.setProperty('--brand',brand);
   var lg=$('#spLogo'), prev=lg.getAttribute('data-src')||'';
   if(!lg.querySelector('img') || prev!==(cfg.logoUrl||'')){
@@ -605,7 +622,7 @@ function groupVariants(list){
   list.forEach(function(p){
     if(!p.variantGroupId){ p.name=nice(p.name); out.push(p); return; }
     var g=groups[p.variantGroupId];
-    if(!g){ g=groups[p.variantGroupId]={id:'g_'+p.variantGroupId,isGroup:true,variants:[],name:nice(p.baseName||p.name),category:p.category,brand:p.brand,unit:p.unit,description:''}; out.push(g); }
+    if(!g){ g=groups[p.variantGroupId]={id:'g_'+p.variantGroupId,isGroup:true,variants:[],name:nice(p.baseName||p.name),category:p.category,parentCategory:p.parentCategory,brand:p.brand,unit:p.unit,description:''}; out.push(g); }
     p.optLabel=nice(p.variantLabel||p.name);
     p.name=g.name+' ('+p.optLabel+')';
     p.groupId=g.id;
@@ -640,10 +657,21 @@ function extrasFor(p,sel){
   });
 }
 function hasExtras(p){ return extrasFor(p,null).length>0; }
+/* Nombre de categoría para mostrar: en la carta, "AGUA SABORIZADA" se ve "Agua saborizada" */
+function catName(c){ return nice(c); }
 function kitchenClosed(){ if(!S.food) return null; var st=openStatus(S.cfg.hours); return st&&!st.open?st:null; }
 
+/* Si el color de la marca es muy claro (rosa pastel, amarillo) el texto blanco de los botones no se lee:
+   se oscurece lo justo hasta que contraste. El color elegido se sigue reconociendo. */
+function legibleBrand(hex){
+  if(!/^#[0-9a-f]{6}$/i.test(hex||'')) return '#0E6E52';
+  var rgb=[1,3,5].map(function(i){ return parseInt(hex.substr(i,2),16); });
+  var lum=function(c){ var a=c.map(function(v){ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; };
+  for(var i=0;i<20 && (1.05)/(lum(rgb)+0.05)<3.2;i++) rgb=rgb.map(function(v){ return Math.round(v*0.9); });
+  return '#'+rgb.map(function(v){ return ('0'+v.toString(16)).slice(-2); }).join('');
+}
 function applyBrand(cfg){
-  var brand=/^#[0-9a-f]{6}$/i.test(cfg.primaryColor||'')?cfg.primaryColor:'#0E6E52';
+  var brand=legibleBrand(cfg.primaryColor);
   document.documentElement.style.setProperty('--brand',brand);
   $('#metaTheme').setAttribute('content',brand);
   var title=cfg.businessName+' · Pedí online';
@@ -677,7 +705,7 @@ function render(){
     + '<h1 class="hero-name display">'+esc(c.businessName)+'</h1>'
     + '<p class="hero-desc">'+esc(c.description||(c.orderChannel==='APP'?'Hacé tu pedido online y te lo confirmamos.':'Hacé tu pedido y te lo confirmamos por WhatsApp.'))+'</p>'
     + '<div class="hero-meta">'
-    +   (st?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
+    +   (st&&!kitchenClosed()?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
     +   (c.deliveryEnabled?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
     +   (c.goDeliveryEnabled?'<span class="chip">'+ic('truck')+'Envíos con GoDelivery</span>':'')
     +   (c.pickupEnabled?'<span class="chip">'+ic('store')+'Retiro en el local</span>':'')
@@ -696,7 +724,7 @@ function render(){
     +'<label class="sr" for="q">Buscar productos</label><input id="q" type="search" placeholder="Buscar en '+esc(c.businessName)+'" value="'+esc(S.q)+'" autocomplete="off" enterkeyhint="search">'
     +'<button class="clear" data-act="clear-search" aria-label="Borrar búsqueda">'+ic('x')+'</button></div>'
     + (S.cats.length>1?'<div class="cats" id="cats" role="tablist">'+['ALL'].concat(S.cats).map(function(ct){
-        return '<button class="cat'+(S.cat===ct?' on':'')+'" data-act="cat" data-cat="'+esc(ct)+'" role="tab">'+(ct==='ALL'?'Todo':esc(ct))+'</button>';
+        return '<button class="cat'+(S.cat===ct?' on':'')+'" data-act="cat" data-cat="'+esc(ct)+'" role="tab">'+(ct==='ALL'?'Todo':esc(catName(ct)))+'</button>';
       }).join('')+'</div>':'')
     +'</div></div>';
 
@@ -720,9 +748,10 @@ function render(){
 
 function productCard(p){
   var qty=p.isGroup?groupQty(p):qtyOf(p.id), out=p.inStock===false;
-  return '<article class="card'+(out?' out':'')+'" id="p-'+esc(p.id)+'">'
+  var noImg=S.food&&!p.imageUrl;
+  return '<article class="card'+(out?' out':'')+(noImg?' noimg':'')+'" id="p-'+esc(p.id)+'">'
     + (out?'<span class="tag-out">'+(p.paused?'No disponible hoy':'Agotado')+'</span>':'')
-    + '<div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div>'
+    + (noImg?'':'<div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div>')
     + '<div class="card-body">'
     +   (p.brand&&!S.food?'<span class="card-brand">'+esc(p.brand)+'</span>':'')
     +   '<h3 class="card-name" data-act="product" data-id="'+esc(p.id)+'">'+esc(p.name)+'</h3>'
@@ -757,10 +786,26 @@ function renderList(){
       +(found.length?'<div class="grid">'+found.slice(0,200).map(productCard).join('')+'</div>':'<div class="empty"><b>No encontramos “'+esc(S.q)+'”</b>Probá con otra palabra o escribinos por WhatsApp.</div>')+'</div>';
   } else {
     var cats=S.cat==='ALL'?S.cats:[S.cat];
+    // Dentro de una categoría principal: sus subcategorías para filtrar (Bebidas > Agua, Cerveza, Gaseosas)
+    if(S.cat!=='ALL' && (S.subs[S.cat]||[]).length>1){
+      html+='<div class="subcats">'+['ALL'].concat(S.subs[S.cat]).map(function(sc){
+        return '<button class="subcat'+(S.sub===sc?' on':'')+'" data-act="subcat" data-cat="'+esc(sc)+'">'+(sc==='ALL'?'Todas':esc(catName(sc)))+'</button>';
+      }).join('')+'</div>';
+    }
     cats.forEach(function(ct){
-      var items=S.products.filter(function(p){ return (p.category||'Otros')===ct; });
+      var items=S.products.filter(function(p){ return p.top===ct && (S.cat==='ALL' || S.sub==='ALL' || p.category===S.sub); });
       if(!items.length) return;
-      html+='<section class="section" data-cat-section="'+esc(ct)+'"><h2 class="display">'+esc(ct)+' <small>'+items.length+'</small></h2><div class="grid">'+items.map(productCard).join('')+'</div></section>';
+      var subs=S.subs[ct]||[], body='';
+      if(subs.length>1){
+        // Agrupado por subcategoría, con un título chico para cada una
+        var rest=items.filter(function(p){ return subs.indexOf(p.category)<0; });
+        subs.forEach(function(sc){
+          var its=items.filter(function(p){ return p.category===sc; });
+          if(its.length) body+='<h3 class="sub-h">'+esc(catName(sc))+' <small>'+its.length+'</small></h3><div class="grid">'+its.map(productCard).join('')+'</div>';
+        });
+        if(rest.length) body+='<div class="grid" style="margin-top:12px">'+rest.map(productCard).join('')+'</div>';
+      } else body='<div class="grid">'+items.map(productCard).join('')+'</div>';
+      html+='<section class="section" data-cat-section="'+esc(ct)+'"><h2 class="display">'+esc(catName(ct))+' <small>'+items.length+'</small></h2>'+body+'</section>';
     });
   }
   box.innerHTML=svc+html;
@@ -876,7 +921,7 @@ function renderCartSheet(){
     body='<div class="empty"><b>Tu pedido está vacío</b>Agregá productos para armarlo.</div>';
   } else {
     body=items.map(function(x){
-      return '<div class="line"><div class="line-img">'+imgOrPh(x.p.imageUrl,x.p.name)+'</div>'
+      return '<div class="line">'+(S.food&&!x.p.imageUrl?'':'<div class="line-img">'+imgOrPh(x.p.imageUrl,x.p.name)+'</div>')
         +'<div class="line-info"><p class="line-name">'+esc(x.p.name)+'</p>'+(x.extras.length?'<div class="line-extras">+ '+x.extras.map(function(e){ return esc(e.name); }).join(', ')+'</div>':'')+(S.notes[x.key]?'<div class="line-note">“'+esc(S.notes[x.key])+'”</div>':'')+'<div class="line-price">'+money(x.unit)+' · <b style="color:var(--ink)">'+money(x.unit*x.qty)+'</b></div></div>'
         +'<div class="stepper"><button data-act="dec" data-id="'+esc(x.key)+'" aria-label="Quitar uno">'+ic(x.qty===1?'trash':'minus')+'</button><span>'+x.qty+'</span><button data-act="inc" data-id="'+esc(x.key)+'" aria-label="Agregar uno">'+ic('plus')+'</button></div></div>';
     }).join('');
@@ -1264,8 +1309,9 @@ document.addEventListener('click',function(e){
     case 'bk-back': bkBack(); break;
     case 'bk-confirm': confirmBooking(t); break;
     case 'new-order': S.step='cart'; closeSheets(); break;
+    case 'subcat': S.sub=t.getAttribute('data-cat'); renderList(); break;
     case 'cat':
-      S.cat=t.getAttribute('data-cat'); S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has');
+      S.cat=t.getAttribute('data-cat'); S.sub='ALL'; S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has');
       document.querySelectorAll('.cat').forEach(function(b){ b.classList.toggle('on',b===t); });
       t.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
       renderList();

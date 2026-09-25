@@ -218,6 +218,8 @@ export interface OnlineProduct {
   price: number;
   imageUrl?: string;
   category?: string;
+  /** Categoría principal cuando category es una subcategoría (Bebidas > Cerveza) */
+  parentCategory?: string;
   brand?: string;
   unit?: string;
   inStock: boolean;
@@ -255,6 +257,7 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
     price: p.salePrice,
     imageUrl,
     category: p.category?.name || 'Varios',
+    parentCategory: p.category?.parentCategory?.name || '',
     brand: p.brand?.name || '',
     unit: p.unit || 'UNIT',
     inStock: !!p.unlimitedStock || p.stock > 0,
