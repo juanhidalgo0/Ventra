@@ -1100,21 +1100,27 @@ async function sendOrder(btn){
   }
 
   var L=[];
-  // Sin emojis: el enlace de WhatsApp los rompe en algunas PCs y celulares (salen como "?")
-  L.push('Hola! Quiero hacer este pedido en *'+c.businessName+'*');
+  // Sin emojis: el enlace de WhatsApp los rompe en algunas PCs y celulares (salen como "?").
+  // El teléfono no va: el comercio ya lo ve en el chat.
+  L.push('Hola! Quiero hacer un pedido en *'+c.businessName+'*');
   L.push('');
-  L.push('*PEDIDO #'+code+'*');
-  items.forEach(function(i){ L.push('- '+i.qty+' x '+i.name+': '+money(i.price*i.qty)+(i.note?' ('+i.note+')':'')); });
+  L.push('*Pedido #'+code+'*');
+  L.push('');
+  items.forEach(function(i){
+    var base=(S.byId[i.productId]||{}).name||i.name;
+    L.push('*'+i.qty+'x* '+base+' — '+money(i.price*i.qty));
+    (i.extras||[]).forEach(function(e){ L.push('      + '+e.name); });
+    if(i.note) L.push('      _'+i.note+'_');
+  });
   L.push('');
   promos.forEach(function(x){ L.push('Promo '+x.name+(x.times>1?' x'+x.times:'')+': -'+money(x.discount)); });
-  if(S.delivery==='DELIVERY'){ L.push('Subtotal: '+money(sub-disc)); L.push('Envio: '+(dc?money(dc):'gratis')); }
-  L.push('*TOTAL: '+money(total)+'*');
+  if(S.delivery==='DELIVERY') L.push('Envío: '+(dc?money(dc):'gratis'));
+  L.push('*Total: '+money(total)+'*');
   L.push('');
-  L.push('*Cliente:* '+name);
-  L.push('*Telefono:* '+phone);
-  L.push(S.delivery==='DELIVERY'?'*Entrega:* envio a '+addr:S.delivery==='GODELIVERY'?'*Entrega:* envio con GoDelivery a '+addr+' (el envio lo cobra GoDelivery)':'*Entrega:* retiro en el local');
-  if(S.payment) L.push('*Pago:* '+S.payment);
-  if(note) L.push('*Nota:* '+note);
+  L.push(S.delivery==='DELIVERY'?'*Envío a:* '+addr:S.delivery==='GODELIVERY'?'*Envío con GoDelivery a:* '+addr+' (el envío lo cobra GoDelivery)':'*Retiro en el local*');
+  if(S.payment) L.push('*Pago:* '+S.payment+(S.payment==='Transferencia'&&c.transferAlias?' (alias '+c.transferAlias+')':''));
+  L.push('*A nombre de:* '+name);
+  if(note) L.push('*Aclaración:* '+note);
   var url='https://wa.me/'+String(c.whatsappNumber||'').replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n'));
 
   // "Solo la app": si se guardó, llega al celular del comercio sin pasar por WhatsApp
