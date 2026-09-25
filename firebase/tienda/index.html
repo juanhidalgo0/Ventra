@@ -256,7 +256,7 @@
   .food .card.noimg{flex-direction:column;gap:0;align-items:stretch}
   .food .card.noimg .card-body{min-height:0}
   .food .card.noimg .tag-out{position:static;align-self:flex-start;margin:0 0 6px}
-  .subcats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:14px 0 2px}
+  .subcats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:10px 0 0}
   .subcats::-webkit-scrollbar{display:none}
   .subcat{flex-shrink:0;height:32px;padding:0 13px;border-radius:999px;background:transparent;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
   .subcat.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink)}
@@ -525,14 +525,14 @@ function promoLines(){
     // Las promos cuentan unidades del producto (los extras se cobran aparte)
     Object.keys(left).forEach(function(k){ var p=S.byId[pidOf(k)]; if(p && pr.productIds.indexOf(pidOf(k))>=0) for(var i=0;i<left[k];i++) units.push({id:k,price:p.price}); });
     var n=units.length, times=Math.floor(n/pr.qty);
-    if(!times){ if(n>0) out.push({name:pr.name,times:0,discount:0,missing:pr.qty-n,price:pr.price,qty:pr.qty}); return; }
+    if(!times){ if(n>0) out.push({name:pr.name,times:0,discount:0,missing:pr.qty-n,price:pr.price,qty:pr.qty,saves:promoSaves(pr)}); return; }
     units.sort(function(a,b){ return b.price-a.price; });
     var used=units.slice(0,times*pr.qty), regular=used.reduce(function(a,u){ return a+u.price; },0);
     var discount=regular-times*pr.price;
     if(discount<=0) return;
     used.forEach(function(u){ left[u.id]--; });
     var rest=n-times*pr.qty;
-    out.push({name:pr.name,times:times,discount:discount,missing:rest>0?pr.qty-rest:0,price:pr.price,qty:pr.qty});
+    out.push({name:pr.name,times:times,discount:discount,missing:rest>0?pr.qty-rest:0,price:pr.price,qty:pr.qty,saves:promoSaves(pr)});
   });
   return out;
 }
@@ -541,7 +541,7 @@ function itemsTotal(){ return subtotal()-promoDiscount(); }
 function promoHtml(){
   var lines=promoLines(), hint=null;
   // Un solo aviso: la promo a la que le falta menos (ej. "sumá 2 más y es una docena")
-  lines.forEach(function(x){ if(x.missing>0 && x.missing<x.qty && (!hint || x.missing<hint.missing)) hint=x; });
+  lines.forEach(function(x){ if(x.saves && x.missing>0 && x.missing<x.qty && (!hint || x.missing<hint.missing)) hint=x; });
   return lines.map(function(x){
     return x.discount?'<div class="sum promo"><span>'+esc(x.name)+(x.times>1?' x'+x.times:'')+'</span><span>-'+money(x.discount)+'</span></div>':'';
   }).join('')+(hint?'<div class="promo-hint">Sumá '+hint.missing+' más y aprovechás la promo “'+esc(hint.name)+'” ('+hint.qty+' a '+money(hint.price)+')</div>':'');
@@ -593,6 +593,10 @@ async function init(){
     list.sort(function(a,b){ return (b.inStock!==false)-(a.inStock!==false) || String(a.name).localeCompare(String(b.name),'es'); });
     S.products=list;
     list.forEach(function(p){ S.byId[p.id]=p; });
+    // En la carta, las categorías de bebidas cargadas sueltas (Agua, Cerveza, Gaseosas) van dentro de "Bebidas"
+    if(S.food) list.forEach(function(p){
+      if(!p.parentCategory && p.category && /^(agua|aguas|agua saborizada|gaseosa|gaseosas|cerveza|cervezas|vino|vinos|jugo|jugos|bebidas? sin alcohol|bebidas? con alcohol|aperitivos?|tragos?|energizantes?|sodas?)$/i.test(String(p.category).trim())) p.parentCategory='Bebidas';
+    });
     // Categoría principal (Bebidas) y subcategoría (Cerveza). Sin categoría principal, la categoría es la principal.
     var cs={}; S.subs={};
     list.forEach(function(p){
@@ -704,8 +708,13 @@ function extrasFor(p,sel){
 function hasExtras(p){ return extrasFor(p,null).length>0; }
 /* Nombre de categoría para mostrar: en la carta, "AGUA SABORIZADA" se ve "Agua saborizada" */
 function catName(c){ return nice(c); }
+/* Una promo ahorra si su precio es menor a lo que salen esas unidades sueltas (al precio más barato) */
+function promoSaves(pr){
+  var prices=pr.productIds.map(function(id){ var p=S.byId[id]; return p?p.price:0; }).filter(function(v){ return v>0; });
+  return prices.length>0 && pr.price < pr.qty*Math.min.apply(null,prices);
+}
 function promoStripHtml(){
-  var pr=(S.cfg.onlinePromos||[]).slice().sort(function(a,b){ return a.qty-b.qty; });
+  var pr=(S.cfg.onlinePromos||[]).filter(promoSaves).sort(function(a,b){ return a.qty-b.qty; });
   if(!pr.length) return '';
   return '<div class="promo-strip">'+pr.map(function(x){
     var first=S.byId[x.productIds[0]], cat=first?(first.top||first.category):'';
@@ -792,6 +801,7 @@ function render(){
     + (S.cats.length>1?'<div class="cats" id="cats" role="tablist">'+['ALL'].concat(S.cats).map(function(ct){
         return '<button class="cat'+(S.cat===ct?' on':'')+'" data-act="cat" data-cat="'+esc(ct)+'" role="tab">'+(ct==='ALL'?'Todo':esc(catName(ct)))+'</button>';
       }).join('')+'</div>':'')
+    +'<div class="subcats" id="subbar" hidden></div>'
     +'</div></div>';
 
   h+='<main><div class="wrap" id="list"></div></main>';
@@ -859,7 +869,7 @@ function renderList(){
     html='<div class="section"><h2 class="display">Resultados <small>'+found.length+'</small></h2>'
       +(found.length?'<div class="grid">'+found.slice(0,200).map(productCard).join('')+'</div>':'<div class="empty"><b>No encontramos “'+esc(S.q)+'”</b>Probá con otra palabra o escribinos por WhatsApp.</div>')+'</div>';
   } else {
-    var cats=S.cats;
+    var cats=S.cats; S.subIds={};
     cats.forEach(function(ct,ci){
       var items=S.products.filter(function(p){ return p.top===ct; });
       if(!items.length) return;
@@ -867,7 +877,7 @@ function renderList(){
       if(subs.length>1){
         // Agrupado por subcategoría: accesos a cada una y un título chico en cada grupo
         var rest=items.filter(function(p){ return subs.indexOf(p.category)<0; });
-        body+='<div class="sec-subs">'+subs.map(function(sc,si){ return '<button class="subcat" data-act="subjump" data-target="sub-'+ci+'-'+si+'">'+esc(catName(sc))+'</button>'; }).join('')+'</div>';
+        S.subIds[ct]=subs.map(function(sc,si){ return {name:sc,id:'sub-'+ci+'-'+si}; });
         subs.forEach(function(sc,si){
           var its=items.filter(function(p){ return p.category===sc; });
           if(its.length) body+='<h3 class="sub-h" id="sub-'+ci+'-'+si+'">'+esc(catName(sc))+' <small>'+its.length+'</small></h3><div class="grid">'+its.map(productCard).join('')+'</div>';
@@ -1343,6 +1353,17 @@ function goCat(ct){
   window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-stuckBottom()+4,behavior:'smooth'});
 }
 function markCat(ct){
+  // Categoría con subcategorías (Bebidas): se muestran en la barra mientras se está en ella
+  var bar=$('#subbar'), subs=(S.subIds||{})[ct];
+  if(bar){
+    if(subs && subs.length>1 && !S.q){
+      if(bar.getAttribute('data-cat')!==ct){
+        bar.innerHTML=subs.map(function(x){ return '<button class="subcat" data-act="subjump" data-target="'+x.id+'">'+esc(catName(x.name))+'</button>'; }).join('');
+        bar.setAttribute('data-cat',ct);
+      }
+      bar.hidden=false;
+    } else { bar.hidden=true; bar.removeAttribute('data-cat'); }
+  }
   var on=null;
   document.querySelectorAll('.cat').forEach(function(b){ var m=b.getAttribute('data-cat')===ct; b.classList.toggle('on',m); if(m) on=b; });
   if(on){ var box=$('#cats'); if(box) box.scrollTo({left:on.offsetLeft-box.clientWidth/2+on.clientWidth/2,behavior:'smooth'}); }
