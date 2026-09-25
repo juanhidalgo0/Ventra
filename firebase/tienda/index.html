@@ -651,7 +651,15 @@ function groupQty(g){ return g.variants.reduce(function(a,v){ return a+qtyOf(v.i
 function extrasFor(p,sel){
   return (S.cfg.extraGroups||[]).filter(function(g){
     if(g.active===false || !(g.options||[]).length) return false;
-    if((g.categories||[]).indexOf(p.category)>=0) return true;
+    // Excluidos a mano (ej. las pizzas rellenas no llevan borde relleno)
+    var ex=g.excludeIds||[];
+    if(ex.length){
+      if(sel && ex.indexOf(sel.id)>=0) return false;
+      if(ex.indexOf(p.id)>=0) return false;
+      if(p.isGroup && p.variants.every(function(v){ return ex.indexOf(v.id)>=0; })) return false;
+    }
+    var cats=g.categories||[];
+    if(cats.indexOf(p.category)>=0 || (p.parentCategory && cats.indexOf(p.parentCategory)>=0)) return true;
     var ids=g.productIds||[];
     return ids.indexOf(p.id)>=0 || (sel&&ids.indexOf(sel.id)>=0) || (p.isGroup&&p.variants.some(function(v){ return ids.indexOf(v.id)>=0; }));
   });

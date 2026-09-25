@@ -108,6 +108,12 @@ export default function ExtrasEditor({ storeId, initial, onSaved }: { storeId: s
             <button onClick={() => { setPickingFor(pickingFor === g.id ? null : g.id); setQ(''); }} className="mt-2 text-[12.5px] font-semibold text-slate-600">
               {g.productIds.length ? `Y en ${g.productIds.length} producto${g.productIds.length === 1 ? '' : 's'} puntual${g.productIds.length === 1 ? '' : 'es'}` : 'O elegir productos puntuales'} ›
             </button>
+            {!!g.excludeIds?.length && (
+              <p className="mt-1.5 text-[12.5px] text-slate-500">
+                Excepto: {g.excludeIds.map((id) => products.find((p) => p.id === id)?.name).filter(Boolean).join(', ') || `${g.excludeIds.length} productos`}
+                <button onClick={() => set(g.id, { excludeIds: [] })} className="ml-2 font-semibold text-rose-700">Quitar excepciones</button>
+              </p>
+            )}
             {pickingFor === g.id && (
               <div className="mt-2 rounded-xl border border-slate-200">
                 <div className="relative border-b border-slate-100">

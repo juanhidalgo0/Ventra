@@ -239,6 +239,8 @@ export interface ExtraGroup {
   options: { id: string; name: string; price: number }[];
   categories: string[];
   productIds: string[];
+  /** Productos de esas categorías que no lo llevan (ej. las pizzas rellenas no llevan borde relleno) */
+  excludeIds?: string[];
   active?: boolean;
 }
 
