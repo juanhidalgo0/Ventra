@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { QtyPromoSheet } from '../mobile/MobilePromosScreen';
 import { 
   Plus, 
   Search, 
@@ -27,6 +28,7 @@ export default function PromosScreen() {
   const [selectedPromo, setSelectedPromo] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<string>('ALL');
 
+  const [showQtyPromo, setShowQtyPromo] = useState(false);
   useEffect(() => {
     loadPromos();
   }, []);
@@ -100,6 +102,13 @@ export default function PromosScreen() {
                  className="bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-[10px] font-bold outline-none focus:bg-white focus:border-emerald-250 transition-all w-full sm:w-64" 
                />
             </div>
+            {/* Lo más usado en gastronomía: media docena o docena de empanadas mezclando gustos */}
+            <button
+              onClick={() => setShowQtyPromo(true)}
+              className="px-5 py-2.5 bg-white border border-emerald-300 text-emerald-700 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-50 transition-all active:scale-95 cursor-pointer w-full sm:w-auto"
+            >
+              <Package className="w-4 h-4" /> Precio por cantidad (docena)
+            </button>
             <button 
               onClick={() => { setSelectedPromo(null); setShowModal(true); }}
               className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 shadow-md shadow-emerald-100 transition-all active:scale-95 cursor-pointer w-full sm:w-auto"
@@ -270,6 +279,7 @@ export default function PromosScreen() {
           />
         )}
       </AnimatePresence>
+      <QtyPromoSheet open={showQtyPromo} onClose={() => setShowQtyPromo(false)} onCreated={() => { setShowQtyPromo(false); loadPromos(); }} />
     </div>
   );
 }

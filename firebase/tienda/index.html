@@ -1324,14 +1324,17 @@ async function confirmBooking(btn){
 
 /* ───────── categorías con scroll ───────── */
 function toolbarBottom(){ var tb=document.querySelector('.toolbar'); return tb?tb.getBoundingClientRect().bottom:120; }
+/* Dónde queda el borde de la barra de categorías cuando ya está fija arriba (para calcular a dónde desplazarse) */
+function stuckBottom(){ var tb=document.querySelector('.toolbar'), top=document.getElementById('topbar'); return (top?top.offsetHeight:60)+(tb?tb.offsetHeight:60); }
 function goCat(ct){
   if(S.q){ S.q=''; var q=$('#q'); if(q) q.value=''; $('#searchBox').classList.remove('has'); renderList(); }
-  if(ct==='ALL'){ var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); return; }
+  // Mientras la página se mueve hacia la categoría tocada, esa queda marcada
+  S.spyLock=ct; S.spyLockAt=Date.now(); S.spyCat=ct;
+  markCat(ct);
+  if(ct==='ALL'){ window.scrollTo({top:0,behavior:'smooth'}); return; }
   var sec=document.querySelector('[data-cat-section="'+(window.CSS&&CSS.escape?CSS.escape(ct):ct)+'"]');
   if(!sec) return;
-  S.lockSpy=Date.now();
-  markCat(ct);
-  window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-toolbarBottom()+4,behavior:'smooth'});
+  window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-stuckBottom()+4,behavior:'smooth'});
 }
 function markCat(ct){
   var on=null;
@@ -1341,11 +1344,18 @@ function markCat(ct){
 /* Marca la categoría de la sección que se está viendo */
 function spyCats(){
   if(S.q || !document.querySelector('.cat')) return;
-  if(S.lockSpy && Date.now()-S.lockSpy<700) return;
-  var line=toolbarBottom()+20, cur='ALL';
-  document.querySelectorAll('[data-cat-section]').forEach(function(sec){ if(sec.getBoundingClientRect().top<=line) cur=sec.getAttribute('data-cat-section'); });
+  // La categoría tocada se respeta hasta que el desplazamiento termina (o el cliente vuelve a mover la página)
+  if(S.spyLock){ if(Date.now()-S.spyLockAt<1200) return; S.spyLock=null; }
+  var line=toolbarBottom()+20, cur='ALL', secs=document.querySelectorAll('[data-cat-section]');
+  secs.forEach(function(sec){ if(sec.getBoundingClientRect().top<=line) cur=sec.getAttribute('data-cat-section'); });
+  // Al llegar al final, las últimas categorías no pueden subir hasta arriba: se marca la última visible
+  if(secs.length && window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-4){
+    var last=secs[secs.length-1]; if(last.getBoundingClientRect().top<window.innerHeight-80) cur=last.getAttribute('data-cat-section');
+  }
   if(cur!==S.spyCat){ S.spyCat=cur; markCat(cur); }
 }
+// Si el cliente toca o arrastra la pantalla, manda él: se suelta la categoría fijada
+['touchstart','wheel'].forEach(function(ev){ window.addEventListener(ev,function(){ if(S.spyLock && Date.now()-S.spyLockAt>150) S.spyLock=null; },{passive:true}); });
 window.addEventListener('scroll',function(){ if(!spyCats._t) spyCats._t=requestAnimationFrame(function(){ spyCats._t=null; spyCats(); }); },{passive:true});
 
 /* ───────── eventos ───────── */
@@ -1407,7 +1417,7 @@ document.addEventListener('click',function(e){
     case 'subcat': S.sub=t.getAttribute('data-cat'); renderList(); break;
     case 'cat': goCat(t.getAttribute('data-cat')); break;
     case 'promo-go': goCat(t.getAttribute('data-cat')); break;
-    case 'subjump': var sj=document.getElementById(t.getAttribute('data-target')); if(sj) window.scrollTo({top:sj.getBoundingClientRect().top+window.scrollY-toolbarBottom()-8,behavior:'smooth'}); break;
+    case 'subjump': var sj=document.getElementById(t.getAttribute('data-target')); if(sj) window.scrollTo({top:sj.getBoundingClientRect().top+window.scrollY-stuckBottom()-8,behavior:'smooth'}); break;
     case 'ups-add': setQty(id,(S.cart[id]||0)+1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'clear-search': S.q=''; $('#q').value=''; $('#searchBox').classList.remove('has'); renderList(); $('#q').focus(); break;
     case 'focus-search': var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); setTimeout(function(){ $('#q').focus(); },300); break;

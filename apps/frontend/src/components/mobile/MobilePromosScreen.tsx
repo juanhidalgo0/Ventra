@@ -110,7 +110,7 @@ export default function MobilePromosScreen() {
  * Es un combo de un solo grupo: la caja y la tienda lo aplican solos cuando se juntan las unidades.
  * Con media docena y docena se cargan dos promos (6 y 12) sobre los mismos productos.
  */
-function QtyPromoSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+export function QtyPromoSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [products, setProducts] = useState<any[] | null>(null);
   const [name, setName] = useState('');
   const [units, setUnits] = useState('12');
