@@ -239,15 +239,23 @@
   /* Gastronomía: formato carta */
   .food .grid{grid-template-columns:1fr;gap:10px}
   @media(min-width:760px){.food .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
-  .food .card{flex-direction:row-reverse;min-height:124px}
-  .food .card-img{width:124px;aspect-ratio:auto;border-bottom:0;border-left:1px solid var(--line-2);flex-shrink:0}
-  .food .card-img img{object-fit:cover;padding:0}
-  .food .card-img .ph{font-size:34px}
-  .food .card-body{padding:12px 14px}
-  .food .tag-out{left:auto;right:10px}
-  .food .card.noimg{min-height:0}
-  .food .card.noimg .tag-out{position:static;align-self:flex-start;margin:12px 0 -4px 14px}
-  .food .card.noimg{flex-direction:column}
+  /* Carta: foto cuadrada dentro de la tarjeta, con el "+" sobre la esquina (como las apps de delivery) */
+  .food .card{flex-direction:row;align-items:flex-start;gap:12px;padding:12px}
+  .food .card .card-body{padding:2px 0 0;min-height:104px}
+  .food .fc-media{position:relative;width:104px;height:104px;flex-shrink:0}
+  .food .fc-media .card-img{width:100%;height:100%;aspect-ratio:auto;border:0;border-radius:14px;background:var(--line-2)}
+  .food .fc-media .card-img img{object-fit:cover;padding:0}
+  .food .fc-btn{position:absolute;right:-6px;bottom:-6px}
+  .food .fc-btn .add{width:36px;height:36px;border-radius:50%;border:3px solid #fff;box-shadow:0 4px 12px -4px rgba(0,0,0,.35)}
+  .food .fc-btn .add svg.i{width:18px;height:18px}
+  .food .fc-btn .stepper{height:36px;border-radius:18px;border:3px solid #fff;box-shadow:0 4px 12px -4px rgba(0,0,0,.35)}
+  .food .fc-btn .stepper button{width:30px;height:30px}
+  .food .card.out .fc-media .card-img img{filter:grayscale(1);opacity:.5}
+  .food .tag-out{position:static;display:inline-block;align-self:flex-start;font-size:10.5px;padding:3px 8px;margin-bottom:5px}
+  .food .card:not(.noimg) .card-foot{padding-top:6px}
+  .food .card.noimg{flex-direction:column;gap:0}
+  .food .card.noimg .card-body{min-height:0}
+  .food .card.noimg .tag-out{position:static;align-self:flex-start;margin:0 0 6px}
   .subcats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:14px 0 2px}
   .subcats::-webkit-scrollbar{display:none}
   .subcat{flex-shrink:0;height:32px;padding:0 13px;border-radius:999px;background:transparent;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
@@ -553,6 +561,9 @@ async function init(){
     // Foto por categoría: la usan los productos que todavía no tienen foto propia
     var ci=cfg.categoryImages||{};
     list.forEach(function(p){ if(!p.imageUrl){ var u=ci[p.category]||ci[p.parentCategory]; if(u) p.imageUrl=u; } });
+    // Descripciones cargadas por Ventra para la tienda: la del producto, si tiene, manda
+    var ds=cfg.descriptions||{};
+    list.forEach(function(p){ if(!p.description && ds[p.id]) p.description=ds[p.id]; });
     list=groupVariants(list);
     list.forEach(function(p){ p._q=normalize(p.name+' '+(p.brand||'')+' '+(p.category||'')+' '+(p.description||'')); });
     if(cfg.showOutOfStock===false) list=list.filter(function(p){return p.inStock!==false || p.paused;});
@@ -760,15 +771,19 @@ function render(){
 function productCard(p){
   var qty=p.isGroup?groupQty(p):qtyOf(p.id), out=p.inStock===false;
   var noImg=S.food&&!p.imageUrl;
+  var tag=out?'<span class="tag-out">'+(p.paused?'No disponible hoy':'Agotado')+'</span>':'';
   return '<article class="card'+(out?' out':'')+(noImg?' noimg':'')+'" id="p-'+esc(p.id)+'">'
-    + (out?'<span class="tag-out">'+(p.paused?'No disponible hoy':'Agotado')+'</span>':'')
-    + (noImg?'':'<div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div>')
+    + (S.food?'':tag)
+    + (noImg||S.food?'':'<div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div>')
     + '<div class="card-body">'
+    +   (S.food?tag:'')
     +   (p.brand&&!S.food?'<span class="card-brand">'+esc(p.brand)+'</span>':'')
     +   '<h3 class="card-name" data-act="product" data-id="'+esc(p.id)+'">'+esc(p.name)+'</h3>'
     +   (S.food&&p.description?'<div class="card-desc">'+esc(p.description)+'</div>':'')
-    +   '<div class="card-foot">'+priceHtml(p)+buyControl(p.id,qty,out)+'</div>'
-    + '</div></article>';
+    +   '<div class="card-foot">'+priceHtml(p)+(S.food&&!noImg?'':buyControl(p.id,qty,out))+'</div>'
+    + '</div>'
+    + (S.food&&!noImg?'<div class="fc-media"><div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div><div class="fc-btn">'+buyControl(p.id,qty,out)+'</div></div>':'')
+    + '</article>';
 }
 function priceHtml(p){ return '<span class="price">'+(p.isGroup&&p.fromPrice?'<small class="from">desde</small>':'')+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'; }
 function buyControl(id,qty,out){
@@ -781,7 +796,11 @@ function buyControl(id,qty,out){
 }
 function refreshProduct(id){
   var cid=cardIdOf(id), card=document.getElementById('p-'+cid), p=S.byId[cid];
-  if(card && p){ var foot=card.querySelector('.card-foot'); foot.innerHTML=priceHtml(p)+buyControl(cid,p.isGroup?groupQty(p):qtyOf(cid),p.inStock===false); }
+  if(card && p){
+    var q=p.isGroup?groupQty(p):qtyOf(cid), ctl=buyControl(cid,q,p.inStock===false), slot=card.querySelector('.fc-btn');
+    card.querySelector('.card-foot').innerHTML=priceHtml(p)+(slot?'':ctl);
+    if(slot) slot.innerHTML=ctl;
+  }
   if($('#productSheet').classList.contains('show') && S.openProduct===cid) renderProductSheet(cid);
 }
 

@@ -190,6 +190,8 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
   const [savingPrice, setSavingPrice] = useState(false);
   const [savingStock, setSavingStock] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [savingDesc, setSavingDesc] = useState(false);
 
   useEffect(() => {
     if (!productId) return;
@@ -197,6 +199,7 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
     api.get(`/products/${productId}`)
       .then(({ data }) => {
         setProduct(data);
+        setDesc(data.description || '');
         setPrice(String(data.salePrice ?? ''));
         setCost(String(data.costPrice ?? ''));
       })
@@ -242,6 +245,20 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
       toast.error(err.response?.data?.message || 'No se pudo ajustar el stock');
     } finally {
       setSavingStock(false);
+    }
+  };
+
+  const saveDescription = async () => {
+    setSavingDesc(true);
+    try {
+      await api.patch(`/products/${product.id}`, { description: desc.trim() });
+      setProduct({ ...product, description: desc.trim() });
+      onChanged(product.id, { description: desc.trim() });
+      toast.success('Descripción guardada');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo guardar');
+    } finally {
+      setSavingDesc(false);
     }
   };
 
@@ -345,6 +362,12 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
           )}
 
           <section>
+            <p className="mb-1.5 text-[12.5px] font-medium text-slate-500">Descripción <span className="text-slate-400">(se ve en la tienda online)</span></p>
+            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={300} rows={2} placeholder="Ej: salsa de tomate, muzzarella y aceitunas" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[14.5px] outline-none focus:border-rose-500 focus:bg-white resize-none" />
+            {desc.trim() !== (product.description || '').trim() && <PrimaryButton className="mt-2" onClick={saveDescription} loading={savingDesc}>Guardar descripción</PrimaryButton>}
+          </section>
+
+          <section>
             <p className="mb-1.5 text-[12.5px] font-medium text-slate-500">Categoría</p>
             <CategoryPicker value={product.categoryId ?? null} onChange={saveCategory} disabled={savingCategory} />
           </section>
@@ -370,6 +393,7 @@ function SmallMoney({ value, onChange }: { value: string; onChange: (v: string) 
 
 function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (p: any) => void }) {
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [barcode, setBarcode] = useState('');
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
@@ -385,7 +409,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
 
   useEffect(() => {
     if (open) {
-      setName(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null);
+      setName(''); setDescription(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null);
       setWithOptions(false); setOptionName(isFood ? 'Tamaño' : 'Opción');
       setOptions(isFood ? [{ label: 'Chica', price: '' }, { label: 'Grande', price: '' }] : [{ label: '', price: '' }, { label: '', price: '' }]);
     }
@@ -402,7 +426,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
     try {
       const { data } = await api.post('/products/variant-matrix', {
         baseName: name.trim(),
-        base: { costPrice: parseAmount(cost), categoryId: category?.id, ...(isFood ? { unlimitedStock: true } : {}) },
+        base: { costPrice: parseAmount(cost), categoryId: category?.id, description: description.trim() || undefined, ...(isFood ? { unlimitedStock: true } : {}) },
         variants: rows.map((o) => ({ attrs: { [axis]: o.label }, salePrice: o.price, ...(isFood ? {} : { stock: parseAmount(stock) }) })),
       });
       toast.success(`${name.trim()}: ${rows.length} opciones creadas`);
@@ -422,6 +446,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
     try {
       const { data } = await api.post('/products', {
         name: name.trim(),
+        description: description.trim() || undefined,
         barcode: barcode.trim() || undefined,
         salePrice: parseAmount(price),
         costPrice: parseAmount(cost),
@@ -446,6 +471,9 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
         <div className="space-y-4 pt-1">
           <Field label="Nombre">
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder={isFood ? 'Pizza muzzarella' : 'Coca-Cola 2,25 L'} className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
+          </Field>
+          <Field label="Descripción (opcional)">
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2} placeholder={isFood ? 'Salsa de tomate, muzzarella y aceitunas' : 'Se ve en la tienda online'} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white resize-none" />
           </Field>
 {!isFood && (
           <Field label="Código de barras (opcional)">

@@ -134,6 +134,7 @@ function Collapsible({ icon: Icon, title, hint, defaultOpen, badge, children }: 
 export default function ProductModal({ onClose, onSuccess, product }: ProductModalProps) {
   const [formData, setFormData] = useState({
     name: product?.name || '',
+    description: product?.description || '',
     barcode: product?.barcode || '',
     sku: product?.sku || '',
     additionalBarcodes: product?.additionalBarcodes?.map((b: any) => b.barcode) || [],
@@ -903,6 +904,18 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 onFocus={e => e.target.select()}
                 placeholder="Ej: COCA COLA ZERO 2.25L"
                 className={inputCls + ' h-10 text-[15px]'}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>Descripción <span className="font-normal text-slate-400">(opcional, se ve en la tienda online)</span></label>
+              <textarea
+                value={formData.description}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                maxLength={300}
+                rows={2}
+                placeholder="Ej: Salsa de tomate, muzzarella, jamón y aceitunas"
+                className={inputCls + ' py-2 resize-none'}
               />
             </div>
 
