@@ -342,19 +342,46 @@
   .who{display:flex;align-items:center;gap:12px;padding:12px;border:1.5px solid var(--line);border-radius:14px;background:#fff;text-align:left;width:100%}
   .who.on{border-color:var(--brand);background:var(--brand-soft)}
   .who-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex-shrink:0;background:var(--brand)}
-  .days{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:2px 18px 8px}
+  /* Reserva de turnos: la hoja tiene alto fijo (no salta entre pasos ni al cambiar de día) */
+  #bookSheet{height:88vh;height:min(88dvh,720px)}
+  @media(min-width:760px){#bookSheet{height:min(84vh,680px)}}
+  .bk-in{animation:bkIn .26s cubic-bezier(.2,.8,.2,1) both}
+  .bk-in.back{animation-name:bkBack}
+  @keyframes bkIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:none}}
+  @keyframes bkBack{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
+  .bk-fade{animation:bkFade .22s ease-out both}
+  @keyframes bkFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .bk-steps span{transition:background .3s}
+  .bk-ctx{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-2);background:var(--line-2);border-radius:12px;padding:9px 12px;margin-bottom:6px}
+  .bk-ctx svg.i{width:16px;height:16px;color:var(--brand);flex-shrink:0}
+  .bk-ctx b{color:var(--ink)}
+  .bk-days{position:sticky;top:-4px;z-index:3;background:var(--surface);margin:0 -18px;padding:8px 0 6px}
+  .days{position:relative;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:4px 18px 8px;scroll-snap-type:x proximity}
   .days::-webkit-scrollbar{display:none}
-  .day{flex-shrink:0;width:58px;height:68px;border-radius:14px;border:1.5px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
-  .day small{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase}
-  .day b{font:800 19px 'Plus Jakarta Sans',sans-serif}
-  .day.on{background:var(--brand);border-color:var(--brand);color:#fff}
-  .day.on small{color:rgba(255,255,255,.8)}
-  .day[disabled]{opacity:.35}
+  .day{flex-shrink:0;width:60px;height:74px;border-radius:16px;border:1.5px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;scroll-snap-align:center;
+    transition:background .2s,border-color .2s,color .2s,box-shadow .2s,transform .12s,opacity .2s}
+  .day small{font-size:10.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.03em;transition:color .2s}
+  .day b{font:800 20px 'Plus Jakarta Sans',sans-serif;line-height:1.15}
+  .day:active{transform:scale(.95)}
+  @media(hover:hover){.day:not(.on):hover{border-color:var(--brand-soft-2);background:var(--brand-soft)}}
+  .day.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 8px 18px -10px var(--brand)}
+  .day.on small{color:rgba(255,255,255,.82)}
+  .day.none:not(.on){opacity:.4}
+  .day.none b{text-decoration:line-through;text-decoration-thickness:1.5px}
+  .bk-slots{min-height:220px}
   .slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   @media(min-width:420px){.slots{grid-template-columns:repeat(5,minmax(0,1fr))}}
-  .slot{height:44px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:14.5px;font-variant-numeric:tabular-nums}
-  .slot.on{background:var(--brand);border-color:var(--brand);color:#fff}
-  .slot-group{font-size:12.5px;font-weight:700;color:var(--ink-3);margin:14px 0 8px;text-transform:uppercase;letter-spacing:.04em}
+  .slot{height:46px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;
+    transition:background .15s,border-color .15s,color .15s,box-shadow .15s,transform .1s}
+  .slot:active{transform:scale(.95)}
+  @media(hover:hover){.slot:not(.on):hover{border-color:var(--brand);color:var(--brand)}}
+  .slot.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 8px 18px -10px var(--brand)}
+  .slot-group{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:800;color:var(--ink-3);margin:16px 0 9px;text-transform:uppercase;letter-spacing:.06em}
+  .slot-group::after{content:'';flex:1;height:1px;background:var(--line-2)}
+  .slot-group small{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink-3)}
+  .skel{display:block;border-radius:12px;background:linear-gradient(90deg,var(--line-2) 25%,#fbfbfb 50%,var(--line-2) 75%);background-size:200% 100%;animation:skel 1.1s linear infinite}
+  @keyframes skel{from{background-position:200% 0}to{background-position:-200% 0}}
+  @media(prefers-reduced-motion:reduce){.bk-in,.bk-fade,.skel{animation:none}.day,.slot{transition:none}}
   .bk-sum{background:var(--line-2);border-radius:14px;padding:12px 14px;font-size:14px;display:grid;gap:6px;margin-bottom:14px}
   .bk-sum div{display:flex;gap:8px;align-items:center}
   .bk-sum svg.i{width:17px;height:17px;color:var(--brand)}
@@ -1277,8 +1304,9 @@ S.bk={step:'service'}; S.bkBusy={};
 function bkService(){ return agServices().filter(function(x){ return x.id===S.bk.serviceId; })[0]; }
 function bkStaffFor(sv){ return agStaff().filter(function(st){ return canDo(st,sv); }); }
 function openBooking(serviceId){
-  S.bk={step:serviceId?'staff':'service',serviceId:serviceId||null,staffId:null,day:null,time:null};
+  S.bk={step:serviceId?'staff':'service',serviceId:serviceId||null,staffId:null,day:null,time:null,dayPicked:false};
   if(serviceId && bkStaffFor(bkService()).length===1){ S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; }
+  S.bkLast=S.bk.step; /* al abrir no se desliza: ya sube la hoja */
   renderBooking(); openSheet('bookSheet');
 }
 function loadBusy(k){
@@ -1314,7 +1342,17 @@ function bkHead(title,back){
     +'<h3 class="display">'+title+'</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +(idx>=0?'<div class="bk-steps">'+steps.map(function(x,i){ return '<span class="'+(i<=idx?'on':'')+'"></span>'; }).join('')+'</div>':'');
 }
+var BK_ORDER=['service','staff','time','data','done'];
+/* Cada paso entra deslizándose (hacia la izquierda al avanzar, a la derecha al volver) */
 function renderBooking(){
+  var b=S.bk, last=S.bkLast, changed=last!==b.step;
+  var back=changed && last && BK_ORDER.indexOf(b.step)<BK_ORDER.indexOf(last);
+  S.bkLast=b.step;
+  renderBookingStep();
+  var body=$('#bookSheet .sheet-body');
+  if(body && changed) body.classList.add('bk-in', back?'back':'fwd');
+}
+function renderBookingStep(){
   var el=$('#bookSheet'), b=S.bk, sv=bkService();
   if(b.step==='service'){
     el.innerHTML=bkHead('¿Qué te querés hacer?',false)+'<div class="sheet-body"><div class="svc-list" style="grid-template-columns:1fr">'
@@ -1333,26 +1371,17 @@ function renderBooking(){
   if(b.step==='time'){
     var days=workDays();
     if(!b.day || days.indexOf(b.day)<0) b.day=days[0]||null;
-    var body='';
-    if(!days.length){ body='<div class="empty"><b>No hay turnos disponibles</b>Escribinos por WhatsApp y lo coordinamos.</div>'; }
-    else {
-      body='<div class="days">'+days.map(function(k){ return '<button class="day'+(k===b.day?' on':'')+'" data-act="bk-day" data-v="'+k+'"><small>'+(k===localNow().dateKey?'Hoy':DAYS_LONG[wday(k)].slice(0,3))+'</small><b>'+(+k.slice(8))+'</b><small>'+MONTHS[+k.slice(5,7)-1].slice(0,3)+'</small></button>'; }).join('')+'</div>';
-      if(!S.bkBusy[b.day]){ body+='<div style="display:flex;justify-content:center;padding:30px"><div class="spin"></div></div>'; loadBusy(b.day).then(function(){ if(S.bk.step==='time') renderBooking(); }); }
-      else {
-        var slots=slotsFor(b.day);
-        if(!slots.length) body+='<div class="empty" style="padding:30px 10px"><b>No quedan horarios este día</b>Probá con otro día.</div>';
-        else {
-          var parts=[['Mañana',0,720],['Tarde',720,1200],['Noche',1200,1440]];
-          parts.forEach(function(pt){
-            var g=slots.filter(function(t){ return t>=pt[1]&&t<pt[2]; });
-            if(!g.length) return;
-            body+='<div class="slot-group">'+pt[0]+'</div><div class="slots">'+g.map(function(t){ return '<button class="slot'+(b.time===t?' on':'')+'" data-act="bk-time" data-v="'+t+'">'+hhmm(t)+'</button>'; }).join('')+'</div>';
-          });
-        }
-      }
-    }
     var st=agStaff().filter(function(x){ return x.id===b.staffId; })[0];
-    el.innerHTML=bkHead('Elegí día y horario',true)+'<div class="sheet-body"><p style="margin:0 0 12px;color:var(--ink-2);font-size:14px">'+esc(sv.name)+(st?' · con '+esc(st.name):'')+'</p>'+body+'</div>';
+    var body=!days.length
+      ? '<div class="empty"><b>No hay turnos disponibles</b>Escribinos por WhatsApp y lo coordinamos.</div>'
+      : '<div class="bk-days"><div class="days">'+days.map(bkDayBtn).join('')+'</div></div><div class="bk-slots" id="bkSlots"></div>';
+    el.innerHTML=bkHead('Elegí día y horario',true)+'<div class="sheet-body"><div class="bk-ctx">'+ic('clock')+'<span><b>'+esc(sv.name)+'</b>'
+      +' · '+durLabel(Number(sv.durationMin)||30)+(st?' · con '+esc(st.name):'')+'</span></div>'+body+'</div>';
+    if(days.length){
+      bkFillSlots(false);
+      bkPrefetch(days);
+      requestAnimationFrame(function(){ bkScrollDay(false); });
+    }
     return;
   }
   if(b.step==='data'){
@@ -1389,6 +1418,81 @@ function renderBooking(){
       +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px;border:0" data-act="close">Listo</button></div>';
   }
 }
+/* ── Día y horario: se actualiza solo lo que cambia (sin redibujar la hoja ni mover la tira de días) ── */
+function bkDayBtn(k){
+  var none=S.bkBusy[k] && !slotsFor(k).length;
+  return '<button class="day'+(k===S.bk.day?' on':'')+(none?' none':'')+'" data-act="bk-day" data-v="'+k+'" aria-pressed="'+(k===S.bk.day)+'">'
+    +'<small>'+(k===localNow().dateKey?'Hoy':DAYS_LONG[wday(k)].slice(0,3))+'</small><b>'+(+k.slice(8))+'</b><small>'+MONTHS[+k.slice(5,7)-1].slice(0,3)+'</small></button>';
+}
+function bkSkeleton(){
+  var row=function(n){ var h=''; for(var i=0;i<n;i++) h+='<span class="skel" style="height:46px"></span>'; return h; };
+  return '<div class="slot-group"><span class="skel" style="width:70px;height:12px;border-radius:6px"></span></div><div class="slots">'+row(8)+'</div>'
+    +'<div class="slot-group"><span class="skel" style="width:56px;height:12px;border-radius:6px"></span></div><div class="slots">'+row(5)+'</div>';
+}
+function bkFillSlots(fade){
+  var box=$('#bkSlots'), b=S.bk;
+  if(!box) return;
+  if(!S.bkBusy[b.day]){
+    box.innerHTML=bkSkeleton();
+    var day=b.day;
+    loadBusy(day).then(function(){ if(S.bk.step==='time' && S.bk.day===day){ bkMarkDays(); bkFillSlots(true); } });
+    return;
+  }
+  var slots=slotsFor(b.day), html='';
+  if(!slots.length) html='<div class="empty" style="padding:40px 10px"><b>No quedan horarios este día</b>Probá con otro día.</div>';
+  else [['Mañana',0,720],['Tarde',720,1200],['Noche',1200,1440]].forEach(function(pt){
+    var g=slots.filter(function(t){ return t>=pt[1]&&t<pt[2]; });
+    if(!g.length) return;
+    html+='<div class="slot-group">'+pt[0]+' <small>· '+g.length+(g.length===1?' horario':' horarios')+'</small></div><div class="slots">'
+      +g.map(function(t){ return '<button class="slot'+(b.time===t?' on':'')+'" data-act="bk-time" data-v="'+t+'">'+hhmm(t)+'</button>'; }).join('')+'</div>';
+  });
+  box.innerHTML='<div'+(fade?' class="bk-fade"':'')+'>'+html+'</div>';
+}
+/* Se cargan de antemano los próximos días: cambiar de día es instantáneo y se marcan los que no tienen lugar */
+function bkPrefetch(days){
+  days.slice(0,8).forEach(function(k){
+    if(S.bkBusy[k]) return;
+    loadBusy(k).then(function(){ if(S.bk.step==='time') bkMarkDays(); });
+  });
+  bkMarkDays();
+}
+function bkMarkDays(){
+  var b=S.bk, btns=document.querySelectorAll('#bookSheet .day');
+  btns.forEach(function(d){ var k=d.getAttribute('data-v'); d.classList.toggle('none', !!S.bkBusy[k] && !slotsFor(k).length); });
+  /* Si el cliente todavía no eligió y el día marcado no tiene lugar, se pasa solo al primero que tenga */
+  if(!b.dayPicked && S.bkBusy[b.day] && !slotsFor(b.day).length){
+    var ks=Array.prototype.map.call(btns,function(d){ return d.getAttribute('data-v'); });
+    for(var i=0;i<ks.length;i++){
+      if(!S.bkBusy[ks[i]]) return; /* todavía cargando un día anterior: se espera para no saltearlo */
+      if(slotsFor(ks[i]).length){ bkSelectDay(ks[i], false); return; }
+    }
+  }
+}
+function bkSelectDay(k, byUser){
+  var b=S.bk;
+  if(byUser) b.dayPicked=true;
+  if(b.day===k) return;
+  b.day=k; b.time=null;
+  document.querySelectorAll('#bookSheet .day').forEach(function(d){ var on=d.getAttribute('data-v')===k; d.classList.toggle('on',on); d.setAttribute('aria-pressed',on); });
+  bkScrollDay(true);
+  var body=$('#bookSheet .sheet-body');
+  if(body && body.scrollTop>0) body.scrollTo({top:0,behavior:'smooth'});
+  bkFillSlots(true);
+}
+function bkScrollDay(smooth){
+  var d=$('#bookSheet .day.on');
+  if(!d) return;
+  var strip=d.parentNode, left=d.offsetLeft-(strip.clientWidth-d.offsetWidth)/2;
+  strip.scrollTo({left:Math.max(0,left),behavior:smooth?'smooth':'auto'});
+}
+function bkPickTime(btn){
+  var v=Number(btn.getAttribute('data-v')), b=S.bk;
+  b.time=v;
+  document.querySelectorAll('#bookSheet .slot').forEach(function(x){ x.classList.toggle('on', x===btn); });
+  /* Se ve el horario elegido un instante antes de pasar a los datos */
+  setTimeout(function(){ if(S.bk.time===v && S.bk.step==='time'){ S.bk.step='data'; renderBooking(); } }, 170);
+}
+
 function bkBack(){
   var b=S.bk;
   if(b.step==='data'){ b.step='time'; }
@@ -1524,8 +1628,8 @@ document.addEventListener('click',function(e){
     case 'book-svc': openBooking(id); break;
     case 'bk-pick-svc': S.bk.serviceId=id; S.bk.staffId=null; S.bk.time=null; if(bkStaffFor(bkService()).length>1){ S.bk.step='staff'; } else { S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; } renderBooking(); break;
     case 'bk-pick-staff': S.bk.staffId=id; S.bk.time=null; S.bk.step='time'; renderBooking(); break;
-    case 'bk-day': S.bk.day=t.getAttribute('data-v'); S.bk.time=null; renderBooking(); break;
-    case 'bk-time': S.bk.time=Number(t.getAttribute('data-v')); S.bk.step='data'; renderBooking(); break;
+    case 'bk-day': bkSelectDay(t.getAttribute('data-v'), true); break;
+    case 'bk-time': bkPickTime(t); break;
     case 'bk-back': bkBack(); break;
     case 'bk-confirm': confirmBooking(t); break;
     case 'new-order': S.step='cart'; closeSheets(); break;
