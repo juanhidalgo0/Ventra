@@ -4,7 +4,8 @@ import { Search, Plus, X, Package, ScanLine, Minus, Star, ChevronRight, AlertTri
 import api, { resolveServerUrl } from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
 import { useBusinessStore } from '../../stores/businessStore';
-import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, money, qty, parseAmount } from './ui';
+import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ProductThumb, money, qty, parseAmount } from './ui';
+import ProductPhoto from './ProductPhoto';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 
 type Filter = 'ALL' | 'LOW' | 'OUT';
@@ -159,15 +160,10 @@ export default function MobileProductsScreen({ initialFilter = 'ALL', title = 'P
 }
 
 function ProductRow({ product: p, low, onClick }: { product: any; low: boolean; onClick: () => void }) {
-  const [imgOk, setImgOk] = useState(true);
   const out = hasStock(p) && p.stock <= 0;
   return (
     <button onClick={onClick} className="w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-50">
-      <span className="w-12 h-12 rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
-        {p.imageUrl && imgOk
-          ? <img src={p.imageUrl} alt="" loading="lazy" onError={() => setImgOk(false)} className="w-full h-full object-cover" />
-          : <span className="text-[18px] font-bold text-rose-200">{(p.name || '?').trim()[0]}</span>}
-      </span>
+      <ProductThumb src={p.imageUrl} className="w-12 h-12 rounded-xl border border-slate-100 p-0.5 shrink-0" />
       <span className="flex-1 min-w-0">
         <span className="block text-[14px] font-medium text-slate-800 leading-snug line-clamp-2">{p.name}</span>
         {hasStock(p) && (
@@ -293,12 +289,14 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
       ) : (
         <div className="pt-1 space-y-5">
           <div className="flex items-start gap-3">
-            <span className="w-16 h-16 rounded-2xl bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
-              {product.imageUrl
-                ? <img src={resolveServerUrl(product.imageUrl)} alt="" className="w-full h-full object-cover" />
-                : <span className="text-[24px] font-bold text-rose-200">{(product.name || '?')[0]}</span>}
-            </span>
-            <div className="flex-1 min-w-0">
+            <ProductPhoto
+              product={product}
+              onSaved={(imageUrl) => {
+                setProduct({ ...product, imageUrl });
+                onChanged(product.id, { imageUrl: imageUrl ? resolveServerUrl(imageUrl) : null });
+              }}
+            />
+            <div className="flex-1 min-w-0 pt-1">
               <p className="text-[16px] font-semibold text-slate-900 leading-snug">{product.name}</p>
               <p className="text-[12px] text-slate-500 mt-0.5 truncate">
                 {[product.barcode, product.category?.name].filter(Boolean).join(' · ') || 'Sin código'}

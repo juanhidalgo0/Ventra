@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft } from 'lucide-react';
+import { X, ChevronLeft, Package } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 /** Piezas compartidas de la app móvil del dueño: mismo look en todas las pestañas. */
@@ -132,6 +132,22 @@ export function Sheet({ open, onClose, title, children, footer }: { open: boolea
       )}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+/**
+ * Foto de un producto, entera (sin recortar el envase) sobre blanco. Si no tiene o no carga,
+ * muestra un ícono neutro en vez de una letra suelta.
+ */
+export function ProductThumb({ src, className = '', iconClass = 'w-5 h-5' }: { src?: string | null; className?: string; iconClass?: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  return (
+    <span className={`bg-white overflow-hidden flex items-center justify-center ${className}`}>
+      {src && !failed
+        ? <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className="w-full h-full object-contain" />
+        : <Package className={`${iconClass} text-slate-300`} strokeWidth={1.6} />}
+    </span>
   );
 }
 

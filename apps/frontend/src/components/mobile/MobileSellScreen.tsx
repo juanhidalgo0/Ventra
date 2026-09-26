@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
-import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, money, qty, parseAmount } from './ui';
+import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ProductThumb, money, qty, parseAmount } from './ui';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 import { useCashSession } from './useCashSession';
 import { applySurcharges, getPaymentMethods } from './checkout';
@@ -250,7 +250,6 @@ export default function MobileSellScreen() {
 }
 
 function ProductTile({ product: p, inCart, onAdd }: { product: any; inCart: number; onAdd: () => void }) {
-  const [imgOk, setImgOk] = useState(true);
   // Los productos virtuales (cargas, pagos) tienen stock "infinito": no se muestra
   const showStock = !p.unlimitedStock && typeof p.stock === 'number' && p.stock < 99999;
   const low = showStock && p.stock <= (p.minStock || 0);
@@ -260,13 +259,7 @@ function ProductTile({ product: p, inCart, onAdd }: { product: any; inCart: numb
       onClick={onAdd}
       className={`relative text-left bg-white rounded-2xl p-2.5 border transition-colors ${inCart ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-200/80'}`}
     >
-      <div className="aspect-[4/3] rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center">
-        {p.imageUrl && imgOk ? (
-          <img src={p.imageUrl} alt="" loading="lazy" onError={() => setImgOk(false)} className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-[26px] font-bold text-rose-200">{(p.name || '?').trim()[0]}</span>
-        )}
-      </div>
+      <ProductThumb src={p.imageUrl} className="aspect-[4/3] w-full rounded-xl p-1" iconClass="w-8 h-8" />
       <p className="mt-2 text-[13px] font-medium text-slate-800 leading-snug line-clamp-2 min-h-[2.5em]">{p.name}</p>
       <div className="mt-1 flex items-end justify-between gap-1">
         <p className="text-[15px] font-bold text-slate-900 tabular-nums">{money(p.salePrice)}</p>

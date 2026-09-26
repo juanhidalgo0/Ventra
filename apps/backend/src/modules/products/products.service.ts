@@ -777,7 +777,9 @@ export class ProductsService {
       console.error('Error syncing updated product to Firestore:', err);
     });
 
-    if (updatedProduct.barcode && (!updatedProduct.imageUrl || updatedProduct.imageUrl === 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80')) {
+    // Si la foto la acaban de quitar a mano, no se busca otra sola
+    const photoRemoved = updateData.imageUrl === '' && !!existing.imageUrl;
+    if (!photoRemoved && updatedProduct.barcode && (!updatedProduct.imageUrl || updatedProduct.imageUrl === 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80')) {
       this.syncImageService.assignImageToSingleProduct(updatedProduct.id, updatedProduct.barcode).catch(err => {
         console.error('Error auto-assigning image to updated product:', err);
       });
