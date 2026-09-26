@@ -30,6 +30,11 @@ import { SubscriptionService } from '../subscription/subscription.service';
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 const CYCLE_MS = 5000;
 /**
+ * Versión de la sincronización que entiende esta caja. 2: sabe realinearse cuando la nube
+ * avisa que compactó movimientos viejos (resync). La nube solo compacta si todas las cajas activas la entienden.
+ */
+const SYNC_PROTOCOL = 2;
+/**
  * Cada ciclo sube lo propio al instante, pero solo le pregunta a la nube por cambios de
  * otras cajas cuando toca: cada 5 s mientras hay movimiento y, en reposo, cada vez más
  * espaciado hasta 1 minuto. Cada consulta es una llamada a la función y despierta Neon.
@@ -448,7 +453,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       this.installedFor = creds.deviceId;
 
       if (this.registeredFor !== creds.deviceId) {
-        const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc' });
+        const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc', v: SYNC_PROTOCOL });
         this.nodeIndex = reg.nodeIndex;
         await this.setState('node_index', String(reg.nodeIndex));
         await this.checkGen(reg.gen);
@@ -474,7 +479,15 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       else {
         const pushed = await this.pushPending();
         if (pushed || Date.now() >= this.nextPullAt) {
-          const pulled = await this.pullChanges(false);
+          let pulled = 0;
+          try {
+            pulled = await this.pullChanges(false);
+          } catch (err) {
+            if (!(err instanceof ResyncError)) throw err;
+            console.warn('[Sync] La nube compactó movimientos viejos que esta caja no tenía: realineando');
+            await this.bootstrap(tables, creds.deviceId, true);
+            pulled = 1;
+          }
           this.pullDelay = pushed || pulled ? CYCLE_MS : Math.min(this.pullDelay * 2, PULL_IDLE_MAX_MS);
           this.nextPullAt = Date.now() + this.pullDelay;
           await this.bumpWatermark(creds.deviceId);
@@ -515,10 +528,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private async bootstrap(tables: string[], deviceId: string, wasBootstrapped: boolean) {
     this.phase = 'full';
     this.writeStatusFile();
-    const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc' });
+    const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc', v: SYNC_PROTOCOL });
     this.nodeIndex = reg.nodeIndex;
     await this.setState('node_index', String(reg.nodeIndex));
     const hasData = await this.localHasBusinessData();
+    // Al realinear, lo que esta caja todavía no subió (ventas sin internet) se sube primero: si no,
+    // se perdían sus movimientos de stock. Sin conexión esto falla y se reintenta en el próximo ciclo.
+    if (wasBootstrapped) for (let i = 0; i < 200 && (await this.pushPending()); i++);
     // Lo anotado hasta ahora queda cubierto por esta pasada completa
     await this.prisma.$executeRawUnsafe(`DELETE FROM sync_outbox`);
     await this.prisma.$executeRawUnsafe(`DELETE FROM sync_deltas`);
@@ -656,7 +672,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           for (const t of ['sync_images', 'sync_img_fetch', 'sync_stash']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
         }
         for (;;) {
-          const page = await this.call('pull', { after, all: true });
+          const page = await this.call('pull', { after, all: true, fresh: wipe });
           head = page.head;
           await applyPage(tx, page.rows as CloudRow[]);
           applied += page.rows.length;
@@ -688,6 +704,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     for (;;) {
       const page = await this.call('pull', { after, all: false });
       await this.checkGen(page.gen);
+      if (page.resync) throw new ResyncError();
       head = page.head;
       if (page.rows.length) {
         this.phase = 'syncing';
@@ -934,4 +951,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 /** La cuenta se reinició (borrar todo) desde otra caja. */
 class AccountResetError extends Error {
   constructor(public gen: number) { super('Reinicio de la cuenta'); }
+}
+
+/** La nube compactó movimientos que esta caja todavía no había bajado: tiene que realinearse. */
+class ResyncError extends Error {
+  constructor() { super('La caja quedó atrás de lo compactado en la nube'); }
 }

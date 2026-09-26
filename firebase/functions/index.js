@@ -434,7 +434,7 @@ exports.ventraSync = onRequest(
       await cloudSync.ensureSchema(sql);
       let result;
       if (action === "register") {
-        result = await cloudSync.register(sql, uid, String(deviceId), String(req.body.kind || "pc").slice(0, 20));
+        result = await cloudSync.register(sql, uid, String(deviceId), String(req.body.kind || "pc").slice(0, 20), req.body.v);
       } else if (action === "report") {
         result = await cloudSync.report(sql, uid, String(deviceId), req.body.status);
       } else if (action === "claimLedger") {
@@ -443,7 +443,7 @@ exports.ventraSync = onRequest(
         if (!cloudSync.validRows(req.body.rows)) return res.status(400).json({ error: "Filas inválidas" });
         result = await cloudSync.push(sql, uid, String(deviceId), req.body.rows, req.body.gen);
       } else if (action === "pull") {
-        result = await cloudSync.pull(sql, uid, String(deviceId), req.body.after, !!req.body.all);
+        result = await cloudSync.pull(sql, uid, String(deviceId), req.body.after, !!req.body.all, !!req.body.fresh);
       } else if (action === "reset") {
         result = await cloudSync.reset(sql, uid);
         logger.warn(`Ventra: reinicio de fábrica de la cuenta ${uid} (desde ${deviceId})`);

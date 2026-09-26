@@ -74,6 +74,12 @@ async function ensureSchema(sql) {
       )`, []);
       // Avance que informa cada caja (para que las demás lo muestren mientras la esperan)
       await run(sql, `ALTER TABLE sync_nodes ADD COLUMN IF NOT EXISTS status jsonb`, []);
+      // Hasta dónde bajó cada caja y con qué versión de la sincronización: con eso se sabe qué
+      // movimientos viejos ya vieron todas y se pueden compactar
+      await run(sql, `ALTER TABLE sync_nodes ADD COLUMN IF NOT EXISTS pulled_seq bigint NOT NULL DEFAULT 0`, []);
+      await run(sql, `ALTER TABLE sync_nodes ADD COLUMN IF NOT EXISTS client_v integer NOT NULL DEFAULT 1`, []);
+      // Todo lo que está por debajo de este número ya se compactó: una caja que quedó más atrás se realinea
+      await run(sql, `ALTER TABLE sync_tenants ADD COLUMN IF NOT EXISTS compacted_seq bigint NOT NULL DEFAULT 0`, []);
     })().catch((err) => { schemaReady = null; throw err; });
   }
   return schemaReady;
@@ -89,7 +95,7 @@ function validRows(rows) {
  * Alta de una caja en el comercio. Devuelve su número (0 = la caja original,
  * que conserva su numeración) y el estado del comercio en la nube.
  */
-async function register(sql, tenantId, deviceId, kind) {
+async function register(sql, tenantId, deviceId, kind, clientV) {
   await run(sql, `INSERT INTO sync_tenants (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`, [tenantId]);
   const existing = await run(sql, `SELECT idx FROM sync_nodes WHERE tenant_id = $1 AND device_id = $2`, [tenantId, deviceId]);
   let idx;
@@ -105,7 +111,8 @@ async function register(sql, tenantId, deviceId, kind) {
       ON CONFLICT (tenant_id, device_id) DO UPDATE SET kind = EXCLUDED.kind RETURNING idx`, [tenantId, deviceId, idx, kind || null]);
     idx = rows[0].idx;
   }
-  await run(sql, `UPDATE sync_nodes SET last_seen_at = now() WHERE tenant_id = $1 AND device_id = $2`, [tenantId, deviceId]);
+  await run(sql, `UPDATE sync_nodes SET last_seen_at = now(), client_v = $3 WHERE tenant_id = $1 AND device_id = $2`,
+    [tenantId, deviceId, Math.max(1, Math.floor(Number(clientV) || 1))]);
   const [state] = await run(sql, `SELECT ledger FROM sync_tenants WHERE tenant_id = $1`, [tenantId]);
   const [{ rows }] = await run(sql, `SELECT count(*)::int AS rows FROM sync_rows WHERE tenant_id = $1 AND tbl <> '_delta' AND NOT deleted`, [tenantId]);
   const nodes = await run(sql, `SELECT idx, kind, status, last_seen_at FROM sync_nodes WHERE tenant_id = $1 ORDER BY idx`, [tenantId]);
@@ -167,21 +174,32 @@ async function push(sql, tenantId, deviceId, rows, gen) {
 /**
  * Baja cambios posteriores a `after` (orden global). Por defecto excluye lo que
  * esta misma caja escribió (ya lo tiene). `all` = incluir lo propio (recuperar).
+ * `fresh` = caja vacía que baja todo: las bajas no le sirven y no se mandan.
+ * `resync` en la respuesta: la caja quedó por detrás de lo compactado y tiene que realinearse.
  */
-async function pull(sql, tenantId, deviceId, after, all) {
+async function pull(sql, tenantId, deviceId, after, all, fresh) {
   const since = String(Math.max(0, Math.floor(Number(after) || 0)));
   // Las consultas van en paralelo: la función se cobra por el tiempo que espera a Neon.
   // "settled" recorre el índice (tenant_id, seq) desde el final y corta en la primera
   // fila con más de 10 s: no recorre todas las filas del comercio en cada consulta.
-  const [rows, [{ max }], settledRows, gen] = await Promise.all([
+  const [[tenant], rows, [{ max }], settledRows] = await Promise.all([
+    run(sql, `SELECT gen, compacted_seq::text AS compacted FROM sync_tenants WHERE tenant_id = $1`, [tenantId]),
     run(sql, `SELECT tbl, id, data, deleted, ts, seq FROM sync_rows
-      WHERE tenant_id = $1 AND seq > $2::bigint AND ($4::boolean OR device_id IS DISTINCT FROM $3)
-      ORDER BY seq LIMIT ${PAGE_SIZE}`, [tenantId, since, deviceId, !!all]),
+      WHERE tenant_id = $1 AND seq > $2::bigint AND ($4::boolean OR device_id IS DISTINCT FROM $3) AND NOT ($5::boolean AND deleted)
+      ORDER BY seq LIMIT ${PAGE_SIZE}`, [tenantId, since, deviceId, !!all, !!fresh]),
     run(sql, `SELECT COALESCE(max(seq), 0)::text AS max FROM sync_rows WHERE tenant_id = $1`, [tenantId]),
     run(sql, `SELECT seq::text AS settled FROM sync_rows WHERE tenant_id = $1 AND updated_at < now() - interval '10 seconds'
       ORDER BY sync_rows.seq DESC LIMIT 1`, [tenantId]),
-    tenantGen(sql, tenantId),
+    // Lo que pide ya lo aplicó: queda anotado hasta dónde llegó esta caja
+    since !== "0"
+      ? run(sql, `UPDATE sync_nodes SET pulled_seq = LEAST($3::bigint, (SELECT COALESCE(max(seq), 0) FROM sync_rows WHERE tenant_id = $1))
+          WHERE tenant_id = $1 AND device_id = $2 AND pulled_seq < $3::bigint`, [tenantId, deviceId, since])
+      : Promise.resolve(),
   ]);
+  const gen = tenant ? Number(tenant.gen) || 0 : 0;
+  if (since !== "0" && tenant && BigInt(since) < BigInt(tenant.compacted)) {
+    return { ok: true, gen, resync: true, rows: [], last: since, more: false, head: max };
+  }
   const settled = settledRows.length ? settledRows[0].settled : "0";
   const more = rows.length === PAGE_SIZE;
   let last = rows.length ? String(rows[rows.length - 1].seq) : since;
