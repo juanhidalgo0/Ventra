@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ExtrasEditor from '../store/ExtrasEditor';
 import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
+import { useConfirm, type ConfirmOptions } from '../common/ConfirmDialog';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
@@ -147,6 +148,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [crop, setCrop] = useState<{ file: File; kind: 'logo' | 'banner' } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   useEffect(() => {
     (async () => {
@@ -226,8 +228,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
   const publishCatalog = async () => {
     const online = products.filter((p) => p.showOnline);
-    if (online.length === 0 && published && published.length > 0
-      && !window.confirm('No hay ningún producto marcado: la tienda va a quedar sin productos. ¿Seguir?')) return false;
+    if (online.length === 0 && published && published.length > 0 && !(await confirm({
+      title: '¿Dejar la tienda sin productos?',
+      message: 'No hay ningún producto marcado para vender online. Si seguís, tus clientes van a ver la tienda vacía.',
+      confirmLabel: 'Publicar igual',
+      danger: true,
+    }))) return false;
     setPublishing('Preparando productos…');
     const images = await publishProductImages(storeId, online, (done, total) => setPublishing(`Subiendo fotos ${done} de ${total}…`));
     setPublishing('Publicando productos…');
@@ -272,7 +278,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const setVisible = async (visible: boolean) => {
     if (!config || publishing) return;
     if (visible) return publishAll({ isPublished: true });
-    if (!window.confirm('¿Ocultar la tienda? Tus clientes no van a poder verla ni hacer pedidos hasta que la vuelvas a hacer visible.')) return;
+    if (!(await confirm({
+      title: '¿Ocultar la tienda?',
+      message: 'Tus clientes no van a poder verla ni hacer pedidos hasta que la vuelvas a hacer visible.',
+      confirmLabel: 'Ocultar tienda',
+      danger: true,
+    }))) return;
     setPublishing('Ocultando…');
     try {
       await saveStoreConfig(storeId, { isPublished: false });
@@ -499,6 +510,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               onSetMany={setManyOnline}
               config={config}
               update={update}
+              confirm={confirm}
             />
           )}
 
@@ -599,9 +611,9 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 24, opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="sticky bottom-5 z-30 flex justify-center px-6 pointer-events-none"
+            className="fixed right-5 bottom-[76px] z-40 max-w-[calc(100vw-2.5rem)]"
           >
-            <div data-tour="store-save" className="pointer-events-auto flex items-center gap-4 pl-4 pr-2 py-2 rounded-2xl bg-slate-900 text-white shadow-[0_12px_40px_-8px_rgba(15,23,42,0.45)] max-w-full">
+            <div data-tour="store-save" role="status" className="flex items-center gap-4 pl-4 pr-2 py-2 rounded-2xl bg-slate-900 text-white shadow-[0_12px_40px_-8px_rgba(15,23,42,0.45)]">
               {publishing ? (
                 <span className="flex items-center gap-2.5 text-[13.5px] font-semibold py-2 pr-3"><Loader2 className="w-4 h-4 animate-spin" />{publishing}</span>
               ) : (
@@ -628,6 +640,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
           </motion.div>
         )}
       </AnimatePresence>
+      {confirmDialog}
     </div>
   );
 }
@@ -635,7 +648,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 function changesSummary(sections: Set<SectionId>, catalogDirty: boolean, diff: ReturnType<typeof diffCatalog> | null, n: number, visible: boolean) {
   const parts = SECTIONS.filter((s) => sections.has(s.id) && s.id !== 'productos').map((s) => s.label);
   if (sections.has('productos') || catalogDirty) {
-    parts.push(catalogDirty && diff && !diff.unknown && n > 0 ? plural(n, 'producto', 'productos') : 'Productos');
+    parts.push(catalogDirty && diff?.unknown ? 'Productos para actualizar en la tienda' : catalogDirty && diff && n > 0 ? plural(n, 'producto', 'productos') : 'Productos');
   }
   const what = parts.join(' · ');
   return visible ? what : `${what} · la tienda sigue oculta`;
@@ -726,10 +739,10 @@ function StageBadge({ stage }: { stage?: string }) {
 }
 
 // ─── Productos ───────────────────────────────────────────────────
-function ProductsSection({ products, isLoading, diff, publishedCount, pendingToggles, onToggle, onSetMany, config, update }: {
+function ProductsSection({ products, isLoading, diff, publishedCount, pendingToggles, onToggle, onSetMany, config, update, confirm }: {
   products: any[]; isLoading: boolean; diff: ReturnType<typeof diffCatalog> | null; publishedCount: number | null;
   pendingToggles: Set<string>; onToggle: (p: any) => void; onSetMany: (ids: string[], v: boolean) => Promise<void>;
-  config: StoreConfig; update: (p: Partial<StoreConfig>) => void;
+  config: StoreConfig; update: (p: Partial<StoreConfig>) => void; confirm: (o: ConfirmOptions) => Promise<boolean>;
 }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('ALL');
@@ -763,7 +776,15 @@ function ProductsSection({ products, isLoading, diff, publishedCount, pendingTog
   const narrowed = category !== 'ALL' || show !== 'ALL' || !!search.trim();
   const bulk = async () => {
     const next = !allOn;
-    if (!window.confirm(`¿${next ? 'Mostrar' : 'Ocultar'} ${narrowed ? 'estos' : 'todos los'} ${filtered.length} productos en la tienda?`)) return;
+    const n = filtered.length;
+    if (!(await confirm({
+      title: `¿${next ? 'Mostrar' : 'Ocultar'} ${narrowed ? (n === 1 ? 'este producto' : `estos ${n} productos`) : `todos los productos (${n})`}?`,
+      message: next
+        ? 'Van a quedar marcados para vender online. Se ven en la tienda cuando publiques los cambios.'
+        : 'Dejan de mostrarse en la tienda cuando publiques los cambios. Podés volver a mostrarlos cuando quieras.',
+      confirmLabel: next ? 'Mostrar' : 'Ocultar',
+      danger: !next,
+    }))) return;
     setBulkBusy(true);
     await onSetMany(filtered.map((p) => p.id), next);
     setBulkBusy(false);
