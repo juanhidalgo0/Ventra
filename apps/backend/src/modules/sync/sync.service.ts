@@ -211,8 +211,22 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     await db.$executeRawUnsafe(`INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value);
   }
 
-  private readFile(): { deviceId?: string; watermark?: string; lastSyncAt?: string } {
-    try { return JSON.parse(fs.readFileSync(this.stateFile, 'utf8')); } catch { return {}; }
+  /** corrupt: el archivo existe pero no se puede leer (p. ej. lleno de ceros tras un corte de luz). */
+  private readFile(): { deviceId?: string; watermark?: string; lastSyncAt?: string; corrupt?: boolean } {
+    let text: string;
+    try { text = fs.readFileSync(this.stateFile, 'utf8'); } catch { return {}; }
+    try { return JSON.parse(text); } catch { return { corrupt: true }; }
+  }
+
+  /** Se escribe en un archivo aparte y se renombra: un corte a mitad de camino no deja el archivo roto. */
+  private writeFile(deviceId: string, watermark: string) {
+    const tmp = `${this.stateFile}.tmp`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify({ deviceId, watermark, lastSyncAt: this.lastSyncAt }, null, 2));
+      fs.renameSync(tmp, this.stateFile);
+    } catch (err: any) {
+      console.warn('[Sync] No se pudo guardar el archivo de estado:', err.message);
+    }
   }
 
   private lastReport = 0;
@@ -247,7 +261,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     if (anterior) await this.setState('watermark_prev', anterior);
     await this.setState('watermark', wm);
     this.lastSyncAt = new Date().toISOString();
-    try { fs.writeFileSync(this.stateFile, JSON.stringify({ deviceId, watermark: wm, lastSyncAt: this.lastSyncAt }, null, 2)); } catch {}
+    this.writeFile(deviceId, wm);
   }
 
   // ── Tablas, columnas y triggers ───────────────────────────────────
@@ -441,11 +455,18 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         this.registeredFor = creds.deviceId;
       }
 
-      const file = this.readFile();
+      let file = this.readFile();
       this.lastSyncAt = file.lastSyncAt || this.lastSyncAt;
       const dbWm = await this.getState('watermark');
       const dbWmPrev = await this.getState('watermark_prev');
       const bootstrapped = (await this.getState('bootstrap')) === 'done';
+      // Archivo roto (no borrado): la base no cambió por fuera, se rehace el archivo en vez
+      // de volver a bajar todo de la nube
+      if (file.corrupt && bootstrapped && dbWm) {
+        console.warn('[Sync] El archivo de estado estaba dañado: se rehace a partir de la base');
+        this.writeFile(creds.deviceId, dbWm);
+        file = this.readFile();
+      }
       const consistent = file.deviceId === creds.deviceId && !!dbWm
         && (dbWm === file.watermark || (!!dbWmPrev && dbWmPrev === file.watermark));
 
@@ -639,7 +660,12 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           head = page.head;
           await applyPage(tx, page.rows as CloudRow[]);
           applied += page.rows.length;
-          if (this.progress) { this.progress.done = applied; this.writeStatusFile(); }
+          if (this.progress) {
+            this.progress.done = applied;
+            // La estimación cuenta solo lo vigente (no bajas ni movimientos de stock): pasada, se muestra solo la cantidad
+            if (this.progress.total && applied > this.progress.total) this.progress.total = 0;
+            this.writeStatusFile();
+          }
           after = page.last;
           if (!page.more) break;
         }
