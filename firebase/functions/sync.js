@@ -170,12 +170,19 @@ async function push(sql, tenantId, deviceId, rows, gen) {
  */
 async function pull(sql, tenantId, deviceId, after, all) {
   const since = String(Math.max(0, Math.floor(Number(after) || 0)));
-  const rows = await run(sql, `SELECT tbl, id, data, deleted, ts, seq FROM sync_rows
-    WHERE tenant_id = $1 AND seq > $2::bigint AND ($4::boolean OR device_id IS DISTINCT FROM $3)
-    ORDER BY seq LIMIT ${PAGE_SIZE}`, [tenantId, since, deviceId, !!all]);
-  const [{ max, settled }] = await run(sql, `SELECT COALESCE(max(seq), 0)::text AS max,
-      COALESCE(max(seq) FILTER (WHERE updated_at < now() - interval '10 seconds'), 0)::text AS settled
-    FROM sync_rows WHERE tenant_id = $1`, [tenantId]);
+  // Las consultas van en paralelo: la función se cobra por el tiempo que espera a Neon.
+  // "settled" recorre el índice (tenant_id, seq) desde el final y corta en la primera
+  // fila con más de 10 s: no recorre todas las filas del comercio en cada consulta.
+  const [rows, [{ max }], settledRows, gen] = await Promise.all([
+    run(sql, `SELECT tbl, id, data, deleted, ts, seq FROM sync_rows
+      WHERE tenant_id = $1 AND seq > $2::bigint AND ($4::boolean OR device_id IS DISTINCT FROM $3)
+      ORDER BY seq LIMIT ${PAGE_SIZE}`, [tenantId, since, deviceId, !!all]),
+    run(sql, `SELECT COALESCE(max(seq), 0)::text AS max FROM sync_rows WHERE tenant_id = $1`, [tenantId]),
+    run(sql, `SELECT seq::text AS settled FROM sync_rows WHERE tenant_id = $1 AND updated_at < now() - interval '10 seconds'
+      ORDER BY sync_rows.seq DESC LIMIT 1`, [tenantId]),
+    tenantGen(sql, tenantId),
+  ]);
+  const settled = settledRows.length ? settledRows[0].settled : "0";
   const more = rows.length === PAGE_SIZE;
   let last = rows.length ? String(rows[rows.length - 1].seq) : since;
   // Sin más cambios de otras cajas: el marcador avanza sobre lo propio ya confirmado
@@ -183,7 +190,7 @@ async function pull(sql, tenantId, deviceId, after, all) {
   if (!more && BigInt(settled) > BigInt(last)) last = settled;
   return {
     ok: true,
-    gen: await tenantGen(sql, tenantId),
+    gen,
     rows: rows.map((r) => ({ t: r.tbl, id: r.id, d: r.data, x: r.deleted, ts: Number(r.ts) })),
     last,
     more,

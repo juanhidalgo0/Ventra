@@ -62,6 +62,9 @@ test('solo el dueño sube productos', async () => {
   await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/products/p1'), { name: 'x', price: 1 }));
   await assertFails(setDoc(doc(as('intruso'), 'ventra_stores/owned/products/p1'), { name: 'x', price: 1 }));
   await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/products/p1')));
+  await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/catalog/p0'), { items: [{ productId: 'p1', name: 'x', price: 1 }] }));
+  await assertFails(setDoc(doc(as('intruso'), 'ventra_stores/owned/catalog/p0'), { items: [] }));
+  await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/catalog/p0')));
 });
 test('un cliente sin sesión hace un pedido válido', async () => {
   await assertSucceeds(addDoc(collection(as(null), 'ventra_stores/owned/orders'), order()));

@@ -49,7 +49,7 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/index.html"
+          "function": { "functionId": "storePage", "region": "us-central1" }
         }
       ]
     }

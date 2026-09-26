@@ -379,17 +379,32 @@ exports.ventraStoreSession = onRequest({ cors: true }, async (req, res) => {
 const NEON_DATABASE_URL = defineSecret("NEON_DATABASE_URL");
 const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 
+// Las cajas consultan seguido: el equipo se recuerda 5 minutos por instancia en vez de
+// leerlo de Firestore en cada llamada (un equipo desvinculado deja de andar en ese lapso).
+// Si lo recordado no coincide (equipo recién vinculado o con secreto nuevo) se vuelve a leer.
+const DEVICE_CACHE_MS = 5 * 60 * 1000;
+const deviceCache = new Map();
+
 async function deviceTenant(deviceId, deviceSecret) {
   if (!deviceId || !deviceSecret) return null;
-  const device = await db.collection("ventra_devices").doc(String(deviceId)).get();
-  if (!device.exists || device.data().secretHash !== sha256(deviceSecret)) return null;
+  const id = String(deviceId);
+  const hash = sha256(deviceSecret);
+  const cached = deviceCache.get(id);
+  if (cached && Date.now() - cached.at < DEVICE_CACHE_MS && cached.secretHash === hash) return cached.uid;
+  const device = await db.collection("ventra_devices").doc(id).get();
+  if (!device.exists || device.data().secretHash !== hash) {
+    deviceCache.delete(id);
+    return null;
+  }
+  if (deviceCache.size > 5000) deviceCache.clear();
+  deviceCache.set(id, { at: Date.now(), secretHash: hash, uid: device.data().uid });
   return device.data().uid;
 }
 
 const imagePath = (uid, productId) => `tenants/${uid}/products/${String(productId).replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
 exports.ventraSync = onRequest(
-  { cors: true, secrets: [NEON_DATABASE_URL], memory: "512MiB", timeoutSeconds: 120 },
+  { cors: true, secrets: [NEON_DATABASE_URL], memory: "512MiB", timeoutSeconds: 120, maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
     const { deviceId, deviceSecret, action } = req.body || {};
@@ -1135,4 +1150,60 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
       url: "/#/agenda", tag: "booking-" + event.params.bookingId,
     }, { storeId });
   }
+});
+
+// ─── Tienda: vista previa del link (WhatsApp, Instagram, Facebook) ───
+// Los que arman la vista previa no ejecutan JavaScript: la página de cada tienda sale del
+// servidor con su nombre, descripción y portada ya puestos. El resto lo sigue haciendo la tienda.
+let tiendaHtml = { at: 0, html: "" };
+const attr = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const findStore = async (slug) => {
+  if (!slug || !/^[a-z0-9-]{2,60}$/.test(slug)) return null;
+  const snap = await db.collection("ventra_stores").where("claimed", "==", true).where("subdomain", "==", slug).limit(1).get();
+  return snap.empty ? null : snap.docs[0].data();
+};
+exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req, res) => {
+  // /_og/<tienda>: la portada (o el logo) como imagen, para las tiendas que la tienen guardada embebida
+  const og = String(req.path || "").match(/^\/_og\/([a-z0-9-]{2,60})/);
+  if (og) {
+    const c = await findStore(og[1]).catch(() => null);
+    const src = c && (c.bannerUrl || c.logoUrl) || "";
+    const m = src.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+    if (m) { res.set("Cache-Control", "public, max-age=3600, s-maxage=86400"); return res.status(200).type(m[1]).send(Buffer.from(m[2], "base64")); }
+    if (/^https:\/\//.test(src)) return res.redirect(302, src);
+    return res.status(404).send("Sin imagen");
+  }
+  if (Date.now() - tiendaHtml.at > 5 * 60 * 1000 || !tiendaHtml.html) {
+    // index.html existe como archivo: el hosting lo sirve directo, sin volver a pasar por esta función
+    const r = await fetch("https://ventra-9cba5-tienda.web.app/index.html");
+    if (r.ok) tiendaHtml = { at: Date.now(), html: await r.text() };
+  }
+  let html = tiendaHtml.html;
+  if (!html) return res.status(503).send("La tienda no está disponible en este momento. Probá de nuevo en un rato.");
+  const slug = decodeURIComponent(String(req.path || "").replace(/^\/+|\/+$/g, "").split("/")[0] || "");
+  try {
+    if (slug && /^[a-z0-9-]{2,60}$/.test(slug)) {
+      const c = await findStore(slug);
+      if (c && c.isPublished) {
+        const name = c.businessName || "Tienda online";
+        const title = `${name} · Pedí online`;
+        const desc = c.description || `Mirá la carta de ${name} y hacé tu pedido online.`;
+        const src = c.bannerUrl || c.logoUrl || "";
+        // Las imágenes embebidas se sirven desde /_og/<tienda> (una vista previa necesita una dirección https)
+        const img = !src ? "" : /^https:\/\//.test(src) ? src : `https://tienda.ventra.store/_og/${slug}`;
+        const url = `https://tienda.ventra.store/${slug}`;
+        html = html
+          .replace(/<title id="pageTitle">[^<]*<\/title>/, `<title id="pageTitle">${attr(title)}</title>`)
+          .replace(/(<meta name="description" id="metaDesc" content=")[^"]*"/, `$1${attr(desc)}"`)
+          .replace(/(<meta property="og:title" id="ogTitle" content=")[^"]*"/, `$1${attr(title)}"`)
+          .replace(/(<meta property="og:description" id="ogDesc" content=")[^"]*"/, `$1${attr(desc)}"`)
+          .replace(/(<meta property="og:image" id="ogImage" content=")[^"]*"/, `$1${attr(img)}"`)
+          .replace("</head>", `<meta property="og:url" content="${attr(url)}">\n<meta property="og:site_name" content="${attr(name)}">\n<meta name="twitter:card" content="${img ? "summary_large_image" : "summary"}">\n<link rel="canonical" href="${attr(url)}">\n</head>`);
+      }
+    }
+  } catch (err) {
+    logger.warn("storePage: sin datos de la tienda", slug, err.message);
+  }
+  res.set("Cache-Control", "public, max-age=60, s-maxage=300");
+  res.status(200).type("html").send(html);
 });

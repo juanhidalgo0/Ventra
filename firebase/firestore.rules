@@ -69,6 +69,12 @@ service cloud.firestore {
         allow write: if storeOwner();
       }
 
+      // El mismo catálogo agrupado en pocos documentos: la tienda lo lee de una vez
+      match /catalog/{partId} {
+        allow read: if true;
+        allow write: if storeOwner();
+      }
+
       // Agenda de turnos: los turnos (con datos del cliente) solo los ve el dueño.
       // El público reserva por la función agendaBook, que evita turnos superpuestos.
       match /bookings/{bookingId} {
@@ -93,7 +99,7 @@ service cloud.firestore {
                                    'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount'])
             && (!('discount' in o) || (o.discount is number && o.discount >= 0))
             && (!('orderCode' in o) || (o.orderCode is string && o.orderCode.size() <= 12))
-            && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY'])
+            && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY', 'TABLE'])
             && (!('address' in o) || (o.address is string && o.address.size() <= 300))
             && (!('paymentMethod' in o) || (o.paymentMethod is string && o.paymentMethod.size() <= 60))
             && (!('deliveryCost' in o) || (o.deliveryCost is number && o.deliveryCost >= 0))
