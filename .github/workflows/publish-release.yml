@@ -1,0 +1,41 @@
+name: Publicar version
+
+# Después de probar el borrador que armó "Release Desktop App": Actions -> Publicar version
+# -> Run workflow -> escribir la versión (ej. v1.0.40). Publica primero en ventra-releases
+# (donde están los instaladores) y después la copia de este repositorio, y avisa al
+# instante a los POS abiertos. Hasta este paso ninguna PC ve la versión nueva.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Versión a publicar (ej. v1.0.40)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publicar en ventra-releases
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: gh release edit "${{ inputs.tag }}" -R juanhidalgo0/ventra-releases --draft=false --latest
+
+      # Transición: la copia para las PCs que todavía buscan en este repositorio
+      - name: Publicar la copia en este repositorio
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ inputs.tag }}" -R "${{ github.repository }}" --draft=false --latest
+
+      # Aviso instantáneo a los POS abiertos (si falla, lo encuentran en su chequeo cada 2 h).
+      # Requiere el secreto RELEASE_PUSH_SECRET, el mismo de la función publishDesktopVersion.
+      - name: Avisar a los POS
+        continue-on-error: true
+        env:
+          RELEASE_PUSH_SECRET: ${{ secrets.RELEASE_PUSH_SECRET }}
+        run: |
+          version="${{ inputs.tag }}"; version="${version#v}"
+          curl -sf -X POST "https://us-central1-ventra-9cba5.cloudfunctions.net/publishDesktopVersion" -H "x-release-secret: $RELEASE_PUSH_SECRET" -H "Content-Type: application/json" -d "{\"version\":\"$version\"}"

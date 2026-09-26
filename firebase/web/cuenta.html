@@ -173,7 +173,7 @@
       <h2>Descargá Ventra</h2>
       <p class="lead">La app para Windows. Se actualiza sola cada vez que publicamos una versión nueva.</p>
       <div class="row">
-        <a class="btn" id="downloadBtn" href="https://github.com/juanhidalgo0/Ventra/releases/latest" download>
+        <a class="btn" id="downloadBtn" href="https://github.com/juanhidalgo0/ventra-releases/releases/latest" download>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
           Descargar para Windows <span id="dlVersion" style="opacity:.75;font-weight:500"></span>
         </a>
@@ -271,7 +271,7 @@
     // GitHub, que corta después de 60 consultas por hora.
     var setDownload = function(v){
       if (!/^\d+\.\d+\.\d+$/.test(v)) return;
-      $('downloadBtn').href = 'https://github.com/juanhidalgo0/Ventra/releases/download/v' + v + '/Ventra_' + v + '_x64-setup.exe';
+      $('downloadBtn').href = 'https://github.com/juanhidalgo0/ventra-releases/releases/download/v' + v + '/Ventra_' + v + '_x64-setup.exe';
       $('downloadBtn').removeAttribute('target');
       $('dlVersion').textContent = 'v' + v;
       $('dlMeta').textContent = 'Versión ' + v + ' · Windows 10 u 11, 64 bits';

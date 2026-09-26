@@ -1,8 +1,13 @@
 name: Release Desktop App
 
 # Push a tag like "v1.0.2" (matching the "version" in src-tauri/tauri.conf.json)
-# to build, sign, and publish a new Ventra desktop release automatically.
-# Every installed app checks this repo's latest release for updates.
+# to build and sign a new Ventra desktop release.
+#
+# Los instaladores se publican en el repositorio público juanhidalgo0/ventra-releases
+# (el código puede quedar privado) y quedan como BORRADOR: ninguna PC los ve hasta
+# probarlos y correr el workflow "Publicar version" (publish-release.yml).
+# Transición: mientras haya PCs que buscan actualizaciones en este repositorio, la
+# misma versión se copia acá (también como borrador).
 on:
   push:
     tags:
@@ -60,33 +65,30 @@ jobs:
       - name: Build backend
         run: npm run build:backend
 
+      # RELEASES_TOKEN: token de GitHub que solo puede escribir en ventra-releases
       - uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          owner: juanhidalgo0
+          repo: ventra-releases
+          releaseCommitish: main
           tagName: ${{ github.ref_name }}
           releaseName: 'Ventra v__VERSION__'
           releaseBody: 'Ver los cambios de esta versión.'
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
 
-      # Notify every running desktop app instantly (Firestore realtime push),
-      # instead of each one waiting for its next periodic update check.
-      - name: Push instant update notification
-        # Llama a la función publishDesktopVersion del proyecto de Ventra (ventra-9cba5).
-        # Requiere el secreto RELEASE_PUSH_SECRET en GitHub (Settings → Secrets → Actions),
-        # con el mismo valor que el secreto de la función. Si falla, no frena el release:
-        # los POS igual encuentran la versión en su chequeo periódico.
-        continue-on-error: true
+      # Transición: las PCs con versiones anteriores buscan en este repositorio
+      - name: Copiar la versión a este repositorio (borrador)
+        shell: bash
         env:
-          RELEASE_PUSH_SECRET: ${{ secrets.RELEASE_PUSH_SECRET }}
+          TAG: ${{ github.ref_name }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v',''
-          Invoke-RestMethod -Method Post `
-            -Uri "https://us-central1-ventra-9cba5.cloudfunctions.net/publishDesktopVersion" `
-            -Headers @{ "x-release-secret" = $env:RELEASE_PUSH_SECRET } `
-            -ContentType "application/json" `
-            -Body (@{ version = $version } | ConvertTo-Json)
-        shell: pwsh
+          mkdir -p mirror
+          GH_TOKEN="$RELEASES_TOKEN" gh release download "$TAG" -R juanhidalgo0/ventra-releases -D mirror
+          GH_TOKEN="$GITHUB_TOKEN" gh release create "$TAG" mirror/* -R "${{ github.repository }}" --draft --title "Ventra v${TAG#v}" --notes "Ver los cambios de esta versión."
