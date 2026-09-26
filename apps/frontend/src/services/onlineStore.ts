@@ -15,6 +15,7 @@ import {
   orderBy,
   runTransaction,
   deleteField,
+  Timestamp,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
@@ -210,7 +211,8 @@ async function uploadInlineImage(storeId: string, name: string, src: string): Pr
 
 export async function saveStoreConfig(storeId: string, config: Partial<StoreConfig>): Promise<void> {
   await claimStore(storeId);
-  const { ownerUid: _o, claimed: _c, storeId: _s, ...editable } = config as any;
+  // El catálogo agrupado (catalogParts) y las fechas los escribe solo la publicación: nunca se mandan desde acá
+  const { ownerUid: _o, claimed: _c, storeId: _s, catalogParts: _p, catalogAt: _a, createdAt: _ca, updatedAt: _u, ...editable } = config as any;
   for (const field of ['logoUrl', 'bannerUrl'] as const) {
     if (typeof editable[field] === 'string') editable[field] = await uploadInlineImage(storeId, field, editable[field]);
   }
@@ -519,6 +521,28 @@ export interface StoreOrder {
   createdAt?: any;
 }
 
+/** Pedidos de la tienda entre dos fechas (más nuevos primero), para las métricas. */
+export async function fetchStoreOrders(storeId: string, from: Date, to: Date): Promise<StoreOrder[]> {
+  await claimStore(storeId);
+  const q = query(
+    collection(getDb(), 'ventra_stores', storeId, 'orders'),
+    where('createdAt', '>=', Timestamp.fromDate(from)),
+    where('createdAt', '<', Timestamp.fromDate(to)),
+    orderBy('createdAt', 'desc'),
+    limit(3000),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }) as StoreOrder);
+}
+
+/** Costo actual de cada producto (id → costo), sin traer el resto de los datos. */
+export async function fetchProductCosts(ids: string[]): Promise<Record<string, number>> {
+  if (!ids.length) return {};
+  const { default: api } = await import('./api');
+  const { data } = await api.post('/products/costs', { ids });
+  return data || {};
+}
+
 // Escucha en tiempo real los pedidos de la tienda, más nuevos primero.
 export function subscribeToStoreOrders(storeId: string, onChange: (orders: StoreOrder[]) => void): () => void {
   // Leer pedidos requiere ser el dueño: primero la sesión/reclamo, después el listener.
@@ -627,6 +651,24 @@ export async function fetchAllProducts(): Promise<any[]> {
     if (page.length < PAGE) break;
   }
   return all;
+}
+
+/** Los productos de la tienda como se publicarían, sin fotos (solo si tienen): liviano para el celular. */
+export async function fetchOnlineSummary(): Promise<OnlineProduct[]> {
+  const { default: api } = await import('./api');
+  const { data } = await api.get('/products/online-summary');
+  return ((data || []) as any[]).map((p) => toOnlineProduct(p, p.hasImage ? 'x' : ''));
+}
+
+/**
+ * Cuántos productos tienen cambios sin publicar (marcados, quitados o con precio/stock/foto distintos).
+ * -1: hay productos pero la tienda todavía no tiene el catálogo agrupado (no se sabe cuántos).
+ */
+export async function countPendingCatalog(storeId: string, config: StoreConfig): Promise<number> {
+  const [local, published] = await Promise.all([fetchOnlineSummary(), loadPublishedCatalog(storeId, config.catalogParts)]);
+  const d = diffCatalog(local, published, !!config.alwaysInStock || config.rubro === 'GASTRONOMIA');
+  if (d.unknown) return local.length ? -1 : 0;
+  return d.added.size + d.removed.size + d.changed.size;
 }
 
 /** Lo que hoy ve el público. null si la tienda todavía no publicó el catálogo agrupado. */

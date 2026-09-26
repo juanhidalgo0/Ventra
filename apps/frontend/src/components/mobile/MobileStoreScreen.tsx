@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
-  compressImageFile, publishOnlineCatalog, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
+  compressImageFile, publishOnlineCatalog, countPendingCatalog, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
   type StoreConfig, type StoreOrder, type DayHours,
 } from '../../services/onlineStore';
 import api from '../../services/api';
@@ -36,6 +36,8 @@ export default function MobileStoreScreen() {
   const [panel, setPanel] = useState<Panel>(null);
   const [error, setError] = useState(false);
   const [publishing, setPublishing] = useState<{ done: number; total: number } | null>(null);
+  /** Productos con cambios sin publicar (null = no se sabe, p. ej. sin conexión o POS sin actualizar) */
+  const [pending, setPending] = useState<number | null>(null);
 
   useEffect(() => {
     resolveStoreId()
@@ -46,6 +48,19 @@ export default function MobileStoreScreen() {
     if (!storeId) return;
     return subscribeToStoreOrders(storeId, setOrders);
   }, [storeId]);
+
+  const refreshPending = async (sid = storeId, cfg = config) => {
+    if (!sid || !cfg) return;
+    try { setPending(await countPendingCatalog(sid, cfg)); } catch { setPending(null); }
+  };
+  useEffect(() => { if (storeId && config) refreshPending(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, !!config, config?.alwaysInStock, config?.rubro]);
+  // Al volver a la app (cambiaste precios en la PC) se revisa de nuevo
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshPending(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  });
 
   const url = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : '';
   const newOrders = orders.filter((o) => !o.stage || o.stage === 'NEW').length;
@@ -58,7 +73,8 @@ export default function MobileStoreScreen() {
       toast.error('Para publicar la tienda necesitás la dirección web y el WhatsApp (en Datos de la tienda).');
       throw new Error('incompleta');
     }
-    await saveStoreConfig(storeId, next);
+    // Solo lo que cambió: no se pisa lo que se publicó o tocó desde la PC mientras tanto
+    await saveStoreConfig(storeId, patch);
     setConfig(next);
     toast.success('Guardado');
   };
@@ -74,7 +90,10 @@ export default function MobileStoreScreen() {
     setPublishing({ done: 0, total: 0 });
     try {
       const n = await publishOnlineCatalog(storeId, (done, total) => setPublishing({ done, total }));
-      toast.success(`Catálogo actualizado: ${n} productos`);
+      toast.success(`Listo: ${n} productos publicados en tu tienda`);
+      const fresh = await loadStoreConfig(storeId);
+      setConfig(fresh);
+      refreshPending(storeId, fresh);
     } catch {
       toast.error('No se pudo actualizar el catálogo');
     } finally {
@@ -91,8 +110,11 @@ export default function MobileStoreScreen() {
     );
   }
 
+  const showPending = pending !== null && pending !== 0 && !publishing && panel === null;
+  const pendingText = pending === -1 ? 'Productos por actualizar' : `${pending} ${pending === 1 ? 'producto con cambios' : 'productos con cambios'}`;
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="relative flex-1 min-h-0 flex flex-col">
       <ScreenHeader back title="Tienda online" subtitle={config?.businessName}>
         {config && (
           <div className="rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 p-4">
@@ -119,7 +141,7 @@ export default function MobileStoreScreen() {
         )}
       </ScreenHeader>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+      <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3 ${showPending ? 'pb-24' : ''}`}>
         {!config ? <ListSkeleton rows={5} /> : (
           <>
             <Row icon={ShoppingBag} tint="bg-rose-50 text-rose-700" title="Pedidos" text={orders.length ? `${orders.length} recibidos${newOrders ? ` · ${newOrders} nuevos` : ''}` : 'Todavía no llegó ninguno'} badge={newOrders} onClick={() => setPanel('orders')} />
@@ -133,7 +155,11 @@ export default function MobileStoreScreen() {
 
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4">
               <p className="text-[14px] font-semibold text-slate-800">Publicar en la tienda</p>
-              <p className="text-[12.5px] text-slate-500 mt-0.5">Sube a la tienda los productos elegidos con sus fotos, precios y stock de ahora. Usalo cada vez que cambies precios o productos.</p>
+              <p className="text-[12.5px] text-slate-500 mt-0.5">
+                {pending === 0 ? 'Tu tienda está al día: muestra los mismos productos, precios y stock que el sistema.'
+                  : pending && pending !== 0 ? `${pendingText}: tocá Publicar para que tus clientes los vean.`
+                  : 'Sube a la tienda los productos elegidos con sus fotos, precios y stock de ahora.'}
+              </p>
               <button onClick={publishCatalog} disabled={!!publishing} className="mt-3 w-full h-12 rounded-xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.99]">
                 <RefreshCw className={`w-4 h-4 ${publishing ? 'animate-spin' : ''}`} />
                 {publishing ? (publishing.total ? `Subiendo fotos ${publishing.done}/${publishing.total}…` : 'Publicando…') : 'Publicar productos'}
@@ -146,7 +172,7 @@ export default function MobileStoreScreen() {
       {config && (
         <>
           <OrdersSheet open={panel === 'orders'} orders={orders} onClose={() => setPanel(null)} store={config.businessName} />
-          <ProductsSheet open={panel === 'products'} onClose={() => setPanel(null)} onPublish={() => { setPanel(null); publishCatalog(); }}
+          <ProductsSheet open={panel === 'products'} onClose={() => { setPanel(null); refreshPending(); }} onPublish={() => { setPanel(null); publishCatalog(); }}
             paused={config.pausedIds || []} onPause={(ids) => save({ pausedIds: ids }).catch(() => {})} />
           <InfoSheet open={panel === 'info'} config={config} storeId={storeId!} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
           <DeliverySheet open={panel === 'delivery'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
@@ -156,6 +182,23 @@ export default function MobileStoreScreen() {
           </Sheet>
           <LookSheet open={panel === 'look'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
         </>
+      )}
+
+      {/* Aviso de productos sin publicar, sobre la barra de abajo */}
+      {showPending && (
+        <div className="absolute left-4 right-4 bottom-3 z-30">
+          <button onClick={publishCatalog} className="w-full flex items-center gap-3 pl-4 pr-2 py-2 rounded-2xl bg-slate-900 text-white shadow-[0_12px_32px_-8px_rgba(15,23,42,0.5)] active:scale-[0.99] text-left">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14px] font-bold">Cambios sin publicar</span>
+              <span className="block text-[12px] text-slate-300 truncate">{pendingText}</span>
+            </span>
+            <span className="h-10 px-4 rounded-xl bg-rose-500 text-[14px] font-bold flex items-center gap-1.5 shrink-0"><RefreshCw className="w-4 h-4" /> Publicar</span>
+          </button>
+        </div>
       )}
     </div>
   );

@@ -296,6 +296,26 @@ export class ProductsService {
     };
   }
 
+  /** Los productos de la tienda sin las fotos (pesan mucho): alcanza con saber si tienen. */
+  async getOnlineSummary() {
+    const rows = await this.prisma.product.findMany({
+      where: { showOnline: true },
+      select: {
+        id: true, name: true, description: true, salePrice: true, unit: true, stock: true, unlimitedStock: true,
+        variantGroupId: true, baseName: true, variantAttrs: true, imageUrl: true,
+        category: { select: { name: true, parentCategory: { select: { name: true } } } },
+        brand: { select: { name: true } },
+      },
+    });
+    return rows.map(({ imageUrl, ...p }) => ({ ...p, hasImage: !!imageUrl }));
+  }
+
+  async getCosts(ids: string[]): Promise<Record<string, number>> {
+    if (!ids.length) return {};
+    const rows = await this.prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, costPrice: true } });
+    return Object.fromEntries(rows.map((r) => [r.id, Number(r.costPrice) || 0]));
+  }
+
   async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; skip?: number; take?: number }) {
     try {
       const where = this.buildSearchWhere(params);

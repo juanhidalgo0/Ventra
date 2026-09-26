@@ -58,7 +58,7 @@ export default function HelpMenu({ pathname, side }: { pathname: string; side: '
 
   return (
     <>
-      <div ref={rootRef} className={`fixed bottom-5 z-40 ${side === 'left' ? 'left-5 hidden md:block' : 'right-5'}`}>
+      <div ref={rootRef} data-help-menu className={`fixed bottom-5 z-40 ${side === 'left' ? 'left-5 hidden md:block' : 'right-5'}`}>
         {/* Menú siempre montado: solo cambia su visibilidad con CSS (sin montar/desmontar
             ni librerías de animación), así no puede aparecer un cuadro de más al abrir/cerrar. */}
         <div

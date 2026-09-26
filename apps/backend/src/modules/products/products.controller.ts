@@ -90,6 +90,18 @@ export class ProductsController {
     return this.productsService.getPOSCatalog(updatedAfter);
   }
 
+  /** Productos marcados para la tienda, sin fotos (solo si tienen): para saber si hay cambios sin publicar. */
+  @Get('online-summary')
+  getOnlineSummary() {
+    return this.productsService.getOnlineSummary();
+  }
+
+  /** Costo actual de estos productos (para la ganancia estimada de la tienda online). */
+  @Post('costs')
+  getCosts(@Body() body: { ids?: string[] }) {
+    return this.productsService.getCosts(Array.isArray(body?.ids) ? body.ids.map(String).slice(0, 5000) : []);
+  }
+
   // Variantes (talle / color): se declaran antes de ':id' para que no las capture esa ruta
   @Get('variant-group/:variantGroupId')
   findVariantGroup(@Param('variantGroupId') variantGroupId: string) {

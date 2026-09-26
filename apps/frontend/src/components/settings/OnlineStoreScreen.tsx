@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ExtrasEditor from '../store/ExtrasEditor';
 import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
@@ -149,6 +149,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const [crop, setCrop] = useState<{ file: File; kind: 'logo' | 'banner' } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [confirm, confirmDialog] = useConfirm();
+  const barRight = useLeftOfHelpButton();
 
   useEffect(() => {
     (async () => {
@@ -611,7 +612,8 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 24, opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed right-5 bottom-[76px] z-40 max-w-[calc(100vw-2.5rem)]"
+            className="fixed bottom-5 z-40"
+            style={{ right: barRight, maxWidth: `calc(100vw - ${barRight + 20}px)` }}
           >
             <div data-tour="store-save" role="status" className="flex items-center gap-4 pl-4 pr-2 py-2 rounded-2xl bg-slate-900 text-white shadow-[0_12px_40px_-8px_rgba(15,23,42,0.45)]">
               {publishing ? (
@@ -643,6 +645,25 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
       {confirmDialog}
     </div>
   );
+}
+
+/** Distancia desde el borde derecho para quedar a la izquierda del botón Ayuda (su ancho cambia con el texto). */
+function useLeftOfHelpButton() {
+  const [right, setRight] = useState(20);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const help = document.querySelector<HTMLElement>('[data-help-menu]');
+      const r = help?.getBoundingClientRect();
+      setRight(r && r.width > 0 ? Math.round(window.innerWidth - r.left + 12) : 20);
+    };
+    measure();
+    const help = document.querySelector<HTMLElement>('[data-help-menu]');
+    const ro = help ? new ResizeObserver(measure) : null;
+    if (help) ro!.observe(help);
+    window.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+  return right;
 }
 
 function changesSummary(sections: Set<SectionId>, catalogDirty: boolean, diff: ReturnType<typeof diffCatalog> | null, n: number, visible: boolean) {
