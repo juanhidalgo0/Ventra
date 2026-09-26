@@ -1,11 +1,10 @@
 # See https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
 
 name: Fly Deploy
+# Solo manual (Actions -> Fly Deploy -> Run workflow): publica la app vieja go-portal-pos,
+# que ya no se usa. Antes se publicaba sola con cada push a main.
 on:
-  push:
-    branches:
-      - main
-      - master
+  workflow_dispatch:
 jobs:
   deploy:
     name: Deploy app
