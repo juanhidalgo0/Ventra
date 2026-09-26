@@ -39,25 +39,6 @@ export default function DashboardScreen() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showLowStock, setShowLowStock] = useState(false);
-  const [license, setLicense] = useState<any>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    api.get('/auth/license/status')
-      .then(({ data }) => {
-        if (isMounted) setLicense(data);
-      })
-      .catch(() => {});
-    return () => { isMounted = false; };
-  }, []);
-
-  const getDemoDaysRemaining = () => {
-    if (!license || !license.expiresAt) return 0;
-    const exp = new Date(license.expiresAt);
-    const today = new Date();
-    const diff = exp.getTime() - today.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
 
   // Filters State
   const [filterMode, setFilterMode] = useState<'month' | 'day' | 'range'>('month');
@@ -313,20 +294,6 @@ export default function DashboardScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-2 space-y-4 custom-scrollbar">
-      {license?.isDemo && (
-        <div className="bg-rose-50 border border-rose-250 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm select-none">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border border-rose-450">
-              📢
-            </div>
-            <div>
-              <p className="text-[9px] font-extrabold text-rose-600 uppercase tracking-widest leading-none">Modo de Evaluación Activo</p>
-              <h4 className="text-sm font-black text-rose-900 leading-tight mt-1.5">VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</h4>
-              <p className="text-[10.5px] text-rose-805 font-bold mt-1">Tu licencia DEMO vencerá pronto. Contáctate con soporte para adquirir una licencia definitiva.</p>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Premium Period / Date Selector & Exports Bar */}
       <div className="bg-white border border-slate-400 rounded-2xl p-3 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">

@@ -1,6 +1,5 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { stagePendingRestore } from './pending-restore';
-import { LicenseService } from '../auth/license.service';
 import { Cron, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import * as path from 'path';
@@ -21,8 +20,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private schedulerRegistry: SchedulerRegistry,
-    private prismaService: PrismaService,
-    @Inject(forwardRef(() => LicenseService)) private licenseService: LicenseService
+    private prismaService: PrismaService
   ) {
     // Almacenar backups en la raíz del proyecto para máxima seguridad y fácil acceso
     this.backupDir = path.join(process.cwd(), 'backups');
@@ -448,15 +446,6 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         await this.prismaService.$executeRawUnsafe('PRAGMA journal_mode=WAL;');
       } catch (walErr: any) {
         console.warn('[BackupService] No se pudo restablecer journal_mode a WAL:', walErr.message);
-      }
-
-      // 11. Automatically sync and re-verify the license for the current machine
-      try {
-        console.log('[BackupService] Sincronizando licencia para esta PC tras restauración...');
-        await this.licenseService.syncLicenseEntry();
-        await this.licenseService.triggerOnlineCheck();
-      } catch (err: any) {
-        console.warn('[BackupService] Error al sincronizar licencia post-restauración:', err.message);
       }
 
       console.log('[BackupService] Base de datos restaurada y reconectada con éxito. Servidor listo.');

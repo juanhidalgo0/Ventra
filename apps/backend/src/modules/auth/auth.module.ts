@@ -7,7 +7,6 @@ import { GoogleAuthService } from './google-auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { ProductsModule } from '../products/products.module';
-import { LicenseService } from './license.service';
 
 @Module({
   imports: [
@@ -23,7 +22,7 @@ import { LicenseService } from './license.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, GoogleAuthService, JwtStrategy, LicenseService],
-  exports: [AuthService, GoogleAuthService, JwtModule, LicenseService],
+  providers: [AuthService, GoogleAuthService, JwtStrategy],
+  exports: [AuthService, GoogleAuthService, JwtModule],
 })
 export class AuthModule {}

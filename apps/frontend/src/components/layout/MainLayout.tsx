@@ -36,7 +36,6 @@ export default function MainLayout({ children }: Props) {
   const [attempts, setAttempts] = useState(0);
   const [retryTrigger, setRetryTrigger] = useState(0);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [license, setLicense] = useState<any>(null);
   const [showCalculator, setShowCalculator] = useState(false);
 
   /**
@@ -81,24 +80,6 @@ export default function MainLayout({ children }: Props) {
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    api.get('/auth/license/status')
-      .then(({ data }) => {
-        if (isMounted) setLicense(data);
-      })
-      .catch(() => {});
-    return () => { isMounted = false; };
-  }, []);
-
-  const getDemoDaysRemaining = () => {
-    if (!license || !license.expiresAt) return 0;
-    const exp = new Date(license.expiresAt);
-    const today = new Date();
-    const diff = exp.getTime() - today.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
 
   const loadingMessages = [
     "Inicializando aplicación...",
@@ -381,15 +362,6 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex items-center gap-3">
-            {license?.isDemo && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm mr-2 select-none">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
-                </span>
-                <span>VERSION DEMO: {getDemoDaysRemaining()} DÍAS RESTANTES</span>
-              </div>
-            )}
             {isAdminUser && planHasCaja && setupPct !== null && setupPct < 100 && (
               <button
                 onClick={() => navigate('/settings')}

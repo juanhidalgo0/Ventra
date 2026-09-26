@@ -3,7 +3,6 @@ import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
-import { LicenseService } from './license.service';
 
 class LoginDto {
   @IsString() @IsNotEmpty() username: string;
@@ -34,8 +33,7 @@ class ChangePasswordDto {
 export class AuthController {
   constructor(
     private authService: AuthService,
-    private googleAuthService: GoogleAuthService,
-    private licenseService: LicenseService
+    private googleAuthService: GoogleAuthService
   ) {}
 
   @Post('login')
@@ -299,25 +297,5 @@ export class AuthController {
   @Post('change-password')
   async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.sub, dto.oldPassword, dto.newPassword);
-  }
-
-  @Get('license/status')
-  async getLicenseStatus() {
-    return this.licenseService.getLicenseStatus();
-  }
-
-  @Get('license/dev-reset')
-  async devResetLicense() {
-    await this.licenseService.devResetLicense();
-    return { success: true, message: 'License reset successfully. PC is now blocked.' };
-  }
-
-  @Post('license/activate')
-  async activateLicense(@Body() dto: { code: string }) {
-    const success = await this.licenseService.activateWithCode(dto.code);
-    if (!success) {
-      throw new BadRequestException('Código de activación inválido para esta computadora');
-    }
-    return { success: true };
   }
 }

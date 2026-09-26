@@ -8,7 +8,6 @@ import MainLayout from './components/layout/MainLayout';
 import POSScreen from './components/pos/POSScreen';
 import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import api, { resolveServerUrl } from './services/api';
-import LicenseBlockScreen from './components/auth/LicenseBlockScreen';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
 import GlobalLoadingBar from './components/common/GlobalLoadingBar';
@@ -190,39 +189,11 @@ export default function App() {
     }
   }, [location.pathname, user]);
   
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
-  const [checkingLicense, setCheckingLicense] = useState(false);
-
   // Cache Warming State
   const { products, isWarmed, setProducts, setCategories, setClients, setIsWarmed, setPromotions } = usePOSStore();
   const [warmingProgress, setWarmingProgress] = useState(0);
   const [warmingStatus, setWarmingStatus] = useState('Iniciando base de datos...');
   const [warmingError, setWarmingError] = useState<string | null>(null);
-
-  const checkLicense = async (retries = 3) => {
-    try {
-      const { data } = await api.get('/auth/license/status');
-      setLicenseStatus(data);
-    } catch (err: any) {
-      if (err.response?.status === 402) {
-        setLicenseStatus(err.response.data);
-      } else if (retries > 0) {
-        // Backend may still be starting up — retry after 3s
-        setTimeout(() => checkLicense(retries - 1), 3000);
-        return;
-      } else {
-        // If we can't reach the server, do not allow access
-        console.warn('[App] License check failed after retries, blocking app:', err.message);
-        setLicenseStatus({ 
-          isActive: false, 
-          machineUuid: 'ERROR_CONEXION', 
-          expiresAt: new Date(0).toISOString() 
-        });
-      }
-    } finally {
-      setCheckingLicense(false);
-    }
-  };
 
   useEffect(() => {
     // Sync body attribute initially
@@ -261,23 +232,10 @@ export default function App() {
 
     const serverIp = localStorage.getItem('server_ip') || sessionStorage.getItem('server_ip');
     if (serverIp) {
-      autoLoginAdmin().then(() => {
-        checkLicense();
-      });
-    } else {
-      setCheckingLicense(false);
-      setLicenseStatus(null);
+      autoLoginAdmin();
     }
   }, [location.pathname]);
 
-  // Re-check license periodically when authenticated
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const interval = setInterval(() => {
-      checkLicense();
-    }, 60000); // verify every 60 seconds in background
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
  
   // Listen for real-time product updates from the backend via WebSockets
   useEffect(() => {
@@ -500,8 +458,6 @@ export default function App() {
       window.removeEventListener('import-progress-update', handleUpdate);
     };
   }, []);
-
-  // License loading screen bypassed
 
   if (isAuthenticated && !isWarmed) {
     const stagger = perfMode ? {} : { initial: 'hidden', animate: 'visible', variants: {
