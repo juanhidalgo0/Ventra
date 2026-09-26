@@ -142,6 +142,8 @@ export interface StoreConfig {
   pausedIds?: string[];
   /** Promos por cantidad publicadas desde Promociones (ej. docena de empanadas de cualquier gusto) */
   onlinePromos?: OnlinePromo[];
+  /** Cuántas partes tiene el catálogo agrupado publicado (catalog/p0, p1...) */
+  catalogParts?: number;
   ownerUid?: string;
   claimed?: boolean;
   updatedAt?: any;
@@ -503,7 +505,7 @@ export interface StoreOrder {
   customerNote?: string;
   /** Código corto que ve el cliente en WhatsApp (ej. "K7P2") */
   orderCode?: string;
-  delivery?: 'PICKUP' | 'DELIVERY' | 'GODELIVERY';
+  delivery?: 'PICKUP' | 'DELIVERY' | 'GODELIVERY' | 'TABLE';
   address?: string;
   paymentMethod?: string;
   deliveryCost?: number;
@@ -612,13 +614,62 @@ export function compressImageFile(file: File, maxWidth: number, maxHeight: numbe
  * Publica en la tienda los productos marcados "mostrar en la tienda" (con sus
  * fotos subidas a la nube). Es lo mismo que "Sincronizar" en la PC, usado desde el celular.
  */
-export async function publishOnlineCatalog(storeId: string, onProgress?: (done: number, total: number) => void): Promise<number> {
+/** Todos los productos del POS, en tandas (con miles de productos un solo pedido quedaba corto). */
+export async function fetchAllProducts(): Promise<any[]> {
   const { default: api } = await import('./api');
-  const { data } = await api.get('/products', { params: { take: 5000 } });
-  const all = (data?.products || data || []) as any[];
+  const PAGE = 2000;
+  const all: any[] = [];
+  const seen = new Set<string>();
+  for (let skip = 0; ; skip += PAGE) {
+    const { data } = await api.get('/products', { params: { skip, take: PAGE } });
+    const page = (data?.products || data || []) as any[];
+    for (const p of page) if (!seen.has(p.id)) { seen.add(p.id); all.push(p); }
+    if (page.length < PAGE) break;
+  }
+  return all;
+}
+
+/** Lo que hoy ve el público. null si la tienda todavía no publicó el catálogo agrupado. */
+export async function loadPublishedCatalog(storeId: string, parts?: number): Promise<OnlineProduct[] | null> {
+  if (!parts) return null;
+  const snaps = await Promise.all(Array.from({ length: parts }, (_, i) => getDoc(doc(getDb(), 'ventra_stores', storeId, 'catalog', `p${i}`))));
+  if (snaps.some((s) => !s.exists())) return null;
+  return snaps.flatMap((s) => ((s.data() as any).items || []) as OnlineProduct[]);
+}
+
+export type CatalogDiff = { added: Set<string>; removed: Set<string>; changed: Set<string>; unknown: boolean };
+
+/**
+ * Qué cambió en los productos respecto de lo publicado: marcados nuevos, quitados y con
+ * precio, nombre, categoría, foto o stock distintos. Las fotos se comparan por "tiene o no"
+ * (la publicada es un enlace de la nube y la local una foto embebida).
+ */
+export function diffCatalog(local: OnlineProduct[], published: OnlineProduct[] | null, ignoreStock: boolean): CatalogDiff {
+  const diff: CatalogDiff = { added: new Set(), removed: new Set(), changed: new Set(), unknown: published === null };
+  if (published === null) {
+    local.forEach((p) => diff.added.add(p.productId));
+    return diff;
+  }
+  const sig = (p: OnlineProduct) => [p.name, Number(p.price) || 0, p.category || '', p.parentCategory || '', p.brand || '', p.unit || '',
+    p.description || '', ignoreStock ? '' : !!p.inStock, !!p.imageUrl, p.variantGroupId || '', p.variantLabel || ''].join('|');
+  const pub = new Map(published.map((p) => [p.productId, sig(p)]));
+  const localIds = new Set<string>();
+  for (const p of local) {
+    localIds.add(p.productId);
+    const before = pub.get(p.productId);
+    if (before === undefined) diff.added.add(p.productId);
+    else if (before !== sig(p)) diff.changed.add(p.productId);
+  }
+  published.forEach((p) => { if (!localIds.has(p.productId)) diff.removed.add(p.productId); });
+  return diff;
+}
+
+export async function publishOnlineCatalog(storeId: string, onProgress?: (done: number, total: number) => void): Promise<number> {
+  const all = await fetchAllProducts();
   let online = all.filter((p) => p.showOnline);
   // Igual que "Sincronizar" en la PC: si todavía no se marcó ninguno, se publica todo el inventario
   if (online.length === 0 && all.length > 0) {
+    const { default: api } = await import('./api');
     await api.post('/products/bulk-set-show-online', { showOnline: true });
     online = all;
   }

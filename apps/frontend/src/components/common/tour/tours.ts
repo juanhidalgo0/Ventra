@@ -70,11 +70,11 @@ export const TOURS = {
   ],
   onlineStore: [
     { title: 'Tu tienda online', body: 'Un **catálogo propio** con tu marca, donde los pedidos llegan directo a tu WhatsApp.' },
-    { target: 'store-identity', title: 'Identidad', body: 'El **nombre y rubro** que ven tus clientes al entrar.' },
-    { target: 'store-appearance', title: 'Apariencia', body: 'Elegí **colores, logo y portada** para que la tienda se vea como tu negocio.' },
-    { target: 'store-contact', title: 'Contacto y pedidos', body: 'Cargá tu **WhatsApp** y redes. Ahí vas a recibir cada pedido.' },
-    { target: 'store-products', title: 'Productos publicados', body: 'Decidí **qué productos** se muestran en la tienda.' },
-    { target: 'store-save', title: 'Tu tienda está lista', body: '**Guardá los cambios** y compartí el enlace. Tus clientes ya pueden encontrarte.' },
+    { target: 'store-nav-negocio', click: true, title: 'Datos del negocio', body: 'El **nombre**, la **dirección web** y el **WhatsApp** donde te llega cada pedido.' },
+    { target: 'store-nav-productos', click: true, title: 'Productos', body: 'Decidí **qué productos** se venden online. Los cambios de precio y stock también se marcan acá.' },
+    { target: 'store-nav-apariencia', click: true, title: 'Apariencia', body: 'Elegí **colores, logo y portada** para que la tienda se vea como tu negocio.' },
+    { target: 'store-nav-entregas', click: true, title: 'Entregas y pagos', body: 'Retiro, envío, costos y **medios de pago** que aceptás.' },
+    { target: 'store-visible', title: 'Hacerla visible', body: 'Cuando esté lista, **hacé visible la tienda** y compartí el enlace. Si cambiás algo después, aparece un aviso abajo para **publicar los cambios**.' },
   ],
 } satisfies Record<string, TourStep[]>;
 
