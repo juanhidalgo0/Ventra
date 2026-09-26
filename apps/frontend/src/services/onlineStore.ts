@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   orderBy,
   runTransaction,
+  deleteField,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
@@ -187,9 +188,30 @@ export async function loadStoreConfig(storeId: string): Promise<StoreConfig> {
   return { storeId, ...DEFAULT_CONFIG };
 }
 
+/**
+ * Logo y portada se suben a Storage: embebidos (base64) agrandaban el documento de la
+ * tienda, que se lee en cada visita. Si la subida falla, quedan embebidos como antes.
+ */
+async function uploadInlineImage(storeId: string, name: string, src: string): Promise<string> {
+  if (!src.startsWith('data:')) return src;
+  try {
+    const key = await fingerprint(src.length > 4000 ? src.slice(0, 2000) + src.length + src.slice(-2000) : src);
+    const blob = await (await fetch(src)).blob();
+    const ref = storageRef(getVentraStorage(), `ventra_stores/${storeId}/${name}_${key}.jpg`);
+    await uploadBytes(ref, blob, { contentType: blob.type || 'image/jpeg', cacheControl: 'public,max-age=31536000,immutable' });
+    return await getDownloadURL(ref);
+  } catch (err) {
+    console.warn('[OnlineStore] No se pudo subir la imagen de la tienda', name, err);
+    return src;
+  }
+}
+
 export async function saveStoreConfig(storeId: string, config: Partial<StoreConfig>): Promise<void> {
   await claimStore(storeId);
   const { ownerUid: _o, claimed: _c, storeId: _s, ...editable } = config as any;
+  for (const field of ['logoUrl', 'bannerUrl'] as const) {
+    if (typeof editable[field] === 'string') editable[field] = await uploadInlineImage(storeId, field, editable[field]);
+  }
   await updateDoc(doc(getDb(), 'ventra_stores', storeId), { ...editable, updatedAt: serverTimestamp() });
   if (config.rubro === 'GASTRONOMIA') {
     import('../stores/businessStore').then(({ useBusinessStore }) => {
@@ -421,6 +443,43 @@ export async function syncCatalogToStore(storeId: string, products: OnlineProduc
       }
     }
     await batch.commit();
+  }
+  await publishCatalogParts(storeId, products);
+}
+
+/**
+ * La tienda lee el catálogo de unos pocos documentos grandes (catalog/p0, p1...) en vez
+ * de un documento por producto: una visita pasa de cientos de lecturas a 1-3.
+ * Las partes y el aviso en la tienda (catalogParts) se escriben juntos, así nunca se
+ * lee una mezcla de catálogo viejo y nuevo. Si no se puede, la tienda vuelve a leer
+ * los productos sueltos (que se siguen publicando igual).
+ */
+const CATALOG_PART_BYTES = 600_000;
+
+async function publishCatalogParts(storeId: string, products: OnlineProduct[]): Promise<void> {
+  const db = getDb();
+  const storeRef = doc(db, 'ventra_stores', storeId);
+  const parts: OnlineProduct[][] = [];
+  let current: OnlineProduct[] = [];
+  let size = 0;
+  for (const p of products) {
+    const bytes = JSON.stringify(p).length + 50;
+    if (current.length && size + bytes > CATALOG_PART_BYTES) { parts.push(current); current = []; size = 0; }
+    current.push(p);
+    size += bytes;
+  }
+  if (current.length || !parts.length) parts.push(current);
+
+  try {
+    const before = Number((await getDoc(storeRef)).data()?.catalogParts) || 0;
+    const batch = writeBatch(db);
+    parts.forEach((items, i) => batch.set(doc(storeRef, 'catalog', `p${i}`), { items }));
+    for (let i = parts.length; i < before; i++) batch.delete(doc(storeRef, 'catalog', `p${i}`));
+    batch.update(storeRef, { catalogParts: parts.length, catalogAt: serverTimestamp() });
+    await batch.commit();
+  } catch (err) {
+    console.warn('[OnlineStore] No se pudo publicar el catálogo agrupado; la tienda lee los productos sueltos', err);
+    await updateDoc(storeRef, { catalogParts: deleteField() }).catch(() => {});
   }
 }
 

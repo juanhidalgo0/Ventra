@@ -29,6 +29,14 @@ import { SubscriptionService } from '../subscription/subscription.service';
 // VENTRA_FUNCTIONS_URL permite apuntar a una nube de pruebas
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 const CYCLE_MS = 5000;
+/**
+ * Cada ciclo sube lo propio al instante, pero solo le pregunta a la nube por cambios de
+ * otras cajas cuando toca: cada 5 s mientras hay movimiento y, en reposo, cada vez más
+ * espaciado hasta 1 minuto. Cada consulta es una llamada a la función y despierta Neon.
+ */
+const PULL_IDLE_MAX_MS = 60_000;
+/** Si la nube responde con error, no se reintenta cada 5 s para siempre: se espacia hasta 5 min. */
+const ERROR_RETRY_MAX_MS = 5 * 60_000;
 const OUTBOX_BATCH = 1000;
 const PAGE = 500;
 const MAX_BATCH_BYTES = 1_500_000;
@@ -74,6 +82,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private phase: SyncPhase = 'disabled';
   private lastSyncAt: string | null = null;
   private lastError: string | null = null;
+  private pullDelay = CYCLE_MS;
+  private nextPullAt = 0;
+  private errorDelay = 0;
+  private retryAt = 0;
   private progress: SyncStatus['progress'] = null;
   /**
    * true mientras una descarga completa tiene la base tomada en UNA transacción
@@ -403,7 +415,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
   // ── Ciclo ─────────────────────────────────────────────────────────
   async cycle() {
-    if (this.running) return;
+    if (this.running || Date.now() < this.retryAt) return;
     const creds = this.subscription.getDeviceCredentials();
     if (!creds) {
       // Sin vincular: no se anota nada (limpia triggers de una vinculación anterior)
@@ -439,9 +451,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
       if (!bootstrapped || !consistent || installedNow) await this.bootstrap(tables, creds.deviceId, bootstrapped);
       else {
-        await this.pushPending();
-        await this.pullChanges(false);
-        await this.bumpWatermark(creds.deviceId);
+        const pushed = await this.pushPending();
+        if (pushed || Date.now() >= this.nextPullAt) {
+          const pulled = await this.pullChanges(false);
+          this.pullDelay = pushed || pulled ? CYCLE_MS : Math.min(this.pullDelay * 2, PULL_IDLE_MAX_MS);
+          this.nextPullAt = Date.now() + this.pullDelay;
+          await this.bumpWatermark(creds.deviceId);
+        }
       }
       if (this.phase === 'waiting') return;
       await this.uploadImages();
@@ -449,6 +465,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
       this.phase = 'idle';
       this.lastError = null;
+      this.errorDelay = 0;
     } catch (err: any) {
       if (err instanceof AccountResetError) {
         await this.applyAccountReset(err.gen).catch((e) => console.error('[Sync] No se pudo vaciar la base tras el reinicio:', e));
@@ -457,7 +474,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       const offline = !err.response && ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ECONNRESET'].includes(err.code);
       this.phase = offline ? 'offline' : 'error';
       this.lastError = offline ? 'Sin conexión: los cambios se suben cuando vuelva internet' : (err.response?.data?.error || err.message);
-      if (!offline) console.warn('[Sync] Error:', this.lastError);
+      if (!offline) {
+        this.errorDelay = Math.min(this.errorDelay ? this.errorDelay * 2 : CYCLE_MS, ERROR_RETRY_MAX_MS);
+        this.retryAt = Date.now() + this.errorDelay;
+        console.warn(`[Sync] Error (reintento en ${Math.round(this.errorDelay / 1000)} s):`, this.lastError);
+      }
     } finally {
       if (this.phase !== 'waiting') this.progress = null;
       this.running = false;
@@ -520,10 +541,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Sube lo anotado: filas cambiadas y diferencias de contadores. */
-  private async pushPending() {
+  /** Sube lo pendiente de esta caja. Devuelve si había algo. */
+  private async pushPending(): Promise<boolean> {
     const entries: any[] = await this.prisma.$queryRawUnsafe(`SELECT seq, tbl, row_id, op, CAST(ts AS REAL) AS ts FROM sync_outbox ORDER BY seq LIMIT ${OUTBOX_BATCH}`);
     const deltas: any[] = await this.prisma.$queryRawUnsafe(`SELECT id, tbl, row_id, col, delta, CAST(ts AS REAL) AS ts FROM sync_deltas ORDER BY ts LIMIT ${OUTBOX_BATCH}`);
-    if (!entries.length && !deltas.length) return;
+    if (!entries.length && !deltas.length) return false;
     this.phase = 'syncing';
 
     const out: CloudRow[] = [];
@@ -568,6 +590,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.prisma.$executeRawUnsafe(`DELETE FROM sync_deltas WHERE id IN (${chunk.map(() => '?').join(',')})`, ...chunk);
       }
     }
+    return true;
   }
 
   /**
@@ -633,7 +656,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       } finally {
         this.writeLock = false;
       }
-      return;
+      return applied;
     }
 
     for (;;) {
@@ -657,6 +680,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       after = page.last;
       if (!page.more) break;
     }
+    return applied;
   }
 
   private async applyDelta(tx: Tx, tables: string[], deltaId: string, d: any) {
@@ -874,6 +898,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
   /** Fuerza un ciclo ya (botón "Sincronizar ahora"). */
   async syncNow() {
+    this.nextPullAt = 0;
+    this.retryAt = 0;
     await this.cycle();
     return this.getStatus();
   }
