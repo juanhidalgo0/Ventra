@@ -352,7 +352,38 @@
   .bk-fade{animation:bkFade .22s ease-out both}
   @keyframes bkFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .bk-steps span{transition:background .3s}
-  .bk-ctx{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-2);background:var(--line-2);border-radius:12px;padding:9px 12px;margin-bottom:6px}
+  .bk-ctx{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-2);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:12px;padding:9px 12px;margin-bottom:6px}
+  /* Encabezado de la reserva: título, "Paso N de M" y una barra que avanza */
+  .bk-title{flex:1;min-width:0}
+  .bk-title h3{margin:0;font-size:19px;font-weight:800;line-height:1.2}
+  .bk-title small{display:block;font-size:12px;font-weight:700;color:var(--ink-3);margin-top:1px;letter-spacing:.01em}
+  .bk-prog{height:4px;border-radius:2px;background:var(--line-2);margin:2px 18px 12px;overflow:hidden;flex-shrink:0}
+  .bk-prog i{display:block;height:100%;border-radius:2px;background:var(--brand);transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  /* Opciones (servicio, profesional) */
+  .bk-list{display:grid;gap:10px}
+  .bk-opt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px;border-radius:18px;border:1.5px solid var(--line-2);background:#fff;transition:border-color .15s,box-shadow .2s,transform .12s,background .15s}
+  @media(hover:hover){.bk-opt:hover{border-color:var(--brand-soft-2);background:color-mix(in srgb,var(--brand) 3%,#fff);box-shadow:0 10px 24px -16px rgba(0,0,0,.35)}}
+  .bk-opt:active{transform:scale(.985)}
+  .bk-opt-ic{width:46px;height:46px;border-radius:14px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font:800 18px 'Plus Jakarta Sans',sans-serif;flex-shrink:0}
+  .bk-opt-ic.av{border-radius:50%;color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 4.5px var(--line-2)}
+  .bk-opt-ic.any{border-radius:50%;background:var(--line-2);color:var(--ink-2)}
+  .bk-opt-ic svg.i{width:20px;height:20px}
+  .bk-opt-main{flex:1;min-width:0;display:grid;gap:5px}
+  .bk-opt-main>b{font-size:15.5px;line-height:1.25;color:var(--ink)}
+  .bk-opt-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-3)}
+  .bk-opt-desc{font-size:12.5px;color:var(--ink-3);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .bk-opt-side{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:15px;font-weight:800;color:var(--ink)}
+  .bk-chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;background:var(--line-2);color:var(--ink-2);font-size:12px;font-weight:600}
+  .bk-chip svg.i{width:13px;height:13px}
+  svg.i.fwd{transform:rotate(180deg);width:18px;height:18px;color:var(--ink-3);flex-shrink:0}
+  /* Resumen del turno en "Tus datos" */
+  .bk-card{border-radius:18px;background:linear-gradient(180deg,var(--brand-soft),#fff 85%);border:1.5px solid var(--brand-soft-2);padding:14px;margin-bottom:18px}
+  .bk-card-top{display:flex;align-items:center;gap:12px}
+  .bk-card-when{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--brand-soft-2);font-size:14px;color:var(--ink-2)}
+  .bk-card-when svg.i{width:17px;height:17px;color:var(--brand);flex-shrink:0}
+  .bk-card-when b{color:var(--ink)}
+  .bk-link{margin-left:auto;font-weight:700;color:var(--brand);font-size:13.5px;padding:4px 2px}
+  .bk-sub{font-size:13px;font-weight:800;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px}
   .bk-ctx svg.i{width:16px;height:16px;color:var(--brand);flex-shrink:0}
   .bk-ctx b{color:var(--ink)}
   .bk-days{position:sticky;top:-4px;z-index:3;background:var(--surface);margin:0 -18px;padding:8px 0 6px}
@@ -1307,6 +1338,7 @@ function openBooking(serviceId){
   S.bk={step:serviceId?'staff':'service',serviceId:serviceId||null,staffId:null,day:null,time:null,dayPicked:false};
   if(serviceId && bkStaffFor(bkService()).length===1){ S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; }
   S.bkLast=S.bk.step; /* al abrir no se desliza: ya sube la hoja */
+  S.bkProgFrom=0;
   renderBooking(); openSheet('bookSheet');
 }
 function loadBusy(k){
@@ -1336,11 +1368,18 @@ function workDays(){
   return out;
 }
 
+/* Pasos que ve el cliente: si hay un solo profesional, "¿Con quién?" no aparece */
+function bkStepsList(){
+  var sv=bkService(), multi=sv?bkStaffFor(sv).length>1:agStaff().length>1;
+  return multi?['service','staff','time','data']:['service','time','data'];
+}
 function bkHead(title,back){
-  var steps=['service','staff','time','data'], idx=steps.indexOf(S.bk.step);
+  var steps=bkStepsList(), idx=steps.indexOf(S.bk.step), pct=idx>=0?Math.round((idx+1)/steps.length*100):0;
+  S.bkProgTo=pct;
   return '<div class="grab"></div><div class="sheet-head">'+(back?'<button class="sheet-close" data-act="bk-back" aria-label="Volver">'+ic('back')+'</button>':'')
-    +'<h3 class="display">'+title+'</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
-    +(idx>=0?'<div class="bk-steps">'+steps.map(function(x,i){ return '<span class="'+(i<=idx?'on':'')+'"></span>'; }).join('')+'</div>':'');
+    +'<div class="bk-title"><h3 class="display">'+title+'</h3>'+(idx>=0?'<small>Paso '+(idx+1)+' de '+steps.length+'</small>':'')+'</div>'
+    +'<button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
+    +(idx>=0?'<div class="bk-prog"><i style="width:'+(S.bkProgFrom||0)+'%"></i></div>':'');
 }
 var BK_ORDER=['service','staff','time','data','done'];
 /* Cada paso entra deslizándose (hacia la izquierda al avanzar, a la derecha al volver) */
@@ -1351,20 +1390,29 @@ function renderBooking(){
   renderBookingStep();
   var body=$('#bookSheet .sheet-body');
   if(body && changed) body.classList.add('bk-in', back?'back':'fwd');
+  // La barra arranca donde estaba y avanza (o retrocede) hasta el paso actual
+  var bar=$('#bookSheet .bk-prog i'), to=S.bkProgTo||0;
+  if(bar) requestAnimationFrame(function(){ requestAnimationFrame(function(){ bar.style.width=to+'%'; }); });
+  S.bkProgFrom=to;
 }
 function renderBookingStep(){
   var el=$('#bookSheet'), b=S.bk, sv=bkService();
   if(b.step==='service'){
-    el.innerHTML=bkHead('¿Qué te querés hacer?',false)+'<div class="sheet-body"><div class="svc-list" style="grid-template-columns:1fr">'
-      +agServices().map(function(v){ return '<button class="svc" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><div class="svc-info"><div class="svc-name">'+esc(v.name)+'</div><div class="svc-meta">'+ic('clock')+durLabel(Number(v.durationMin)||30)+(v.price>0?' · <b style="color:var(--ink)">'+money(v.price)+'</b>':'')+'</div>'+(v.description?'<div class="svc-desc">'+esc(v.description)+'</div>':'')+'</div></button>'; }).join('')
+    el.innerHTML=bkHead('¿Qué te querés hacer?',false)+'<div class="sheet-body"><div class="bk-list">'
+      +agServices().map(function(v){
+        return '<button class="bk-opt" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><span class="bk-opt-ic">'+initial(v.name)+'</span>'
+          +'<span class="bk-opt-main"><b>'+esc(v.name)+'</b><span class="bk-opt-meta"><span class="bk-chip">'+ic('clock')+durLabel(Number(v.durationMin)||30)+'</span></span>'
+          +(v.description?'<span class="bk-opt-desc">'+esc(v.description)+'</span>':'')+'</span>'
+          +'<span class="bk-opt-side">'+(v.price>0?money(v.price):'')+ic('back','fwd')+'</span></button>';
+      }).join('')
       +'</div></div>';
     return;
   }
   if(b.step==='staff'){
     var list=bkStaffFor(sv);
-    el.innerHTML=bkHead('¿Con quién?',true)+'<div class="sheet-body"><p style="margin:0 0 12px;color:var(--ink-2);font-size:14px">'+esc(sv.name)+' · '+durLabel(Number(sv.durationMin)||30)+'</p><div class="who-list">'
-      +(list.length>1?'<button class="who" data-act="bk-pick-staff" data-id="ANY"><span class="who-av" style="background:var(--ink-3)">'+ic('clock')+'</span><span><b>Cualquiera</b><br><small style="color:var(--ink-3)">El primer horario libre</small></span></button>':'')
-      +list.map(function(st){ return '<button class="who" data-act="bk-pick-staff" data-id="'+esc(st.id)+'"><span class="who-av" style="background:'+esc(st.color||'var(--brand)')+'">'+initial(st.name)+'</span><b>'+esc(st.name)+'</b></button>'; }).join('')
+    el.innerHTML=bkHead('¿Con quién?',true)+'<div class="sheet-body"><div class="bk-ctx" style="margin-bottom:14px">'+ic('clock')+'<span><b>'+esc(sv.name)+'</b> · '+durLabel(Number(sv.durationMin)||30)+'</span></div><div class="bk-list">'
+      +(list.length>1?'<button class="bk-opt" data-act="bk-pick-staff" data-id="ANY"><span class="bk-opt-ic any">'+ic('clock')+'</span><span class="bk-opt-main"><b>Cualquiera</b><span class="bk-opt-meta">Te mostramos todos los horarios libres</span></span>'+ic('back','fwd')+'</button>':'')
+      +list.map(function(st){ return '<button class="bk-opt" data-act="bk-pick-staff" data-id="'+esc(st.id)+'"><span class="bk-opt-ic av" style="background:'+esc(st.color||'var(--brand)')+'">'+initial(st.name)+'</span><span class="bk-opt-main"><b>'+esc(st.name)+'</b></span>'+ic('back','fwd')+'</button>'; }).join('')
       +'</div></div>';
     return;
   }
@@ -1388,13 +1436,16 @@ function renderBookingStep(){
     var saved={}; try{ saved=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); }catch(e){}
     var st2=agStaff().filter(function(x){ return x.id===b.staffId; })[0];
     el.innerHTML=bkHead('Tus datos',true)+'<div class="sheet-body">'
-      +'<div class="bk-sum"><div>'+ic('check')+'<b>'+esc(sv.name)+'</b>'+(sv.price>0?'<span style="margin-left:auto">'+money(sv.price)+'</span>':'')+'</div>'
-      +'<div>'+ic('clock')+esc(capFirst(dayText(b.day)))+', '+hhmm(b.time)+' hs</div>'
-      +(st2?'<div>'+ic('store')+'Con '+esc(st2.name)+'</div>':'')+'</div>'
+      +'<div class="bk-card"><div class="bk-card-top">'
+      +(st2?'<span class="bk-opt-ic av" style="background:'+esc(st2.color||'var(--brand)')+'">'+initial(st2.name)+'</span>':'<span class="bk-opt-ic">'+initial(sv.name)+'</span>')
+      +'<span class="bk-opt-main"><b>'+esc(sv.name)+'</b><span class="bk-opt-meta">'+durLabel(Number(sv.durationMin)||30)+(st2?' · con '+esc(st2.name):'')+'</span></span>'
+      +(sv.price>0?'<span class="bk-opt-side">'+money(sv.price)+'</span>':'')+'</div>'
+      +'<div class="bk-card-when">'+ic('clock')+'<span><b>'+esc(capFirst(dayText(b.day)))+'</b> · '+hhmm(b.time)+' hs</span><button class="bk-link" data-act="bk-back">Cambiar</button></div></div>'
+      +'<p class="bk-sub">Para confirmarte el turno</p>'
       +'<div class="field" id="b-name"><label for="bName">Nombre y apellido</label><input id="bName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
       +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área.</div></div>'
       +'<div class="field"><label for="bNote">Algo que quieras aclarar (opcional)</label><textarea id="bNote" placeholder="Ej: es para mi hija de 8 años"></textarea></div>'
-      +'</div><div class="sheet-foot"><button class="btn btn-brand btn-block" data-act="bk-confirm">Confirmar turno</button></div>';
+      +'</div><div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="bk-confirm">Confirmar turno'+(sv.price>0?' · '+money(sv.price):'')+'</button></div>';
     return;
   }
   if(b.step==='done'){
@@ -1507,6 +1558,7 @@ async function confirmBooking(btn){
   $('#b-phone').classList.toggle('invalid',digits.length<8); if(digits.length<8) ok=false;
   if(!ok){ toast('Revisá los datos marcados'); return; }
   try{ var prev=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); localStorage.setItem('ventra_customer',JSON.stringify(Object.assign(prev,{name:name,phone:phone}))); }catch(e){}
+  var label=btn.innerHTML;
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
   try{
     var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,note:note})});
@@ -1514,13 +1566,13 @@ async function confirmBooking(btn){
     if(!res.ok){
       toast(data.error||'No se pudo reservar');
       if(res.status===409){ delete S.bkBusy[b.day]; b.step='time'; b.time=null; renderBooking(); return; }
-      btn.disabled=false; btn.textContent='Confirmar turno'; return;
+      btn.disabled=false; btn.innerHTML=label; return;
     }
     delete S.bkBusy[b.day];
     b.name=name; b.result=data; b.step='done'; renderBooking();
   }catch(e){
     toast('Sin conexión. Probá de nuevo.');
-    btn.disabled=false; btn.textContent='Confirmar turno';
+    btn.disabled=false; btn.innerHTML=label;
   }
 }
 
