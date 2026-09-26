@@ -539,7 +539,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl }: { agenda:
       <section className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 flex items-center gap-4">
         <div className="flex-1">
           <p className="text-[15px] font-bold text-slate-900">Tomar turnos online</p>
-          <p className="text-[12.5px] text-slate-500">{a.enabled ? `Tus clientes reservan desde la tienda${publicUrl ? ` (${publicUrl.replace('https://', '')})` : ''}.` : 'Apagado: la tienda no muestra la reserva de turnos.'}</p>
+          <p className="text-[12.5px] text-slate-500">{a.enabled ? `Tus clientes reservan desde la tienda${publicUrl ? ` (${publicUrl})` : ''}.` : 'Apagado: la tienda no muestra la reserva de turnos.'}</p>
         </div>
         <Toggle on={a.enabled} onChange={(v) => setA({ ...a, enabled: v })} />
       </section>

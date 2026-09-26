@@ -174,7 +174,7 @@ export default function StoreHomeScreen() {
         <div>
           <p className="text-[12px] font-semibold tracking-[0.14em] text-rose-600">VENTRA TIENDA</p>
           <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">{title}</h1>
-          <p className="text-[13px] text-slate-500">{status}{publicUrl ? ` · ${publicUrl.replace('https://', '')}` : ''}</p>
+          <p className="text-[13px] text-slate-500">{status}{publicUrl ? ` · ${publicUrl}` : ''}</p>
         </div>
         {actions}
       </div>

@@ -102,7 +102,7 @@ export default function MobileStoreScreen() {
                   <span className={`w-2 h-2 rounded-full ${config.isPublished ? 'bg-orange-200' : 'bg-white/40'}`} />
                   {config.isPublished ? 'Publicada' : 'Borrador (no se ve)'}
                 </p>
-                <p className="text-[14px] font-semibold truncate">{url ? url.replace('https://', '') : 'Sin dirección web todavía'}</p>
+                <p className="text-[14px] font-semibold truncate">{url || 'Sin dirección web todavía'}</p>
               </div>
               <PublishToggle on={config.isPublished} onChange={(v) => save({ isPublished: v }).catch(() => {})} />
             </div>
