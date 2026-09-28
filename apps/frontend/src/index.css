@@ -144,11 +144,15 @@ html.dark {
      la página, por eso sirven también en modo rendimiento. `backwards` hace
      que al terminar no quede ningún transform aplicado. */
   .anim-fade { animation: v-fade var(--dur-fast) var(--ease-out) backwards; }
+  /* Fondo oscuro de modales: arranca apenas visible (no en 0) para que el
+     detector de capas fantasma (utils/overlayWatchdog) nunca lo confunda. */
+  .anim-veil { animation: v-veil var(--dur-fast) var(--ease-out) backwards; }
   .anim-pop  { animation: v-pop var(--dur-base) var(--ease-out) backwards; }
   .anim-rise { animation: v-rise var(--dur-base) var(--ease-out) backwards; }
   .anim-bump { animation: v-bump var(--dur-slow) var(--ease-out) backwards; }
 
   @keyframes v-fade { from { opacity: 0; } }
+  @keyframes v-veil { from { opacity: 0.12; } }
   @keyframes v-pop  { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
   @keyframes v-rise { from { opacity: 0; transform: translateY(-4px); } }
   @keyframes v-bump { from { opacity: 0.35; transform: translateY(3px); } }
@@ -367,7 +371,7 @@ body[data-performance-mode="true"]:not(.on-auth-screen) :is(.animate-ping, .anim
 /* Modales y overlays: en modo rendimiento no usan framer-motion; entran con
    un fundido y el panel con un leve ascenso. Cerrar es instantáneo. */
 body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0:not(.mobile-app *):not(.mobile-app) {
-  animation: v-fade var(--dur-fast) var(--ease-out) backwards;
+  animation: v-veil var(--dur-fast) var(--ease-out) backwards;
 }
 body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0 > :not(.absolute):not(.fixed):not(.mobile-app *) {
   animation: v-pop var(--dur-base) var(--ease-out) backwards;
@@ -386,7 +390,7 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0 > :not(.a
 
 /* Quien pidió menos movimiento en Windows no ve animaciones de entrada */
 @media (prefers-reduced-motion: reduce) {
-  .anim-fade, .anim-pop, .anim-rise, .anim-bump,
+  .anim-fade, .anim-veil, .anim-pop, .anim-rise, .anim-bump,
   body[data-performance-mode="true"] .fixed.inset-0,
   body[data-performance-mode="true"] .fixed.inset-0 > * {
     animation: none !important;

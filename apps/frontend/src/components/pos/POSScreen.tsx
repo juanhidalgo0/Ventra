@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useTransition, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useTransition, useMemo } from 'react';
 import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
@@ -1504,12 +1504,11 @@ export default function POSScreen() {
     }).format(rounded);
   };
 
+  // Stock legible de un vistazo: punto de color + texto ("Sin stock", "Quedan 3")
   const formatStockBadge = (stock: number, unlimitedStock?: boolean, pieceSize?: number, unit?: string) => {
+    const neutral = 'text-slate-600 dark:text-slate-300';
     if (unlimitedStock) {
-      return {
-        text: 'ST: ∞',
-        className: 'bg-slate-900/80 text-white backdrop-blur-xs'
-      };
+      return { text: 'Stock ∞', dot: 'bg-slate-400', tone: neutral };
     }
     const num = Number(stock) || 0;
     let formatted: string;
@@ -1528,30 +1527,11 @@ export default function POSScreen() {
       formatted = Math.round(num).toLocaleString('es-AR');
     }
 
-    if (num <= 0) {
-      if (num === 0) {
-        return { 
-          text: 'ST: 0', 
-          className: 'bg-rose-600 text-white font-bold backdrop-blur-xs' 
-        };
-      }
-      return { 
-        text: `ST: ${formatted}`, 
-        className: 'bg-slate-800/90 text-slate-200 border border-slate-700/60 font-medium backdrop-blur-xs' 
-      };
-    }
-
-    if (num <= 5) {
-      return { 
-        text: `ST: ${formatted}`, 
-        className: 'bg-amber-600 text-white font-black backdrop-blur-xs' 
-      };
-    }
-
-    return { 
-      text: `ST: ${formatted}`, 
-      className: 'bg-slate-900/80 text-white font-bold backdrop-blur-xs font-mono' 
-    };
+    const danger = 'text-red-600 dark:text-red-400';
+    if (num === 0) return { text: 'Sin stock', dot: 'bg-red-500', tone: danger };
+    if (num < 0) return { text: `Stock ${formatted}`, dot: 'bg-red-500', tone: danger };
+    if (num <= 5) return { text: `Quedan ${formatted}`, dot: 'bg-amber-500', tone: 'text-amber-700 dark:text-amber-400' };
+    return { text: `Stock ${formatted}`, dot: 'bg-emerald-500', tone: neutral };
   };
 
   const cleanSearchQuery = searchQuery.trim().toLowerCase();
@@ -1608,6 +1588,53 @@ export default function POSScreen() {
 
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
+  // Barra superior: las utilidades (derecha) miden lo mismo que el panel del ticket
+  // y los botones de acción ocupan el resto. Si no entran, pasan a nombres cortos
+  // (modo 1) y después a solo ícono con tooltip (modo 2). Se mide solo cuando cambia
+  // el tamaño o qué botones hay, nunca en cada render.
+  // Ref por callback: si el encabezado se vuelve a montar, el observador se engancha al nodo nuevo
+  const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
+  const [headerMode, setHeaderMode] = useState<0 | 1 | 2>(0);
+  const headerNeedRef = useRef<number[]>([0, 0]);
+  const headerKey = `${ordersVisible}|${canQuote}|${canAcopio}|${!!currentSession}|${newOnlineOrders > 0}`;
+  const headerKeyRef = useRef(headerKey);
+  useLayoutEffect(() => {
+    const el = headerActionsEl;
+    if (!el || !el.clientWidth) return;
+    if (headerKeyRef.current !== headerKey) {
+      // Cambiaron los botones: se vuelve a probar desde los nombres completos
+      headerKeyRef.current = headerKey;
+      if (headerMode !== 0) { setHeaderMode(0); return; }
+    }
+    if (headerMode < 2 && el.scrollWidth > el.clientWidth + 1) {
+      headerNeedRef.current[headerMode] = el.scrollWidth;
+      setHeaderMode((headerMode + 1) as 1 | 2);
+    }
+  }, [headerMode, headerKey, headerActionsEl]);
+  useEffect(() => {
+    const el = headerActionsEl;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setHeaderMode((mode) => {
+        const w = el.clientWidth;
+        if (!w) return mode;
+        if (mode > 0 && w >= headerNeedRef.current[mode - 1]) return (mode - 1) as 0 | 1;
+        if (mode < 2 && el.scrollWidth > w + 1) {
+          headerNeedRef.current[mode] = el.scrollWidth;
+          return (mode + 1) as 1 | 2;
+        }
+        return mode;
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [headerActionsEl]);
+  const hdrBtn = 'flex-auto group relative hidden md:flex shrink-0 min-w-10 items-center justify-center gap-1.5 h-10 px-3 rounded-xl font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer';
+  // El tooltip no ocupa lugar hasta el hover, así no altera la medición
+  const hdrTip = 'hidden md:group-hover:block pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[11px] font-semibold px-2 py-1 rounded-md shadow-lg z-50 whitespace-nowrap';
+  const hdrKey = 'inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border';
+  const hdrLabel = (full: string, short: string) => (headerMode === 2 ? null : <span>{headerMode === 0 ? full : short}</span>);
+
   return (
     <>
       <div className="flex flex-col h-full gap-3 overflow-hidden">
@@ -1643,76 +1670,77 @@ export default function POSScreen() {
         )}
 
         {/* TOP: Quick Actions Bar */}
-        <div className="pos-header font-sans relative z-30 flex flex-nowrap items-center gap-2 shrink-0 w-full overflow-x-auto scrollbar-hide pb-1.5 md:pb-0">
+        <div className="pos-header font-sans relative z-30 flex flex-nowrap items-center gap-3 md:gap-4 shrink-0 w-full">
+          <div ref={setHeaderActionsEl} className="flex-1 min-w-0 flex flex-nowrap items-center gap-2 overflow-x-auto md:overflow-visible scrollbar-hide pb-1.5 md:pb-0">
           {/* 1. Estado Caja */}
           <button
             data-tour="pos-caja"
             onClick={() => { if (currentSession) setShowCajaInfo(true); else setShowAbrirCaja(true); }}
-            className={`flex-auto group relative shrink-0 h-10 flex items-center justify-center gap-1.5 px-3 xl:px-3.5 rounded-xl font-bold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
-              currentSession 
-                ? 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border-transparent' 
+            className={`flex-auto group relative shrink-0 min-w-10 h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl font-bold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-2xs border whitespace-nowrap ${
+              currentSession
+                ? 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border-transparent'
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
             <Vault strokeWidth={2.25} className={`w-4 h-4 shrink-0 ${currentSession ? 'text-white' : 'text-amber-600'}`} />
             <span className="flex items-center gap-1.5">
               {/* En móvil el rótulo vuelve: es el único botón visible y "Abrir Caja" es la acción a leer */}
-              <span className="inline md:hidden xl:inline">{currentSession ? 'Caja' : 'Abrir Caja'}</span>
+              <span className={headerMode === 2 ? 'inline md:hidden' : 'inline'}>{currentSession ? 'Caja' : 'Abrir Caja'}</span>
               {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-400/40" />}
             </span>
-            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">{currentSession ? 'Caja abierta [F8]' : 'Abrir caja [F8]'}</span>
-            <span className={`hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>
+            {headerMode === 2 && <span className={hdrTip}>{currentSession ? 'Caja abierta [F8]' : 'Abrir caja [F8]'}</span>}
+            {headerMode === 0 && <span className={`hidden md:inline-flex ${hdrKey} ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>}
           </button>
 
           {/* Mobile hamburger menu trigger */}
-          <button 
-            onClick={() => setShowMobileMenu(true)} 
+          <button
+            onClick={() => setShowMobileMenu(true)}
             className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-xs shrink-0"
           >
             <Menu strokeWidth={2.25} className="w-5 h-5" />
           </button>
 
           {/* Cuentas Corrientes */}
-          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+          <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className={`${hdrBtn} bg-indigo-600 hover:bg-indigo-700`}>
             <HandCoins strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span className="hidden xl:inline">Cuentas Corrientes</span>
-            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Cuentas Corrientes [F5]</span>
-            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F5</span>
+            {hdrLabel('Cuentas Corrientes', 'Ctas. Ctes.')}
+            {headerMode !== 0 && <span className={hdrTip}>Cuentas Corrientes [F5]</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F5</span>}
           </button>
 
           {/* Historial */}
-          <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+          <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className={`${hdrBtn} bg-violet-600 hover:bg-violet-700`}>
             <ReceiptText strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span className="hidden xl:inline">Historial</span>
-            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Historial [F6]</span>
-            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F6</span>
+            {hdrLabel('Historial', 'Historial')}
+            {headerMode !== 0 && <span className={hdrTip}>Historial [F6]</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F6</span>}
           </button>
 
           {/* Gastos */}
-          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white">
+          <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className={`${hdrBtn} bg-emerald-700 hover:bg-emerald-800`}>
             <TrendingDown strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span className="hidden xl:inline">Gastos</span>
-            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Gastos [F7]</span>
-            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F7</span>
+            {hdrLabel('Gastos', 'Gastos')}
+            {headerMode !== 0 && <span className={hdrTip}>Gastos [F7]</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F7</span>}
           </button>
 
           {/* Proveedores */}
-          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+          <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className={`${hdrBtn} bg-blue-600 hover:bg-blue-700`}>
             <Truck strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-            <span className="hidden xl:inline">Proveedores</span>
-            <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300 xl:hidden">Proveedores [F9]</span>
-            <span className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/25 ml-1 leading-none">F9</span>
+            {hdrLabel('Proveedores', 'Proveedores')}
+            {headerMode !== 0 && <span className={hdrTip}>Proveedores [F9]</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F9</span>}
           </button>
 
           {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
           {ordersVisible && (
-            <button onClick={() => setShowOnlineOrders(true)} className="flex-auto group relative hidden md:flex shrink-0 items-center justify-center gap-1.5 h-10 px-3 xl:px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer">
+            <button onClick={() => setShowOnlineOrders(true)} className={`${hdrBtn} bg-rose-600 hover:bg-rose-700`}>
               <ShoppingCart strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-              <span className="hidden xl:inline">Pedidos</span>
+              {hdrLabel('Pedidos', 'Pedidos')}
               {newOnlineOrders > 0 && (
                 <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-orange-200 text-orange-900 text-[11px] font-bold flex items-center justify-center animate-pulse">{newOnlineOrders}</span>
               )}
-              <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap xl:hidden">Pedidos online</span>
+              {headerMode === 2 && <span className={hdrTip}>Pedidos online</span>}
             </button>
           )}
 
@@ -1720,12 +1748,10 @@ export default function POSScreen() {
           {canQuote && (
             <button
               data-tour="pos-presupuestos" onClick={() => setShowQuotesList(true)}
-              className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
+              className={`${hdrBtn} bg-orange-600 hover:bg-orange-700`}
             >
               <ClipboardList strokeWidth={2.25} className="w-4 h-4" />
-              <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
-                Presupuestos
-              </span>
+              <span className={hdrTip}>Presupuestos</span>
             </button>
           )}
 
@@ -1733,22 +1759,18 @@ export default function POSScreen() {
           {canAcopio && (
             <button
               data-tour="pos-acopios" onClick={() => setShowAcopios(true)}
-              className="flex-auto group relative hidden md:flex shrink-0 min-w-10 px-3 h-10 items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 text-white border border-transparent transition-all active:scale-95 shadow-sm cursor-pointer"
+              className={`${hdrBtn} bg-teal-600 hover:bg-teal-700`}
             >
               <Boxes strokeWidth={2.25} className="w-4 h-4" />
-              <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
-                Acopios
-              </span>
+              <span className={hdrTip}>Acopios</span>
             </button>
           )}
+          </div>
 
-
-          {/* Utilidades: barra compacta, separada de los botones de acción.
-              Desde 1366px toma el mismo ancho que el panel del ticket (abajo a la derecha)
-              para que ambos bloques arranquen en la misma línea vertical. El corte no es xl
-              (1280) porque ahí la fila desborda: los botones de acción más la barra de 480px
-              no entran, y la barra se sale del borde derecho. */}
-          <div className="hidden md:flex items-center gap-0.5 h-10 p-1 ml-1 rounded-xl bg-white dark:bg-slate-850 border border-slate-250 dark:border-slate-750 shadow-2xs shrink-0 min-[1366px]:w-[480px] min-[1366px]:justify-between">
+          {/* Utilidades: siempre del mismo ancho que el panel del ticket (abajo a la derecha,
+              mismos md/lg/xl) y con el mismo espacio a la izquierda, así ambos bloques
+              arrancan en la misma línea vertical. Los botones de acción se adaptan al resto. */}
+          <div className="hidden md:flex items-center justify-between gap-0.5 h-10 p-1 rounded-xl bg-white dark:bg-slate-850 border border-slate-250 dark:border-slate-750 shadow-2xs shrink-0 md:w-[350px] lg:w-[400px] xl:w-[480px]">
             {/* Usuario (F10) */}
             <button
               data-tour="pos-usuario"
@@ -1764,7 +1786,7 @@ export default function POSScreen() {
               <span className="w-6 h-6 rounded-md bg-rose-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
                 {(user?.username || 'U')[0].toUpperCase()}
               </span>
-              <span className="truncate max-w-[90px] text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{user?.username || 'Usuario'}</span>
+              <span className="hidden xl:inline truncate max-w-[90px] text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{user?.username || 'Usuario'}</span>
             </button>
 
             {/* Cerrar sesión (sin atajo: es una acción sensible) */}
@@ -1786,6 +1808,15 @@ export default function POSScreen() {
             </div>
 
             <span className="hidden lg:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
+
+            {/* Buscar acciones (Ctrl+K) */}
+            <button
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+              className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8"
+              title="Buscar acciones [Ctrl+K]"
+            >
+              <Search strokeWidth={2.25} className="w-4 h-4" />
+            </button>
 
             {/* Conectar celular (F8) */}
             <button data-tour="pos-celular" onClick={handleOpenCellularModal} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Conectar celular">
@@ -2063,11 +2094,11 @@ export default function POSScreen() {
                                 <div className="flex items-end justify-between">
                                   <div>
                                     {originalPrice > finalPrice && originalPrice > 0 && (
-                                      <span className="text-[11px] text-emerald-400/90 font-mono font-bold line-through block mb-0.5 leading-none">
+                                      <span className="text-[11px] text-emerald-300/90 font-semibold line-through block mb-0.5 leading-none">
                                         {formatPrice(originalPrice)}
                                       </span>
                                     )}
-                                    <span className="text-base sm:text-lg font-black text-white font-mono leading-none tracking-tight">
+                                    <span className="text-lg font-bold text-white leading-none tracking-[-0.02em]">
                                       {formatPrice(finalPrice)}
                                     </span>
                                   </div>
@@ -2107,11 +2138,11 @@ export default function POSScreen() {
                               <div className="flex items-center gap-3 shrink-0">
                                 <div className="text-right">
                                   {originalPrice > finalPrice && originalPrice > 0 && (
-                                    <span className="text-[10px] text-emerald-400/90 font-mono font-bold line-through block leading-none">
+                                    <span className="text-[11px] text-emerald-300/90 font-semibold line-through block leading-none">
                                       {formatPrice(originalPrice)}
                                     </span>
                                   )}
-                                  <span className="text-sm sm:text-base font-black text-white font-mono">
+                                  <span className="text-[15px] font-bold text-white tracking-[-0.02em]">
                                     {formatPrice(finalPrice)}
                                   </span>
                                 </div>
@@ -2137,10 +2168,10 @@ export default function POSScreen() {
                               handleProductAdd(product, e);
                             }}
                             style={{ contain: 'content', contentVisibility: 'auto' }}
-                            className={`group p-3 text-left transition-all duration-150 active:scale-[0.98] select-none flex flex-col justify-between h-[258px] rounded-2xl ${
+                            className={`group p-3 text-left transition-[transform,border-color,background-color] duration-fast ease-out-soft active:scale-[0.98] select-none flex flex-col justify-between h-[258px] rounded-2xl ${
                               selectedProductIndex === navIndex
                                 ? 'border-2 border-rose-500 dark:border-rose-400 bg-rose-50/40 dark:bg-rose-950/30 shadow-md ring-2 ring-rose-500/20'
-                                : 'bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700/80 hover:border-rose-300 dark:hover:border-rose-500/50 hover:shadow-lg hover:-translate-y-0.5 shadow-sm'
+                                : 'bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-500 hover:-translate-y-0.5 shadow-xs'
                             }`}
                           >
                             {/* Top: Image Container */}
@@ -2158,7 +2189,8 @@ export default function POSScreen() {
                               
                               {/* Stock Tag overlaid on Image */}
                               <div className="absolute bottom-1.5 left-1.5 z-10">
-                                <span className={`text-[10px] font-bold px-1.5 py-1 rounded-md leading-none ${stockBadge.className}`}>
+                                <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md leading-none bg-white/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700 ${stockBadge.tone}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
                                   {stockBadge.text}
                                 </span>
                               </div>
@@ -2166,7 +2198,7 @@ export default function POSScreen() {
                               {/* Category Tag overlaid on top-left of Image */}
                               {product.category?.name && (
                                 <div className="absolute top-1.5 left-1.5 z-10">
-                                  <span className="text-[9.5px] font-bold px-1.5 py-1 rounded-md bg-slate-900/80 backdrop-blur-xs text-white leading-none max-w-[110px] truncate block shadow-xs">
+                                  <span className="text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md bg-white/95 dark:bg-slate-900/90 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 leading-none max-w-[120px] truncate block">
                                     {product.category.name}
                                   </span>
                                 </div>
@@ -2175,12 +2207,12 @@ export default function POSScreen() {
 
                             {/* Middle: Title & Barcode Info */}
                             <div className="flex-1 flex flex-col justify-start min-w-0 mb-1">
-                              <h3 className="text-[13.5px] sm:text-sm font-bold text-slate-900 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1.5">
+                              <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1">
                                 {product.name}
                               </h3>
                               {product.barcode && (
                                 <div className="mt-0.5">
-                                  <span className="text-[10.5px] font-mono font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600/80 inline-block leading-none tracking-tight select-all">
+                                  <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none tracking-tight select-all">
                                     {product.barcode}
                                   </span>
                                 </div>
@@ -2203,7 +2235,7 @@ export default function POSScreen() {
 
                             {/* Bottom: Price & Add Button */}
                             <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
-                              <span className="text-[17px] sm:text-lg font-black text-slate-900 dark:text-white tracking-tight font-mono">
+                              <span className="text-lg font-bold text-slate-900 dark:text-white tracking-[-0.02em]">
                                 {formatPrice(product.salePrice)}
                               </span>
 
@@ -2268,12 +2300,12 @@ export default function POSScreen() {
                               
                               {/* Info */}
                               <div className="min-w-0 flex-1">
-                                <h3 className="text-xs sm:text-sm font-bold text-slate-950 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors leading-tight truncate">
+                                <h3 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">
                                   {product.name}
                                 </h3>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                                   {product.barcode && (
-                                    <span className="text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300 tracking-wider bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600/80 inline-block leading-none select-all">
+                                    <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none select-all">
                                       {product.barcode}
                                     </span>
                                   )}
@@ -2288,11 +2320,12 @@ export default function POSScreen() {
                                     </span>
                                   )}
                                   {product.category?.name && (
-                                    <span className="text-[8.5px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider bg-slate-800 text-white leading-none">
+                                    <span className="text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 leading-none">
                                       {product.category.name}
                                     </span>
                                   )}
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded leading-none ${stockBadge.className}`}>
+                                  <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold leading-none ${stockBadge.tone}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
                                     {stockBadge.text}
                                   </span>
                                 </div>
@@ -2322,7 +2355,7 @@ export default function POSScreen() {
                                   <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
                                 </span>
                               )}
-                              <span className="text-sm sm:text-base font-black text-slate-950 dark:text-white font-mono">
+                              <span className="text-[15px] font-bold text-slate-900 dark:text-white tracking-[-0.02em]">
                                 {formatPrice(product.salePrice)}
                               </span>
                               <div className="w-7 h-7 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-2xs">
@@ -2343,7 +2376,10 @@ export default function POSScreen() {
           <div data-tour="pos-cart" className={`w-full md:w-[350px] lg:w-[400px] xl:w-[480px] flex-shrink-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
             <div className="px-3.5 py-2.5 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Ticket en curso</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Ticket en curso</span>
+                {cart.length > 0 && (
+                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{getItemCount()} {getItemCount() === 1 ? 'artículo' : 'artículos'}</span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button 
@@ -2471,7 +2507,7 @@ export default function POSScreen() {
                       className="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs py-2 px-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                     >
                       <PauseCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
-                      <span className="truncate">Pausar Ticket</span>
+                      <span className="truncate">Pausar ticket</span>
                       <kbd className="text-[9.5px] bg-black/20 text-white font-mono font-black px-1.5 py-0.5 rounded ml-0.5 shrink-0">F2</kbd>
                     </button>
                     <div className="pointer-events-none absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover/pause:opacity-100 transition-opacity duration-150 z-50 whitespace-nowrap">
@@ -2489,7 +2525,7 @@ export default function POSScreen() {
                   title="Ver los tickets guardados en espera"
                 >
                   <History className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                  <span>En Espera</span>
+                  <span>En espera</span>
                   {heldCarts.length > 0 && (
                     <span className="ml-1 bg-amber-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-black">
                       {heldCarts.length}
@@ -2570,7 +2606,7 @@ export default function POSScreen() {
 
                         {/* Product Name & High-Contrast Unit Price */}
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-tight line-clamp-2 pr-1">{item.name}</h4>
+                          <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2 pr-1">{item.name}</h4>
                           {item.isPromo && item.productsMetadata && (
                             <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mt-0.5 tracking-tight leading-relaxed">
                               {item.productsMetadata.map(pm => `${pm.quantity}x ${pm.name}`).join(' + ')}
@@ -2578,7 +2614,7 @@ export default function POSScreen() {
                           )}
                           {item.quantity > 1 && (
                             <div className="mt-1 flex items-center">
-                              <span className="text-[11px] sm:text-xs font-mono font-black text-slate-950 dark:text-slate-50 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 leading-none inline-block">
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-none inline-block">
                                 {formatPrice(item.price)} c/u
                               </span>
                             </div>
@@ -2595,7 +2631,7 @@ export default function POSScreen() {
                         ) : (
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
                             <button onClick={() => { updateQuantity(item.cartKey, item.quantity - 1); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
-                            <span className="w-8 text-center text-sm font-black text-slate-950 dark:text-white font-mono">{item.quantity}</span>
+                            <span className="w-8 text-center text-sm font-bold text-slate-900 dark:text-white">{item.quantity}</span>
                             <button onClick={() => { updateQuantity(item.cartKey, item.quantity + 1); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Plus className="w-3 h-3 stroke-[3]" /></button>
                           </div>
                         )}
@@ -2608,7 +2644,7 @@ export default function POSScreen() {
                                 {formatPrice(originalTotal)}
                               </span>
                             )}
-                            <p className="text-sm sm:text-base font-black text-slate-950 dark:text-white font-mono leading-none">{formatPrice(promoTotal)}</p>
+                            <p className="text-[15px] font-bold text-slate-900 dark:text-white leading-none tracking-[-0.02em]">{formatPrice(promoTotal)}</p>
                           </div>
                           <button onClick={() => { removeFromCart(item.cartKey); focusSearch(); }} className="text-slate-400 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition-all p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg active:scale-90" title="Eliminar del carrito">
                             <X className="w-4 h-4" />
@@ -2625,13 +2661,13 @@ export default function POSScreen() {
             <div data-tour="pos-totales" className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
               <div className="bg-white dark:bg-slate-800/80 rounded-2xl p-3.5 border border-slate-200/90 dark:border-slate-700/80 shadow-xs space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Items / Cantidad</span>
-                  <span className="text-slate-950 dark:text-white font-black bg-slate-100 dark:bg-slate-750 px-2.5 py-0.5 rounded-lg font-mono border border-slate-200 dark:border-slate-700">{getItemCount()}</span>
+                  <span className="text-[13px] font-medium normal-case tracking-normal text-slate-500 dark:text-slate-400">Artículos</span>
+                  <span className="text-[13px] font-semibold normal-case tracking-normal text-slate-900 dark:text-white">{getItemCount()}</span>
                 </div>
                 {getAppliedPromotions().map((promo, idx) => (
                   <div key={idx} className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in slide-in-from-bottom-1">
                     <span className="flex items-center gap-1"><Tag className="w-3 h-3 text-amber-500" /> {promo.name}</span>
-                    <span className="font-mono">-{formatPrice(promo.discount)}</span>
+                    <span>-{formatPrice(promo.discount)}</span>
                   </div>
                 ))}
                 {activePaymentSurcharge > 0 && (
@@ -2639,12 +2675,12 @@ export default function POSScreen() {
                     <span className="flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Recargo Método de Pago
                     </span>
-                    <span className="font-mono font-bold">+{formatPrice(activePaymentSurcharge)}</span>
+                    <span className="font-bold">+{formatPrice(activePaymentSurcharge)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-700/70">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total a Pagar</span>
-                  <span key={getFinalTotal() + activePaymentSurcharge} className="anim-bump text-3xl sm:text-4xl font-black text-slate-950 dark:text-white tracking-tight font-mono">{formatPrice(getFinalTotal() + activePaymentSurcharge)}</span>
+                  <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Total</span>
+                  <span key={getFinalTotal() + activePaymentSurcharge} className="anim-bump text-[34px] sm:text-[40px] leading-none font-extrabold text-slate-950 dark:text-white tracking-[-0.03em]">{formatPrice(getFinalTotal() + activePaymentSurcharge)}</span>
                 </div>
               </div>
 
@@ -2673,7 +2709,7 @@ export default function POSScreen() {
                   ref={confirmSaleRef}
                   onClick={() => { if (cart.length > 0 && currentSession && !isCartBusy) setShowPayment(true); }}
                   disabled={cart.length === 0 || !currentSession || isCartBusy}
-                  className={`flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white h-16 text-lg font-black rounded-2xl shadow-xl shadow-emerald-600/25 disabled:opacity-30 disabled:grayscale disabled:shadow-none flex items-center justify-center cursor-pointer transition-all border border-emerald-500/60 active:scale-[0.99] tracking-wider ${isCartBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  className={`flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white h-16 text-lg font-bold rounded-2xl shadow-lg shadow-emerald-600/20 disabled:opacity-30 disabled:grayscale disabled:shadow-none flex items-center justify-center cursor-pointer transition-[background-color,transform,opacity] duration-fast border border-emerald-500/60 active:scale-[0.99] ${isCartBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
                   id="pos-confirm-sale"
                 >
                   {isCartBusy ? (
@@ -2683,7 +2719,7 @@ export default function POSScreen() {
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2.5">
-                      <span className="font-black tracking-wide text-lg sm:text-xl font-outfit">CONFIRMAR VENTA</span>
+                      <span className="font-bold text-lg sm:text-[19px] tracking-[-0.01em]">Confirmar venta</span>
                       <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />
                     </div>
                   )}

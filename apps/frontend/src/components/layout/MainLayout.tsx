@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { MangoLogo as GoDeliveryLogo } from '../common/MangoLogo';
 import CalculatorModal from '../pos/CalculatorModal';
+import CommandPalette from '../ui/CommandPalette';
 import { wsService } from '../../services/websocket';
 import { getClientId } from '../../utils/clientId';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
@@ -432,6 +433,9 @@ export default function MainLayout({ children }: Props) {
 
       {/* La calculadora (F3) vive acá para que funcione en cualquier sección y también en modo admin */}
       <CalculatorModal isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
+
+      {/* Ctrl+K: buscar cualquier acción o pantalla */}
+      <CommandPalette />
     </div>
   );
 }
