@@ -189,19 +189,13 @@ export default function LoginPage() {
   if (checkLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
-        {!perfMode && (
-          <>
-            <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-rose-200/25 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-amber-200/20 blur-3xl pointer-events-none" />
-          </>
-        )}
         <MotionDiv
           {...(perfMode ? {} : { initial: { opacity: 0, scale: 0.96, y: 8 }, animate: { opacity: 1, scale: 1, y: 0 }, transition: { duration: 0.35, ease: 'easeOut' } })}
           className="relative z-10 w-full max-w-md card p-8 bg-white border border-slate-400/80 shadow-2xl text-center flex flex-col items-center gap-6"
         >
           <MotionDiv {...staggerParent} className="flex flex-col items-center gap-6 w-full">
-            <MotionDiv {...staggerItem} className={perfMode ? '' : 'boot-halo'}>
-              <MangoLogo className={`w-16 h-16 relative z-10 ${perfMode ? '' : 'boot-halo__logo'}`} />
+            <MotionDiv {...staggerItem} className="boot-halo">
+              <MangoLogo className="w-16 h-16 relative z-10 boot-halo__logo" />
             </MotionDiv>
 
             <MotionDiv {...staggerItem} className="space-y-2">
@@ -215,22 +209,7 @@ export default function LoginPage() {
             <MotionDiv {...staggerItem} className="w-full bg-slate-50 p-6 rounded-2xl border border-slate-400/50 flex flex-col items-center gap-4">
               <Loader2 className="w-8 h-8 text-rose-600 animate-spin" />
               <div className="space-y-1 text-center">
-                {perfMode ? (
-                  <p className="text-slate-700 text-xs font-bold leading-normal px-2">{loadingMessage}</p>
-                ) : (
-                  <AnimatePresence mode="wait">
-                    <motion.p
-                      key={loadingMessage}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.2 }}
-                      className="text-slate-700 text-xs font-bold leading-normal px-2"
-                    >
-                      {loadingMessage}
-                    </motion.p>
-                  </AnimatePresence>
-                )}
+                <p key={loadingMessage} className="text-slate-700 text-xs font-bold leading-normal px-2 anim-rise">{loadingMessage}</p>
                 <p className="text-[10px] text-slate-600 font-semibold">
                   Por favor, no cierres la aplicación
                 </p>
@@ -238,13 +217,8 @@ export default function LoginPage() {
             </MotionDiv>
 
             <MotionDiv {...staggerItem} className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
-              {/* Progress-bar motion is cheap (one element) so it always animates,
-                  even in performance mode — only the heavier entrance stagger is gated. */}
-              <motion.div
-                className="absolute top-0 bottom-0 w-1/3 rounded-full bg-gradient-to-r from-rose-400 via-rose-600 to-rose-400 bg-[length:200%_100%]"
-                animate={{ left: ['-33%', '100%'], backgroundPosition: ['0% 0%', '200% 0%'] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-              />
+              {/* Barra indeterminada en CSS (transform): se mueve en cualquier modo */}
+              <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-rose-600 anim-indeterminate" />
             </MotionDiv>
           </MotionDiv>
         </MotionDiv>
@@ -254,13 +228,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center relative overflow-hidden">
-      {!perfMode && (
-        <>
-          <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-rose-200/25 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-amber-200/20 blur-3xl pointer-events-none" />
-        </>
-      )}
-
       {showBackToSetup && (
         <button
           type="button"

@@ -327,54 +327,60 @@ html.dark #pos-search {
 }
 
 /* ======================================================
-   Modo rendimiento
-   Mantiene el diseño completo (fuente, colores, bordes) y deja animaciones,
-   pero solo las baratas: opacity y transform, de 80 a 180ms. Se apaga lo
-   que cuesta en PCs con poca placa de video: desenfoques, manchas difusas
-   decorativas, sombras enormes, transiciones de tamaño/sombra y animaciones
-   infinitas de adorno. La app del celular (.mobile-app) y las pantallas de
-   ingreso (.on-auth-screen) no se ven afectadas.
+   App liviana (siempre, con o sin modo rendimiento)
+   La app tiene que andar fluida en cualquier PC, incluso vieja y sin placa de
+   video. Por eso, en todas las pantallas:
+   - no hay desenfoques, manchas difusas ni sombras enormes;
+   - las transiciones son cortas y solo de color, bordes, opacidad y transform;
+   - framer-motion está apagado (ver main.tsx) y las únicas animaciones son
+     entradas CSS de 120–220ms y los indicadores de carga (giros y barras),
+     todos con opacity/transform, que la placa (o el compositor) mueve sin
+     recalcular la página.
+   El modo rendimiento suma lo suyo aparte: sin GPU en la app de escritorio y
+   menos productos por búsqueda. La app del celular (.mobile-app) conserva su
+   propio diseño.
    ====================================================== */
 
 /* Desenfoques de fondo (vidrio esmerilado): se recalculan en cada cuadro que
    cambia lo que hay detrás. Los overlays quedan con su color semitransparente. */
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.backdrop-blur-sm, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl, .backdrop-blur-\[2px\]):not(.mobile-app *) {
+:is(.backdrop-blur-sm, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl, .backdrop-blur-\[2px\]):not(.mobile-app *) {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
-/* Manchas difusas de adorno (círculos con blur detrás de tarjetas) */
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.blur-lg, .blur-xl, .blur-2xl, .blur-3xl):not(.mobile-app *) {
+/* Manchas difusas de adorno (círculos con blur detrás de tarjetas y pantallas) */
+:is(.blur-lg, .blur-xl, .blur-2xl, .blur-3xl):not(.mobile-app *) {
   display: none !important;
 }
 
 /* Sombras grandes → una sombra corta y liviana */
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.shadow-xl, .shadow-2xl):not(.mobile-app *) {
+:is(.shadow-xl, .shadow-2xl):not(.mobile-app *) {
   --tw-shadow: 0 10px 24px -12px rgb(15 23 42 / 0.22), 0 2px 6px -2px rgb(15 23 42 / 0.08) !important;
 }
 
 /* Transiciones: solo color, bordes, opacidad y transform, y nunca más de 160ms.
    (transition-all animaba ancho, alto y sombras, que repintan cada cuadro.) */
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.transition, .transition-all):not(.mobile-app *) {
+:is(.transition, .transition-all):not(.mobile-app *) {
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, transform !important;
 }
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.duration-200, .duration-300, .duration-500, .duration-700, .duration-1000):not(.mobile-app *) {
+:is(.duration-200, .duration-300, .duration-500, .duration-700, .duration-1000):not(.mobile-app *) {
   transition-duration: var(--dur-base) !important;
 }
 
-/* Animaciones infinitas de adorno (ondas, rebotes, respiraciones). Se mantienen
-   animate-spin (algo está cargando) y animate-pulse (esqueletos y avisos). */
-body[data-performance-mode="true"]:not(.on-auth-screen) :is(.animate-ping, .animate-bounce, .animate-pulse-soft):not(.mobile-app *) {
-  animation: none !important;
-}
-
-/* Modales y overlays: en modo rendimiento no usan framer-motion; entran con
-   un fundido y el panel con un leve ascenso. Cerrar es instantáneo. */
-body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0:not(.mobile-app *):not(.mobile-app) {
+/* Modales y overlays: entran con un fundido y el panel con un leve ascenso.
+   Cerrar es instantáneo. */
+.fixed.inset-0:not(.mobile-app *):not(.mobile-app) {
   animation: v-veil var(--dur-fast) var(--ease-out) backwards;
 }
-body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0 > :not(.absolute):not(.fixed):not(.mobile-app *) {
+.fixed.inset-0 > :not(.absolute):not(.fixed):not(.mobile-app *) {
   animation: v-pop var(--dur-base) var(--ease-out) backwards;
+}
+
+/* Indicadores de carga en CSS (antes eran framer-motion y quedaban quietos) */
+.anim-indeterminate { animation: v-indeterminate 1.3s var(--ease-out) infinite; }
+@keyframes v-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
 }
 
 /* Custom CSS class for mobile sidebar to ensure it transitions and hides properly without depending on Tailwind's dynamic compilation */
@@ -391,8 +397,8 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0 > :not(.a
 /* Quien pidió menos movimiento en Windows no ve animaciones de entrada */
 @media (prefers-reduced-motion: reduce) {
   .anim-fade, .anim-veil, .anim-pop, .anim-rise, .anim-bump,
-  body[data-performance-mode="true"] .fixed.inset-0,
-  body[data-performance-mode="true"] .fixed.inset-0 > * {
+  .fixed.inset-0,
+  .fixed.inset-0 > * {
     animation: none !important;
   }
 }

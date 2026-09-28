@@ -103,7 +103,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
 
   const menuGroups = [
     {
-      title: 'GENERAL',
+      title: 'General',
       items: [
         { 
           label: 'Productos', 
@@ -177,7 +177,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           {!isCollapsed && (
             <div className="min-w-0 leading-none">
               <span className="block font-bold text-[16px] text-slate-900 tracking-tight truncate">Ventra</span>
-              <span className="block text-[10px] font-semibold text-slate-400 tracking-[0.14em] mt-1">{planFeatures.caja ? 'SISTEMA DE VENTAS' : 'TIENDA ONLINE'}</span>
+              <span className="block text-[11.5px] font-medium text-slate-400 mt-1">{planFeatures.caja ? 'Sistema de ventas' : 'Tienda online'}</span>
             </div>
           )}
         </div>
@@ -208,7 +208,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
 
           {planFeatures.caja && <button
             onClick={() => handleSidebarClick('/dashboard')}
-            className={`relative w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] cursor-pointer ${isActive('/dashboard') ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+            className={`relative w-full flex items-center gap-3 px-3 h-9 rounded-lg font-medium text-[13.5px] transition-colors cursor-pointer ${isActive('/dashboard') ? 'bg-rose-50 text-rose-700 font-semibold' : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'}`}
           >
             {isActive('/dashboard') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-rose-600 rounded-r-full" />}
             <LayoutDashboard className="w-[18px] h-[18px] shrink-0" />
@@ -220,9 +220,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         {visibleGroups.map((group) => (
           <div key={group.title} className="space-y-0.5">
             {!isCollapsed && (
-              <div className="flex items-center gap-2.5 px-2.5 mb-2.5 mt-5">
-                <span className="text-[10.5px] font-bold text-slate-400 tracking-[0.14em]">{group.title}</span>
-                <div className="flex-1 h-px bg-slate-100" />
+              <div className="flex items-center gap-2.5 px-3 mb-1.5 mt-4">
+                <span className="text-[11.5px] font-semibold text-slate-400">{group.title}</span>
               </div>
             )}
             {group.items.map((item) => {
@@ -232,30 +231,28 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                 <div key={item.label} className="space-y-0.5">
                   <button
                     onClick={() => item.collapsible ? toggleGroup(item.label) : (item.path && handleSidebarClick(item.path))}
-                    className={`relative w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group cursor-pointer ${itemActive ? 'text-rose-700 font-bold bg-rose-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                    className={`relative w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors group cursor-pointer ${itemActive ? 'text-rose-700 bg-rose-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'}`}
                   >
                     {itemActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-rose-600 rounded-r-full" />}
-                    <item.icon className={`w-[18px] h-[18px] shrink-0 ${itemActive ? 'text-rose-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <item.icon className={`w-[17px] h-[17px] shrink-0 ${itemActive ? 'text-rose-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                     {!isCollapsed && (
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
-                        <span className="text-[12.5px] font-semibold tracking-tight truncate">{item.label}</span>
+                        <span className={`text-[13px] truncate ${itemActive ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
                         {!!(item as any).badge && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-600 text-white text-[10.5px] font-bold flex items-center justify-center">{(item as any).badge}</span>}
                         {item.collapsible && (
                           <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isGroupExpanded ? 'rotate-180' : ''}`} />
                         )}
-                        {/* Ningún ítem tiene chapita hoy; queda listo para el próximo que la necesite */}
-                        {(item as any).badge && <span className={`px-1.5 py-0.5 rounded-md text-[8.5px] font-bold shrink-0 ${(item as any).badge === 'PRONTO' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{(item as any).badge}</span>}
                       </div>
                     )}
                   </button>
 
                   {!isCollapsed && item.collapsible && isGroupExpanded && item.subItems && (
-                    <div className="ml-[27px] border-l border-slate-150 space-y-0.5 my-1 pl-3">
+                    <div className="ml-[23px] border-l border-slate-200 space-y-0.5 my-1 pl-3">
                       {item.subItems.map((sub) => (
                         <button
                           key={sub.label}
                           onClick={() => { navigate(sub.path); onCloseMobile?.(); }}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all cursor-pointer ${isActive(sub.path) ? 'text-rose-700 font-semibold bg-rose-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
+                          className={`w-full text-left px-3 h-8 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer ${isActive(sub.path) ? 'text-rose-700 font-semibold bg-rose-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/70'}`}
                         >
                           {sub.label}
                         </button>
@@ -273,10 +270,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
       <div className="p-3.5 pt-3 shrink-0 border-t border-slate-100">
         <button
           onClick={() => handleSidebarClick('/settings')}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${isActive('/settings') ? 'text-slate-900 font-bold bg-slate-100' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+          className={`w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors cursor-pointer ${isActive('/settings') ? 'text-slate-900 font-semibold bg-slate-100' : 'text-slate-600 font-medium hover:text-slate-900 hover:bg-slate-100/70'}`}
         >
-          <Settings className="w-[18px] h-[18px]" />
-          {!isCollapsed && <span className="text-[13px] font-semibold">Configuración</span>}
+          <Settings className="w-[17px] h-[17px]" />
+          {!isCollapsed && <span className="text-[13px]">Configuración</span>}
         </button>
       </div>
 
@@ -289,9 +286,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           >
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2">
-                <Settings className="w-6 h-6 animate-spin" />
+                <Settings className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800">Acceso Restringido</h3>
+              <h3 className="text-lg font-bold text-slate-800">Acceso restringido</h3>
               <p className="text-xs text-slate-700 leading-relaxed">
                 Esta sección requiere credenciales de Administrador. Por favor, ingresa la contraseña numérica del usuario <b>ADMIN</b> para continuar.
               </p>

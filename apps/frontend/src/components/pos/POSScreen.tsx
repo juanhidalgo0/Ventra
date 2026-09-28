@@ -2582,7 +2582,7 @@ export default function POSScreen() {
                           exit: { opacity: 0, height: 0 },
                           transition: { duration: 0.12 }
                         })}
-                        className={`py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5 ${perfMode ? 'anim-rise' : ''}`}
+                        className={`py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5 anim-rise`}
                       >
                         {/* Product Image */}
                         {item.productId === QUICK_SALE_PRODUCT_ID ? (

@@ -244,13 +244,6 @@ export default function ConnectionScreen() {
 
   return (
     <div className="h-screen w-screen bg-slate-50 flex items-center justify-center p-3 sm:p-4 relative overflow-hidden select-none">
-      {!perfMode && (
-        <>
-          <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-rose-200/25 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-amber-200/20 blur-3xl pointer-events-none" />
-        </>
-      )}
-
       <motion.div
         {...(perfMode ? {} : { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease: 'easeOut' } })}
         className="relative z-10 w-full max-w-xl"
@@ -266,7 +259,7 @@ export default function ConnectionScreen() {
             <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight leading-none mb-1.5">Ventra</h1>
             <p className="text-rose-700 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-1.5">
                <span>Terminal de Ventas</span>
-               <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${!perfMode ? 'animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]' : ''}`} />
+               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             </p>
           </div>
         </motion.div>

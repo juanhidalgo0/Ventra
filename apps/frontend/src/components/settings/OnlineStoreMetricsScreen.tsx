@@ -204,7 +204,7 @@ export default function OnlineStoreMetricsScreen() {
                           tickFormatter={(v) => (v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`)} />
                         <Tooltip cursor={{ fill: '#f1f5f9' }} formatter={(v: number) => [money(v), 'Vendido']}
                           contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }} />
-                        <Bar dataKey="total" fill={BRAND} radius={[6, 6, 0, 0]} maxBarSize={36} />
+                        <Bar isAnimationActive={false} dataKey="total" fill={BRAND} radius={[6, 6, 0, 0]} maxBarSize={36} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

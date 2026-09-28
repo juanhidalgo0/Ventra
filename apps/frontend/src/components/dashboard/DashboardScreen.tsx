@@ -33,6 +33,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import LowStockAlertsModal from './LowStockAlertsModal';
+import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
 
 export default function DashboardScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -281,509 +282,337 @@ export default function DashboardScreen() {
     downloadPDF(`Consolidado_${periodStr.replace(/ /g, '')}`, htmlContent);
   };
 
+  const periodLabel = filterMode === 'month'
+    ? `${months[selectedMonth]} ${selectedYear}`
+    : filterMode === 'day'
+      ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+      : `Del ${new Date(`${startDate}T12:00:00`).toLocaleDateString('es-AR')} al ${new Date(`${endDate}T12:00:00`).toLocaleDateString('es-AR')}`;
+
   if (isLoading) {
+    // Esqueleto con la forma de la pantalla: se nota que carga sin un spinner suelto
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-medium text-slate-450 uppercase tracking-widest">Cargando Dashboard...</p>
+      <div className="h-full overflow-hidden p-2 sm:p-3 space-y-5">
+        <div className="h-12 w-64 rounded-lg bg-slate-200/60 dark:bg-slate-800 animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="h-[132px] rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3 h-[360px] rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+          <div className="h-[360px] rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
         </div>
       </div>
     );
   }
 
+  const revenue = summary?.totalRevenue || 0;
+  const netProfit = (summary?.totalRevenue || 0) - (summary?.totalCost || 0) - (summary?.expenses || 0);
+  const netYield = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
+  const lowStock = summary?.lowStockCount || 0;
+
+  const activityDot: Record<string, string> = {
+    SALE: 'bg-rose-500',
+    CASH_REGISTER: 'bg-slate-400',
+    PRODUCT: 'bg-sky-500',
+    PURCHASE: 'bg-amber-500',
+  };
+
   return (
-    <div className="h-full overflow-y-auto p-2 space-y-4 custom-scrollbar">
-      {/* Premium Period / Date Selector & Exports Bar */}
-      <div className="bg-white border border-slate-400 rounded-2xl p-3 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-          {/* Selector de modo */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto justify-between sm:justify-start">
-            {[
-              { id: 'month', label: 'Por Mes' },
-              { id: 'day', label: 'Día' },
-              { id: 'range', label: 'Rango' }
-            ].map(mode => (
-              <button
-                key={mode.id}
-                onClick={() => setFilterMode(mode.id as any)}
-                className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all cursor-pointer text-center ${
-                  filterMode === mode.id 
-                    ? 'bg-rose-500 text-white shadow-sm' 
-                    : 'text-slate-700 hover:text-slate-800'
-                }`}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Selector de Mes */}
-          {filterMode === 'month' && (
-            <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2 duration-200 w-full sm:w-auto">
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
-              >
-                {months.map((m, idx) => (
-                  <option key={m} value={idx}>{m}</option>
-                ))}
-              </select>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
-              >
-                {years.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Selector de Día */}
-          {filterMode === 'day' && (
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200 w-full sm:w-auto">
-              <input
-                type="date"
-                value={selectedDay}
-                onChange={(e) => setSelectedDay(e.target.value)}
-                className="w-full sm:w-auto bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
+    <div className="h-full overflow-y-auto custom-scrollbar">
+      <div className="max-w-[1480px] mx-auto p-2 sm:p-3 space-y-5 anim-fade">
+        <PageHeader
+          title="Dashboard"
+          description={<span className="first-letter:uppercase inline-block">{periodLabel}</span>}
+          actions={
+            <>
+              <Segmented
+                options={[{ id: 'month', label: 'Mes' }, { id: 'day', label: 'Día' }, { id: 'range', label: 'Rango' }]}
+                value={filterMode}
+                onChange={(v) => setFilterMode(v)}
               />
-            </div>
-          )}
-
-          {/* Selector de Rango */}
-          {filterMode === 'range' && (
-            <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200 w-full sm:w-auto">
-              <span className="text-[10px] font-bold text-slate-600 uppercase">Desde</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
-              />
-              <span className="text-[10px] font-bold text-slate-600 uppercase">Hasta</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="flex-1 sm:flex-none bg-slate-50 border border-slate-400 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Botones de exportación */}
-        <div className="flex items-center gap-2 w-full lg:w-auto">
-          <button
-            onClick={exportConsolidatedExcel}
-            className="flex-1 lg:flex-none justify-center px-3 py-2.5 rounded-xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-2 active:scale-95 cursor-pointer"
-            title="Descargar Excel con todos los datos consolidados del período"
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Excel</span>
-          </button>
-          <button
-            onClick={exportConsolidatedPDF}
-            className="flex-1 lg:flex-none justify-center px-3 py-2.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all font-bold text-xs shadow-sm flex items-center gap-2 active:scale-95 cursor-pointer"
-            title="Exportar Reporte Financiero PDF del período"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>PDF Consolidado</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Top Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Productos', value: summary?.totalProducts || '0', sub: `${summary?.totalProducts || 0} activos`, icon: Package, accent: 'bg-rose-600 text-white' },
-          { 
-            label: filterMode === 'month' ? 'Ventas del Mes' : filterMode === 'day' ? 'Ventas del Día' : 'Ventas del Periodo', 
-            value: fmt(summary?.totalRevenue || 0), 
-            sub: filterMode === 'month' 
-              ? `Mes de: ${months[selectedMonth]} ${selectedYear}` 
-              : filterMode === 'day' 
-                ? `Día: ${selectedDay}` 
-                : `Rango: ${startDate} al ${endDate}`, 
-            icon: TrendingUp, 
-            accent: 'bg-slate-800 text-white' 
-          },
-          { 
-            label: 'Transacciones', 
-            value: summary?.totalSales || 0, 
-            sub: filterMode === 'month' 
-              ? `Ventas del mes` 
-              : filterMode === 'day' 
-                ? `Ventas de hoy` 
-                : `Ventas en el rango`, 
-            icon: ShoppingCart, 
-            accent: 'bg-rose-500 text-white' 
-          },
-          { 
-            label: 'Alertas Stock', 
-            value: summary?.lowStockCount || '0', 
-            sub: summary?.lowStockCount > 0 ? `${summary.lowStockCount} críticos (clic para ver)` : 'Todo en orden', 
-            icon: AlertTriangle, 
-            accent: summary?.lowStockCount > 0 ? 'bg-amber-500 text-white cursor-pointer hover:bg-amber-600 transition-all active:scale-[0.98]' : 'bg-emerald-600 text-white',
-            action: summary?.lowStockCount > 0 ? () => setShowLowStock(true) : undefined
-          }
-        ].map((card, i) => (
-          <div 
-            key={card.label} 
-            onClick={card.action}
-            className={`${card.accent} p-5 rounded-xl relative overflow-hidden shadow-md`}
-          >
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-semibold tracking-wider opacity-80 uppercase">{card.label}</p>
-                <card.icon className="w-5 h-5 opacity-45" />
-              </div>
-              <h3 className="text-2xl font-bold mb-1">{card.value}</h3>
-              <p className="text-[10px] font-medium opacity-70">{card.sub}</p>
-            </div>
-            <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          </div>
-        ))}
-      </div>
-
-      {/* Main Stats Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-slate-400 relative overflow-hidden">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-rose-500" /> Análisis Financiero
-              </h3>
-              <p className="text-xs text-slate-700 font-medium mt-1">Ganancias y egresos acumulados</p>
-            </div>
-            <div className="text-xs font-bold text-slate-650 bg-slate-50 border border-slate-150 px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
-              <Calendar className="w-3.5 h-3.5 text-rose-500" />
-              <span>
-                {filterMode === 'month' && `${months[selectedMonth]} ${selectedYear}`}
-                {filterMode === 'day' && `Día: ${selectedDay}`}
-                {filterMode === 'range' && `Rango: ${startDate} al ${endDate}`}
-              </span>
-            </div>
-          </div>
-          
-          <div className="h-[280px] w-full pr-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dashboardData?.history || []}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0E6E52" stopOpacity={0.12}/>
-                    <stop offset="95%" stopColor="#0E6E52" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.12}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="date" stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(value) => fmt(Number(value))} />
-                <Area type="monotone" name="Ingresos (Ventas)" dataKey="sales" stroke="#0E6E52" strokeWidth={2.5} fill="url(#colorSales)" />
-                <Area type="monotone" name="Ganancia Neta" dataKey="profit" stroke="#10b981" strokeWidth={2.5} fill="url(#colorProfit)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-              <span className="text-[10px] font-bold text-slate-700 uppercase">Ingresos por POS</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-bold text-slate-700 uppercase">Ganancia Estimada</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-5 border-b border-slate-300 pb-3">Resumen Financiero</h3>
-          <div className="space-y-5 flex-1">
-            {[
-              { label: 'Ganancia Bruta', val: fmt(summary?.totalRevenue || 0), color: 'text-emerald-600', icon: ArrowUpRight, bg: 'bg-emerald-50 border border-emerald-200' },
-              { label: 'Egresos Operativos', val: fmt(summary?.expenses || 0), color: 'text-rose-600', icon: ArrowDownRight, bg: 'bg-rose-50 border border-rose-200' },
-              { label: 'Ganancia Neta', val: fmt((summary?.totalRevenue || 0) - (summary?.totalCost || 0) - (summary?.expenses || 0)), color: 'text-emerald-600', icon: DollarSign, bg: 'bg-emerald-50 border border-emerald-200' },
-              { 
-                label: 'Rendimiento Neto', 
-                val: summary?.totalRevenue > 0 ? `${Math.round(((summary.totalRevenue - summary.totalCost - summary.expenses) / summary.totalRevenue) * 100)}%` : '0%', 
-                color: 'text-rose-600', 
-                icon: PieChart, 
-                bg: 'bg-rose-50 border border-rose-200' 
-              }
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg ${item.bg} flex items-center justify-center ${item.color}`}>
-                    <item.icon className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-medium text-slate-700 uppercase tracking-wider">{item.label}</p>
-                    <p className={`text-sm font-bold ${item.color}`}>{item.val}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Grid Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Resumen del Mes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-5 flex items-center justify-between">
-            <span>Resumen del Mes</span>
-            <ChevronDown className="w-4 h-4 text-slate-600" />
-          </h3>
-          <div className="space-y-3">
-            {[
-              { label: 'Efectivo del Mes', icon: Wallet, color: 'text-rose-500', value: fmt(summary?.monthlyStats?.cash) },
-              { label: 'Facturación', icon: FileText, color: 'text-rose-600', value: fmt(summary?.monthlyStats?.revenue) },
-              { label: 'Compras del Mes', icon: Package, color: 'text-emerald-600', value: fmt(summary?.monthlyStats?.purchases) },
-              { label: 'Pagos a Proveedores', icon: Truck, color: 'text-amber-600', value: fmt(summary?.monthlyStats?.supplierPayments) },
-              { label: 'Ventas por Cajas', icon: Calculator, color: 'text-blue-600', value: fmt(summary?.monthlyStats?.boxSales) },
-              { label: 'Consumo Interno', icon: ShoppingCart, color: 'text-orange-600', value: fmt(summary?.monthlyStats?.internalConsumption) }
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between text-xs text-slate-700 border-b border-slate-300 pb-3 last:border-0">
-                <div className="flex items-center gap-2.5">
-                  <item.icon className={`w-4 h-4 ${item.color}`} />
-                  <span className="font-medium">{item.label}</span>
-                </div>
-                <span className="font-bold text-slate-800">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Top 10 Clientes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col overflow-hidden h-[340px]">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 w-full text-left flex items-center gap-2 shrink-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Top Clientes
-          </h3>
-          <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3.5">
-            {(!dashboardData?.topClients || dashboardData.topClients.length === 0) ? (
-              <div className="py-12 text-center my-auto flex flex-col items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-400">
-                  <Users className="w-5 h-5 text-slate-405" />
-                </div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Sin ventas a cuenta corriente hoy</p>
-              </div>
-            ) : (
-              dashboardData.topClients.map((client: any, i: number) => (
-                <div key={client.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-50 last:border-0 pb-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 font-black flex items-center justify-center shrink-0 border border-emerald-100 text-xs shadow-sm">
-                      {i + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-800 truncate">{client.name}</p>
-                      <p className="text-[9px] text-slate-600 font-semibold">{client.salesCount} compras</p>
-                    </div>
-                  </div>
-                  <span className="font-extrabold text-slate-800 shrink-0">{fmt(client.totalSpent)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Top Productos */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col overflow-hidden h-[340px]">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 w-full text-left flex items-center gap-2 shrink-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Top Productos
-          </h3>
-          <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
-            {(!dashboardData?.topProducts || dashboardData.topProducts.length === 0) ? (
-              <div className="py-12 text-center my-auto flex flex-col items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3 border border-slate-400">
-                  <Package className="w-5 h-5 text-slate-405" />
-                </div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Sin ventas registradas en el periodo</p>
-              </div>
-            ) : (
-              dashboardData.topProducts.map((p: any, i: number) => (
-                <div key={p.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-50 last:border-0 pb-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 font-black flex items-center justify-center shrink-0 border border-amber-100 text-xs shadow-sm">
-                      {i + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-800 truncate" title={p.name}>{p.name}</p>
-                      <p className="text-[9px] text-slate-600 font-semibold">{p.quantity} unidades vendidas</p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="font-extrabold text-slate-800 block">{fmt(p.revenue)}</span>
-                    <span className="text-[9px] text-slate-600 block font-medium">Stock: {p.stock}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* More Grid Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Rentabilidad */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center justify-between shrink-0">
-            Margen Comercial <ChevronDown className="w-4 h-4 text-slate-600" />
-          </h3>
-          <div className="flex items-center gap-4 py-2">
-            <div className="w-14 h-14 rounded-2xl border-4 border-emerald-100 flex items-center justify-center shrink-0 relative bg-emerald-50">
-              <CheckCircle2 className="w-7 h-7 text-emerald-500" />
-            </div>
-            <div>
-              <p className="text-base font-extrabold text-emerald-600 tracking-tight leading-none">
-                {summary?.totalRevenue > 0 ? Math.round((summary.netProfit / summary.totalRevenue) * 100) : 0}%
-              </p>
-              <p className="text-[9.5px] font-bold text-slate-600 uppercase tracking-wider mt-1.5">Margen Operativo de Hoy</p>
-              <p className="text-[10px] text-slate-700 font-medium leading-tight mt-1">Refleja la ganancia neta sobre la facturación bruta actual.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Cuentas Corrientes */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 shrink-0">Cuentas Corrientes</h3>
-          <div className="space-y-1">
-            <h4 className="text-2xl font-black text-rose-650 tracking-tight">{fmt(summary?.totalClientBalance || 0)}</h4>
-            <p className="text-[10px] text-slate-600 font-extrabold uppercase tracking-wider">Saldo Pendiente de Clientes</p>
-            <p className="text-[10.5px] text-slate-700 font-medium leading-tight">Total acumulado de deudas de clientes activos en cuenta corriente.</p>
-          </div>
-        </div>
-
-        {/* Control de Caja */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex flex-col justify-between h-[180px]">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 shrink-0">Control de Caja</h3>
-          <div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className={`w-2 h-2 rounded-full ${summary?.activeSessionsCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-              <span className={`text-[10px] font-extrabold uppercase tracking-wider ${summary?.activeSessionsCount > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
-                {summary?.activeSessionsCount > 0 ? `${summary.activeSessionsCount} Caja(s) Activa(s)` : 'Caja Cerrada'}
-              </span>
-            </div>
-            <h4 className="text-2xl font-black text-slate-800 tracking-tight">{fmt(summary?.activeSessionsCash || 0)}</h4>
-            <p className="text-[10px] text-slate-600 font-extrabold uppercase tracking-wider mt-1">Efectivo Físico en Caja</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Final Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Deuda Proveedores */}
-        <div className="bg-white p-5 rounded-xl border border-slate-400 flex items-center justify-between h-[150px]">
-          <div className="min-w-0 flex-1 pr-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Deuda Proveedores</h3>
-            <h4 className="text-2xl font-black text-rose-650 tracking-tight">{fmt(summary?.totalSupplierDebt || 0)}</h4>
-            <p className="text-[9.5px] text-slate-600 font-extrabold uppercase tracking-wider mt-1.5">Saldos Pendientes de Compras</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shrink-0 shadow-inner">
-            <Truck className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Stock Bajo */}
-        <div 
-          onClick={() => setShowLowStock(true)}
-          className={`p-5 rounded-xl border flex items-center justify-between h-[150px] cursor-pointer hover:shadow-md transition-all active:scale-[0.98] ${
-            summary?.lowStockCount > 0 
-              ? 'bg-amber-50/50 border-amber-250' 
-              : 'bg-white border-slate-400'
-          }`}
-        >
-          <div className="min-w-0 flex-1 pr-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Alertas Stock</h3>
-            <div className="flex items-center gap-1.5">
-              {summary?.lowStockCount > 0 ? (
+              {filterMode === 'month' && (
                 <>
-                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-                  <h4 className="text-sm font-extrabold text-amber-700">{summary.lowStockCount} Críticos</h4>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                  <h4 className="text-sm font-extrabold text-slate-700">Todo en orden</h4>
+                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className={ui.field}>
+                    {months.map((m, idx) => <option key={m} value={idx}>{m}</option>)}
+                  </select>
+                  <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className={ui.field}>
+                    {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
                 </>
               )}
-            </div>
-            <p className="text-[9.5px] text-slate-600 font-semibold mt-2.5">
-              {summary?.lowStockCount > 0 ? 'Haz clic para ver y reabastecer' : 'Todos los productos tienen stock suficiente'}
-            </p>
-          </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${
-            summary?.lowStockCount > 0 ? 'bg-amber-100 border border-amber-200 text-amber-600' : 'bg-emerald-50 border border-emerald-100 text-emerald-500'
-          }`}>
-            {summary?.lowStockCount > 0 ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
-          </div>
+              {filterMode === 'day' && (
+                <input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className={ui.field} />
+              )}
+              {filterMode === 'range' && (
+                <>
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={ui.field} aria-label="Desde" />
+                  <span className="text-[13px] text-slate-400">a</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={ui.field} aria-label="Hasta" />
+                </>
+              )}
+              <span className="hidden sm:block w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
+              <button
+                onClick={exportConsolidatedExcel}
+                className={`${ui.btn} ${ui.btnSecondary}`}
+                title="Descargar Excel con todos los datos consolidados del período"
+              >
+                <Download className="w-4 h-4 text-emerald-600" /> Excel
+              </button>
+              <button
+                onClick={exportConsolidatedPDF}
+                className={`${ui.btn} ${ui.btnDark}`}
+                title="Exportar reporte financiero PDF del período"
+              >
+                <FileText className="w-4 h-4" /> PDF consolidado
+              </button>
+            </>
+          }
+        />
+
+        {/* Indicadores principales */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label={filterMode === 'month' ? 'Ventas del mes' : filterMode === 'day' ? 'Ventas del día' : 'Ventas del período'}
+            value={fmt(revenue)}
+            hint={`Ganancia neta ${fmt(netProfit)}`}
+            icon={TrendingUp}
+            tone="brand"
+          />
+          <StatCard
+            label="Transacciones"
+            value={(summary?.totalSales || 0).toLocaleString('es-AR')}
+            hint={summary?.totalSales > 0 ? `Ticket promedio ${fmt(revenue / summary.totalSales)}` : 'Todavía sin ventas'}
+            icon={ShoppingCart}
+            tone="info"
+          />
+          <StatCard
+            label="Productos"
+            value={(summary?.totalProducts || 0).toLocaleString('es-AR')}
+            hint={`${summary?.totalProducts || 0} activos`}
+            icon={Package}
+          />
+          <StatCard
+            label="Alertas de stock"
+            value={lowStock}
+            valueTone={lowStock > 0 ? 'warning' : 'neutral'}
+            hint={lowStock > 0 ? 'Tocá para ver y reponer' : 'Todo en orden'}
+            icon={lowStock > 0 ? AlertTriangle : CheckCircle2}
+            tone={lowStock > 0 ? 'warning' : 'success'}
+            onClick={() => setShowLowStock(true)}
+          />
         </div>
-      </div>
 
-      {/* Feed de Actividad Reciente */}
-      <div className="bg-white p-6 rounded-xl border border-slate-400 flex flex-col overflow-hidden">
-        <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-widest mb-6 w-full text-left flex items-center gap-2 border-b border-slate-300 pb-3">
-          <Clock className="w-4 h-4 text-rose-500 animate-pulse" /> Actividad Reciente del Sistema
-        </h3>
-        <div className="space-y-4 text-left w-full">
-          {(!summary?.latestMovements || summary.latestMovements.length === 0) ? (
-            <div className="py-8 text-center text-slate-600">
-              <p className="text-xs font-semibold">Sin movimientos registrados hoy</p>
+        {/* Gráfico + resumen financiero */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <Panel
+            className="lg:col-span-3"
+            title="Ingresos y ganancia"
+            action={
+              <div className="flex items-center gap-4 text-[12.5px] text-slate-500">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#0E6E52]" /> Ingresos</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#34AC7E]" /> Ganancia neta</span>
+              </div>
+            }
+          >
+            <div className="h-[280px] w-full -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dashboardData?.history || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0E6E52" stopOpacity={0.14} />
+                      <stop offset="95%" stopColor="#0E6E52" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#34AC7E" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="#34AC7E" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="#eef2f6" />
+                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={6} />
+                  <YAxis
+                    stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={64}
+                    tickFormatter={(v) => (Math.abs(v) >= 1000 ? `$${Math.round(v / 1000).toLocaleString('es-AR')}k` : `$${v}`)}
+                  />
+                  <Tooltip
+                    formatter={(value) => fmt(Number(value))}
+                    contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px -12px rgba(15,23,42,.25)', fontSize: 12.5, padding: '8px 12px' }}
+                    labelStyle={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}
+                    cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }}
+                  />
+                  <Area type="monotone" name="Ingresos" dataKey="sales" stroke="#0E6E52" strokeWidth={2.25} fill="url(#colorSales)" isAnimationActive={false} />
+                  <Area type="monotone" name="Ganancia neta" dataKey="profit" stroke="#34AC7E" strokeWidth={2.25} fill="url(#colorProfit)" isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          ) : (
-            summary.latestMovements.map((log: any) => {
-              const time = new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              const date = new Date(log.createdAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
-              
-              let desc = `${log.action} ${log.entityType}`;
-              if (log.entityType === 'SALE') {
-                desc = log.action === 'CREATE' ? 'Nueva Venta registrada en el POS' : 'Venta cancelada o devuelta';
-              } else if (log.entityType === 'CASH_REGISTER') {
-                desc = log.action === 'OPEN' ? 'Apertura de turno de caja' : 'Cierre de turno y arqueo de caja';
-              } else if (log.entityType === 'PRODUCT') {
-                desc = log.action === 'CREATE' ? 'Nuevo producto registrado' : log.action === 'UPDATE' ? 'Producto modificado' : 'Producto eliminado';
-              } else if (log.entityType === 'PURCHASE') {
-                desc = 'Nueva compra a proveedor registrada';
-              }
+          </Panel>
 
-              return (
-                <div key={log.id} className="flex items-center justify-between text-xs py-2 border-b border-slate-50/50 last:border-0 pb-3 hover:bg-slate-50/30 px-2 rounded-lg transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-                    <div>
-                      <p className="font-bold text-slate-700">{desc}</p>
-                      <p className="text-[9.5px] text-slate-600 mt-0.5">
-                        Por <span className="font-semibold text-slate-700">{log.user?.fullName || log.user?.username || 'Sistema'}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-150">
-                    {date} {time}
-                  </span>
+          <Panel title="Resumen financiero">
+            <dl className="divide-y divide-slate-100 dark:divide-slate-800">
+              {[
+                { label: 'Ganancia bruta', val: fmt(summary?.totalRevenue || 0), cls: 'text-slate-900 dark:text-white', icon: ArrowUpRight, iconCls: 'text-emerald-500' },
+                { label: 'Egresos operativos', val: fmt(summary?.expenses || 0), cls: summary?.expenses > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white', icon: ArrowDownRight, iconCls: 'text-red-500' },
+                { label: 'Ganancia neta', val: fmt(netProfit), cls: netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600', icon: DollarSign, iconCls: 'text-emerald-500' },
+                { label: 'Rendimiento neto', val: `${netYield}%`, cls: 'text-slate-900 dark:text-white', icon: PieChart, iconCls: 'text-slate-400' },
+              ].map((item) => (
+                <div key={item.label} className="py-3.5 first:pt-1 last:pb-0">
+                  <dt className="flex items-center gap-1.5 text-[12.5px] text-slate-500 dark:text-slate-400">
+                    <item.icon className={`w-3.5 h-3.5 ${item.iconCls}`} /> {item.label}
+                  </dt>
+                  <dd className={`text-[19px] font-bold tracking-[-0.02em] mt-1 ${item.cls}`}>{item.val}</dd>
                 </div>
-              );
-            })
-          )}
+              ))}
+            </dl>
+          </Panel>
         </div>
+
+        {/* Resumen del mes + rankings */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Panel title="Resumen del mes">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {[
+                { label: 'Efectivo del mes', icon: Wallet, value: fmt(summary?.monthlyStats?.cash) },
+                { label: 'Facturación', icon: FileText, value: fmt(summary?.monthlyStats?.revenue) },
+                { label: 'Compras del mes', icon: Package, value: fmt(summary?.monthlyStats?.purchases) },
+                { label: 'Pagos a proveedores', icon: Truck, value: fmt(summary?.monthlyStats?.supplierPayments) },
+                { label: 'Ventas por cajas', icon: Calculator, value: fmt(summary?.monthlyStats?.boxSales) },
+                { label: 'Consumo interno', icon: ShoppingCart, value: fmt(summary?.monthlyStats?.internalConsumption) },
+              ].map((item) => (
+                <li key={item.label} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0 text-[13px]">
+                  <span className="flex items-center gap-2.5 text-slate-600 dark:text-slate-300 min-w-0">
+                    <item.icon className="w-4 h-4 text-slate-400 shrink-0" strokeWidth={2} />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  <span className="font-semibold text-slate-900 dark:text-white shrink-0">{item.value}</span>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+
+          <Panel title="Mejores clientes" bodyClassName="overflow-y-auto custom-scrollbar max-h-[300px]">
+            {(!dashboardData?.topClients || dashboardData.topClients.length === 0) ? (
+              <EmptyState icon={Users} title="Sin ventas a cuenta corriente" description="Cuando vendas a clientes con cuenta corriente, los que más compran aparecen acá." />
+            ) : (
+              <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+                {dashboardData.topClients.map((client: any, i: number) => (
+                  <li key={client.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 text-[12px] font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">{client.name}</p>
+                        <p className="text-[12px] text-slate-500">{client.salesCount} {client.salesCount === 1 ? 'compra' : 'compras'}</p>
+                      </div>
+                    </div>
+                    <span className="text-[13px] font-semibold text-slate-900 dark:text-white shrink-0">{fmt(client.totalSpent)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Panel>
+
+          <Panel title="Productos más vendidos" bodyClassName="overflow-y-auto custom-scrollbar max-h-[300px]">
+            {(!dashboardData?.topProducts || dashboardData.topProducts.length === 0) ? (
+              <EmptyState icon={Package} title="Sin ventas en el período" description="Los productos que más salen van a aparecer acá, con su stock actual." />
+            ) : (
+              <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+                {dashboardData.topProducts.map((p: any, i: number) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 text-[12px] font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate" title={p.name}>{p.name}</p>
+                        <p className="text-[12px] text-slate-500">{p.quantity} vendidos · stock {p.stock}</p>
+                      </div>
+                    </div>
+                    <span className="text-[13px] font-semibold text-slate-900 dark:text-white shrink-0">{fmt(p.revenue)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Panel>
+        </div>
+
+        {/* Salud del negocio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Margen operativo"
+            value={`${summary?.totalRevenue > 0 ? Math.round((summary.netProfit / summary.totalRevenue) * 100) : 0}%`}
+            hint="Ganancia neta sobre lo facturado"
+            icon={PieChart}
+            tone="success"
+          />
+          <StatCard
+            label="Saldo de cuentas corrientes"
+            value={fmt(summary?.totalClientBalance || 0)}
+            valueTone={summary?.totalClientBalance > 0 ? 'danger' : 'neutral'}
+            hint="Lo que te deben tus clientes"
+            icon={Users}
+            tone="brand"
+          />
+          <StatCard
+            label="Efectivo en caja"
+            value={fmt(summary?.activeSessionsCash || 0)}
+            hint={summary?.activeSessionsCount > 0
+              ? <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{summary.activeSessionsCount} {summary.activeSessionsCount === 1 ? 'caja abierta' : 'cajas abiertas'}</span>
+              : 'Caja cerrada'}
+            icon={Wallet}
+          />
+          <StatCard
+            label="Deuda con proveedores"
+            value={fmt(summary?.totalSupplierDebt || 0)}
+            valueTone={summary?.totalSupplierDebt > 0 ? 'danger' : 'neutral'}
+            hint="Saldos pendientes de compras"
+            icon={Truck}
+            tone="warning"
+          />
+        </div>
+
+        {/* Actividad reciente */}
+        <Panel title="Actividad reciente" icon={Clock}>
+          {(!summary?.latestMovements || summary.latestMovements.length === 0) ? (
+            <EmptyState title="Sin movimientos hoy" description="Ventas, aperturas de caja y cambios de productos se registran acá a medida que ocurren." />
+          ) : (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {summary.latestMovements.map((log: any) => {
+                const time = new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const date = new Date(log.createdAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+
+                let desc = `${log.action} ${log.entityType}`;
+                if (log.entityType === 'SALE') {
+                  desc = log.action === 'CREATE' ? 'Nueva venta registrada en el POS' : 'Venta cancelada o devuelta';
+                } else if (log.entityType === 'CASH_REGISTER') {
+                  desc = log.action === 'OPEN' ? 'Apertura de turno de caja' : 'Cierre de turno y arqueo de caja';
+                } else if (log.entityType === 'PRODUCT') {
+                  desc = log.action === 'CREATE' ? 'Nuevo producto registrado' : log.action === 'UPDATE' ? 'Producto modificado' : 'Producto eliminado';
+                } else if (log.entityType === 'PURCHASE') {
+                  desc = 'Nueva compra a proveedor registrada';
+                }
+
+                return (
+                  <li key={log.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${activityDot[log.entityType] || 'bg-slate-300'}`} />
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{desc}</p>
+                        <p className="text-[12px] text-slate-500">{log.user?.fullName || log.user?.username || 'Sistema'}</p>
+                      </div>
+                    </div>
+                    <span className="text-[12px] text-slate-400 shrink-0">{date} · {time}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
       </div>
 
       {/* Stock Alerts Panel */}
       <AnimatePresence>
         {showLowStock && (
-          <LowStockAlertsModal 
+          <LowStockAlertsModal
             key="low-stock-modal"
-            onClose={() => { 
-              setShowLowStock(false); 
-              loadData(); 
-            }} 
+            onClose={() => {
+              setShowLowStock(false);
+              loadData();
+            }}
           />
         )}
       </AnimatePresence>

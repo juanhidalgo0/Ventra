@@ -28,7 +28,6 @@ interface Props { children: React.ReactNode; }
 
 export default function MainLayout({ children }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [search, setSearch] = useState('');
   const { user } = useAuthStore();
   const [showUpdate, setShowUpdate] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -245,25 +244,14 @@ export default function MainLayout({ children }: Props) {
     return (
       <div className="h-screen w-full bg-[#f1f5f9] flex flex-col items-center justify-center relative overflow-hidden select-none">
         <div className="relative z-10 flex flex-col items-center gap-10">
-          <motion.div 
-            animate={{ 
-              y: [0, -6, 0],
-              scale: [1, 1.02, 1]
-            }} 
-            transition={{ 
-              repeat: Infinity, 
-              duration: 3, 
-              ease: "easeInOut" 
-            }}
-            className="flex items-center justify-center"
-          >
-            <GoDeliveryLogo className="w-32 h-32" />
-          </motion.div>
+          <div className="flex items-center justify-center">
+            <GoDeliveryLogo className="w-28 h-28" />
+          </div>
 
           <div className="text-center flex flex-col items-center gap-1.5">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">Ventra POS</h1>
-            <p className="text-rose-600 text-[10px] font-black tracking-widest uppercase mt-3 flex items-center justify-center gap-2">
-              <span>Cargando Terminal POS</span>
+            <h1 className="text-3xl font-bold text-slate-800 tracking-tight leading-none">Ventra POS</h1>
+            <p className="text-rose-700 text-[13px] font-medium mt-3 flex items-center justify-center gap-2">
+              <span>Cargando el punto de venta</span>
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
@@ -272,24 +260,12 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex flex-col items-center justify-center mt-2">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-              className="w-12 h-12 rounded-full border-4 border-slate-400 border-t-rose-600 flex items-center justify-center shadow-inner"
-            />
+            {/* Giro en CSS: se ve en movimiento también con framer-motion apagado */}
+            <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-rose-600 animate-spin" />
             <div className="h-6 flex items-center justify-center overflow-hidden mt-6 min-w-[280px]">
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={messageIndex}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.35, ease: "easeInOut" }}
-                  className="text-[10px] font-bold text-slate-600 uppercase tracking-widest block text-center"
-                >
-                  {loadingMessages[messageIndex]}
-                </motion.span>
-              </AnimatePresence>
+              <span key={messageIndex} className="text-[13px] font-medium text-slate-500 block text-center anim-rise">
+                {loadingMessages[messageIndex]}
+              </span>
             </div>
           </div>
         </div>
@@ -337,7 +313,7 @@ export default function MainLayout({ children }: Props) {
       <div className="flex-1 min-w-0 flex flex-col h-full relative overflow-hidden">
         {/* TopBar */}
         {!isPOS && (
-          <header className="h-14 bg-white border-b border-slate-400 px-4 md:px-5 flex items-center justify-between shrink-0 sticky top-0 z-40">
+          <header className="h-14 bg-white/95 border-b border-slate-200 px-4 md:px-5 flex items-center justify-between shrink-0 sticky top-0 z-40">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowMobileMenu(true)}
@@ -348,18 +324,16 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex-1 max-w-lg px-2 sm:px-6">
-            <div className="relative group flex items-center w-full">
-              <div className="absolute left-3 flex items-center justify-center pointer-events-none">
-                <Search className="w-4 h-4 text-slate-650 group-focus-within:text-rose-500 transition-colors" />
-              </div>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar..."
-                className="w-full bg-slate-50 border border-slate-400 text-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm focus:bg-white focus:border-rose-455 focus:ring-2 focus:ring-rose-100 transition-all outline-none placeholder:text-slate-655"
-              />
-            </div>
+            {/* Abre la paleta Ctrl+K: busca pantallas y acciones de todo el sistema */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+              className="w-full h-9 flex items-center gap-2.5 pl-3 pr-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-400 text-[13px] transition-colors cursor-pointer"
+            >
+              <Search className="w-4 h-4 shrink-0" />
+              <span className="flex-1 text-left truncate">Buscar pantallas y acciones…</span>
+              <kbd className="hidden sm:inline-flex items-center h-5 px-1.5 rounded-md border border-slate-200 bg-white text-[10.5px] font-mono font-semibold text-slate-500">Ctrl K</kbd>
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -390,10 +364,10 @@ export default function MainLayout({ children }: Props) {
 
             <div className="flex items-center gap-3 pl-2">
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-semibold text-slate-800 leading-none">{user?.fullName}</p>
-                <p className="text-[10px] font-medium text-rose-600 uppercase tracking-wide mt-0.5">{user?.role}</p>
+                <p className="text-[13px] font-semibold text-slate-800 leading-none">{user?.fullName}</p>
+                <p className="text-[11.5px] font-medium text-slate-400 mt-1">{({ ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', CASHIER: 'Cajero' } as Record<string, string>)[user?.role || ''] || user?.role}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center font-bold text-white text-sm">
+              <div className="w-9 h-9 rounded-full bg-rose-600 flex items-center justify-center font-bold text-white text-sm">
                 {user?.username?.[0]?.toUpperCase()}
               </div>
             </div>
@@ -407,8 +381,8 @@ export default function MainLayout({ children }: Props) {
           {showUpdate && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mx-2 mb-3 p-3 bg-rose-600 rounded-xl flex items-center justify-between z-50">
               <div className="flex items-center gap-3 text-white">
-                <Download className="w-5 h-5 animate-bounce" />
-                <p className="text-xs font-bold uppercase tracking-wide">¡Actualización lista para instalar!</p>
+                <Download className="w-5 h-5" />
+                <p className="text-sm font-semibold">Hay una actualización lista para instalar</p>
               </div>
               <button
                 onClick={() => {

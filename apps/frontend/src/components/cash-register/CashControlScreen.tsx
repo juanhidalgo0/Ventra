@@ -10,6 +10,7 @@ import CierreDiaModal from './CierreDiaModal';
 import XReportPrint, { parseXSession } from './XReportPrint';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { useAuthStore } from '../../stores/authStore';
+import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
 
 export default function CashControlScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -550,392 +551,290 @@ export default function CashControlScreen() {
     }).filter(u => u && u.id);
   }, [allUsers, sessions, zReports]);
 
+  const th = 'py-2.5 px-3 text-[12px] font-medium text-slate-500 dark:text-slate-400';
+  const sortButton = (label: string) => (
+    <button
+      onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+      className="inline-flex items-center gap-1 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+      title={sortOrder === 'desc' ? 'Más recientes primero (clic para ver las más antiguas)' : 'Más antiguas primero (clic para ver las más recientes)'}
+    >
+      {label}
+      {sortOrder === 'desc' ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
+    </button>
+  );
+
   return (
-    <div className="h-full flex flex-col gap-4 bg-[#f8fafc] p-4 sm:p-5 overflow-y-auto custom-scrollbar">
-      <div className="flex flex-col gap-3">
+    <div className="h-full overflow-y-auto custom-scrollbar">
+    <div className="max-w-[1480px] mx-auto flex flex-col gap-5 p-2 sm:p-3 anim-fade">
+      <PageHeader
+        title="Control de caja"
+        description="Cajas abiertas, cierres por turno (X) y cierres diarios (Z)"
+        actions={
+          <>
+            <button onClick={loadSessions} className={`${ui.btn} ${ui.btnSecondary}`} title="Actualizar">
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Actualizar
+            </button>
+            <button onClick={handleExportExcel} className={`${ui.btn} ${ui.btnSecondary}`}>
+              <Download className="w-4 h-4 text-emerald-600" /> Excel
+            </button>
+            <button onClick={handleExportPDF} className={`${ui.btn} ${ui.btnSecondary}`}>
+              <FileText className="w-4 h-4" /> PDF
+            </button>
+            <button disabled={isGeneratingZ} onClick={handleGenerateZReport} className={`${ui.btn} ${ui.btnPrimary}`}>
+              <FileOutput className="w-4 h-4" /> {isGeneratingZ ? 'Generando…' : 'Generar cierre Z'}
+            </button>
+          </>
+        }
+      />
+
+      {pendingArqueosAll.length > 0 && (
+        <div className="rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[13.5px] font-semibold text-amber-900 dark:text-amber-200">
+                {pendingArqueosAll.length} turno{pendingArqueosAll.length > 1 ? 's' : ''} cerrado{pendingArqueosAll.length > 1 ? 's' : ''} sin arqueo
+              </p>
+              <p className="text-[12.5px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                {pendingArqueosAll.map(p => `${p.user?.fullName || 'Desconocido'} (${p.terminalName})`).join(', ')}. El cierre Z se puede generar cuando estén contados.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {pendingArqueosAll.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setResolvingArqueo(p); setArqueoAmount(0); setArqueoNotes(''); }}
+                className={`${ui.btn} bg-amber-600 hover:bg-amber-700 text-white`}
+              >
+                Contar {p.terminalName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showFilters && (
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Control de Caja</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.25em] mt-0.5">Historial completo de cierres por turno</p>
-          </div>
-          <div className="flex flex-row items-center gap-2 shrink-0 flex-nowrap overflow-x-auto max-w-full pb-0.5">
-             <button disabled={isGeneratingZ} onClick={handleGenerateZReport} className="flex-1 sm:flex-initial btn-primary text-[9.5px] uppercase tracking-wider whitespace-nowrap">
-                <FileOutput className="w-3 h-3" /> {isGeneratingZ ? 'Generando...' : 'Generar Cierre Z'}
-             </button>
-             <button onClick={handleExportExcel} className="flex-1 sm:flex-initial btn-secondary text-[9.5px] uppercase tracking-wider whitespace-nowrap">
-                <Download className="w-3 h-3 text-emerald-600" /> Excel
-             </button>
-             <button onClick={handleExportPDF} className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all text-[9.5px] font-bold uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer whitespace-nowrap">
-                <FileText className="w-3 h-3" /> PDF
-             </button>
-             <button onClick={loadSessions} className="flex-1 sm:flex-initial btn-secondary text-[9.5px] uppercase tracking-wider whitespace-nowrap">
-                <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} /> Actualizar
-             </button>
-          </div>
-        </div>
-
-        {pendingArqueosAll.length > 0 && (
-          <div className="card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-amber-200 bg-amber-50">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-800">
-                  {pendingArqueosAll.length} turno{pendingArqueosAll.length > 1 ? 's' : ''} cerrado{pendingArqueosAll.length > 1 ? 's' : ''} sin arqueo pendiente
-                </p>
-                <p className="text-[10px] text-amber-700 mt-0.5">
-                  {pendingArqueosAll.map(p => `${p.user?.fullName || 'Desconocido'} (${p.terminalName})`).join(', ')} — el Cierre Z no se puede generar hasta contar estos turnos.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {pendingArqueosAll.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => { setResolvingArqueo(p); setArqueoAmount(0); setArqueoNotes(''); }}
-                  className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[9.5px] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer"
-                >
-                  Resolver {p.terminalName}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {showFilters && (
-          <div className="card p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all duration-300">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'month', label: 'Por Mes' },
-                  { id: 'day', label: 'Por Día' },
-                  { id: 'range', label: 'Rango' }
-                ].map(mode => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setFilterMode(mode.id as any)}
-                    className={`px-2.5 py-1 rounded-md text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                      filterMode === mode.id 
-                        ? 'bg-rose-600 text-white shadow-xs' 
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-
-              {filterMode === 'month' && (
-                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-150 animate-in fade-in slide-in-from-left-2 duration-200">
-                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="bg-transparent px-2.5 py-1 text-[9.5px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer">
-                    {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
-                  </select>
-                  <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-white shadow-xs rounded-md text-[9.5px] font-bold text-slate-800 uppercase tracking-widest border border-slate-100 px-2.5 py-1 outline-none cursor-pointer">
-                    {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {filterMode === 'day' && (
-                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                  <input
-                    type="date"
-                    value={selectedDay}
-                    onChange={(e) => setSelectedDay(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
-                  />
-                </div>
-              )}
-
-              {filterMode === 'range' && (
-                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">Desde</span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
-                  />
-                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">Hasta</span>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-rose-500"
-                  />
-                </div>
-              )}
-              
-              <div className="h-6 w-px bg-slate-100" />
-              
-              <div className="flex items-center gap-1.5 text-slate-400">
-                <User className="w-3.5 h-3.5" />
-                <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="bg-transparent text-[9.5px] font-bold text-slate-500 uppercase tracking-wider outline-none cursor-pointer">
-                  <option value="all">Todos los vendedores</option>
-                  {users.map((u: any, idx: number) => <option key={u.id || `seller-${idx}`} value={u.id}>{u.fullName}</option>)}
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented
+              options={[{ id: 'all', label: 'Todo' }, { id: 'month', label: 'Mes' }, { id: 'day', label: 'Día' }, { id: 'range', label: 'Rango' }]}
+              value={filterMode}
+              onChange={(v) => setFilterMode(v as any)}
+            />
+            {filterMode === 'month' && (
+              <>
+                <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className={ui.field}>
+                  {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
                 </select>
-              </div>
-            </div>
-
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar por terminal o responsable..." className="w-full bg-slate-50/50 border border-slate-100 rounded-xl pl-9 pr-3 py-1.5 text-[10.5px] font-bold text-slate-600 outline-none focus:bg-white focus:border-rose-200 transition-all shadow-inner" />
-            </div>
+                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className={ui.field}>
+                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </>
+            )}
+            {filterMode === 'day' && (
+              <input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className={ui.field} />
+            )}
+            {filterMode === 'range' && (
+              <>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={ui.field} aria-label="Desde" />
+                <span className="text-[13px] text-slate-400">a</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={ui.field} aria-label="Hasta" />
+              </>
+            )}
+            <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className={ui.field}>
+              <option value="all">Todos los vendedores</option>
+              {users.map((u: any, idx: number) => <option key={u.id || `seller-${idx}`} value={u.id}>{u.fullName}</option>)}
+            </select>
           </div>
-        )}
-      </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { label: 'Ventas Totales', val: fmt(totalSales), sub: 'Ingresos del mes', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-          { label: 'Gastos Operativos', val: fmt(totalExpenses), sub: 'Egresos registrados', icon: ArrowDownRight, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' },
-          { label: 'Cobros Deuda', val: fmt(totalDebtCollection), sub: 'Cuentas corrientes', icon: Wallet, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' },
-          { label: 'Balance Neto', val: fmt(balance), sub: 'Rendimiento real', icon: LayoutDashboard, color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
-          { label: 'Diferencias', val: fmt(totalDifferences), sub: 'Faltantes de caja', icon: AlertCircle, color: totalDifferences < 0 ? 'text-rose-500' : 'text-emerald-600', bg: totalDifferences < 0 ? 'bg-rose-50' : 'bg-emerald-50', border: totalDifferences < 0 ? 'border-rose-100' : 'border-emerald-100' }
-        ].map((s, idx) => (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} key={s.label} className={`bg-white p-3 rounded-xl border ${s.border} shadow-xs group hover:shadow-sm transition-all`}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className={`w-7 h-7 rounded-lg ${s.bg} flex items-center justify-center ${s.color} transition-transform group-hover:scale-105 shadow-xs`}>
-                <s.icon className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{s.label}</span>
-            </div>
-            <h4 className="text-lg font-bold text-slate-800 tracking-tight mb-0.5">{s.val}</h4>
-            <div className="flex items-center justify-between">
-              <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">{s.sub}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.15em] flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Cajas Activas ({activeSessions.length})
-          </h3>
-          <div className="flex items-center gap-4">
-             <label className="flex items-center gap-2 text-[9.5px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-600 transition-colors">
-                <input type="checkbox" checked={hideTotals} onChange={(e) => setHideTotals(e.target.checked)} className="rounded-md border-slate-200 text-rose-600 focus:ring-rose-500" /> Ocultar Totales
-             </label>
+          <div className="relative w-full lg:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar terminal o responsable" className={`${ui.field} w-full pl-9`} />
           </div>
         </div>
+      )}
 
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <StatCard label="Ventas totales" value={fmt(totalSales)} hint="Ingresos del período" icon={TrendingUp} tone="brand" />
+        <StatCard label="Gastos operativos" value={fmt(totalExpenses)} hint="Egresos registrados" icon={ArrowDownRight} tone="danger" />
+        <StatCard label="Cobros de deuda" value={fmt(totalDebtCollection)} hint="Cuentas corrientes" icon={Wallet} tone="info" />
+        <StatCard label="Balance neto" value={fmt(balance)} hint="Ventas menos gastos" icon={LayoutDashboard} />
+        <StatCard
+          label="Diferencias"
+          value={fmt(totalDifferences)}
+          valueTone={totalDifferences < 0 ? 'danger' : totalDifferences > 0 ? 'success' : 'neutral'}
+          hint={totalDifferences < 0 ? 'Faltante en caja' : totalDifferences > 0 ? 'Sobrante en caja' : 'Sin diferencias'}
+          icon={AlertCircle}
+          tone={totalDifferences < 0 ? 'danger' : 'success'}
+        />
+      </div>
+
+      <Panel
+        title={<span className="flex items-center gap-2">Cajas abiertas <span className="text-slate-400 font-medium">{activeSessions.length}</span></span>}
+        action={
+          <label className="flex items-center gap-2 text-[12.5px] text-slate-500 cursor-pointer hover:text-slate-700 transition-colors select-none">
+            <input type="checkbox" checked={hideTotals} onChange={(e) => setHideTotals(e.target.checked)} className="rounded border-slate-300 text-rose-600 focus:ring-rose-500" /> Ocultar montos
+          </label>
+        }
+      >
         {isLoading && activeSessions.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center justify-center gap-3">
-             <div className="w-5 h-5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
-             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cargando cajas…</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[0, 1].map(i => <div key={i} className="h-[132px] rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />)}
           </div>
         ) : activeSessions.length === 0 ? (
-          <div className="bg-white border border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center">
-             <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center mb-2"><Lock className="w-5 h-5 text-slate-300" /></div>
-             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No hay cajas abiertas en este momento</p>
-          </div>
+          <EmptyState icon={Lock} title="No hay cajas abiertas" description="Cuando un cajero abre su turno en el punto de venta, la caja aparece acá en vivo." className="py-6" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sortedActiveSessions.map((s) => (
-              <motion.div key={s.id} className="card p-4 hover:border-rose-200 relative overflow-hidden group transition-all duration-200">
-                <div className="flex items-start justify-between mb-3">
+              <div key={s.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center text-white text-sm font-black shadow-sm shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-rose-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
                       {s.terminalName?.[0] || 'T'}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-slate-800 tracking-tight truncate">{s.terminalName}</h4>
-                      <p className="text-[9.5px] font-bold text-slate-400 truncate">{s.user?.fullName}</p>
+                      <h4 className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{s.terminalName}</h4>
+                      <p className="text-[12.5px] text-slate-500 truncate">{s.user?.fullName}</p>
                     </div>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[8.5px] font-bold uppercase tracking-widest border border-emerald-100/80 shrink-0">Activa</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Efectivo Esperado</p>
-                    <p className="text-lg font-black text-rose-600 tracking-tight">{hideTotals ? '***' : fmt(s.expectedAmount || 0)}</p>
-                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 text-[12px] font-medium shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Abierta
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
-                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                    <Clock className="w-3 h-3 text-rose-400 shrink-0" /> 
-                    <span>Desde {formatTimeAR(s.openedAt)}</span>
-                  </div>
+                <div>
+                  <p className="text-[12.5px] text-slate-500">Efectivo esperado</p>
+                  <p className="text-[22px] font-bold text-slate-900 dark:text-white tracking-[-0.02em] leading-tight">{hideTotals ? '•••••' : fmt(s.expectedAmount || 0)}</p>
+                </div>
 
-                  <button 
-                    onClick={() => setMonitoringSession(s)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-[9.5px] font-extrabold text-white uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.97] shrink-0"
-                  >
-                    <Play className="w-3 h-3 text-rose-200 shrink-0" /> Ver Estado
+                <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <span className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+                    <Clock className="w-3.5 h-3.5 shrink-0" /> Desde las {formatTimeAR(s.openedAt)}
+                  </span>
+                  <button onClick={() => setMonitoringSession(s)} className={`${ui.btn} ${ui.btnSecondary} h-8 px-3`}>
+                    <Play className="w-3.5 h-3.5 text-rose-600" /> Ver estado
                   </button>
                 </div>
-                <div className="absolute top-0 right-0 w-1 h-full bg-rose-500" />
-              </motion.div>
+              </div>
             ))}
           </div>
         )}
-      </div>
+      </Panel>
 
-      <div className="flex-1 card flex flex-col p-4 sm:p-5 min-h-[500px]">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-white shadow-xs">
-              <History className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-800 tracking-tight">Historial de Cierres</h3>
-                <span className="text-[9.5px] font-black text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
-                  {activeHistoryTab === 'X' ? locallyFilteredClosedSessions.length : locallyFilteredZReports.length} {activeHistoryTab === 'X' ? 'turnos' : 'reportes'}
-                </span>
-              </div>
-              <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Registros permanentes de auditoría</p>
-            </div>
+      <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col p-5 min-h-[500px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <History className="w-4 h-4 text-slate-400" /> Historial de cierres
+              <span className="text-slate-400 font-medium">
+                {activeHistoryTab === 'X' ? locallyFilteredClosedSessions.length : locallyFilteredZReports.length}
+              </span>
+            </h2>
+            <p className="text-[12.5px] text-slate-500 mt-0.5">Registro permanente para auditoría</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowLocalFilters(!showLocalFilters)} 
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-[10px] font-bold uppercase tracking-wider cursor-pointer ${
-                showLocalFilters 
-                  ? 'bg-rose-50 border-rose-200 text-rose-650' 
-                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              {showLocalFilters ? 'Ocultar Filtros' : 'Filtrar Historial'}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowLocalFilters(!showLocalFilters)}
+            className={`${ui.btn} ${showLocalFilters ? 'bg-rose-50 border border-rose-200 text-rose-700' : ui.btnSecondary}`}
+          >
+            <Filter className="w-4 h-4" />
+            {showLocalFilters ? 'Ocultar filtros' : 'Filtrar'}
+          </button>
         </div>
 
         {showLocalFilters && (
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 mb-3 flex flex-wrap gap-3 items-center animate-in fade-in slide-in-from-top-2 duration-200 text-slate-700">
-            <div className="flex flex-col gap-1">
-              <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Filtrar por Día (Local)</span>
-              <input 
-                type="date" 
-                value={localDay} 
-                onChange={(e) => setLocalDay(e.target.value)} 
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-rose-500 cursor-pointer"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Filtrar por Cajero (Local)</span>
-              <select 
-                value={localCashier} 
-                onChange={(e) => setLocalCashier(e.target.value)} 
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-rose-500 cursor-pointer"
-              >
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-3 flex flex-wrap gap-3 items-end">
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-slate-500">Día</span>
+              <input type="date" value={localDay} onChange={(e) => setLocalDay(e.target.value)} className={ui.field} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-slate-500">Cajero</span>
+              <select value={localCashier} onChange={(e) => setLocalCashier(e.target.value)} className={ui.field}>
                 <option value="all">Todos los cajeros</option>
                 {users.map((u: any, idx: number) => <option key={u.id || `local-seller-${idx}`} value={u.id}>{u.fullName}</option>)}
               </select>
-            </div>
+            </label>
             {(localDay || localCashier !== 'all') && (
-              <button 
-                onClick={() => {
-                  setLocalDay('');
-                  setLocalCashier('all');
-                }}
-                className="mt-4 px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
-              >
-                Limpiar Filtros
+              <button onClick={() => { setLocalDay(''); setLocalCashier('all'); }} className={`${ui.btn} ${ui.btnSecondary}`}>
+                Limpiar filtros
               </button>
             )}
           </div>
         )}
-        
-        <div className="flex border-b border-slate-100 mb-2 gap-5">
-          <button 
-            onClick={() => setActiveHistoryTab('X')}
-            className={`pb-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeHistoryTab === 'X' ? 'border-rose-600 text-rose-650' : 'border-transparent text-slate-400 hover:text-slate-650'}`}
-          >
-            Reportes de Turno (X)
-          </button>
-          <button 
-            onClick={() => setActiveHistoryTab('Z')}
-            className={`pb-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeHistoryTab === 'Z' ? 'border-rose-600 text-rose-650' : 'border-transparent text-slate-400 hover:text-slate-650'}`}
-          >
-            Reportes Diarios (Z)
-          </button>
+
+        <div className="flex border-b border-slate-200 dark:border-slate-800 mb-1 gap-6">
+          {([['X', 'Cierres de turno (X)'], ['Z', 'Cierres diarios (Z)']] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setActiveHistoryTab(id)}
+              className={`pb-2.5 -mb-px text-[13px] font-medium border-b-2 transition-colors cursor-pointer ${activeHistoryTab === id ? 'border-rose-600 text-slate-900 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {activeHistoryTab === 'X' ? (
           isLoading && sessions.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-              <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Cargando cierres…</p>
+            <div className="space-y-2 py-3">
+              {[0, 1, 2, 3].map(i => <div key={i} className="h-12 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />)}
             </div>
           ) : locallyFilteredClosedSessions.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-4 shadow-xs">
-                <Search className="w-6 h-6 text-slate-200" />
-              </div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Sin cierres registrados</p>
-              <p className="text-[10px] text-slate-300 font-bold max-w-xs leading-relaxed">No hay movimientos de cierre locales para los filtros seleccionados actualmente.</p>
-            </div>
+            <EmptyState icon={History} title="Sin cierres para mostrar" description="Cuando se cierre un turno en el punto de venta, su reporte X queda guardado acá." className="flex-1" />
           ) : (
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full min-w-[650px] text-left">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/40">
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">Terminal / Responsable</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">
-                      <button 
-                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} 
-                        className="flex items-center gap-1 hover:text-rose-600 transition-colors uppercase tracking-widest cursor-pointer group"
-                        title={sortOrder === 'desc' ? 'Orden: Más recientes primero (Clic para más antiguas)' : 'Orden: Más antiguas primero (Clic para más recientes)'}
-                      >
-                        <span>Apertura</span>
-                        <span className="p-0.5 rounded bg-slate-100 group-hover:bg-rose-50 text-slate-500 group-hover:text-rose-600 transition-colors">
-                          {sortOrder === 'desc' ? <ArrowDown className="w-2.5 h-2.5" /> : <ArrowUp className="w-2.5 h-2.5" />}
-                        </span>
-                      </button>
-                    </th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-right">Venta Sistema</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-right">Diferencia</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-center">Estado</th>
+                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                    <th className={th}>Terminal y responsable</th>
+                    <th className={th}>{sortButton('Apertura')}</th>
+                    <th className={`${th} text-right`}>Venta del sistema</th>
+                    <th className={`${th} text-right`}>Diferencia</th>
+                    <th className={`${th} text-center`}>Estado</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {locallyFilteredClosedSessions.map((s) => (
-                    <tr key={s.id} onClick={() => handleSelectSession(s)} className="border-b border-slate-50 hover:bg-slate-50/70 transition-colors group cursor-pointer">
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">{s.terminalName?.[0]}</div>
+                    <tr key={s.id} onClick={() => handleSelectSession(s)} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[12px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">{s.terminalName?.[0]}</div>
                           <div>
-                            <p className="text-[11px] font-bold text-slate-700">{s.terminalName}</p>
-                            <p className="text-[9px] font-bold text-slate-400">{s.user?.fullName}</p>
+                            <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{s.terminalName}</p>
+                            <p className="text-[12px] text-slate-500">{s.user?.fullName}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3">
-                        <p className="text-[11px] font-bold text-slate-700">{formatDateAR(s.openedAt)}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">{formatTimeAR(s.openedAt)}</p>
+                      <td className="py-3 px-3">
+                        <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100">{formatDateAR(s.openedAt)}</p>
+                        <p className="text-[12px] text-slate-500">{formatTimeAR(s.openedAt)}</p>
                       </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <p className="text-[11px] font-bold text-slate-700">
-                          {(() => {
-                            try {
-                              if (s.closingSummary) {
-                                const parsed = JSON.parse(s.closingSummary);
-                                if (parsed && typeof parsed.totalRevenue === 'number') {
-                                  return fmt(parsed.totalRevenue);
-                                }
+                      <td className="py-3 px-3 text-right text-[13px] font-semibold text-slate-900 dark:text-white">
+                        {(() => {
+                          try {
+                            if (s.closingSummary) {
+                              const parsed = JSON.parse(s.closingSummary);
+                              if (parsed && typeof parsed.totalRevenue === 'number') {
+                                return fmt(parsed.totalRevenue);
                               }
-                            } catch (e) {}
-                            return fmt(s.closingAmountExpected || 0);
-                          })()}
-                        </p>
+                            }
+                          } catch (e) {}
+                          return fmt(s.closingAmountExpected || 0);
+                        })()}
                       </td>
-                      <td className="py-2.5 px-3 text-right">
+                      <td className="py-3 px-3 text-right">
                         {(() => {
                           const totalDiff = cashClosingResult(s).totalDiff;
                           return (
-                            <span className={`text-[11px] font-bold ${totalDiff === 0 ? 'text-slate-700' : totalDiff > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            <span className={`text-[13px] font-semibold ${totalDiff === 0 ? 'text-slate-500' : totalDiff > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                               {totalDiff > 0 && '+'}{fmt(totalDiff)}
                             </span>
                           );
                         })()}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[8.5px] font-bold uppercase tracking-wider border border-slate-200">Finalizada</span>
+                      <td className="py-3 px-3 text-center">
+                        <span className="inline-flex px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[12px] font-medium">Cerrada</span>
                       </td>
                     </tr>
                   ))}
@@ -945,60 +844,39 @@ export default function CashControlScreen() {
           )
         ) : (
           locallyFilteredZReports.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-4 shadow-xs">
-                <Search className="w-6 h-6 text-slate-200" />
-              </div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Sin Reportes Z</p>
-              <p className="text-[10px] text-slate-300 font-bold max-w-xs leading-relaxed">No se encontraron reportes Z locales con los filtros activos.</p>
-            </div>
+            <EmptyState icon={FileOutput} title="Sin cierres Z" description="Generá el cierre Z al final del día para consolidar todos los turnos." className="flex-1" />
           ) : (
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full min-w-[650px] text-left">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/40">
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">Reporte ID / Creado por</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">
-                      <button 
-                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} 
-                        className="flex items-center gap-1 hover:text-rose-600 transition-colors uppercase tracking-widest cursor-pointer group"
-                        title={sortOrder === 'desc' ? 'Orden: Más recientes primero (Clic para más antiguas)' : 'Orden: Más antiguas primero (Clic para más recientes)'}
-                      >
-                        <span>Fecha de Emisión</span>
-                        <span className="p-0.5 rounded bg-slate-100 group-hover:bg-rose-50 text-slate-500 group-hover:text-rose-600 transition-colors">
-                          {sortOrder === 'desc' ? <ArrowDown className="w-2.5 h-2.5" /> : <ArrowUp className="w-2.5 h-2.5" />}
-                        </span>
-                      </button>
-                    </th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-right">Esperado (Total)</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-right">Declarado (Total)</th>
-                    <th className="py-2.5 px-3 text-[9.5px] font-bold text-slate-400 uppercase tracking-widest text-right">Diferencia</th>
+                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                    <th className={th}>Reporte y responsable</th>
+                    <th className={th}>{sortButton('Emitido')}</th>
+                    <th className={`${th} text-right`}>Esperado</th>
+                    <th className={`${th} text-right`}>Declarado</th>
+                    <th className={`${th} text-right`}>Diferencia</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {locallyFilteredZReports.map((z) => (
-                    <tr key={z.id} onClick={() => { setZReportData(z); setIsHistoryZReport(true); }} className="border-b border-slate-50 hover:bg-slate-50/70 transition-colors group cursor-pointer">
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center text-[10px] font-bold text-rose-650 shrink-0">Z</div>
+                    <tr key={z.id} onClick={() => { setZReportData(z); setIsHistoryZReport(true); }} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center text-[12px] font-bold text-rose-700 dark:text-rose-400 shrink-0">Z</div>
                           <div>
-                            <p className="text-[11px] font-bold text-slate-700">#Z-{z.id?.substring(0, 8).toUpperCase()}</p>
-                            <p className="text-[9px] font-bold text-slate-400">{z.generatedBy?.fullName || 'Administrador'}</p>
+                            <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 font-mono">#Z-{z.id?.substring(0, 8).toUpperCase()}</p>
+                            <p className="text-[12px] text-slate-500">{z.generatedBy?.fullName || 'Administrador'}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3">
-                        <p className="text-[11px] font-bold text-slate-700">{formatDateAR(z.generatedAt)}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">{formatTimeAR(z.generatedAt)}</p>
+                      <td className="py-3 px-3">
+                        <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100">{formatDateAR(z.generatedAt)}</p>
+                        <p className="text-[12px] text-slate-500">{formatTimeAR(z.generatedAt)}</p>
                       </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <p className="text-[11px] font-bold text-slate-700">{fmt(z.totalExpected || 0)}</p>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <p className="text-[11px] font-bold text-slate-700">{fmt(z.totalDeclared || 0)}</p>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`text-[11px] font-bold ${z.differenceTotal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      <td className="py-3 px-3 text-right text-[13px] font-semibold text-slate-900 dark:text-white">{fmt(z.totalExpected || 0)}</td>
+                      <td className="py-3 px-3 text-right text-[13px] font-semibold text-slate-900 dark:text-white">{fmt(z.totalDeclared || 0)}</td>
+                      <td className="py-3 px-3 text-right">
+                        <span className={`text-[13px] font-semibold ${z.differenceTotal === 0 ? 'text-slate-500' : z.differenceTotal > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {z.differenceTotal > 0 && '+'}{fmt(z.differenceTotal || 0)}
                         </span>
                       </td>
@@ -1011,31 +889,32 @@ export default function CashControlScreen() {
         )}
 
         {/* Infinite Scroll Sentinel & Status Indicators */}
-        <div ref={observerTarget} className="py-3 flex flex-col items-center justify-center gap-2 border-t border-slate-100 mt-3">
+        <div ref={observerTarget} className="py-3 flex flex-col items-center justify-center gap-2 border-t border-slate-100 dark:border-slate-800 mt-3">
           {isLoadingMore && (
-            <div className="flex items-center gap-2 text-rose-600 bg-rose-50/80 px-4 py-2 rounded-xl text-xs font-bold animate-pulse shadow-xs border border-rose-100">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Cargando más cierres históricos...</span>
+            <div className="flex items-center gap-2 text-slate-500 text-[12.5px]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Cargando cierres anteriores…</span>
             </div>
           )}
 
           {!isLoadingMore && ((activeHistoryTab === 'X' && hasMoreSessions) || (activeHistoryTab === 'Z' && hasMoreZReports)) && (
             <button
               onClick={() => activeHistoryTab === 'X' ? loadMoreSessions() : loadMoreZReports()}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 font-bold text-[11px] uppercase tracking-wider transition-all border border-slate-200 cursor-pointer shadow-xs active:scale-95"
+              className={`${ui.btn} ${ui.btnSecondary}`}
             >
-              Cargar más registros anteriores
+              Cargar cierres anteriores
             </button>
           )}
 
           {!isLoadingMore && ((activeHistoryTab === 'X' && !hasMoreSessions && locallyFilteredClosedSessions.length > 0) || (activeHistoryTab === 'Z' && !hasMoreZReports && locallyFilteredZReports.length > 0)) && (
-            <div className="flex items-center gap-2 text-slate-400 text-[10.5px] font-bold uppercase tracking-wider py-1">
+            <div className="flex items-center gap-2 text-slate-400 text-[12.5px] py-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Has llegado al final de todos los registros históricos ({activeHistoryTab === 'X' ? locallyFilteredClosedSessions.length : locallyFilteredZReports.length} {activeHistoryTab === 'X' ? 'turnos' : 'reportes'} cargados)</span>
+              <span>Estos son todos los registros ({activeHistoryTab === 'X' ? locallyFilteredClosedSessions.length : locallyFilteredZReports.length} {activeHistoryTab === 'X' ? 'turnos' : 'reportes'})</span>
             </div>
           )}
         </div>
       </div>
+    </div>
 
       <style>{`
         @media print {

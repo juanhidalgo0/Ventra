@@ -460,81 +460,39 @@ export default function App() {
   }, []);
 
   if (isAuthenticated && !isWarmed) {
-    const stagger = perfMode ? {} : { initial: 'hidden', animate: 'visible', variants: {
-      hidden: {},
-      visible: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } }
-    }};
-    const item = perfMode ? {} : { variants: {
-      hidden: { opacity: 0, y: 10 },
-      visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } }
-    }};
-    const WarmDiv = (perfMode ? 'div' : motion.div) as any;
+    // Solo CSS: la barra avanza con transform y el brillo recorre la pista, así
+    // se ve en movimiento en cualquier PC (framer-motion está apagado en escritorio).
     return (
       <>
       <SyncDownloadBanner />
-      <WarmDiv
-        {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.25 } })}
-        className="fixed inset-0 bg-slate-50/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50"
-      >
-        <WarmDiv
-          {...(perfMode ? {} : { initial: { opacity: 0, scale: 0.96, y: 8 }, animate: { opacity: 1, scale: 1, y: 0 }, transition: { duration: 0.35, ease: 'easeOut' } })}
-          className="w-full max-w-[400px] bg-white p-8 rounded-3xl border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center text-center"
-        >
-          <WarmDiv {...stagger} className="flex flex-col items-center">
-            <WarmDiv {...item}>
-              <MangoLogo className="w-16 h-16 mb-6 shadow-sm animate-pulse" />
-            </WarmDiv>
+      <div className="fixed inset-0 bg-slate-50 flex flex-col items-center justify-center p-4 z-50">
+        <div className="w-full max-w-[400px] bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center text-center">
+          <div className="boot-halo mb-6">
+            <MangoLogo className="w-16 h-16 relative z-10 boot-halo__logo" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight mb-1 text-slate-900">Ventra POS</h2>
+          <p className="text-slate-500 text-[13px] mb-6">Preparando el punto de venta</p>
 
-            <WarmDiv {...item}>
-              <h2 className="text-xl font-bold tracking-tight mb-2 text-slate-900">Ventra POS</h2>
-              <p className="text-rose-600 text-[11px] font-bold uppercase tracking-wider mb-6">Precalentando entorno...</p>
-            </WarmDiv>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4 relative">
+            <div
+              className="h-full w-full rounded-full bg-rose-600 origin-left transition-transform duration-500 ease-out"
+              style={{ transform: `scaleX(${Math.max(0.04, warmingProgress / 100)})` }}
+            />
+            {warmingProgress < 100 && (
+              <div className="absolute inset-y-0 left-0 w-1/4 bg-white/45 anim-indeterminate" />
+            )}
+          </div>
 
-            <WarmDiv {...item} className="w-full">
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4 relative">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-rose-500 to-rose-600"
-                  animate={{ width: `${warmingProgress}%` }}
-                  transition={{ duration: 0.5, ease: 'easeOut' }}
-                />
-                {/* Shine sweep lives on the track, not inside the resizing fill —
-                    otherwise it visibly warps every time the fill's width changes. */}
-                {!perfMode && warmingProgress > 0 && warmingProgress < 100 && (
-                  <motion.div
-                    className="absolute inset-y-0 w-10 bg-white/50 blur-sm"
-                    animate={{ left: ['-15%', '115%'] }}
-                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                )}
-              </div>
-
-              {perfMode ? (
-                <p className="text-[13px] font-semibold text-slate-500 mb-1">{warmingStatus}</p>
-              ) : (
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={warmingStatus}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-[13px] font-semibold text-slate-500 mb-1"
-                  >
-                    {warmingStatus}
-                  </motion.p>
-                </AnimatePresence>
-              )}
-              {warmingError && <p className="text-[11px] font-bold text-rose-600 mt-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">{warmingError}</p>}
-            </WarmDiv>
-          </WarmDiv>
-        </WarmDiv>
-      </WarmDiv>
+          <p key={warmingStatus} className="text-[13px] font-medium text-slate-600 mb-1 anim-rise">{warmingStatus}</p>
+          {warmingError && <p className="text-[12px] font-semibold text-rose-700 mt-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">{warmingError}</p>}
+        </div>
+      </div>
       </>
     );
   }
 
   return (
-    <MotionConfig reducedMotion={perfMode ? "always" : "user"}>
+    <MotionConfig reducedMotion="user">
       <Routes>
         <Route path="/setup" element={<ConnectionScreen />} />
         <Route path="/login" element={<ConnectionGuard><LoginPage /></ConnectionGuard>} />
