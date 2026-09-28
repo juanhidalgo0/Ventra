@@ -299,7 +299,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               height: auto !important;
               background: white !important;
               z-index: 9999999 !important;
-              font-family: 'Outfit', 'Inter', sans-serif !important;
+              font-family: 'Outfit Variable', 'Inter Variable', sans-serif !important;
               font-size: 12.5px !important;
               line-height: 1.3 !important;
               color: #000000 !important;

@@ -2546,7 +2546,7 @@ export default function POSScreen() {
                           exit: { opacity: 0, height: 0 },
                           transition: { duration: 0.12 }
                         })}
-                        className="py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5"
+                        className={`py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5 ${perfMode ? 'anim-rise' : ''}`}
                       >
                         {/* Product Image */}
                         {item.productId === QUICK_SALE_PRODUCT_ID ? (
@@ -2644,7 +2644,7 @@ export default function POSScreen() {
                 )}
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-700/70">
                   <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total a Pagar</span>
-                  <span className="text-3xl sm:text-4xl font-black text-slate-950 dark:text-white tracking-tight font-mono">{formatPrice(getFinalTotal() + activePaymentSurcharge)}</span>
+                  <span key={getFinalTotal() + activePaymentSurcharge} className="anim-bump text-3xl sm:text-4xl font-black text-slate-950 dark:text-white tracking-tight font-mono">{formatPrice(getFinalTotal() + activePaymentSurcharge)}</span>
                 </div>
               </div>
 

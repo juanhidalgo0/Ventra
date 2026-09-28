@@ -1,8 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ======================================================
+   Tokens de diseño (Ventra)
+   Una sola fuente de verdad para color, movimiento y superficies. Las
+   pantallas nuevas leen estas variables en vez de inventar tonos propios.
+   ====================================================== */
+:root {
+  /* Movimiento: cortos y con salida suave. Solo se animan opacity/transform. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-press: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+
+  /* Superficies y texto */
+  --v-canvas: #f4f6f8;
+  --v-surface: #ffffff;
+  --v-surface-muted: #f8fafc;
+  --v-line: #e2e8f0;
+  --v-line-strong: #cbd5e1;
+  --v-ink: #0f172a;
+  --v-ink-muted: #475569;
+  --v-ink-subtle: #64748b;
+
+  /* Marca y estados */
+  --v-brand: #0E6E52;
+  --v-brand-hover: #0B5A43;
+  --v-brand-soft: #EAF7F1;
+  --v-success: #17925F;
+  --v-warning: #B5870A;
+  --v-danger: #DC2626;
+  --v-focus: 0 0 0 3px rgba(14, 110, 82, 0.22);
+}
+html.dark {
+  --v-canvas: #020617;
+  --v-surface: #0f172a;
+  --v-surface-muted: #111c31;
+  --v-line: #1e293b;
+  --v-line-strong: #334155;
+  --v-ink: #f1f5f9;
+  --v-ink-muted: #cbd5e1;
+  --v-ink-subtle: #94a3b8;
+  --v-brand-soft: rgba(23, 146, 95, 0.14);
+}
 
 /* ======================================================
    Midnight Retail Theme (POS Screen)
@@ -21,7 +63,7 @@
     background-color: #0f172a;
     border: 2px solid #334155;
     color: #f8fafc;
-    transition: all 0.2s;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .pos-theme .pos-input:focus {
     border-color: #0E6E52;
@@ -31,7 +73,7 @@
     background-color: #334155;
     color: #f8fafc;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.2s;
+    transition: background-color var(--dur-fast) var(--ease-out);
 }
 .pos-theme .pos-btn-secondary:hover {
     background-color: #475569;
@@ -45,7 +87,6 @@
 
 /* ======================================================
    KIOSCO POS — Professional Light Mode Design System
-   Inspired by PedidosYa / GoDelivery aesthetic
    ====================================================== */
 
 @layer base {
@@ -56,16 +97,27 @@
     overflow: hidden !important;
   }
   body {
-    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Cifras de ancho fijo: precios, totales y tablas no "bailan" al cambiar */
+    font-variant-numeric: tabular-nums;
     @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
   }
-  
+
   /* Fallback to ensure dark mode background is applied if Tailwind @apply fails */
   html.dark body, html.dark main {
     background-color: #020617 !important; /* slate-950 */
     color: #f1f5f9 !important; /* slate-100 */
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(14, 110, 82, 0.55);
+    outline-offset: 2px;
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: none;
   }
 }
 
@@ -86,6 +138,20 @@
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.7; transform: scale(0.97); }
   }
+
+  /* ── Animaciones de entrada sutiles ──────────────────────────
+     Solo opacity + transform: las resuelve la placa de video sin recalcular
+     la página, por eso sirven también en modo rendimiento. `backwards` hace
+     que al terminar no quede ningún transform aplicado. */
+  .anim-fade { animation: v-fade var(--dur-fast) var(--ease-out) backwards; }
+  .anim-pop  { animation: v-pop var(--dur-base) var(--ease-out) backwards; }
+  .anim-rise { animation: v-rise var(--dur-base) var(--ease-out) backwards; }
+  .anim-bump { animation: v-bump var(--dur-slow) var(--ease-out) backwards; }
+
+  @keyframes v-fade { from { opacity: 0; } }
+  @keyframes v-pop  { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+  @keyframes v-rise { from { opacity: 0; transform: translateY(-4px); } }
+  @keyframes v-bump { from { opacity: 0.35; transform: translateY(3px); } }
 
   /* Loading halo for the Ventra mark: a thin rotating gradient ring (like a
      circular progress arc) instead of expanding "sonar" pulse rings, paired
@@ -133,10 +199,16 @@
   .chip-lime {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-lime-100 text-lime-800 border border-lime-200;
   }
+
+  /* Las transiciones de los componentes base tocan solo propiedades baratas
+     (color, bordes, opacidad, transform). `transition-all` animaba también
+     sombras y tamaños, que obligan a repintar cuadro por cuadro. */
+
   /* ── Card ────────────────────────────────── */
   .card {
-    @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none transition-all duration-200 ease-in-out;
+    @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none;
     border-radius: 1rem;
+    transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
   }
   .card:hover {
     @apply border-slate-300 dark:border-slate-500;
@@ -144,11 +216,13 @@
 
   /* ── Buttons ─────────────────────────────── */
   .btn-primary {
-    @apply bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+    @apply bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+    transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out), opacity var(--dur-fast);
   }
 
   .btn-success {
-    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] flex items-center justify-center gap-2;
+    transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out), opacity var(--dur-fast);
   }
 
   .btn-danger {
@@ -157,7 +231,7 @@
     font-weight: 600;
     padding: 0.625rem 1.25rem;
     border-radius: 0.75rem;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out);
     border: 1px solid #fecaca;
     display: flex;
     align-items: center;
@@ -178,7 +252,7 @@
     font-weight: 600;
     padding: 0.625rem 1.25rem;
     border-radius: 0.75rem;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out);
     border: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
@@ -204,7 +278,7 @@
     color: #020617; /* Slate 950, almost pure black */
     font-weight: 600; /* Bolder text in inputs */
     font-size: 0.875rem;
-    transition: all 0.2s ease;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
   }
   .input-field:focus {
     border-color: #0E6E52;
@@ -217,7 +291,8 @@
 
   /* ── Nav Buttons ─────────────────────────── */
   .nav-btn {
-    @apply flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap active:scale-[0.97];
+    @apply flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm cursor-pointer select-none whitespace-nowrap active:scale-[0.97];
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out);
   }
 }
 
@@ -226,89 +301,16 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
 
-/* ── Performance Mode Rules (Ultra-flat, Ultra-contrast layout) ──────────────── */
-body[data-performance-mode="true"]:not(.on-auth-screen) {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-  background-color: #cbd5e1 !important; /* Darker background for max contrast */
-  color: #000000 !important; /* Pure black text */
-}
-
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) {
-  background-color: #0f172a !important; /* Slate 900 */
-  color: #f1f5f9 !important; /* Slate 100 */
-}
-
-body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.keep-style):not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) div:not(.mobile-sidebar):not(.keep-style):not(.keep-animated):not(.keep-animated *):not([class*="toast"]):not([id*="toast"]):not([class*="toast"] *):not([id*="toast"] *):not([class*="Go"]):not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) header:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) main:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) aside:not(.mobile-sidebar):not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) span:not(.keep-style):not(.keep-animated):not([class*="toast"]):not([class*="toast"] *):not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) svg:not(.keep-animated):not([class*="toast"] *):not([id*="toast"] *):not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) img:not(.mobile-app *) {
-  transition: none !important;
-  animation: none !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  transform: none !important;
-  will-change: auto !important;
-  filter: none !important;
-  scroll-behavior: auto !important;
-}
-
-body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel):not(.mobile-app *) {
-  border: 1px solid #e2e8f0 !important;
-}
-
-body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-panel {
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.pos-main-panel):not(.mobile-app *) {
-  border: 1px solid #334155 !important;
-  background-color: #1e293b !important; /* Slate 800 */
-}
-
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) .pos-main-panel {
-  border: 1px solid #334155 !important;
-  background-color: #0f172a !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
-body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *) {
-  border: 1px solid #cbd5e1 !important;
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  font-weight: 500 !important;
-}
-
+/* ── Buscador del POS ─────────────────────── */
 #pos-search {
   border: 1px solid #e2e8f0 !important;
-  font-family: 'Outfit', sans-serif !important;
+  font-family: 'Outfit Variable', 'Inter Variable', sans-serif !important;
 }
 
 #pos-search::placeholder {
-  font-family: 'Outfit', sans-serif !important;
+  font-family: 'Outfit Variable', 'Inter Variable', sans-serif !important;
   font-weight: 400 !important;
   color: #94a3b8 !important;
-}
-
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) input:not(.mobile-app *),
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) select:not(.mobile-app *),
-html.dark body[data-performance-mode="true"]:not(.on-auth-screen) textarea:not(.mobile-app *) {
-  border: 1px solid #334155 !important;
-  background-color: #0f172a !important; /* Slate 900 */
-  color: #ffffff !important;
 }
 
 html.dark #pos-search {
@@ -320,54 +322,55 @@ html.dark #pos-search {
   box-shadow: 0 0 0 2px rgba(14,110,82,0.15) !important;
 }
 
-/* Bypass gradients and transparencias to avoid alpha blending GPU lag */
-body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-tr,
-body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-br,
-body[data-performance-mode="true"]:not(.on-auth-screen) .bg-gradient-to-r {
-  background-image: none !important;
-  background-color: #334155 !important;
+/* ======================================================
+   Modo rendimiento
+   Mantiene el diseño completo (fuente, colores, bordes) y deja animaciones,
+   pero solo las baratas: opacity y transform, de 80 a 180ms. Se apaga lo
+   que cuesta en PCs con poca placa de video: desenfoques, manchas difusas
+   decorativas, sombras enormes, transiciones de tamaño/sombra y animaciones
+   infinitas de adorno. La app del celular (.mobile-app) y las pantallas de
+   ingreso (.on-auth-screen) no se ven afectadas.
+   ====================================================== */
+
+/* Desenfoques de fondo (vidrio esmerilado): se recalculan en cada cuadro que
+   cambia lo que hay detrás. Los overlays quedan con su color semitransparente. */
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.backdrop-blur-sm, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl, .backdrop-blur-\[2px\]):not(.mobile-app *) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary {
-  background: #0E6E52 !important;
-  color: #ffffff !important;
-  border: 2px solid #0A4736 !important;
-  font-weight: bold !important;
+/* Manchas difusas de adorno (círculos con blur detrás de tarjetas) */
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.blur-lg, .blur-xl, .blur-2xl, .blur-3xl):not(.mobile-app *) {
+  display: none !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success {
-  background: #047857 !important; /* Darker green */
-  color: #ffffff !important;
-  border: 2px solid #064e3b !important;
-  font-weight: bold !important;
+/* Sombras grandes → una sombra corta y liviana */
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.shadow-xl, .shadow-2xl):not(.mobile-app *) {
+  --tw-shadow: 0 10px 24px -12px rgb(15 23 42 / 0.22), 0 2px 6px -2px rgb(15 23 42 / 0.08) !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger {
-  background: #b91c1c !important; /* Darker red */
-  color: #ffffff !important;
-  border: 2px solid #7f1d1d !important;
-  font-weight: bold !important;
+/* Transiciones: solo color, bordes, opacidad y transform, y nunca más de 160ms.
+   (transition-all animaba ancho, alto y sombras, que repintan cada cuadro.) */
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.transition, .transition-all):not(.mobile-app *) {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, transform !important;
+}
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.duration-200, .duration-300, .duration-500, .duration-700, .duration-1000):not(.mobile-app *) {
+  transition-duration: var(--dur-base) !important;
 }
 
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary {
-  background: #ffffff !important;
-  color: #0f172a !important; /* Almost black */
-  border: 2px solid #475569 !important; /* Dark grey border */
-  font-weight: bold !important;
+/* Animaciones infinitas de adorno (ondas, rebotes, respiraciones). Se mantienen
+   animate-spin (algo está cargando) y animate-pulse (esqueletos y avisos). */
+body[data-performance-mode="true"]:not(.on-auth-screen) :is(.animate-ping, .animate-bounce, .animate-pulse-soft):not(.mobile-app *) {
+  animation: none !important;
 }
 
-/* Disable Hover scaling and elevation layout recalculations */
-body[data-performance-mode="true"]:not(.on-auth-screen) .card:not(.mobile-app *):hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) button:not(.mobile-app *):hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-primary:hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-success:hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-danger:hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) .btn-secondary:hover,
-body[data-performance-mode="true"]:not(.on-auth-screen) .nav-btn:hover {
-  transform: none !important;
-  box-shadow: none !important;
-  border-color: #cbd5e1 !important;
-  scale: 1 !important;
+/* Modales y overlays: en modo rendimiento no usan framer-motion; entran con
+   un fundido y el panel con un leve ascenso. Cerrar es instantáneo. */
+body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0:not(.mobile-app *):not(.mobile-app) {
+  animation: v-fade var(--dur-fast) var(--ease-out) backwards;
+}
+body[data-performance-mode="true"]:not(.on-auth-screen) .fixed.inset-0 > :not(.absolute):not(.fixed):not(.mobile-app *) {
+  animation: v-pop var(--dur-base) var(--ease-out) backwards;
 }
 
 /* Custom CSS class for mobile sidebar to ensure it transitions and hides properly without depending on Tailwind's dynamic compilation */
@@ -381,14 +384,13 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .nav-btn:hover {
   }
 }
 
-/* Keep Google session status banners light even in performance mode */
-body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-pending {
-  background-color: #fffbeb !important; /* light amber */
-  border-color: #fde68a !important;
-}
-body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
-  background-color: #ecfdf5 !important; /* light emerald */
-  border-color: #a7f3d0 !important;
+/* Quien pidió menos movimiento en Windows no ve animaciones de entrada */
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade, .anim-pop, .anim-rise, .anim-bump,
+  body[data-performance-mode="true"] .fixed.inset-0,
+  body[data-performance-mode="true"] .fixed.inset-0 > * {
+    animation: none !important;
+  }
 }
 
 /* High visibility focus state for writing fields inside product modal */
@@ -396,7 +398,7 @@ body[data-performance-mode="true"]:not(.on-auth-screen) .google-banner-active {
 #product-modal-container select:focus,
 #product-modal-container textarea:focus {
   border-color: #17925F !important;
-  box-shadow: 0 0 0 4px rgba(14,110,82,0.22) !important; 
+  box-shadow: 0 0 0 4px rgba(14,110,82,0.22) !important;
   background-color: rgba(234, 247, 241, 0.6) !important;
   outline: none !important;
 }

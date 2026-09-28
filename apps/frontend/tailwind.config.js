@@ -81,10 +81,13 @@ export default {
         ...expandedFamilies,
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        outfit: ['Bricolage Grotesque', 'Outfit', 'Inter', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'Inter Variable', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        outfit: ['Bricolage Grotesque Variable', 'Outfit Variable', 'Inter Variable', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
+      // Tokens de movimiento: los mismos en modo normal y en modo rendimiento.
+      transitionTimingFunction: { 'out-soft': 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+      transitionDuration: { press: '80ms', fast: '120ms', base: '160ms' },
       // Same story as the colors above: the code uses Tailwind v4-only utilities
       // (shadow-xs/2xs, w-4.5/h-4.5) on a v3 project, so these were no-ops too.
       boxShadow: {

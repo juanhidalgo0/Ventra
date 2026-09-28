@@ -6,6 +6,7 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import AppToaster from './components/common/AppToaster';
 import App from './App';
+import './fonts';
 import './index.css';
 
 // React root render
