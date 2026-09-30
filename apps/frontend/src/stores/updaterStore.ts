@@ -8,8 +8,31 @@ interface UpdaterState {
   version: string | null;
   progress: number; // 0-100, best-effort
   update: Update | null;
+  /** Instalando: la app se reinicia sola al terminar. */
+  installing: boolean;
+  /** El usuario eligió instalarla al volver a abrir Ventra. */
+  postponed: boolean;
   checkAndDownload: () => Promise<void>;
+  install: () => Promise<void>;
+  postpone: () => void;
 }
+
+/**
+ * Versión que el usuario dejó para la próxima vez que abra la app: apenas termina de
+ * descargarse se instala sola (antes de que se empiece a trabajar), sin volver a preguntar.
+ */
+export const PENDING_UPDATE_KEY = 'ventra_update_on_next_start';
+
+async function invokeTauri(cmd: string, args?: Record<string, unknown>) {
+  const tauri = (window as any).__TAURI__;
+  const invokeFn = tauri?.core?.invoke || tauri?.invoke;
+  if (!invokeFn) return;
+  return invokeFn(cmd, args);
+}
+
+const readPending = () => {
+  try { return !!localStorage.getItem(PENDING_UPDATE_KEY); } catch { return false; }
+};
 
 /** Se pidió un chequeo mientras había otro en curso: repetirlo al terminar. */
 let recheckAfter = false;
@@ -19,6 +42,8 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   version: null,
   progress: 0,
   update: null,
+  installing: false,
+  postponed: readPending(),
 
   // Checks for a new version and, if found, downloads it silently in the
   // background right away — no user prompt to start the download. The user
@@ -72,5 +97,34 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         setTimeout(() => get().checkAndDownload(), 1000);
       }
     }
+  },
+
+  install: async () => {
+    const { update, installing } = get();
+    if (!update || installing) return;
+    set({ installing: true });
+    const { default: toast } = await import('react-hot-toast');
+    const loadingToast = toast.loading('Instalando actualización...');
+    try {
+      // The backend is a separate Node process spawned by Rust, holding native
+      // .node addons (bcrypt, etc.) open — if it's still running when the NSIS
+      // installer tries to overwrite those files, Windows has them locked and
+      // the install fails/prompts. Stopping it first (and waiting for the OS
+      // to actually release the files, not just requesting termination) avoids
+      // that race entirely, instead of hoping the timing works out.
+      await invokeTauri('stop_backend_for_update');
+      try { localStorage.removeItem(PENDING_UPDATE_KEY); } catch { /* sin almacenamiento */ }
+      await update.install();
+      toast.dismiss(loadingToast);
+      await invokeTauri('restart_app');
+    } catch (err: any) {
+      set({ installing: false });
+      toast.error('Error al instalar: ' + (err?.message || err), { id: loadingToast });
+    }
+  },
+
+  postpone: () => {
+    try { localStorage.setItem(PENDING_UPDATE_KEY, get().version || '1'); } catch { /* sin almacenamiento */ }
+    set({ postponed: true });
   },
 }));

@@ -14,6 +14,7 @@ import { getClientId } from '../../utils/clientId';
 import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
+import UpdateBadge from '../updater/UpdateBadge';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
@@ -361,6 +362,7 @@ export default function MainLayout({ children }: Props) {
                 <Download className="w-3.5 h-3.5" /> Instalar app
               </button>
             )}
+            <UpdateBadge />
             <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
 
             <div className="flex items-center gap-3 pl-2">

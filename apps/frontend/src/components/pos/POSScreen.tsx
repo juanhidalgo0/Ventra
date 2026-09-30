@@ -10,6 +10,7 @@ import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import { holdLogout } from '../../utils/logoutHold';
 import CategoryPickerModal from './CategoryPickerModal';
+import UpdateBadge from '../updater/UpdateBadge';
 import toast from 'react-hot-toast';
 import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
@@ -1809,6 +1810,9 @@ export default function POSScreen() {
             </div>
 
             <span className="hidden lg:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
+
+            {/* Versión nueva descargada: aviso discreto, no interrumpe */}
+            <UpdateBadge />
 
             {/* Buscar acciones (Ctrl+K) */}
             <button
