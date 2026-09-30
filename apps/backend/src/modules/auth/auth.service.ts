@@ -93,7 +93,7 @@ export class AuthService {
    */
   private signRefresh(payload: { sub: string; username: string; role: string }, longSession: boolean) {
     return this.jwtService.sign(longSession ? { ...payload, ls: 1 } : payload, {
-      secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
+      secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       expiresIn: longSession ? '180d' : this.config.get('JWT_REFRESH_EXPIRATION', '7d'),
     });
   }
@@ -101,7 +101,7 @@ export class AuthService {
   async refreshToken(token: string) {
     try {
       const payload = this.jwtService.verify(token, {
-        secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
+        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
       const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
       if (!user || !user.isActive) throw new UnauthorizedException('Token inválido');

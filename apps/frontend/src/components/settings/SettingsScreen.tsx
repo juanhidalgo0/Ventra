@@ -481,7 +481,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
 
   const handleDownloadBackup = async (filename: string) => {
     try {
-      const downloadUrl = `${api.defaults.baseURL}/system/backup/download?filename=${filename}`;
+      const { data } = await api.post('/system/backup/download-ticket', { filename });
+      const downloadUrl = `${api.defaults.baseURL}/system/backup/download?ticket=${data.ticket}`;
       if ((window as any).__TAURI__) {
         const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
         invokeFn('open_browser', { url: downloadUrl }).catch(() => window.open(downloadUrl, '_blank'));

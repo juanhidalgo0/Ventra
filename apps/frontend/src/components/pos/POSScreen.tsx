@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
+import { holdLogout } from '../../utils/logoutHold';
 import CategoryPickerModal from './CategoryPickerModal';
 import toast from 'react-hot-toast';
 import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
@@ -2955,6 +2956,8 @@ export default function POSScreen() {
 
                 if (generateZAfterArqueo) {
                   setGenerateZAfterArqueo(false);
+                  // Sin sesión cerrada entre el arqueo y el cartel del Z (la traba la toma después el cartel)
+                  const release = holdLogout();
                   setShowCierre(false);
                   try {
                     // clientId: el servidor no le cierra la sesión a esta terminal, así
@@ -2963,6 +2966,8 @@ export default function POSScreen() {
                     setZReportData(res.data);
                   } catch (err: any) {
                     toast.error(err.response?.data?.message || 'Error al generar cierre Z');
+                  } finally {
+                    setTimeout(release, 3000);
                   }
                 }
               } catch (err: any) {

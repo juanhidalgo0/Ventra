@@ -234,11 +234,8 @@ export class CashRegisterService {
     await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: sessionId, action: 'CLOSE', newValues: JSON.stringify(closingSummary) } });
     this.events.emitCashUpdated({ action: 'CLOSE', sessionId });
     this.notifyCashDiff(updated, expectedCash);
-    // Cierre X (cambio de turno): el cajero de esa caja queda deslogueado en todas las
-    // demás PCs donde tenga sesión (cada usuario tiene una sola caja abierta, así que no
-    // corta otra caja suya). La terminal que cerró se excluye por clientId: sigue con su
-    // flujo (imprimir el X, abrir caja nueva o generar el Z).
-    this.events.emitForceLogout({ userId: session.userId, reason: 'CASH_CLOSED', sessionId, clientId: data.clientId });
+    // Cierre X (cambio de turno): no se desloguea a nadie más. Solo la terminal que cerró
+    // cierra su sesión, cuando el usuario sale del cartel del cierre (ver CierreCajaModal).
     return { ...updated, closingSummaryParsed: closingSummary };
   }
 
@@ -747,13 +744,10 @@ export class CashRegisterService {
       console.warn('[CashRegisterService] Error al disparar backup automático tras Cierre Z:', bErr);
     }
 
-    // Cierre Z: ninguna terminal debe quedar con la sesión abierta de esos turnos.
-    // La terminal que generó el Z se excluye del logout inmediato: primero debe
-    // terminar de mostrar/imprimir el cartel "Imprimir Z" y recién ahí cierra sesión
-    // (lo hace localmente al cerrar ese cartel, ver CashControlScreen).
-    for (const zUserId of new Set(sessions.map((s: any) => s.userId).filter(Boolean))) {
-      this.events.emitForceLogout({ userId: zUserId as string, reason: 'Z_REPORT', clientId });
-    }
+    // Cierre Z: solo se desloguea quien lo generó, en sus OTRAS terminales. Los demás
+    // cajeros no se tocan. La terminal que lo generó se excluye (clientId): primero
+    // muestra el cartel para imprimir el Z y cierra sesión al salir de él.
+    this.events.emitForceLogout({ userId, reason: 'Z_REPORT', clientId });
 
     return zReport;
   }

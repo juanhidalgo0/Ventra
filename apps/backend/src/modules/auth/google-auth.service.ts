@@ -92,7 +92,7 @@ export class GoogleAuthService {
       const jwtPayload = { sub: user.id, username: user.username, role: user.role };
       const accessToken = this.jwtService.sign(jwtPayload);
       const refreshToken = this.jwtService.sign(jwtPayload, {
-        secret: this.config.get('JWT_REFRESH_SECRET', 'paulos-refresh-default'),
+        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.config.get('JWT_REFRESH_EXPIRATION', '7d'),
       });
 

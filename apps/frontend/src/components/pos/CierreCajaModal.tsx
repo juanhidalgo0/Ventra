@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import GastosModal from './GastosModal';
+import { holdLogout } from '../../utils/logoutHold';
 
 interface CierreCajaModalProps {
   session: any;
@@ -42,15 +43,9 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
 
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
 
-  useEffect(() => {
-    if (step === 6 && !isFollowedByZ) {
-      const timer = setTimeout(() => {
-        onClose();
-        useAuthStore.getState().logout();
-      }, 30000);
-      return () => clearTimeout(timer);
-    }
-  }, [step, isFollowedByZ, onClose]);
+  // Mientras dura el cierre no se cierra la sesión de esta terminal: se cierra recién
+  // cuando el cajero sale del cartel (así puede imprimir el comprobante)
+  useEffect(() => holdLogout(), []);
 
   const reloadSession = async () => {
     try {

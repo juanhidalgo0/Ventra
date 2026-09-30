@@ -16,7 +16,7 @@ import { ProductsModule } from '../products/products.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET', 'paulos-pos-default-secret'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: { expiresIn: config.get('JWT_EXPIRATION', '15m') },
       }),
     }),

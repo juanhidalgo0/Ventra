@@ -11,6 +11,7 @@ import CalculatorModal from '../pos/CalculatorModal';
 import CommandPalette from '../ui/CommandPalette';
 import { wsService } from '../../services/websocket';
 import { getClientId } from '../../utils/clientId';
+import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
@@ -39,12 +40,11 @@ export default function MainLayout({ children }: Props) {
   const [showCalculator, setShowCalculator] = useState(false);
 
   /**
-   * Cierre Z: el servidor avisa y todas las terminales de los cajeros incluidos
-   * cierran sesión, para que no quede ninguna abierta con el turno ya cerrado.
-   * La terminal que generó el Z se excluye acá (clientId) y cierra su propia
-   * sesión sola, después de mostrar/imprimir el cartel "Imprimir Z".
-   * Cierre X (cambio de turno): igual, pero solo para el cajero de esa caja; los
-   * demás cajeros conectados no se ven afectados.
+   * Cierre Z: el servidor avisa y las OTRAS terminales de quien lo generó cierran
+   * sesión. Los demás cajeros no se ven afectados. La terminal que generó el Z se
+   * excluye (clientId) y cierra su propia sesión al salir del cartel "Imprimir Z".
+   * Cierre X (cambio de turno): no llega aviso; solo cierra sesión la terminal que lo hizo.
+   * Mientras esta terminal está en medio de un cierre, el aviso se ignora (logoutHold).
    */
   useEffect(() => {
     wsService.connect();
@@ -52,9 +52,10 @@ export default function MainLayout({ children }: Props) {
       const current = useAuthStore.getState().user;
       if (!current || current.id !== data.userId) return;
       if (data.clientId && data.clientId === getClientId()) return;
+      if (isLogoutHeld()) return;
       toast.success(
         data.reason === 'Z_REPORT'
-          ? 'Se generó el Cierre Z: se cerró la sesión en esta terminal'
+          ? 'Hiciste el Cierre Z en otra terminal: se cerró la sesión acá también'
           : 'Se cerró la caja en otra terminal: se cerró la sesión acá también',
         { duration: 6000 },
       );

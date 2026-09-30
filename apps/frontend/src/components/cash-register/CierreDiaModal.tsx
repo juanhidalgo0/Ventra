@@ -4,6 +4,7 @@ import { Printer, CheckCircle2, AlertTriangle, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { cashClosingResult } from '../../utils/cashDifference';
+import { holdLogout } from '../../utils/logoutHold';
 
 /**
  * headless: solo arma la hoja para imprimir (oculta), sin la ventana de pantalla. La usa el
@@ -140,6 +141,9 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
     const timer = setTimeout(() => setPrintReady(true), 500);
     return () => clearTimeout(timer);
   }, []);
+
+  // Z recién generado: la sesión de esta terminal no se cierra hasta salir del cartel
+  useEffect(() => (isHistory || headless ? undefined : holdLogout()), [isHistory, headless]);
 
   useEffect(() => {
     if (isHistory) return;

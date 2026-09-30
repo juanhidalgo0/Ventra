@@ -50,9 +50,11 @@ const IMAGE_CONCURRENCY = 5;
 const IMG_PREFIX = 'ventra-img:';
 const TRIGGER_PREFIX = 'ventra_sync2_';
 /** Tablas que no son datos del comercio. */
-const EXCLUDED = new Set(['app_licenses', 'image_suggestions', 'sync_outbox', 'sync_state', 'sync_images', 'sync_deltas', 'sync_stash', 'sync_img_fetch', '_prisma_migrations']);
+const EXCLUDED = new Set(['app_licenses', 'image_suggestions', 'sync_outbox', 'sync_state', 'sync_images', 'sync_deltas', 'sync_stash', 'sync_img_fetch', 'sync_parked', '_prisma_migrations']);
 /** Lo que sobrevive a un reinicio de fábrica (igual que en la nube). */
 const KEEP_ON_RESET = new Set(['fiscal_config', 'fiscal_tokens', 'surcharges']);
+/** Tablas de las que la nube guarda solo los últimos días: al subir todo, lo viejo no se manda. */
+const CLOUD_RETENTION_DAYS: Record<string, number> = { audit_logs: 30 };
 /** Columnas que varias cajas modifican sumando/restando. */
 const COUNTERS: Record<string, string[]> = { products: ['stock'], clients: ['balance'], promotions: ['sold_stock'] };
 const NOW_MS = `CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER)`;
@@ -169,7 +171,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
         await this.setState('applying', '1', tx);
         for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
-        for (const t of ['sync_outbox', 'sync_deltas', 'sync_images', 'sync_img_fetch', 'sync_stash']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
+        for (const t of ['sync_outbox', 'sync_deltas', 'sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev')`);
         await this.setState('cloud_gen', String(gen), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
@@ -205,6 +207,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     await ex(`CREATE TABLE IF NOT EXISTS sync_stash (id TEXT PRIMARY KEY, tbl TEXT NOT NULL, row_id TEXT NOT NULL, col TEXT NOT NULL, delta REAL NOT NULL)`);
     await ex(`CREATE TABLE IF NOT EXISTS sync_images (product_id TEXT PRIMARY KEY, hash TEXT NOT NULL, uploaded INTEGER NOT NULL DEFAULT 0)`);
     await ex(`CREATE TABLE IF NOT EXISTS sync_img_fetch (product_id TEXT PRIMARY KEY, hash TEXT NOT NULL)`);
+    // Filas de la nube que no se pudieron aplicar porque apuntan a algo que todavía no llegó
+    await ex(`CREATE TABLE IF NOT EXISTS sync_parked (tbl TEXT NOT NULL, id TEXT NOT NULL, op TEXT NOT NULL, data TEXT, ts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tbl, id))`);
   }
 
   private async getState(key: string, db: Tx = this.prisma): Promise<string | null> {
@@ -391,14 +395,20 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private async pushAll(tables: string[], ts: number, label: string) {
     let total = 0;
     for (const t of tables) {
-      const c: any[] = await this.prisma.$queryRawUnsafe(`SELECT COUNT(*) AS n FROM "${t}"`);
+      const c: any[] = CLOUD_RETENTION_DAYS[t]
+        ? await this.prisma.$queryRawUnsafe(`SELECT COUNT(*) AS n FROM "${t}" WHERE created_at >= ?`, Date.now() - CLOUD_RETENTION_DAYS[t] * 86400000)
+        : await this.prisma.$queryRawUnsafe(`SELECT COUNT(*) AS n FROM "${t}"`);
       total += Number(c[0].n);
     }
     this.progress = { label, done: 0, total };
     for (const t of await this.parentFirst(tables)) {
       let lastId = '';
+      // La nube solo guarda lo reciente de estas tablas (ver maintain en firebase/functions/sync.js)
+      const since = CLOUD_RETENTION_DAYS[t] ? Date.now() - CLOUD_RETENTION_DAYS[t] * 86400000 : null;
       for (;;) {
-        const rows = await this.readRows(t, `WHERE id > ? ORDER BY id LIMIT ${PAGE}`, [lastId]);
+        const rows = since === null
+          ? await this.readRows(t, `WHERE id > ? ORDER BY id LIMIT ${PAGE}`, [lastId])
+          : await this.readRows(t, `WHERE id > ? AND created_at >= ? ORDER BY id LIMIT ${PAGE}`, [lastId, since]);
         if (!rows.length) break;
         await this.trackImages(rows);
         await this.pushRows(rows.map((r) => ({ t, id: r.id, d: r.data, ts })));
@@ -643,8 +653,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     let head = after;
     let applied = 0;
     if (full) this.progress = { label: wipe ? 'Descargando tus datos' : 'Alineando con la nube', done: 0, total: expected };
+    const order = await this.deleteOrder(tables);
 
     const applyPage = async (tx: Tx, rows: CloudRow[]) => {
+      const deletes: CloudRow[] = [];
       for (const r of rows) {
         if (r.t === '_delta') {
           const d = r.d || {};
@@ -654,14 +666,15 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           } else await this.applyDelta(tx, tables, r.id, d);
           continue;
         }
-        await this.applyRow(tx, tables, r, full);
+        if (r.x || !r.d) deletes.push(r);
+        else await this.applyRow(tx, tables, r, full);
       }
+      await this.applyDeletes(tx, tables, deletes, order);
     };
 
     if (full) {
       // Todo en una transacción, bajando y aplicando de a tandas (sin juntar todo en
       // memoria). Las claves foráneas se controlan al final, así el orden de llegada da igual.
-      const order = wipe ? await this.deleteOrder(tables) : [];
       this.writeLock = true;
       try {
       await this.prisma.$transaction(async (tx) => {
@@ -669,7 +682,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.setState('applying', '1', tx);
         if (wipe) {
           for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
-          for (const t of ['sync_images', 'sync_img_fetch', 'sync_stash']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
+          for (const t of ['sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
         }
         for (;;) {
           const page = await this.call('pull', { after, all: true, fresh: wipe });
@@ -692,6 +705,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           if (!tables.includes(t) || !(await this.counterCols(t)).includes(c)) continue;
           await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = ? WHERE id = ?`, sum, id);
         }
+        await this.parkOrphans(tx, tables, null, new Map());
         await this.setState('pull_after', String(head), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
       }, { timeout: 30 * 60 * 1000, maxWait: 30000 });
@@ -708,10 +722,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       head = page.head;
       if (page.rows.length) {
         this.phase = 'syncing';
+        const rows = page.rows as CloudRow[];
+        const touched = new Map(rows.filter((r) => r.t !== '_delta' && !r.x && r.d).map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
         await this.prisma.$transaction(async (tx) => {
           await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
           await this.setState('applying', '1', tx);
-          await applyPage(tx, page.rows as CloudRow[]);
+          await applyPage(tx, rows);
+          await this.parkOrphans(tx, tables, touched, touched);
           await this.setState('pull_after', String(page.last), tx);
           await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
         }, { timeout: 5 * 60 * 1000, maxWait: 30000 });
@@ -723,7 +740,110 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       after = page.last;
       if (!page.more) break;
     }
-    return applied;
+    return applied + (await this.retryParked(tables, order));
+  }
+
+  /**
+   * Bajas de la nube: van después de las altas y cambios, de las tablas hijas a las padres.
+   * Si el registro todavía lo usan otros (su baja se completa en una tanda posterior), se aparta.
+   */
+  private async applyDeletes(tx: Tx, tables: string[], rows: CloudRow[], order: string[]) {
+    const sorted = rows.filter((r) => tables.includes(r.t)).sort((a, b) => order.indexOf(a.t) - order.indexOf(b.t));
+    for (const r of sorted) {
+      const exists: any[] = await tx.$queryRawUnsafe(`SELECT 1 FROM "${r.t}" WHERE id = ?`, r.id);
+      if (exists.length && (await this.inUse(tx, tables, r.t, r.id))) {
+        await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_parked (tbl, id, op, data, ts) VALUES (?, ?, 'D', NULL, ?)`, r.t, r.id, Number(r.ts || 0));
+      } else await this.applyRow(tx, tables, r, false);
+    }
+  }
+
+  private fkCache = new Map<string, { id: number; table: string; from: string; to: string | null }[]>();
+
+  private async foreignKeys(db: Tx, table: string) {
+    if (!this.fkCache.has(table)) {
+      const fks: any[] = await db.$queryRawUnsafe(`PRAGMA foreign_key_list("${table}")`);
+      this.fkCache.set(table, fks.map((f) => ({ id: Number(f.id), table: String(f.table), from: String(f.from), to: f.to ? String(f.to) : null })));
+    }
+    return this.fkCache.get(table)!;
+  }
+
+  /** ¿Algún registro de otra tabla apunta a este? */
+  private async inUse(tx: Tx, tables: string[], table: string, id: string): Promise<boolean> {
+    for (const child of tables) {
+      for (const fk of await this.foreignKeys(tx, child)) {
+        if (fk.table !== table) continue;
+        const key = !fk.to || fk.to === 'id' ? [id] : ((await tx.$queryRawUnsafe(`SELECT "${fk.to}" AS v FROM "${table}" WHERE id = ?`, id)) as any[]).map((r) => r.v);
+        if (!key.length || key[0] == null) continue;
+        const used: any[] = await tx.$queryRawUnsafe(`SELECT 1 FROM "${child}" WHERE "${fk.from}" = ? LIMIT 1`, key[0]);
+        if (used.length) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Antes de confirmar una tanda: las filas que apuntan a un registro que todavía no llegó
+   * (en la nube cada fila guarda su última versión, así que un producto editado después de
+   * venderse viene DESPUÉS de la venta, a veces en otra tanda) se apartan en sync_parked y se
+   * reintentan en cada ciclo. Sin esto una sola fila frenaba para siempre toda la sincronización.
+   *  - touched: filas que llegaron en esta tanda (null = todas, en la bajada completa).
+   */
+  private async parkOrphans(tx: Tx, tables: string[], touched: Map<string, number> | null, tsOf: Map<string, number>, quiet = false) {
+    const parked = new Set<string>();
+    for (let round = 0; round < 20; round++) {
+      const bad: any[] = await tx.$queryRawUnsafe(`PRAGMA foreign_key_check`);
+      let moved = 0;
+      for (const v of bad) {
+        const t = String(v.table);
+        if (!tables.includes(t)) continue;
+        const isProducts = t === 'products' && (await this.columns(t)).includes('image_url');
+        const found: any[] = await tx.$queryRawUnsafe(
+          `SELECT id, ${await this.jsonExpr(t)} AS j${isProducts ? ', image_url AS img' : ''} FROM "${t}" WHERE rowid = ?`, Number(v.rowid));
+        if (!found.length) continue;
+        const id = String(found[0].id);
+        const data = JSON.parse(found[0].j);
+        if (isProducts) data.image_url = found[0].img ?? null;
+        // Solo se apartan filas recién llegadas o que dependen de una apartada: lo demás es de esta caja
+        const fk = (await this.foreignKeys(tx, t)).find((f) => f.id === Number(v.fkid));
+        const dependsOnParked = !!fk && (!fk.to || fk.to === 'id') && parked.has(`${fk.table}|${data[fk.from]}`);
+        if (touched && !touched.has(`${t}|${id}`) && !dependsOnParked) continue;
+        // Los contadores se guardan como diferencia pendiente: al volver, la fila entra en 0 y la suma
+        for (const c of await this.counterCols(t)) {
+          if (Number(data[c] || 0) === 0) continue;
+          await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_stash (id, tbl, row_id, col, delta) VALUES (?, ?, ?, ?, ?)`, `parked:${t}:${id}:${c}`, t, id, c, Number(data[c]));
+        }
+        await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_parked (tbl, id, op, data, ts) VALUES (?, ?, 'U', ?, ?)`, t, id, JSON.stringify(data), tsOf.get(`${t}|${id}`) || 0);
+        await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE rowid = ?`, Number(v.rowid));
+        parked.add(`${t}|${id}`);
+        moved++;
+        if (!quiet) console.warn(`[Sync] ${t}/${id} apunta a ${v.parent} que todavía no llegó: se aparta y se reintenta después`);
+      }
+      if (!moved) break;
+    }
+  }
+
+  /** Reintenta lo apartado. Lo que sigue sin su registro vuelve a quedar apartado. */
+  private async retryParked(tables: string[], order: string[]): Promise<number> {
+    const rows: any[] = await this.prisma.$queryRawUnsafe(`SELECT tbl, id, op, data, CAST(ts AS REAL) AS ts FROM sync_parked`);
+    if (!rows.length) return 0;
+    const cloud: CloudRow[] = rows.map((p) => (p.op === 'D'
+      ? { t: String(p.tbl), id: String(p.id), x: true, ts: Number(p.ts) }
+      : { t: String(p.tbl), id: String(p.id), d: JSON.parse(p.data), ts: Number(p.ts) }));
+    const ups = cloud.filter((r) => !r.x).sort((a, b) => order.indexOf(b.t) - order.indexOf(a.t));
+    const touched = new Map(ups.map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
+    let left = rows.length;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+      await this.setState('applying', '1', tx);
+      await tx.$executeRawUnsafe(`DELETE FROM sync_parked`);
+      for (const r of ups) await this.applyRow(tx, tables, r, false);
+      await this.applyDeletes(tx, tables, cloud.filter((r) => r.x), order);
+      await this.parkOrphans(tx, tables, touched, touched, true);
+      left = Number(((await tx.$queryRawUnsafe(`SELECT COUNT(*) AS n FROM sync_parked`)) as any[])[0].n);
+      await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+    }, { timeout: 5 * 60 * 1000, maxWait: 30000 });
+    if (left < rows.length) console.log(`[Sync] Se aplicaron ${rows.length - left} filas que estaban apartadas (quedan ${left})`);
+    return rows.length - left;
   }
 
   private async applyDelta(tx: Tx, tables: string[], deltaId: string, d: any) {
@@ -736,6 +856,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   /** Aplica una fila de otra caja. Gana el cambio más reciente; los contadores no se pisan. */
   private async applyRow(tx: Tx, tables: string[], r: CloudRow, full: boolean) {
     if (!tables.includes(r.t)) return;
+    // Una versión nueva reemplaza a la que estaba apartada
+    await tx.$executeRawUnsafe(`DELETE FROM sync_parked WHERE tbl = ? AND id = ?`, r.t, r.id);
     // Si esta caja tiene un cambio sin subir más nuevo, gana el local (se sube después)
     const pending: any[] = await tx.$queryRawUnsafe(`SELECT CAST(MAX(ts) AS REAL) AS ts FROM sync_outbox WHERE tbl = ? AND row_id = ?`, r.t, r.id);
     if (pending[0]?.ts != null && Number(pending[0].ts) > Number(r.ts || 0)) return;

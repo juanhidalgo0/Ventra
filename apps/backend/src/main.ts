@@ -3,12 +3,30 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { applyPendingRestore } from './modules/system/pending-restore';
 import { SyncService } from './modules/sync/sync.service';
 
-// Ensure critical env vars have fallbacks even if .env is missing/incomplete
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'paulos-pos-jwt-secret-2024-default';
-process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'paulos-pos-refresh-secret-2024-default';
+/**
+ * Secretos de las sesiones propios de cada instalación (y de cada caja en la nube): se
+ * crean al azar la primera vez y se guardan junto a los datos de la app. Se ignora lo
+ * que venga por entorno a propósito: el .env que viaja en el instalador es el mismo
+ * para todos los comercios, y con un secreto compartido cualquiera podría fabricar una
+ * sesión de administrador en cualquier PC.
+ */
+function ensureJwtSecrets() {
+  const file = path.join(process.cwd(), 'ventra-jwt-secrets.json');
+  let stored: { access?: string; refresh?: string } = {};
+  try { stored = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* primera vez */ }
+  const valid = (s?: string) => typeof s === 'string' && s.length >= 64;
+  if (!valid(stored.access) || !valid(stored.refresh)) {
+    stored = { access: crypto.randomBytes(48).toString('hex'), refresh: crypto.randomBytes(48).toString('hex') };
+    fs.writeFileSync(file, JSON.stringify(stored), { mode: 0o600 });
+  }
+  process.env.JWT_SECRET = stored.access;
+  process.env.JWT_REFRESH_SECRET = stored.refresh;
+}
+ensureJwtSecrets();
 process.env.JWT_EXPIRATION = process.env.JWT_EXPIRATION || '15m';
 process.env.JWT_REFRESH_EXPIRATION = process.env.JWT_REFRESH_EXPIRATION || '7d';
 
@@ -33,20 +51,23 @@ async function bootstrap() {
   // The body parser limits are better handled in the module or via specific configuration
   // but for now let's ensure the prefix and basic settings are correct.
   
+  // Solo la app (Tauri o el navegador en esta PC o en otra del local) y los sitios de
+  // Ventra pueden leer las respuestas. Cualquier otra página abierta en la PC de la caja
+  // no puede usar el backend local.
+  const isAllowedOrigin = (origin: string) => {
+    let url: URL;
+    try { url = new URL(origin); } catch { return false; }
+    const host = url.hostname;
+    if (url.protocol === 'tauri:') return true;
+    if (host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]') return true;
+    // Otras PCs del local que abren la app por la IP de esta
+    if (/^(10\.\d+|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+$/.test(host)) return true;
+    if (url.protocol !== 'https:') return false;
+    return host === 'ventra.store' || host.endsWith('.ventra.store')
+      || host === 'ventra-9cba5.web.app' || host === 'ventra-9cba5.firebaseapp.com';
+  };
   app.enableCors({
-    origin: (origin, callback) => {
-      if (
-        !origin || 
-        origin.indexOf('localhost') !== -1 || 
-        origin.indexOf('127.0.0.1') !== -1 || 
-        origin.indexOf('firebaseapp.com') !== -1 || 
-        origin.indexOf('web.app') !== -1
-      ) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
-    },
+    origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)),
     credentials: true,
   });
 

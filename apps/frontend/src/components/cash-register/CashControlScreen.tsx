@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
+import { holdLogout } from '../../utils/logoutHold';
 import { Calendar, ChevronDown, ChevronRight, DollarSign, Download, Search, Users, Copy, Wallet, CheckCircle2, TrendingDown, Receipt, ChevronUp, Clock, AlertCircle, RefreshCw, FileText, Printer, FileOutput, User, XCircle, History, TrendingUp, ArrowDownRight, LayoutDashboard, Lock, X, Package, Smartphone, CreditCard, Play, Filter, ArrowDown, ArrowUp, Loader2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -208,6 +209,8 @@ export default function CashControlScreen() {
   };
 
   const handleGenerateZReport = async () => {
+    // Sin sesión cerrada hasta que aparezca el cartel del Z (la traba la toma después el cartel)
+    const release = holdLogout();
     try {
       setIsGeneratingZ(true);
       const { data } = await api.post('/cash/z-report/generate', { clientId: getClientId() });
@@ -219,6 +222,7 @@ export default function CashControlScreen() {
       toast.error(err.response?.data?.message || 'Error al generar Reporte Z. Recuerda que todos los turnos deben estar arqueados primero.');
     } finally {
       setIsGeneratingZ(false);
+      setTimeout(release, 3000);
     }
   };
 

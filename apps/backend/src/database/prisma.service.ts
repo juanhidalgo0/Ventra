@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-09-19';
+const SCHEMA_VERSION = '2026-09-28';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
