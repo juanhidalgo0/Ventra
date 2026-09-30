@@ -24,12 +24,15 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { hasFeature } from '../../stores/businessStore';
 
+const SALES_LIST_LIMIT = 1000;
+
 export default function HistorialScreen() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
   // State
   const [sales, setSales] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -122,11 +125,11 @@ export default function HistorialScreen() {
       periodName = `Rango_${startDate}_a_${endDate}`;
     }
 
-    const cashSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'CASH').length;
-    const cardSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'CLOVER').length;
-    const mpSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'MERCADOPAGO').length;
-    const debtSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'DEBT').length;
-    const mixedSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'MIXED').length;
+    const cashSalesCount = methodStat('CASH').count;
+    const cardSalesCount = methodStat('CLOVER').count;
+    const mpSalesCount = methodStat('MERCADOPAGO').count;
+    const debtSalesCount = methodStat('DEBT').count;
+    const mixedSalesCount = methodStat('MIXED').count;
 
     const rows = [
       ['REPORTE PROFESIONAL - HISTORIAL DE VENTAS Y CAJA'],
@@ -145,8 +148,8 @@ export default function HistorialScreen() {
       ['Efectivo', cashSalesCount, fmt(cashTotal)],
       ['Clover/Tarjeta', cardSalesCount, fmt(cardTotal)],
       ['Mercado Pago', mpSalesCount, fmt(mpTotal)],
-      ['Cuenta Corriente / Deuda', debtSalesCount, fmt(completedSales.filter(s => s.paymentMethodSummary === 'DEBT').reduce((sum: number, s: any) => sum + s.total, 0))],
-      ['Cobro Mixto', mixedSalesCount, fmt(completedSales.filter(s => s.paymentMethodSummary === 'MIXED').reduce((sum: number, s: any) => sum + s.total, 0))],
+      ['Cuenta Corriente / Deuda', debtSalesCount, fmt(methodStat('DEBT').total)],
+      ['Cobro Mixto', mixedSalesCount, fmt(methodStat('MIXED').total)],
       [],
       ['DETALLE DE TRANSACCIONES'],
       ['Nro Ticket', 'Fecha', 'Cajero', 'Método de Pago', 'Total', 'Estado'],
@@ -175,11 +178,11 @@ export default function HistorialScreen() {
       periodName = `Rango ${startDate} al ${endDate}`;
     }
 
-    const cashSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'CASH').length;
-    const cardSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'CLOVER').length;
-    const mpSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'MERCADOPAGO').length;
-    const debtSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'DEBT').length;
-    const mixedSalesCount = completedSales.filter(s => s.paymentMethodSummary === 'MIXED').length;
+    const cashSalesCount = methodStat('CASH').count;
+    const cardSalesCount = methodStat('CLOVER').count;
+    const mpSalesCount = methodStat('MERCADOPAGO').count;
+    const debtSalesCount = methodStat('DEBT').count;
+    const mixedSalesCount = methodStat('MIXED').count;
 
     const rowsHtml = sales.map((s: any) => `
       <tr>
@@ -218,8 +221,8 @@ export default function HistorialScreen() {
           <tr><td>Efectivo</td><td class="text-right font-bold">${cashSalesCount}</td><td class="text-right font-bold">${fmt(cashTotal)}</td></tr>
           <tr><td>Clover / Tarjeta</td><td class="text-right font-bold">${cardSalesCount}</td><td class="text-right font-bold">${fmt(cardTotal)}</td></tr>
           <tr><td>Mercado Pago</td><td class="text-right font-bold">${mpSalesCount}</td><td class="text-right font-bold">${fmt(mpTotal)}</td></tr>
-          <tr><td>Cuenta Corriente / Deuda</td><td class="text-right font-bold">${debtSalesCount}</td><td class="text-right font-bold">${fmt(completedSales.filter(s => s.paymentMethodSummary === 'DEBT').reduce((sum: number, s: any) => sum + s.total, 0))}</td></tr>
-          <tr><td>Cobro Mixto</td><td class="text-right font-bold">${mixedSalesCount}</td><td class="text-right font-bold">${fmt(completedSales.filter(s => s.paymentMethodSummary === 'MIXED').reduce((sum: number, s: any) => sum + s.total, 0))}</td></tr>
+          <tr><td>Cuenta Corriente / Deuda</td><td class="text-right font-bold">${debtSalesCount}</td><td class="text-right font-bold">${fmt(methodStat('DEBT').total)}</td></tr>
+          <tr><td>Cobro Mixto</td><td class="text-right font-bold">${mixedSalesCount}</td><td class="text-right font-bold">${fmt(methodStat('MIXED').total)}</td></tr>
         </tbody>
       </table>
 
@@ -275,12 +278,17 @@ export default function HistorialScreen() {
     setIsLoading(true);
     try {
       const { from, to } = getDateRange();
-      const params: any = { limit: 1000 };
+      const params: any = { limit: SALES_LIST_LIMIT };
       if (from) params.from = from;
       if (to) params.to = to;
 
-      const { data } = await api.get('/sales', { params });
+      // La lista viene recortada; los totales salen del resumen del período completo.
+      const [{ data }, summaryRes] = await Promise.all([
+        api.get('/sales', { params }),
+        api.get('/sales/history-summary', { params: { from, to } }).catch(() => null),
+      ]);
       setSales(data);
+      setSummary(summaryRes?.data ?? null);
     } catch {
       toast.error('Error al cargar historial de ventas');
     } finally {
@@ -306,17 +314,25 @@ export default function HistorialScreen() {
   const completedSales = sales.filter(s => s.status === 'COMPLETED');
   const cancelledSales = sales.filter(s => s.status === 'CANCELLED');
 
-  const totalSold = completedSales.reduce((sum, s) => sum + s.total, 0);
-  const salesCount = completedSales.length;
-  
+  // Los totales salen del resumen del backend (todas las ventas del período).
+  // Si no llegó, se calculan con la lista cargada, que puede estar recortada.
+  const totalSold = summary ? summary.totalSold : completedSales.reduce((sum, s) => sum + s.total, 0);
+  const salesCount = summary ? summary.completedCount : completedSales.length;
+  const cancelledCount = summary ? summary.cancelledCount : cancelledSales.length;
+  const totalCount = salesCount + cancelledCount;
+  const isListTruncated = sales.length >= SALES_LIST_LIMIT && totalCount > sales.length;
+
   // Gross Profit calculation (Revenue - Cost)
-  // For each completed sale, sum the costs of items
   let totalCost = 0;
-  completedSales.forEach((sale) => {
-    sale.items?.forEach((item: any) => {
-      totalCost += (item.product?.costPrice || 0) * item.quantity;
+  if (summary) {
+    totalCost = summary.totalCost;
+  } else {
+    completedSales.forEach((sale) => {
+      sale.items?.forEach((item: any) => {
+        totalCost += (item.product?.costPrice || 0) * item.quantity;
+      });
     });
-  });
+  }
   const grossProfit = totalSold - totalCost;
   const grossMargin = totalSold > 0 ? (grossProfit / totalSold) * 100 : 0;
 
@@ -324,14 +340,27 @@ export default function HistorialScreen() {
   let cashTotal = 0;
   let cardTotal = 0; // Clover / Tarjeta
   let mpTotal = 0; // Mercado Pago
-  
-  completedSales.forEach((sale) => {
-    sale.payments?.forEach((pay: any) => {
-      if (pay.method === 'CASH') cashTotal += pay.amount;
-      else if (pay.method === 'CLOVER') cardTotal += pay.amount;
-      else if (pay.method === 'MERCADOPAGO') mpTotal += pay.amount;
+
+  if (summary) {
+    cashTotal = summary.payments?.CASH || 0;
+    cardTotal = summary.payments?.CLOVER || 0;
+    mpTotal = summary.payments?.MERCADOPAGO || 0;
+  } else {
+    completedSales.forEach((sale) => {
+      sale.payments?.forEach((pay: any) => {
+        if (pay.method === 'CASH') cashTotal += pay.amount;
+        else if (pay.method === 'CLOVER') cardTotal += pay.amount;
+        else if (pay.method === 'MERCADOPAGO') mpTotal += pay.amount;
+      });
     });
-  });
+  }
+
+  // Cantidad y total de ventas por forma de cobro (para los reportes)
+  const methodStat = (method: string) => {
+    if (summary) return summary.salesByMethod?.[method] || { count: 0, total: 0 };
+    const list = completedSales.filter(s => s.paymentMethodSummary === method);
+    return { count: list.length, total: list.reduce((sum: number, s: any) => sum + s.total, 0) };
+  };
 
   const totalPayments = cashTotal + cardTotal + mpTotal;
   const cashPercentage = totalPayments > 0 ? (cashTotal / totalPayments) * 100 : 0;
@@ -495,7 +524,7 @@ export default function HistorialScreen() {
             onClick={() => setActiveTab('SALES')} 
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'SALES' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
-            Ventas ({sales.length})
+            Ventas ({totalCount})
           </button>
           <button 
             onClick={() => setActiveTab('ORDERS')} 
@@ -515,7 +544,7 @@ export default function HistorialScreen() {
             onClick={() => setActiveTab('RETURNS')} 
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeTab === 'RETURNS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-600'}`}
           >
-            Devoluciones ({cancelledSales.length})
+            Devoluciones ({cancelledCount})
           </button>
         </div>
 
@@ -655,6 +684,11 @@ export default function HistorialScreen() {
                 exit={{ opacity: 0 }}
                 className="h-full card p-6 flex flex-col overflow-hidden"
               >
+                {isListTruncated && (
+                  <p className="text-[11px] font-semibold text-slate-600 mb-3 shrink-0">
+                    Se muestran las últimas {sales.length} de {totalCount} ventas. Los totales del Resumen incluyen todas.
+                  </p>
+                )}
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                   {filteredSales.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">

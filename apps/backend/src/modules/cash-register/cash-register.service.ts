@@ -5,6 +5,7 @@ import { EventsGateway } from '../../websockets/events.gateway';
 import { BackupService } from '../system/backup.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 @Injectable()
 export class CashRegisterService {
@@ -132,7 +133,7 @@ export class CashRegisterService {
 
     const sales = await this.prisma.sale.findMany({ 
       where: { sessionId, status: 'COMPLETED' }, 
-      include: { payments: true, items: { include: { product: true } } } 
+      include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } } 
     });
     const cashMovements = await this.prisma.cashMovement.findMany({ where: { sessionId } });
 
@@ -300,7 +301,7 @@ export class CashRegisterService {
         user: { select: { fullName: true, username: true } },
         sales: {
           where: { status: 'COMPLETED' },
-          include: { payments: true, items: { include: { product: true } } }
+          include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } }
         },
         cashMovements: true
       },
@@ -322,7 +323,7 @@ export class CashRegisterService {
         user: { select: { fullName: true, username: true } },
         sales: {
           where: { status: 'COMPLETED' },
-          include: { payments: true, items: { include: { product: true } } }
+          include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } }
         },
         cashMovements: true
       },
@@ -337,7 +338,7 @@ export class CashRegisterService {
         user: { select: { id: true, fullName: true, username: true } },
         sales: {
           where: { status: 'COMPLETED' },
-          include: { payments: true, items: { include: { product: true } } }
+          include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } }
         },
         cashMovements: true
       },
@@ -796,7 +797,7 @@ export class CashRegisterService {
         user: { select: { id: true, fullName: true, username: true } },
         sales: {
           where: { status: 'COMPLETED' },
-          include: { payments: true, items: { include: { product: true } } }
+          include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } }
         },
         cashMovements: {
           include: {
@@ -813,7 +814,7 @@ export class CashRegisterService {
       include: {
         sales: {
           where: { status: 'COMPLETED' },
-          include: { payments: true, items: { include: { product: true } } }
+          include: { payments: true, items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } }
         },
         cashMovements: {
           include: {

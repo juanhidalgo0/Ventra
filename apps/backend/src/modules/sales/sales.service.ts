@@ -5,6 +5,7 @@ import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
 import { numberRange } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -432,7 +433,7 @@ export class SalesService {
       where,
       include: {
         items: {
-          include: { product: true }
+          include: { product: { select: PRODUCT_WITHOUT_IMAGE } }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -477,6 +478,148 @@ export class SalesService {
     };
   }
 
+  // Totales del Historial de Caja calculados sobre TODAS las ventas del período
+  // (la lista de la pantalla viene recortada, así que no sirve para sumar).
+  async getHistorySummary(from?: string, to?: string) {
+    const createdAt: any = {};
+    if (from) createdAt.gte = new Date(from);
+    if (to) createdAt.lte = new Date(to);
+    const period: any = from || to ? { createdAt } : {};
+    const completed = { ...period, status: 'COMPLETED' };
+
+    const [totals, cancelledCount, bySummary, byMethod, costItems] = await Promise.all([
+      this.prisma.sale.aggregate({ where: completed, _sum: { total: true }, _count: { _all: true } }),
+      this.prisma.sale.count({ where: { ...period, status: 'CANCELLED' } }),
+      this.prisma.sale.groupBy({ by: ['paymentMethodSummary'], where: completed, _sum: { total: true }, _count: { _all: true } }),
+      this.prisma.payment.groupBy({ by: ['method'], where: { sale: completed }, _sum: { amount: true } }),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(si.quantity * COALESCE(p.cost_price, 0)), 0) AS cost
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE s.status = 'COMPLETED' ${from ? 'AND s.created_at >= ?' : ''} ${to ? 'AND s.created_at <= ?' : ''}`,
+        ...[from && createdAt.gte, to && createdAt.lte].filter(Boolean)),
+    ]);
+
+    const totalCost = Number(costItems[0]?.cost || 0);
+
+    const payments: Record<string, number> = {};
+    for (const p of byMethod) payments[p.method] = p._sum.amount || 0;
+
+    const salesByMethod: Record<string, { count: number; total: number }> = {};
+    for (const s of bySummary) salesByMethod[s.paymentMethodSummary] = { count: s._count._all, total: s._sum.total || 0 };
+
+    return {
+      completedCount: totals._count._all,
+      cancelledCount,
+      totalSold: totals._sum.total || 0,
+      totalCost,
+      payments,
+      salesByMethod,
+    };
+  }
+
+  /**
+   * Reportes del mes calculados en la base, sobre TODAS las ventas del período (antes la
+   * pantalla bajaba hasta 2500 ventas con sus ítems y sumaba ahí). `tzOffset` son los
+   * minutos de getTimezoneOffset() del navegador: los días se cuentan en su hora local.
+   */
+  async getReport(type: string, from: string, to: string, tzOffset = 0) {
+    const num = (v: any) => Number(v || 0);
+    const range = [new Date(from), new Date(to)];
+    const completedIn = `s.status = 'COMPLETED' AND s.created_at >= ? AND s.created_at <= ?`;
+    const itemsJoin = `FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id`;
+    const itemCost = `si.quantity * COALESCE(p.cost_price, 0)`;
+
+    if (type === 'rentabilidad') {
+      const localDay = `CAST(strftime('%d', s.created_at / 1000 - ${Math.trunc(Number(tzOffset) || 0) * 60}, 'unixepoch') AS INTEGER)`;
+      const [totals, products, daySales, dayItems] = await Promise.all([
+        this.prisma.$queryRawUnsafe<any[]>(`
+          SELECT (SELECT COALESCE(SUM(s.total), 0) FROM sales s WHERE ${completedIn}) AS sales,
+                 (SELECT COALESCE(SUM(${itemCost}), 0) ${itemsJoin} WHERE ${completedIn}) AS cost`, ...range, ...range),
+        this.prisma.$queryRawUnsafe<any[]>(`
+          SELECT MAX(si.product_name) AS name, SUM(si.quantity) AS qty, SUM(si.total) AS revenue, SUM(${itemCost}) AS cost
+          ${itemsJoin} WHERE ${completedIn} GROUP BY si.product_id ORDER BY SUM(si.total) - SUM(${itemCost}) DESC LIMIT 10`, ...range),
+        this.prisma.$queryRawUnsafe<any[]>(`SELECT ${localDay} AS day, SUM(s.total) AS revenue FROM sales s WHERE ${completedIn} GROUP BY 1`, ...range),
+        this.prisma.$queryRawUnsafe<any[]>(`
+          SELECT ${localDay} AS day, SUM(${itemCost}) AS cost, SUM(si.total - ${itemCost}) AS profit
+          ${itemsJoin} WHERE ${completedIn} GROUP BY 1`, ...range),
+      ]);
+      const totalSales = num(totals[0]?.sales);
+      const totalCost = num(totals[0]?.cost);
+      const byDay = new Map<number, { day: number; revenue: number; cost: number; profit: number }>();
+      const dayRow = (d: any) => {
+        const day = num(d);
+        if (!byDay.has(day)) byDay.set(day, { day, revenue: 0, cost: 0, profit: 0 });
+        return byDay.get(day)!;
+      };
+      for (const r of daySales) dayRow(r.day).revenue = num(r.revenue);
+      for (const r of dayItems) Object.assign(dayRow(r.day), { cost: num(r.cost), profit: num(r.profit) });
+      return {
+        totalSales,
+        totalCost,
+        netProfit: totalSales - totalCost,
+        margin: totalSales > 0 ? ((totalSales - totalCost) / totalSales) * 100 : 0,
+        topProfitable: products.map((r) => ({
+          name: r.name, qty: num(r.qty), revenue: num(r.revenue), cost: num(r.cost), profit: num(r.revenue) - num(r.cost),
+        })),
+        daily: [...byDay.values()],
+      };
+    }
+
+    if (type === 'rentabilidad_categoria') {
+      const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(c.name, 'Otro') AS name, COALESCE(MAX(c.color), '#64748b') AS color,
+               SUM(si.total) AS sales, SUM(${itemCost}) AS cost
+        ${itemsJoin} LEFT JOIN categories c ON c.id = p.category_id
+        WHERE ${completedIn} GROUP BY 1`, ...range);
+      return rows.map((r) => ({ name: r.name, color: r.color, sales: num(r.sales), cost: num(r.cost), profit: num(r.sales) - num(r.cost) }));
+    }
+
+    if (type === 'rotacion_inventario') {
+      const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT si.product_id AS id, MAX(si.product_name) AS name, SUM(si.quantity) AS qty, SUM(si.total) AS revenue
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id
+        WHERE ${completedIn} GROUP BY si.product_id ORDER BY revenue DESC`, ...range);
+      const cumulativeSales = rows.reduce((sum, r) => sum + num(r.revenue), 0);
+      let runningTotal = 0;
+      return rows.map((r) => {
+        runningTotal += num(r.revenue);
+        const ratio = cumulativeSales > 0 ? runningTotal / cumulativeSales : 0;
+        return { id: r.id, name: r.name, qty: num(r.qty), revenue: num(r.revenue), classification: ratio <= 0.8 ? 'A' : ratio <= 0.95 ? 'B' : 'C' };
+      });
+    }
+
+    if (type === 'devoluciones') {
+      const sales = await this.prisma.sale.findMany({
+        where: {
+          createdAt: { gte: range[0], lte: range[1] },
+          OR: [{ status: 'CANCELLED' }, { status: 'COMPLETED', items: { some: { quantity: { lt: 0 } } } }],
+        },
+        include: { items: true, user: { select: { fullName: true, username: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      const totalRefunded = sales.reduce((sum, s) => sum + (s.status === 'CANCELLED'
+        ? s.total || 0
+        : s.items.filter((i) => i.quantity < 0).reduce((isum, i) => isum + Math.abs(i.total), 0)), 0);
+      return { list: sales, totalRefunded };
+    }
+
+    if (type === 'valorizacion') {
+      const [r] = await this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(cost_price * stock), 0) AS cost, COALESCE(SUM(sale_price * stock), 0) AS sale, COALESCE(SUM(stock), 0) AS items
+        FROM products WHERE is_active = 1 AND id <> 'VENTA_RAPIDA' AND stock > 0`);
+      const totalCost = num(r?.cost), totalSale = num(r?.sale);
+      return {
+        totalCost,
+        totalSale,
+        potentialProfit: totalSale - totalCost,
+        margin: totalSale > 0 ? ((totalSale - totalCost) / totalSale) * 100 : 0,
+        itemCount: num(r?.items),
+      };
+    }
+
+    throw new BadRequestException('Reporte desconocido');
+  }
+
   async getTodaySummary(from?: string, to?: string) {
     let today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -490,65 +633,35 @@ export class SalesService {
       endOfPeriod = new Date(to);
     }
 
-    const salesFilter: any = { createdAt: { gte: today, lte: endOfPeriod }, status: 'COMPLETED' };
-    const sales = await this.prisma.sale.findMany({
-      where: salesFilter,
-      select: {
-        total: true,
-        payments: { select: { method: true, amount: true } },
-        items: {
-          select: {
-            quantity: true,
-            product: { select: { costPrice: true } }
-          }
-        }
-      },
-    });
-
-    const totalSales = sales.length;
-    let totalRevenue = 0;
-    let totalCost = 0;
-    const paymentBreakdown: Record<string, number> = { CASH: 0 };
-
-    for (const sale of sales) {
-      totalRevenue += sale.total;
-      for (const item of sale.items) {
-        totalCost += (item.product?.costPrice || 0) * item.quantity;
-      }
-      for (const payment of sale.payments) {
-        if (!paymentBreakdown[payment.method]) {
-          paymentBreakdown[payment.method] = 0;
-        }
-        paymentBreakdown[payment.method] += payment.amount;
-      }
-    }
-
-    const netProfit = totalRevenue - totalCost;
-
-    // Get weekly stats or range stats
     const lastWeek = new Date(today);
     lastWeek.setDate(lastWeek.getDate() - 7);
-    const weeklySales = await this.prisma.sale.findMany({
-      where: { createdAt: { gte: lastWeek, lte: endOfPeriod }, status: 'COMPLETED' },
-      select: { total: true },
-    });
-    const weeklyTotal = weeklySales.reduce((sum, s) => sum + s.total, 0);
-
     const startOfMonth = new Date(today);
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [monthlySales, monthlyPurchasesAgg, monthlySuppPaymentsAgg] = await Promise.all([
-      this.prisma.sale.findMany({
-        where: { createdAt: { gte: startOfMonth, lte: endOfPeriod }, status: 'COMPLETED' },
-        select: {
-          total: true,
-          payments: {
-            where: { method: 'CASH' },
-            select: { amount: true }
-          }
-        }
-      }),
+    // Todo se suma en la base: traer las ventas para sumarlas acá tardaba cada vez más
+    const num = (v: any) => Number(v || 0);
+    const completedIn = `s.status = 'COMPLETED' AND s.created_at >= ? AND s.created_at <= ?`;
+    const [
+      totalsRows, costRows, paymentRows, weeklyRows, monthlyRows,
+      monthlyPurchasesAgg, monthlySuppPaymentsAgg, totalProducts, lowStockRaw,
+      movementsAgg, supplierPaymentsAgg, purchasesAgg, clientBalanceAgg, purchaseDebtAgg,
+      openSessions, latestMovements,
+    ] = await Promise.all([
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT COUNT(*) AS count, COALESCE(SUM(s.total), 0) AS total FROM sales s WHERE ${completedIn}`, today, endOfPeriod),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(si.quantity * COALESCE(p.cost_price, 0)), 0) AS cost
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE ${completedIn}`, today, endOfPeriod),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT pay.method AS method, COALESCE(SUM(pay.amount), 0) AS total
+        FROM payments pay JOIN sales s ON s.id = pay.sale_id
+        WHERE ${completedIn} GROUP BY pay.method`, today, endOfPeriod),
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(s.total), 0) AS total FROM sales s WHERE ${completedIn}`, lastWeek, endOfPeriod),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT (SELECT COALESCE(SUM(s.total), 0) FROM sales s WHERE ${completedIn}) AS revenue,
+               (SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay JOIN sales s ON s.id = pay.sale_id
+                 WHERE pay.method = 'CASH' AND ${completedIn}) AS cash`, startOfMonth, endOfPeriod, startOfMonth, endOfPeriod),
       this.prisma.purchase.aggregate({
         _sum: { total: true },
         where: { createdAt: { gte: startOfMonth, lte: endOfPeriod }, status: 'COMPLETED' }
@@ -556,26 +669,12 @@ export class SalesService {
       this.prisma.supplierPayment.aggregate({
         _sum: { amount: true },
         where: { createdAt: { gte: startOfMonth, lte: endOfPeriod } }
-      })
-    ]);
-
-    const monthlyRevenue = monthlySales.reduce((sum, s) => sum + s.total, 0);
-    const monthlyCash = monthlySales.reduce((sum, s) => {
-      const cashPayments = s.payments.reduce((ps, p) => ps + p.amount, 0);
-      return sum + cashPayments;
-    }, 0);
-    const monthlyPurchaseTotal = monthlyPurchasesAgg._sum?.total || 0;
-    const monthlySuppPaymentTotal = monthlySuppPaymentsAgg._sum?.amount || 0;
-
-    // Dynamic product and low stock count via fast DB queries
-    const totalProducts = await this.prisma.product.count({ where: { isActive: true } });
-    const lowStockRaw = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock <= min_stock;`
-    ).catch(() => [{ count: 0 }]);
-    const lowStockCount = Number(lowStockRaw[0]?.count || 0);
-
-    // Period's real out-of-pocket expenses via DB aggregations
-    const [movementsAgg, supplierPaymentsAgg, purchasesAgg] = await Promise.all([
+      }),
+      this.prisma.product.count({ where: { isActive: true } }),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock <= min_stock;`
+      ).catch(() => [{ count: 0 }]),
+      // Period's real out-of-pocket expenses
       this.prisma.cashMovement.aggregate({
         _sum: { amount: true },
         where: { createdAt: { gte: today, lte: endOfPeriod }, type: 'EXPENSE' }
@@ -587,62 +686,63 @@ export class SalesService {
       this.prisma.purchase.aggregate({
         _sum: { total: true },
         where: { createdAt: { gte: today, lte: endOfPeriod }, status: { not: 'CANCELLED' } }
-      })
+      }),
+      // Sum of all active client debt balances
+      this.prisma.client.aggregate({ _sum: { balance: true }, where: { isActive: true } }),
+      // Sum of all unpaid supplier purchases (OWED)
+      this.prisma.purchase.aggregate({
+        _sum: { total: true },
+        where: { paymentStatus: 'OWED', status: { not: 'CANCELLED' } }
+      }),
+      this.prisma.cashRegisterSession.findMany({ where: { status: 'OPEN' }, select: { id: true, openingAmount: true } }),
+      // Latest system audit movements
+      this.prisma.auditLog.findMany({
+        take: 6,
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { fullName: true, username: true } } }
+      }),
     ]);
-    const expenses = 
+
+    const totalSales = num(totalsRows[0]?.count);
+    const totalRevenue = num(totalsRows[0]?.total);
+    const totalCost = num(costRows[0]?.cost);
+    const netProfit = totalRevenue - totalCost;
+
+    const paymentBreakdown: Record<string, number> = { CASH: 0 };
+    for (const row of paymentRows) paymentBreakdown[row.method] = num(row.total);
+
+    const weeklyTotal = num(weeklyRows[0]?.total);
+    const monthlyRevenue = num(monthlyRows[0]?.revenue);
+    const monthlyCash = num(monthlyRows[0]?.cash);
+    const monthlyPurchaseTotal = monthlyPurchasesAgg._sum?.total || 0;
+    const monthlySuppPaymentTotal = monthlySuppPaymentsAgg._sum?.amount || 0;
+    const lowStockCount = num(lowStockRaw[0]?.count);
+
+    const expenses =
       (movementsAgg._sum?.amount || 0) +
       (supplierPaymentsAgg._sum?.amount || 0) +
       (purchasesAgg._sum?.total || 0);
-
-    // Sum of all active client debt balances
-    const clientBalanceAgg = await this.prisma.client.aggregate({
-      _sum: { balance: true },
-      where: { isActive: true }
-    });
     const totalClientBalance = clientBalanceAgg._sum?.balance || 0;
-
-    // Sum of all unpaid supplier purchases (OWED)
-    const purchaseDebtAgg = await this.prisma.purchase.aggregate({
-      _sum: { total: true },
-      where: { paymentStatus: 'OWED', status: { not: 'CANCELLED' } }
-    });
     const totalSupplierDebt = purchaseDebtAgg._sum?.total || 0;
 
     // Sum of all expected cash in drawers currently open
-    const openSessions = await this.prisma.cashRegisterSession.findMany({
-      where: { status: 'OPEN' },
-      include: {
-        sales: {
-          where: { status: 'COMPLETED' },
-          include: { payments: true }
-        },
-        cashMovements: true
-      }
-    });
-
     let activeSessionsCash = 0;
-    for (const session of openSessions) {
-      let cashPaymentsSum = 0;
-      for (const sale of session.sales) {
-        for (const payment of sale.payments) {
-          if (payment.method === 'CASH') cashPaymentsSum += payment.amount;
-        }
-      }
+    if (openSessions.length > 0) {
+      const sessionIds = openSessions.map((s) => s.id);
+      const [cashAgg, movementsByType] = await Promise.all([
+        this.prisma.payment.aggregate({
+          _sum: { amount: true },
+          where: { method: 'CASH', sale: { status: 'COMPLETED', sessionId: { in: sessionIds } } },
+        }),
+        this.prisma.cashMovement.groupBy({ by: ['type'], _sum: { amount: true }, where: { sessionId: { in: sessionIds } } }),
+      ]);
       let movementsSum = 0;
-      for (const mov of session.cashMovements) {
-        if (mov.type === 'INCOME') movementsSum += mov.amount;
-        else if (mov.type === 'EXPENSE') movementsSum -= mov.amount;
-        else if (mov.type === 'WITHDRAWAL') movementsSum -= mov.amount;
+      for (const m of movementsByType) {
+        if (m.type === 'INCOME') movementsSum += m._sum.amount || 0;
+        else if (m.type === 'EXPENSE' || m.type === 'WITHDRAWAL') movementsSum -= m._sum.amount || 0;
       }
-      activeSessionsCash += (session.openingAmount + cashPaymentsSum + movementsSum);
+      activeSessionsCash = openSessions.reduce((sum, s) => sum + s.openingAmount, 0) + (cashAgg._sum.amount || 0) + movementsSum;
     }
-
-    // Latest system audit movements
-    const latestMovements = await this.prisma.auditLog.findMany({
-      take: 6,
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { fullName: true, username: true } } }
-    });
 
     return {
       totalSales,
@@ -798,110 +898,57 @@ export class SalesService {
   }
 
   async getDashboardData(period: 'day' | 'week' | 'month' = 'day', from?: string, to?: string) {
-    let whereClause: any = { status: 'COMPLETED' };
+    const conditions = [`s.status = 'COMPLETED'`];
+    const params: Date[] = [];
     if (from || to) {
-      whereClause.createdAt = {};
-      if (from) {
-        whereClause.createdAt.gte = new Date(from);
-      }
-      if (to) {
-        whereClause.createdAt.lte = new Date(to);
-      }
+      if (from) { conditions.push('s.created_at >= ?'); params.push(new Date(from)); }
+      if (to) { conditions.push('s.created_at <= ?'); params.push(new Date(to)); }
     } else {
       const now = new Date();
       let fromDate = new Date();
       if (period === 'day') fromDate.setHours(0, 0, 0, 0);
       else if (period === 'week') fromDate.setDate(now.getDate() - 7);
       else if (period === 'month') fromDate.setMonth(now.getMonth() - 1);
-      whereClause.createdAt = { gte: fromDate };
+      conditions.push('s.created_at >= ?');
+      params.push(fromDate);
     }
+    const where = conditions.join(' AND ');
+    // Día en UTC, igual que toISOString(): los gráficos agrupan como antes
+    const day = `strftime('%Y-%m-%d', s.created_at / 1000, 'unixepoch')`;
+    const num = (v: any) => Number(v || 0);
 
-    const sales = await this.prisma.sale.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        total: true,
-        createdAt: true,
-        clientId: true,
-        client: {
-          select: {
-            id: true,
-            name: true,
-            dni: true,
-            phone: true
-          }
-        },
-        items: {
-          select: {
-            productId: true,
-            productName: true,
-            quantity: true,
-            unitPrice: true,
-            total: true,
-            product: {
-              select: {
-                costPrice: true,
-                stock: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Todo agrupado en la base: traer cada venta con sus ítems tardaba segundos en un mes
+    const [dayRows, costRows, productRows, clientRows] = await Promise.all([
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT ${day} AS date, SUM(s.total) AS sales, COUNT(*) AS count FROM sales s WHERE ${where} GROUP BY 1 ORDER BY 1`, ...params),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT ${day} AS date, SUM(si.quantity * COALESCE(p.cost_price, 0)) AS cost
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE ${where} GROUP BY 1`, ...params),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT si.product_id AS id, MAX(si.product_name) AS name, SUM(si.quantity) AS quantity,
+               SUM(si.total) AS revenue, COALESCE(MAX(p.stock), 0) AS stock
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE ${where} GROUP BY si.product_id ORDER BY quantity DESC LIMIT 10`, ...params),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT c.id AS id, c.name AS name, c.dni AS dni, c.phone AS phone,
+               COUNT(*) AS salesCount, SUM(s.total) AS totalSpent
+        FROM sales s JOIN clients c ON c.id = s.client_id
+        WHERE ${where} GROUP BY c.id ORDER BY totalSpent DESC LIMIT 10`, ...params),
+    ]);
 
-    // Group by day for charts
+    const costByDay = new Map(costRows.map((r) => [r.date, num(r.cost)]));
     const chartData: any = {};
-    const topProducts: any = {};
-    const topClients: any = {};
-
-    for (const sale of sales) {
-      const dateKey = sale.createdAt.toISOString().split('T')[0];
-      if (!chartData[dateKey]) chartData[dateKey] = { date: dateKey, sales: 0, profit: 0, count: 0 };
-      
-      chartData[dateKey].sales += sale.total;
-      chartData[dateKey].count += 1;
-
-      let saleCost = 0;
-      for (const item of sale.items) {
-        const itemProfit = (item.unitPrice - (item.product?.costPrice || 0)) * item.quantity;
-        saleCost += (item.product?.costPrice || 0) * item.quantity;
-        
-        if (!topProducts[item.productId]) {
-          topProducts[item.productId] = { 
-            id: item.productId, 
-            name: item.productName, 
-            quantity: 0, 
-            revenue: 0, 
-            stock: item.product?.stock || 0 
-          };
-        }
-        topProducts[item.productId].quantity += item.quantity;
-        topProducts[item.productId].revenue += item.total;
-      }
-      chartData[dateKey].profit += (sale.total - saleCost);
-
-      if (sale.clientId && sale.client) {
-        if (!topClients[sale.clientId]) {
-          topClients[sale.clientId] = {
-            id: sale.clientId,
-            name: sale.client.name,
-            dni: sale.client.dni,
-            phone: sale.client.phone,
-            salesCount: 0,
-            totalSpent: 0,
-          };
-        }
-        topClients[sale.clientId].salesCount += 1;
-        topClients[sale.clientId].totalSpent += sale.total;
-      }
+    for (const r of dayRows) {
+      const sales = num(r.sales);
+      chartData[r.date] = { date: r.date, sales, profit: sales - (costByDay.get(r.date) || 0), count: num(r.count) };
     }
 
     return {
       stats: chartData,
       history: Object.values(chartData),
-      topProducts: Object.values(topProducts).sort((a: any, b: any) => b.quantity - a.quantity).slice(0, 10),
-      topClients: Object.values(topClients).sort((a: any, b: any) => b.totalSpent - a.totalSpent).slice(0, 10),
+      topProducts: productRows.map((r) => ({ id: r.id, name: r.name, quantity: num(r.quantity), revenue: num(r.revenue), stock: num(r.stock) })),
+      topClients: clientRows.map((r) => ({ id: r.id, name: r.name, dni: r.dni, phone: r.phone, salesCount: num(r.salesCount), totalSpent: num(r.totalSpent) })),
     };
   }
 

@@ -807,169 +807,24 @@ export default function ReportsScreen() {
           const { data } = await api.get('/sales/virtual-metrics', { params });
           dataResult = data;
         } else if (activeReport === 'movimientos') {
-          const { data } = await api.get('/products/movements/all', { params: { limit: 200 } });
-          dataResult = Array.isArray(data) ? data.filter((m: any) => {
-            const d = new Date(m.createdAt);
-            return d >= fromDate && d <= toDate;
-          }) : [];
-        } else if (activeReport === 'rentabilidad' || activeReport === 'rentabilidad_categoria' || activeReport === 'rotacion_inventario' || activeReport === 'devoluciones') {
-          const { data: sales } = await api.get('/sales', { params: { ...params, withCost: true } });
-          const { data: products } = await api.get('/products', { params: { take: 10000 } });
-          
-          if (!Array.isArray(sales) || !Array.isArray(products)) {
-            dataResult = activeReport === 'devoluciones' ? { list: [], totalRefunded: 0 } : [];
-          } else {
-            if (activeReport === 'rentabilidad') {
-              let totalSalesVal = 0;
-              let totalCostVal = 0;
-              const productProfitMap: any = {};
-
-              const completed = sales.filter((s: any) => s.status === 'COMPLETED');
-              completed.forEach((sale: any) => {
-                totalSalesVal += (sale.total || 0);
-                sale.items?.forEach((item: any) => {
-                  const cost = (item.product?.costPrice || 0) * (item.quantity || 0);
-                  totalCostVal += cost;
-
-                  if (!productProfitMap[item.productId]) {
-                    productProfitMap[item.productId] = { name: item.productName, profit: 0, revenue: 0, cost: 0, qty: 0 };
-                  }
-                  productProfitMap[item.productId].profit += ((item.total || 0) - cost);
-                  productProfitMap[item.productId].revenue += (item.total || 0);
-                  productProfitMap[item.productId].cost += cost;
-                  productProfitMap[item.productId].qty += (item.quantity || 0);
-                });
-              });
-
-              const topProfitable = Object.values(productProfitMap)
-                .sort((a: any, b: any) => b.profit - a.profit)
-                .slice(0, 10);
-
-              const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-              const dailyData = Array.from({ length: daysInMonth }, (_, i) => ({
-                day: i + 1,
-                revenue: 0,
-                cost: 0,
-                profit: 0
-              }));
-
-              completed.forEach((sale: any) => {
-                const saleDate = new Date(sale.createdAt);
-                const dayIndex = saleDate.getDate() - 1;
-                if (dayIndex >= 0 && dayIndex < daysInMonth) {
-                  dailyData[dayIndex].revenue += (sale.total || 0);
-                  sale.items?.forEach((item: any) => {
-                    const cost = (item.product?.costPrice || 0) * (item.quantity || 0);
-                    dailyData[dayIndex].cost += cost;
-                    dailyData[dayIndex].profit += ((item.total || 0) - cost);
-                  });
-                }
-              });
-
-              dataResult = {
-                totalSales: totalSalesVal,
-                totalCost: totalCostVal,
-                netProfit: totalSalesVal - totalCostVal,
-                margin: totalSalesVal > 0 ? ((totalSalesVal - totalCostVal) / totalSalesVal) * 100 : 0,
-                topProfitable,
-                dailyData
-              };
-            } else if (activeReport === 'rentabilidad_categoria') {
-              const catMap: any = {};
-              const completed = sales.filter((s: any) => s.status === 'COMPLETED');
-              
-              completed.forEach((sale: any) => {
-                sale.items?.forEach((item: any) => {
-                  const fullProd = products.find((p: any) => p.id === item.productId);
-                  const catName = fullProd?.category?.name || 'Otro';
-                  const cost = (fullProd?.costPrice || 0) * (item.quantity || 0);
-
-                  if (!catMap[catName]) {
-                    catMap[catName] = { name: catName, color: fullProd?.category?.color || '#64748b', sales: 0, cost: 0, profit: 0 };
-                  }
-                  catMap[catName].sales += (item.total || 0);
-                  catMap[catName].cost += cost;
-                  catMap[catName].profit += ((item.total || 0) - cost);
-                });
-              });
-
-              dataResult = Object.values(catMap);
-            } else if (activeReport === 'rotacion_inventario') {
-              const productSalesMap: any = {};
-              let cumulativeSales = 0;
-
-              const completed = sales.filter((s: any) => s.status === 'COMPLETED');
-              completed.forEach((sale: any) => {
-                sale.items?.forEach((item: any) => {
-                  if (!productSalesMap[item.productId]) {
-                    productSalesMap[item.productId] = { id: item.productId, name: item.productName, qty: 0, revenue: 0 };
-                  }
-                  productSalesMap[item.productId].qty += (item.quantity || 0);
-                  productSalesMap[item.productId].revenue += (item.total || 0);
-                  cumulativeSales += (item.total || 0);
-                });
-              });
-
-              const sorted = Object.values(productSalesMap).sort((a: any, b: any) => b.revenue - a.revenue);
-              
-              let runningTotal = 0;
-              const abcList = sorted.map((p: any) => {
-                runningTotal += p.revenue;
-                const ratio = cumulativeSales > 0 ? runningTotal / cumulativeSales : 0;
-                let classification: 'A' | 'B' | 'C' = 'C';
-                if (ratio <= 0.8) classification = 'A';
-                else if (ratio <= 0.95) classification = 'B';
-                
-                return {
-                  ...p,
-                  classification
-                };
-              });
-
-              dataResult = abcList;
-            } else if (activeReport === 'devoluciones') {
-              const cancelled = sales.filter((s: any) => s.status === 'CANCELLED');
-              const exchanges = sales.filter((s: any) => s.status === 'COMPLETED' && s.items?.some((item: any) => item.quantity < 0));
-              
-              const totalRefunded = cancelled.reduce((sum: number, s: any) => sum + (s.total || 0), 0) +
-                exchanges.reduce((sum: number, s: any) => {
-                  const returnTotal = s.items?.filter((item: any) => item.quantity < 0)
-                    .reduce((isum: number, item: any) => isum + Math.abs(item.total), 0) || 0;
-                  return sum + returnTotal;
-                }, 0);
-
-              dataResult = {
-                list: [...cancelled, ...exchanges].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-                totalRefunded
-              };
+          const { data } = await api.get('/products/movements/all', { params: { ...params, limit: 2000 } });
+          dataResult = Array.isArray(data) ? data : [];
+        } else if (activeReport === 'rentabilidad' || activeReport === 'rentabilidad_categoria' || activeReport === 'rotacion_inventario' || activeReport === 'devoluciones' || activeReport === 'valorizacion') {
+          // Se calcula en el servidor sobre todas las ventas del mes (antes se bajaban hasta 2500 y se sumaban acá)
+          const { data } = await api.get(`/sales/reports/${activeReport}`, { params: { ...params, tzOffset: fromDate.getTimezoneOffset() } });
+          if (activeReport === 'rentabilidad') {
+            const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+            const dailyData = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, revenue: 0, cost: 0, profit: 0 }));
+            for (const d of data?.daily || []) {
+              if (d.day >= 1 && d.day <= daysInMonth) dailyData[d.day - 1] = d;
             }
+            const { daily: _daily, ...totals } = data || {};
+            dataResult = { ...totals, topProfitable: data?.topProfitable || [], dailyData };
+          } else {
+            dataResult = data ?? (activeReport === 'devoluciones' ? { list: [], totalRefunded: 0 } : []);
           }
-        } else if (activeReport === 'valorizacion') {
-          const { data: products } = await api.get('/products', { params: { take: 10000 } });
-          
-          let totalCostVal = 0;
-          let totalSaleVal = 0;
-          let activeItems = 0;
-
-          if (Array.isArray(products)) {
-            products.forEach((p: any) => {
-              if ((p.stock || 0) > 0) {
-                totalCostVal += (p.costPrice || 0) * p.stock;
-                totalSaleVal += (p.salePrice || 0) * p.stock;
-                activeItems += p.stock;
-              }
-            });
-          }
-
-          dataResult = {
-            totalCost: totalCostVal,
-            totalSale: totalSaleVal,
-            potentialProfit: totalSaleVal - totalCostVal,
-            margin: totalSaleVal > 0 ? ((totalSaleVal - totalCostVal) / totalSaleVal) * 100 : 0,
-            itemCount: activeItems
-          };
         } else if (activeReport === 'perdidas') {
-          const { data: movements } = await api.get('/products/movements/all', { params: { limit: 300 } });
+          const { data: movements } = await api.get('/products/movements/all', { params: { ...params, limit: 5000 } });
           if (Array.isArray(movements)) {
             dataResult = movements.filter((m: any) => {
               const d = new Date(m.createdAt);

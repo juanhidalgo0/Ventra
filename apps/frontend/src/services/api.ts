@@ -92,7 +92,15 @@ const doneCounting = (config: any) => {
 };
 
 api.interceptors.response.use(
-  (response) => { doneCounting(response.config); return response; },
+  (response) => {
+    doneCounting(response.config);
+    // La lista de productos trae la foto como enlace "/api/product-images/..." (no la foto en
+    // sí): se completa acá para que cualquier <img> la pueda cargar, también en la app de escritorio.
+    if (/^\/?products(\?|$)/.test(response.config.url || '') && Array.isArray(response.data)) {
+      for (const p of response.data) if (p && typeof p.imageUrl === 'string') p.imageUrl = resolveServerUrl(p.imageUrl) ?? null;
+    }
+    return response;
+  },
   async (error) => {
     const cfg: any = error.config;
     // El servidor todavía arranca, o está ocupado bajando datos de la nube (503): las lecturas se

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { nodeIndex } from '../sync/numbering';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 @Injectable()
 export class QuotesService {
@@ -15,7 +16,7 @@ export class QuotesService {
       where,
       include: {
         user: { select: { id: true, fullName: true, username: true } },
-        items: { include: { product: true } }
+        items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } }
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -27,7 +28,7 @@ export class QuotesService {
       where: { id },
       include: {
         user: { select: { id: true, fullName: true, username: true } },
-        items: { include: { product: true } }
+        items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } }
       }
     });
     if (!quote) throw new NotFoundException(`Presupuesto ${id} no encontrado`);
@@ -87,7 +88,7 @@ export class QuotesService {
       },
       include: {
         user: { select: { id: true, fullName: true, username: true } },
-        items: { include: { product: true } }
+        items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } }
       }
     });
   }

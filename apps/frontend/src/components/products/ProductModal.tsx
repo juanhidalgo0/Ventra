@@ -1020,7 +1020,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       <Search className="w-3.5 h-3.5 text-rose-600" /> Buscar foto
                     </button>
                   </div>
-                  {formData.imageUrl.startsWith('data:') ? (
+                  {formData.imageUrl.startsWith('data:') || formData.imageUrl.includes('/api/product-images/') ? (
                     <div className="flex items-center justify-between gap-2 h-9 px-3 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
                       <span className="truncate">Imagen local cargada (comprimida)</span>
                       <button type="button" onClick={() => setFormData({ ...formData, imageUrl: '' })} className="font-semibold hover:underline shrink-0">Quitar</button>

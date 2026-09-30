@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import { randomUUID } from 'crypto';
+import { PRODUCT_WITHOUT_IMAGE, productIdFromImageLink, productImageLink } from '../../database/product-select';
 
 function getSearchVariants(token: string): string[] {
   const t = token.trim();
@@ -166,25 +167,46 @@ export class ProductsService {
   private async getCatalogImageUrls(ids: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     if (ids.length === 0) return map;
-    const rows: { id: string; inline: number; url: string | null; updatedAt: any }[] = await this.prisma.$queryRawUnsafe(`
+    const query = `
       SELECT id,
              CASE WHEN substr(image_url, 1, 5) = 'data:' THEN 1 ELSE 0 END AS inline,
              CASE WHEN substr(image_url, 1, 5) = 'data:' THEN NULL ELSE image_url END AS url,
              updated_at AS updatedAt
       FROM products
-      WHERE image_url IS NOT NULL AND image_url <> ''
-    `);
-    const wanted = new Set(ids);
+      WHERE image_url IS NOT NULL AND image_url <> ''`;
+    // Pocos productos (una página de la lista): solo esos. El catálogo entero: una sola pasada.
+    const rows: { id: string; inline: number; url: string | null; updatedAt: any }[] = [];
+    if (ids.length <= 900) {
+      rows.push(...await this.prisma.$queryRawUnsafe<any[]>(`${query} AND id IN (${ids.map(() => '?').join(',')})`, ...ids));
+    } else {
+      const wanted = new Set(ids);
+      for (const r of await this.prisma.$queryRawUnsafe<any[]>(query)) if (wanted.has(r.id)) rows.push(r);
+    }
     for (const r of rows) {
-      if (!wanted.has(r.id)) continue;
       if (Number(r.inline) === 1) {
-        const v = new Date(r.updatedAt).getTime() || 0;
-        map.set(r.id, `/api/product-images/${encodeURIComponent(r.id)}?v=${v}`);
+        map.set(r.id, productImageLink(r.id, r.updatedAt));
       } else if (r.url) {
         map.set(r.id, r.url);
       }
     }
     return map;
+  }
+
+  /** Agrega a cada producto su foto como enlace liviano (ver getCatalogImageUrls). */
+  private async withImageLinks<T extends { id: string }>(products: T[]): Promise<(T & { imageUrl: string | null })[]> {
+    const imageById = await this.getCatalogImageUrls(products.map((p) => p.id));
+    return products.map((p) => ({ ...p, imageUrl: imageById.get(p.id) ?? null }));
+  }
+
+  /**
+   * La foto real detrás de un enlace /api/product-images/:id (p. ej. una variante que usa la
+   * foto del modelo). Nunca se guarda el enlace en sí: apuntaría a otro producto.
+   */
+  private async imageFromLink(link: string): Promise<string | null> {
+    const sourceId = productIdFromImageLink(link);
+    if (!sourceId) return link;
+    const source = await this.prisma.product.findUnique({ where: { id: sourceId }, select: { imageUrl: true } });
+    return source?.imageUrl || null;
   }
 
   /** Foto de un producto guardada en la base, lista para servir como archivo. */
@@ -320,8 +342,10 @@ export class ProductsService {
     try {
       const where = this.buildSearchWhere(params);
 
+      // Sin la foto: se agrega al final como enlace liviano, solo para los productos que se devuelven.
       const selectOrInclude = {
-        include: {
+        select: {
+          ...PRODUCT_WITHOUT_IMAGE,
           category: { select: { id: true, name: true, color: true, icon: true, parentCategory: { select: { id: true, name: true } } } }, 
           brand: { select: { id: true, name: true } }, 
           supplier: { select: { id: true, name: true } },
@@ -337,7 +361,7 @@ export class ProductsService {
             { name: 'asc' }
           ],
         });
-        return products.filter((p) => p.stock <= p.minStock);
+        return this.withImageLinks(products.filter((p) => p.stock <= p.minStock));
       }
 
       const rawTokens = params?.search ? params.search.trim().split(/\s+/).filter(Boolean) : [];
@@ -425,7 +449,7 @@ export class ProductsService {
 
         const skip = params?.skip || 0;
         const take = params?.take || 50;
-        return results.slice(skip, skip + take);
+        return this.withImageLinks(results.slice(skip, skip + take));
       }
 
       const results = await this.prisma.product.findMany({
@@ -438,7 +462,7 @@ export class ProductsService {
         take: params?.take || 50,
       });
 
-      return results;
+      return this.withImageLinks(results);
     } catch (error) {
       console.error('Error in ProductsService.findAll:', error);
       throw new InternalServerErrorException('Error al obtener productos: ' + error.message);
@@ -594,7 +618,9 @@ export class ProductsService {
       }
     }
 
-    if (productData.imageUrl && (productData.imageUrl.startsWith('http://') || productData.imageUrl.startsWith('https://'))) {
+    if (productIdFromImageLink(productData.imageUrl)) {
+      productData.imageUrl = (await this.imageFromLink(productData.imageUrl)) ?? null;
+    } else if (productData.imageUrl && (productData.imageUrl.startsWith('http://') || productData.imageUrl.startsWith('https://'))) {
       productData.imageUrl = await this.firebaseSync.compressRemoteImageToBase64(productData.imageUrl);
     }
 
@@ -710,7 +736,11 @@ export class ProductsService {
       }
     }
 
-    if (updateData.imageUrl && (updateData.imageUrl.startsWith('http://') || updateData.imageUrl.startsWith('https://'))) {
+    if (productIdFromImageLink(updateData.imageUrl)) {
+      // La lista manda la foto como enlace: si vuelve el de este mismo producto, no cambió
+      if (productIdFromImageLink(updateData.imageUrl) === id) delete updateData.imageUrl;
+      else updateData.imageUrl = (await this.imageFromLink(updateData.imageUrl)) ?? null;
+    } else if (updateData.imageUrl && (updateData.imageUrl.startsWith('http://') || updateData.imageUrl.startsWith('https://'))) {
       updateData.imageUrl = await this.firebaseSync.compressRemoteImageToBase64(updateData.imageUrl);
     }
 
@@ -946,9 +976,15 @@ export class ProductsService {
     return movement;
   }
 
-  async getMovements(params: { productId?: string; limit?: number }) {
+  async getMovements(params: { productId?: string; limit?: number; from?: string; to?: string }) {
+    const where: any = params.productId ? { productId: params.productId } : {};
+    if (params.from || params.to) {
+      where.createdAt = {};
+      if (params.from) where.createdAt.gte = new Date(params.from);
+      if (params.to) where.createdAt.lte = new Date(params.to);
+    }
     return this.prisma.inventoryMovement.findMany({
-      where: params.productId ? { productId: params.productId } : {},
+      where,
       include: { product: { select: { name: true, barcode: true } }, user: { select: { fullName: true } } },
       orderBy: { createdAt: 'desc' },
       take: params.limit || 50,

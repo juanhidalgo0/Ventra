@@ -777,6 +777,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           }
         }
 
+        // Compactar la base si quedó mucho espacio vacío (datos borrados, fotos quitadas): SQLite no
+        // achica el archivo solo. Corre antes de que el servidor atienda pedidos, y solo cuando vale la pena.
+        try {
+          const pragma = async (name: string) => Number(Object.values((await this.$queryRawUnsafe<any[]>(`PRAGMA ${name};`))[0] || {})[0] || 0);
+          const [pages, free, pageSize] = [await pragma('page_count'), await pragma('freelist_count'), await pragma('page_size')];
+          const freeMb = (free * pageSize) / 1e6;
+          if (freeMb > 20 && free / Math.max(pages, 1) > 0.25) {
+            const t = Date.now();
+            await this.$executeRawUnsafe(`VACUUM;`);
+            console.log(`[PrismaService] Base compactada: ${freeMb.toFixed(0)} MB de espacio vacío liberados en ${Date.now() - t} ms.`);
+          }
+        } catch (err: any) {
+          console.warn('[PrismaService] No se pudo compactar la base:', err.message);
+        }
+
         try {
           // Optimize SQLite performance for low-end machines (WAL mode, cache size, synchronous normal, temp store memory)
           await this.$queryRawUnsafe(`PRAGMA journal_mode = WAL;`);

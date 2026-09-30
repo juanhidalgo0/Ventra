@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { numberRange } from '../sync/numbering';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 @Injectable()
 export class AcopioService {
@@ -31,7 +32,7 @@ export class AcopioService {
         user: { select: { id: true, fullName: true, username: true } },
         items: {
           include: {
-            product: true,
+            product: { select: PRODUCT_WITHOUT_IMAGE },
           },
         },
         deliveryReceipts: {
@@ -75,7 +76,7 @@ export class AcopioService {
         user: { select: { id: true, fullName: true, username: true } },
         items: {
           include: {
-            product: true,
+            product: { select: PRODUCT_WITHOUT_IMAGE },
           },
         },
         deliveryReceipts: {
@@ -112,7 +113,7 @@ export class AcopioService {
     return await this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findUnique({
         where: { id: saleId },
-        include: { items: { include: { product: true } }, client: true },
+        include: { items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } }, client: true },
       });
 
       if (!sale) throw new NotFoundException('Venta no encontrada');

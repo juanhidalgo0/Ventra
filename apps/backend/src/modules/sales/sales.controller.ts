@@ -31,6 +31,21 @@ export class SalesController {
     return this.salesService.getVirtualMetrics(from, to);
   }
 
+  @Get('history-summary')
+  getHistorySummary(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.salesService.getHistorySummary(from, to);
+  }
+
+  @Get('reports/:type')
+  getReport(
+    @Param('type') type: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('tzOffset') tzOffset?: string,
+  ) {
+    return this.salesService.getReport(type, from, to, Number(tzOffset) || 0);
+  }
+
   @Get('today-summary')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

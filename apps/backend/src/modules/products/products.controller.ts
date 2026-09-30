@@ -139,8 +139,8 @@ export class ProductsController {
   }
 
   @Get('movements/all')
-  getMovements(@Query('productId') productId?: string, @Query('limit') limit?: string) {
-    return this.productsService.getMovements({ productId, limit: limit ? parseInt(limit) : 50 });
+  getMovements(@Query('productId') productId?: string, @Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.productsService.getMovements({ productId, limit: limit ? parseInt(limit) : 50, from, to });
   }
 
   @Post('import')

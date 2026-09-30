@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 @Injectable()
 export class SuppliersService {
@@ -70,7 +71,7 @@ export class SuppliersService {
   async findOne(id: string, startDate?: string, endDate?: string) {
     const supplier = await this.prisma.supplier.findUnique({
       where: { id },
-      include: { products: true, purchases: true }
+      include: { products: { select: PRODUCT_WITHOUT_IMAGE }, purchases: true }
     });
     if (!supplier) throw new NotFoundException('Proveedor no encontrado');
 

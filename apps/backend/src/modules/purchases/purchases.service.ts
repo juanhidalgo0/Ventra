@@ -4,6 +4,7 @@ import { FirebaseSyncService } from '../products/firebase-sync.service';
 import axios from 'axios';
 import { Jimp } from 'jimp';
 import * as XLSX from 'xlsx';
+import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 
 function normalizeHeaderCell(s: any): string {
   return String(s || '')
@@ -942,7 +943,7 @@ REGLAS CRÍTICAS:
   async deleteOne(id: string) {
     const purchase = await this.prisma.purchase.findUnique({
       where: { id },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } },
     });
     if (!purchase) throw new NotFoundException('Compra no encontrada');
 
@@ -975,7 +976,7 @@ REGLAS CRÍTICAS:
 
   async deleteAll() {
     const purchases = await this.prisma.purchase.findMany({
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } },
     });
 
     await this.prisma.$transaction(async (tx) => {
