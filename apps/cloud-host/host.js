@@ -161,9 +161,20 @@ function stopTenant(uid) {
   t.proc.kill();
 }
 
+// Una caja bajando o subiendo todo no se apaga: cortada a mitad de camino, la próxima vez
+// empezaba de cero y una base grande nunca terminaba de alinearse
+function isSyncingInFull(uid) {
+  const st = tenantStatus(uid);
+  return !!st && ['full', 'restoring'].includes(st.phase) && Date.now() - Date.parse(st.at) < 3 * 60 * 1000;
+}
+
 // Apaga las cajas sin uso
 setInterval(() => {
-  for (const [uid, t] of tenants) if (Date.now() - t.lastUsed > CFG.idleMs) { log(`Apagando la caja de ${uid} (sin uso)`); stopTenant(uid); }
+  for (const [uid, t] of tenants) {
+    if (Date.now() - t.lastUsed <= CFG.idleMs || isSyncingInFull(uid)) continue;
+    log(`Apagando la caja de ${uid} (sin uso)`);
+    stopTenant(uid);
+  }
 }, 60 * 1000).unref();
 
 // ── Entrada con Google ─────────────────────────────────

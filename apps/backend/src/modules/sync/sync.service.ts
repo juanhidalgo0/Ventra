@@ -297,21 +297,22 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     return (COUNTERS[table] || []).filter((c) => cols.includes(c));
   }
 
-  /** Instala los triggers que falten. Devuelve true si instaló alguno. */
-  private async ensureTriggers(tables: string[]): Promise<boolean> {
+  /** Instala los triggers que falten. Devuelve las tablas a las que les instaló alguno. */
+  private async ensureTriggers(tables: string[]): Promise<Set<string>> {
     const existing: any[] = await this.prisma.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'ventra_sync%'`);
     // Triggers de la etapa 1 (sin hora ni marca de aplicación): se reemplazan
     for (const { name } of existing.filter((r) => !String(r.name).startsWith(TRIGGER_PREFIX))) {
       await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${name}"`);
     }
     const have = new Set(existing.map((r) => r.name));
-    let installed = false;
+    const installed = new Set<string>();
+    let t = '';
     const create = async (name: string, body: string) => {
       if (have.has(name)) return;
       await this.prisma.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "${name}" ${body}`);
-      installed = true;
+      installed.add(t);
     };
-    for (const t of tables) {
+    for (t of tables) {
       await create(`${TRIGGER_PREFIX}ins_${t}`, `AFTER INSERT ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
       await create(`${TRIGGER_PREFIX}upd_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
       await create(`${TRIGGER_PREFIX}del_${t}`, `AFTER DELETE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', OLD.id, 'D', ${NOW_MS}); END`);
@@ -485,7 +486,16 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       const consistent = file.deviceId === creds.deviceId && !!dbWm
         && (dbWm === file.watermark || (!!dbWmPrev && dbWmPrev === file.watermark));
 
-      if (!bootstrapped || !consistent || installedNow) await this.bootstrap(tables, creds.deviceId, bootstrapped);
+      // Una tabla nueva (una actualización que agrega tablas) solo necesita subir esa tabla:
+      // rehacer todo dejaba la caja bloqueada un buen rato en cada actualización
+      const onlyNewTables = bootstrapped && consistent && installedNow.size > 0 && installedNow.size < tables.length;
+      if (onlyNewTables) {
+        console.log(`[Sync] Tablas nuevas: ${[...installedNow].join(', ')}`);
+        this.phase = 'syncing';
+        await this.pushAll([...installedNow], 0, 'Subiendo tablas nuevas');
+        this.progress = null;
+      }
+      if (!bootstrapped || !consistent || (installedNow.size > 0 && !onlyNewTables)) await this.bootstrap(tables, creds.deviceId, bootstrapped);
       else {
         const pushed = await this.pushPending();
         if (pushed || Date.now() >= this.nextPullAt) {
@@ -578,8 +588,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       this.writeStatusFile();
       return;
     } else {
-      // Caja nueva o base restaurada: lo que solo tiene esta caja completa la nube; después manda la nube
-      if (hasData && wasBootstrapped) await this.pushAll(tables, 0, 'Completando datos en la nube');
+      // Caja nueva o base restaurada: lo que solo tiene esta caja completa la nube; después manda la nube.
+      // La caja de la nube no tiene nada propio (lo suyo ya subió arriba con pushPending): subir
+      // todo de nuevo eran cientos de miles de filas antes de poder bajar lo actual.
+      const isCloudNode = (process.env.VENTRA_NODE_KIND || 'pc') === 'cloud';
+      if (hasData && wasBootstrapped && !isCloudNode) await this.pushAll(tables, 0, 'Completando datos en la nube');
       await this.pullChanges(true, !hasData, reg.cloudRows);
     }
     await this.setState('bootstrap', 'done');
