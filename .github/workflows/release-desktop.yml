@@ -65,6 +65,28 @@ jobs:
       - name: Build backend
         run: npm run build:backend
 
+      # El servidor de Ventra corre con su propio node.exe (src-tauri/src/lib.rs lo busca en
+      # _up_/apps/backend/bin). Los .exe no están en el repositorio (.gitignore), así que hay
+      # que bajarlo acá: sin él, el instalador sale sin servidor y no anda en ninguna PC nueva.
+      - name: Descargar Node para el instalador
+        shell: pwsh
+        env:
+          NODE_VERSION: '24.15.0'
+        run: |
+          $base = "https://nodejs.org/dist/v$env:NODE_VERSION"
+          $dest = "apps/backend/bin/node.exe"
+          Invoke-WebRequest "$base/win-x64/node.exe" -OutFile $dest
+          $expected = ((Invoke-WebRequest "$base/SHASUMS256.txt").Content -split "`n" | Where-Object { $_ -match ' win-x64/node.exe$' }) -replace '\s.*$', ''
+          $actual = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
+          if (-not $expected -or $actual -ne $expected) { throw "node.exe no coincide con el publicado por Node.js ($actual)" }
+          & $dest --version
+
+      - name: Verificar que el instalador lleve Node
+        shell: bash
+        run: |
+          test -s apps/backend/bin/node.exe || { echo "Falta apps/backend/bin/node.exe"; exit 1; }
+          test -d apps/backend/dist/ncc || { echo "Falta el servidor compilado (apps/backend/dist/ncc)"; exit 1; }
+
       # RELEASES_TOKEN: token de GitHub que solo puede escribir en ventra-releases
       - uses: tauri-apps/tauri-action@v0
         env:
