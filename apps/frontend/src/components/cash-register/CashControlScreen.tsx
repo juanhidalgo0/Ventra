@@ -12,6 +12,7 @@ import XReportPrint, { parseXSession } from './XReportPrint';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { useAuthStore } from '../../stores/authStore';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
+import { MpSessionControl } from './MpReconcilePanel';
 
 export default function CashControlScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -1073,6 +1074,9 @@ export default function CashControlScreen() {
                     </div>
                   </div>
                 </div>
+
+                {/* Lo que Mercado Pago cobró de verdad en este turno (si la cuenta está conectada) */}
+                <MpSessionControl sessionId={selectedSession.id} readOnly={selectedSession.status !== 'OPEN'} />
 
                 <div className="bg-white rounded-xl border border-slate-200/80 p-5 space-y-4">
                   <h4 className="text-xs font-bold text-slate-755 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-slate-100">

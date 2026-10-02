@@ -734,3 +734,17 @@ model ProductLot {
   @@index([status, expiresAt])
   @@map("product_lots")
 }
+
+// Avisos que se muestran en la campanita del POS / admin (historial local de esta PC)
+model AppNotification {
+  id        String    @id @default(uuid())
+  type      String    // lowStock | cashDiff | saleCancel | invoiceFail | expiry
+  title     String
+  body      String    @default("")
+  url       String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  readAt    DateTime? @map("read_at")
+
+  @@index([createdAt])
+  @@map("app_notifications")
+}

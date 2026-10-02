@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ShoppingBag, CalendarDays, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon } from 'lucide-react';
+import { ShoppingBag, CalendarDays, CalendarClock, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon, Send } from 'lucide-react';
 import { ScreenHeader, ListSkeleton } from './ui';
 import PushCard from './PushCard';
-import { loadNotifyPrefs, saveNotifyPrefs, pushState, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
+import { loadNotifyPrefs, saveNotifyPrefs, pushState, testLocalNotification, testPushFromCloud, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
 
-type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'saleCancel' | 'dailySummary';
+type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary';
 
 const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: string }[] = [
   { key: 'orders', icon: ShoppingBag, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedidos online nuevos', text: 'Apenas un cliente hace un pedido en tu tienda.' },
@@ -13,6 +13,8 @@ const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: strin
   { key: 'bookings', icon: CalendarDays, tint: 'bg-rose-50 text-rose-700', title: 'Turnos nuevos', text: 'Cuando un cliente reserva un turno desde tu tienda.' },
   { key: 'cashDiff', icon: Wallet, tint: 'bg-red-50 text-red-700', title: 'Cierre de caja con diferencia', text: 'Cuando el efectivo contado no coincide con el esperado.' },
   { key: 'lowStock', icon: PackageMinus, tint: 'bg-amber-50 text-amber-700', title: 'Stock mínimo', text: 'Cuando un producto llega a su stock mínimo. Se agrupan en un solo aviso y cada producto avisa una vez hasta que lo repongas.' },
+  { key: 'expiry', icon: CalendarClock, tint: 'bg-amber-50 text-amber-700', title: 'Vencimientos', text: 'Una vez por día, si hay productos vencidos o por vencer.' },
+  { key: 'mpUnmatched', icon: Wallet, tint: 'bg-sky-50 text-sky-700', title: 'Pagos de Mercado Pago sin venta', text: 'Si entra un pago a Mercado Pago y la venta se cargó con otro medio (o no se cargó).' },
   { key: 'invoiceFail', icon: FileWarning, tint: 'bg-red-50 text-red-700', title: 'Factura rechazada', text: 'Si ARCA no acepta una factura.' },
   { key: 'saleCancel', icon: Ban, tint: 'bg-slate-100 text-slate-700', title: 'Ventas anuladas', text: 'Cuando se anula una venta de $20.000 o más.' },
   { key: 'dailySummary', icon: Sunset, tint: 'bg-sky-50 text-sky-700', title: 'Resumen del día', text: 'Cuánto vendiste hoy, comparado con el mismo día de la semana pasada.' },
@@ -39,6 +41,20 @@ export default function MobileNotificationsScreen() {
   };
 
   const state = pushState();
+  const [testing, setTesting] = useState(false);
+
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      await testLocalNotification();
+      const r = await testPushFromCloud();
+      if (!r.devices) toast.error('Este celular no quedó registrado en la nube');
+      else if (!r.sent) toast.error(`La nube no pudo entregar el aviso (${(r.errors || []).join(', ') || 'sin detalle'})`);
+      else toast.success(`Enviado a ${r.sent} de ${r.devices} celular${r.devices > 1 ? 'es' : ''}. Debería llegar en unos segundos.`);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo probar');
+    } finally { setTesting(false); }
+  };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -49,6 +65,16 @@ export default function MobileNotificationsScreen() {
           <p className="text-[12.5px] text-slate-500 bg-white rounded-2xl border border-slate-200/80 p-4">
             Para recibir notificaciones, instalá Ventra en el celular (botón "Instalar app") y entrá desde el ícono.
           </p>
+        )}
+
+        {state === 'granted' && (
+          <button disabled={testing} onClick={runTest} className="w-full flex items-center gap-3 rounded-2xl bg-white border border-slate-200/80 p-4 text-left active:scale-[0.99] disabled:opacity-60">
+            <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-700"><Send className="w-[18px] h-[18px]" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14.5px] font-semibold text-slate-800">{testing ? 'Enviando…' : 'Enviar aviso de prueba'}</span>
+              <span className="block text-[12px] text-slate-500 leading-snug">Llegan dos: uno armado en el celular y otro desde la nube.</span>
+            </span>
+          </button>
         )}
 
         {!prefs ? <ListSkeleton rows={6} /> : (

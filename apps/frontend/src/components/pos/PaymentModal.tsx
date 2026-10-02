@@ -12,6 +12,8 @@ import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
 import { hasFeature } from '../../stores/businessStore';
+import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
+import PointChargeOverlay from './PointChargeOverlay';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -88,6 +90,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   })();
 
   const [paymentType, setPaymentType] = useState<string | null>(null);
+  // Maquinitas Point de esta caja (Configuración → Integraciones) y el cobro en curso
+  const [pointTerminals] = useState(() => getPointTerminals());
+  const [pointCharge, setPointCharge] = useState<{ amount: number } | null>(null);
 
   const [mixedMethod1, setMixedMethod1] = useState<string>('CASH');
   const [mixedMethod2, setMixedMethod2] = useState<string>(posnets[0]?.id || 'CLOVER');
@@ -271,7 +276,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   // Main input keyboard shortcut listener (1-5 for payment types, Enter to confirm)
   useEffect(() => {
-    if (isProcessing || showSuccess) return;
+    if (isProcessing || showSuccess || pointCharge) return;
     let lastKeyTime = 0;
     let lastFastBurstTime = 0;
 
@@ -351,7 +356,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isProcessing, showSuccess, paymentType, selectedClientId, onClose, isDebtPayment, disableChangeCalc, cashReceived, finalTotal, mixedValid, posnets]);
+  }, [isProcessing, showSuccess, pointCharge, paymentType, selectedClientId, onClose, isDebtPayment, disableChangeCalc, cashReceived, finalTotal, mixedValid, posnets]);
 
   // ¿El comercio factura? Se consulta una vez al abrir el cobro, no en cada venta
   useEffect(() => {
@@ -436,8 +441,20 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     onSuccess();
   };
 
-  const handleConfirm = async () => {
-    if (processingRef.current) return;
+  const buildPayments = (mpReference?: string): { method: string | null; amount: number; reference?: string }[] => {
+    const list = paymentType === 'MIXED'
+      ? [
+          { method: mixedMethod1, amount: mixedAmount1 },
+          { method: mixedMethod2, amount: mixedAmount2 }
+        ].filter(p => p.amount > 0)
+      : [{ method: paymentType, amount: finalTotal }];
+    return mpReference
+      ? list.map(p => (p.method && isMercadoPagoMethod(p.method, posnets) ? { ...p, reference: mpReference } : p))
+      : list;
+  };
+
+  const handleConfirm = () => {
+    if (processingRef.current || pointCharge) return;
     if (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment) {
       toast.error('Seleccioná un cliente para la cuenta corriente');
       return;
@@ -446,16 +463,24 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       toast.error('Para venta a acopio debés seleccionar un cliente');
       return;
     }
+    // Con maquinita Point elegida, lo de Mercado Pago se cobra primero en la maquinita:
+    // la venta se registra recién cuando el pago se aprueba (ver PointChargeOverlay)
+    const mpAmount = buildPayments()
+      .filter(p => p.method && isMercadoPagoMethod(p.method, posnets))
+      .reduce((t, p) => t + p.amount, 0);
+    if (pointTerminals.length > 0 && mpAmount > 0) {
+      setPointCharge({ amount: Math.round(mpAmount * 100) / 100 });
+      return;
+    }
+    registerSale();
+  };
 
+  const registerSale = async (mpReference?: string) => {
+    if (processingRef.current) return;
     processingRef.current = true;
     setIsProcessing(true);
     try {
-      const payments = paymentType === 'MIXED'
-        ? [
-            { method: mixedMethod1, amount: mixedAmount1 },
-            { method: mixedMethod2, amount: mixedAmount2 }
-          ].filter(p => p.amount > 0)
-        : [{ method: paymentType, amount: finalTotal }];
+      const payments = buildPayments(mpReference);
       let saleData: any = null;
       if (isDebtPayment && debtClient) {
         const finalDesc = `Pago a Cuenta Corriente (Método: ${paymentType})`;
@@ -518,12 +543,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       if (!err.response && !isDebtPayment) {
         // Network connection error: Queue sale offline
         const { appliedPromosInfo } = getCartItemsWithDiscounts();
-        const payments = paymentType === 'MIXED'
-          ? [
-              { method: mixedMethod1, amount: mixedAmount1 },
-              { method: mixedMethod2, amount: mixedAmount2 }
-            ].filter(p => p.amount > 0)
-          : [{ method: paymentType, amount: finalTotal }];
+        const payments = buildPayments(mpReference);
 
         const offlinePayload = {
           sessionId,
@@ -805,6 +825,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       </>
     );
   }
+
+  // Con maquinita Point, lo de Mercado Pago se cobra ahí antes de registrar la venta
+  const goesToPoint = pointTerminals.length > 0 && buildPayments().some(p => p.method && isMercadoPagoMethod(p.method, posnets));
 
   return (
     <MotionDiv 
@@ -1242,7 +1265,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             ) : (
               <div className="flex items-center justify-center gap-2 w-full">
                 <Check className="w-5 h-5 stroke-[3]" />
-                <span className="font-black uppercase tracking-wider text-sm sm:text-base">FINALIZAR VENTA</span>
+                <span className="font-black uppercase tracking-wider text-sm sm:text-base">{goesToPoint ? 'COBRAR EN LA MAQUINITA' : 'FINALIZAR VENTA'}</span>
                 <span className="bg-black/25 dark:bg-white/25 text-white px-2 py-0.5 rounded-xl text-xs font-black tracking-widest border border-white/30 shadow-xs ml-1">
                   [ENTER]
                 </span>
@@ -1251,6 +1274,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           </button>
         </div>
       </MotionDiv>
+
+      {pointCharge && pointTerminals.length > 0 && (
+        <PointChargeOverlay
+          amount={pointCharge.amount}
+          terminals={pointTerminals}
+          formatPrice={formatPrice}
+          onPaid={(reference) => { setPointCharge(null); registerSale(reference); }}
+          onBack={() => setPointCharge(null)}
+          onManual={() => { setPointCharge(null); registerSale('MP SIN CONFIRMAR (cargado a mano)'); }}
+        />
+      )}
     </MotionDiv>
   );
 }

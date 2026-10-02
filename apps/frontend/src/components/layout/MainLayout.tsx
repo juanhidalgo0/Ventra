@@ -15,7 +15,7 @@ import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
 import UpdateBadge from '../updater/UpdateBadge';
-import ExpiryBadge from '../products/ExpiryBadge';
+import NotificationBell from '../notifications/NotificationBell';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
@@ -363,7 +363,7 @@ export default function MainLayout({ children }: Props) {
                 <Download className="w-3.5 h-3.5" /> Instalar app
               </button>
             )}
-            <ExpiryBadge />
+            <NotificationBell />
             <UpdateBadge />
             <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
 

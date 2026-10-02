@@ -24,6 +24,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { SurchargesModule } from './modules/surcharges/surcharges.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { AcopioModule } from './modules/acopio/acopio.module';
+import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AcopioModule } from './modules/acopio/acopio.module';
     SurchargesModule,
     QuotesModule,
     AcopioModule,
+    MercadoPagoModule,
   ],
   providers: [
     {

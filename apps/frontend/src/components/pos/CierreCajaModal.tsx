@@ -7,6 +7,7 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import GastosModal from './GastosModal';
 import { holdLogout } from '../../utils/logoutHold';
+import MpReconcilePanel, { mpReconcileNote, useMpConnected, useMpReconcile } from '../cash-register/MpReconcilePanel';
 
 interface CierreCajaModalProps {
   session: any;
@@ -80,6 +81,17 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
       { id: 'MERCADOPAGO', name: 'MercadoPago' }
     ];
   })();
+
+  // Con la cuenta de Mercado Pago conectada, lo cobrado por MP no se tipea: lo trae Ventra
+  // de Mercado Pago, y en la validación se ve qué pago no tiene venta y al revés.
+  const mpConnected = useMpConnected();
+  const mpData = useMpReconcile(activeSession?.id, posnets, !!mpConnected);
+  const [mpManual, setMpManual] = useState(false);
+  // Si Mercado Pago no responde (sin internet), se vuelve a cargar a mano como antes
+  const mpAuto = !!mpConnected && !mpManual && !mpData.error;
+  useEffect(() => {
+    if (mpAuto && mpData.result) setMpInputs([mpData.result.realForSession]);
+  }, [mpAuto, mpData.result]);
 
   // Calculate all session-related values with useMemo to prevent O(N) loops on every single state update (keypress)
   const sessionCalculations = useMemo(() => {
@@ -500,6 +512,15 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[12.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">MercadoPago</span>
+                      {mpAuto ? (
+                        <button
+                          type="button"
+                          onClick={() => setMpManual(true)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                        >
+                          Cargar a mano
+                        </button>
+                      ) : (
                       <button 
                         type="button" 
                         onClick={() => setMpInputs([...mpInputs, 0])}
@@ -507,8 +528,28 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                       >
                         <Plus className="w-3.5 h-3.5" /> Agregar Terminal
                       </button>
+                      )}
                     </div>
-                    {mpInputs.map((val, idx) => (
+                    {mpAuto ? (
+                      <div className="p-3.5 sm:p-4 bg-sky-50/70 dark:bg-sky-900/20 rounded-xl border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shrink-0">
+                            <Smartphone className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Traído de Mercado Pago</p>
+                            <p className="text-[11.5px] text-slate-500">
+                              {mpData.result
+                                ? `${mpData.result.real.count} pago(s) recibidos en el turno. No hace falta tipearlo.`
+                                : mpData.error || 'Consultando los pagos del turno…'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-2xl font-black text-slate-900 dark:text-slate-100 tabular-nums text-right">
+                          {mpData.result ? fmt(mpData.result.realForSession) : '—'}
+                        </span>
+                      </div>
+                    ) : mpInputs.map((val, idx) => (
                       <div key={`mp-${idx}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 gap-2.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 shrink-0">
@@ -631,6 +672,10 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   </div>
                 )}
               </div>
+
+              {mpConnected && (
+                <MpReconcilePanel data={mpData} posnets={posnets} onFixed={reloadSession} />
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* Sistema */}
@@ -1030,7 +1075,12 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   else {
                     try {
                       setIsSubmitting(true);
-                      await onConfirm({ cashToWithdraw, posnetDeclarations, notes, bills });
+                      await onConfirm({
+                        cashToWithdraw,
+                        posnetDeclarations,
+                        notes: mpConnected && mpData.result ? [notes.trim(), mpReconcileNote(mpData.result)].filter(Boolean).join('\n') : notes,
+                        bills,
+                      });
                       setStep(6);
                     } catch (e) {
                       // Error is handled by parent, so we just reset submitting

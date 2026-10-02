@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-10-02b';
+const SCHEMA_VERSION = '2026-10-02c';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -343,6 +343,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             );`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "product_lots_product_id_idx" ON "product_lots"("product_id");`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "product_lots_status_expires_at_idx" ON "product_lots"("status", "expires_at");`);
+            // Historial de avisos de la campanita
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "app_notifications" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "type" TEXT NOT NULL,
+              "title" TEXT NOT NULL,
+              "body" TEXT NOT NULL DEFAULT '',
+              "url" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "read_at" DATETIME
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "app_notifications_created_at_idx" ON "app_notifications"("created_at");`);
             const variantIdx: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='index' AND name='products_variant_group_id_idx';`);
             if (variantIdx.length === 0) {
               await this.$executeRawUnsafe(`CREATE INDEX "products_variant_group_id_idx" ON "products"("variant_group_id");`);

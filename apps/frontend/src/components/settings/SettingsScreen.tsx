@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
+import MercadoPagoCard from './MercadoPagoCard';
 import { useAuthStore } from '../../stores/authStore';
 import { usePOSStore } from '../../stores/posStore';
 import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, type BusinessProfile } from '../../stores/businessStore';
@@ -1500,6 +1501,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6 max-w-4xl"
               >
+                {isAdmin && <MercadoPagoCard />}
+
                 <div className="card p-6 space-y-4">
                   <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Link2 className="w-4.5 h-4.5 text-rose-500" /> Integraciones Externas

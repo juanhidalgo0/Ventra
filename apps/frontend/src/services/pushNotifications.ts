@@ -45,11 +45,11 @@ export async function registerPushToken(): Promise<void> {
 
 /** Qué avisos recibe la cuenta (se guardan en la nube, valen para todos sus celulares). */
 export interface NotifyPrefs {
-  orders: boolean; orderIdle: boolean; bookings: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean;
+  orders: boolean; orderIdle: boolean; bookings: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean; expiry: boolean; mpUnmatched: boolean;
   saleCancel: boolean; dailySummary: boolean; summaryHour: number; quietFrom: number; quietTo: number;
 }
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
-  orders: true, orderIdle: true, bookings: true, cashDiff: true, invoiceFail: true, lowStock: true,
+  orders: true, orderIdle: true, bookings: true, cashDiff: true, invoiceFail: true, lowStock: true, expiry: true, mpUnmatched: true,
   saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8,
 };
 
@@ -62,4 +62,21 @@ export async function loadNotifyPrefs(): Promise<NotifyPrefs> {
 export async function saveNotifyPrefs(prefs: NotifyPrefs): Promise<void> {
   const user = await ensureVentraSession();
   await setDoc(doc(getVentraDb(), 'ventra_push', user.uid), { prefs, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/** Muestra un aviso armado en el mismo celular: prueba que el sistema deja mostrar notificaciones. */
+export async function testLocalNotification(): Promise<void> {
+  const reg = (await navigator.serviceWorker.getRegistration('./')) || (await navigator.serviceWorker.ready);
+  await reg.showNotification('Ventra · Prueba en este celular', { body: 'El celular puede mostrar avisos de Ventra.', icon: './icon-192.png', tag: 'local-test' });
+}
+
+/** Pide a la nube un aviso de prueba a todos los celulares de la cuenta (camino completo). */
+export async function testPushFromCloud(): Promise<{ devices: number; sent: number; errors?: string[] }> {
+  await registerPushToken();
+  const user = await ensureVentraSession();
+  const res = await fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/ventraPushTest', {
+    method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+  });
+  if (!res.ok) throw new Error(res.status === 404 ? 'La prueba desde la nube todavía no está publicada' : 'No se pudo enviar el aviso de prueba');
+  return res.json();
 }
