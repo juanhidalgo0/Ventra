@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Jimp } from 'jimp';
 import * as XLSX from 'xlsx';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
+import { createPurchaseLot } from '../products/lots.util';
 
 function normalizeHeaderCell(s: any): string {
   return String(s || '')
@@ -235,6 +236,7 @@ export class PurchasesService {
       cost: number; 
       buyFormat?: string;
       salePrice?: number;
+      expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
       newProductData?: {
         name: string;
         barcode?: string;
@@ -316,6 +318,8 @@ export class PurchasesService {
                 discount2: item.newProductData.discount2 || 0,
                 discount3: item.newProductData.discount3 || 0,
                 taxRate: item.newProductData.taxRate || 0,
+                // Si vino la fecha del lote, el producto nuevo ya queda controlando vencimiento
+                trackExpiry: Boolean(item.expiresAt),
               },
               include: { category: true }
             });
@@ -397,6 +401,7 @@ export class PurchasesService {
             reference: `Compra #${newPurchase.id}`,
           },
         });
+        await createPurchaseLot(tx, product, item.expiresAt, totalUnitsAdded, newPurchase.id);
 
         productsToSync.push({
           barcode: product.barcode || product.id,
@@ -810,6 +815,7 @@ REGLAS CRÍTICAS:
       cost: number; 
       buyFormat?: string;
       salePrice?: number;
+      expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
     }[];
     paymentStatus: 'PAID' | 'OWED';
     paymentMethod?: string;
@@ -902,6 +908,7 @@ REGLAS CRÍTICAS:
               reference: `Compra #${id}`,
             },
           });
+          await createPurchaseLot(tx, product, item.expiresAt, totalUnitsAdded, id);
 
           productsToSync.push({
             barcode: product.barcode || product.id,
@@ -948,6 +955,8 @@ REGLAS CRÍTICAS:
     if (!purchase) throw new NotFoundException('Compra no encontrada');
 
     await this.prisma.$transaction(async (tx) => {
+      // Los lotes que trajo esta compra dejan de existir
+      await tx.productLot.updateMany({ where: { purchaseId: id, status: 'ACTIVE' }, data: { status: 'REMOVED' } });
       // Deduct stock for each item if the product exists
       for (const item of purchase.items) {
         if (item.product) {

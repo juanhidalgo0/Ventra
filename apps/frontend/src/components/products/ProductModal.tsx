@@ -32,6 +32,7 @@ import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import ImageSearchPicker from './ImageSearchPicker';
+import ExpiryLotsEditor, { PendingLot } from './ExpiryLotsEditor';
 import { hasFeature, useFeature, useBusinessStore } from '../../stores/businessStore';
 
 function buildCategoryTree(cats: any[]) {
@@ -176,8 +177,12 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     imageUrl: product?.imageUrl || '',
     supplierId: product?.supplierId || '',
     allowCustomPrice: product?.allowCustomPrice || false,
-    unlimitedStock: product?.unlimitedStock || false
+    unlimitedStock: product?.unlimitedStock || false,
+    trackExpiry: product?.trackExpiry || false,
+    expiryAlertDays: product?.expiryAlertDays ?? 7
   });
+  const [pendingLots, setPendingLots] = useState<PendingLot[]>([]);
+  const canUseExpiry = useFeature('expiry') || Boolean(product?.trackExpiry);
 
   const [kitItems, setKitItems] = useState<{ childProductId: string; quantity: number; name: string; salePrice?: number }[]>(() => {
     return product?.kitItems?.map((k: any) => ({
@@ -781,6 +786,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         discount2: parseFloat(formData.discount2 as any) || 0,
         discount3: parseFloat(formData.discount3 as any) || 0,
         taxRate: parseFloat(formData.taxRate as any) || 0,
+        expiryAlertDays: Math.max(0, Math.round(parseFloat(formData.expiryAlertDays as any) || 0)),
         unitsPerPack: uPerPack,
         pieceSize: ['MT', 'KG', 'L'].includes(formData.unit) && formData.pieceSize !== '' && formData.pieceSize !== null && !isNaN(parseFloat(formData.pieceSize as any)) && parseFloat(formData.pieceSize as any) > 0
           ? parseFloat(formData.pieceSize as any)
@@ -829,6 +835,11 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         const res = await api.post('/products', sanitizedData);
         savedProduct = res.data;
         toast.success('Producto creado');
+        if (formData.trackExpiry && savedProduct?.id) {
+          for (const lot of pendingLots) {
+            await api.post(`/products/${savedProduct.id}/lots`, lot.quantity === null ? { expiresAt: lot.expiresAt } : lot).catch(() => toast.error('No se pudo guardar un vencimiento'));
+          }
+        }
       }
       // Invalidar caché del POS para que recargue los productos actualizados
       usePOSStore.getState().setProducts([]);
@@ -1494,6 +1505,45 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   <p className={hintCls}>Te avisamos cuando el stock llegue a este número.</p>
                 </div>
               </div>
+            )}
+
+            {canUseExpiry && (
+              <>
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 cursor-pointer select-none">
+                  <span>
+                    <span className="block text-[13px] font-semibold text-slate-800">Controla vencimiento</span>
+                    <span className="block text-[11.5px] text-slate-500">Cargá las fechas por lote y te avisamos antes de que venzan</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={formData.trackExpiry}
+                    onChange={e => setFormData({ ...formData, trackExpiry: e.target.checked })}
+                    className="w-4 h-4 accent-rose-600 cursor-pointer"
+                  />
+                </label>
+                {formData.trackExpiry && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] font-semibold text-slate-700">Avisar</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.expiryAlertDays}
+                        onChange={e => setFormData({ ...formData, expiryAlertDays: parseInt(e.target.value) || 0 })}
+                        onFocus={e => e.target.select()}
+                        className={inputCls + ' w-20 text-center'}
+                      />
+                      <span className="text-[12px] text-slate-600">días antes de vencer</span>
+                    </div>
+                    <ExpiryLotsEditor
+                      productId={product?.id}
+                      pending={pendingLots}
+                      onPendingChange={setPendingLots}
+                      alertDays={formData.expiryAlertDays}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </FormSection>
 

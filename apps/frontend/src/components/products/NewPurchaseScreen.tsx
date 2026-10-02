@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import { useFeature } from '../../stores/businessStore';
 import { toast } from 'react-hot-toast';
 
 function buildCategoryTree(cats: any[]) {
@@ -64,6 +65,8 @@ interface PurchaseItem {
   total: number;
   buyFormat: string;
   unitsPerPack: number;
+  trackExpiry?: boolean; // El producto controla vencimiento: se pide la fecha del lote
+  expiresAt?: string;
   presentationType: string;
   isNew?: boolean;
   margin?: number;
@@ -193,6 +196,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const [date, setDate] = useState(draft?.date || new Date().toISOString().split('T')[0]);
   
   const [items, setItems] = useState<PurchaseItem[]>(draft?.items || []);
+  const expiryEnabled = useFeature('expiry');
   const [showScanModal, setShowScanModal] = useState(false);
   const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') === 'true');
 
@@ -227,7 +231,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           unitsPerPack: item.product?.unitsPerPack || 1,
           presentationType: item.product?.presentationType || 'UNIT',
           margin: item.product ? Math.round(((item.product.salePrice - (cost * 1.21)) / (cost * 1.21)) * 100) : 0,
-          salePrice: item.product?.salePrice || 0
+          salePrice: item.product?.salePrice || 0,
+          trackExpiry: Boolean(item.product?.trackExpiry)
         };
       });
       setItems(loadedItems);
@@ -528,6 +533,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         presentationType: product.presentationType || 'UNIT',
         margin: initMargin,
         salePrice: initSale,
+        trackExpiry: Boolean(product.trackExpiry),
       }]);
     }
     setProductSearch('');
@@ -677,7 +683,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             unitsPerPack: item.product.unitsPerPack || 1,
             presentationType: item.product.presentationType || 'UNIT',
             margin: item.cost > 0 ? Math.round(((item.product.salePrice - (item.cost * 1.21)) / (item.cost * 1.21)) * 100) : 0,
-            salePrice: item.product.salePrice
+            salePrice: item.product.salePrice,
+            trackExpiry: Boolean(item.product.trackExpiry)
           });
         } else {
           unmatched.push(item);
@@ -738,7 +745,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         unitsPerPack: product.unitsPerPack || 1,
         presentationType: product.presentationType || 'UNIT',
         margin: unmatched.cost > 0 ? Math.round(((product.salePrice - (unmatched.cost * 1.21)) / (unmatched.cost * 1.21)) * 100) : 0,
-        salePrice: product.salePrice
+        salePrice: product.salePrice,
+        trackExpiry: Boolean(product.trackExpiry)
       };
 
       setItems(prev => {
@@ -827,7 +835,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         unitsPerPack: product.unitsPerPack || 1,
         presentationType: product.presentationType || 'UNIT',
         margin: (unmatched ? unmatched.cost : baseCost) > 0 ? Math.round(((product.salePrice - finalCost) / finalCost) * 100) : 0,
-        salePrice: product.salePrice
+        salePrice: product.salePrice,
+        trackExpiry: Boolean(product.trackExpiry)
       };
 
       setItems(prev => {
@@ -904,6 +913,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             quantity: parseFloat(i.quantity as any) || 0, 
             cost: backendCost, 
             buyFormat: i.buyFormat,
+            expiresAt: (i.trackExpiry || (i.isNew && expiryEnabled)) && i.expiresAt ? i.expiresAt : undefined,
             newProductData: i.isNew ? {
               name: i.name,
               barcode: i.barcode || null,
@@ -1997,6 +2007,15 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                               </div>
                               {item.buyFormat === 'PACK' && (
                                 <span className="text-[8px] font-bold text-rose-500 uppercase tracking-tight">({(parseFloat(item.quantity as any) || 0) * item.unitsPerPack} unidades)</span>
+                              )}
+                              {(item.trackExpiry || (item.isNew && expiryEnabled)) && (
+                                <input
+                                  type="date"
+                                  title="Vencimiento del lote"
+                                  value={item.expiresAt || ''}
+                                  onChange={e => updateItem(item.productId, 'expiresAt', e.target.value)}
+                                  className={`mt-0.5 w-[118px] rounded px-1 py-0.5 text-[10px] font-bold outline-none border ${item.expiresAt || !item.trackExpiry ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-amber-50 border-amber-300 text-amber-700'}`}
+                                />
                               )}
                             </div>
                           </td>

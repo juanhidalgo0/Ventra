@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-09-28';
+const SCHEMA_VERSION = '2026-10-02b';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -322,6 +322,27 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN ${col} TEXT DEFAULT NULL;`);
               }
             }
+            // Vencimientos por lote
+            if (!productColumns.some(c => c.name === 'track_expiry')) {
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN track_expiry INTEGER NOT NULL DEFAULT 0;`);
+            }
+            if (!productColumns.some(c => c.name === 'expiry_alert_days')) {
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN expiry_alert_days INTEGER NOT NULL DEFAULT 7;`);
+            }
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "product_id" TEXT NOT NULL,
+              "expires_at" DATETIME NOT NULL,
+              "quantity" REAL NOT NULL DEFAULT 0,
+              "purchase_id" TEXT,
+              "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+              "note" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "product_lots_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "product_lots_product_id_idx" ON "product_lots"("product_id");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "product_lots_status_expires_at_idx" ON "product_lots"("status", "expires_at");`);
             const variantIdx: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='index' AND name='products_variant_group_id_idx';`);
             if (variantIdx.length === 0) {
               await this.$executeRawUnsafe(`CREATE INDEX "products_variant_group_id_idx" ON "products"("variant_group_id");`);

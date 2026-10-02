@@ -13,12 +13,13 @@ export type BusinessFeature =
   | 'substitutes'    // Productos sustitutos / equivalentes
   | 'fractional'     // Unidades MT/KG/L, tamaño de pieza, ubicación, precio mayorista
   | 'hardwareImages' // Buscador de fotos por medida (las medidas comparten foto)
-  | 'variants';      // Variantes: talles y colores, o tamaños (gastronomía)
+  | 'variants'       // Variantes: talles y colores, o tamaños (gastronomía)
+  | 'expiry';        // Vencimientos por lote y avisos
 
 export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -29,14 +30,15 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   fractional:     { title: 'Medidas y fraccionado', description: 'Vender por metro, kilo o litro, con tamaño de pieza y ubicación.' },
   hardwareImages: { title: 'Fotos por medida', description: 'Buscador de fotos donde todas las medidas de un artículo comparten imagen.' },
   variants:       { title: 'Variantes (talles, colores, tamaños)', description: 'Un producto con varias opciones, cada una con su precio, su stock y su código.' },
+  expiry:         { title: 'Vencimientos', description: 'Cargar fechas de vencimiento por lote y recibir avisos antes de que venzan.' },
 };
 
 export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
-  KIOSKO: [],
+  KIOSKO: ['expiry'],
   FERRETERIA: ['quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages'],
   INDUMENTARIA: ['variants'],
-  GASTRONOMIA: ['variants'],
-  MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants'],
+  GASTRONOMIA: ['variants', 'expiry'],
+  MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants', 'expiry'],
 };
 
 export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: string; description: string }> = {

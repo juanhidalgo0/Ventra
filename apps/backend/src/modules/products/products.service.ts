@@ -221,6 +221,79 @@ export class ProductsService {
     return { mime, data };
   }
 
+  // ── Vencimientos por lote ──
+  async getLots(productId: string) {
+    return this.prisma.productLot.findMany({ where: { productId, status: 'ACTIVE' }, orderBy: { expiresAt: 'asc' } });
+  }
+
+  async createLot(productId: string, data: any) {
+    const expiresAt = parseExpiry(data?.expiresAt);
+    const product = await this.prisma.product.findUnique({ where: { id: productId }, select: { id: true, stock: true } });
+    if (!product) throw new NotFoundException('Producto no encontrado');
+    let quantity = Number(data?.quantity);
+    if (data?.quantity === undefined || data?.quantity === null || data?.quantity === '' || isNaN(quantity)) {
+      // Sin cantidad: el lote se queda con el stock que todavía no tiene lote asignado
+      const assigned = await this.prisma.productLot.aggregate({ where: { productId, status: 'ACTIVE' }, _sum: { quantity: true } });
+      quantity = product.stock - (assigned._sum.quantity || 0);
+    }
+    return this.prisma.productLot.create({
+      data: { productId, expiresAt, quantity: Math.max(0, quantity), note: data?.note || null, purchaseId: data?.purchaseId || null },
+    });
+  }
+
+  async updateLot(lotId: string, data: any) {
+    const update: any = {};
+    if (data?.expiresAt !== undefined) update.expiresAt = parseExpiry(data.expiresAt);
+    if (data?.quantity !== undefined) update.quantity = Math.max(0, Number(data.quantity) || 0);
+    if (data?.note !== undefined) update.note = data.note || null;
+    if (data?.status !== undefined) {
+      if (!['ACTIVE', 'REMOVED'].includes(data.status)) throw new BadRequestException('Estado inválido');
+      update.status = data.status;
+    }
+    return this.prisma.productLot.update({ where: { id: lotId }, data: update });
+  }
+
+  /** Da de baja el lote como merma: descuenta su cantidad del stock y registra el movimiento. */
+  async writeOffLot(lotId: string, userId?: string) {
+    const lot = await this.prisma.productLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new NotFoundException('Lote no encontrado');
+    if (lot.status !== 'ACTIVE') return lot;
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({ where: { id: lot.productId }, select: { stock: true, unlimitedStock: true } });
+      // Nunca descuenta más de lo que hay: el lote puede haberse vendido en parte
+      const qty = product ? Math.min(lot.quantity, Math.max(product.stock, 0)) : 0;
+      if (product && !product.unlimitedStock && qty > 0) {
+        const stockAfter = product.stock - qty;
+        await tx.product.update({ where: { id: lot.productId }, data: { stock: stockAfter } });
+        if (userId) {
+          await tx.inventoryMovement.create({
+            data: {
+              productId: lot.productId, userId, type: 'ADJUSTMENT', quantity: -qty,
+              stockBefore: product.stock, stockAfter, reason: 'Merma por vencimiento', reference: lot.id,
+            },
+          });
+        }
+      }
+      return tx.productLot.update({ where: { id: lotId }, data: { status: 'WRITTEN_OFF' } });
+    });
+  }
+
+  /** Lotes activos vencidos o dentro del margen de aviso de su producto (sin fotos). */
+  async getExpiring() {
+    const lots = await this.prisma.productLot.findMany({
+      where: { status: 'ACTIVE', product: { trackExpiry: true, isActive: true } },
+      orderBy: { expiresAt: 'asc' },
+      include: { product: { select: { id: true, name: true, barcode: true, stock: true, expiryAlertDays: true } } },
+    });
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return lots
+      .map((l) => {
+        const exp = new Date(l.expiresAt); exp.setHours(0, 0, 0, 0);
+        return { ...l, daysLeft: Math.round((exp.getTime() - today.getTime()) / 86400000) };
+      })
+      .filter((l) => l.daysLeft <= (l.product.expiryAlertDays ?? 7));
+  }
+
   async getLowStockIds() {
     const rows = await this.prisma.$queryRawUnsafe<any[]>(
       `SELECT id, min_stock AS minStock FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND stock <= min_stock;`
@@ -601,7 +674,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays'
     ];
     
     const productData: any = {};
@@ -718,7 +791,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays'
     ];
     
     const updateData: any = {};
@@ -1960,4 +2033,12 @@ export class ProductsService {
 
     return this.firebaseSync.updateCommerceConfig(email, configData);
   }
+}
+
+/** Acepta 'YYYY-MM-DD' (fecha local, mediodía para no correrse de día) o ISO completo. */
+function parseExpiry(value: any): Date {
+  const str = String(value ?? '');
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(str) ? new Date(`${str}T12:00:00`) : new Date(str);
+  if (isNaN(d.getTime())) throw new BadRequestException('Fecha de vencimiento inválida');
+  return d;
 }

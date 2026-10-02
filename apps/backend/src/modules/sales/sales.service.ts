@@ -6,6 +6,7 @@ import { FirebaseSyncService } from '../products/firebase-sync.service';
 import { numberRange } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
+import { consumeLotsFefo } from '../products/lots.util';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -107,6 +108,7 @@ export class SalesService {
                 data: { stock: { decrement: childQty } }
               });
               sold.set(kitComp.childProductId, (sold.get(kitComp.childProductId) || 0) + childQty);
+              if (kitComp.childProduct.trackExpiry) await consumeLotsFefo(tx, kitComp.childProductId, childQty);
               const isItemReturn = item.quantity < 0;
               await tx.inventoryMovement.create({
                 data: {
@@ -131,6 +133,7 @@ export class SalesService {
           const newStock = stockBefore - item.quantity;
           await tx.product.update({ where: { id: product.id }, data: { stock: { decrement: item.quantity } } });
           sold.set(product.id, (sold.get(product.id) || 0) + item.quantity);
+          if (product.trackExpiry) await consumeLotsFefo(tx, product.id, item.quantity);
 
           const isItemReturn = item.quantity < 0;
           await tx.inventoryMovement.create({ 

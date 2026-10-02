@@ -240,6 +240,8 @@ model Product {
   baseName         String? @map("base_name") // Indumentaria: nombre del modelo, compartido por todas las variantes
   variantGroupId   String? @map("variant_group_id") // Todas las variantes de un mismo modelo comparten este id
   variantAttrs     String? @map("variant_attrs") // JSON con los atributos de la variante, ej. {"talle":"M","color":"Negro"}
+  trackExpiry      Boolean @default(false) @map("track_expiry") // Controla vencimientos por lote
+  expiryAlertDays  Int     @default(7) @map("expiry_alert_days") // Avisar estos días antes de vencer
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
   listPrice        Float?  @map("list_price") // Precio de lista del proveedor, sin IVA
@@ -267,6 +269,7 @@ model Product {
   kitItems          ProductKitItem[] @relation("KitParent")
   parentKits        ProductKitItem[] @relation("KitChild")
   deliveryReceiptItems DeliveryReceiptItem[]
+  lots              ProductLot[]
 
   @@index([name])
   @@index([barcode])
@@ -711,4 +714,23 @@ model ImageSuggestion {
 
   @@index([status])
   @@map("image_suggestions")
+}
+
+// Lotes con fecha de vencimiento (solo productos con trackExpiry)
+model ProductLot {
+  id         String   @id @default(uuid())
+  productId  String   @map("product_id")
+  expiresAt  DateTime @map("expires_at")
+  quantity   Float    @default(0)
+  purchaseId String?  @map("purchase_id")
+  status     String   @default("ACTIVE") // ACTIVE | WRITTEN_OFF | REMOVED
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([status, expiresAt])
+  @@map("product_lots")
 }

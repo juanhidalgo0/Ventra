@@ -85,6 +85,32 @@ export class ProductsController {
     return this.productsService.getLowStockIds();
   }
 
+  /** Lotes vencidos o por vencer, para el panel y los avisos. */
+  @Get('expiring')
+  getExpiring() {
+    return this.productsService.getExpiring();
+  }
+
+  @Patch('lots/:lotId')
+  updateLot(@Param('lotId') lotId: string, @Body() data: any) {
+    return this.productsService.updateLot(lotId, data);
+  }
+
+  @Post('lots/:lotId/write-off')
+  writeOffLot(@Param('lotId') lotId: string, @Request() req) {
+    return this.productsService.writeOffLot(lotId, req.user?.sub);
+  }
+
+  @Get(':id/lots')
+  getLots(@Param('id') id: string) {
+    return this.productsService.getLots(id);
+  }
+
+  @Post(':id/lots')
+  createLot(@Param('id') id: string, @Body() data: any) {
+    return this.productsService.createLot(id, data);
+  }
+
   @Get('pos-catalog')
   getPOSCatalog(@Query('updatedAfter') updatedAfter?: string) {
     return this.productsService.getPOSCatalog(updatedAfter);
