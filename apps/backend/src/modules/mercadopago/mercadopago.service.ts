@@ -85,7 +85,7 @@ export class MercadoPagoService {
   }
 
   /** countTransfers: las transferencias recibidas cuentan como cobros del negocio. */
-  settings(patch: { countTransfers?: boolean }) {
+  settings(patch: { countTransfers?: boolean; mpMethods?: string[] }) {
     return this.call<MpConnection>('settings', patch);
   }
 

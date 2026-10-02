@@ -36,8 +36,8 @@ export class MercadoPagoController {
 
   /** La caja informa qué medios de pago son Mercado Pago (para el aviso de pagos sin venta). */
   @Post('local-methods')
-  localMethods(@Body() body: { methods?: string[] }) {
-    this.alerts.setMpMethods(Array.isArray(body?.methods) ? body.methods : []);
+  async localMethods(@Body() body: { methods?: string[] }) {
+    await this.alerts.setMpMethods(Array.isArray(body?.methods) ? body.methods : []);
     return { ok: true };
   }
 
