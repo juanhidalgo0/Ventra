@@ -17,6 +17,12 @@ export class SyncController {
     return this.sync.syncNow();
   }
 
+  // La llama el actualizador antes de cerrar el servidor
+  @Post('pause')
+  pause() {
+    return this.sync.pauseForShutdown();
+  }
+
   @Post('restore')
   async restore() {
     try {

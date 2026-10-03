@@ -101,6 +101,18 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    */
   private writeLock = false;
 
+  /**
+   * Antes de instalar una actualización: no arranca otra pasada y espera a que termine la
+   * tanda en curso (como mucho `maxMs`), así el cierre no corta nada a la mitad.
+   */
+  async pauseForShutdown(maxMs = 15000): Promise<{ paused: boolean }> {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.retryAt = Number.MAX_SAFE_INTEGER;
+    const until = Date.now() + maxMs;
+    while (this.running && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+    return { paused: !this.running };
+  }
+
   /** Avance de una sincronización larga que NO frena la caja (realineación, tablas nuevas). */
   getBackgroundProgress(): { label: string; done: number; total: number } | null {
     if (this.writeLock || !this.progress || (this.phase !== 'full' && this.phase !== 'syncing')) return null;

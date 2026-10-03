@@ -112,6 +112,11 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       // the install fails/prompts. Stopping it first (and waiting for the OS
       // to actually release the files, not just requesting termination) avoids
       // that race entirely, instead of hoping the timing works out.
+      // Que la sincronización termine la tanda en curso antes de cerrar el servidor
+      try {
+        const { default: api } = await import('../services/api');
+        await api.post('/sync/pause', {}, { timeout: 20000 });
+      } catch { /* sin servidor o sin sesión: se cierra igual */ }
       await invokeTauri('stop_backend_for_update');
       try { localStorage.removeItem(PENDING_UPDATE_KEY); } catch { /* sin almacenamiento */ }
       await update.install();
