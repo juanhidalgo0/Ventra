@@ -335,6 +335,50 @@ async function pullHistory(sql, tenantId, since, pageSize, cutIn, untilIn) {
   };
 }
 
+/**
+ * Carga total tabla por tabla (la caja pide las tablas padres primero: casi no quedan filas
+ * huérfanas que apartar). Primero `fullStart` fija el corte de la historia, los números y el
+ * tope: lo que cambie mientras tanto llega después por las novedades (seq > head).
+ */
+async function fullStart(sql, tenantId) {
+  const [[tenant], [{ max }], cut, numbers] = await Promise.all([
+    run(sql, `SELECT gen, compacted_seq::text AS compacted FROM sync_tenants WHERE tenant_id = $1`, [tenantId]),
+    run(sql, `SELECT COALESCE(max(seq), 0)::text AS max FROM sync_rows WHERE tenant_id = $1`, [tenantId]),
+    historyCut(sql, tenantId),
+    saleNumbers(sql, tenantId),
+  ]);
+  const head = tenant && BigInt(tenant.compacted) > BigInt(max) ? String(tenant.compacted) : max;
+  return { ok: true, gen: tenant ? Number(tenant.gen) || 0 : 0, head, cut, numbers, historyTables: ARCHIVE_TABLES };
+}
+
+/**
+ * Una tabla de la carga total, de a tandas por id (usa la clave primaria, sin ordenar nada).
+ *  - part 'live': lo necesario para vender (sin la historia vieja); 'history': solo la historia
+ *    vieja con seq <= until (lo posterior ya llegó por las novedades).
+ *  - fresh: caja vacía, las bajas no le sirven.
+ */
+async function pullTable(sql, tenantId, { tbl, after, limit, part, cut, until, fresh }) {
+  const pageSize = Math.min(Math.max(Math.floor(Number(limit) || PAGE_SIZE), 1), FULL_PAGE_SIZE);
+  const c = Math.floor(Number(cut) || 0);
+  const history = part === "history";
+  const params = [tenantId, String(tbl), String(after || "")];
+  let where = `r.tenant_id = $1 AND r.tbl = $2 AND r.id > $3`;
+  if (history) {
+    params.push(c, String(Math.max(0, Math.floor(Number(until) || 0))));
+    where += ` AND NOT r.deleted AND r.seq <= $5::bigint AND ${oldExpr("$4::numeric")}`;
+  } else {
+    if (fresh) where += ` AND NOT r.deleted`;
+    if (c) { params.push(c); where += ` AND NOT ${oldExpr("$4::numeric")}`; }
+  }
+  const rows = await run(sql, `SELECT r.tbl, r.id, r.data, r.deleted, r.ts FROM sync_rows r WHERE ${where} ORDER BY r.id LIMIT ${pageSize}`, params);
+  return {
+    ok: true,
+    rows: rows.map((r) => ({ t: r.tbl, id: r.id, d: r.data, x: r.deleted, ts: Number(r.ts) })),
+    last: rows.length ? rows[rows.length - 1].id : String(after || ""),
+    more: rows.length === pageSize,
+  };
+}
+
 /** Número de "reinicio" de la cuenta: cambia cada vez que el dueño borra todo. */
 async function tenantGen(sql, tenantId) {
   const [t] = await run(sql, `SELECT gen FROM sync_tenants WHERE tenant_id = $1`, [tenantId]);
@@ -472,4 +516,4 @@ async function adminSummary(url) {
   return map;
 }
 
-module.exports = { oldExpr, ARCHIVE_TABLES, reset, tenantGen, db, run, ensureSchema, register, report, claimLedger, push, pull, status, adminSummary, validRows, maintain, maintainAll, MAX_ROWS_PER_PUSH };
+module.exports = { oldExpr, ARCHIVE_TABLES, fullStart, pullTable, reset, tenantGen, db, run, ensureSchema, register, report, claimLedger, push, pull, status, adminSummary, validRows, maintain, maintainAll, MAX_ROWS_PER_PUSH };

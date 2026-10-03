@@ -43,6 +43,8 @@ const VENTRA_PLANS = {
   caja: { name: "Ventra Caja", amount: 14900 },
   full: { name: "Ventra Full", amount: 24900 },
   tienda: { name: "Ventra Tienda", amount: 9900 },
+  // Solo turnos online (peluquerías, estética, consultorios): sin productos ni caja
+  agenda: { name: "Ventra Agenda", amount: 9900 },
   // Plan oculto para probar cobros reales de punta a punta: solo para administradores.
   prueba: { name: "Ventra Prueba", amount: 100, adminOnly: true },
 };
@@ -499,6 +501,12 @@ exports.ventraSync = onRequest(
         result = await cloudSync.push(sql, uid, String(deviceId), req.body.rows, req.body.gen);
       } else if (action === "pull") {
         result = await cloudSync.pull(sql, uid, String(deviceId), req.body.after, !!req.body.all, !!req.body.fresh, req.body.limit, req.body.part, req.body.cut, req.body.until);
+      } else if (action === "fullStart") {
+        result = await cloudSync.fullStart(sql, uid);
+      } else if (action === "pullTable") {
+        const b = req.body;
+        result = await cloudSync.pullTable(sql, uid, { tbl: b.tbl, after: b.after, limit: b.limit, part: b.part, cut: b.cut, until: b.until, fresh: !!b.fresh });
+        usage.track(uid, { pullRows: result.rows.length });
       } else if (action === "archives") {
         result = await syncArchive.list(sql, uid);
       } else if (action === "archive") {

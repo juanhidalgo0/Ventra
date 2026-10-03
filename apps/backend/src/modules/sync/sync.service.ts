@@ -49,7 +49,7 @@ const PAGE = 500;
 const FULL_PULL_PAGE = 5000;
 // Historia vieja que se baja después de la carga total, ya con la caja andando (ver pullHistory)
 const HISTORY_PAGES_PER_CYCLE = 3;
-const HISTORY_KEYS = `'history_cut', 'history_until', 'history_after', 'history_done'`;
+const HISTORY_KEYS = `'history_cut', 'history_until', 'history_after', 'history_done', 'history_tables', 'history_tbl'`;
 // Archivos de la historia (meses viejos que la nube sacó de Neon, ver firebase/functions/archive.js)
 const ARCHIVE_KEYS = `'archive_pending', 'archive_min_seq', 'archive_list', 'archive_idx', 'archive_del_after', 'archive_done'`;
 const ARCHIVES_PER_CYCLE = 2;
@@ -762,18 +762,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           });
         }
         // Primero lo necesario para vender (part: 'live'); la historia vieja baja después en
-        // segundo plano. La nube fija el corte en la primera tanda; una nube vieja no lo
-        // devuelve y manda todo de una, como antes.
+        // segundo plano. Con una nube que lo entiende, tabla por tabla y las padres primero
+        // (cajas y usuarios antes que ventas, ventas antes que pagos): casi no quedan filas
+        // huérfanas que apartar. Si no, como antes: todo junto en el orden de la nube.
         let cut: number | null = null;
         let numbers: Record<string, number> | null = null;
-        for (;;) {
-          const page = await this.call('pull', { after, all: true, fresh: wipe, limit: FULL_PULL_PAGE, part: 'live', ...(cut ? { cut } : {}) });
-          // Una nube vieja cortaba la bajada completa así, sin filas: mejor un error que una caja a medias
-          if (page.resync) throw new Error('La nube cortó la descarga completa: se reintenta');
-          if (page.cut) cut = Number(page.cut);
-          if (page.numbers) numbers = page.numbers;
-          head = page.head;
-          const rows = page.rows as CloudRow[];
+        let historyTables: string[] | null = null;
+        const applyCloudPage = async (rows: CloudRow[]) => {
           const touched = new Map(rows.filter((r) => r.t !== '_delta' && !r.x && r.d).map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
           await tx(async (t) => {
             await applyPage(t, rows);
@@ -786,10 +781,42 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
             if (this.progress.total && applied > this.progress.total) this.progress.total = 0;
             this.writeStatusFile();
           }
-          after = page.last;
-          if (!page.more) break;
           // Un respiro para que entren las ventas que estaban esperando
           await new Promise((r) => setTimeout(r, 50));
+        };
+        let start: any = null;
+        try {
+          start = await this.call('fullStart');
+        } catch (err: any) {
+          if (err.response?.status !== 400) throw err; // Nube sin carga por tabla
+        }
+        if (start) {
+          await this.checkGen(start.gen);
+          head = String(start.head);
+          cut = Number(start.cut) || null;
+          numbers = start.numbers || null;
+          historyTables = (await this.parentFirst(tables)).filter((t) => (start.historyTables || []).includes(t));
+          for (const tbl of [...(await this.parentFirst(tables)), '_delta']) {
+            let from = '';
+            for (;;) {
+              const page = await this.call('pullTable', { tbl, after: from, fresh: wipe, part: 'live', cut, limit: FULL_PULL_PAGE });
+              if (page.rows.length) await applyCloudPage(page.rows as CloudRow[]);
+              from = String(page.last);
+              if (!page.more) break;
+            }
+          }
+        } else {
+          for (;;) {
+            const page = await this.call('pull', { after, all: true, fresh: wipe, limit: FULL_PULL_PAGE, part: 'live', ...(cut ? { cut } : {}) });
+            // Una nube vieja cortaba la bajada completa así, sin filas: mejor un error que una caja a medias
+            if (page.resync) throw new Error('La nube cortó la descarga completa: se reintenta');
+            if (page.cut) cut = Number(page.cut);
+            if (page.numbers) numbers = page.numbers;
+            head = page.head;
+            await applyCloudPage(page.rows as CloudRow[]);
+            after = page.last;
+            if (!page.more) break;
+          }
         }
         // Contadores = suma de todas sus diferencias (incluye el saldo inicial) + lo vendido mientras bajaba
         await tx(async (t) => {
@@ -802,7 +829,12 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           for (const [key, sum] of counterSums) {
             const [tb, id, c] = key.split('|');
             if (!tables.includes(tb) || !(await this.counterCols(tb)).includes(c)) continue;
-            await t.$executeRawUnsafe(`UPDATE "${tb}" SET "${c}" = ? WHERE id = ?`, sum, id);
+            const n = await t.$executeRawUnsafe(`UPDATE "${tb}" SET "${c}" = ? WHERE id = ?`, sum, id);
+            // Fila apartada (vuelve en retryParked con el contador en 0 + lo guardado): lo guardado
+            // tiene que ser el total real, no el valor de foto que traía la fila
+            if (!n) await t.$executeRawUnsafe(
+              `INSERT OR REPLACE INTO sync_stash (id, tbl, row_id, col, delta) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM sync_parked WHERE tbl = ? AND id = ?)`,
+              `parked:${tb}:${id}:${c}`, tb, id, c, sum, tb, id);
           }
           await this.setState('pull_after', String(head), t);
           await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS}, ${ARCHIVE_KEYS})`);
@@ -816,8 +848,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           if (cut) {
             await this.setState('history_cut', String(cut), t);
             await this.setState('history_until', String(head), t);
-            await this.setState('history_after', '0', t);
+            await this.setState('history_after', historyTables ? '' : '0', t);
             await this.setState('history_done', '0', t);
+            // Carga por tabla: la historia también va tabla por tabla, padres primero
+            if (historyTables) {
+              await this.setState('history_tables', JSON.stringify(historyTables), t);
+              await this.setState('history_tbl', '0', t);
+            }
           }
         });
       } finally {
@@ -881,10 +918,19 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     const cut = await this.getState('history_cut');
     const until = await this.getState('history_until');
     if (!cut || !until) return false;
-    let after = (await this.getState('history_after')) || '0';
+    // Por tabla el cursor es un id (arranca en ''); en el orden de la nube, un seq (arranca en '0')
+    const savedAfter = await this.getState('history_after');
+    let after = savedAfter === null ? '0' : savedAfter;
     let done = Number(await this.getState('history_done')) || 0;
+    // Carga por tabla (nube nueva): tabla por tabla, padres primero; si no, en el orden de la nube
+    const byTable: string[] | null = JSON.parse((await this.getState('history_tables')) || 'null');
+    let tblIdx = Number(await this.getState('history_tbl')) || 0;
     for (let i = 0; i < HISTORY_PAGES_PER_CYCLE; i++) {
-      const page = await this.call('pull', { after, all: true, part: 'history', cut, until, limit: FULL_PULL_PAGE });
+      const page = byTable
+        ? await this.call('pullTable', { tbl: byTable[tblIdx], after, part: 'history', cut, until, limit: FULL_PULL_PAGE })
+        : await this.call('pull', { after, all: true, part: 'history', cut, until, limit: FULL_PULL_PAGE });
+      // Tabla terminada: sigue la próxima (la historia termina cuando no quedan tablas)
+      if (byTable && !page.more && tblIdx + 1 < byTable.length) Object.assign(page, { more: true, nextTable: true });
       await this.checkGen(page.gen);
       const rows = page.rows as CloudRow[];
       const touched = new Map(rows.map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
@@ -895,7 +941,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.parkOrphans(t, tables, touched, touched, true);
         done += rows.length;
         if (page.more) {
-          await this.setState('history_after', String(page.last), t);
+          await this.setState('history_after', page.nextTable ? '' : String(page.last), t);
+          if (page.nextTable) await this.setState('history_tbl', String(tblIdx + 1), t);
           await this.setState('history_done', String(done), t);
         } else {
           await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS})`);
@@ -908,7 +955,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         console.log(`[Sync] Historia vieja de la nube bajada (${done} registros)`);
         return false;
       }
-      after = String(page.last);
+      if (page.nextTable) { tblIdx++; after = ''; } else after = String(page.last);
       await new Promise((r) => setTimeout(r, 50));
     }
     return true;
@@ -1050,19 +1097,50 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         const fk = (await this.foreignKeys(tx, t)).find((f) => f.id === Number(v.fkid));
         const dependsOnParked = !!fk && (!fk.to || fk.to === 'id') && parked.has(`${fk.table}|${data[fk.from]}`);
         if (touched && !touched.has(`${t}|${id}`) && !dependsOnParked) continue;
-        // Los contadores se guardan como diferencia pendiente: al volver, la fila entra en 0 y la suma
-        for (const c of await this.counterCols(t)) {
-          if (Number(data[c] || 0) === 0) continue;
-          await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_stash (id, tbl, row_id, col, delta) VALUES (?, ?, ?, ?, ?)`, `parked:${t}:${id}:${c}`, t, id, c, Number(data[c]));
-        }
-        await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_parked (tbl, id, op, data, ts) VALUES (?, ?, 'U', ?, ?)`, t, id, JSON.stringify(data), tsOf.get(`${t}|${id}`) || 0);
-        await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE rowid = ?`, Number(v.rowid));
-        parked.add(`${t}|${id}`);
-        moved++;
+        if (parked.has(`${t}|${id}`)) continue;
+        moved += await this.parkRow(tx, tables, t, id, data, tsOf.get(`${t}|${id}`) || 0, parked);
         if (!quiet) console.warn(`[Sync] ${t}/${id} apunta a ${v.parent} que todavía no llegó: se aparta y se reintenta después`);
       }
       if (!moved) break;
     }
+  }
+
+  /**
+   * Aparta una fila: la guarda en sync_parked y la saca de la tabla. ANTES aparta todo lo que
+   * depende de ella (renglones y pagos de una venta, códigos y lotes de un producto, cajas de un
+   * cierre Z...): borrarla sola dispara el ON DELETE CASCADE / SET NULL de la base y esas filas se
+   * perdían en silencio (en Paulos, miles de pagos y renglones en cada carga total). Vuelven
+   * todas juntas en retryParked, padres primero. Devuelve cuántas filas apartó.
+   */
+  private async parkRow(tx: Tx, tables: string[], t: string, id: string, data: any, ts: number, parked: Set<string>): Promise<number> {
+    parked.add(`${t}|${id}`);
+    let n = 0;
+    for (const child of tables) {
+      for (const fk of await this.foreignKeys(tx, child)) {
+        if (fk.table !== t) continue;
+        const key = !fk.to || fk.to === 'id' ? id : data[fk.to];
+        if (key === null || key === undefined) continue;
+        const isProducts = child === 'products' && (await this.columns(child)).includes('image_url');
+        const kids: any[] = await tx.$queryRawUnsafe(
+          `SELECT id, ${await this.jsonExpr(child)} AS j${isProducts ? ', image_url AS img' : ''} FROM "${child}" WHERE "${fk.from}" = ?`, key);
+        for (const k of kids) {
+          const kid = String(k.id);
+          if (parked.has(`${child}|${kid}`)) continue;
+          const kd = JSON.parse(k.j);
+          if (isProducts) kd.image_url = k.img ?? null;
+          // Ya estaba aplicada (de la nube o de esta caja): vuelve sí o sí, aunque tenga cambios sin subir
+          n += await this.parkRow(tx, tables, child, kid, kd, Date.now(), parked);
+        }
+      }
+    }
+    // Los contadores se guardan como diferencia pendiente: al volver, la fila entra en 0 y la suma
+    for (const c of await this.counterCols(t)) {
+      if (Number(data[c] || 0) === 0) continue;
+      await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_stash (id, tbl, row_id, col, delta) VALUES (?, ?, ?, ?, ?)`, `parked:${t}:${id}:${c}`, t, id, c, Number(data[c]));
+    }
+    await tx.$executeRawUnsafe(`INSERT OR REPLACE INTO sync_parked (tbl, id, op, data, ts) VALUES (?, ?, 'U', ?, ?)`, t, id, JSON.stringify(data), ts);
+    await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE id = ?`, id);
+    return n + 1;
   }
 
   /** Reintenta lo apartado. Lo que sigue sin su registro vuelve a quedar apartado. */
