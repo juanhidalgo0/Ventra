@@ -51,7 +51,7 @@ const FULL_PULL_PAGE = 5000;
 const HISTORY_PAGES_PER_CYCLE = 3;
 const HISTORY_KEYS = `'history_cut', 'history_until', 'history_after', 'history_done'`;
 // Archivos de la historia (meses viejos que la nube sacó de Neon, ver firebase/functions/archive.js)
-const ARCHIVE_KEYS = `'archive_pending', 'archive_list', 'archive_idx', 'archive_del_after', 'archive_done'`;
+const ARCHIVE_KEYS = `'archive_pending', 'archive_min_seq', 'archive_list', 'archive_idx', 'archive_del_after', 'archive_done'`;
 const ARCHIVES_PER_CYCLE = 2;
 const MAX_BATCH_BYTES = 1_500_000;
 const IMAGES_PER_CYCLE = 100;
@@ -106,6 +106,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private retryAt = 0;
   private progress: SyncStatus['progress'] = null;
   private history: SyncStatus['history'] = null;
+  /** La historia que falla no frena la sincronización de todos los días: espera aparte */
+  private historyRetryAt = 0;
+  private historyErrorDelay = 0;
   /**
    * true mientras una descarga completa tiene la base tomada en UNA transacción
    * (puede durar minutos en una PC nueva). Mientras tanto no se puede escribir:
@@ -540,7 +543,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
           this.pullDelay = pushed || pulled ? CYCLE_MS : Math.min(this.pullDelay * 2, PULL_IDLE_MAX_MS);
           // Mientras falte historia vieja, el próximo ciclo sigue bajándola sin esperar
-          if ((await this.pullHistory(tables)) || (await this.pullArchives(tables))) this.pullDelay = CYCLE_MS;
+          if (await this.pullOldHistory(tables)) this.pullDelay = CYCLE_MS;
           this.nextPullAt = Date.now() + this.pullDelay;
           await this.bumpWatermark(creds.deviceId);
         }
@@ -628,8 +631,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       // esta caja (lo pendiente subió arriba): volver a subir la base entera eran cientos de miles
       // de filas y muchos minutos para nada.
       if (hasData && wasBootstrapped && !isCloudNode && !cloudCompacted) await this.pushAll(tables, 0, 'Completando datos en la nube');
-      // Realinear por compactación: esta caja ya tiene su historia, no hace falta bajar los archivos
-      await this.pullChanges(true, !hasData, reg.cloudRows, !cloudCompacted);
+      // Realinear por compactación: esta caja tiene su historia hasta donde bajó; de los archivos
+      // solo hacen falta los que tienen algo posterior (lo que se archivó mientras estuvo inactiva)
+      const archivesAfter = cloudCompacted ? (await this.getState('pull_after')) || '0' : '0';
+      await this.pullChanges(true, !hasData, reg.cloudRows, archivesAfter);
     }
     await this.setState('bootstrap', 'done');
     await this.bumpWatermark(deviceId);
@@ -695,7 +700,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    *    recalculan como la suma de todas sus diferencias.
    *  - wipe: antes vacía las tablas locales (caja nueva / recuperar).
    */
-  private async pullChanges(full: boolean, wipe = false, expected = 0, archives = true) {
+  private async pullChanges(full: boolean, wipe = false, expected = 0, archivesAfter = '0') {
     let after = full ? '0' : (await this.getState('pull_after')) || '0';
     const tables = await this.syncedTables();
     const counterSums = new Map<string, number>();
@@ -763,6 +768,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         let numbers: Record<string, number> | null = null;
         for (;;) {
           const page = await this.call('pull', { after, all: true, fresh: wipe, limit: FULL_PULL_PAGE, part: 'live', ...(cut ? { cut } : {}) });
+          // Una nube vieja cortaba la bajada completa así, sin filas: mejor un error que una caja a medias
+          if (page.resync) throw new Error('La nube cortó la descarga completa: se reintenta');
           if (page.cut) cut = Number(page.cut);
           if (page.numbers) numbers = page.numbers;
           head = page.head;
@@ -799,7 +806,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
           await this.setState('pull_after', String(head), t);
           await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS}, ${ARCHIVE_KEYS})`);
-          if (cut && archives) await this.setState('archive_pending', '1', t);
+          if (cut) {
+            await this.setState('archive_pending', '1', t);
+            await this.setState('archive_min_seq', archivesAfter, t);
+          }
           // Las ventas viejas bajan después: la próxima se numera desde el último número de esta caja en la nube
           const floor = numbers && this.nodeIndex != null ? Number(numbers[String(this.nodeIndex)]) : NaN;
           if (Number.isFinite(floor)) await this.setState('sale_number_floor', String(floor), t);
@@ -842,6 +852,22 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       if (!page.more) break;
     }
     return applied + (await this.retryParked(tables, order));
+  }
+
+  /** Historia vieja (Neon y después archivos), con su propia espera si falla. Devuelve si queda. */
+  private async pullOldHistory(tables: string[]): Promise<boolean> {
+    if (Date.now() < this.historyRetryAt) return false;
+    try {
+      const more = (await this.pullHistory(tables)) || (await this.pullArchives(tables));
+      this.historyErrorDelay = 0;
+      return more;
+    } catch (err: any) {
+      if (err instanceof AccountResetError) throw err;
+      this.historyErrorDelay = Math.min(this.historyErrorDelay ? this.historyErrorDelay * 2 : 30_000, 30 * 60_000);
+      this.historyRetryAt = Date.now() + this.historyErrorDelay;
+      console.warn(`[Sync] No se pudo bajar historia vieja (reintento en ${Math.round(this.historyErrorDelay / 1000)} s):`, err.response?.data?.error || err.message);
+      return false;
+    }
   }
 
   /**
@@ -890,9 +916,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Tercer tiempo (después de pullHistory): los meses viejos que la nube pasó a archivos.
-   * De a ARCHIVES_PER_CYCLE archivos por ciclo, sin pisar nada (lo que ya hay es igual o más
-   * nuevo: llegó de Neon). Al final, las bajas de esas tablas, para que un archivo no reviva
-   * algo borrado. Devuelve si queda por bajar.
+   * De a ARCHIVES_PER_CYCLE archivos por ciclo, del más viejo al más nuevo. La nube los manda
+   * sin las filas que hoy están en Neon (más nuevas, ya bajadas), así que se aplican como
+   * cualquier fila. Al final, las bajas de esas tablas como red de seguridad. Devuelve si queda.
    */
   private async pullArchives(tables: string[]): Promise<boolean> {
     if ((await this.getState('archive_pending')) !== '1') {
@@ -904,7 +930,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     try {
       if (!list) {
         // Se pide después de bajar la historia de Neon: incluye lo que se archivó mientras tanto
-        list = ((await this.call('archives')).archives || []).map((a: any) => String(a.id));
+        const min = BigInt((await this.getState('archive_min_seq')) || '0');
+        list = ((await this.call('archives')).archives || [])
+          .filter((a: any) => BigInt(a.maxSeq || '0') > min)
+          .map((a: any) => String(a.id));
         await this.setState('archive_list', JSON.stringify(list));
         await this.setState('archive_idx', '0');
       }
@@ -921,6 +950,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           await t.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
           await this.setState('applying', '1', t);
           await this.applyRowsBulk(t, tables, rows, true);
+          // (la versión apartada, si hay, es más nueva: se reintenta y queda ella)
           await this.parkOrphans(t, tables, touched, touched, true);
           await this.setState('archive_idx', String(idx + 1), t);
           await this.setState('archive_done', String(done + rows.length), t);
@@ -1071,7 +1101,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    * Lo mismo que applyRow(full = true) para una tanda entera, de a una consulta por tabla en vez
    * de cinco por fila: con 270 mil registros la bajada completa eran más de un millón de consultas.
    */
-  private async applyRowsBulk(tx: Tx, tables: string[], rows: CloudRow[], insertOnly = false) {
+  private async applyRowsBulk(tx: Tx, tables: string[], rows: CloudRow[], fromArchive = false) {
     const byTable = new Map<string, CloudRow[]>();
     for (const r of rows) {
       if (!tables.includes(r.t)) continue;
@@ -1081,7 +1111,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     for (const [t, list] of byTable) {
       const ids = JSON.stringify(list.map((r) => r.id));
       // Una versión nueva reemplaza a la que estaba apartada (un archivo nunca es más nuevo)
-      if (!insertOnly) await tx.$executeRawUnsafe(`DELETE FROM sync_parked WHERE tbl = ? AND id IN (SELECT value FROM json_each(?))`, t, ids);
+      if (!fromArchive) await tx.$executeRawUnsafe(`DELETE FROM sync_parked WHERE tbl = ? AND id IN (SELECT value FROM json_each(?))`, t, ids);
       // Si esta caja tiene un cambio sin subir más nuevo, gana el local (se sube después)
       const pending: any[] = await tx.$queryRawUnsafe(
         `SELECT row_id, CAST(MAX(ts) AS REAL) AS ts FROM sync_outbox WHERE tbl = ? AND row_id IN (SELECT value FROM json_each(?)) GROUP BY row_id`, t, ids);
@@ -1119,7 +1149,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       }
       for (const { present, datas: group } of groups.values()) {
         const setCols = present.filter((c) => c !== 'id' && !counters.includes(c));
-        const onConflict = setCols.length && !insertOnly
+        const onConflict = setCols.length
           ? `DO UPDATE SET ${setCols.map((c) => `"${c}" = excluded."${c}"`).join(', ')}`
           : 'DO NOTHING';
         await tx.$executeRawUnsafe(
