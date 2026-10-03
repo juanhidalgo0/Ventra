@@ -28,7 +28,9 @@ COPY apps/frontend/public apps/frontend/public
 COPY apps/frontend/index.html apps/frontend/tsconfig.json apps/frontend/vite.config.ts apps/frontend/tailwind.config.js apps/frontend/postcss.config.js apps/frontend/
 
 RUN cd apps/backend && npx prisma generate
-RUN cd apps/frontend && npm run build
+# Demo pública: fly.toml pasa VENTRA_DEMO=true → Firebase local en el navegador (ver vite.config.ts)
+ARG VENTRA_DEMO=false
+RUN cd apps/frontend && VENTRA_DEMO=$VENTRA_DEMO npm run build
 RUN cd apps/backend && npm run build && ls -la dist/main.js
 
 FROM node:20-slim AS runtime

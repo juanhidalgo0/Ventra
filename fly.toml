@@ -7,6 +7,10 @@ app = 'go-portal-pos'
 primary_region = 'gru'
 
 [build]
+  # La demo nunca usa el Firebase real (tiendas y agendas quedan en el navegador del visitante)
+  [build.args]
+    VENTRA_DEMO = 'true'
+
 [env]
   DISABLE_TUNNEL = 'true'
   # La demo es pública y su base puede reiniciarse: nunca se controla la suscripción

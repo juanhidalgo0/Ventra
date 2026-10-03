@@ -28,6 +28,9 @@ export class SubscriptionController {
   /** Sesión de la cuenta para la tienda online. { linked: false } si esta instalación no está vinculada. */
   @Post('store-session')
   async storeSession(@Body() body: { legacyStoreId?: string; legacyIdToken?: string }) {
+    // Demo pública: nunca una sesión de la cuenta. La app de la demo usa su Firebase local
+    // (VENTRA_DEMO); cualquier otra se niega a seguir al ver demo: true (ver ventraFirebase.ts).
+    if (process.env.DEMO_MODE === 'true') return { linked: false, demo: true };
     // La agenda de turnos también vive en la tienda (ventra_stores): necesita la misma sesión
     const { features } = this.subscription.getStatus();
     if (!features.tienda && !features.agenda) {

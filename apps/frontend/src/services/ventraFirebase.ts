@@ -2,6 +2,7 @@ import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, type User } from 'firebase/auth';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import { IS_DEMO_BUILD } from '../demo/flag';
 
 // Proyecto Firebase propio de Ventra (separado de GoDelivery). Esta config es
 // pública por diseño: la seguridad la dan las reglas de Firestore (firebase/firestore.rules).
@@ -75,6 +76,10 @@ export function ensureVentraSession(): Promise<User> {
       console.warn('[Tienda online] No se pudo abrir la sesión de la cuenta:', err);
       throw new Error('No pudimos conectar con tu cuenta de Ventra. Revisá internet y reintentá.');
     }
+
+    // Servidor de la demo pública con una app compilada sin el modo demo: con el Firebase real
+    // los visitantes crearían tiendas y agendas de verdad. Se corta acá.
+    if (data?.demo && !IS_DEMO_BUILD) throw new Error('La tienda online y la agenda no están disponibles en esta demo.');
 
     if (data?.linked && data.customToken) {
       mode = 'account';

@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getVentraApp, getVentraDb, ensureVentraSession } from './ventraFirebase';
+import { IS_DEMO_BUILD } from '../demo/flag';
 
 /**
  * Avisos en el celular del dueño (pedidos online nuevos), aunque la app esté cerrada.
@@ -72,6 +73,7 @@ export async function testLocalNotification(): Promise<void> {
 
 /** Pide a la nube un aviso de prueba a todos los celulares de la cuenta (camino completo). */
 export async function testPushFromCloud(): Promise<{ devices: number; sent: number; errors?: string[] }> {
+  if (IS_DEMO_BUILD) throw new Error('Los avisos al celular no están disponibles en la demo');
   await registerPushToken();
   const user = await ensureVentraSession();
   const res = await fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/ventraPushTest', {
