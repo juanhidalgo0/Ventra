@@ -55,8 +55,24 @@ test('un POS reclama una tienda migrada sin dueño', async () => {
   await assertSucceeds(updateDoc(doc(as('posB'), 'ventra_stores/migrated'), { ownerUid: 'posB', claimed: true }));
 });
 test('un POS crea su tienda nueva siendo el dueño', async () => {
-  await assertSucceeds(setDoc(doc(as('posC'), 'ventra_stores/nueva'), { businessName: 'C', ownerUid: 'posC', claimed: true }));
-  await assertFails(setDoc(doc(as('posC'), 'ventra_stores/otra'), { businessName: 'C', ownerUid: 'posZ', claimed: true }));
+  await assertSucceeds(setDoc(doc(as('posC'), 'ventra_stores/nueva'), { businessName: 'C', ownerUid: 'posC', claimed: true, createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as('posC'), 'ventra_stores/otra'), { businessName: 'C', ownerUid: 'posZ', claimed: true, createdAt: serverTimestamp() }));
+});
+test('una tienda nueva no puede antedatarse ni cambiar su fecha de alta', async () => {
+  // La fecha de alta decide qué tienda conserva una dirección repetida (functions/store-slugs.js)
+  await assertFails(setDoc(doc(as('posC'), 'ventra_stores/vieja'), { ownerUid: 'posC', claimed: true, createdAt: new Date('2000-01-01') }));
+  await assertFails(setDoc(doc(as('posC'), 'ventra_stores/sinfecha'), { ownerUid: 'posC', claimed: true }));
+  await assertSucceeds(setDoc(doc(as('posC'), 'ventra_stores/nueva'), { ownerUid: 'posC', claimed: true, createdAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as('posC'), 'ventra_stores/nueva'), { createdAt: new Date('2000-01-01') }));
+  await assertSucceeds(updateDoc(doc(as('posC'), 'ventra_stores/nueva'), { businessName: 'Otra' }));
+});
+test('el registro de direcciones se lee por dirección y nadie lo escribe desde afuera', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'ventra_store_slugs/kiosco-a'), { storeId: 'owned' }));
+  await assertSucceeds(getDoc(doc(as(null), 'ventra_store_slugs/kiosco-a')));
+  await assertFails(getDocs(collection(as(null), 'ventra_store_slugs')));
+  await assertFails(setDoc(doc(as('posA'), 'ventra_store_slugs/kiosco-a'), { storeId: 'owned' }));
+  await assertFails(setDoc(doc(as('intruso'), 'ventra_store_slugs/kiosco-nueva'), { storeId: 'mia' }));
+  await assertFails(updateDoc(doc(as('intruso'), 'ventra_store_slugs/kiosco-a'), { storeId: 'mia' }));
 });
 test('solo el dueño sube productos', async () => {
   await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/products/p1'), { name: 'x', price: 1 }));

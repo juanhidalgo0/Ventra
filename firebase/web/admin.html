@@ -220,6 +220,27 @@
     .avatar{ display:none; }
     table{ min-width:460px; }
   }
+  /* ── Estado del sistema y costos ─────────────── */
+  .ops{ margin-top:28px; }
+  .health{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-top:12px; }
+  .hcard{ background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:13px 15px; display:flex; gap:10px; align-items:flex-start; }
+  .hdot{ width:10px; height:10px; border-radius:50%; margin-top:5px; flex-shrink:0; background:var(--mint); box-shadow:0 0 0 4px var(--mint-50); }
+  .hcard.warn .hdot{ background:#D08A1E; box-shadow:0 0 0 4px var(--amber-bg); }
+  .hcard.bad .hdot{ background:var(--red); box-shadow:0 0 0 4px var(--red-bg); }
+  .hcard.bad{ border-color:var(--red-line); }
+  .hname{ font-weight:600; }
+  .hdetail{ font-size:12px; color:var(--ink-2); margin-top:2px; }
+  .meter{ margin-top:6px; height:5px; border-radius:999px; background:var(--line-2); overflow:hidden; }
+  .meter span{ display:block; height:100%; background:var(--pine); }
+  .hcard.warn .meter span{ background:#D08A1E; } .hcard.bad .meter span{ background:var(--red); }
+  .cost-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
+  .cost-kpis .kpi{ padding:14px 16px; } .cost-kpis .kpi-value{ font-size:22px; }
+  td.neg{ color:var(--red); font-weight:600; } td.pos{ color:var(--pine); font-weight:600; }
+  .small{ font-size:12px; color:var(--ink-3); }
+  .ren-row{ display:grid; grid-template-columns:1fr 150px 30px; gap:6px; margin-top:6px; }
+  .ren-row input{ height:34px; border:1px solid var(--line); border-radius:999px; padding:0 12px; background:#fff; min-width:0; }
+  @media (max-width: 960px){ .cost-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width: 520px){ .ren-row{ grid-template-columns:1fr 30px; } .ren-row .rd{ grid-column:1; } }
   /* ── Tienda online ─────────────────────────────── */
   .store-tag{ display:inline-flex; align-items:center; gap:4px; height:18px; padding:0 7px; border-radius:999px; background:var(--mint-50); color:var(--pine); font-size:11px; font-weight:600; vertical-align:1px; }
   .store-tag.off{ background:var(--gray-bg); color:var(--ink-3); }
@@ -281,6 +302,23 @@
       </div>
     </section>
 
+    <section class="ops">
+      <div class="section-head"><h1 style="font-size:20px">Estado del sistema</h1><span class="small" id="healthSum"></span></div>
+      <div class="health" id="health"></div>
+    </section>
+
+    <section class="ops">
+      <div class="section-head"><div><h1 style="font-size:20px">Costos por cliente</h1><div class="sub" id="costSub"></div></div><button class="btn" id="costsBtn">Cargar costos del mes</button></div>
+      <div class="cost-kpis" id="costKpis"></div>
+      <div class="table-wrap" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Cliente</th><th class="r hide-sm">Sincronizaciones</th><th class="r hide-sm">Datos en la nube</th><th class="r hide-sm">Fotos</th><th class="r hide-sm">Visitas tienda</th><th class="r">Costo estimado</th><th class="r">Pagó este mes</th><th class="r">Margen</th></tr></thead>
+          <tbody id="costRows"></tbody>
+        </table>
+      </div>
+      <p class="warn">El costo de cada servicio se reparte según el uso medido de cada comercio: Neon por datos guardados y sincronizaciones, Firebase por llamadas y fotos, fly.io por uso de la caja en la nube, y “otros” parejo entre las cuentas activas. Son estimaciones.</p>
+    </section>
+
     <section class="clients">
       <div class="section-head"><h1 style="font-size:20px">Clientes</h1><button class="btn primary" id="newClientBtn">+ Nuevo cliente</button></div>
       <div class="toolbar">
@@ -321,6 +359,26 @@
       </div>
       <p class="warn" style="margin:10px 0 0">Si ya te pagó, después registrá el pago desde su ficha para que sume en lo cobrado.</p>
       <div class="modal-actions"><button class="btn" id="ncCancel">Cancelar</button><button class="btn primary" id="ncSave">Crear cliente</button></div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="costsModal" role="dialog" aria-label="Costos del mes">
+    <div class="modal-card" style="width:min(520px,100%);max-height:92vh;overflow-y:auto">
+      <h3>Costos del mes</h3>
+      <p>Lo que te cobró cada servicio (en pesos). Sacalo de las facturas de Neon, Google Cloud (Firebase) y fly.io.</p>
+      <div class="form-grid">
+        <div class="field full"><label for="cMonth">Mes</label><input id="cMonth" type="month"></div>
+        <div class="field"><label for="cNeon">Neon</label><input id="cNeon" type="number" min="0" step="1"></div>
+        <div class="field"><label for="cFirebase">Firebase / Google Cloud</label><input id="cFirebase" type="number" min="0" step="1"></div>
+        <div class="field"><label for="cFly">fly.io</label><input id="cFly" type="number" min="0" step="1"></div>
+        <div class="field"><label for="cOther">Otros (dominio, ARCA, varios)</label><input id="cOther" type="number" min="0" step="1"></div>
+        <div class="field full"><label for="cNeonLimit">Límite de tu plan de Neon (MB)</label><input id="cNeonLimit" type="number" min="0" step="1" placeholder="512 (plan gratis)"></div>
+      </div>
+      <h3 style="margin-top:18px;font-size:14px">Vencimientos a vigilar</h3>
+      <p style="margin-bottom:4px">Aparecen en “Estado del sistema” y se marcan cuando falta menos de un mes.</p>
+      <div id="renList"></div>
+      <button class="btn sm" id="renAdd" style="margin-top:8px">+ Agregar vencimiento</button>
+      <div class="modal-actions"><button class="btn" id="cCancel">Cancelar</button><button class="btn primary" id="cSave">Guardar</button></div>
     </div>
   </div>
 
@@ -403,12 +461,128 @@
         '<div class="kpi"><div class="kpi-label">Cobrado en total</div><div class="kpi-value num">' + money(m.totalRevenue) + '</div><div class="kpi-foot">Histórico de pagos acreditados</div></div>' +
         '<div class="kpi"><div class="kpi-label">Clientes</div><div class="kpi-value num">' + m.accounts + '</div><div class="state-bar">' + bar + '</div><div class="legend">' + (legend || '<span>Sin clientes todavía</span>') + '</div></div>';
 
+      renderHealth();
+      renderCosts();
       renderChart(m.monthly);
       renderPlans(m.byPlan);
       renderChips();
       renderRows();
       if (openUid) openDrawer(openUid);
     }
+
+    var mb = function(b){ b = Number(b) || 0; return b >= 1073741824 ? (b / 1073741824).toLocaleString('es-AR', { maximumFractionDigits:2 }) + ' GB' : (b / 1048576).toLocaleString('es-AR', { maximumFractionDigits:1 }) + ' MB'; };
+    var int = function(n){ return Math.round(Number(n) || 0).toLocaleString('es-AR'); };
+
+    function renderHealth(){
+      var s = data.system || {}, cards = [];
+      var card = function(level, name, detail, pct){
+        cards.push({ level:level, html:'<div class="hcard ' + level + '"><div class="hdot"></div><div style="min-width:0;flex:1"><div class="hname">' + esc(name) + '</div><div class="hdetail">' + detail + '</div>' +
+          (pct != null ? '<div class="meter"><span style="width:' + Math.min(100, pct) + '%"></span></div>' : '') + '</div></div>' });
+      };
+      var n = s.neon;
+      if (!n) card('warn', 'Base en la nube (Neon)', 'Sin datos');
+      else if (!n.ok) card('bad', 'Base en la nube (Neon)', 'No responde: ' + esc(n.error));
+      else { var p = 100 * n.bytes / n.limitBytes; card(p > 90 ? 'bad' : p > 70 ? 'warn' : '', 'Base en la nube (Neon)', mb(n.bytes) + ' de ' + mb(n.limitBytes) + ' (' + Math.round(p) + '%)', p); }
+      var h = s.cloudHost;
+      if (h) card(h.ok ? '' : 'bad', 'Cajas en la nube (fly.io)', h.ok ? 'Funcionando · ' + h.openBoxes + (h.openBoxes === 1 ? ' caja abierta' : ' cajas abiertas') : 'No responde: ' + esc(h.error));
+      var b = s.backup;
+      if (b) card(b.ok ? '' : 'bad', 'Copia de seguridad nocturna', b.ok ? 'Última ' + ago(b.at) + ' · ' + mb(b.bytes) + ' · ' + b.count + ' guardadas' : esc(b.error));
+      var f = s.firestore;
+      if (f) card(f.ok ? '' : 'bad', 'Firebase', f.ok ? 'Funcionando' : 'No responde: ' + esc(f.error));
+      if (s.staleDevices != null) card(s.staleDevices ? 'warn' : '', 'PCs sin conectarse', s.staleDevices ? s.staleDevices + (s.staleDevices === 1 ? ' PC de un cliente activo lleva' : ' PCs de clientes activos llevan') + ' más de 3 días sin sincronizar' : 'Todas las PCs de clientes activos se conectaron en los últimos 3 días');
+      // Cada comercio que delega en ARCA espera que Ventra acepte y asocie la delegación a su certificado
+      var fz = s.fiscal;
+      if (fz) card(fz.pending.length ? 'warn' : '', 'Facturación: delegaciones', fz.pending.length
+        ? fz.pending.map(function(p){ return 'CUIT ' + esc(p.cuit) + ' (' + esc(p.email || p.uid) + ', ' + ago(p.since) + ')'; }).join(' · ') + ': aceptá la delegación en ARCA y asociala al certificado de Ventra'
+        : (fz.cuits ? fz.cuits + (fz.cuits === 1 ? ' CUIT factura' : ' CUIT facturan') + ' con Ventra, sin delegaciones pendientes' : 'Ningún comercio factura en producción todavía'));
+      // Antes de facturar en producción, Ventra confirma que la cuenta es del titular de la CUIT
+      // (si no, cualquier suscriptor podía facturar con la CUIT de otro comercio que nos delegó)
+      if (fz && (fz.approvals || []).length) card('warn', 'Facturación: CUIT para confirmar', fz.approvals.map(function(p){
+        return '<div style="margin-top:6px">CUIT ' + esc(p.cuit) + ' · ' + esc(p.email || p.uid) + ' · ' + ago(p.since) +
+          ' <button class="btn" style="padding:2px 8px;font-size:12px" data-cuit-act="approveCuit" data-cuit="' + esc(p.cuit) + '">Es del titular: aprobar</button>' +
+          ' <button class="btn" style="padding:2px 8px;font-size:12px" data-cuit-act="releaseCuit" data-cuit="' + esc(p.cuit) + '">No es suyo: liberar</button></div>';
+      }).join('') + '<div style="margin-top:6px">Verificá que el comercio sea el titular (constancia de ARCA) antes de aprobar.</div>');
+      (s.renewals || []).forEach(function(r){
+        if (r.daysLeft == null) return card('warn', r.label, 'Sin fecha cargada');
+        card(r.daysLeft < 7 ? 'bad' : r.daysLeft < 30 ? 'warn' : '', r.label, r.daysLeft < 0 ? 'Venció hace ' + (-r.daysLeft) + ' días' : 'Vence el ' + fdate(r.date + 'T12:00:00') + ' (' + (r.daysLeft === 0 ? 'hoy' : 'en ' + r.daysLeft + ' días') + ')');
+      });
+      if (!(s.renewals || []).length) card('warn', 'Vencimientos', 'Cargá la fecha del certificado de ARCA y del dominio en “Cargar costos del mes”');
+      var order = { bad:0, warn:1, '':2 };
+      cards.sort(function(a, b){ return order[a.level] - order[b.level]; });
+      $('health').innerHTML = cards.map(function(c){ return c.html; }).join('');
+      var bad = cards.filter(function(c){ return c.level === 'bad'; }).length, warn = cards.filter(function(c){ return c.level === 'warn'; }).length;
+      $('healthSum').textContent = bad ? bad + ' con problemas' + (warn ? ' · ' + warn + ' para revisar' : '') : warn ? warn + ' para revisar' : 'Todo en orden';
+    }
+
+    function renderCosts(){
+      var c = data.costs || { entered:{} }, e = c.entered || {};
+      var total = (Number(e.neon) || 0) + (Number(e.firebase) || 0) + (Number(e.fly) || 0) + (Number(e.other) || 0);
+      var monthName = c.month ? new Date(c.month + '-15').toLocaleDateString('es-AR', { month:'long', year:'numeric' }) : '';
+      $('costSub').textContent = 'Uso medido en ' + monthName + (total ? '' : ' · todavía no cargaste los costos de este mes');
+      var paid = data.accounts.reduce(function(s, a){ return s + (a.monthPaid || 0); }, 0);
+      $('costKpis').innerHTML =
+        '<div class="kpi"><div class="kpi-label">Costo total de servicios</div><div class="kpi-value num">' + money(total) + '</div><div class="kpi-foot">Neon ' + money(e.neon) + ' · Firebase ' + money(e.firebase) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">fly.io + otros</div><div class="kpi-value num">' + money((Number(e.fly) || 0) + (Number(e.other) || 0)) + '</div><div class="kpi-foot">fly ' + money(e.fly) + ' · otros ' + money(e.other) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Cobrado este mes</div><div class="kpi-value num">' + money(paid) + '</div><div class="kpi-foot">Pagos acreditados</div></div>' +
+        '<div class="kpi' + (paid - total < 0 ? '' : ' hero') + '"><div class="kpi-label">Margen del mes</div><div class="kpi-value num">' + money(paid - total) + '</div><div class="kpi-foot">' + (paid ? Math.round(100 * (paid - total) / paid) + '% de lo cobrado' : 'Sin cobros todavía') + '</div></div>';
+      var rows = data.accounts.slice().sort(function(a, b){ return ((b.cost && b.cost.total) || 0) - ((a.cost && a.cost.total) || 0) || ((b.usage && b.usage.syncCalls) || 0) - ((a.usage && a.usage.syncCalls) || 0); });
+      $('costRows').innerHTML = rows.length ? rows.map(function(a){
+        var u = a.usage || {}, cost = (a.cost && a.cost.total) || 0, margin = (a.monthPaid || 0) - cost;
+        return '<tr data-uid="' + esc(a.uid) + '"><td><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + '</div></td>' +
+          '<td class="r hide-sm num">' + int(u.syncCalls) + '</td>' +
+          '<td class="r hide-sm num">' + (a.cloud ? mb(a.cloud.bytes) : '—') + '</td>' +
+          '<td class="r hide-sm num">' + (u.storageBytes ? mb(u.storageBytes) : '—') + '</td>' +
+          '<td class="r hide-sm num">' + int(u.storeViews) + '</td>' +
+          '<td class="r num">' + (total ? money(cost) : '—') + '</td>' +
+          '<td class="r num">' + money(a.monthPaid) + '</td>' +
+          '<td class="r num ' + (!total ? '' : margin < 0 ? 'neg' : 'pos') + '">' + (total ? money(margin) : '—') + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" class="empty">Todavía no hay clientes.</td></tr>';
+    }
+
+    // ── Cargar costos y vencimientos ────────────────
+    var DEFAULT_REN = { arca_cert:'Certificado de ARCA (facturación)', dominio:'Dominio ventra.store' };
+    function renRow(key, r){
+      return '<div class="ren-row" data-key="' + esc(key) + '"><input class="rl" value="' + esc(r.label || '') + '" placeholder="Qué vence">' +
+        '<input class="rd" type="date" value="' + esc(r.date || '') + '">' +
+        '<button class="icon-btn rx" title="Quitar" style="width:30px;height:34px">✕</button></div>';
+    }
+    function openCosts(month){
+      var c = data.costs || {}, m = month || c.month, e = (c.all && c.all[m]) || {};
+      $('cMonth').value = m; $('cNeon').value = e.neon || ''; $('cFirebase').value = e.firebase || ''; $('cFly').value = e.fly || ''; $('cOther').value = e.other || '';
+      if (!month){
+        $('cNeonLimit').value = c.neonLimitMB || '';
+        var ren = Object.keys(c.renewals || {}).length ? c.renewals : Object.keys(DEFAULT_REN).reduce(function(o, k){ o[k] = { label:DEFAULT_REN[k], date:'' }; return o; }, {});
+        $('renList').innerHTML = Object.keys(ren).map(function(k){ return renRow(k, ren[k]); }).join('');
+      }
+      $('costsModal').classList.remove('hidden'); $('scrim').classList.add('open');
+    }
+    function closeCosts(){ $('costsModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
+    $('costsBtn').onclick = function(){ openCosts(); };
+    $('cMonth').onchange = function(){ if (this.value) openCosts(this.value); };
+    $('cCancel').onclick = closeCosts;
+    $('renAdd').onclick = function(){ $('renList').insertAdjacentHTML('beforeend', renRow('v' + Date.now().toString(36), {})); };
+    $('renList').addEventListener('click', function(e){ var x = e.target.closest('.rx'); if (x) x.parentNode.remove(); });
+    $('health').addEventListener('click', function(e){
+      var b = e.target.closest('[data-cuit-act]'); if (!b) return;
+      var action = b.getAttribute('data-cuit-act'), cuit = b.getAttribute('data-cuit');
+      var q = action === 'approveCuit' ? '¿Confirmás que la CUIT ' + cuit + ' es de esa cuenta? Va a poder facturar a su nombre.' : '¿Liberar la CUIT ' + cuit + '? La cuenta que la pidió deja de tenerla.';
+      if (!confirm(q)) return;
+      act({ action: action, cuit: cuit }, action === 'approveCuit' ? 'CUIT aprobada' : 'CUIT liberada');
+    });
+    $('cSave').onclick = function(){
+      if (!$('cMonth').value) return toast('Elegí el mes', true);
+      var renewals = {};
+      Array.prototype.forEach.call(document.querySelectorAll('#renList .ren-row'), function(r){
+        var label = r.querySelector('.rl').value.trim(); if (!label) return;
+        renewals[r.getAttribute('data-key')] = { label:label, date:r.querySelector('.rd').value || null };
+      });
+      var btn = this; btn.disabled = true;
+      api('POST', { action:'setCosts', month:$('cMonth').value, neon:$('cNeon').value, firebase:$('cFirebase').value, fly:$('cFly').value, other:$('cOther').value, neonLimitMB:$('cNeonLimit').value, renewals:renewals })
+        .then(function(){ closeCosts(); toast('Costos guardados'); return load(); })
+        .catch(function(err){ toast(err.message || 'No se pudo guardar', true); })
+        .then(function(){ btn.disabled = false; });
+    };
+    $('costRows').addEventListener('click', function(e){ var tr = e.target.closest('tr[data-uid]'); if (tr) openDrawer(tr.getAttribute('data-uid')); });
 
     function renderChart(monthly){
       var months = [], now = new Date();
@@ -556,6 +730,7 @@
           '</dl></div>' +
           '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
             '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado.</p></div>' +
+          usageSection(a) +
           storeSection(a) +
           '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
           '<div class="section"><h4>Registrar pago manual</h4><div class="pay-box"><div class="form-grid">' +
@@ -634,6 +809,22 @@
       };
     }
 
+    function usageSection(a){
+      var u = a.usage || {}, c = a.cost || {}, has = (c.total || 0) > 0;
+      var fact = function(k, v){ return '<div class="fact"><dt>' + k + '</dt><dd class="num">' + v + '</dd></div>'; };
+      return '<div class="section"><h4>Uso y costo este mes</h4><dl class="facts">' +
+        fact('Sincronizaciones', int(u.syncCalls) + (u.cloudSyncCalls ? ' <span class="small">(' + int(u.cloudSyncCalls) + ' en la nube)</span>' : '')) +
+        fact('Llegaron a Neon', int(u.neonCalls) + (u.idlePulls ? ' <span class="small">(' + int(u.idlePulls) + ' sin despertarla)</span>' : '')) +
+        fact('Filas subidas / bajadas', int(u.pushRows) + ' / ' + int(u.pullRows)) +
+        fact('Fotos guardadas', mb(u.storageBytes)) +
+        fact('Fotos transferidas', mb((u.imgUpBytes || 0) + (u.imgDownBytes || 0))) +
+        fact('Visitas a la tienda', int(u.storeViews)) +
+        fact('Consultas al panel', int(u.panelCalls)) +
+        fact('Costo estimado', has ? money(c.total) : '—') +
+        fact('Margen', has ? money((a.monthPaid || 0) - c.total) : '—') +
+        '</dl>' + (has ? '<p class="warn">Neon ' + money(c.neon) + ' · Firebase ' + money(c.firebase) + ' · fly.io ' + money(c.fly) + ' · otros ' + money(c.other) + '</p>' : '<p class="warn">Cargá los costos del mes para ver cuánto te cuesta este cliente.</p>') + '</div>';
+    }
+
     function storeSection(a){
       var st = a.store;
       if (!st || !st.subdomain){
@@ -709,7 +900,7 @@
     });
     $('chips').addEventListener('click', function(e){ var b = e.target.closest('[data-f]'); if (!b) return; filter = b.getAttribute('data-f'); renderChips(); renderRows(); });
     $('search').addEventListener('input', function(e){ query = e.target.value; renderRows(); });
-    $('scrim').onclick = function(){ if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
+    $('scrim').onclick = function(){ if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
     function closeNew(){ $('newModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
     $('newClientBtn').onclick = function(){
       $('ncPlan').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba'; }).map(function(k){ return '<option value="' + k + '">' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('');
@@ -726,7 +917,7 @@
         .catch(function(err){ toast(err.message || 'No se pudo crear', true); })
         .then(function(){ btn.disabled = false; });
     };
-    document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
+    document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
     $('refreshBtn').onclick = function(){ load().then(function(){ toast('Datos actualizados'); }); };
 
     if (DEMO){
@@ -771,6 +962,15 @@
         mk('maxikiosco.sol@hotmail.com', 'caja', 9, 'ACTIVE', 9, 6, 1),
         mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1)
       ];
+      var monthKey = new Date().toISOString().slice(0, 7), costsDemo = { neon:0, firebase:3800, fly:9500, other:2500 };
+      var weights = [0.26, 0.04, 0, 0.38, 0.14, 0.18];
+      accounts.forEach(function(a, i){
+        var w = weights[i];
+        a.usage = { syncCalls: Math.round(w * 52000), cloudSyncCalls: i === 3 ? 8400 : 0, pushRows: Math.round(w * 9100), pullRows: Math.round(w * 14200), storageBytes: Math.round(w * 90 * 1048576), imgUpBytes: Math.round(w * 6e6), imgDownBytes: Math.round(w * 2e7), storeViews: i === 3 ? 1840 : i === 5 ? 36 : 0, panelCalls: Math.round(w * 120) };
+        a.cost = { neon:0, firebase: costsDemo.firebase * w, fly: i === 3 ? costsDemo.fly : 0, other: a.state === 'ACTIVE' || a.state === 'GRACE' ? costsDemo.other / 4 : 0 };
+        a.cost.total = a.cost.neon + a.cost.firebase + a.cost.fly + a.cost.other;
+        a.monthPaid = i === 3 || i === 4 ? a.planAmount : 0;
+      });
       accounts[3].store = { id:'s1', name:'Ferretería Central', subdomain:'ferreteria-central', published:true, url:'https://tienda.ventra.store/ferreteria-central', logoUrl:null, primaryColor:'#C2410C', products:342, orders:57, updatedAt:iso(now - 2 * day) };
       accounts[5].store = { id:'s2', name:'Tienda Rosario', subdomain:'tienda-rosario', published:false, url:'https://tienda.ventra.store/tienda-rosario', logoUrl:null, primaryColor:'#DB2777', products:18, orders:0, updatedAt:iso(now - 5 * 3600000) };
       var monthly = [], nowD = new Date();
@@ -780,6 +980,15 @@
         metrics: { mrr: 14900 * 1 + 24900 * 2 + 9900, totalRevenue: accounts.reduce(function(s,a){ return s + a.totalPaid; }, 0), monthRevenue: 64600,
           accounts: accounts.length, devices: 8, byState:{ ACTIVE:3, GRACE:1, READ_ONLY:1, UNPAID:1 }, byPlan:{ caja:3, full:2, tienda:1 }, monthly: monthly },
         accounts: accounts,
+        system: {
+          neon: { ok:true, bytes: 318 * 1048576, limitBytes: 512 * 1048576 },
+          cloudHost: { ok:true, openBoxes: 1 },
+          backup: { ok:true, at: iso(now - 7 * 3600000), bytes: 41 * 1048576, count: 30 },
+          firestore: { ok:true },
+          staleDevices: 1,
+          renewals: [ { key:'arca_cert', label:'Certificado de ARCA (facturación)', date: iso(now + 19 * day).slice(0, 10), daysLeft: 19 }, { key:'dominio', label:'Dominio ventra.store', date: iso(now + 210 * day).slice(0, 10), daysLeft: 210 } ]
+        },
+        costs: { month: monthKey, entered: costsDemo, all: (function(){ var o = {}; o[monthKey] = costsDemo; return o; })(), renewals: { arca_cert:{ label:'Certificado de ARCA (facturación)', date: iso(now + 19 * day).slice(0, 10) }, dominio:{ label:'Dominio ventra.store', date: iso(now + 210 * day).slice(0, 10) } }, neonLimitMB: null },
         registered: [
           { uid:'r1', email:'boutique.luna@gmail.com', name:'Luna Pérez', photoUrl:null, createdAt:iso(now - 2 * day), lastSignInAt:iso(now - 3 * 3600000), store:null, devices:0 },
           { uid:'r2', email:'despensa.el.sol@gmail.com', name:'Carlos Sol', photoUrl:null, createdAt:iso(now - 9 * day), lastSignInAt:iso(now - 6 * day), store:null, devices:1 }

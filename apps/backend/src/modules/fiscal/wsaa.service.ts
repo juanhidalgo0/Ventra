@@ -1,10 +1,11 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as forge from 'node-forge';
 import * as fs from 'fs';
 import { PrismaService } from '../../database/prisma.service';
 import { ARCA_ENDPOINTS, ArcaEnvironment } from './arca-endpoints';
 import { arcaHttpsAgent } from './arca-http';
+import { ArcaError } from './arca-error';
 
 export interface AccessTicket {
   token: string;
@@ -18,15 +19,15 @@ export interface Credentials {
 }
 
 /**
- * WSAA: autenticación con ARCA.
+ * WSAA: autenticación con ARCA, para cuando esta caja firma con un certificado propio.
+ * (Con delegación, que es lo normal, lo hace la pasarela de Ventra en la nube.)
  *
  * El circuito es: se arma un pedido (TRA) en XML, se lo firma con el certificado en
  * formato CMS/PKCS#7, se lo manda en base64 a LoginCms y ARCA devuelve un ticket de
  * acceso (token + sign) que vale 12 horas.
  *
- * El ticket se guarda en la base y se reusa: pedir uno nuevo mientras el anterior sigue
- * vigente hace que ARCA conteste "El CEE ya posee un TA valido para el acceso al WSN
- * solicitado" y rechace el pedido. Es el error más común al integrar.
+ * El ticket se guarda en la base y se reusa: WSAA no entrega otro para el mismo
+ * certificado hasta que pasan unos minutos del anterior ("El CEE ya posee un TA valido").
  */
 @Injectable()
 export class WsaaService {
@@ -34,16 +35,19 @@ export class WsaaService {
   /** Margen antes del vencimiento real: mejor renovar de más que quedarse sin ticket a mitad de una venta */
   private readonly RENEW_MARGIN_MS = 10 * 60 * 1000;
 
+  /** Cuánto hay que esperar entre dos pedidos de ticket (2 min en producción, 10 en homologación). */
+  static cooldownMs(environment: ArcaEnvironment): number {
+    return environment === 'PRODUCCION' ? 2 * 60 * 1000 : 10 * 60 * 1000;
+  }
+
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Certificado con el que se firma. Con delegación es uno solo de Ventra, guardado
-   * como secreto del servidor: nunca viaja en el instalador que se entrega al comercio,
-   * porque cualquiera podría sacarlo del disco y facturar en nombre de otro.
+   * Certificado de Ventra en las variables de entorno de este servidor. Solo para
+   * desarrollo o un servidor propio: nunca viaja en el instalador que se entrega al
+   * comercio, porque cualquiera podría sacarlo del disco y facturar en nombre de otro.
    */
   getDelegatedCredentials(): Credentials | null {
-    // En Fly el certificado entra como secreto (el PEM completo); en desarrollo es más
-    // cómodo apuntar a un archivo fuera del repo, así la clave nunca toca el proyecto.
     const certPem = process.env.ARCA_CERT_PEM || this.readFileOrNull(process.env.ARCA_CERT_PATH);
     const keyPem = process.env.ARCA_KEY_PEM || this.readFileOrNull(process.env.ARCA_KEY_PATH);
     if (!certPem || !keyPem) return null;
@@ -60,35 +64,58 @@ export class WsaaService {
     }
   }
 
-  /** CUIT del titular del certificado (Ventra cuando hay delegación). */
+  /** CUIT del titular del certificado de las variables de entorno. */
   getDelegatedCuit(): string | null {
     return process.env.ARCA_CUIT || null;
+  }
+
+  /** Datos de un certificado cargado: a nombre de qué CUIT está y cuándo vence. */
+  describeCertificate(certPem: string): { cuit: string | null; expiresAt: Date } {
+    const cert = forge.pki.certificateFromPem(certPem);
+    const serial = (cert.subject.attributes.find((a: any) => a.type === '2.5.4.5') || {}).value || '';
+    const cuit = String(serial).replace(/\D/g, '');
+    return { cuit: cuit.length === 11 ? cuit : null, expiresAt: cert.validity.notAfter };
   }
 
   /**
    * Devuelve un ticket válido: reusa el guardado si todavía sirve y pide uno nuevo si no.
    * `cuit` es el del titular del certificado, no el del comercio que factura.
+   * `renewIfOlderThan`: fuerza uno nuevo si el guardado se pidió antes de ese momento (el
+   * ticket lleva la lista de comercios que delegaron cuando se pidió).
    */
   async getAccessTicket(
     cuit: string,
     environment: ArcaEnvironment,
     credentials: Credentials,
     service = 'wsfe',
+    opts: { renewIfOlderThan?: number } = {},
   ): Promise<AccessTicket> {
     const cached = await this.prisma.fiscalToken.findUnique({
       where: { cuit_service_environment: { cuit, service, environment } },
     });
 
-    if (cached && cached.expiresAt.getTime() - Date.now() > this.RENEW_MARGIN_MS) {
-      return { token: cached.token, sign: cached.sign, expiresAt: cached.expiresAt };
+    const vigente = cached && cached.expiresAt.getTime() - Date.now() > this.RENEW_MARGIN_MS;
+    const forzar = opts.renewIfOlderThan !== undefined && cached && cached.createdAt.getTime() < opts.renewIfOlderThan;
+    if (vigente && !forzar) {
+      return { token: cached!.token, sign: cached!.sign, expiresAt: cached!.expiresAt };
     }
 
-    const ticket = await this.requestTicket(environment, credentials, service);
+    let ticket: AccessTicket;
+    try {
+      ticket = await this.requestTicket(environment, credentials, service);
+    } catch (err) {
+      // No se pudo renovar pero el que hay todavía sirve: se sigue con ese
+      if (cached && cached.expiresAt.getTime() > Date.now()) {
+        return { token: cached.token, sign: cached.sign, expiresAt: cached.expiresAt };
+      }
+      throw err;
+    }
 
+    const now = new Date();
     await this.prisma.fiscalToken.upsert({
       where: { cuit_service_environment: { cuit, service, environment } },
-      create: { cuit, service, environment, token: ticket.token, sign: ticket.sign, expiresAt: ticket.expiresAt },
-      update: { token: ticket.token, sign: ticket.sign, expiresAt: ticket.expiresAt },
+      create: { cuit, service, environment, token: ticket.token, sign: ticket.sign, expiresAt: ticket.expiresAt, createdAt: now },
+      update: { token: ticket.token, sign: ticket.sign, expiresAt: ticket.expiresAt, createdAt: now },
     });
 
     return ticket;
@@ -139,7 +166,7 @@ export class WsaaService {
       return forge.util.encode64(der);
     } catch (err: any) {
       this.logger.error(`No se pudo firmar el TRA: ${err.message}`);
-      throw new InternalServerErrorException('El certificado de ARCA no es válido o está mal cargado');
+      throw new ArcaError('CONFIG', 'El certificado de ARCA no es válido o está mal cargado', 'BAD_CERT');
     }
   }
 
@@ -171,16 +198,14 @@ export class WsaaService {
       body = String(data);
     } catch (err: any) {
       const detalle = err.response?.data ? String(err.response.data) : err.message;
-      const fault = this.extractFault(detalle);
-      // ARCA no entrega un ticket nuevo mientras el anterior siga vivo, y tampoco deja
-      // recuperarlo. Pasa si se perdió la caché (base restaurada, otra instancia). No hay
-      // nada que hacer más que esperar: la venta queda en la cola y se reintenta sola.
-      if (fault && /ya posee un TA valido/i.test(fault)) {
-        throw new InternalServerErrorException(
-          'Ya hay un ticket de acceso de ARCA vigente emitido por otra instancia. Los comprobantes quedan en cola y se emiten en cuanto venza (hasta 12 horas).',
-        );
+      const fault = this.pick(detalle, 'faultstring');
+      if (/alreadyAuthenticated|ya posee un TA valido/i.test(detalle)) {
+        throw new ArcaError('TRANSIENT', 'ARCA todavía no entrega un ticket de acceso nuevo. Se reintenta en unos minutos.', 'TA_COOLDOWN');
       }
-      throw new InternalServerErrorException(`ARCA rechazó la autenticación: ${fault || detalle}`);
+      if (fault && /certificado|cms|firma/i.test(fault)) {
+        throw new ArcaError('CONFIG', `ARCA rechazó el certificado: ${fault}`, 'BAD_CERT');
+      }
+      throw new ArcaError('TRANSIENT', `ARCA rechazó la autenticación: ${fault || detalle}`, 'WSAA_ERROR');
     }
 
     // La respuesta trae el XML del ticket escapado adentro del sobre SOAP
@@ -190,8 +215,8 @@ export class WsaaService {
     const expiration = this.pick(inner, 'expirationTime');
 
     if (!token || !sign) {
-      const fault = this.extractFault(body);
-      throw new InternalServerErrorException(`ARCA no devolvió el ticket de acceso: ${fault || 'respuesta inesperada'}`);
+      const fault = this.pick(body, 'faultstring');
+      throw new ArcaError('TRANSIENT', `ARCA no devolvió el ticket de acceso: ${fault || 'respuesta inesperada'}`, 'WSAA_ERROR');
     }
 
     const expiresAt = expiration ? new Date(expiration) : new Date(Date.now() + 11 * 60 * 60 * 1000);
@@ -202,10 +227,6 @@ export class WsaaService {
   private pick(xml: string, tag: string): string | null {
     const match = xml.match(new RegExp(`<(?:\\w+:)?${tag}[^>]*>([\\s\\S]*?)</(?:\\w+:)?${tag}>`, 'i'));
     return match ? match[1].trim() : null;
-  }
-
-  private extractFault(xml: string): string | null {
-    return this.pick(xml, 'faultstring');
   }
 
   private unescapeXml(value: string): string {

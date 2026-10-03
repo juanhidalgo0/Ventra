@@ -6,11 +6,16 @@ import { SyncImageService } from './sync-image.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Lo que cambia o borra el catálogo entero es del administrador (o el encargado);
+// el cajero sigue pudiendo consultar, vender y editar productos de a uno.
+const MANAGERS = ['ADMIN', 'SUPERVISOR'];
+
 @Controller('products')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductsController {
   constructor(
     private productsService: ProductsService,
@@ -170,6 +175,7 @@ export class ProductsController {
   }
 
   @Post('import')
+  @Roles(...MANAGERS)
   @UseInterceptors(FileInterceptor('file', { dest: path.join(process.cwd(), 'uploads') }))
   importFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
@@ -199,6 +205,7 @@ export class ProductsController {
   }
 
   @Post('import/ventra/preview')
+  @Roles(...MANAGERS)
   @UseInterceptors(FileInterceptor('file'))
   previewVentraImport(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
@@ -206,6 +213,7 @@ export class ProductsController {
   }
 
   @Post('import/ventra')
+  @Roles(...MANAGERS)
   @UseInterceptors(FileInterceptor('file'))
   importVentra(@UploadedFile() file: Express.Multer.File, @Body('updateStock') updateStock: string, @Request() req) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
@@ -255,41 +263,49 @@ export class ProductsController {
   }
 
   @Post('import-local-dbf')
+  @Roles('ADMIN')
   importLocalDbf() {
     return this.productsService.importFromLocalDbf();
   }
 
   @Post('sync-all')
+  @Roles(...MANAGERS)
   syncAll(@Request() req, @Body('googleEmail') googleEmail?: string) {
     return this.productsService.syncAllToGoDelivery(req.user?.sub, googleEmail);
   }
 
   @Post('bulk-update-prices')
+  @Roles(...MANAGERS)
   bulkUpdatePrices(@Body() body: any) {
     return this.productsService.bulkUpdatePrices(body);
   }
 
   @Post('bulk-round-prices')
+  @Roles(...MANAGERS)
   bulkRoundPrices(@Body('multiple') multiple?: number) {
     return this.productsService.bulkRoundPrices(multiple ? Number(multiple) : 10);
   }
 
   @Post('bulk-reset-stock')
+  @Roles('ADMIN')
   bulkResetStock() {
     return this.productsService.bulkResetStock();
   }
 
   @Post('bulk-delete')
+  @Roles('ADMIN')
   bulkDelete() {
     return this.productsService.bulkDeleteAll();
   }
 
   @Post('bulk-delete-zero-negative')
+  @Roles('ADMIN')
   bulkDeleteZeroNegative() {
     return this.productsService.bulkDeleteZeroNegative();
   }
 
   @Post('bulk-remove-images')
+  @Roles('ADMIN')
   bulkRemoveImages() {
     return this.productsService.bulkRemoveAllImages();
   }
@@ -319,12 +335,14 @@ export class ProductsController {
   }
 
   @Post('godelivery/settings')
+  @Roles(...MANAGERS)
   updateGoDeliverySettings(@Request() req, @Body() body: any) {
     const { googleEmail, ...configData } = body;
     return this.productsService.updateGoDeliverySettings(req.user?.sub, configData, googleEmail);
   }
 
   @Post('bulk-remove-images-subset')
+  @Roles(...MANAGERS)
   bulkRemoveImagesSubset(@Body('ids') ids: string[]) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
@@ -333,6 +351,7 @@ export class ProductsController {
   }
 
   @Post('bulk-delete-subset')
+  @Roles(...MANAGERS)
   bulkDeleteSubset(@Body('ids') ids: string[]) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
@@ -341,6 +360,7 @@ export class ProductsController {
   }
 
   @Post('bulk-update-category-subset')
+  @Roles(...MANAGERS)
   bulkUpdateCategorySubset(@Body('ids') ids: string[], @Body('categoryId') categoryId: string) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
@@ -352,6 +372,7 @@ export class ProductsController {
   }
 
   @Post('bulk-set-show-online')
+  @Roles(...MANAGERS)
   bulkSetShowOnline(@Body('ids') ids: string[] | undefined, @Body('showOnline') showOnline: boolean) {
     return this.productsService.bulkSetShowOnline(ids, showOnline);
   }

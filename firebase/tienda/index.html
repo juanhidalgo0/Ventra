@@ -651,9 +651,20 @@ async function init(){
   var slug=decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g,''));
   if(!slug){ hideSplash(); return notFound('Tiendas online de Ventra','Para ver una tienda, entrá con el enlace que te compartió el comercio.'); }
   try{
-    var snap=await db.collection('ventra_stores').where('claimed','==',true).where('subdomain','==',slug).limit(1).get();
-    if(snap.empty){ hideSplash(); return notFound('No encontramos esta tienda','Revisá que el enlace esté bien escrito.'); }
-    var doc=snap.docs[0], cfg=doc.data();
+    // La dirección se resuelve por el registro (ventra_store_slugs), que solo escribe Ventra:
+    // nunca "la primera tienda con esa dirección", que podía ser la de un impostor
+    var doc=null;
+    var reg=await db.collection('ventra_store_slugs').doc(slug).get().catch(function(){ return null; });
+    if(reg && reg.exists){
+      var byId=await db.collection('ventra_stores').doc(String(reg.data().storeId)).get();
+      if(byId.exists && byId.data().claimed===true && byId.data().subdomain===slug) doc=byId;
+    } else {
+      // Dirección de antes del registro: vale solo si una única tienda la usa
+      var snap=await db.collection('ventra_stores').where('claimed','==',true).where('subdomain','==',slug).limit(2).get();
+      if(snap.size===1) doc=snap.docs[0];
+    }
+    if(!doc){ hideSplash(); return notFound('No encontramos esta tienda','Revisá que el enlace esté bien escrito.'); }
+    var cfg=doc.data();
     if(!cfg.isPublished){ hideSplash(); return notFound('Tienda en preparación','El comercio todavía no la publicó. Volvé a entrar en un rato.'); }
     S.storeId=doc.id; S.cfg=cfg;
     S.food = cfg.rubro==='GASTRONOMIA';

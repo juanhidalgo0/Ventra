@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { FiscalService } from './fiscal.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
@@ -20,7 +20,7 @@ export class FiscalController {
     return this.fiscal.updateConfig(data);
   }
 
-  /** Prueba de conexión: no emite ningún comprobante. */
+  /** Revisa conexión, autorización en ARCA y punto de venta. No emite ningún comprobante. */
   @Post('test')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -30,24 +30,73 @@ export class FiscalController {
 
   /** Factura una venta ya cobrada. Los datos del receptor son opcionales: sin ellos va consumidor final. */
   @Post('sales/:saleId/invoice')
-  invoiceSale(@Param('saleId') saleId: string, @Body() body: any) {
-    return this.fiscal.invoiceSale(saleId, body);
+  invoiceSale(@Param('saleId') saleId: string, @Body() body: any, @Request() req: any) {
+    return this.fiscal.invoiceSale(saleId, body || {}, req.user?.sub);
   }
 
+  /** Comprobantes de una venta (la factura vigente y su historia). */
   @Get('sales/:saleId/invoice')
-  getInvoice(@Param('saleId') saleId: string) {
-    return this.fiscal.getInvoice(saleId);
+  getSaleFiscal(@Param('saleId') saleId: string) {
+    return this.fiscal.getSaleFiscal(saleId);
   }
 
-  /** Ventas con su estado fiscal, para la pantalla de facturación. */
-  @Get('sales')
-  listSales(@Query('status') status?: string, @Query('limit') limit?: string) {
-    return this.fiscal.listSales({ status, limit: limit ? Number(limit) : 50 });
+  /** Ventas cobradas que no tienen factura. */
+  @Get('uninvoiced')
+  uninvoiced(@Query('from') from?: string, @Query('to') to?: string, @Query('limit') limit?: string) {
+    return this.fiscal.listUninvoiced({ from, to, limit: limit ? Number(limit) : undefined });
   }
 
-  /** Reintenta las ventas que quedaron sin CAE (sin internet o ARCA caído). */
-  @Post('pending/process')
-  processPending(@Query('limit') limit?: string) {
-    return this.fiscal.processPending(limit ? Number(limit) : 20);
+  @Get('documents')
+  listDocuments(
+    @Query('status') status?: string,
+    @Query('kind') kind?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.fiscal.listDocuments({ status, kind, from, to, search, limit: limit ? Number(limit) : undefined });
+  }
+
+  /** Libro de comprobantes autorizados, para el contador (CSV que abre Excel). */
+  @Get('documents/export')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  exportCsv(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.fiscal.exportCsv({ from, to });
+  }
+
+  @Get('documents/:id')
+  getDocument(@Param('id') id: string) {
+    return this.fiscal.documentViewById(id);
+  }
+
+  /** Reintenta un comprobante en cola o rechazado (con los datos del cliente corregidos, si vienen). */
+  @Post('documents/:id/retry')
+  retry(@Param('id') id: string, @Body() body: any) {
+    return this.fiscal.retryDocument(id, body || {});
+  }
+
+  /** Anula una factura autorizada con su nota de crédito. */
+  @Post('documents/:id/credit-note')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  creditNote(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.fiscal.creditNote(id, body?.reason, req.user?.sub);
+  }
+
+  /** Pasa a esta caja un comprobante en cola de otra caja que no va a volver. */
+  @Post('documents/:id/take-over')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  takeOver(@Param('id') id: string) {
+    return this.fiscal.takeOver(id);
+  }
+
+  /** Procesa ya la cola de esta caja (sin esperar al próximo reintento). */
+  @Post('queue/process')
+  processQueue() {
+    return this.fiscal.processQueue();
   }
 }

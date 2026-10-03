@@ -1,8 +1,17 @@
 import { Controller, Post, Delete, Body, Param, Headers, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { ConfigService } from '@nestjs/config';
 
+/** Valores que estuvieron escritos en el código (repositorio público): no valen como token. */
+const PUBLIC_TOKENS = new Set(['paulos-local-sync-token-secret-2026']);
+
+/**
+ * Altas y bajas de productos desde GoDelivery (integración vieja). Apagado salvo que la
+ * instalación tenga su propio LOCAL_SYNC_TOKEN largo: sin token, cualquiera en la red
+ * podía cambiar precios, stock y costos.
+ */
 @Controller('sync')
 export class SyncController {
   private localSyncToken: string;
@@ -12,11 +21,14 @@ export class SyncController {
     private eventsGateway: EventsGateway,
     private configService: ConfigService,
   ) {
-    this.localSyncToken = this.configService.get<string>('LOCAL_SYNC_TOKEN', 'paulos-local-sync-token-secret-2026');
+    const configured = String(this.configService.get<string>('LOCAL_SYNC_TOKEN') || '');
+    this.localSyncToken = configured.length >= 32 && !PUBLIC_TOKENS.has(configured) ? configured : '';
   }
 
   private validateToken(token: string) {
-    if (!token || token !== this.localSyncToken) {
+    const expected = Buffer.from(this.localSyncToken);
+    const given = Buffer.from(String(token || ''));
+    if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) {
       throw new UnauthorizedException('Token de sincronización inválido o no provisto.');
     }
   }
@@ -26,6 +38,7 @@ export class SyncController {
     @Headers('x-sync-token') token: string,
     @Body() body: any,
   ) {
+    this.validateToken(token);
     const { barcode, name, salePrice, stock, costPrice, sku, description, godeliveryId } = body;
     if (!name) {
       throw new BadRequestException('El campo name es obligatorio para crear/actualizar.');

@@ -3,8 +3,8 @@ import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2 } from 'lucide-react';
-import InvoiceModal from './InvoiceModal';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2, Clock, Loader2 } from 'lucide-react';
+import InvoiceModal, { nombreComprobante, numeroComprobante, qrImagen } from './InvoiceModal';
 import TicketReceipt from './TicketReceipt';
 import { canPrintSilently, getAutoPrintInvoice, printSilently } from '../../utils/ticketPrinter';
 import { MangoIcon } from '../common/MangoLogo';
@@ -114,6 +114,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
    /** Comprobante ya emitido para esta venta: bloquea volver a facturar e imprime el CAE */
    const [invoice, setInvoice] = useState<any | null>(null);
    const [invoiceQr, setInvoiceQr] = useState<string | null>(null);
+   /** Factura automática: esperando el CAE, en cola (sin conexión) o rechazada */
+   const [autoInvoice, setAutoInvoice] = useState<null | 'waiting' | 'queued' | 'rejected'>(null);
+   const [autoInvoiceError, setAutoInvoiceError] = useState<string | null>(null);
    const [showPreview, setShowPreview] = useState(false);
   const [bigPreview, setBigPreview] = useState(false);
    const [createdSale, setCreatedSale] = useState<any>(null);
@@ -381,14 +384,14 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       } else if (e.key === 'Enter') {
         e.preventDefault();
         handleNewSale();
-      } else if ((e.key === 'f' || e.key === 'F') && fiscalEnabled && !showInvoice && !invoice) {
+      } else if ((e.key === 'f' || e.key === 'F') && fiscalEnabled && !showInvoice && !invoice && autoInvoice !== 'waiting' && autoInvoice !== 'queued') {
         e.preventDefault();
         setShowInvoice(true);
       }
     };
     window.addEventListener('keydown', handleSuccessKeys);
     return () => window.removeEventListener('keydown', handleSuccessKeys);
-  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice, bigPreview]);
+  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice, bigPreview, autoInvoice]);
 
   /**
    * Manda el ticket a la impresora y avisa qué pasó.
@@ -440,6 +443,67 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   const handleNewSale = () => {
     onSuccess();
   };
+
+  /**
+   * El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE.
+   * En la app de escritorio sale directo; si falla (o en el navegador) se abre el cuadro de impresión.
+   */
+  const printInvoice = () => {
+    setTimeout(() => {
+      if (!canPrintSilently() || !getAutoPrintInvoice()) { handlePrint(); return; }
+      const aviso = toast.loading('Imprimiendo la factura...');
+      printSilently()
+        .then(() => toast.success('Factura impresa', { id: aviso, duration: 3000 }))
+        .catch((err) => {
+          toast.error(`${err?.message || err || 'No se pudo imprimir'}. Elegí la impresora en el cuadro.`, { id: aviso, duration: 6000 });
+          handlePrint();
+        });
+    }, 400);
+  };
+
+  // Factura automática: la venta ya entró a la cola de comprobantes en el servidor. Acá solo
+  // se espera el CAE para mostrarlo e imprimirlo; si ARCA tarda, la factura sale sola después.
+  useEffect(() => {
+    if (!showSuccess || !createdSale || createdSale.isOffline || invoice) return;
+    if (!fiscalConfig?.enabled || !fiscalConfig?.autoInvoice) return;
+    const NO_FACTURABLES = ['PAGO_CTA_CTE', 'VIRTUAL_LOAD_1', 'VIRTUAL_LOAD_2'];
+    const facturable = createdSale.total > 0 && (createdSale.items || []).some((i: any) => !NO_FACTURABLES.includes(i.productId));
+    if (!facturable) return;
+
+    let vivo = true;
+    const inicio = Date.now();
+    let timer: ReturnType<typeof setTimeout>;
+    setAutoInvoice('waiting');
+    const consultar = async () => {
+      if (!vivo) return;
+      try {
+        const { data } = await api.get(`/fiscal/sales/${createdSale.id}/invoice`);
+        const doc = data?.invoice;
+        if (!vivo) return;
+        if (doc?.status === 'AUTHORIZED') {
+          setInvoice(doc);
+          setInvoiceQr(await qrImagen(doc.qrUrl));
+          setAutoInvoice(null);
+          printInvoice();
+          return;
+        }
+        if (doc?.status === 'REJECTED') {
+          setAutoInvoice('rejected');
+          setAutoInvoiceError(doc.error || 'ARCA rechazó la factura');
+          return;
+        }
+        // Sin comprobante a los pocos segundos: esta venta no entra en la factura automática
+        if (!doc && Date.now() - inicio > 6000) { setAutoInvoice(null); return; }
+        if (Date.now() - inicio > 25000) { setAutoInvoice('queued'); return; }
+      } catch {
+        if (Date.now() - inicio > 25000) { setAutoInvoice('queued'); return; }
+      }
+      timer = setTimeout(consultar, 1200);
+    };
+    timer = setTimeout(consultar, 800);
+    return () => { vivo = false; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSuccess, createdSale?.id, fiscalConfig?.enabled, fiscalConfig?.autoInvoice]);
 
   const buildPayments = (mpReference?: string): { method: string | null; amount: number; reference?: string }[] => {
     const list = paymentType === 'MIXED'
@@ -525,10 +589,6 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         saleData = response.data;
         setCreatedSale(saleData);
       }
-
-      // El ticket no lleva QR ni CAE: la facturación electrónica con ARCA todavía no
-      // está implementada, así que imprimirlos daría por autorizado un comprobante
-      // que ARCA nunca autorizó. Se agregan recién cuando exista la integración real.
 
       // Play sale confirmation chime
       playSaleSuccessSound();
@@ -711,19 +771,32 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                 <div className="flex flex-col items-center justify-center gap-1 p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 dark:bg-emerald-950/30">
                   <Check className="w-5 h-5 stroke-[3] text-emerald-600" />
                   <span className="text-[10px] uppercase tracking-widest text-emerald-800 dark:text-emerald-300 font-bold text-center leading-tight">
-                    {(invoice.type || '').replace('FACTURA_', 'Factura ')}
+                    {nombreComprobante(invoice.type)}
                   </span>
                   <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                    {String(invoice.pointOfSale ?? 0).padStart(4, '0')}-{String(invoice.number ?? 0).padStart(8, '0')}
+                    {numeroComprobante(invoice.pointOfSale, invoice.number)}
                   </span>
+                </div>
+              ) : autoInvoice === 'waiting' || autoInvoice === 'queued' ? (
+                // Factura automática en camino: no se ofrece otra, se informa
+                <div className="flex flex-col items-center justify-center gap-1.5 p-5 rounded-2xl border-2 border-amber-200 bg-amber-50/60 dark:bg-amber-950/30 text-center">
+                  {autoInvoice === 'waiting'
+                    ? <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+                    : <Clock className="w-5 h-5 text-amber-600" />}
+                  <span className="text-[10px] uppercase tracking-widest text-amber-900 dark:text-amber-200 font-bold leading-tight">
+                    {autoInvoice === 'waiting' ? 'Facturando…' : 'Factura en cola'}
+                  </span>
+                  {autoInvoice === 'queued' && <span className="text-[9.5px] text-amber-800 dark:text-amber-300 leading-tight">Sale sola cuando ARCA responda</span>}
                 </div>
               ) : (
                 <button
                   onClick={() => setShowInvoice(true)}
                   className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-teal-600 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm"
                 >
-                  <FileText className="w-6 h-6 stroke-[2.5]" />
-                  <span className="text-[10px] uppercase tracking-widest text-teal-900 dark:text-teal-200 font-bold">Facturar</span>
+                  {autoInvoice === 'rejected' ? <AlertCircle className="w-6 h-6 stroke-[2.5] text-red-600" /> : <FileText className="w-6 h-6 stroke-[2.5]" />}
+                  <span className="text-[10px] uppercase tracking-widest text-teal-900 dark:text-teal-200 font-bold" title={autoInvoiceError || undefined}>
+                    {autoInvoice === 'rejected' ? 'Corregir factura' : 'Facturar'}
+                  </span>
                   <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-teal-800 bg-white border border-teal-300 dark:bg-teal-950 dark:text-teal-200">F</kbd>
                 </button>
               )
@@ -796,19 +869,10 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             onEmitted={(comprobante, qrDataUrl) => {
               setInvoice(comprobante);
               setInvoiceQr(qrDataUrl);
-              // El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE.
-              // En la app de escritorio sale directo; si falla (o en el navegador) se abre el cuadro de impresión.
-              setTimeout(() => {
-                if (!canPrintSilently() || !getAutoPrintInvoice()) { handlePrint(); return; }
-                const aviso = toast.loading('Imprimiendo la factura...');
-                printSilently()
-                  .then(() => toast.success('Factura impresa', { id: aviso, duration: 3000 }))
-                  .catch((err) => {
-                    toast.error(`${err?.message || err || 'No se pudo imprimir'}. Elegí la impresora en el cuadro.`, { id: aviso, duration: 6000 });
-                    handlePrint();
-                  });
-              }, 400);
+              setAutoInvoice(null);
+              printInvoice();
             }}
+            onQueued={() => setAutoInvoice('queued')}
           />
         )}
 

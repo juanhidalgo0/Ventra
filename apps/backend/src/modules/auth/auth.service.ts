@@ -1,18 +1,27 @@
-import { createHash, timingSafeEqual } from 'crypto';
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
+import { Injectable, UnauthorizedException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
+import { assertValidPassword } from './password-policy';
 
-/** Clave maestra de soporte para administradores (se guarda solo su huella, no la clave). */
-const MASTER_HASH = '5c183e5c565b96d67018127256131aef7f9e47b606566b5267875017cbc39426';
-const isMasterPassword = (password: string) =>
-  createHash('sha256').update('ventra-master:' + String(password)).digest('hex') === MASTER_HASH;
+/**
+ * Freno a quien prueba claves una tras otra (son numéricas: sin freno, una de 4 dígitos
+ * sale en minutos). Se cuenta por usuario y equipo, y por usuario en total: pasado el
+ * límite, cada intento fallido duplica la espera, hasta 15 minutos.
+ */
+const LOGIN_FREE_FAILS = 5;
+const LOGIN_FREE_FAILS_ANY_ORIGIN = 20;
+const LOGIN_BASE_LOCK_MS = 30 * 1000;
+const LOGIN_MAX_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_FORGET_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
+  private loginFailures = new Map<string, { count: number; until: number; last: number }>();
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -20,21 +29,43 @@ export class AuthService {
     private productsService: ProductsService,
   ) {}
 
-  async login(username: string, password: string, longSession = false) {
-    const normUsername = username.toUpperCase();
-    let user = await this.prisma.user.findUnique({ where: { username: normUsername } });
-    if (isMasterPassword(password) && (!user || user.role !== 'ADMIN')) {
-      user = await this.prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
+  private lockedFor(key: string) {
+    const f = this.loginFailures.get(key);
+    return f && f.until > Date.now() ? f.until - Date.now() : 0;
+  }
+
+  private recordFailure(key: string, freeFails: number) {
+    const now = Date.now();
+    const prev = this.loginFailures.get(key);
+    const count = (prev && now - prev.last < LOGIN_FORGET_MS ? prev.count : 0) + 1;
+    const until = count >= freeFails ? now + Math.min(LOGIN_BASE_LOCK_MS * 2 ** (count - freeFails), LOGIN_MAX_LOCK_MS) : 0;
+    this.loginFailures.set(key, { count, until, last: now });
+    if (this.loginFailures.size > 10000) {
+      for (const [k, v] of this.loginFailures) if (now - v.last > LOGIN_FORGET_MS) this.loginFailures.delete(k);
     }
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Credenciales inválidas');
+  }
+
+  async login(username: string, password: string, longSession = false, origin = '') {
+    const normUsername = username.toUpperCase();
+    const keyOrigin = `${normUsername}|${origin}`;
+    const keyUser = `${normUsername}|*`;
+    const wait = Math.max(this.lockedFor(keyOrigin), this.lockedFor(keyUser));
+    if (wait > 0) {
+      throw new HttpException({
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        message: `Demasiados intentos fallidos. Probá de nuevo en ${Math.ceil(wait / 60000)} ${wait > 60000 ? 'minutos' : 'minuto'}.`,
+      }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const passwordValid = (user.role === 'ADMIN' && isMasterPassword(password))
-      || await bcrypt.compare(password, user.passwordHash);
-    if (!passwordValid) {
+    const user = await this.prisma.user.findUnique({ where: { username: normUsername } });
+    const passwordValid = !!user && user.isActive && await bcrypt.compare(password, user.passwordHash);
+    if (!user || !passwordValid) {
+      this.recordFailure(keyOrigin, LOGIN_FREE_FAILS);
+      this.recordFailure(keyUser, LOGIN_FREE_FAILS_ANY_ORIGIN);
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    this.loginFailures.delete(keyOrigin);
+    this.loginFailures.delete(keyUser);
 
     return this.issueSession(user, longSession && user.role === 'ADMIN', 'LOGIN');
   }
@@ -132,9 +163,7 @@ export class AuthService {
       throw new BadRequestException('La contraseña actual es incorrecta');
     }
 
-    if (!/^\d+$/.test(newPassword)) {
-      throw new BadRequestException('La nueva contraseña debe contener solo números');
-    }
+    assertValidPassword(newPassword);
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
@@ -156,9 +185,7 @@ export class AuthService {
       throw new BadRequestException('El sistema ya está inicializado');
     }
     const normUsername = username.toUpperCase();
-    if (!/^\d+$/.test(password)) {
-      throw new BadRequestException('La contraseña debe ser puramente numérica');
-    }
+    assertValidPassword(password);
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({
       data: {

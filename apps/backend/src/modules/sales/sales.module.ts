@@ -4,9 +4,10 @@ import { SalesController } from './sales.controller';
 import { WebsocketModule } from '../../websockets/websocket.module';
 import { ProductsModule } from '../products/products.module';
 import { CashRegisterModule } from '../cash-register/cash-register.module';
+import { FiscalModule } from '../fiscal/fiscal.module';
 
 @Module({
-  imports: [WebsocketModule, ProductsModule, CashRegisterModule],
+  imports: [WebsocketModule, ProductsModule, CashRegisterModule, FiscalModule],
   controllers: [SalesController],
   providers: [SalesService],
   exports: [SalesService],

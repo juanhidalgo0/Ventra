@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { CashRegisterService } from './cash-register.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
 @Controller('cash')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CashRegisterController {
   constructor(private cashService: CashRegisterService) {}
 
@@ -52,7 +53,9 @@ export class CashRegisterController {
     return this.cashService.getCurrentSession(req.user.sub, terminalName); 
   }
 
+  // Borra todas las ventas, cajas y saldos: solo el administrador
   @Post('reset-all')
+  @Roles('ADMIN')
   resetAll() {
     return this.cashService.resetAllCajas();
   }
@@ -82,12 +85,12 @@ export class CashRegisterController {
 
   @Delete('movement/:id')
   deleteMovement(@Param('id') id: string, @Request() req) {
-    return this.cashService.deleteCashMovement(id, req.user.sub);
+    return this.cashService.deleteCashMovement(id, req.user.sub, req.user.role);
   }
 
   @Put('movement/:id')
   updateMovement(@Param('id') id: string, @Request() req, @Body() dto: { type?: string; amount?: number; description?: string }) {
-    return this.cashService.updateCashMovement(id, req.user.sub, dto);
+    return this.cashService.updateCashMovement(id, req.user.sub, dto, req.user.role);
   }
 
   @Get('history')

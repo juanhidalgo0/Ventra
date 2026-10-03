@@ -13,9 +13,10 @@ service firebase.storage {
           && firestore.get(/databases/(default)/documents/ventra_stores/$(storeId)).data.get('ownerUid', null) == request.auth.uid;
       }
       allow read: if true;
+      // Solo fotos comunes: un SVG puede llevar código que se ejecuta al abrirlo
       allow create, update: if isStoreOwner()
         && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif|avif)');
       allow delete: if isStoreOwner();
     }
 

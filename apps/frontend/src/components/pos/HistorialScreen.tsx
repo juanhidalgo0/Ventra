@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { hasFeature } from '../../stores/businessStore';
+import { escapeHtml } from '../../utils/escapeHtml';
 
 const SALES_LIST_LIMIT = 1000;
 
@@ -80,7 +81,7 @@ export default function HistorialScreen() {
       doc.write(`
         <html>
           <head>
-            <title>${title}</title>
+            <title>${escapeHtml(title)}</title>
             <style>
               body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
               h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
@@ -188,8 +189,8 @@ export default function HistorialScreen() {
       <tr>
         <td class="font-bold">#${s.saleNumber}</td>
         <td>${fmtDate(s.createdAt)}</td>
-        <td>${s.user?.username || ''}</td>
-        <td>${s.paymentMethodSummary || ''}</td>
+        <td>${escapeHtml(s.user?.username || '')}</td>
+        <td>${escapeHtml(s.paymentMethodSummary || '')}</td>
         <td class="text-right font-bold">${fmt(s.total)}</td>
         <td class="${s.status === 'CANCELLED' ? 'text-rose-500' : 'text-emerald-500'} font-bold">${s.status === 'CANCELLED' ? 'Cancelada' : 'Completada'}</td>
       </tr>

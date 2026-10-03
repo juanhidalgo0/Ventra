@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import api from '../services/api';
 import { wsService } from '../services/websocket';
 
+// Versiones anteriores guardaban la clave de administrador en texto plano: se borra al abrir
+try { localStorage.removeItem('admin_password'); } catch { /* sin almacenamiento */ }
+
 interface User { id: string; username: string; fullName: string; role: string; avatarUrl?: string; }
 
 interface AuthState {
@@ -11,7 +14,6 @@ interface AuthState {
   login: (username: string, password: string) => Promise<void>;
   /** Soporte de Ventra en la caja en la nube: entra como el administrador del comercio */
   supportLogin: () => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
   checkAuth: () => void;
   autoLoginAdmin: () => Promise<void>;
@@ -56,29 +58,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  loginWithGoogle: async (idToken) => {
-    set({ isLoading: true });
-    try {
-      const { data } = await api.post('/auth/google', { idToken });
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      set({ user: data.user, isAuthenticated: true, isLoading: false });
-      wsService.connect();
-    } catch (error: any) {
-      set({ isLoading: false });
-      throw new Error(error.response?.data?.message || 'Error al iniciar sesión con Google');
-    }
-  },
-
   logout: () => {
     // Clear admin unlock flag and tokens on logout
     sessionStorage.removeItem('admin_unlocked');
     sessionStorage.removeItem('adminAccessToken');
     sessionStorage.removeItem('adminRefreshToken');
     localStorage.removeItem('admin_unlocked');
-    // Also clear stored admin password (optional security)
-    localStorage.removeItem('admin_password');
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');

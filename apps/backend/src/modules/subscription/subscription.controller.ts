@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { SubscriptionService } from './subscription.service';
 
 @Controller('subscription')
@@ -12,7 +13,10 @@ export class SubscriptionController {
     return this.subscription.getStatus();
   }
 
+  // Vincular la PC a una cuenta le da a esa cuenta todos los datos del comercio: solo el administrador
   @Post('link/start')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   async startLink() {
     try {
       return await this.subscription.startLink();

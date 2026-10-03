@@ -100,9 +100,9 @@ model Sale {
   acopioStatus         String   @default("NONE") @map("acopio_status") // NONE | PENDING | PARTIAL | COMPLETED
   createdAt            DateTime @default(now()) @map("created_at")
 
-  // ---- Facturación electrónica (ARCA) ----
-  // NONE = ticket común, sin comprobante fiscal. La venta nunca se frena por ARCA:
-  // queda PENDING y un proceso aparte pide el CAE cuando hay internet.
+  // ---- Facturación electrónica (ARCA): columnas de la 1.0.21 a la 1.0.42 ----
+  // Desde la 1.0.43 los comprobantes viven en fiscal_documents (uno por factura o nota
+  // de crédito). Estas columnas quedan solo para leer lo emitido antes; ya no se escriben.
   invoiceStatus        String    @default("NONE") @map("invoice_status") // NONE | PENDING | AUTHORIZED | REJECTED
   invoiceType          String?   @map("invoice_type")  // FACTURA_A | FACTURA_B | FACTURA_C | NC_A | NC_B | NC_C
   invoiceCbteTipo      Int?      @map("invoice_cbte_tipo") // Código de ARCA: 1=FacA, 6=FacB, 11=FacC...
@@ -131,6 +131,7 @@ model Sale {
   payments Payment[]
   accountMovements AccountMovement[]
   deliveryReceipts DeliveryReceipt[]
+  fiscalDocuments  FiscalDocument[]
 
   @@index([createdAt])
   @@index([sessionId])
@@ -530,11 +531,73 @@ model FiscalConfig {
   certExpiresAt DateTime? @map("cert_expires_at")
   // Factura automática en cada venta, o sólo cuando el cliente la pide
   autoInvoice   Boolean  @default(false) @map("auto_invoice")
+  // Desde cuándo rige la factura automática: prenderla no factura las ventas de antes
+  autoInvoiceSince DateTime? @map("auto_invoice_since")
   startDate     DateTime? @map("start_date") // Desde cuándo factura: no se emite por ventas anteriores
+  // Datos que el comprobante impreso tiene que llevar (RG 1415)
+  domicilio         String    @default("")
+  iibb              String    @default("") // N° de Ingresos Brutos, "Exento" o "Convenio Multilateral"
+  inicioActividades DateTime? @map("inicio_actividades")
+  // Alícuota de los productos que no tienen una propia (solo Responsable Inscripto)
+  defaultIvaRate    Float     @default(21) @map("default_iva_rate")
   lastError     String?  @map("last_error")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("fiscal_config")
+}
+
+// Un comprobante electrónico: factura o nota de crédito de una venta.
+//
+// Lo escribe solo la caja que lo pidió (ownerNode): así dos cajas nunca piden el CAE del
+// mismo comprobante y, al sincronizar, ninguna pisa lo que la otra recibió de ARCA.
+// El id es determinístico (venta + secuencia): si dos cajas facturaran la misma venta, la
+// pasarela de Ventra lo reconoce y devuelve el comprobante ya emitido en vez de otro.
+model FiscalDocument {
+  id                   String    @id // <saleId>:F1, <saleId>:F2 (refacturada), <facturaId>:NC
+  saleId               String    @map("sale_id")
+  kind                 String    // FACTURA | NOTA_CREDITO
+  // PENDING: en cola · AUTHORIZED: con CAE · REJECTED: ARCA lo rechazó, hay que corregir algo
+  // VOID: no se emitió y ya no hace falta (la venta se anuló antes)
+  status               String    @default("PENDING")
+  environment          String    // HOMOLOGACION | PRODUCCION
+  emisorCuit           String    @map("emisor_cuit")
+  cbteTipo             Int?      @map("cbte_tipo")
+  invoiceType          String?   @map("invoice_type") // FACTURA_A | FACTURA_B | FACTURA_C | NC_A | NC_B | NC_C
+  pointOfSale          Int       @map("point_of_sale")
+  number               Int?
+  // Número pedido en un intento que quedó sin respuesta. Antes de pedir otro se le
+  // pregunta a ARCA por este: si se emitió, se recupera en vez de duplicar la factura.
+  reservedNumber       Int?      @map("reserved_number")
+  cae                  String?
+  caeExpiresAt         DateTime? @map("cae_expires_at")
+  issueDate            String?   @map("issue_date") // AAAAMMDD, tal como se declaró (CbteFch)
+  total                Float     @default(0)
+  neto                 Float     @default(0)
+  iva                  Float     @default(0)
+  ivaDetail            String?   @map("iva_detail") // JSON [{ rate, base, amount }]
+  receptorDocTipo      Int       @default(99) @map("receptor_doc_tipo")
+  receptorDocNro       String    @default("0") @map("receptor_doc_nro")
+  receptorName         String?   @map("receptor_name")
+  receptorIvaCondition String    @default("CONSUMIDOR_FINAL") @map("receptor_iva_condition")
+  assocDocumentId      String?   @map("assoc_document_id") // NC: la factura que anula
+  reason               String?   // NC: motivo
+  ownerNode            Int       @default(0) @map("owner_node")
+  attempts             Int       @default(0)
+  lastAttemptAt        DateTime? @map("last_attempt_at")
+  nextAttemptAt        DateTime? @map("next_attempt_at")
+  error                String?
+  errorKind            String?   @map("error_kind") // TRANSIENT | CONFIG | REJECTED
+  observations         String?
+  createdById          String?   @map("created_by_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("fiscal_documents")
 }
 
 // Ticket de acceso de WSAA. Dura 12 horas y hay que reusarlo: pedir uno nuevo

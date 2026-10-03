@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
+import { assertValidPassword } from '../auth/password-policy';
 
 @Injectable()
 export class UsersService {
@@ -24,9 +25,7 @@ export class UsersService {
 
   async create(data: { username: string; password: string; fullName: string; role: string }) {
     const normUsername = data.username.toUpperCase();
-    if (!/^\d+$/.test(data.password)) {
-      throw new BadRequestException('La contraseña debe ser puramente numérica');
-    }
+    assertValidPassword(data.password);
     const exists = await this.prisma.user.findUnique({ where: { username: normUsername } });
     if (exists) throw new ConflictException('El usuario ya existe');
     const passwordHash = await bcrypt.hash(data.password, 10);
@@ -56,9 +55,7 @@ export class UsersService {
     if (data.role) updateData.role = data.role;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.password) {
-      if (!/^\d+$/.test(data.password)) {
-        throw new BadRequestException('La contraseña debe ser puramente numérica');
-      }
+      assertValidPassword(data.password);
       updateData.passwordHash = await bcrypt.hash(data.password, 10);
     }
     return this.prisma.user.update({

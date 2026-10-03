@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Request, BadRequestException, Header, Headers } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request, Req, BadRequestException, Header, Headers } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -15,10 +15,6 @@ class RefreshDto {
   @IsString() @IsNotEmpty() refreshToken: string;
 }
 
-class GoogleLoginDto {
-  @IsString() @IsNotEmpty() idToken: string;
-}
-
 class RegisterFirstAdminDto {
   @IsString() @IsNotEmpty() username: string;
   @IsString() @IsNotEmpty() password: string;
@@ -29,6 +25,15 @@ class ChangePasswordDto {
   @IsString() @IsNotEmpty() newPassword: string;
 }
 
+/**
+ * De dónde viene el intento de entrada, para frenar a quien prueba claves. En la caja en
+ * la nube todo llega por el anfitrión (127.0.0.1): ahí vale la IP que anota fly.io.
+ */
+function loginOrigin(req: any): string {
+  if (process.env.VENTRA_NODE_KIND === 'cloud') return String(req.headers?.['fly-client-ip'] || 'cloud');
+  return String(req.ip || req.socket?.remoteAddress || '');
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -37,19 +42,14 @@ export class AuthController {
   ) {}
 
   @Post('login')
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.username, dto.password, !!dto.longSession);
+  async login(@Body() dto: LoginDto, @Req() req: any) {
+    return this.authService.login(dto.username, dto.password, !!dto.longSession, loginOrigin(req));
   }
 
   /** Entrada de soporte en la caja en la nube (ver AuthService.supportLogin) */
   @Post('support-login')
   async supportLogin(@Headers('x-ventra-support-key') key: string) {
     return this.authService.supportLogin(key);
-  }
-
-  @Post('google')
-  async googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.googleAuthService.loginWithGoogle(dto.idToken);
   }
 
   @Post('google-link-verify')

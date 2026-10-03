@@ -34,6 +34,7 @@ import {
 } from 'recharts';
 import LowStockAlertsModal from './LowStockAlertsModal';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
+import { escapeHtml } from '../../utils/escapeHtml';
 
 export default function DashboardScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -133,7 +134,7 @@ export default function DashboardScreen() {
       doc.write(`
         <html>
           <head>
-            <title>${title}</title>
+            <title>${escapeHtml(title)}</title>
             <style>
               body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
               h1 { font-size: 24px; color: #0f172a; margin-bottom: 5px; }
@@ -206,7 +207,7 @@ export default function DashboardScreen() {
     const productsHtml = (dashboardData.topProducts || []).map((p: any, i: number) => `
       <tr>
         <td>${i + 1}</td>
-        <td class="font-bold">${p.name}</td>
+        <td class="font-bold">${escapeHtml(p.name)}</td>
         <td class="text-right">${p.quantity} u.</td>
         <td class="text-right">${fmt(p.revenue)}</td>
         <td class="text-right">${p.stock}</td>
@@ -216,7 +217,7 @@ export default function DashboardScreen() {
     const clientsHtml = (dashboardData.topClients || []).map((c: any, i: number) => `
       <tr>
         <td>${i + 1}</td>
-        <td class="font-bold">${c.name}</td>
+        <td class="font-bold">${escapeHtml(c.name)}</td>
         <td class="text-right">${c.salesCount}</td>
         <td class="text-right">${fmt(c.totalSpent)}</td>
       </tr>

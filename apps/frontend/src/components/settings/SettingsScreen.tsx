@@ -653,7 +653,6 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setIsChangingPassword(true);
     try {
       await api.patch(`/users/${user?.id}`, { password: newAdminPassword });
-      localStorage.setItem('admin_password', newAdminPassword);
       resetAdminUnlock();
       toast.success('✅ Contraseña ADMIN actualizada');
       setNewAdminPassword('');

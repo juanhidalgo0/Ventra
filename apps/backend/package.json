@@ -11,7 +11,8 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "npx prisma studio",
     "db:reset": "node -e \"const fs = require('fs'); ['prisma/dev.db', 'prisma/dev.db-wal', 'prisma/dev.db-shm'].forEach(f => { try { fs.unlinkSync(f); } catch {} });\" && npx prisma db push",
-    "db:generate": "npx prisma generate"
+    "db:generate": "npx prisma generate",
+    "test:fiscal": "npx tsx scripts/test-fiscal.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

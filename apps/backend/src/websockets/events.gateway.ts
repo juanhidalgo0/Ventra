@@ -3,15 +3,42 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { isAllowedOrigin } from '../common/allowed-origin';
 
-@WebSocketGateway({ cors: { origin: '*' } })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+/**
+ * Canal en tiempo real (ventas, caja, productos). Solo para sesiones iniciadas: antes
+ * cualquiera en la red, o cualquier página abierta en la PC de la caja, podía escuchar
+ * cada venta y cada movimiento de caja.
+ */
+@WebSocketGateway({
+  cors: { origin: (origin: string, cb: (err: Error | null, ok?: boolean) => void) => cb(null, !origin || isAllowedOrigin(origin)) },
+})
+export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private connectedClients = new Map<string, any>();
+
+  afterInit(server: Server) {
+    // El secreto lo crea main.ts al arrancar, antes de levantar los módulos
+    const jwt = new JwtService({ secret: process.env.JWT_SECRET });
+    server.use((socket, next) => {
+      const fromAuth = socket.handshake.auth && (socket.handshake.auth as any).token;
+      const header = String(socket.handshake.headers.authorization || '');
+      const token = String(fromAuth || (header.startsWith('Bearer ') ? header.slice(7) : ''));
+      try {
+        if (!token) throw new Error('sin sesión');
+        jwt.verify(token);
+        next();
+      } catch {
+        next(new Error('unauthorized'));
+      }
+    });
+  }
 
   handleConnection(client: Socket) {
     console.log(`📡 Client connected: ${client.id}`);

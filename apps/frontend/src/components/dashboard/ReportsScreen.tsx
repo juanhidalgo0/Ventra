@@ -26,6 +26,7 @@ import {
   FileText,
   Smartphone
 } from 'lucide-react';
+import { escapeHtml } from '../../utils/escapeHtml';
 
 interface ReportCard {
   id: string;
@@ -371,7 +372,7 @@ export default function ReportsScreen() {
       doc.write(`
         <html>
           <head>
-            <title>${title}</title>
+            <title>${escapeHtml(title)}</title>
             <style>
               body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
               h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
@@ -463,8 +464,8 @@ export default function ReportsScreen() {
     if (activeReport === 'stock_actual') {
       const rowsHtml = reportData.map((p: any) => `
         <tr>
-          <td>${p.name}</td>
-          <td>${p.sku || 'N/A'}</td>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.sku || 'N/A')}</td>
           <td class="text-right">${p.stock}</td>
           <td class="text-right">${fmt(p.costPrice)}</td>
           <td class="text-right">${fmt(p.salePrice)}</td>
@@ -486,8 +487,8 @@ export default function ReportsScreen() {
     } else if (activeReport === 'stock_bajo') {
       const rowsHtml = reportData.map((p: any) => `
         <tr>
-          <td>${p.name}</td>
-          <td>${p.sku || 'N/A'}</td>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.sku || 'N/A')}</td>
           <td class="text-right font-bold" style="color: #ef4444;">${p.stock}</td>
           <td class="text-right">${p.minStock}</td>
         </tr>
@@ -508,7 +509,7 @@ export default function ReportsScreen() {
       const rowsHtml = reportData.topProfitable.map((p: any, i: number) => `
         <tr>
           <td>${i + 1}</td>
-          <td class="font-bold">${p.name}</td>
+          <td class="font-bold">${escapeHtml(p.name)}</td>
           <td class="text-right">${p.qty}</td>
           <td class="text-right">${fmt(p.revenue)}</td>
           <td class="text-right">${fmt(p.cost)}</td>
@@ -537,7 +538,7 @@ export default function ReportsScreen() {
     } else if (activeReport === 'rentabilidad_categoria') {
       const rowsHtml = reportData.map((c: any) => `
         <tr>
-          <td class="font-bold">${c.name}</td>
+          <td class="font-bold">${escapeHtml(c.name)}</td>
           <td class="text-right">${fmt(c.sales)}</td>
           <td class="text-right">${fmt(c.cost)}</td>
           <td class="text-right font-bold">${fmt(c.profit)}</td>
@@ -559,7 +560,7 @@ export default function ReportsScreen() {
     } else if (activeReport === 'rotacion_inventario') {
       const rowsHtml = reportData.map((p: any) => `
         <tr>
-          <td>${p.name}</td>
+          <td>${escapeHtml(p.name)}</td>
           <td class="text-right">${p.qty}</td>
           <td class="text-right">${fmt(p.revenue)}</td>
           <td class="text-right font-bold">Clase ${p.classification}</td>
@@ -598,10 +599,10 @@ export default function ReportsScreen() {
     } else if (activeReport === 'perdidas') {
       const rowsHtml = reportData.map((m: any) => `
         <tr>
-          <td>${m.product?.name}</td>
+          <td>${escapeHtml(m.product?.name)}</td>
           <td>${fmtDate(m.createdAt)}</td>
           <td class="text-right font-bold" style="color: #ef4444;">${m.quantity}</td>
-          <td>${m.reason || 'N/A'}</td>
+          <td>${escapeHtml(m.reason || 'N/A')}</td>
         </tr>
       `).join('');
       htmlContent = `
@@ -619,11 +620,11 @@ export default function ReportsScreen() {
     } else if (activeReport === 'movimientos') {
       const rowsHtml = reportData.map((m: any) => `
         <tr>
-          <td>${m.product?.name}</td>
+          <td>${escapeHtml(m.product?.name)}</td>
           <td>${m.type === 'ENTRY' ? 'Entrada' : m.type === 'EXIT' ? 'Salida' : m.type}</td>
           <td class="text-right font-bold">${m.quantity}</td>
           <td>${fmtDate(m.createdAt)}</td>
-          <td>${m.reference || m.reason || 'N/A'}</td>
+          <td>${escapeHtml(m.reference || m.reason || 'N/A')}</td>
         </tr>
       `).join('');
       htmlContent = `
@@ -643,7 +644,7 @@ export default function ReportsScreen() {
         <tr>
           <td>#${sale.saleNumber}</td>
           <td>${fmtDate(sale.createdAt)}</td>
-          <td>${sale.user?.fullName}</td>
+          <td>${escapeHtml(sale.user?.fullName)}</td>
           <td class="text-right font-bold" style="color: #ef4444;">-${fmt(sale.total)}</td>
         </tr>
       `).join('');

@@ -27,11 +27,24 @@ service cloud.firestore {
     // ownerUid = sesión (anónima) del POS dueño de la tienda.
     // claimed  = la tienda ya tiene dueño y es visible públicamente.
     // Avisos al celular: cada cuenta registra sus celulares y elige qué avisos recibir
+    // Estado de un cobro del Point (lo escribe la nube): la caja de la cuenta lo escucha en vivo
+    match /ventra_mp_orders/{orderId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     match /ventra_push/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
       match /tokens/{tokenId} {
         allow read, write: if signedIn() && request.auth.uid == uid;
       }
+    }
+
+    // Registro de direcciones de las tiendas (tienda.ventra.store/<dirección> → tienda).
+    // Lo escribe solo la función ventraStoreSlug: así nadie puede quedarse con la dirección
+    // de otro comercio.
+    match /ventra_store_slugs/{slug} {
+      allow get: if true;
+      allow list, write: if false;
     }
 
     match /ventra_stores/{storeId} {
@@ -47,11 +60,15 @@ service cloud.firestore {
       allow get: if true;
       allow list: if resource.data.claimed == true;
 
-      allow create: if signedIn() && keepsOwnerAs(request.auth.uid);
+      // createdAt lo pone el servidor y no cambia: decide quién conserva una dirección
+      // (ver functions/store-slugs.js), así que nadie puede antedatar su tienda.
+      allow create: if signedIn() && keepsOwnerAs(request.auth.uid)
+        && request.resource.data.createdAt == request.time;
       // La tienda migrada sin dueño la reclama la primera sesión que la edita;
       // después solo su dueño puede tocarla.
       allow update: if signedIn() && keepsOwnerAs(request.auth.uid)
-        && (isOwner() || resource.data.get('ownerUid', null) == null);
+        && (isOwner() || resource.data.get('ownerUid', null) == null)
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
       allow delete: if isOwner();
 
       function storeOwner() {

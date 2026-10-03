@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { SyncService } from './sync.service';
 
 @Controller('sync')
@@ -23,7 +24,10 @@ export class SyncController {
     return this.sync.pauseForShutdown();
   }
 
+  // Reemplaza los datos de esta caja por los de la nube: solo el administrador
   @Post('restore')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   async restore() {
     try {
       return await this.sync.restoreFromCloud();

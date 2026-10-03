@@ -6,6 +6,7 @@ import { FirebaseSyncService } from '../products/firebase-sync.service';
 import { numberRange, saleNumberFloor } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
+import { FiscalService } from '../fiscal/fiscal.service';
 import { consumeLotsFefo } from '../products/lots.util';
 
 interface CreateSaleDto {
@@ -27,6 +28,7 @@ export class SalesService {
     private firebaseSync: FirebaseSyncService,
     private notify: NotifyService,
     private cashRegister: CashRegisterService,
+    private fiscal: FiscalService,
   ) {}
 
   async create(userId: string, dto: CreateSaleDto) {
@@ -247,6 +249,9 @@ export class SalesService {
         .catch(() => { /* el aviso no puede frenar la venta */ });
     }
 
+    // Con factura automática la venta entra a la cola de comprobantes (no la frena: ARCA va aparte)
+    this.fiscal.onSaleCreated(sale.id);
+
     return sale;
   }
 
@@ -395,6 +400,9 @@ export class SalesService {
       });
     }
     this.events.emitCashUpdated({ action: 'SALE_CANCEL', sessionId: sale.sessionId });
+
+    // Si estaba facturada, la anulación fiscal es la nota de crédito: sale sola por la cola
+    this.fiscal.onSaleCancelled(sale.id, userId);
 
     // Aviso al dueño de anulaciones grandes (el umbral evita avisar por errores de tipeo chicos)
     if (Math.abs(sale.total) >= 20000) {

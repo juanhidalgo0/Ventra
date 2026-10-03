@@ -19,6 +19,8 @@ import QRCode from 'qrcode';
 import GastosModal from './GastosModal';
 import ProveedoresModal from './ProveedoresModal';
 import PaymentModal from './PaymentModal';
+import TicketReceipt from './TicketReceipt';
+import { qrImagen } from './InvoiceModal';
 import CierreCajaModal from './CierreCajaModal';
 import QuickSaleIcon from './QuickSaleIcon';
 import { MangoLogo } from '../common/MangoLogo';
@@ -360,17 +362,27 @@ export default function POSScreen() {
   const searchRef = useRef<HTMLInputElement>(null);
   const confirmSaleRef = useRef<HTMLButtonElement>(null);
   const [reprintSale, setReprintSale] = useState<any | null>(null);
+  const [reprintInvoice, setReprintInvoice] = useState<{ doc: any; qr: string | null } | null>(null);
 
-  const handleReprintLastTicket = () => {
+  const handleReprintLastTicket = async () => {
     if (!lastSale) {
       toast('No hay ninguna venta reciente para reimprimir', { icon: 'ℹ️' });
       return;
     }
+    // Si la venta se facturó, se reimprime la factura (con su CAE y QR), no un ticket común
+    let factura: { doc: any; qr: string | null } | null = null;
+    if (lastSale.id && !lastSale.isOffline) {
+      try {
+        const { data } = await api.get(`/fiscal/sales/${lastSale.id}/invoice`, { timeout: 3000 });
+        if (data?.invoice?.status === 'AUTHORIZED') factura = { doc: data.invoice, qr: await qrImagen(data.invoice.qrUrl) };
+      } catch { /* sin facturación o sin respuesta: va el ticket común */ }
+    }
+    setReprintInvoice(factura);
     setReprintSale(lastSale);
-    toast.success(`🖨️ Imprimiendo Ticket #${lastSale.saleNumber || ''}`);
+    toast.success(`🖨️ Imprimiendo ${factura ? 'la factura' : 'el ticket'} #${lastSale.saleNumber || ''}`);
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 250);
   };
 
   const focusConfirmBtn = () => {
@@ -4248,59 +4260,15 @@ export default function POSScreen() {
               }
             }
           `}</style>
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', fontFamily: 'monospace', fontSize: '8pt', color: '#000', gap: '8px' }}>
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <h4 style={{ margin: 0, fontSize: '10.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                {(localStorage.getItem('gd_store_name') || 'Ventra POS').toUpperCase()}
-              </h4>
-              <p style={{ margin: 0, fontWeight: 'bold' }}>REIMPRESIÓN DE TICKET</p>
-              <p style={{ margin: 0, fontWeight: 'bold' }}>C.U.I.T. N° 20-35987452-9</p>
-              <p style={{ margin: 0 }}>Punto de Venta N° 00004</p>
-            </div>
-
-            <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', display: 'flex', flexDirection: 'column', gap: '2px', fontWeight: 'bold' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>N° COMP.:</span>
-                <span>{'00004-' + (reprintSale.saleNumber || '').toString().padStart(8, '0')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>FECHA EMISIÓN:</span>
-                <span>{new Date(reprintSale.createdAt || Date.now()).toLocaleDateString('es-AR')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>HORA EMISIÓN:</span>
-                <span>{new Date(reprintSale.createdAt || Date.now()).toLocaleTimeString('es-AR')}</span>
-              </div>
-            </div>
-
-            <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                <span style={{ width: '55%' }}>DETALLE</span>
-                <span style={{ width: '20%', textAlign: 'center' }}>CANT.</span>
-                <span style={{ width: '25%', textAlign: 'right' }}>TOTAL</span>
-              </div>
-              {reprintSale.items?.map((item: any, idx: number) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ width: '55%', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.productName || item.product?.name || 'Producto'}
-                  </span>
-                  <span style={{ width: '20%', textAlign: 'center' }}>{(item.quantity || 1).toFixed(1)}</span>
-                  <span style={{ width: '25%', textAlign: 'right' }}>${Math.round(item.total || item.unitPrice * (item.quantity || 1)).toLocaleString('es-AR')}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontWeight: 'bold', fontSize: '9pt' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: '900', borderTop: '1px dashed #000', paddingTop: '4px' }}>
-                <span>TOTAL:</span>
-                <span>${Math.round(reprintSale.total || 0).toLocaleString('es-AR')}</span>
-              </div>
-            </div>
-
-            <p style={{ margin: 0, fontSize: '7pt', textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '8px', fontWeight: 'bold' }}>
-              ¡Muchas gracias por su compra!
-            </p>
-          </div>
+          {/* El mismo ticket que al cobrar: con la factura y su CAE si la venta se facturó */}
+          <TicketReceipt
+            createdSale={reprintSale}
+            storeName={(localStorage.getItem('gd_store_name') || 'Ventra POS').toUpperCase()}
+            invoice={reprintInvoice?.doc}
+            invoiceQr={reprintInvoice?.qr}
+            reprint
+            formatPrice={formatPrice}
+          />
         </div>
       )}
     </>

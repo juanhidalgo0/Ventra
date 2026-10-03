@@ -1,48 +1,55 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FileText, RefreshCw, Settings2, CheckCircle2, Clock, XCircle, MinusCircle, ShieldCheck } from 'lucide-react';
+import { FileText, RefreshCw, Settings2, CheckCircle2, Clock, XCircle, MinusCircle, ShieldCheck, AlertTriangle, Copy } from 'lucide-react';
 import api from '../../services/api';
 import { ScreenHeader, Chips, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
 
-type Status = 'ALL' | 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'NONE';
+type Tab = 'ALL' | 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'UNINVOICED';
 
 const STATUS: Record<string, { label: string; cls: string; icon: any }> = {
   AUTHORIZED: { label: 'Autorizada', cls: 'bg-emerald-50 text-emerald-700', icon: CheckCircle2 },
   PENDING: { label: 'En cola', cls: 'bg-amber-50 text-amber-700', icon: Clock },
   REJECTED: { label: 'Rechazada', cls: 'bg-red-50 text-red-600', icon: XCircle },
+  VOID: { label: 'Descartada', cls: 'bg-slate-100 text-slate-500', icon: MinusCircle },
+  ANULADA: { label: 'Anulada', cls: 'bg-slate-100 text-slate-600', icon: MinusCircle },
   NONE: { label: 'Sin facturar', cls: 'bg-slate-100 text-slate-500', icon: MinusCircle },
 };
-const typeName = (t?: string | null) => (t ? t.replace('FACTURA_', 'Factura ').replace('NC_', 'Nota de crédito ') : '');
-const number = (s: any) => (s.invoiceNumber ? `${String(s.invoicePointOfSale ?? 0).padStart(4, '0')}-${String(s.invoiceNumber).padStart(8, '0')}` : '');
+const typeName = (t?: string | null, kind?: string) => (t ? t.replace('FACTURA_', 'Factura ').replace('NC_', 'Nota de crédito ') : kind === 'NOTA_CREDITO' ? 'Nota de crédito' : 'Factura');
+/** Una factura con su nota de crédito autorizada ya no vale: se muestra anulada */
+const statusOf = (d: any) => (d.uninvoiced ? STATUS.NONE : d.status === 'AUTHORIZED' && d.creditedBy?.status === 'AUTHORIZED' ? STATUS.ANULADA : STATUS[d.status] || STATUS.NONE);
+const number = (pv?: number | null, n?: number | null) => (n ? `${String(pv ?? 0).padStart(5, '0')}-${String(n).padStart(8, '0')}` : '');
+const receptor = (d: any) => (d.receptor?.docNro && d.receptor.docNro !== '0' ? `${d.receptor.name || ''} · ${d.receptor.docNro}` : d.receptor?.name || 'Consumidor final');
 
 /** Facturación electrónica (ARCA) en el celular: estado, configuración, comprobantes y reintentos. */
 export default function MobileFiscalScreen() {
   const [config, setConfig] = useState<any | null>(null);
-  const [sales, setSales] = useState<any[] | null>(null);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [status, setStatus] = useState<Status>('ALL');
+  const [items, setItems] = useState<any[] | null>(null);
+  const [summary, setSummary] = useState<Record<string, number>>({});
+  const [tab, setTab] = useState<Tab>('ALL');
   const [selected, setSelected] = useState<any | null>(null);
   const [processing, setProcessing] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
 
-  const loadSales = useCallback((s: Status) => {
-    setSales(null);
-    api.get('/fiscal/sales', { params: { status: s, limit: 60 } })
-      .then((r) => { setSales(r.data.sales || []); setCounts(r.data.resumen || {}); })
-      .catch(() => { setSales([]); toast.error('No pudimos traer los comprobantes'); });
+  const load = useCallback((t: Tab) => {
+    setItems(null);
+    const req = t === 'UNINVOICED'
+      ? api.get('/fiscal/uninvoiced').then((r) => setItems((r.data || []).map((s: any) => ({ ...s, uninvoiced: true }))))
+      : api.get('/fiscal/documents', { params: { status: t === 'ALL' ? undefined : t, limit: 80 } }).then((r) => {
+        setItems(r.data.documents || []);
+        setSummary(r.data.summary || {});
+      });
+    req.catch(() => { setItems([]); toast.error('No pudimos traer los comprobantes'); });
   }, []);
 
   useEffect(() => { api.get('/fiscal/config').then((r) => setConfig(r.data)).catch(() => setConfig({})); }, []);
-  useEffect(() => { loadSales(status); }, [status, loadSales]);
+  useEffect(() => { load(tab); }, [tab, load]);
 
   const processQueue = async () => {
     setProcessing(true);
     try {
-      const { data } = await api.post('/fiscal/pending/process');
-      if (data.skipped) toast('La facturación no está activada');
-      else if (data.processed === 0) toast.success('No hay comprobantes en cola');
-      else toast.success(`${data.authorized} autorizados, ${data.failed} siguen en cola`);
-      loadSales(status);
+      const { data } = await api.post('/fiscal/queue/process');
+      toast.success(data.pending ? `Quedan ${data.pending} en cola` : 'Cola al día');
+      load(tab);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'No se pudo procesar la cola');
     } finally {
@@ -51,7 +58,8 @@ export default function MobileFiscalScreen() {
   };
 
   const enabled = !!config?.enabled;
-  const pending = counts.PENDING || 0;
+  const pending = summary.PENDING_MINE || 0;
+  const stuck = summary.CONFIG || 0;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -75,51 +83,62 @@ export default function MobileFiscalScreen() {
           ) : (
             <>
               <p className="text-[15px] font-bold">La facturación está apagada</p>
-              <p className="text-[12px] text-rose-100">Tocá acá para activarla y cargar tu CUIT.</p>
+              <p className="text-[12px] text-rose-100">Tocá acá para activarla y cargar tus datos.</p>
             </>
           )}
         </button>
-        <Chips<Status>
+        <Chips<Tab>
           options={[
-            { id: 'ALL', label: 'Todas' },
-            { id: 'AUTHORIZED', label: 'Autorizadas', count: counts.AUTHORIZED || 0 },
-            { id: 'PENDING', label: 'En cola', count: pending },
-            { id: 'REJECTED', label: 'Rechazadas', count: counts.REJECTED || 0 },
-            { id: 'NONE', label: 'Sin facturar', count: counts.NONE || 0 },
+            { id: 'ALL', label: 'Todos' },
+            { id: 'PENDING', label: 'En cola', count: summary.PENDING || 0 },
+            { id: 'REJECTED', label: 'Rechazados', count: summary.REJECTED || 0 },
+            { id: 'AUTHORIZED', label: 'Autorizados' },
+            { id: 'UNINVOICED', label: 'Sin facturar' },
           ]}
-          value={status}
-          onChange={setStatus}
+          value={tab}
+          onChange={setTab}
         />
       </ScreenHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+        {enabled && stuck > 0 && (
+          <button onClick={() => setConfigOpen(true)} className="w-full bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-left">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <span className="flex-1">
+              <span className="block text-[14px] font-semibold text-red-900">{stuck} {stuck === 1 ? 'comprobante espera' : 'comprobantes esperan'} que corrijas la configuración</span>
+              <span className="block text-[12px] text-red-800">{config?.lastError || 'Tocá para probar la conexión y ver qué falta.'}</span>
+            </span>
+          </button>
+        )}
         {enabled && pending > 0 && (
           <button onClick={processQueue} disabled={processing} className="w-full bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-left active:scale-[0.99] disabled:opacity-60">
             <RefreshCw className={`w-5 h-5 text-amber-700 shrink-0 ${processing ? 'animate-spin' : ''}`} />
             <span className="flex-1">
               <span className="block text-[14px] font-semibold text-amber-900">{pending} en cola</span>
-              <span className="block text-[12px] text-amber-800">Quedaron sin CAE (sin internet o ARCA caído). Tocá para reintentar.</span>
+              <span className="block text-[12px] text-amber-800">Salen solos cuando ARCA responde. Tocá para reintentar ya.</span>
             </span>
           </button>
         )}
-        {sales === null ? <ListSkeleton /> : sales.length === 0 ? (
-          <EmptyState icon={FileText} title="No hay comprobantes" />
+        {items === null ? <ListSkeleton /> : items.length === 0 ? (
+          <EmptyState icon={FileText} title={tab === 'UNINVOICED' ? 'No hay ventas sin facturar' : 'No hay comprobantes'} />
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
-            {sales.map((s) => {
-              const st = STATUS[s.invoiceStatus] || STATUS.NONE;
+            {items.map((d) => {
+              const st = statusOf(d);
               const Icon = st.icon;
               return (
-                <button key={s.id} onClick={() => setSelected(s)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                <button key={d.id} onClick={() => setSelected(d)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
                   <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${st.cls}`}><Icon className="w-[18px] h-[18px]" /></span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[14px] font-medium text-slate-800 truncate">{s.invoiceNumber ? `${typeName(s.invoiceType)} ${number(s)}` : `Venta N.º ${s.saleNumber}`}</span>
+                    <span className="block text-[14px] font-medium text-slate-800 truncate">
+                      {d.uninvoiced ? `Venta N.º ${d.saleNumber}` : d.number ? `${typeName(d.type, d.kind)} ${number(d.pointOfSale, d.number)}` : `${typeName(d.type, d.kind)} · venta ${d.saleNumber}`}
+                    </span>
                     <span className="block text-[12px] text-slate-500 truncate">
-                      {new Date(s.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} · {s.receptorName || s.client?.name || 'Consumidor final'}
+                      {new Date(d.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} · {d.uninvoiced ? d.client?.name || 'Consumidor final' : receptor(d)}
                     </span>
                   </span>
                   <span className="text-right shrink-0">
-                    <span className="block text-[14px] font-semibold text-slate-900 tabular-nums">{money(s.total)}</span>
+                    <span className="block text-[14px] font-semibold text-slate-900 tabular-nums">{d.kind === 'NOTA_CREDITO' ? '−' : ''}{money(d.total || d.saleTotal || 0)}</span>
                     <span className="block text-[11px] font-semibold text-slate-500">{st.label}</span>
                   </span>
                 </button>
@@ -133,54 +152,70 @@ export default function MobileFiscalScreen() {
         open={configOpen}
         config={config}
         onClose={() => setConfigOpen(false)}
-        onSaved={(c) => { setConfig(c); setConfigOpen(false); }}
+        onSaved={(c) => { setConfig(c); setConfigOpen(false); load(tab); }}
       />
-      <InvoiceSheet sale={selected} enabled={enabled} onClose={() => setSelected(null)} onDone={() => { setSelected(null); loadSales(status); }} />
+      <DocSheet item={selected} enabled={enabled} onClose={() => setSelected(null)} onDone={() => { setSelected(null); load(tab); }} />
     </div>
   );
 }
 
-function InvoiceSheet({ sale: s, enabled, onClose, onDone }: { sale: any | null; enabled: boolean; onClose: () => void; onDone: () => void }) {
+function DocSheet({ item: d, enabled, onClose, onDone }: { item: any | null; enabled: boolean; onClose: () => void; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
-  const canInvoice = s && enabled && s.status === 'COMPLETED' && (s.invoiceStatus === 'NONE' || s.invoiceStatus === 'REJECTED' || s.invoiceStatus === 'PENDING');
 
-  const invoice = async () => {
+  const run = async (req: () => Promise<any>) => {
     setBusy(true);
     try {
-      const { data } = await api.post(`/fiscal/sales/${s.id}/invoice`, {});
-      toast.success(`${typeName(data.type)} autorizada · CAE ${data.cae}`, { duration: 6000 });
+      const { data } = await req();
+      if (data.status === 'AUTHORIZED') toast.success(`${typeName(data.type)} autorizada · CAE ${data.cae}`, { duration: 6000 });
+      else if (data.status === 'PENDING') toast(`Quedó en cola: ${data.error || 'sale sola cuando ARCA responda'}`, { icon: '⏳', duration: 6000 });
+      else toast.error(data.error || 'ARCA lo rechazó', { duration: 7000 });
       onDone();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'No se pudo facturar', { duration: 7000 });
+      toast.error(err.response?.data?.message || 'No se pudo completar', { duration: 7000 });
     } finally {
       setBusy(false);
     }
   };
 
-  const st = s ? STATUS[s.invoiceStatus] || STATUS.NONE : null;
+  let footer: React.ReactNode;
+  if (d && enabled) {
+    if (d.uninvoiced) footer = <PrimaryButton onClick={() => run(() => api.post(`/fiscal/sales/${d.id}/invoice`, {}))} loading={busy}>Facturar a consumidor final</PrimaryButton>;
+    else if ((d.status === 'PENDING' || d.status === 'REJECTED') && d.mine) footer = <PrimaryButton onClick={() => run(() => api.post(`/fiscal/documents/${encodeURIComponent(d.id)}/retry`, {}))} loading={busy}>Reintentar</PrimaryButton>;
+    else if (d.status === 'AUTHORIZED' && d.kind === 'FACTURA' && (!d.creditedBy || ['REJECTED', 'VOID'].includes(d.creditedBy.status))) {
+      footer = (
+        <button
+          onClick={() => window.confirm('Se emite una nota de crédito que anula esta factura. ¿Seguimos?') && run(() => api.post(`/fiscal/documents/${encodeURIComponent(d.id)}/credit-note`, {}))}
+          disabled={busy}
+          className="w-full h-12 rounded-2xl border border-red-200 text-red-700 text-[15px] font-semibold disabled:opacity-50"
+        >
+          Anular con nota de crédito
+        </button>
+      );
+    }
+  }
+
+  const st = d ? statusOf(d) : null;
   return (
-    <Sheet
-      open={!!s}
-      onClose={onClose}
-      title={s ? `Venta N.º ${s.saleNumber}` : ''}
-      footer={canInvoice ? <PrimaryButton onClick={invoice} loading={busy}>{s.invoiceStatus === 'NONE' ? 'Facturar' : 'Reintentar'}</PrimaryButton> : undefined}
-    >
-      {s && st && (
+    <Sheet open={!!d} onClose={onClose} title={d ? (d.uninvoiced ? `Venta N.º ${d.saleNumber}` : typeName(d.type, d.kind)) : ''} footer={footer}>
+      {d && st && (
         <div className="space-y-4 pt-1">
           <div className="text-center">
-            <p className="text-[30px] font-bold text-slate-900 tabular-nums tracking-tight">{money(s.total)}</p>
+            <p className="text-[30px] font-bold text-slate-900 tabular-nums tracking-tight">{money(d.total || d.saleTotal || 0)}</p>
             <span className={`inline-block mt-1 text-[12px] font-semibold px-2.5 py-1 rounded-full ${st.cls}`}>{st.label}</span>
           </div>
           <div className="rounded-2xl bg-slate-50 px-4 py-3 space-y-1.5 text-[13.5px]">
-            <Row k="Fecha" v={new Date(s.createdAt).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} />
-            <Row k="Cliente" v={s.receptorName || s.client?.name || 'Consumidor final'} />
-            {s.receptorDocNro && <Row k="Documento" v={s.receptorDocNro} />}
-            {s.invoiceNumber && <Row k="Comprobante" v={`${typeName(s.invoiceType)} ${number(s)}`} />}
-            {s.cae && <Row k="CAE" v={s.cae} />}
-            {s.caeExpiresAt && <Row k="Vence CAE" v={new Date(s.caeExpiresAt).toLocaleDateString('es-AR')} />}
+            <Row k="Fecha" v={new Date(d.createdAt).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} />
+            {!d.uninvoiced && <Row k="Venta" v={`N.º ${d.saleNumber ?? '—'}`} />}
+            <Row k="Cliente" v={d.uninvoiced ? d.client?.name || 'Consumidor final' : receptor(d)} />
+            {d.number && <Row k="Comprobante" v={number(d.pointOfSale, d.number)} />}
+            {d.cae && <Row k="CAE" v={d.cae} />}
+            {d.caeExpiresAt && <Row k="Vence CAE" v={new Date(d.caeExpiresAt).toLocaleDateString('es-AR')} />}
+            {d.assoc && <Row k="Anula" v={`${typeName(d.assoc.type)} ${number(d.assoc.pointOfSale, d.assoc.number)}`} />}
+            {d.creditedBy && <Row k="Nota de crédito" v={d.creditedBy.number ? number(d.creditedBy.pointOfSale, d.creditedBy.number) : 'en cola'} />}
+            {d.status === 'PENDING' && !d.mine && <Row k="La emite" v={`Caja #${d.ownerNode}`} />}
           </div>
-          {s.invoiceError && <p className="rounded-2xl bg-red-50 px-4 py-3 text-[13px] text-red-700">{s.invoiceError}</p>}
-          {s.status !== 'COMPLETED' && <p className="text-[12.5px] text-slate-500 text-center">Esta venta está anulada.</p>}
+          {d.error && <p className={`rounded-2xl px-4 py-3 text-[13px] ${d.status === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>{d.error}</p>}
+          {d.environment === 'HOMOLOGACION' && <p className="text-[12px] text-amber-700 text-center">Comprobante de prueba: sin validez fiscal.</p>}
         </div>
       )}
     </Sheet>
@@ -197,7 +232,12 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<any | null>(null);
-  useEffect(() => { if (open && config) { setForm(config); setTest(null); } }, [open, config]);
+  useEffect(() => {
+    if (open && config) {
+      setForm({ ...config, inicioActividades: config.inicioActividades ? String(config.inicioActividades).slice(0, 10) : '' });
+      setTest(null);
+    }
+  }, [open, config]);
   const set = (patch: any) => setForm((f: any) => ({ ...f, ...patch }));
 
   const save = async () => {
@@ -207,6 +247,9 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
         enabled: form.enabled,
         cuit: form.cuit,
         razonSocial: form.razonSocial,
+        domicilio: form.domicilio,
+        iibb: form.iibb,
+        inicioActividades: form.inicioActividades || null,
         ivaCondition: form.ivaCondition,
         pointOfSale: form.pointOfSale,
         environment: form.environment,
@@ -215,7 +258,7 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
       toast.success('Configuración guardada');
       onSaved(data);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'No se pudo guardar');
+      toast.error(err.response?.data?.message || 'No se pudo guardar', { duration: 6000 });
     } finally {
       setSaving(false);
     }
@@ -225,9 +268,9 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
     setTesting(true); setTest(null);
     try {
       const { data } = await api.post('/fiscal/test');
-      setTest({ ok: true, ...data });
+      setTest(data);
     } catch (err: any) {
-      setTest({ ok: false, message: err.response?.data?.message || 'No se pudo conectar' });
+      setTest({ ok: false, checks: [{ key: 'x', level: 'error', label: 'Conexión', detail: err.response?.data?.message || 'No se pudo conectar' }] });
     } finally {
       setTesting(false);
     }
@@ -246,6 +289,11 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
           <Field label="Punto de venta"><input className={input} inputMode="numeric" value={form.pointOfSale ?? ''} onChange={(e) => set({ pointOfSale: Number(e.target.value.replace(/\D/g, '')) || 0 })} /></Field>
         </div>
         <Field label="Razón social"><input className={input} value={form.razonSocial || ''} onChange={(e) => set({ razonSocial: e.target.value })} placeholder="Como figura en ARCA" /></Field>
+        <Field label="Domicilio comercial"><input className={input} value={form.domicilio || ''} onChange={(e) => set({ domicilio: e.target.value })} placeholder="Calle 123, Localidad" /></Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Ingresos brutos"><input className={input} value={form.iibb || ''} onChange={(e) => set({ iibb: e.target.value })} placeholder="N° o Exento" /></Field>
+          <Field label="Inicio de actividades"><input className={input} type="date" value={form.inicioActividades || ''} onChange={(e) => set({ inicioActividades: e.target.value })} /></Field>
+        </div>
 
         <Field label="Condición frente al IVA">
           <div className="grid grid-cols-2 gap-2">
@@ -266,25 +314,25 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
 
         <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 space-y-3">
           <p className="text-[13.5px] font-semibold text-slate-800 flex items-center gap-2">
-            <ShieldCheck className={`w-4 h-4 ${config?.delegatedAvailable || config?.hasOwnCertificate ? 'text-emerald-600' : 'text-slate-400'}`} /> Conexión con ARCA
+            <ShieldCheck className={`w-4 h-4 ${config?.ventraAvailable ? 'text-emerald-600' : 'text-slate-400'}`} /> Autorizar a Ventra en ARCA
           </p>
           <p className="text-[12.5px] text-slate-600 leading-snug">
-            {config?.certSource === 'OWN'
-              ? config?.hasOwnCertificate ? 'Usás tu propio certificado.' : 'Falta cargar tu certificado.'
-              : config?.delegatedAvailable
-                ? `Ventra firma por vos (CUIT ${config.delegatedCuit}). Solo tenés que autorizar esa CUIT en ARCA.`
-                : 'Los comprobantes se emiten desde el servidor de Ventra y llegan acá por la sincronización.'}
+            En ARCA → Administrador de Relaciones de Clave Fiscal → Nueva relación → servicio “Facturación Electrónica” → representante:
+            {config?.ventraCuit ? (
+              <button onClick={() => navigator.clipboard?.writeText(config.ventraCuit).then(() => toast.success('Copiado'))} className="ml-1 inline-flex items-center gap-1 font-mono font-semibold text-emerald-800">
+                {config.ventraCuit} <Copy className="w-3 h-3" />
+              </button>
+            ) : ' la CUIT de Ventra'}.
+            Después creá un punto de venta para web services y probá la conexión.
           </p>
           <button onClick={runTest} disabled={testing} className="w-full h-11 rounded-xl border border-slate-300 bg-white text-[14px] font-semibold text-slate-700 flex items-center justify-center gap-2 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${testing ? 'animate-spin' : ''}`} /> Probar conexión (no emite nada)
           </button>
-          {test && (
-            <div className={`rounded-xl px-3 py-2.5 text-[12.5px] ${test.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
-              {test.ok
-                ? <>ARCA responde. Último comprobante en el punto de venta {test.puntoVenta}: <b>{test.ultimoComprobante}</b></>
-                : test.message}
+          {test?.checks?.map((c: any) => (
+            <div key={c.key} className={`rounded-xl px-3 py-2.5 text-[12.5px] leading-snug ${c.level === 'ok' ? 'bg-emerald-50 text-emerald-800' : c.level === 'warn' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+              <b>{c.label}:</b> {c.detail}
             </div>
-          )}
+          ))}
         </div>
       </div>
     </Sheet>

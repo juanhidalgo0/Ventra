@@ -233,6 +233,11 @@ export async function saveStoreConfig(storeId: string, config: Partial<StoreConf
 export async function isSubdomainAvailable(subdomain: string, storeId: string): Promise<boolean> {
   if (!subdomain) return false;
   const db = getDb();
+  // Registro de direcciones (lo mantiene Ventra): si está registrada, es de esa tienda
+  if (/^[a-z0-9-]{2,60}$/.test(subdomain)) {
+    const reg = await getDoc(doc(db, 'ventra_store_slugs', subdomain)).catch(() => null);
+    if (reg?.exists()) return reg.data().storeId === storeId;
+  }
   // Solo las tiendas ya reclamadas son visibles (ver reglas de Firestore)
   const q = query(collection(db, 'ventra_stores'), where('claimed', '==', true), where('subdomain', '==', subdomain), limit(1));
   const snap = await getDocs(q);

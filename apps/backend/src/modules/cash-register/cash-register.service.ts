@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
@@ -516,7 +516,23 @@ export class CashRegisterService {
     });
   }
 
-  async deleteCashMovement(id: string, userId: string) {
+  /**
+   * Un cajero corrige los movimientos de una caja abierta, o de la suya mientras hace el
+   * arqueo. Después, solo el administrador: si no, cualquiera podía borrar un gasto o cambiar
+   * un retiro de días anteriores y descuadrar cierres ya controlados.
+   */
+  private assertCanEditMovements(
+    session: { status: string; userId: string; closingAmountCounted: number | null; zReportId: string | null },
+    userId: string,
+    role?: string,
+  ) {
+    const ownPendingArqueo = session.status === 'CLOSED' && session.closingAmountCounted == null && !session.zReportId && session.userId === userId;
+    if (role !== 'ADMIN' && session.status !== 'OPEN' && !ownPendingArqueo) {
+      throw new ForbiddenException('Esta caja ya está cerrada: solo el administrador puede modificar sus movimientos.');
+    }
+  }
+
+  async deleteCashMovement(id: string, userId: string, role?: string) {
     const movement = await this.prisma.cashMovement.findUnique({ where: { id } });
     if (!movement) throw new NotFoundException('Movimiento de caja no encontrado');
 
@@ -524,13 +540,14 @@ export class CashRegisterService {
     if (!session) {
       throw new BadRequestException('Sesión de caja no encontrada');
     }
+    this.assertCanEditMovements(session, userId, role);
 
     const deleted = await this.prisma.cashMovement.delete({ where: { id } });
     await this.recalculateSessionSummary(session.id);
     return deleted;
   }
 
-  async updateCashMovement(id: string, userId: string, data: { type?: string; amount?: number; description?: string }) {
+  async updateCashMovement(id: string, userId: string, data: { type?: string; amount?: number; description?: string }, role?: string) {
     const movement = await this.prisma.cashMovement.findUnique({ where: { id } });
     if (!movement) throw new NotFoundException('Movimiento de caja no encontrado');
 
@@ -538,6 +555,7 @@ export class CashRegisterService {
     if (!session) {
       throw new BadRequestException('Sesión de caja no encontrada');
     }
+    this.assertCanEditMovements(session, userId, role);
 
     const updated = await this.prisma.cashMovement.update({
       where: { id },

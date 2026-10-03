@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Request, Us
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
 @Controller('purchases')
 @UseGuards(JwtAuthGuard)
@@ -24,6 +25,8 @@ export class PurchasesController {
   }
 
   @Delete()
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   deleteAll() {
     return this.purchasesService.deleteAll();
   }

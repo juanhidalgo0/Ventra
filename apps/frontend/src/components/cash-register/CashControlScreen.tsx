@@ -12,6 +12,7 @@ import XReportPrint, { parseXSession } from './XReportPrint';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { useAuthStore } from '../../stores/authStore';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
+import { escapeHtml } from '../../utils/escapeHtml';
 import { MpSessionControl } from './MpReconcilePanel';
 
 export default function CashControlScreen() {
@@ -114,7 +115,7 @@ export default function CashControlScreen() {
       doc.write(`
         <html>
           <head>
-            <title>${title}</title>
+            <title>${escapeHtml(title)}</title>
             <style>
               body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
               h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
@@ -234,8 +235,8 @@ export default function CashControlScreen() {
       const totalDiff = cashClosingResult(s).totalDiff;
       return `
         <tr>
-          <td class="font-bold">${s.terminalName}</td>
-          <td>${s.user?.fullName}</td>
+          <td class="font-bold">${escapeHtml(s.terminalName)}</td>
+          <td>${escapeHtml(s.user?.fullName)}</td>
           <td>${new Date(s.openedAt).toLocaleDateString('es-AR')}</td>
           <td>${s.closedAt ? new Date(s.closedAt).toLocaleDateString('es-AR') : 'Abierta'}</td>
           <td class="text-right">${fmt(salesTotal)}</td>

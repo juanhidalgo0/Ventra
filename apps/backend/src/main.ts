@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { applyPendingRestore } from './modules/system/pending-restore';
 import { SyncService } from './modules/sync/sync.service';
+import { isAllowedOrigin } from './common/allowed-origin';
 
 /**
  * Secretos de las sesiones propios de cada instalación (y de cada caja en la nube): se
@@ -51,24 +52,18 @@ async function bootstrap() {
   // The body parser limits are better handled in the module or via specific configuration
   // but for now let's ensure the prefix and basic settings are correct.
   
-  // Solo la app (Tauri o el navegador en esta PC o en otra del local) y los sitios de
-  // Ventra pueden leer las respuestas. Cualquier otra página abierta en la PC de la caja
-  // no puede usar el backend local.
-  const isAllowedOrigin = (origin: string) => {
-    let url: URL;
-    try { url = new URL(origin); } catch { return false; }
-    const host = url.hostname;
-    if (url.protocol === 'tauri:') return true;
-    if (host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]') return true;
-    // Otras PCs del local que abren la app por la IP de esta
-    if (/^(10\.\d+|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+$/.test(host)) return true;
-    if (url.protocol !== 'https:') return false;
-    return host === 'ventra.store' || host.endsWith('.ventra.store')
-      || host === 'ventra-9cba5.web.app' || host === 'ventra-9cba5.firebaseapp.com';
-  };
   app.enableCors({
     origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)),
     credentials: true,
+  });
+
+  // Encabezados de seguridad básicos: la app no se puede meter en un marco de otro sitio
+  // (clickjacking) y el navegador no adivina tipos de archivo.
+  app.use((_req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
   });
 
   app.useGlobalPipes(

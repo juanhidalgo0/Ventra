@@ -19,6 +19,11 @@ class UpdateUserDto {
   @IsOptional() @IsString() password?: string;
 }
 
+/** Lo único que cada usuario puede cambiar de sí mismo (rol, estado y clave los maneja el administrador). */
+class UpdateProfileDto {
+  @IsOptional() @IsString() fullName?: string;
+}
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -28,8 +33,8 @@ export class UsersController {
   findAll() { return this.usersService.findAll(); }
 
   @Patch('profile/me') @Roles('ADMIN', 'SUPERVISOR', 'CASHIER')
-  updateMe(@Request() req, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(req.user.sub, dto);
+  updateMe(@Request() req, @Body() dto: UpdateProfileDto) {
+    return this.usersService.update(req.user.sub, { fullName: dto.fullName });
   }
 
   @Get(':id') @Roles('ADMIN', 'SUPERVISOR')
