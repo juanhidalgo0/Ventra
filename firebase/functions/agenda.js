@@ -180,7 +180,65 @@ async function refreshBusy(db, storeId, dateKey) {
   return ref.set({ items, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 }
 
+// ─── Clientes de la agenda ───
+// Resumen por cliente (visitas, faltas, gastado, próximo turno) en agenda_clients, armado con
+// sus turnos. Misma lógica que clientKeyOf / aggregateClient en apps/frontend/src/services/agendaCore.ts:
+// mantener las dos iguales. La nota del cliente la escribe el dueño y acá no se toca.
+const phoneKeyOf = (phone) => String(phone || "").replace(/\D/g, "").slice(-10);
+const nameKeyOf = (name) => String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/** Clave del cliente de un turno: el teléfono si tiene, si no el nombre. null para bloqueos. */
+function clientKeyOf(b) {
+  if (!b || b.kind !== "booking") return null;
+  const phone = b.customerPhoneKey || phoneKeyOf(b.customerPhone);
+  if (phone.length >= 6) return "p" + phone;
+  const name = nameKeyOf(b.customerName);
+  return name ? "n_" + name : null;
+}
+
+function aggregateClient(bookings, todayKey) {
+  const list = bookings.filter((b) => b.kind === "booking").sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
+  if (!list.length) return null;
+  const last = list[list.length - 1];
+  const withPhone = list.filter((b) => b.customerPhone).pop();
+  const done = list.filter((b) => b.status === "DONE" || b.payment);
+  const next = list.find((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && b.dateKey >= todayKey);
+  return {
+    name: last.customerName || "",
+    phone: withPhone ? withPhone.customerPhone : "",
+    visits: done.length,
+    noShows: list.filter((b) => b.status === "NO_SHOW").length,
+    cancelled: list.filter((b) => b.status === "CANCELLED").length,
+    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0),
+    firstDate: list[0].dateKey,
+    lastVisit: done.length ? done[done.length - 1].dateKey : null,
+    lastService: (done.length ? done[done.length - 1] : last).serviceName || "",
+    next: next ? { dateKey: next.dateKey, startMin: next.startMin, serviceName: next.serviceName || "" } : null,
+  };
+}
+
+/** Recalcula el resumen de un cliente con todos sus turnos. */
+async function refreshClient(db, storeId, key, sample) {
+  if (!key) return;
+  const storeRef = db.collection("ventra_stores").doc(storeId);
+  const col = storeRef.collection("bookings");
+  const snap = key.startsWith("p")
+    ? await col.where("customerPhoneKey", "==", key.slice(1)).get()
+    : await col.where("customerName", "==", (sample && sample.customerName) || "").get();
+  const mine = snap.docs.map((d) => d.data()).filter((b) => clientKeyOf(b) === key);
+  const ref = storeRef.collection("agenda_clients").doc(key);
+  const agg = aggregateClient(mine, localNow().dateKey);
+  if (!agg) {
+    // Sin turnos: se borra, salvo que el dueño le haya dejado una nota
+    const cur = await ref.get();
+    if (cur.exists && cur.data().note) return ref.set({ visits: 0, noShows: 0, cancelled: 0, spent: 0, next: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return ref.delete().catch(() => {});
+  }
+  return ref.set({ ...agg, key, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+}
+
 const DAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const fmtDay = (dateKey) => { const [, m, d] = dateKey.split("-"); return `${DAYS[weekday(dateKey)]} ${+d}/${+m}`; };
 
-module.exports = { book, refreshBusy, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };
+module.exports = { book, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };

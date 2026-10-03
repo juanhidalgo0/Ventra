@@ -1423,6 +1423,11 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     || before.staffId !== after.staffId || before.status !== after.status;
   if (changed) await Promise.all([...days].map((d) => agenda.refreshBusy(db, storeId, d)));
 
+  // Resumen del cliente (y del anterior, si el turno cambió de cliente)
+  const keys = new Map();
+  for (const b of [before, after]) { const k = agenda.clientKeyOf(b); if (k && !keys.has(k)) keys.set(k, b); }
+  await Promise.all([...keys].map(([k, b]) => agenda.refreshClient(db, storeId, k, b).catch((err) => logger.warn("No se pudo actualizar el cliente de la agenda", { storeId, err: err.message }))));
+
   if (!before && after && after.kind === "booking" && after.source === "online") {
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;

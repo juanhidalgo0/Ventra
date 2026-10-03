@@ -215,7 +215,7 @@
 
     var LINK_CONFIRM_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/ventraLinkConfirm";
     var GRACE_DAYS = 7, DAY = 864e5;
-    var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+    var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda:{ name:'Ventra Agenda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
     var STATE_LABEL = { ACTIVE:'Activa', GRACE:'En período de gracia', READ_ONLY:'Vencida · solo lectura', UNPAID:'Esperando el pago' };
 
     var $ = function(id){ return document.getElementById(id); };
@@ -236,9 +236,10 @@
 
     function renderAccount(data){
       var plan = PLANS[data.plan] || {};
-      // Plan Tienda: se usa desde web.ventra.store (no hay app de Windows ni PCs que vincular)
-      var storeOnly = data.plan === 'tienda';
-      $('openBtn').textContent = storeOnly ? 'Abrir mi tienda' : 'Abrir mi Ventra';
+      // Planes Tienda y Agenda: se usan desde web.ventra.store (no hay app de Windows ni PCs que vincular)
+      var agendaOnly = data.plan === 'agenda';
+      var storeOnly = data.plan === 'tienda' || agendaOnly;
+      $('openBtn').textContent = agendaOnly ? 'Abrir mi agenda' : storeOnly ? 'Abrir mi tienda' : 'Abrir mi Ventra';
       $('panelBtn').classList.toggle('hidden', storeOnly);
       var paidUntil = data.paidUntil && data.paidUntil.toDate ? data.paidUntil.toDate() : null;
       var s = stateOf(paidUntil);
@@ -255,7 +256,9 @@
       if (s.state === 'GRACE') text = 'Tu suscripción venció. Ventra sigue funcionando ' + (s.days === 1 ? '1 día más' : s.days + ' días más') + '. Los días de gracia que uses se descuentan del próximo mes.';
       else if (s.state === 'READ_ONLY') text = 'Terminaron los días de gracia: Ventra está en modo solo lectura y no permite vender. Renová para volver a usarlo normalmente.';
       else if (s.state === 'UNPAID') text = fromCheckout ? '¡Gracias por suscribirte! Estamos esperando la confirmación de Mercado Pago; puede tardar unos minutos.' : 'Todavía no se acreditó el primer pago de tu suscripción.';
-      else if (fromCheckout) text = storeOnly
+      else if (fromCheckout) text = agendaOnly
+        ? '¡Gracias por suscribirte! Tu agenda ya está activa: tocá "Abrir mi agenda" para cargar tus servicios y horarios. No hace falta instalar nada.'
+        : storeOnly
         ? '¡Gracias por suscribirte! Tu tienda ya está activa: tocá "Abrir mi tienda" para armarla. No hace falta instalar nada.'
         : '¡Gracias por suscribirte! Tu cuenta ya está activa: descargá la app y vinculá tu PC.';
       notice.className = 'notice ' + (fromCheckout && (s.state === 'ACTIVE' || s.state === 'UNPAID') ? 'THANKS' : s.state);

@@ -314,8 +314,8 @@ async function checkAccount({ db }, uid, graceDays) {
   let error = null;
   if (!acc) {
     error = new FiscalError(403, "Tu cuenta de Ventra no tiene una suscripción.", { code: "NO_ACCOUNT" });
-  } else if (acc.plan === "tienda") {
-    error = new FiscalError(403, "Tu plan Ventra Tienda no incluye la facturación. Pasate al plan Full en ventra.store.", { code: "PLAN_NO_CAJA" });
+  } else if (acc.plan === "tienda" || acc.plan === "agenda") {
+    error = new FiscalError(403, `Tu plan ${acc.plan === "agenda" ? "Ventra Agenda" : "Ventra Tienda"} no incluye la facturación. Pasate al plan Full en ventra.store.`, { code: "PLAN_NO_CAJA" });
   } else {
     const paidUntil = acc.paidUntil && acc.paidUntil.toMillis ? acc.paidUntil.toMillis() : null;
     if (!paidUntil) {

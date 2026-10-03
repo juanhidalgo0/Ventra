@@ -80,6 +80,10 @@ service cloud.firestore {
       match /bookings/{bookingId} {
         allow read, write: if storeOwner();
       }
+      // Clientes de la agenda (resumen por cliente y nota del dueño): solo el dueño.
+      match /agenda_clients/{clientId} {
+        allow read, write: if storeOwner();
+      }
       // Horarios ocupados por día (sin datos personales), para mostrar los libres.
       // Los mantiene la función ventraBookingWritten.
       match /agenda_busy/{dateKey} {
