@@ -23,6 +23,8 @@ const TABLES = [
   { name: "sync_tenants", key: ["tenant_id"] },
   { name: "sync_nodes", key: ["tenant_id", "device_id"] },
   { name: "sync_rows", key: ["tenant_id", "tbl", "id"] },
+  // Índice de los archivos de historia (los archivos quedan en Cloud Storage, ver archive.js)
+  { name: "sync_archives", key: ["id"] },
 ];
 
 /** Recorre una tabla completa por su clave primaria, de a PAGE filas. */

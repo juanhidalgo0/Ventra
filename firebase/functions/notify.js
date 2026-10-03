@@ -18,8 +18,10 @@ const DEFAULT_PREFS = {
   orderIdle: true,     // pedido sin atender hace 15 min
   bookings: true,      // turno reservado desde la tienda
   cashDiff: true,      // caja cerrada con diferencia
-  invoiceFail: true,   // factura rechazada por ARCA
+  invoiceFail: true,   // factura rechazada por ARCA, o la cola trabada por la configuración
   lowStock: true,      // productos que llegaron al stock mínimo (agrupados)
+  expiry: true,        // productos vencidos o por vencer (una vez por día)
+  mpUnmatched: true,   // entró un pago a Mercado Pago y no hay venta de MP de ese monto
   saleCancel: false,   // venta anulada (solo importes grandes)
   dailySummary: false, // resumen del día
   summaryHour: 21,
@@ -118,10 +120,36 @@ function messageFor(ev) {
       };
     case "invoiceFail":
       return {
-        title: "ARCA rechazó una factura",
+        title: "Una factura no se pudo emitir",
         body: `Ticket #${d.saleNumber || "—"} (${money(d.total)}): ${String(d.error || "sin detalle").slice(0, 140)}`,
         url: "/#/fiscal", tag: "invoice-" + (d.saleId || Date.now()),
       };
+    case "mpUnmatched": {
+      const hora = d.at ? new Intl.DateTimeFormat("es-AR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(new Date(d.at)) : "";
+      const canal = { point: "en la maquinita", qr: "con QR", transfer: "por transferencia" }[d.channel] || "";
+      const metodo = d.method === "CASH" ? "efectivo" : d.method;
+      return {
+        title: `Entró ${money(d.amount)} a Mercado Pago sin venta de MP`,
+        body: d.saleNumber
+          ? `Pago ${canal} a las ${hora}: la venta #${d.saleNumber} de ese monto se cargó como ${metodo}.`
+          : `Pago ${canal} a las ${hora}: no hay ninguna venta de ese monto cerca de esa hora.`,
+        url: "/#/cash-control", tag: "mp-" + (d.paymentId || Date.now()),
+      };
+    }
+    case "expiry": {
+      const expired = Number(d.expired) || 0, soon = Number(d.soon) || 0;
+      if (!expired && !soon) return null;
+      const parts = [];
+      if (expired) parts.push(`${expired} vencido${expired > 1 ? "s" : ""}`);
+      if (soon) parts.push(`${soon} por vencer`);
+      const items = Array.isArray(d.items) ? d.items : [];
+      const when = (n) => (n < 0 ? `venció hace ${-n} d` : n === 0 ? "vence hoy" : `vence en ${n} d`);
+      return {
+        title: `Vencimientos: ${parts.join(" y ")}`,
+        body: items.slice(0, 4).map((i) => `${i.name} (${when(Number(i.daysLeft))})`).join(", ") + (items.length > 4 ? ` y ${items.length - 4} más` : ""),
+        url: "/#/products", tag: "expiry",
+      };
+    }
     default:
       return null;
   }

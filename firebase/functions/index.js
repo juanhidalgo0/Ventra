@@ -14,10 +14,14 @@ const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const { MercadoPagoConfig, PreApproval } = require("mercadopago");
 const { GRACE_DAYS, nextPaidUntil } = require("./subscription-rules");
 const cloudSync = require("./sync");
+const syncArchive = require("./archive");
 const dashboard = require("./dashboard");
+const usage = require("./usage");
+const syncHead = require("./sync-head");
 
 setGlobalOptions({ maxInstances: 20, memory: "512Mi", region: "us-central1" });
 
@@ -25,6 +29,11 @@ admin.initializeApp();
 const db = admin.firestore();
 
 const VENTRA_MP_ACCESS_TOKEN = defineSecret("VENTRA_MP_ACCESS_TOKEN");
+// Mercado Pago de cada comercio (ver más abajo y mercadopago.js)
+const VENTRA_MP_CLIENT_ID = defineSecret("VENTRA_MP_CLIENT_ID");
+const VENTRA_MP_CLIENT_SECRET = defineSecret("VENTRA_MP_CLIENT_SECRET");
+// Clave secreta de los webhooks de la app de Ventra (Mercado Pago → Webhooks)
+const VENTRA_MP_WEBHOOK_SECRET = defineSecret("VENTRA_MP_WEBHOOK_SECRET");
 const RELEASE_PUSH_SECRET = defineSecret("RELEASE_PUSH_SECRET");
 // Clave privada Ed25519 (PEM) con la que se firma el estado que recibe cada PC.
 // La app solo tiene la clave pública: puede verificar, nunca falsificar.
@@ -48,19 +57,38 @@ async function verifyUser(req) {
   const header = req.get("Authorization") || "";
   const match = header.match(/^Bearer (.+)$/);
   if (!match) return null;
+  return verifyAccountToken(match[1]);
+}
+
+/**
+ * Solo una entrada real con Google habla en nombre de la cuenta. Las sesiones que reparte
+ * ventraStoreSession (custom token con el uid de la cuenta, para la tienda online) y las
+ * anónimas sirven para Firestore, nada más: con una de esas, un cajero podía vincular su
+ * propia PC a la cuenta del dueño o abrir la caja en la nube desde afuera.
+ */
+async function verifyAccountToken(idToken) {
   try {
-    return await admin.auth().verifyIdToken(match[1]);
+    const user = await admin.auth().verifyIdToken(String(idToken || ""));
+    const provider = user.firebase && user.firebase.sign_in_provider;
+    if (provider === "custom" || provider === "anonymous") {
+      logger.warn(`Ventra: sesión ${provider} rechazada para una operación de cuenta (${user.uid})`);
+      return null;
+    }
+    return user;
   } catch (err) {
     logger.warn("Ventra: token inválido", err.message);
     return null;
   }
 }
 
+// Orígenes de Ventra para CORS: el dominio exacto o un subdominio (no "otroventra.store")
+const VENTRA_ORIGINS = [/^https:\/\/([a-z0-9-]+\.)*ventra\.store$/, /^https:\/\/ventra-9cba5\.(web\.app|firebaseapp\.com)$/];
+
 // La landing lo llama cuando el usuario (logueado con Google) elige un plan.
 // Crea/actualiza su cuenta y una suscripción recurrente de Mercado Pago, y
 // devuelve la URL de pago.
 exports.createVentraSubscription = onRequest(
-  { cors: [/ventra\.store$/, /ventra-9cba5\.(web\.app|firebaseapp\.com)$/], secrets: [VENTRA_MP_ACCESS_TOKEN] },
+  { cors: VENTRA_ORIGINS, secrets: [VENTRA_MP_ACCESS_TOKEN] },
   async (req, res) => {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
@@ -125,9 +153,19 @@ exports.createVentraSubscription = onRequest(
 
 // Mercado Pago avisa cada cambio de una suscripción y cada cobro mensual.
 // Siempre se consulta el dato real en la API (nunca se confía en el payload).
-exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN] }, async (req, res) => {
+// Mercado Pago permite UNA sola URL de webhooks por app: llegan acá los avisos de las
+// suscripciones de Ventra y también los cobros del Point de cada comercio (tema "order").
+exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN, VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET, VENTRA_MP_WEBHOOK_SECRET] }, async (req, res) => {
   const { query, body } = req;
   const type = query.type || query.topic || (body && (body.type || body.topic));
+  if (type === "order" || type === "payment") {
+    try {
+      return await mercadopago.webhook(req, res, { ...mpCreds(), webhookSecret: String(VENTRA_MP_WEBHOOK_SECRET.value() || "").trim(), onPayment: mpChecks.enqueue });
+    } catch (err) {
+      logger.error("Ventra MP: error en el webhook de cobros", err);
+      return res.status(500).json({ error: "Error" });
+    }
+  }
   const id = query["data.id"] || query.id || (body && body.data && body.data.id);
   const accessToken = String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim();
 
@@ -239,7 +277,7 @@ exports.ventraLinkStart = onRequest({ cors: true }, async (req, res) => {
 });
 
 exports.ventraLinkConfirm = onRequest(
-  { cors: [/ventra\.store$/, /ventra-9cba5\.(web\.app|firebaseapp\.com)$/] },
+  { cors: VENTRA_ORIGINS },
   async (req, res) => {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
     const user = await verifyUser(req);
@@ -384,20 +422,22 @@ const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 // Si lo recordado no coincide (equipo recién vinculado o con secreto nuevo) se vuelve a leer.
 const DEVICE_CACHE_MS = 5 * 60 * 1000;
 const deviceCache = new Map();
+const deviceKind = new Map(); // deviceId -> "pc" | "cloud", para medir el uso de la caja en la nube
 
 async function deviceTenant(deviceId, deviceSecret) {
   if (!deviceId || !deviceSecret) return null;
   const id = String(deviceId);
   const hash = sha256(deviceSecret);
   const cached = deviceCache.get(id);
-  if (cached && Date.now() - cached.at < DEVICE_CACHE_MS && cached.secretHash === hash) return cached.uid;
+  if (cached && Date.now() - cached.at < DEVICE_CACHE_MS && cached.secretHash === hash) { deviceKind.set(id, cached.kind); return cached.uid; }
   const device = await db.collection("ventra_devices").doc(id).get();
   if (!device.exists || device.data().secretHash !== hash) {
     deviceCache.delete(id);
     return null;
   }
   if (deviceCache.size > 5000) deviceCache.clear();
-  deviceCache.set(id, { at: Date.now(), secretHash: hash, uid: device.data().uid });
+  deviceCache.set(id, { at: Date.now(), secretHash: hash, uid: device.data().uid, kind: device.data().kind || "pc" });
+  deviceKind.set(id, device.data().kind || "pc");
   return device.data().uid;
 }
 
@@ -410,6 +450,7 @@ exports.ventraSync = onRequest(
     const { deviceId, deviceSecret, action } = req.body || {};
     const uid = await deviceTenant(deviceId, deviceSecret);
     if (!uid) return res.status(401).json({ error: "Equipo no vinculado" });
+    usage.track(uid, { syncCalls: 1, cloudSyncCalls: deviceKind.get(String(deviceId)) === "cloud" ? 1 : 0 });
 
     try {
       if (action === "putImage" || action === "getImage") {
@@ -420,14 +461,28 @@ exports.ventraSync = onRequest(
           const [exists] = await file.exists();
           if (!exists) return res.status(404).json({ error: "Sin foto" });
           const [[buffer], [meta]] = await Promise.all([file.download(), file.getMetadata()]);
+          usage.track(uid, { imgDownBytes: buffer.length });
+          await usage.flush();
           return res.status(200).json({ ok: true, dataUrl: `data:${meta.contentType || "image/jpeg"};base64,${buffer.toString("base64")}` });
         }
-        const m = /^data:([^;,]+);base64,(.+)$/s.exec(String(dataUrl || ""));
+        const m = /^data:(image\/(?:jpeg|png|webp|gif|avif));base64,(.+)$/s.exec(String(dataUrl || ""));
         if (!m) return res.status(400).json({ error: "Foto inválida" });
         const buffer = Buffer.from(m[2], "base64");
         if (buffer.length > IMAGE_MAX_BYTES) return res.status(413).json({ error: "Foto demasiado grande" });
         await file.save(buffer, { contentType: m[1], resumable: false });
+        usage.track(uid, { imgUpBytes: buffer.length });
+        await usage.flush();
         return res.status(200).json({ ok: true });
+      }
+
+      // Caja al día preguntando por novedades: se responde sin despertar Neon
+      if (action === "pull" && !req.body.all && !req.body.fresh) {
+        const idle = await syncHead.idlePull(uid, req.body.after);
+        if (idle) {
+          usage.track(uid, { idlePulls: 1 });
+          await usage.flush();
+          return res.status(200).json(idle);
+        }
       }
 
       const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
@@ -443,16 +498,51 @@ exports.ventraSync = onRequest(
         if (!cloudSync.validRows(req.body.rows)) return res.status(400).json({ error: "Filas inválidas" });
         result = await cloudSync.push(sql, uid, String(deviceId), req.body.rows, req.body.gen);
       } else if (action === "pull") {
-        result = await cloudSync.pull(sql, uid, String(deviceId), req.body.after, !!req.body.all, !!req.body.fresh);
+        result = await cloudSync.pull(sql, uid, String(deviceId), req.body.after, !!req.body.all, !!req.body.fresh, req.body.limit, req.body.part, req.body.cut, req.body.until);
+      } else if (action === "archives") {
+        result = await syncArchive.list(sql, uid);
+      } else if (action === "archive") {
+        // Se manda comprimido tal cual está guardado: la caja lo descomprime
+        const gz = await syncArchive.read(sql, admin.storage().bucket(), uid, req.body.id);
+        if (!gz) return res.status(404).json({ error: "Archivo inexistente" });
+        usage.track(uid, { neonCalls: 1 });
+        await usage.flush();
+        res.set("Content-Type", "application/json; charset=utf-8");
+        res.set("Content-Encoding", "gzip");
+        return res.status(200).send(gz);
+      } else if (action === "archiveDeletes") {
+        result = await syncArchive.deletes(sql, uid, req.body.after);
       } else if (action === "reset") {
         result = await cloudSync.reset(sql, uid);
+        await syncArchive.drop(sql, admin.storage().bucket(), uid);
         logger.warn(`Ventra: reinicio de fábrica de la cuenta ${uid} (desde ${deviceId})`);
       } else if (action === "status") {
         result = await cloudSync.status(sql, uid);
       } else {
         return res.status(400).json({ error: "Acción desconocida (actualizá Ventra)" });
       }
-      return res.status(200).json(result);
+      if (action === "push") {
+        usage.track(uid, { pushRows: req.body.rows.length, neonCalls: 1 });
+        if (result.maxSeq) await syncHead.afterWrite(uid, result.maxSeq, result.gen);
+        delete result.maxSeq;
+      } else if (action === "pull") {
+        usage.track(uid, { pullRows: result.rows ? result.rows.length : 0, neonCalls: 1 });
+        // Solo las consultas completas de novedades confirman el marcador
+        if (!req.body.all && !req.body.fresh && !result.resync) await syncHead.raise(uid, result.head, result.gen, true);
+      } else if (action === "reset") {
+        await syncHead.afterWrite(uid, 0, result.gen);
+      } else {
+        usage.track(uid, { neonCalls: 1 });
+      }
+      await usage.flush();
+      // Las tandas grandes viajan comprimidas: el JSON de filas se achica entre 5 y 10 veces
+      const json = JSON.stringify(result);
+      if (json.length > 64 * 1024 && /gzip/.test(String(req.headers["accept-encoding"] || ""))) {
+        res.set("Content-Type", "application/json; charset=utf-8");
+        res.set("Content-Encoding", "gzip");
+        return res.status(200).send(zlib.gzipSync(json, { level: 6 }));
+      }
+      return res.status(200).type("application/json").send(json);
     } catch (err) {
       logger.error(`Ventra sync: error en ${action} (${uid})`, err);
       return res.status(500).json({ error: "Error del servidor de sincronización" });
@@ -464,7 +554,7 @@ exports.ventraSync = onRequest(
 // Solo lectura sobre la réplica en Neon. El comercio sale del login de Google;
 // un administrador puede ver el de cualquier cliente (?tenant=uid) para soporte.
 exports.ventraDashboard = onRequest(
-  { cors: [/ventra\.store$/, /ventra-9cba5\.(web\.app|firebaseapp\.com)$/, /^http:\/\/localhost:\d+$/], secrets: [NEON_DATABASE_URL] },
+  { cors: [...VENTRA_ORIGINS, /^http:\/\/localhost:\d+$/], secrets: [NEON_DATABASE_URL] },
   async (req, res) => {
     if (req.method !== "GET") return res.status(405).send("Method Not Allowed");
     const user = await verifyUser(req);
@@ -493,6 +583,7 @@ exports.ventraDashboard = onRequest(
         result = { overview, cash, lowStock };
       }
       const acc = account.data();
+      if (tenantId === user.uid) { usage.track(tenantId, { panelCalls: 1 }); await usage.flush(); }
       return res.status(200).json({ ok: true, account: { email: acc.email, planName: acc.planName || null }, ...result });
     } catch (err) {
       logger.error(`Ventra panel: error (${tenantId})`, err);
@@ -549,11 +640,8 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
       return res.status(500).json({ error: "No se pudo validar el acceso de soporte" });
     }
   } else {
-    try {
-      user = await admin.auth().verifyIdToken(String(idToken || ""));
-    } catch {
-      return res.status(401).json({ error: "Sesión de Google inválida" });
-    }
+    user = await verifyAccountToken(idToken);
+    if (!user) return res.status(401).json({ error: "Sesión de Google inválida" });
   }
   const account = await db.collection("ventra_accounts").doc(user.uid).get();
   if (!account.exists) return res.status(403).json({ error: "Esta cuenta no tiene un plan de Ventra" });
@@ -658,8 +746,59 @@ async function listAuthUsersWithEmail() {
   return out;
 }
 
+// ─── Estado del sistema y costos (admin) ───
+// Lo que se carga a mano (costos del mes, vencimientos) vive en ventra_config/admin.
+const ADMIN_CONFIG = () => db.collection("ventra_config").doc("admin");
+const NEON_FREE_BYTES = 512 * 1024 * 1024;
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms))]);
+
+async function systemHealth(config) {
+  const check = async (fn) => {
+    const t = Date.now();
+    try { return { ok: true, ms: Date.now() - t, ...(await withTimeout(fn(), 8000)) }; } catch (err) { return { ok: false, error: err.message }; }
+  };
+  const [neon, cloudHost, backupInfo, firestore] = await Promise.all([
+    check(async () => {
+      const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+      const [{ bytes }] = await cloudSync.run(sql, `SELECT pg_database_size(current_database())::bigint AS bytes`, []);
+      return { bytes: Number(bytes), limitBytes: Number(config.neonLimitMB) > 0 ? Number(config.neonLimitMB) * 1048576 : NEON_FREE_BYTES };
+    }),
+    check(async () => {
+      const r = await fetch(`${CLOUD_APP_URL}/_ventra/health`);
+      if (!r.ok) throw new Error(`respondió ${r.status}`);
+      const d = await r.json();
+      return { openBoxes: d.cajas };
+    }),
+    check(async () => {
+      const [files] = await admin.storage().bucket().getFiles({ prefix: backup.PREFIX });
+      const last = files.filter((f) => /.ndjson.gz$/.test(f.name)).sort((a, b) => a.name.localeCompare(b.name)).pop();
+      if (!last) throw new Error("no hay copias");
+      const at = last.metadata.updated || last.metadata.timeCreated;
+      const ageH = (Date.now() - Date.parse(at)) / 3600000;
+      if (ageH > 36) throw new Error(`la última es de hace ${Math.round(ageH / 24)} días`);
+      return { file: last.name.slice(backup.PREFIX.length), bytes: Number(last.metadata.size || 0), at, count: files.length };
+    }),
+    check(async () => { await db.collection("ventra_config").limit(1).get(); return {}; }),
+  ]);
+  const renewals = Object.entries(config.renewals || {}).map(([key, r]) => ({
+    key, label: r.label || key, date: r.date || null,
+    daysLeft: r.date ? Math.ceil((Date.parse(r.date) - Date.now()) / DAY) : null,
+  })).sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9));
+  return { neon, cloudHost, backup: backupInfo, firestore, renewals };
+}
+
 async function buildAdminOverview() {
   const now = Date.now();
+  const month = usage.monthKey();
+  await usage.flush(true);
+  const configSnap = await ADMIN_CONFIG().get();
+  const config = configSnap.exists ? configSnap.data() : {};
+  const soft = (p, what) => p.catch((err) => { logger.warn(`Ventra admin: sin ${what}`, err.message); return {}; });
+  const [system, usageByUid, storageByUid] = await Promise.all([
+    soft(systemHealth(config), "estado del sistema"),
+    soft(usage.monthUsage(month), "uso del mes"),
+    soft(usage.storageBytesByTenant(), "tamaño de fotos"),
+  ]);
   const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid, storeByUid, authUsers] = await Promise.all([
     db.collection("ventra_accounts").get(),
     db.collection("ventra_devices").get(),
@@ -685,6 +824,7 @@ async function buildAdminOverview() {
     (devicesByUid[data.uid] = devicesByUid[data.uid] || []).push({
       deviceId: d.id,
       name: data.name || "PC",
+      kind: data.kind || "pc",
       linkedAt: tsToIso(data.linkedAt),
       lastSeenAt: tsToIso(data.lastSeenAt),
     });
@@ -749,6 +889,50 @@ async function buildAdminOverview() {
     .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
     .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
 
+  // Costo estimado de cada cliente este mes (según su uso) contra lo que paga
+  const monthCosts = (config.costs && config.costs[month]) || {};
+  const alloc = usage.allocate(monthCosts, accounts.map((a) => ({
+    uid: a.uid,
+    active: a.state === "ACTIVE" || a.state === "GRACE",
+    cloudBytes: a.cloud ? a.cloud.bytes : 0,
+    storageBytes: storageByUid[a.uid] || 0,
+    hasCloudBox: a.devices.some((d) => d.kind === "cloud"),
+    usage: usageByUid[a.uid] || {},
+  })));
+  accounts.forEach((a) => {
+    a.usage = { ...(usageByUid[a.uid] || {}), storageBytes: storageByUid[a.uid] || 0 };
+    a.cost = alloc[a.uid];
+    a.monthPaid = a.payments.filter((p) => p.paidAt && p.paidAt.slice(0, 7) === month).reduce((s, p) => s + p.amount, 0);
+  });
+  const staleDevices = accounts.filter((a) => a.state === "ACTIVE").reduce((n, a) => n + a.devices.filter((d) => d.kind !== "cloud" && d.lastSeenAt && now - Date.parse(d.lastSeenAt) > 3 * DAY).length, 0);
+
+  // Facturación: comercios que delegaron en ARCA y esperan que Ventra acepte la delegación
+  let fiscal = null;
+  try {
+    const snap = await db.collection("ventra_fiscal_cuits").where("delegationPendingSince", "!=", null).get();
+    const emailOf = new Map(accounts.map((a) => [a.uid, a.email]));
+    const all = await db.collection("ventra_fiscal_cuits").count().get();
+    // CUIT que una cuenta quiere usar en producción: hay que confirmar que es del titular
+    const toApprove = await db.collection("ventra_fiscal_cuits").where("approved", "==", false).get();
+    fiscal = {
+      cuits: all.data().count,
+      pending: snap.docs.map((d) => ({
+        cuit: d.id,
+        uid: d.data().uid,
+        email: emailOf.get(d.data().uid) || null,
+        since: d.data().delegationPendingSince && d.data().delegationPendingSince.toDate ? d.data().delegationPendingSince.toDate().toISOString() : null,
+      })),
+      approvals: toApprove.docs.map((d) => ({
+        cuit: d.id,
+        uid: d.data().uid,
+        email: emailOf.get(d.data().uid) || null,
+        since: tsToIso(d.data().approvalRequestedAt || d.data().boundAt),
+      })),
+    };
+  } catch (err) {
+    logger.warn("Ventra admin: no se pudo leer la facturación", err.message);
+  }
+
   const stateOrder = { GRACE: 0, READ_ONLY: 1, UNPAID: 2, ACTIVE: 3 };
   accounts.sort((x, y) => (stateOrder[x.state] - stateOrder[y.state]) || String(x.email).localeCompare(String(y.email)));
 
@@ -765,11 +949,13 @@ async function buildAdminOverview() {
     },
     accounts,
     registered,
+    system: { ...system, staleDevices, fiscal },
+    costs: { month, entered: monthCosts, all: config.costs || {}, renewals: config.renewals || {}, neonLimitMB: config.neonLimitMB || null },
   };
 }
 
 exports.ventraAdmin = onRequest(
-  { cors: [/ventra\.store$/, /ventra-9cba5\.(web\.app|firebaseapp\.com)$/], secrets: [NEON_DATABASE_URL] },
+  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL] },
   async (req, res) => {
     const user = await verifyUser(req);
     if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
@@ -854,6 +1040,45 @@ exports.ventraAdmin = onRequest(
         const published = !!(req.body && req.body.published);
         await ref.update({ isPublished: published, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
         await log({ uid: String(uid), storeId, published });
+        return res.status(200).json({ ok: true });
+      }
+
+      // Costos del mes y vencimientos importantes, cargados a mano
+      if (action === "setCosts") {
+        const b = req.body || {};
+        const m = String(b.month || "");
+        if (!/^\d{4}-\d{2}$/.test(m)) return res.status(400).json({ error: "Mes inválido" });
+        const num = (v) => Math.max(0, Math.min(1e9, Number(v) || 0));
+        const costs = { neon: num(b.neon), firebase: num(b.firebase), fly: num(b.fly), other: num(b.other) };
+        const renewals = {};
+        for (const [k, r] of Object.entries(b.renewals || {}).slice(0, 20)) {
+          if (!/^[a-z0-9_]{1,30}$/.test(k)) continue;
+          const date = r && r.date && !isNaN(Date.parse(r.date)) ? String(r.date).slice(0, 10) : null;
+          renewals[k] = { label: String((r && r.label) || k).slice(0, 60), date };
+        }
+        const update = { [`costs.${m}`]: costs, renewals, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        if (b.neonLimitMB !== undefined) update.neonLimitMB = num(b.neonLimitMB) || null;
+        const ref = ADMIN_CONFIG();
+        if (!(await ref.get()).exists) await ref.set({});
+        await ref.update(update);
+        await log({ month: m, costs });
+        return res.status(200).json({ ok: true });
+      }
+
+      // Facturación: confirmar que la CUIT es de esa cuenta (después de verificar al titular),
+      // o liberarla si la pidió alguien que no es el dueño
+      if (action === "approveCuit" || action === "releaseCuit") {
+        const cuit = String((req.body && req.body.cuit) || "").replace(/\D/g, "");
+        if (cuit.length !== 11) return res.status(400).json({ error: "CUIT inválida" });
+        const ref = db.collection("ventra_fiscal_cuits").doc(cuit);
+        const snap = await ref.get();
+        if (!snap.exists) return res.status(404).json({ error: "Esa CUIT no está pedida por ninguna cuenta" });
+        if (action === "approveCuit") {
+          await ref.update({ approved: true, approvedBy: user.email, approvedAt: admin.firestore.FieldValue.serverTimestamp() });
+        } else {
+          await ref.delete();
+        }
+        await log({ uid: snap.data().uid, cuit });
         return res.status(200).json({ ok: true });
       }
 
@@ -1045,6 +1270,36 @@ exports.ventraNotify = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+/**
+ * Aviso de prueba desde la pantalla Notificaciones del celular: lo manda a todos los
+ * celulares de la cuenta, sin mirar preferencias ni horario de silencio, y devuelve
+ * cuántos llegaron a Firebase para poder diagnosticar.
+ */
+exports.ventraPushTest = onRequest({ cors: true }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  let uid;
+  try {
+    uid = (await admin.auth().verifyIdToken(String((req.headers.authorization || "").replace(/^Bearer /, "")))).uid;
+  } catch (err) {
+    return res.status(401).json({ error: "Sesión inválida" });
+  }
+  try {
+    const tokens = await db.collection("ventra_push").doc(uid).collection("tokens").get();
+    if (tokens.empty) return res.status(200).json({ ok: true, devices: 0, sent: 0 });
+    const r = await admin.messaging().sendEachForMulticast({
+      tokens: tokens.docs.map((d) => d.data().token).filter(Boolean),
+      data: { title: "Ventra · Aviso de prueba", body: "Si ves esto, las notificaciones funcionan en este celular.", url: "/#/inicio", tag: "push-test" },
+      webpush: { headers: { Urgency: "high", TTL: "600" } },
+    });
+    const errors = r.responses.filter((x) => x.error).map((x) => x.error.code);
+    logger.info(`Ventra aviso de prueba → ${uid}: ${r.successCount}/${tokens.size}`, { errors });
+    return res.status(200).json({ ok: true, devices: tokens.size, sent: r.successCount, errors });
+  } catch (err) {
+    logger.error("Ventra aviso de prueba: error", err);
+    return res.status(500).json({ error: "No se pudo enviar" });
+  }
+});
+
 /** Pedido que nadie empezó a preparar en 15 minutos (se avisa una sola vez) */
 exports.ventraOrderIdle = onSchedule({ schedule: "every 5 minutes", timeZone: notify.TZ }, async () => {
   const now = Date.now();
@@ -1074,14 +1329,14 @@ exports.ventraOrderIdle = onSchedule({ schedule: "every 5 minutes", timeZone: no
 exports.ventraDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL] }, async () => {
   const hour = notify.localHour();
   const wanted = await db.collection("ventra_push").where("prefs.dailySummary", "==", true).get();
-  if (wanted.empty) return;
+  // Solo se consulta Neon si a alguien le toca el resumen a esta hora: si no, se despertaba la base cada hora
+  const due = wanted.docs.filter((doc) => Number({ ...notify.DEFAULT_PREFS, ...(doc.data().prefs || {}) }.summaryHour) === hour);
+  if (!due.length) return;
   const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
   await cloudSync.ensureSchema(sql);
   const today = new Date().toLocaleDateString("en-CA", { timeZone: notify.TZ });
   const lastWeek = new Date(Date.parse(today) - 7 * 86400000).toISOString().slice(0, 10);
-  for (const doc of wanted.docs) {
-    const prefs = { ...notify.DEFAULT_PREFS, ...(doc.data().prefs || {}) };
-    if (Number(prefs.summaryHour) !== hour) continue;
+  for (const doc of due) {
     try {
       const [day, prev] = await Promise.all([
         dashboard.overview(sql, doc.id, today, today),
@@ -1123,6 +1378,26 @@ exports.ventraNightlyBackup = onSchedule(
   }
 );
 
+// ─── Mantenimiento de Neon ──────────────────────────────────────────
+// Después de la copia de seguridad: junta los movimientos de stock que todas las cajas ya
+// bajaron, borra las bajas ya vistas y deja en la nube solo la auditoría reciente. Así la
+// base crece con los datos del comercio y no con su historial de cambios. Ver sync.maintain.
+exports.ventraSyncMaintenance = onSchedule(
+  { schedule: "30 5 * * *", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL], timeoutSeconds: 540 },
+  async () => {
+    const started = Date.now();
+    const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+    await cloudSync.ensureSchema(sql);
+    const results = await cloudSync.maintainAll(sql);
+    // Archivo de la historia vieja fuera de Neon (apagado salvo VENTRA_SYNC_ARCHIVE=1, ver archive.js)
+    const archived = syncArchive.ENABLED ? await syncArchive.archiveAll(sql, admin.storage().bucket()) : null;
+    for (const r of archived || []) if (r.error) logger.error(`Ventra archivo: error (${r.tenantId})`, r.error);
+    const [{ bytes }] = await cloudSync.run(sql, `SELECT pg_database_size(current_database())::bigint AS bytes`, []);
+    for (const r of results) if (r.error) logger.error(`Ventra mantenimiento: error (${r.tenantId})`, r.error);
+    logger.info("Ventra mantenimiento de la nube listo", { results, archived, bytes: Number(bytes), ms: Date.now() - started });
+  }
+);
+
 // ─── Agenda de turnos (ver agenda.js) ───
 const agenda = require("./agenda");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
@@ -1157,11 +1432,19 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
 // servidor con su nombre, descripción y portada ya puestos. El resto lo sigue haciendo la tienda.
 let tiendaHtml = { at: 0, html: "" };
 const attr = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const storeSlugs = require("./store-slugs");
+// Por el registro de direcciones: nunca "la primera tienda que tenga esa dirección" (ver store-slugs.js)
 const findStore = async (slug) => {
-  if (!slug || !/^[a-z0-9-]{2,60}$/.test(slug)) return null;
-  const snap = await db.collection("ventra_stores").where("claimed", "==", true).where("subdomain", "==", slug).limit(1).get();
-  return snap.empty ? null : snap.docs[0].data();
+  const doc = await storeSlugs.findBySlug(db, slug);
+  return doc ? doc.data() : null;
 };
+
+/** Cada cambio de una tienda: su dirección queda registrada a su nombre, o se le saca si es de otra. */
+exports.ventraStoreSlug = onDocumentWritten("ventra_stores/{storeId}", async (event) => {
+  const before = event.data && event.data.before.exists ? event.data.before.data() : null;
+  const after = event.data && event.data.after.exists ? event.data.after.data() : null;
+  await storeSlugs.onStoreWritten(db, event.params.storeId, before, after);
+});
 exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req, res) => {
   // /_og/<tienda>: la portada (o el logo) como imagen, para las tiendas que la tienen guardada embebida
   const og = String(req.path || "").match(/^\/_og\/([a-z0-9-]{2,60})/);
@@ -1185,6 +1468,7 @@ exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req
     if (slug && /^[a-z0-9-]{2,60}$/.test(slug)) {
       const c = await findStore(slug);
       if (c && c.isPublished) {
+        if (c.ownerUid) { usage.track(c.ownerUid, { storeViews: 1 }); await usage.flush(); }
         const name = c.businessName || "Tienda online";
         const title = `${name} · Pedí online`;
         const desc = c.description || `Mirá la carta de ${name} y hacé tu pedido online.`;
@@ -1206,4 +1490,94 @@ exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req
   }
   res.set("Cache-Control", "public, max-age=60, s-maxage=300");
   res.status(200).type("html").send(html);
+});
+
+// ─── Mercado Pago de cada comercio (ver mercadopago.js) ─────────────
+// Secretos: firebase functions:secrets:set VENTRA_MP_CLIENT_ID
+//           firebase functions:secrets:set VENTRA_MP_CLIENT_SECRET
+// En la app de Mercado Pago de Ventra, "URL de redireccionamiento":
+//   https://us-central1-ventra-9cba5.cloudfunctions.net/ventraMpOAuth
+const mercadopago = require("./mercadopago");
+const mpCreds = () => ({
+  clientId: String(VENTRA_MP_CLIENT_ID.value() || "").trim(),
+  clientSecret: String(VENTRA_MP_CLIENT_SECRET.value() || "").trim(),
+});
+
+// La PC (con su vinculación) conecta la cuenta, consulta el estado, y cobra con la maquinita Point
+exports.ventraMpConnect = onRequest({ cors: true, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET], maxInstances: 20 }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado" });
+  try {
+    await mercadopago.connect(req, res, { uid, deviceId: String(deviceId), ...mpCreds() });
+  } catch (err) {
+    logger.error(`Ventra MP: error en connect (${uid})`, err);
+    res.status(500).json({ error: "No se pudo consultar Mercado Pago" });
+  }
+});
+
+// Link del QR y vuelta de la autorización de Mercado Pago (los abre el celular del dueño)
+exports.ventraMpOAuth = onRequest({ secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET], maxInstances: 10 }, async (req, res) => {
+  if (req.method !== "GET") return res.status(405).send("Method Not Allowed");
+  try {
+    await mercadopago.oauth(req, res, mpCreds());
+  } catch (err) {
+    logger.error("Ventra MP: error en la autorización", err);
+    res.status(500).send("No se pudo completar la conexión con Mercado Pago. Probá de nuevo desde Ventra.");
+  }
+});
+
+// Pagos de Mercado Pago sin venta (ver mp-checks.js): cada 5 minutos se piden los pagos
+// nuevos de cada cuenta conectada y se controlan los que ya tuvieron su margen. Neon se
+// consulta solo si hay pagos para controlar.
+const mpChecks = require("./mp-checks");
+exports.ventraMpChecks = onSchedule(
+  { schedule: "every 5 minutes", timeZone: notify.TZ, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET, NEON_DATABASE_URL], maxInstances: 1 },
+  async () => {
+    const found = await mercadopago.pollAccounts(mpCreds(), mpChecks.enqueue);
+    const r = await mpChecks.runDue({
+      getSql: () => cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim()),
+      cloudSync, syncHead, notify, db,
+      mpMethodsFor: mercadopago.mpMethodsFor,
+    });
+    if (found || r.checked) logger.info(`Ventra MP: ${found} pagos nuevos, ${r.checked} controlados, ${r.alerted || 0} avisos`);
+  },
+);
+
+// Los tokens duran 180 días: cada lunes se renuevan los que están por vencer
+exports.ventraMpRefreshTokens = onSchedule(
+  { schedule: "0 4 * * 1", timeZone: notify.TZ, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET] },
+  () => mercadopago.refreshExpiring(mpCreds()),
+);
+
+// ─── Facturación electrónica: pasarela hacia ARCA (ver fiscal.js) ───
+// Secreto: firebase functions:secrets:set ARCA_CREDENTIALS --data-file <json>
+//   (el JSON se arma con: node scripts/arca-credenciales.js; tiene los certificados
+//    de Ventra para HOMOLOGACION y, cuando exista, PRODUCCION)
+const fiscal = require("./fiscal");
+const ARCA_CREDENTIALS = defineSecret("ARCA_CREDENTIALS");
+
+// La PC (o la caja en la nube) pide la operación con su vinculación; el certificado nunca sale de acá
+exports.ventraFiscal = onRequest({ secrets: [ARCA_CREDENTIALS], maxInstances: 20, timeoutSeconds: 90, memory: "256MiB" }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  try {
+    const result = await fiscal.handle({
+      db, admin, logger, usage, graceDays: GRACE_DAYS,
+      credentialsRaw: String(ARCA_CREDENTIALS.value() || "").trim(),
+    }, uid, req.body);
+    await usage.flush();
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    await usage.flush();
+    if (err instanceof fiscal.FiscalError) {
+      if (err.status >= 500) logger.warn(`Ventra fiscal (${uid}): ${err.code} ${err.message}`);
+      return res.status(err.status).json({ error: err.message, code: err.code, retryable: err.retryable });
+    }
+    logger.error(`Ventra fiscal: error inesperado (${uid})`, err);
+    return res.status(500).json({ error: "Error del servidor de facturación de Ventra", code: "INTERNAL", retryable: true });
+  }
 });
