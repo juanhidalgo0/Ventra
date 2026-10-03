@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GraduationCap, PlayCircle, Keyboard, X, ChevronRight, ChevronUp } from 'lucide-react';
-import { TOURS, ROUTE_HELP, ROUTE_SHORTCUTS, type TourStep, type HelpEntry } from './tours';
+import { tourSteps, ROUTE_HELP, ROUTE_SHORTCUTS, type HelpEntry } from './tours';
+import { getTourCtx } from './tourContext';
 import { useTourStore } from './tourStore';
 
 /** A tour is offered only if at least one of its targets is on screen right now. */
 function isAvailable(entry: HelpEntry) {
-  const targeted = (TOURS[entry.tour] as TourStep[]).filter((s) => s.target);
+  const ctx = getTourCtx();
+  if (entry.when && !entry.when(ctx)) return false;
+  const targeted = tourSteps(entry.tour, ctx).filter((s) => s.target);
   if (targeted.length === 0) return true;
   return targeted.some((s) =>
     Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${s.target}"]`)).some((el) => {

@@ -40,6 +40,8 @@ export interface AgendaConfig {
   maxDaysAhead: number;
   /** Si es false, los turnos online quedan "Por confirmar" */
   autoConfirm: boolean;
+  /** Tipo de servicio (plantilla con la que arrancó: peluqueria, salud...). Adapta textos y recorridos. */
+  kind?: string;
 }
 
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'DONE' | 'NO_SHOW' | 'CANCELLED' | 'BLOCK';

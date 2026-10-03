@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2,
+  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { setStoreSetting } from '../../services/storeSettings';
-import { AGENDA_TEMPLATES, type AgendaTemplate } from '../../services/agendaTemplates';
+import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../services/agendaTemplates';
+import { useAutoTour } from '../common/tour/GuidedTour';
+import { useTourStore } from '../common/tour/tourStore';
+import { setTourScreen } from '../common/tour/tourContext';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
@@ -46,6 +49,12 @@ export default function AgendaScreen() {
   }, [storeId]);
 
   const agenda = useMemo(() => fullAgenda((config as any)?.agenda), [config]);
+  // Los recorridos hablan el idioma del rubro (pacientes, alumnos, barberos...)
+  setTourScreen({ agendaKind: detectAgendaKind(agenda), mobile });
+  const ready = !!storeId && !!config;
+  useAutoTour('agenda', ready && tab === 'agenda' && agenda.services.length > 0 && agenda.staff.length > 0);
+  useAutoTour('agendaConfig', ready && tab === 'config');
+  const startTour = useTourStore((s) => s.start);
   const saveAgenda = async (next: AgendaConfig) => {
     if (!storeId) return;
     // Solo turnos: la página existe para reservar, así que se publica o no junto con la agenda
@@ -86,8 +95,8 @@ export default function AgendaScreen() {
   const tabs = (
     <div className={`inline-flex p-1 rounded-xl ${mobile ? 'bg-white/15' : 'bg-slate-100'}`}>
       {([['agenda', 'Agenda', CalendarDays], ['config', 'Configurar', Settings]] as const).map(([id, text, Icon]) => (
-        <button key={id} onClick={() => setTab(id)}
-          className={`h-9 px-3.5 rounded-lg text-[13.5px] font-semibold flex items-center gap-1.5 ${tab === id ? (mobile ? 'bg-white text-rose-700' : 'bg-white text-slate-900 shadow-sm') : (mobile ? 'text-white/85' : 'text-slate-500')}`}>
+        <button key={id} onClick={() => setTab(id)} data-tour={id === 'config' ? 'agenda-tab-config' : undefined}
+          className={`ag-press transition-colors h-9 px-3.5 rounded-lg text-[13.5px] font-semibold flex items-center gap-1.5 ${tab === id ? (mobile ? 'bg-white text-rose-700' : 'bg-white text-slate-900 shadow-sm') : (mobile ? 'text-white/85' : 'text-slate-500')}`}>
           <Icon className="w-4 h-4" /> {text}
         </button>
       ))}
@@ -109,10 +118,15 @@ export default function AgendaScreen() {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
         <ScreenHeader back={!agendaOnly} title="Agenda" subtitle={subtitle}
-          action={canShare ? <button onClick={shareLink} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25" aria-label="Compartir mi link"><Share2 className="w-5 h-5" /></button> : undefined}>
+          action={storeId && config ? (
+            <span className="flex items-center gap-1.5">
+              <button onClick={() => startTour(tab === 'config' ? 'agendaConfig' : 'agenda')} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25 ag-press" aria-label="Cómo funciona"><HelpCircle className="w-5 h-5" /></button>
+              {canShare && <button data-tour="agenda-share" onClick={shareLink} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25 ag-press" aria-label="Compartir mi link"><Share2 className="w-5 h-5" /></button>}
+            </span>
+          ) : undefined}>
           {storeId && tabs}
         </ScreenHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain"><div key={tab} className="ag-fade">{body}</div></div>
       </div>
     );
   }
@@ -126,7 +140,7 @@ export default function AgendaScreen() {
         </div>
         <div className="flex items-center gap-2">
           {canShare && (
-            <button onClick={shareLink} className="h-10 px-4 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-2">
+            <button data-tour="agenda-share" onClick={shareLink} className="ag-press h-10 px-4 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-2">
               <Share2 className="w-4 h-4" /> Compartir mi link
             </button>
           )}
@@ -138,7 +152,7 @@ export default function AgendaScreen() {
           {storeId && tabs}
         </div>
       </div>
-      {body}
+      <div key={tab} className="ag-fade">{body}</div>
     </div>
   );
 }
@@ -155,6 +169,27 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
   const [open, setOpen] = useState<Booking | null>(null);
   const [creating, setCreating] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  // Hacia dónde se movió el día: la tira y la lista entran desde ese lado
+  const prevDay = useRef(day);
+  const dir = day === prevDay.current ? '' : day > prevDay.current ? 'ag-from-right' : 'ag-from-left';
+  useEffect(() => { prevDay.current = day; }, [day]);
+  // Turnos que cambiaron de estado o se cobraron (acá o desde otro equipo): destellan una vez
+  const seen = useRef<Map<string, string> | null>(null);
+  const [flash, setFlash] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const sig = (b: Booking) => `${b.status}|${b.payment ? 1 : 0}`;
+    const prev = seen.current;
+    seen.current = new Map(bookings.map((b) => [b.id, sig(b)]));
+    if (!prev) return;
+    const changed = bookings.filter((b) => prev.has(b.id) && prev.get(b.id) !== sig(b)).map((b) => b.id);
+    if (!changed.length) return;
+    setFlash(new Set(changed));
+    const t = setTimeout(() => setFlash(new Set()), 1200);
+    return () => clearTimeout(t);
+  }, [bookings]);
+  // Reloj para la línea de "ahora" y el turno en curso
+  const [nowMin, setNowMin] = useState(() => localNow().min);
+  useEffect(() => { const t = setInterval(() => setNowMin(localNow().min), 30000); return () => clearInterval(t); }, []);
 
   // Se escucha una ventana alrededor del día elegido (para los contadores de la tira de días)
   const from = addDays(day, -3), to = addDays(day, 10);
@@ -201,19 +236,19 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
         </button>
       )}
       {pending > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-[13.5px] text-amber-900 font-medium">
+        <div className="anim-rise bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-[13.5px] text-amber-900 font-medium">
           {pending === 1 ? 'Hay 1 turno por confirmar' : `Hay ${pending} turnos por confirmar`}
         </div>
       )}
 
       {/* Días */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-2 flex items-center gap-1">
-        <button onClick={() => setDay(addDays(day, -1))} className="w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día anterior"><ChevronLeft className="w-5 h-5" /></button>
-        <div className="flex-1 grid grid-cols-7 gap-1">
+      <div data-tour="agenda-days" className="bg-white rounded-2xl border border-slate-200/80 p-2 flex items-center gap-1 overflow-hidden">
+        <button onClick={() => setDay(addDays(day, -1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día anterior"><ChevronLeft className="w-5 h-5" /></button>
+        <div key={day} className={`flex-1 grid grid-cols-7 gap-1 ${dir}`}>
           {strip.map((k) => {
             const n = countFor(k), on = k === day;
             return (
-              <button key={k} onClick={() => setDay(k)} className={`${mobile ? 'h-16' : 'h-14'} min-w-0 rounded-xl flex flex-col items-center justify-center ${on ? 'bg-rose-600 text-white' : k === today ? 'bg-rose-50 text-rose-700' : 'text-slate-700 hover:bg-slate-50'}`}>
+              <button key={k} onClick={() => setDay(k)} className={`ag-press transition-colors ${mobile ? 'h-16' : 'h-14'} min-w-0 rounded-xl flex flex-col items-center justify-center ${on ? 'bg-rose-600 text-white' : k === today ? 'bg-rose-50 text-rose-700' : 'text-slate-700 hover:bg-slate-50'}`}>
                 <span className="text-[11px] font-semibold uppercase opacity-80">{DAY_NAMES[weekday(k)].slice(0, 3)}</span>
                 <span className="text-[17px] font-bold leading-tight">{+k.slice(8)}</span>
                 <span className={`text-[10px] font-semibold ${on ? 'text-white/85' : 'text-slate-400'}`}>{n ? (mobile ? n : `${n} turno${n === 1 ? '' : 's'}`) : '·'}</span>
@@ -221,7 +256,7 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
             );
           })}
         </div>
-        <button onClick={() => setDay(addDays(day, 1))} className="w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día siguiente"><ChevronRight className="w-5 h-5" /></button>
+        <button onClick={() => setDay(addDays(day, 1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día siguiente"><ChevronRight className="w-5 h-5" /></button>
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -234,56 +269,86 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setBlocking(true)} className="h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-1.5"><Ban className="w-4 h-4" /> Bloquear</button>
-          <button onClick={() => setCreating(true)} className="h-10 px-3.5 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-1.5"><Plus className="w-4 h-4" /> Turno</button>
+          <button data-tour="agenda-block" onClick={() => setBlocking(true)} className="ag-press h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-1.5"><Ban className="w-4 h-4" /> Bloquear</button>
+          <button data-tour="agenda-new" onClick={() => setCreating(true)} className="ag-press h-10 px-3.5 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-1.5"><Plus className="w-4 h-4" /> Turno</button>
         </div>
       </div>
 
       {staff.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
+        <div data-tour="agenda-staff" className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
           {[{ id: 'ALL', name: 'Todos', color: '#0f172a' }, ...staff.map((s) => staffById[s.id])].map((s) => (
             <button key={s.id} onClick={() => setStaffFilter(s.id)}
-              className={`h-9 px-3.5 rounded-full text-[13px] font-semibold border shrink-0 flex items-center gap-1.5 ${staffFilter === s.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+              className={`ag-press transition-colors h-9 px-3.5 rounded-full text-[13px] font-semibold border shrink-0 flex items-center gap-1.5 ${staffFilter === s.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
               {s.id !== 'ALL' && <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />}{s.name}
             </button>
           ))}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+      <div data-tour="agenda-list" key={`${day}-${staffFilter}`} className={`bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden ${dir}`}>
         {loading ? (
-          <p className="px-4 py-10 text-center text-[13.5px] text-slate-400">Cargando…</p>
+          <div aria-label="Cargando" className="divide-y divide-slate-100">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+                <span className="w-14 space-y-1.5"><span className="block h-3.5 w-11 rounded ag-skel" /><span className="block h-2.5 w-8 rounded ag-skel" /></span>
+                <span className="w-1 h-9 rounded-full ag-skel" />
+                <span className="flex-1 space-y-1.5"><span className="block h-3.5 w-2/5 rounded ag-skel" /><span className="block h-2.5 w-3/5 rounded ag-skel" /></span>
+              </div>
+            ))}
+          </div>
         ) : visible.length === 0 ? (
-          <p className="px-4 py-10 text-center text-[13.5px] text-slate-400">No hay turnos {day === today ? 'hoy' : 'este día'}.</p>
-        ) : visible.map((b) => {
+          <div className="px-4 py-10 text-center ag-fade">
+            <CalendarDays className="w-8 h-8 text-slate-300 mx-auto" />
+            <p className="mt-2 text-[13.5px] text-slate-400">No hay turnos {day === today ? 'hoy' : 'este día'}.</p>
+            <button onClick={() => setCreating(true)} className="mt-2 text-[13px] font-semibold text-rose-700">Cargar uno</button>
+          </div>
+        ) : visible.map((b, i) => {
           const st = STATUS[b.status];
           const color = b.staffId === 'ALL' ? '#94a3b8' : staffById[b.staffId]?.color || '#94a3b8';
+          const isToday = day === today;
+          const live = isToday && b.kind === 'booking' && occupies(b) && b.status !== 'DONE' && b.startMin <= nowMin && nowMin < b.endMin;
+          const past = isToday && b.kind === 'booking' && b.endMin <= nowMin && b.status !== 'PENDING';
+          // Línea de "ahora" antes del primer turno que todavía no empezó
+          const nowLine = isToday && b.startMin > nowMin && (i === 0 || visible[i - 1].startMin <= nowMin);
           return (
-            <button key={b.id} onClick={() => setOpen(b)} className="w-full flex items-stretch gap-3 px-4 py-3 text-left hover:bg-slate-50 active:bg-slate-50">
-              <span className="w-14 shrink-0">
-                <span className="block text-[15px] font-bold text-slate-900 tabular-nums">{hhmm(b.startMin)}</span>
-                <span className="block text-[11.5px] text-slate-400 tabular-nums">{hhmm(b.endMin)}</span>
-              </span>
-              <span className="w-1 rounded-full shrink-0" style={{ background: color }} />
-              <span className="flex-1 min-w-0">
-                {b.kind === 'block' ? (
-                  <>
-                    <span className="block text-[14.5px] font-semibold text-slate-600">Bloqueado{b.reason ? ` · ${b.reason}` : ''}</span>
-                    <span className="block text-[12.5px] text-slate-400">{b.staffId === 'ALL' ? 'Todo el local' : b.staffName}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="block text-[14.5px] font-semibold text-slate-900 truncate">{b.customerName}</span>
-                    <span className="block text-[12.5px] text-slate-500 truncate">{b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}{b.source === 'online' ? ' · online' : ''}</span>
-                  </>
-                )}
-              </span>
-              <span className="shrink-0 self-center">
-                {b.payment
-                  ? <span className="text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">Cobrado</span>
-                  : <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span>}
-              </span>
-            </button>
+            <div key={b.id}>
+              {nowLine && (
+                <div className="flex items-center gap-2 px-4 py-1 ag-fade" aria-label="Ahora">
+                  <span className="text-[11px] font-bold text-rose-600 tabular-nums">{hhmm(nowMin)}</span>
+                  <span className="relative w-2 h-2 rounded-full bg-rose-600 ag-live" />
+                  <span className="flex-1 h-px bg-rose-200" />
+                </div>
+              )}
+              <button onClick={() => setOpen(b)} style={{ '--i': i } as React.CSSProperties}
+                className={`ag-item w-full flex items-stretch gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 ${flash.has(b.id) ? 'ag-flash' : ''} ${live ? 'bg-emerald-50/50' : ''}`}>
+                <span className={`w-14 shrink-0 transition-opacity ${past ? 'opacity-60' : ''}`}>
+                  <span className="block text-[15px] font-bold text-slate-900 tabular-nums">{hhmm(b.startMin)}</span>
+                  <span className="block text-[11.5px] text-slate-400 tabular-nums">{hhmm(b.endMin)}</span>
+                </span>
+                <span className="w-1 rounded-full shrink-0" style={{ background: color }} />
+                <span className={`flex-1 min-w-0 transition-opacity ${past ? 'opacity-60' : ''}`}>
+                  {b.kind === 'block' ? (
+                    <>
+                      <span className="block text-[14.5px] font-semibold text-slate-600">Bloqueado{b.reason ? ` · ${b.reason}` : ''}</span>
+                      <span className="block text-[12.5px] text-slate-400">{b.staffId === 'ALL' ? 'Todo el local' : b.staffName}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1.5 text-[14.5px] font-semibold text-slate-900 min-w-0">
+                        {live && <span className="relative w-2 h-2 rounded-full bg-emerald-500 shrink-0 ag-live" aria-label="En curso" />}
+                        <span className="truncate">{b.customerName}</span>
+                      </span>
+                      <span className="block text-[12.5px] text-slate-500 truncate">{live ? 'En curso · ' : ''}{b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}{b.source === 'online' ? ' · online' : ''}</span>
+                    </>
+                  )}
+                </span>
+                <span className="shrink-0 self-center">
+                  {b.payment
+                    ? <span className="text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200 transition-colors">Cobrado</span>
+                    : <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset transition-colors ${st.cls}`}>{st.label}</span>}
+                </span>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -430,7 +495,7 @@ function DayPicker({ value, onChange, days = 30 }: { value: string; onChange: (k
   return (
     <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
       {Array.from({ length: days }, (_, i) => addDays(today, i)).map((k) => (
-        <button key={k} onClick={() => onChange(k)} className={`w-14 h-14 shrink-0 rounded-xl flex flex-col items-center justify-center border ${k === value ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
+        <button key={k} onClick={() => onChange(k)} className={`ag-press transition-colors w-14 h-14 shrink-0 rounded-xl flex flex-col items-center justify-center border ${k === value ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
           <span className="text-[10.5px] font-semibold uppercase opacity-80">{i18nShort(k)}</span>
           <span className="text-[16px] font-bold leading-tight">{+k.slice(8)}</span>
         </button>
@@ -501,9 +566,9 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
         <div>
           <span className={label}>Horario libre</span>
           {slots.length ? (
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-              {slots.map((t) => (
-                <button key={t} onClick={() => { setStart(t); setCustom(''); }} className={`h-10 rounded-lg text-[13.5px] font-semibold tabular-nums border ${start === t && !custom ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{hhmm(t)}</button>
+            <div key={`${serviceId}-${staff?.id}-${day}`} className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+              {slots.map((t, i) => (
+                <button key={t} style={{ '--i': i } as React.CSSProperties} onClick={() => { setStart(t); setCustom(''); }} className={`ag-item ag-press transition-colors h-10 rounded-lg text-[13.5px] font-semibold tabular-nums border ${start === t && !custom ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{hhmm(t)}</button>
               ))}
             </div>
           ) : <p className="text-[13px] text-slate-400">No quedan horarios libres ese día.</p>}
@@ -572,14 +637,14 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${on ? 'bg-rose-600' : 'bg-slate-300'}`}>
-      <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+      <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-200 ease-out ${on ? 'translate-x-5' : 'translate-x-0'}`} />
     </button>
   );
 }
 
-function Card({ icon: Icon, title, hint, children, action }: { icon: any; title: string; hint?: string; children: React.ReactNode; action?: React.ReactNode }) {
+function Card({ icon: Icon, title, hint, children, action, tour }: { icon: any; title: string; hint?: string; children: React.ReactNode; action?: React.ReactNode; tour?: string }) {
   return (
-    <section className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5">
+    <section data-tour={tour} className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5">
       <div className="flex items-start gap-3 mb-3">
         <span className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center shrink-0"><Icon className="w-[18px] h-[18px] text-rose-600" /></span>
         <div className="flex-1 min-w-0">
@@ -682,7 +747,7 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
 
   if (embedded) {
     return (
-      <Card icon={Globe} title="Tu página de turnos" hint="Cómo te encuentran tus clientes para reservar."
+      <Card tour="agenda-cfg-page" icon={Globe} title="Tu página de turnos" hint="Cómo te encuentran tus clientes para reservar."
         action={dirty ? <button onClick={submit} disabled={saving} className="h-9 px-3 rounded-xl bg-rose-600 text-white text-[13px] font-semibold disabled:opacity-60">{saving ? 'Guardando…' : 'Guardar'}</button> : undefined}>
         {fields}
       </Card>
@@ -723,6 +788,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
     const me = (() => { try { const u = JSON.parse(localStorage.getItem('user') || 'null'); return (u?.fullName || '').split(' ')[0]; } catch { return ''; } })();
     setA({
       ...a,
+      kind: t.id,
       services: t.services.map((x) => ({ ...x, id: newId() })),
       staff: a.staff.length ? a.staff : [{ id: newId(), name: me || 'Yo', color: STAFF_COLORS[0], hours: baseHours(), active: true }],
     });
@@ -745,7 +811,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
   return (
     <div className={`${mobile ? 'px-4 py-4 pb-28' : 'p-6 max-w-5xl w-full mx-auto pb-28'} space-y-4`}>
       {page}
-      <section className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 flex items-center gap-4">
+      <section data-tour="agenda-cfg-online" className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 flex items-center gap-4">
         <div className="flex-1">
           <p className="text-[15px] font-bold text-slate-900">Tomar turnos online</p>
           <p className="text-[12.5px] text-slate-500">
@@ -757,14 +823,14 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         <Toggle on={a.enabled} onChange={(v) => setA({ ...a, enabled: v })} />
       </section>
 
-      <Card icon={Scissors} title="Servicios" hint="Lo que el cliente elige al reservar, con cuánto dura y cuánto sale."
+      <Card tour="agenda-cfg-services" icon={Scissors} title="Servicios" hint="Lo que el cliente elige al reservar, con cuánto dura y cuánto sale."
         action={<button onClick={() => setA({ ...a, services: [...a.services, { id: newId(), name: '', durationMin: 30, price: 0, active: true }] })} className="h-9 px-3 rounded-xl bg-rose-50 text-rose-700 text-[13px] font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /> Agregar</button>}>
         {a.services.length === 0 ? (
           <div className="py-1">
             <p className="text-[13px] text-slate-500 mb-2.5">Empezá con los servicios típicos de tu rubro y después los ajustás:</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {AGENDA_TEMPLATES.map((t) => (
-                <button key={t.id} onClick={() => applyTemplate(t)} className="h-12 rounded-xl border border-slate-200 bg-white hover:border-rose-300 hover:bg-rose-50/50 text-[14px] font-semibold text-slate-800 flex items-center justify-center gap-2">
+                <button key={t.id} onClick={() => applyTemplate(t)} className="ag-press transition-colors h-12 rounded-xl border border-slate-200 bg-white hover:border-rose-300 hover:bg-rose-50/50 text-[14px] font-semibold text-slate-800 flex items-center justify-center gap-2">
                   <span className="text-[18px]">{t.emoji}</span> {t.title}
                 </button>
               ))}
@@ -774,8 +840,8 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         ) : (
           <div className="space-y-3">
             {missingPrices > 0 && <p className="text-[12.5px] font-medium text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Completá los precios: {missingPrices === 1 ? 'falta 1' : `faltan ${missingPrices}`}.</p>}
-            {a.services.map((s) => (
-              <div key={s.id} className={`rounded-xl border border-slate-200 p-3 ${s.active === false ? 'opacity-60' : ''}`}>
+            {a.services.map((s, i) => (
+              <div key={s.id} style={{ '--i': i } as React.CSSProperties} className={`ag-item rounded-xl border border-slate-200 p-3 ${s.active === false ? 'opacity-60' : ''}`}>
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <input className={input} value={s.name} onChange={(e) => setService(s.id, { name: e.target.value })} placeholder="Nombre del servicio" />
                   <button onClick={() => { if (confirm(`¿Borrar "${s.name || 'este servicio'}"?`)) setA({ ...a, services: a.services.filter((x) => x.id !== s.id) }); }} className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center" aria-label="Borrar"><Trash2 className="w-4 h-4 text-slate-500" /></button>
@@ -807,12 +873,12 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         )}
       </Card>
 
-      <Card icon={Users} title="Profesionales" hint="Quiénes atienden y en qué horarios. Cada uno tiene su propia agenda."
+      <Card tour="agenda-cfg-staff" icon={Users} title="Profesionales" hint="Quiénes atienden y en qué horarios. Cada uno tiene su propia agenda."
         action={<button onClick={() => { const id = newId(); setA({ ...a, staff: [...a.staff, { id, name: '', color: STAFF_COLORS[a.staff.length % STAFF_COLORS.length], hours: baseHours(), active: true }] }); setEditingStaff(id); }} className="h-9 px-3 rounded-xl bg-rose-50 text-rose-700 text-[13px] font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /> Agregar</button>}>
         {a.staff.length === 0 ? <p className="text-[13px] text-slate-400 py-2">Agregá a quienes atienden. Si trabajás solo/a, agregate a vos.</p> : (
           <div className="space-y-3">
-            {a.staff.map((p) => (
-              <div key={p.id} className={`rounded-xl border border-slate-200 p-3 ${p.active === false ? 'opacity-60' : ''}`}>
+            {a.staff.map((p, i) => (
+              <div key={p.id} style={{ '--i': i } as React.CSSProperties} className={`ag-item rounded-xl border border-slate-200 p-3 ${p.active === false ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color }} />
                   <input className={input} value={p.name} onChange={(e) => setStaff(p.id, { name: e.target.value })} placeholder="Nombre" />
@@ -821,7 +887,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
                 </div>
                 <p className="text-[12px] text-slate-500 mt-1.5">{hoursSummary(p.hours)}</p>
                 {editingStaff === p.id && (
-                  <div className="mt-2">
+                  <div className="mt-2 anim-rise">
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {STAFF_COLORS.map((c) => <button key={c} onClick={() => setStaff(p.id, { color: c })} className={`w-7 h-7 rounded-full ${p.color === c ? 'ring-2 ring-offset-2 ring-slate-900' : ''}`} style={{ background: c }} aria-label="Color" />)}
                     </div>
@@ -835,7 +901,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         )}
       </Card>
 
-      <Card icon={SlidersHorizontal} title="Reglas de reserva">
+      <Card tour="agenda-cfg-rules" icon={SlidersHorizontal} title="Reglas de reserva">
         <div className="grid sm:grid-cols-2 gap-3">
           <div><span className={label}>Mostrar horarios cada</span>
             <select className={input} value={a.slotStepMin} onChange={(e) => setA({ ...a, slotStepMin: Number(e.target.value) })}>{[10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} minutos</option>)}</select></div>
@@ -855,7 +921,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         </div>
       </Card>
 
-      <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-6'} z-30 transition-all ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+      <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-6'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button onClick={save} disabled={saving} className={`${mobile ? 'w-full' : 'px-8'} h-12 rounded-2xl bg-rose-600 text-white font-semibold shadow-lg shadow-rose-600/30 disabled:opacity-60`}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
     </div>

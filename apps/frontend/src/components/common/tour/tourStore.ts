@@ -27,6 +27,9 @@ function writeSeen(seen: Record<string, boolean>) {
 
 interface TourState {
   activeTour: TourId | null;
+  /** La bienvenida del primer uso está abierta: los recorridos automáticos esperan */
+  paused: boolean;
+  setPaused: (paused: boolean) => void;
   start: (id: TourId) => void;
   /** Starts the tour only the first time the user lands on its screen. */
   startIfUnseen: (id: TourId) => void;
@@ -37,9 +40,11 @@ interface TourState {
 
 export const useTourStore = create<TourState>((set, get) => ({
   activeTour: null,
+  paused: false,
+  setPaused: (paused) => set({ paused }),
   start: (id) => set({ activeTour: id }),
   startIfUnseen: (id) => {
-    if (!get().hasSeen(id) && !get().activeTour) set({ activeTour: id });
+    if (!get().paused && !get().hasSeen(id) && !get().activeTour) set({ activeTour: id });
   },
   finish: () => {
     const id = get().activeTour;

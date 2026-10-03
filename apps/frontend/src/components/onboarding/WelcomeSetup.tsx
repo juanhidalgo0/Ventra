@@ -9,6 +9,7 @@ import {
   useBusinessStore, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, PROFILE_LABELS, type BusinessIntent, type BusinessProfile,
 } from '../../stores/businessStore';
 import { setStoreSetting, whenStoreSettingsReady } from '../../services/storeSettings';
+import { useTourStore } from '../common/tour/tourStore';
 
 const UPGRADE_URL = 'https://ventra.store/cuenta.html';
 const INTENT_ICON: Record<BusinessIntent, any> = { mostrador: Store, online: Globe, turnos: CalendarDays };
@@ -28,7 +29,13 @@ type Step = 'intent' | 'rubro' | 'name';
  * arman los "Primeros pasos". Todo es salteable y se cambia después en Configuración.
  * No aparece en comercios que ya trabajan (con productos o ventas) ni en el plan Agenda,
  * que arranca directo armando su página de turnos.
+ * Con la caja (planes Caja y Full) el rubro es obligatorio: define qué funciones y qué
+ * recorridos ve el comercio. Si nunca se eligió (se salteó la bienvenida o el comercio ya
+ * trabajaba), se pregunta solo eso.
  */
+
+/** El rubro ya se eligió alguna vez en este comercio (o viene de la versión vieja). */
+const rubroKnown = () => !!(localStorage.getItem('business_profile') || localStorage.getItem('business_type'));
 export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
   const navigate = useNavigate();
   const role = useAuthStore((s) => s.user?.role);
@@ -41,23 +48,47 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
   const [chosen, setChosen] = useState<BusinessIntent[]>([]);
   const [profile, setProfileChoice] = useState<BusinessProfile | null>(null);
   const [name, setName] = useState('');
+  /** Solo falta el rubro (comercio que ya usaba Ventra o salteó la bienvenida) */
+  const [rubroOnly, setRubroOnly] = useState(false);
+  const setToursPaused = useTourStore((s) => s.setPaused);
+
+  // Los recorridos esperan a la bienvenida: así no se abren encima y salen ya con el rubro
+  useEffect(() => {
+    if (role === 'ADMIN') setToursPaused(true);
+    return () => setToursPaused(false);
+  }, [role, setToursPaused]);
 
   useEffect(() => {
-    if (role !== 'ADMIN' || !planLoaded || isAgendaOnly(features)) return;
+    if (role !== 'ADMIN' || !planLoaded) return;
+    if (isAgendaOnly(features)) { setToursPaused(false); return; }
     let alive = true;
+    const askRubro = () => { setRubroOnly(true); setStep('rubro'); setShow(true); };
     (async () => {
       await whenStoreSettingsReady();
-      if (!alive || localStorage.getItem('onboarding_done') === '1') return;
+      if (!alive) return;
+      const needsRubro = features.caja && !rubroKnown();
+      if (localStorage.getItem('onboarding_done') === '1') {
+        if (needsRubro) askRubro(); else setToursPaused(false);
+        return;
+      }
       try {
         const { data } = await api.get('/settings/activation', { silent: true } as any);
         if (!alive) return;
-        // Un comercio que ya trabaja no necesita la bienvenida: se marca hecha y listo
-        if (data.products > 0 || data.hasSales) { setStoreSetting('onboarding_done', '1'); return; }
+        // Un comercio que ya trabaja no necesita la bienvenida entera: se marca hecha y, si
+        // tiene caja y nunca eligió rubro, se le pregunta solo eso
+        if (data.products > 0 || data.hasSales) {
+          setStoreSetting('onboarding_done', '1');
+          if (needsRubro) askRubro(); else setToursPaused(false);
+          return;
+        }
         setChosen(allowed.includes('mostrador') ? ['mostrador'] : allowed.slice(0, 1));
         setName(localStorage.getItem('gd_store_name') || '');
         setStep(allowed.length > 1 ? 'intent' : 'rubro');
         setShow(true);
-      } catch { /* backend viejo o sin conexión: no se insiste */ }
+      } catch {
+        // backend viejo o sin conexión: no se insiste con la bienvenida, pero el rubro sí
+        if (alive && needsRubro) askRubro(); else setToursPaused(false);
+      }
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -65,25 +96,40 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
   if (!show) return null;
 
-  const sells = chosen.includes('mostrador') || chosen.includes('online');
-  const flow: Step[] = [...(allowed.length > 1 ? ['intent' as const] : []), ...(sells ? ['rubro' as const] : []), 'name'];
+  // Con caja el rubro siempre se pregunta (y no se puede saltear)
+  const rubroRequired = features.caja;
+  const sells = chosen.includes('mostrador') || chosen.includes('online') || rubroRequired;
+  const flow: Step[] = rubroOnly
+    ? ['rubro']
+    : [...(allowed.length > 1 ? ['intent' as const] : []), ...(sells ? ['rubro' as const] : []), 'name'];
   const idx = flow.indexOf(step);
   const next = () => setStep(flow[idx + 1]);
   const back = () => setStep(flow[idx - 1]);
 
+  const close = () => {
+    setShow(false);
+    setToursPaused(false);
+  };
+
   const skip = () => {
     setStoreSetting('onboarding_done', '1');
-    setShow(false);
+    close();
   };
 
   const finish = () => {
+    if (rubroOnly) {
+      if (profile) setProfile(profile);
+      close();
+      toast.success(`Listo: activamos las funciones de ${PROFILE_LABELS[profile!].title}`, { duration: 4000 });
+      return;
+    }
     const intents = chosen.length ? chosen : allowed;
     setIntents(intents);
     // Siempre se guarda (aunque coincida con el de fábrica): así los otros equipos lo reciben
     if (sells && profile) setProfile(profile);
     if (name.trim().length >= 2) setStoreSetting('store_name', name.trim().slice(0, 60));
     setStoreSetting('onboarding_done', '1');
-    setShow(false);
+    close();
     toast.success('¡Listo! Te dejamos los primeros pasos para arrancar', { duration: 5000 });
     navigate(intents.includes('mostrador') ? (mobile ? '/inicio' : '/pos') : intents.includes('online') ? '/tienda' : '/agenda');
   };
@@ -102,7 +148,9 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
           <div className="flex-1 flex justify-center gap-1.5">
             {flow.map((s, i) => <span key={s} className={`h-1.5 rounded-full transition-all ${i <= idx ? 'w-8 bg-rose-600' : 'w-4 bg-slate-200'}`} />)}
           </div>
-          <button onClick={skip} className="text-[13px] font-semibold text-slate-400 hover:text-slate-600 w-auto">Lo hago después</button>
+          {rubroRequired ? <span className="w-9" /> : (
+            <button onClick={skip} className="text-[13px] font-semibold text-slate-400 hover:text-slate-600 w-auto">Lo hago después</button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pt-6 pb-4">
@@ -138,8 +186,8 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
           {step === 'rubro' && (
             <>
-              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">¿Qué vendés?</h2>
-              <p className="mt-1.5 text-[14px] text-slate-500">Activamos las funciones de tu rubro: talles y colores, venta por metro, vencimientos…</p>
+              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">{rubroOnly ? 'Antes de seguir: ¿qué vendés?' : '¿Qué vendés?'}</h2>
+              <p className="mt-1.5 text-[14px] text-slate-500">Activamos las funciones de tu rubro (talles y colores, venta por metro, vencimientos…) y te mostramos cómo usarlas. Lo podés cambiar después en Configuración.</p>
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((p) => {
                   const info = PROFILE_LABELS[p];
@@ -172,9 +220,9 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
         </div>
 
         <div className="px-6 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:pb-6 border-t border-slate-100">
-          <button disabled={!canNext} onClick={step === 'name' ? finish : next}
+          <button disabled={!canNext} onClick={idx === flow.length - 1 ? finish : next}
             className="w-full h-13 py-3.5 rounded-2xl bg-rose-600 text-white text-[16px] font-bold disabled:opacity-40 active:scale-[0.99] transition-transform">
-            {step === 'name' ? 'Empezar a usar Ventra' : 'Seguir'}
+            {rubroOnly ? 'Listo' : step === 'name' ? 'Empezar a usar Ventra' : 'Seguir'}
           </button>
         </div>
       </div>

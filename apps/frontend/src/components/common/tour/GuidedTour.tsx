@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { TOURS, type TourStep } from './tours';
+import { TOURS, tourSteps, type TourStep } from './tours';
+import { getTourCtx } from './tourContext';
 import { useTourStore, setTourKeyHandler } from './tourStore';
 import { useAuthStore } from '../../../stores/authStore';
 
@@ -69,7 +70,7 @@ export default function GuidedTour() {
   // Resolve which steps actually exist on this screen right now.
   const steps = useMemo<TourStep[]>(() => {
     if (!activeTour) return [];
-    return (TOURS[activeTour] as TourStep[]).filter((s) => !s.target || findTarget(s));
+    return tourSteps(activeTour, getTourCtx()).filter((s) => !s.target || findTarget(s));
   }, [activeTour]);
 
   const [index, setIndex] = useState(0);
@@ -168,8 +169,16 @@ export default function GuidedTour() {
   };
   const pos = place(spot, popSize);
 
+  // El foco y la tarjeta se deslizan de un paso al siguiente (solo transform/opacity y la
+  // geometría del recorte: livianos también en PCs viejas). Sin objetivo, el recorte se
+  // achica hacia el centro y la tarjeta queda centrada.
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const hole = spot || { top: vh / 2, left: vw / 2, width: 0, height: 0 };
+  const glide = 'all 320ms cubic-bezier(0.22, 1, 0.36, 1)';
+
   return createPortal(
-    <div className="fixed inset-0 z-[10000]" role="dialog" aria-modal="true" aria-label={step.title}>
+    <div className="fixed inset-0 z-[10000] tour-enter" role="dialog" aria-modal="true" aria-label={step.title}>
       {/* Click shield: the page stays visible but inert while touring */}
       <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
 
@@ -179,58 +188,66 @@ export default function GuidedTour() {
         <defs>
           <mask id="guided-tour-mask">
             <rect width="100%" height="100%" fill="white" />
-            {spot && <rect x={spot.left} y={spot.top} width={spot.width} height={spot.height} rx={14} fill="black" />}
+            <rect rx={14} fill="black" style={{ x: hole.left, y: hole.top, width: hole.width, height: hole.height, transition: glide } as React.CSSProperties} />
           </mask>
         </defs>
         <rect width="100%" height="100%" fill="rgba(15,23,42,0.55)" mask="url(#guided-tour-mask)" />
       </svg>
 
-      {spot && (
-        <div
-          className="keep-style absolute pointer-events-none rounded-[14px] border-[3px] border-emerald-400"
-          style={spot}
-        />
-      )}
+      <div
+        className={`keep-style keep-animated absolute pointer-events-none rounded-[14px] border-[3px] border-emerald-400 ${spot ? 'tour-ring' : ''}`}
+        style={{ ...hole, opacity: spot ? 1 : 0, transition: glide }}
+      />
 
-        <div
-          key={index}
-          ref={popRef}
-          className="keep-style absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
-          style={{ top: pos.top, left: pos.left }}
+      <div
+        ref={popRef}
+        className="keep-style keep-animated absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
+        style={{ top: pos.top, left: pos.left, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+      >
+        <button
+          onClick={finish}
+          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-50 transition-colors"
+          aria-label="Cerrar recorrido"
         >
-          <button
-            onClick={finish}
-            className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-50 transition-colors"
-            aria-label="Cerrar recorrido"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <X className="w-3.5 h-3.5" />
+        </button>
 
+        {/* El contenido cambia con una entrada corta; la tarjeta en sí se desliza */}
+        <div key={`${activeTour}-${index}`} className="tour-step">
           <h3 className="text-[15px] font-bold text-slate-900 tracking-tight pr-6">{step.title}</h3>
           <p className="mt-2 text-[13px] leading-relaxed text-slate-600">{renderBody(step.body)}</p>
+        </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-400 tabular-nums">
-              {index + 1} de {steps.length}
+        <div className="mt-4 flex gap-1" aria-hidden>
+          {steps.map((_, i) => (
+            <span key={i} className="h-1 flex-1 rounded-full bg-slate-100 overflow-hidden">
+              <span className="block h-full rounded-full bg-emerald-500 origin-left" style={{ transform: `scaleX(${i <= index ? 1 : 0})`, transition: 'transform 300ms ease-out' }} />
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={back}
-                disabled={index === 0}
-                className="px-3.5 h-8 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100 transition-colors"
-              >
-                Atrás
-              </button>
-              <button
-                onClick={next}
-                autoFocus
-                className="px-4 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm shadow-emerald-500/30 transition-colors"
-              >
-                {isLast ? 'Entendido' : 'Siguiente'}
-              </button>
-            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-slate-400 tabular-nums">
+            {index + 1} de {steps.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={back}
+              disabled={index === 0}
+              className="px-3.5 h-8 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100 transition-colors active:scale-[0.97]"
+            >
+              Atrás
+            </button>
+            <button
+              onClick={next}
+              autoFocus
+              className="px-4 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm shadow-emerald-500/30 transition-colors active:scale-[0.97]"
+            >
+              {isLast ? 'Entendido' : 'Siguiente'}
+            </button>
           </div>
         </div>
+      </div>
     </div>,
     document.body,
   );
@@ -239,12 +256,14 @@ export default function GuidedTour() {
 /** Starts a screen's tour the first time the user visits it. */
 export function useAutoTour(id: keyof typeof TOURS, ready = true) {
   const startIfUnseen = useTourStore((s) => s.startIfUnseen);
+  // Si la bienvenida estaba abierta, el recorrido arranca apenas se cierra
+  const paused = useTourStore((s) => s.paused);
   // Re-check when the logged-in user changes: each user gets their own first time.
   const userId = useAuthStore((s) => s.user?.id || s.user?.username);
   useEffect(() => {
-    if (!ready || !userId) return;
+    if (!ready || !userId || paused) return;
     // Let the screen finish its entrance animation before measuring targets.
     const t = setTimeout(() => startIfUnseen(id), 700);
     return () => clearTimeout(t);
-  }, [id, ready, startIfUnseen, userId]);
+  }, [id, ready, startIfUnseen, userId, paused]);
 }

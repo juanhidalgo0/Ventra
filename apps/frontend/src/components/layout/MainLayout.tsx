@@ -273,7 +273,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /><GuidedTour /></MobileShell>;
   }
 
   return (

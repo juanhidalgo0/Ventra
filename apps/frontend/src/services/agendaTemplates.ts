@@ -17,3 +17,23 @@ export const AGENDA_TEMPLATES: AgendaTemplate[] = [
   { id: 'salud', emoji: '🩺', title: 'Salud', services: [s('Primera consulta', 45), s('Consulta de control', 30), s('Sesión', 45)] },
   { id: 'clases', emoji: '📚', title: 'Clases', services: [s('Clase individual', 60), s('Clase de prueba', 30)] },
 ];
+
+export type AgendaKind = AgendaTemplate['id'] | 'otro';
+
+/**
+ * Tipo de servicio del comercio: el que eligió al arrancar con una plantilla (agenda.kind) o,
+ * si cargó los servicios a mano, la plantilla con la que más coinciden los nombres.
+ */
+export function detectAgendaKind(agenda: { kind?: string; services?: { name: string }[] } | null | undefined): AgendaKind {
+  if (agenda?.kind && AGENDA_TEMPLATES.some((t) => t.id === agenda.kind)) return agenda.kind as AgendaKind;
+  const norm = (x: string) => x.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  const names = (agenda?.services || []).map((x) => norm(x.name)).filter(Boolean);
+  if (!names.length) return 'otro';
+  let best: AgendaKind = 'otro', score = 0;
+  for (const t of AGENDA_TEMPLATES) {
+    const words = t.services.flatMap((x) => norm(x.name).split(/[\s/]+/)).filter((w) => w.length > 3);
+    const hits = names.filter((n) => words.some((w) => n.includes(w))).length;
+    if (hits > score) { best = t.id; score = hits; }
+  }
+  return best;
+}
