@@ -33,7 +33,8 @@ const CYCLE_MS = 5000;
  * Versión de la sincronización que entiende esta caja. 2: sabe realinearse cuando la nube
  * avisa que compactó movimientos viejos (resync). La nube solo compacta si todas las cajas activas la entienden.
  */
-const SYNC_PROTOCOL = 2;
+// 3: baja la historia archivada fuera de Neon (la nube no archiva un comercio hasta que todas sus cajas la tengan)
+const SYNC_PROTOCOL = 3;
 /**
  * Cada ciclo sube lo propio al instante, pero solo le pregunta a la nube por cambios de
  * otras cajas cuando toca: cada 5 s mientras hay movimiento y, en reposo, cada vez más
@@ -49,6 +50,9 @@ const FULL_PULL_PAGE = 5000;
 // Historia vieja que se baja después de la carga total, ya con la caja andando (ver pullHistory)
 const HISTORY_PAGES_PER_CYCLE = 3;
 const HISTORY_KEYS = `'history_cut', 'history_until', 'history_after', 'history_done'`;
+// Archivos de la historia (meses viejos que la nube sacó de Neon, ver firebase/functions/archive.js)
+const ARCHIVE_KEYS = `'archive_pending', 'archive_list', 'archive_idx', 'archive_del_after', 'archive_done'`;
+const ARCHIVES_PER_CYCLE = 2;
 const MAX_BATCH_BYTES = 1_500_000;
 const IMAGES_PER_CYCLE = 100;
 const IMAGE_CONCURRENCY = 5;
@@ -198,7 +202,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.setState('applying', '1', tx);
         for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
         for (const t of ['sync_outbox', 'sync_deltas', 'sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev', 'sale_number_floor', ${HISTORY_KEYS})`);
+        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev', 'sale_number_floor', ${HISTORY_KEYS}, ${ARCHIVE_KEYS})`);
         await this.setState('cloud_gen', String(gen), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
       }, { timeout: 10 * 60 * 1000, maxWait: 60000 });
@@ -536,7 +540,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
           this.pullDelay = pushed || pulled ? CYCLE_MS : Math.min(this.pullDelay * 2, PULL_IDLE_MAX_MS);
           // Mientras falte historia vieja, el próximo ciclo sigue bajándola sin esperar
-          if (await this.pullHistory(tables)) this.pullDelay = CYCLE_MS;
+          if ((await this.pullHistory(tables)) || (await this.pullArchives(tables))) this.pullDelay = CYCLE_MS;
           this.nextPullAt = Date.now() + this.pullDelay;
           await this.bumpWatermark(creds.deviceId);
         }
@@ -624,7 +628,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       // esta caja (lo pendiente subió arriba): volver a subir la base entera eran cientos de miles
       // de filas y muchos minutos para nada.
       if (hasData && wasBootstrapped && !isCloudNode && !cloudCompacted) await this.pushAll(tables, 0, 'Completando datos en la nube');
-      await this.pullChanges(true, !hasData, reg.cloudRows);
+      // Realinear por compactación: esta caja ya tiene su historia, no hace falta bajar los archivos
+      await this.pullChanges(true, !hasData, reg.cloudRows, !cloudCompacted);
     }
     await this.setState('bootstrap', 'done');
     await this.bumpWatermark(deviceId);
@@ -690,7 +695,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    *    recalculan como la suma de todas sus diferencias.
    *  - wipe: antes vacía las tablas locales (caja nueva / recuperar).
    */
-  private async pullChanges(full: boolean, wipe = false, expected = 0) {
+  private async pullChanges(full: boolean, wipe = false, expected = 0, archives = true) {
     let after = full ? '0' : (await this.getState('pull_after')) || '0';
     const tables = await this.syncedTables();
     const counterSums = new Map<string, number>();
@@ -793,7 +798,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
             await t.$executeRawUnsafe(`UPDATE "${tb}" SET "${c}" = ? WHERE id = ?`, sum, id);
           }
           await this.setState('pull_after', String(head), t);
-          await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS})`);
+          await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS}, ${ARCHIVE_KEYS})`);
+          if (cut && archives) await this.setState('archive_pending', '1', t);
           // Las ventas viejas bajan después: la próxima se numera desde el último número de esta caja en la nube
           const floor = numbers && this.nodeIndex != null ? Number(numbers[String(this.nodeIndex)]) : NaN;
           if (Number.isFinite(floor)) await this.setState('sale_number_floor', String(floor), t);
@@ -865,18 +871,89 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         if (page.more) {
           await this.setState('history_after', String(page.last), t);
           await this.setState('history_done', String(done), t);
-        } else await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS})`);
+        } else {
+          await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS})`);
+          await this.setState('archive_done', String(done), t);
+        }
         await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
       }, { timeout: 2 * 60 * 1000, maxWait: 30000 });
-      this.history = page.more ? { done } : null;
+      this.history = { done };
       if (!page.more) {
-        console.log(`[Sync] Historia vieja completa (${done} registros)`);
+        console.log(`[Sync] Historia vieja de la nube bajada (${done} registros)`);
         return false;
       }
       after = String(page.last);
       await new Promise((r) => setTimeout(r, 50));
     }
     return true;
+  }
+
+  /**
+   * Tercer tiempo (después de pullHistory): los meses viejos que la nube pasó a archivos.
+   * De a ARCHIVES_PER_CYCLE archivos por ciclo, sin pisar nada (lo que ya hay es igual o más
+   * nuevo: llegó de Neon). Al final, las bajas de esas tablas, para que un archivo no reviva
+   * algo borrado. Devuelve si queda por bajar.
+   */
+  private async pullArchives(tables: string[]): Promise<boolean> {
+    if ((await this.getState('archive_pending')) !== '1') {
+      this.history = null;
+      return false;
+    }
+    let done = Number(await this.getState('archive_done')) || 0;
+    let list: string[] | null = JSON.parse((await this.getState('archive_list')) || 'null');
+    try {
+      if (!list) {
+        // Se pide después de bajar la historia de Neon: incluye lo que se archivó mientras tanto
+        list = ((await this.call('archives')).archives || []).map((a: any) => String(a.id));
+        await this.setState('archive_list', JSON.stringify(list));
+        await this.setState('archive_idx', '0');
+      }
+      let idx = Number(await this.getState('archive_idx')) || 0;
+      for (let i = 0; i < ARCHIVES_PER_CYCLE && idx < list!.length; i++, idx++) {
+        let rows: CloudRow[] = [];
+        try {
+          rows = ((await this.call('archive', { id: list![idx] })).rows || []) as CloudRow[];
+        } catch (err: any) {
+          if (err.response?.status !== 404) throw err; // Borrado (reinicio de la cuenta): se sigue
+        }
+        const touched = new Map(rows.map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
+        await this.prisma.$transaction(async (t) => {
+          await t.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+          await this.setState('applying', '1', t);
+          await this.applyRowsBulk(t, tables, rows, true);
+          await this.parkOrphans(t, tables, touched, touched, true);
+          await this.setState('archive_idx', String(idx + 1), t);
+          await this.setState('archive_done', String(done + rows.length), t);
+          await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+        }, { timeout: 2 * 60 * 1000, maxWait: 30000 });
+        done += rows.length;
+        this.history = { done };
+      }
+      if (idx < list!.length) return true;
+
+      // Bajas de las tablas archivadas, después de todos los archivos
+      const order = await this.deleteOrder(tables);
+      let after = (await this.getState('archive_del_after')) || '0';
+      for (;;) {
+        const page = await this.call('archiveDeletes', { after });
+        await this.prisma.$transaction(async (t) => {
+          await t.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+          await this.setState('applying', '1', t);
+          await this.applyDeletes(t, tables, page.rows as CloudRow[], order);
+          await this.setState('archive_del_after', String(page.last), t);
+          await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+        }, { timeout: 2 * 60 * 1000, maxWait: 30000 });
+        after = String(page.last);
+        if (!page.more) break;
+      }
+    } catch (err: any) {
+      // Nube sin archivos (todavía no actualizada): no hay nada archivado que bajar
+      if (err.response?.status !== 400) throw err;
+    }
+    await this.prisma.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${ARCHIVE_KEYS})`);
+    console.log(`[Sync] Historia completa (${done} registros)`);
+    this.history = null;
+    return false;
   }
 
   /**
@@ -994,7 +1071,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    * Lo mismo que applyRow(full = true) para una tanda entera, de a una consulta por tabla en vez
    * de cinco por fila: con 270 mil registros la bajada completa eran más de un millón de consultas.
    */
-  private async applyRowsBulk(tx: Tx, tables: string[], rows: CloudRow[]) {
+  private async applyRowsBulk(tx: Tx, tables: string[], rows: CloudRow[], insertOnly = false) {
     const byTable = new Map<string, CloudRow[]>();
     for (const r of rows) {
       if (!tables.includes(r.t)) continue;
@@ -1003,8 +1080,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     }
     for (const [t, list] of byTable) {
       const ids = JSON.stringify(list.map((r) => r.id));
-      // Una versión nueva reemplaza a la que estaba apartada
-      await tx.$executeRawUnsafe(`DELETE FROM sync_parked WHERE tbl = ? AND id IN (SELECT value FROM json_each(?))`, t, ids);
+      // Una versión nueva reemplaza a la que estaba apartada (un archivo nunca es más nuevo)
+      if (!insertOnly) await tx.$executeRawUnsafe(`DELETE FROM sync_parked WHERE tbl = ? AND id IN (SELECT value FROM json_each(?))`, t, ids);
       // Si esta caja tiene un cambio sin subir más nuevo, gana el local (se sube después)
       const pending: any[] = await tx.$queryRawUnsafe(
         `SELECT row_id, CAST(MAX(ts) AS REAL) AS ts FROM sync_outbox WHERE tbl = ? AND row_id IN (SELECT value FROM json_each(?)) GROUP BY row_id`, t, ids);
@@ -1042,7 +1119,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       }
       for (const { present, datas: group } of groups.values()) {
         const setCols = present.filter((c) => c !== 'id' && !counters.includes(c));
-        const onConflict = setCols.length
+        const onConflict = setCols.length && !insertOnly
           ? `DO UPDATE SET ${setCols.map((c) => `"${c}" = excluded."${c}"`).join(', ')}`
           : 'DO NOTHING';
         await tx.$executeRawUnsafe(
