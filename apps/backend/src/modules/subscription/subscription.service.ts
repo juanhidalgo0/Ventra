@@ -61,16 +61,18 @@ interface StoredSubscription {
 }
 
 /**
- * Qué incluye el plan. Caja = sistema de ventas; Tienda = tienda online; Full = las dos.
+ * Qué incluye el plan. Caja = sistema de ventas; Tienda = tienda online (trae la agenda);
+ * Agenda = solo turnos online, sin productos ni caja; Full = todo.
  * Sin plan conocido (PCs sin vincular, instalaciones viejas, cuentas sin plan) se habilita
  * todo, igual que antes de que existieran los planes.
  */
-export interface PlanFeatures { caja: boolean; tienda: boolean }
+export interface PlanFeatures { caja: boolean; tienda: boolean; agenda: boolean }
 
 export function planFeatures(plan: string | null | undefined): PlanFeatures {
-  if (plan === 'caja') return { caja: true, tienda: false };
-  if (plan === 'tienda') return { caja: false, tienda: true };
-  return { caja: true, tienda: true };
+  if (plan === 'caja') return { caja: true, tienda: false, agenda: false };
+  if (plan === 'tienda') return { caja: false, tienda: true, agenda: true };
+  if (plan === 'agenda') return { caja: false, tienda: false, agenda: true };
+  return { caja: true, tienda: true, agenda: true };
 }
 
 export interface SubscriptionStatus {

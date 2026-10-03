@@ -354,6 +354,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               "read_at" DATETIME
             );`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "app_notifications_created_at_idx" ON "app_notifications"("created_at");`);
+            // Configuración del comercio compartida entre equipos (ver StoreSetting)
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "store_settings" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "value" TEXT NOT NULL,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );`);
             const variantIdx: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='index' AND name='products_variant_group_id_idx';`);
             if (variantIdx.length === 0) {
               await this.$executeRawUnsafe(`CREATE INDEX "products_variant_group_id_idx" ON "products"("variant_group_id");`);

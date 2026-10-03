@@ -748,3 +748,14 @@ model AppNotification {
   @@index([createdAt])
   @@map("app_notifications")
 }
+
+// Configuración del comercio (rubro, funciones, nombre, recargos...): una fila por ajuste,
+// con el valor en JSON. Viaja por el sync a todas las cajas, la nube y el celular; lo que es
+// de cada equipo (impresora, modo rendimiento) sigue en el navegador de ese equipo.
+model StoreSetting {
+  id        String   @id // clave del ajuste, p. ej. "business_profile"
+  value     String   // JSON
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("store_settings")
+}

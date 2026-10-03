@@ -24,7 +24,9 @@ export class SubscriptionController {
   /** Sesión de la cuenta para la tienda online. { linked: false } si esta instalación no está vinculada. */
   @Post('store-session')
   async storeSession(@Body() body: { legacyStoreId?: string; legacyIdToken?: string }) {
-    if (!this.subscription.getStatus().features.tienda) {
+    // La agenda de turnos también vive en la tienda (ventra_stores): necesita la misma sesión
+    const { features } = this.subscription.getStatus();
+    if (!features.tienda && !features.agenda) {
       throw new ForbiddenException({
         code: 'PLAN_NO_TIENDA',
         message: 'Tu plan Ventra Caja no incluye la tienda online. Pasate al plan Full en ventra.store para usarla.',
