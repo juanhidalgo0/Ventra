@@ -2,41 +2,36 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock,
+  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
-import { loadStoreConfig, saveStoreConfig, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
+import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
+import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
+import { setStoreSetting } from '../../services/storeSettings';
+import { AGENDA_TEMPLATES, type AgendaTemplate } from '../../services/agendaTemplates';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
-  createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer,
+  createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
   type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
+import { Modal, STATUS, input, label, PUBLIC_BASE } from './agendaUi';
+import { GettingStartedCard } from '../onboarding/GettingStarted';
 
-const PUBLIC_BASE = 'https://tienda.ventra.store';
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-const STATUS: Record<BookingStatus, { label: string; cls: string }> = {
-  PENDING: { label: 'Por confirmar', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  CONFIRMED: { label: 'Confirmado', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  DONE: { label: 'Atendido', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
-  NO_SHOW: { label: 'No vino', cls: 'bg-red-50 text-red-700 ring-red-200' },
-  CANCELLED: { label: 'Cancelado', cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
-  BLOCK: { label: 'Bloqueado', cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
-};
-
-const input = 'w-full h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-[14.5px] outline-none focus:border-rose-500 focus:bg-white';
-const label = 'block mb-1.5 text-[12.5px] font-medium text-slate-500';
-
 /**
- * Agenda de turnos (planes Tienda y Full): los clientes reservan desde la tienda online
- * y el comercio los ve, confirma, carga a mano, bloquea horarios y configura servicios y
- * profesionales. Datos en Firestore (ver services/agenda.ts).
+ * Agenda de turnos (planes Tienda, Agenda y Full): los clientes reservan desde la tienda
+ * online y el comercio los ve, confirma, carga a mano, bloquea horarios y configura
+ * servicios y profesionales. Datos en Firestore (ver services/agenda.ts).
+ * Con el plan Agenda (solo turnos) es la pantalla de inicio: la "tienda" es solo la
+ * página de reservas, y se arma y se publica desde acá.
  */
 export default function AgendaScreen() {
   const mobile = useOwnerMobile().active;
+  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const { storeId } = useOnlineOrders();
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [tab, setTab] = useState<'agenda' | 'config'>('agenda');
@@ -53,13 +48,40 @@ export default function AgendaScreen() {
   const agenda = useMemo(() => fullAgenda((config as any)?.agenda), [config]);
   const saveAgenda = async (next: AgendaConfig) => {
     if (!storeId) return;
-    await saveStoreConfig(storeId, { agenda: next } as any);
-    setConfig((c) => (c ? ({ ...c, agenda: next } as any) : c));
+    // Solo turnos: la página existe para reservar, así que se publica o no junto con la agenda
+    const extra = agendaOnly ? { isPublished: next.enabled } : {};
+    await saveStoreConfig(storeId, { agenda: next, ...extra } as any);
+    setConfig((c) => (c ? ({ ...c, agenda: next, ...extra } as any) : c));
+  };
+  const savePage = async (id: string, page: PageData) => {
+    await saveStoreConfig(id, page);
+    setConfig((c) => (c ? { ...c, ...page } : c));
+    // Sin nombre de comercio todavía (plan Agenda recién creado): se usa el de la página
+    if (!localStorage.getItem('gd_store_name')) setStoreSetting('store_name', page.businessName);
+    if (!storeId) {
+      // Recién creada: la agenda (y los avisos de reservas) arrancan con esta tienda
+      useOnlineOrders.setState({ storeId: id });
+      startOnlineOrdersSync();
+    }
   };
 
   const publicUrl = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : null;
-  const subtitle = !config ? (storeId ? 'Cargando…' : 'Primero armá tu tienda online')
-    : agenda.enabled ? (config.isPublished ? 'Tomando turnos online' : 'Activa · la tienda no está publicada') : 'Turnos online apagados';
+  // Compartir el link es lo que trae los primeros turnos: en el celular abre el menú de compartir
+  const shareLink = async () => {
+    if (!publicUrl) return;
+    const url = `${publicUrl}#turnos`;
+    const text = `Reservá tu turno en ${config?.businessName || 'nuestro local'}:`;
+    try {
+      if (navigator.share) await navigator.share({ title: config?.businessName, text, url });
+      else { await navigator.clipboard.writeText(`${text} ${url}`); toast.success('Link copiado: pegalo en tu WhatsApp o Instagram'); }
+      setStoreSetting('agenda_link_shared', '1');
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') toast.error('No se pudo compartir el link');
+    }
+  };
+  const canShare = !!publicUrl && agenda.enabled;
+  const subtitle = !storeId ? 'Armá tu página de turnos' : !config ? 'Cargando…'
+    : agenda.enabled ? (config.isPublished || agendaOnly ? 'Tomando turnos online' : 'Activa · la tienda no está publicada') : 'Turnos online apagados';
 
   const tabs = (
     <div className={`inline-flex p-1 rounded-xl ${mobile ? 'bg-white/15' : 'bg-slate-100'}`}>
@@ -72,18 +94,24 @@ export default function AgendaScreen() {
     </div>
   );
 
-  const body = !storeId || !config ? (
-    <div className="p-10 text-center text-[14px] text-slate-500">{storeId ? 'Cargando…' : 'Para tomar turnos online primero armá tu tienda en Tienda online.'}</div>
+  const body = !storeId ? (
+    <PageSetup mobile={mobile} agendaOnly={agendaOnly} onSave={savePage} />
+  ) : !config ? (
+    <div className="p-10 text-center text-[14px] text-slate-500">Cargando…</div>
   ) : tab === 'agenda' ? (
     <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} mobile={mobile} onConfigure={() => setTab('config')} />
   ) : (
-    <ConfigView agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl} />
+    <ConfigView agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl}
+      page={agendaOnly ? <PageSetup mobile={mobile} agendaOnly storeId={storeId} initial={config} onSave={savePage} embedded /> : null} />
   );
 
   if (mobile) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <ScreenHeader back title="Agenda" subtitle={subtitle}>{tabs}</ScreenHeader>
+        <ScreenHeader back={!agendaOnly} title="Agenda" subtitle={subtitle}
+          action={canShare ? <button onClick={shareLink} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25" aria-label="Compartir mi link"><Share2 className="w-5 h-5" /></button> : undefined}>
+          {storeId && tabs}
+        </ScreenHeader>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
       </div>
     );
@@ -97,12 +125,17 @@ export default function AgendaScreen() {
           <p className="text-[13px] text-slate-500">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          {publicUrl && agenda.enabled && (
-            <button onClick={() => window.open(`${publicUrl}#turnos`, '_blank', 'noopener')} className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-2">
-              <ExternalLink className="w-4 h-4" /> Ver en la tienda
+          {canShare && (
+            <button onClick={shareLink} className="h-10 px-4 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-2">
+              <Share2 className="w-4 h-4" /> Compartir mi link
             </button>
           )}
-          {tabs}
+          {publicUrl && agenda.enabled && (
+            <button onClick={() => window.open(`${publicUrl}#turnos`, '_blank', 'noopener')} className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" /> {agendaOnly ? 'Ver mi página' : 'Ver en la tienda'}
+            </button>
+          )}
+          {storeId && tabs}
         </div>
       </div>
       {body}
@@ -113,6 +146,7 @@ export default function AgendaScreen() {
 // ─── Agenda del día ─────────────────────────────────────────
 
 function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { storeId: string; agenda: AgendaConfig; businessName: string; mobile: boolean; onConfigure: () => void }) {
+  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const today = localNow().dateKey;
   const [day, setDay] = useState(today);
   const [staffFilter, setStaffFilter] = useState<string>('ALL');
@@ -138,14 +172,18 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
   const pending = bookings.filter((b) => b.status === 'PENDING' && b.dateKey >= today).length;
   const strip = Array.from({ length: 7 }, (_, i) => addDays(day, i - 3));
   const dayIncome = visible.filter((b) => b.kind === 'booking').reduce((s, b) => s + (Number(b.price) || 0), 0);
+  // Sin caja, los turnos se cobran acá: se muestra cuánto entró del total del día
+  const canCharge = usePlanStore((s) => !s.features.caja);
+  const dayCharged = visible.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0);
 
   if (!agenda.services.length || !staff.length) {
     return (
-      <div className={`${mobile ? 'px-4 py-6' : 'p-6 max-w-5xl mx-auto'}`}>
+      <div className={`${mobile ? 'px-4 py-6' : 'p-6 max-w-5xl mx-auto'} space-y-4`}>
+        {agendaOnly && mobile && <GettingStartedCard mobile />}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
           <CalendarClock className="w-10 h-10 text-rose-500 mx-auto" />
           <p className="mt-3 text-[16px] font-bold text-slate-900">Configurá tu agenda</p>
-          <p className="text-[13.5px] text-slate-500 mt-1 max-w-sm mx-auto">Cargá tus servicios (con duración y precio) y quiénes atienden, con sus horarios. Después activás los turnos online y tus clientes reservan desde tu tienda.</p>
+          <p className="text-[13.5px] text-slate-500 mt-1 max-w-sm mx-auto">Cargá tus servicios (con duración y precio) y quiénes atienden, con sus horarios. Después activás los turnos online y tus clientes reservan desde {agendaOnly ? 'tu página' : 'tu tienda'}.</p>
           <button onClick={onConfigure} className="mt-4 h-11 px-5 rounded-xl bg-rose-600 text-white text-[14px] font-semibold">Empezar</button>
         </div>
       </div>
@@ -154,6 +192,7 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
 
   return (
     <div className={`${mobile ? 'px-4 py-4' : 'p-6 max-w-5xl w-full mx-auto'} space-y-4`}>
+      {agendaOnly && mobile && <GettingStartedCard mobile />}
       {!agenda.enabled && (
         <button onClick={onConfigure} className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
           <CalendarClock className="w-5 h-5 text-amber-700 shrink-0" />
@@ -189,7 +228,8 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
         <div>
           <p className="text-[18px] font-bold text-slate-900">{dayLabel(day)}</p>
           <p className="text-[12.5px] text-slate-500">
-            {visible.filter((b) => b.kind === 'booking').length} turnos{dayIncome ? ` · ${money(dayIncome)}` : ''}
+            {visible.filter((b) => b.kind === 'booking').length} turnos
+            {canCharge && dayCharged ? ` · cobrado ${money(dayCharged)}${dayIncome > dayCharged ? ` de ${money(dayIncome)}` : ''}` : dayIncome ? ` · ${money(dayIncome)}` : ''}
             {day !== today && <button onClick={() => setDay(today)} className="ml-2 font-semibold text-rose-700">Ir a hoy</button>}
           </p>
         </div>
@@ -238,7 +278,11 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
                   </>
                 )}
               </span>
-              <span className="shrink-0 self-center"><span className={`text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span></span>
+              <span className="shrink-0 self-center">
+                {b.payment
+                  ? <span className="text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">Cobrado</span>
+                  : <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span>}
+              </span>
             </button>
           );
         })}
@@ -252,33 +296,19 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
   );
 }
 
-function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative w-full sm:max-w-lg max-h-[92dvh] flex flex-col bg-white rounded-t-[26px] sm:rounded-3xl shadow-2xl">
-        <div className="flex items-center gap-3 px-5 pt-4 pb-2">
-          <h3 className="flex-1 text-[18px] font-bold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center" aria-label="Cerrar"><X className="w-4 h-4 text-slate-600" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{children}</div>
-        {footer && <div className="px-5 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))] border-t border-slate-100">{footer}</div>}
-      </div>
-    </div>
-  );
-}
-
 function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId: string; booking: Booking; businessName: string; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [charging, setCharging] = useState(false);
+  const canCharge = usePlanStore((s) => !s.features.caja);
   const st = STATUS[b.status];
   const act = async (status: BookingStatus, msg: string) => {
     setBusy(true);
-    try { await setBookingStatus(storeId, b.id, status); toast.success(msg); } catch { toast.error('No se pudo guardar'); } finally { setBusy(false); }
+    try { await setBookingStatus(storeId, b.id, status, b); toast.success(msg); } catch { toast.error('No se pudo guardar'); } finally { setBusy(false); }
+  };
+  const uncharge = async () => {
+    if (!confirm('¿Quitar el cobro de este turno? Sigue figurando como atendido.')) return;
+    setBusy(true);
+    try { await unchargeBooking(storeId, b); toast.success('Cobro quitado'); } catch { toast.error('No se pudo guardar'); } finally { setBusy(false); }
   };
   const wa = (kind: 'confirm' | 'remind' | 'cancel') => window.open(whatsappToCustomer(b, businessName, kind), '_blank', 'noopener');
 
@@ -295,8 +325,21 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
   }
 
   const upcoming = b.status === 'PENDING' || b.status === 'CONFIRMED';
+  if (charging) return <ChargeSheet storeId={storeId} booking={b} onClose={() => setCharging(false)} onDone={onClose} />;
   return (
-    <Modal title={b.customerName || 'Turno'} onClose={onClose}>
+    <Modal title={b.customerName || 'Turno'} onClose={onClose}
+      footer={canCharge && b.status !== 'CANCELLED' && b.status !== 'NO_SHOW' ? (
+        b.payment ? (
+          <div className="flex items-center gap-3">
+            <span className="flex-1 min-w-0 text-[14px] text-emerald-800 font-semibold flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Cobrado {money(b.payment.amount)} · {b.payment.method}</span>
+            <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>
+          </div>
+        ) : (
+          <button onClick={() => setCharging(true)} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
+            <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(b.price)}` : ''}
+          </button>
+        )
+      ) : undefined}>
       <div className="space-y-4">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-[12px] font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span>
@@ -335,6 +378,46 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
               }} className="h-11 rounded-xl bg-red-50 text-red-700 text-[13.5px] font-semibold">Cancelar turno</button>
             )}
             {!upcoming && <button disabled={busy} onClick={() => act('CONFIRMED', 'Turno reactivado')} className="h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold">Volver a confirmado</button>}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Cobro de un turno: monto (por defecto el precio del servicio) y medio de pago. */
+function ChargeSheet({ storeId, booking: b, onClose, onDone }: { storeId: string; booking: Booking; onClose: () => void; onDone: () => void }) {
+  const [amount, setAmount] = useState(String(b.price || ''));
+  const [method, setMethod] = useState(PAY_METHODS[0]);
+  const [busy, setBusy] = useState(false);
+  const value = Number(String(amount).replace(/\./g, '').replace(',', '.')) || 0;
+  const save = async () => {
+    if (value <= 0 && !confirm('¿Registrar el turno como atendido sin cobrar nada?')) return;
+    setBusy(true);
+    try {
+      await chargeBooking(storeId, b, { method, amount: value });
+      toast.success(value > 0 ? `Cobrado ${money(value)} · ${method}` : 'Marcado como atendido');
+      onDone();
+    } catch { toast.error('No se pudo guardar el cobro'); setBusy(false); }
+  };
+  return (
+    <Modal title="Cobrar turno" onClose={onClose}
+      footer={<button disabled={busy} onClick={save} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold disabled:opacity-60">{busy ? 'Guardando…' : value > 0 ? `Cobrar ${money(value)}` : 'Guardar'}</button>}>
+      <div className="space-y-4">
+        <p className="text-[13.5px] text-slate-500">{b.customerName} · {b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}</p>
+        <div>
+          <label className={label}>Monto</label>
+          <div className="flex items-center h-14 rounded-xl bg-slate-50 border border-slate-200 focus-within:border-rose-500 focus-within:bg-white px-3">
+            <span className="text-[20px] font-bold text-slate-400 mr-1">$</span>
+            <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} className="flex-1 min-w-0 bg-transparent text-[24px] font-bold text-slate-900 outline-none tabular-nums" />
+          </div>
+        </div>
+        <div>
+          <label className={label}>Medio de pago</label>
+          <div className="grid grid-cols-2 gap-2">
+            {PAY_METHODS.map((m) => (
+              <button key={m} onClick={() => setMethod(m)} className={`h-11 rounded-xl text-[13.5px] font-semibold border ${method === m ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'}`}>{m}</button>
+            ))}
           </div>
         </div>
       </div>
@@ -512,7 +595,120 @@ function Card({ icon: Icon, title, hint, children, action }: { icon: any; title:
 
 const DURATIONS = [10, 15, 20, 30, 40, 45, 60, 75, 90, 120, 150, 180, 240];
 
-function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl }: { agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null }) {
+type PageData = Pick<StoreConfig, 'businessName' | 'subdomain' | 'whatsappNumber'>;
+
+const slugOf = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/**
+ * Nombre, dirección web y WhatsApp de la página donde reservan los clientes. Sin tienda
+ * todavía, la crea (es lo primero que ve un comercio del plan Agenda); con `embedded`
+ * edita esos datos dentro de Configurar.
+ */
+function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
+  mobile: boolean; agendaOnly: boolean; storeId?: string; initial?: Partial<PageData>;
+  onSave: (storeId: string, page: PageData) => Promise<void>; embedded?: boolean;
+}) {
+  const [name, setName] = useState(initial?.businessName || localStorage.getItem('gd_store_name') || '');
+  const [slug, setSlug] = useState(initial?.subdomain || '');
+  const [slugTouched, setSlugTouched] = useState(!!initial?.subdomain);
+  const [wa, setWa] = useState(initial?.whatsappNumber || '');
+  const [slugState, setSlugState] = useState<'idle' | 'checking' | 'ok' | 'taken'>('idle');
+  const [saving, setSaving] = useState(false);
+  // La dirección no se cambia una vez creada: es el link que ya circula entre los clientes
+  const fixedSlug = !!initial?.subdomain;
+  const dirty = !embedded || name !== (initial?.businessName || '') || wa !== (initial?.whatsappNumber || '') || (!fixedSlug && !!slug);
+
+  useEffect(() => { if (!slugTouched) setSlug(slugOf(name)); }, [name, slugTouched]);
+  useEffect(() => {
+    if (fixedSlug || slug.length < 3) { setSlugState('idle'); return; }
+    setSlugState('checking');
+    const t = setTimeout(() => {
+      isSubdomainAvailable(slug, storeId || '').then((ok) => setSlugState(ok ? 'ok' : 'taken')).catch(() => setSlugState('idle'));
+    }, 450);
+    return () => clearTimeout(t);
+  }, [slug, fixedSlug, storeId]);
+
+  const submit = async () => {
+    const businessName = name.trim();
+    const whatsappNumber = wa.replace(/\D/g, '');
+    if (businessName.length < 2) return toast.error('Poné el nombre de tu negocio');
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) return toast.error('La dirección va de 3 a 40 letras, números o guiones');
+    if (slugState === 'taken') return toast.error('Esa dirección ya la usa otro comercio. Elegí otra.');
+    if (whatsappNumber.length < 8) return toast.error('Poné tu WhatsApp con código de área (ej. 3815551234)');
+    setSaving(true);
+    try {
+      const id = storeId || await resolveStoreId();
+      if (!fixedSlug && !(await isSubdomainAvailable(slug, id))) {
+        setSlugState('taken');
+        toast.error('Esa dirección ya la usa otro comercio. Elegí otra.');
+        return;
+      }
+      await onSave(id, { businessName, subdomain: slug, whatsappNumber });
+      toast.success(embedded ? 'Datos guardados' : 'Listo: ahora cargá tus servicios y horarios');
+    } catch (err) {
+      console.error(err);
+      toast.error('No se pudo guardar. Revisá la conexión y probá de nuevo.');
+    } finally { setSaving(false); }
+  };
+
+  const fields = (
+    <div className="space-y-3">
+      <div>
+        <label className={label}>Nombre del negocio</label>
+        <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej.: Estudio Bella" />
+      </div>
+      <div>
+        <label className={label}>Dirección de tu página</label>
+        <div className={`flex items-center h-11 rounded-xl border border-slate-200 overflow-hidden ${fixedSlug ? 'bg-slate-100' : 'bg-slate-50 focus-within:border-rose-500 focus-within:bg-white'}`}>
+          <span className="pl-3 text-[13.5px] text-slate-400 shrink-0">tienda.ventra.store/</span>
+          <input className="flex-1 min-w-0 h-full pr-3 bg-transparent text-[14.5px] outline-none disabled:text-slate-500" value={slug} disabled={fixedSlug}
+            onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)); }} placeholder="estudio-bella" />
+        </div>
+        {!fixedSlug && slug.length >= 3 && slugState !== 'idle' && (
+          <p className={`mt-1.5 text-[12.5px] font-medium flex items-center gap-1.5 ${slugState === 'ok' ? 'text-emerald-600' : slugState === 'taken' ? 'text-red-600' : 'text-slate-400'}`}>
+            {slugState === 'checking' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Verificando…</>}
+            {slugState === 'ok' && <><Check className="w-3.5 h-3.5" /> Disponible</>}
+            {slugState === 'taken' && <><X className="w-3.5 h-3.5" /> Ya la usa otro comercio</>}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className={label}>WhatsApp para tus clientes</label>
+        <input className={input} value={wa} onChange={(e) => setWa(e.target.value)} inputMode="tel" placeholder="Ej.: 3815551234" />
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <Card icon={Globe} title="Tu página de turnos" hint="Cómo te encuentran tus clientes para reservar."
+        action={dirty ? <button onClick={submit} disabled={saving} className="h-9 px-3 rounded-xl bg-rose-600 text-white text-[13px] font-semibold disabled:opacity-60">{saving ? 'Guardando…' : 'Guardar'}</button> : undefined}>
+        {fields}
+      </Card>
+    );
+  }
+
+  return (
+    <div className={mobile ? 'px-4 py-5' : 'p-6 max-w-xl w-full mx-auto'}>
+      <section className="bg-white rounded-2xl border border-slate-200/80 p-5">
+        <span className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center"><CalendarDays className="w-6 h-6 text-rose-600" /></span>
+        <h2 className="mt-3 text-[18px] font-bold text-slate-900">Armá tu página de turnos</h2>
+        <p className="mt-1 mb-4 text-[13.5px] text-slate-500 leading-relaxed">
+          {agendaOnly
+            ? 'Es el link que les pasás a tus clientes para que reserven solos. Después cargás tus servicios, tu equipo y los horarios.'
+            : 'Tus clientes reservan desde tu tienda online. Si todavía no la armaste, empezá por estos datos; el resto lo completás en Tienda online.'}
+        </p>
+        {fields}
+        <button onClick={submit} disabled={saving} className="mt-5 w-full h-12 rounded-xl bg-rose-600 text-white text-[15px] font-semibold disabled:opacity-60 active:scale-[0.99]">
+          {saving ? 'Creando…' : 'Crear mi página'}
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null; page?: React.ReactNode }) {
   const [a, setA] = useState<AgendaConfig>(agenda);
   const [saving, setSaving] = useState(false);
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
@@ -522,11 +718,23 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl }: { agenda:
   const baseHours = (): DayHours[] => (storeHours && storeHours.length === 7 ? storeHours : [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, from: '09:00', to: '19:00' }))).map((h) => ({ ...h, ranges: dayRanges(h).map((r) => ({ ...r })) }));
   const setService = (id: string, p: Partial<AgendaService>) => setA({ ...a, services: a.services.map((s) => (s.id === id ? { ...s, ...p } : s)) });
   const setStaff = (id: string, p: Partial<AgendaStaff>) => setA({ ...a, staff: a.staff.map((s) => (s.id === id ? { ...s, ...p } : s)) });
+  // Arranque rápido: servicios típicos del rubro y, si no hay nadie, el dueño como profesional
+  const applyTemplate = (t: AgendaTemplate) => {
+    const me = (() => { try { const u = JSON.parse(localStorage.getItem('user') || 'null'); return (u?.fullName || '').split(' ')[0]; } catch { return ''; } })();
+    setA({
+      ...a,
+      services: t.services.map((x) => ({ ...x, id: newId() })),
+      staff: a.staff.length ? a.staff : [{ id: newId(), name: me || 'Yo', color: STAFF_COLORS[0], hours: baseHours(), active: true }],
+    });
+    toast.success('Listo: revisá las duraciones, poné tus precios y guardá');
+  };
+  const missingPrices = a.services.filter((x) => x.active !== false && x.name.trim() && !(Number(x.price) > 0)).length;
 
   const save = async () => {
     const services = a.services.filter((s) => s.name.trim());
     const staff = a.staff.filter((s) => s.name.trim());
     if (a.enabled && (!services.length || !staff.length)) return toast.error('Para tomar turnos online cargá al menos un servicio y un profesional');
+    if (a.enabled && missingPrices && !confirm(`${missingPrices === 1 ? 'Un servicio no tiene' : `${missingPrices} servicios no tienen`} precio: tus clientes lo van a ver sin precio. ¿Guardar igual?`)) return;
     setSaving(true);
     try {
       await onSave({ ...a, services: services.map((s) => ({ ...s, name: s.name.trim(), price: Number(s.price) || 0 })), staff: staff.map((s) => ({ ...s, name: s.name.trim() })) });
@@ -536,18 +744,36 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl }: { agenda:
 
   return (
     <div className={`${mobile ? 'px-4 py-4 pb-28' : 'p-6 max-w-5xl w-full mx-auto pb-28'} space-y-4`}>
+      {page}
       <section className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 flex items-center gap-4">
         <div className="flex-1">
           <p className="text-[15px] font-bold text-slate-900">Tomar turnos online</p>
-          <p className="text-[12.5px] text-slate-500">{a.enabled ? `Tus clientes reservan desde la tienda${publicUrl ? ` (${publicUrl})` : ''}.` : 'Apagado: la tienda no muestra la reserva de turnos.'}</p>
+          <p className="text-[12.5px] text-slate-500">
+            {a.enabled
+              ? `Tus clientes reservan desde ${page ? 'tu página' : 'la tienda'}${publicUrl ? ` (${publicUrl})` : ''}.`
+              : page ? 'Apagado: tu página no toma reservas.' : 'Apagado: la tienda no muestra la reserva de turnos.'}
+          </p>
         </div>
         <Toggle on={a.enabled} onChange={(v) => setA({ ...a, enabled: v })} />
       </section>
 
       <Card icon={Scissors} title="Servicios" hint="Lo que el cliente elige al reservar, con cuánto dura y cuánto sale."
         action={<button onClick={() => setA({ ...a, services: [...a.services, { id: newId(), name: '', durationMin: 30, price: 0, active: true }] })} className="h-9 px-3 rounded-xl bg-rose-50 text-rose-700 text-[13px] font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /> Agregar</button>}>
-        {a.services.length === 0 ? <p className="text-[13px] text-slate-400 py-2">Todavía no cargaste servicios. Ej.: “Corte de pelo · 30 min”.</p> : (
+        {a.services.length === 0 ? (
+          <div className="py-1">
+            <p className="text-[13px] text-slate-500 mb-2.5">Empezá con los servicios típicos de tu rubro y después los ajustás:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {AGENDA_TEMPLATES.map((t) => (
+                <button key={t.id} onClick={() => applyTemplate(t)} className="h-12 rounded-xl border border-slate-200 bg-white hover:border-rose-300 hover:bg-rose-50/50 text-[14px] font-semibold text-slate-800 flex items-center justify-center gap-2">
+                  <span className="text-[18px]">{t.emoji}</span> {t.title}
+                </button>
+              ))}
+            </div>
+            <p className="text-[12px] text-slate-400 mt-2.5">¿Otro rubro? Tocá “Agregar” y cargalos a mano.</p>
+          </div>
+        ) : (
           <div className="space-y-3">
+            {missingPrices > 0 && <p className="text-[12.5px] font-medium text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Completá los precios: {missingPrices === 1 ? 'falta 1' : `faltan ${missingPrices}`}.</p>}
             {a.services.map((s) => (
               <div key={s.id} className={`rounded-xl border border-slate-200 p-3 ${s.active === false ? 'opacity-60' : ''}`}>
                 <div className="grid grid-cols-[1fr_auto] gap-2">

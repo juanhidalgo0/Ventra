@@ -12,6 +12,7 @@ import { PullToRefresh } from './ui';
 import PushCard from './PushCard';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
+import { GettingStartedCard } from '../onboarding/GettingStarted';
 
 type Period = 'day' | 'week' | 'month';
 
@@ -198,6 +199,7 @@ export default function MobileHomeScreen() {
       </header>
 
       <div className="px-4 -mt-10 space-y-3">
+        <GettingStartedCard mobile />
         {error && !data && (
           <div className="bg-white rounded-2xl p-5 border border-slate-200 text-center">
             <p className="text-sm font-medium text-slate-800">No pudimos traer los números</p>

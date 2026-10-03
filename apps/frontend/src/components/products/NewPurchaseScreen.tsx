@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { useFeature } from '../../stores/businessStore';
 import { toast } from 'react-hot-toast';
+import { setStoreSetting } from '../../services/storeSettings';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -239,8 +240,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     }
   }, [initialPurchase]);
 
+  // Se guardan cuando el usuario los cambia, no al abrir: si no, el valor de esta PC pisaba
+  // el que llegó de otra caja (son ajustes del comercio, ver services/storeSettings)
+  const ivaTouched = useRef(false);
+  const marginTouched = useRef(false);
   useEffect(() => {
-    localStorage.setItem('purchase_use_iva', useIvaGlobal.toString());
+    if (ivaTouched.current) setStoreSetting('purchase_use_iva', useIvaGlobal.toString());
+    ivaTouched.current = true;
     setItems(prev => prev.map(item => {
       const c = parseFloat(item.cost as any) || 0;
       const m = item.margin !== undefined ? item.margin : defaultMargin;
@@ -257,7 +263,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   }, [useIvaGlobal]);
 
   useEffect(() => {
-    localStorage.setItem('purchase_default_margin', defaultMargin.toString());
+    if (marginTouched.current) setStoreSetting('purchase_default_margin', defaultMargin.toString());
+    marginTouched.current = true;
     setItems(prev => prev.map(item => {
       if (item.isNew) {
         const costVal = parseFloat(item.cost as any) || 0;

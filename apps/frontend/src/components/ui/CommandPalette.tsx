@@ -7,7 +7,8 @@ import {
   FileText, Globe, CornerDownLeft, type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
-import { usePlanStore, planAllows } from '../../stores/planStore';
+import { usePlanStore } from '../../stores/planStore';
+import { useBusinessStore, menuAllows } from '../../stores/businessStore';
 import { lockShortcuts, shortcutsLocked } from '../../utils/shortcutLock';
 import Kbd from './Kbd';
 
@@ -38,6 +39,7 @@ export default function CommandPalette() {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const planFeatures = usePlanStore((s) => s.features);
+  const intents = useBusinessStore((s) => s.intents);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -115,7 +117,7 @@ export default function CommandPalette() {
         ['Tienda online', '/online-store', Globe, 'web catalogo'],
         ['Configuración', '/settings', Settings, 'ajustes opciones'],
       ];
-      go.filter(([, path]) => path !== location.pathname && planAllows(planFeatures, path))
+      go.filter(([, path]) => path !== location.pathname && menuAllows(planFeatures, intents, path))
         .forEach(([label, path, icon, keywords]) => {
           list.push({ id: `go-${path}`, label, group: 'Ir a', icon, keywords, run: () => navigate(path) });
         });

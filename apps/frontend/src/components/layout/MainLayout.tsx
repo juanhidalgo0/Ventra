@@ -19,13 +19,12 @@ import NotificationBell from '../notifications/NotificationBell';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
-import { useSetupProgress } from '../../utils/setupProgress';
-import { Rocket, ArrowRight } from 'lucide-react';
 import MobileShell from '../mobile/MobileShell';
 import PlanGate from '../subscription/PlanGate';
-import { usePlanStore } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
+import WelcomeSetup from '../onboarding/WelcomeSetup';
+import { GettingStartedPill } from '../onboarding/GettingStarted';
 
 interface Props { children: React.ReactNode; }
 
@@ -192,10 +191,6 @@ export default function MainLayout({ children }: Props) {
   const isPOS = location.pathname === '/pos';
   const navigate = useNavigate();
   const isAdminUser = user?.role === 'ADMIN';
-  // Se recalcula al navegar, así refleja lo que se acaba de configurar.
-  const setupPct = useSetupProgress(isAdminUser, location.pathname);
-  // Los pasos de configuración son de la caja: con el plan Tienda no aplican
-  const planHasCaja = usePlanStore((s) => s.features.caja);
 
   // Dueño en el celular: la app móvil arranca en Inicio (una vez por sesión; después "Vender" sí abre el POS)
   const ownerMobile = useOwnerMobile();
@@ -277,7 +272,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /></MobileShell>;
   }
 
   return (
@@ -340,20 +335,7 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex items-center gap-3">
-            {isAdminUser && planHasCaja && setupPct !== null && setupPct < 100 && (
-              <button
-                onClick={() => navigate('/settings')}
-                title="Terminá de configurar tu sistema"
-                className="hidden md:flex items-center gap-2.5 h-8 pl-3 pr-2 rounded-full bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 transition-colors group"
-              >
-                <Rocket className="w-3.5 h-3.5 text-orange-600" />
-                <span className="text-[12px] font-semibold whitespace-nowrap">Configuración {setupPct}%</span>
-                <span className="w-16 h-1.5 rounded-full bg-orange-200/70 overflow-hidden">
-                  <span className="block h-full rounded-full bg-orange-600 transition-all" style={{ width: `${setupPct}%` }} />
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 text-orange-600 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-            )}
+            <GettingStartedPill />
             {pwa.mode === 'prompt' && (
               <button
                 onClick={() => pwa.install()}
@@ -415,6 +397,9 @@ export default function MainLayout({ children }: Props) {
 
       {/* Ctrl+K: buscar cualquier acción o pantalla */}
       <CommandPalette />
+
+      {/* Bienvenida del primer uso (solo el dueño, una vez por comercio) */}
+      <WelcomeSetup mobile={false} />
     </div>
   );
 }

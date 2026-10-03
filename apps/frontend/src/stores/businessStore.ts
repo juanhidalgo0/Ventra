@@ -1,4 +1,45 @@
 import { create } from 'zustand';
+import { setStoreSetting, STORE_SETTINGS_EVENT } from '../services/storeSettings';
+import { planAllows, type PlanFeatures } from './planStore';
+
+/**
+ * Qué hace el comercio con Ventra. Lo elige el dueño en la bienvenida (y en Configuración).
+ * El plan dice qué PUEDE usar; esto dice qué USA: lo que no usa no aparece en el menú
+ * (sigue andando si entra por el link). null = nunca lo eligió: se muestra todo.
+ */
+export type BusinessIntent = 'mostrador' | 'online' | 'turnos';
+export const ALL_INTENTS: BusinessIntent[] = ['mostrador', 'online', 'turnos'];
+
+/** Parte del plan que hace falta para cada intención. */
+export const INTENT_AREA: Record<BusinessIntent, keyof PlanFeatures> = { mostrador: 'caja', online: 'tienda', turnos: 'agenda' };
+
+export const INTENT_LABELS: Record<BusinessIntent, { title: string; description: string }> = {
+  mostrador: { title: 'Vender en el mostrador', description: 'Caja, stock, cierres y cuentas corrientes.' },
+  online: { title: 'Vender por internet', description: 'Tu tienda online con pedidos por WhatsApp.' },
+  turnos: { title: 'Dar turnos', description: 'Tus clientes reservan solos desde tu página.' },
+};
+
+const INTENT_PATHS: Partial<Record<BusinessIntent, string[]>> = {
+  online: ['/online-store', '/pedidos', '/tienda'],
+  turnos: ['/agenda'],
+};
+
+const readIntents = (): BusinessIntent[] | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem('business_intents') || 'null');
+    return Array.isArray(v) ? v.filter((x) => ALL_INTENTS.includes(x)) : null;
+  } catch { return null; }
+};
+
+/** Si una pantalla va en el menú: la incluye el plan y el comercio la usa. */
+export function menuAllows(features: PlanFeatures, intents: BusinessIntent[] | null, path: string) {
+  if (!planAllows(features, path)) return false;
+  if (!intents) return true;
+  for (const [intent, paths] of Object.entries(INTENT_PATHS) as [BusinessIntent, string[]][]) {
+    if (!intents.includes(intent) && paths.some((p) => path === p || path.startsWith(p + '/'))) return false;
+  }
+  return true;
+}
 
 /**
  * Funciones del sistema que se prenden o se apagan según el rubro.
@@ -104,22 +145,36 @@ const loadState = (): { profile: BusinessProfile; features: FeatureMap } => {
   return { profile, features };
 };
 
-const persist = (profile: BusinessProfile, features: FeatureMap) => {
-  localStorage.setItem(PROFILE_KEY, profile);
-  localStorage.setItem(FEATURES_KEY, JSON.stringify(features));
+const writeLegacy = (features: FeatureMap) => {
   // Compatibilidad con versiones anteriores (y con cualquier pantalla que todavía no se haya migrado)
   localStorage.setItem(LEGACY_KEY, features.fractional ? 'FERRETERIA' : 'KIOSKO');
+};
+
+/** Rubro y funciones son del comercio: viajan a los otros equipos (ver services/storeSettings). */
+const persist = (profile: BusinessProfile, features: FeatureMap) => {
+  setStoreSetting('business_profile', profile);
+  setStoreSetting('business_features', JSON.stringify(features));
+  writeLegacy(features);
 };
 
 interface BusinessState {
   profile: BusinessProfile;
   features: FeatureMap;
+  intents: BusinessIntent[] | null;
   setProfile: (profile: BusinessProfile) => void;
   setFeature: (feature: BusinessFeature, enabled: boolean) => void;
+  setIntents: (intents: BusinessIntent[]) => void;
 }
 
 export const useBusinessStore = create<BusinessState>((set, get) => ({
   ...loadState(),
+  intents: readIntents(),
+
+  setIntents: (intents) => {
+    const clean = ALL_INTENTS.filter((i) => intents.includes(i));
+    setStoreSetting('business_intents', JSON.stringify(clean));
+    set({ intents: clean });
+  },
 
   setProfile: (profile) => {
     const features = featuresOfProfile(profile);
@@ -133,6 +188,16 @@ export const useBusinessStore = create<BusinessState>((set, get) => ({
     set({ features });
   },
 }));
+
+// Otro equipo cambió el rubro o las funciones: se aplican sin reiniciar
+window.addEventListener(STORE_SETTINGS_EVENT, (e) => {
+  const keys = (e as CustomEvent<string[]>).detail || [];
+  if (keys.includes('business_intents')) useBusinessStore.setState({ intents: readIntents() });
+  if (!keys.includes('business_profile') && !keys.includes('business_features')) return;
+  const next = loadState();
+  writeLegacy(next.features);
+  useBusinessStore.setState(next);
+});
 
 /** Para leer fuera de React o dentro del render sin suscribirse (reemplazo directo del viejo localStorage.getItem). */
 export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStore.getState().features[feature];

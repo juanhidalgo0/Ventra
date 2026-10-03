@@ -59,11 +59,70 @@ export interface Booking {
   customerName?: string;
   customerPhone?: string;
   customerNote?: string;
+  customerPhoneKey?: string;
   code?: string;
   status: BookingStatus;
+  /** Cobro del turno (planes sin caja): queda como atendido */
+  payment?: BookingPayment;
   source?: 'online' | 'manual';
   reason?: string;
   createdAt?: any;
+}
+
+export interface BookingPayment { method: string; amount: number; at?: any }
+
+/** Medios de cobro de un turno. */
+export const PAY_METHODS = ['Efectivo', 'Transferencia', 'Mercado Pago', 'Débito', 'Crédito'];
+
+/** Resumen de un cliente de la agenda (ventra_stores/{id}/agenda_clients/{key}). */
+export interface AgendaClient {
+  key: string;
+  name: string;
+  phone: string;
+  visits: number;
+  noShows: number;
+  cancelled: number;
+  spent: number;
+  firstDate?: string;
+  lastVisit: string | null;
+  lastService?: string;
+  next: { dateKey: string; startMin: number; serviceName: string } | null;
+  note?: string;
+}
+
+// Misma lógica que clientKeyOf / aggregateClient de firebase/functions/agenda.js: mantener iguales.
+const phoneKeyOf = (phone?: string) => String(phone || '').replace(/\D/g, '').slice(-10);
+const nameKeyOf = (name?: string) => String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/** Clave del cliente de un turno: el teléfono si tiene, si no el nombre. null para bloqueos. */
+export function clientKeyOf(b: Partial<Booking> | null | undefined): string | null {
+  if (!b || b.kind !== 'booking') return null;
+  const phone = b.customerPhoneKey || phoneKeyOf(b.customerPhone);
+  if (phone.length >= 6) return 'p' + phone;
+  const name = nameKeyOf(b.customerName);
+  return name ? 'n_' + name : null;
+}
+
+export function aggregateClient(bookings: Booking[], todayKey: string): Omit<AgendaClient, 'key' | 'note'> | null {
+  const list = bookings.filter((b) => b.kind === 'booking').sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
+  if (!list.length) return null;
+  const last = list[list.length - 1];
+  const withPhone = list.filter((b) => b.customerPhone).pop();
+  const done = list.filter((b) => b.status === 'DONE' || b.payment);
+  const next = list.find((b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.dateKey >= todayKey);
+  return {
+    name: last.customerName || '',
+    phone: withPhone ? withPhone.customerPhone || '' : '',
+    visits: done.length,
+    noShows: list.filter((b) => b.status === 'NO_SHOW').length,
+    cancelled: list.filter((b) => b.status === 'CANCELLED').length,
+    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0),
+    firstDate: list[0].dateKey,
+    lastVisit: done.length ? done[done.length - 1].dateKey : null,
+    lastService: (done.length ? done[done.length - 1] : last).serviceName || '',
+    next: next ? { dateKey: next.dateKey, startMin: next.startMin, serviceName: next.serviceName || '' } : null,
+  };
 }
 
 export const STAFF_COLORS = ['#DB2777', '#2563EB', '#059669', '#D97706', '#7C3AED', '#0891B2', '#DC2626', '#4B5563'];

@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList } from 'lucide-react';
-import { usePlanStore } from '../../stores/planStore';
+import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote } from 'lucide-react';
+import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 
 const TABS = [
@@ -31,6 +31,8 @@ const SCREEN_TITLES: Record<string, string> = {
   '/online-store': 'Tienda online',
   '/pedidos': 'Pedidos online',
   '/agenda': 'Agenda',
+  '/agenda/clientes': 'Clientes',
+  '/agenda/cobros': 'Cobros',
   '/notificaciones': 'Notificaciones',
   '/settings': 'Configuración',
 };
@@ -43,10 +45,18 @@ const TIENDA_TABS = [
   { path: '/mas', label: 'Más', icon: LayoutGrid },
 ];
 
+/** Plan Agenda (solo turnos): la agenda es el inicio. */
+const AGENDA_TABS = [
+  { path: '/agenda', label: 'Agenda', icon: CalendarDays },
+  { path: '/agenda/clientes', label: 'Clientes', icon: Users },
+  { path: '/agenda/cobros', label: 'Cobros', icon: Banknote },
+  { path: '/mas', label: 'Más', icon: LayoutGrid },
+];
+
 type Tab = typeof TABS[number];
 const isTab = (tabs: Tab[], pathname: string) => tabs.some((t) => t.path === pathname);
 /** Pantallas de "Más" que ya tienen su versión móvil (traen su propio encabezado con "volver"). */
-export const NATIVE_MOBILE_PATHS = ['/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/notificaciones'];
+export const NATIVE_MOBILE_PATHS = ['/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
 /** Las pantallas que no son pestañas se abren desde "Más" y la marcan activa. */
 const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : '/mas');
 
@@ -111,7 +121,7 @@ function usePullToReload() {
 export default function MobileShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const tabs = usePlanStore((s) => s.features.caja) ? TABS : TIENDA_TABS;
+  const tabs = usePlanStore((s) => (s.features.caja ? TABS : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
   const active = tabFor(tabs, pathname);
   const inTab = isTab(tabs, pathname) || NATIVE_MOBILE_PATHS.includes(pathname) || pathname.startsWith('/settings/');
   const scrollsItself = pathname === '/inicio' || pathname === '/mas';

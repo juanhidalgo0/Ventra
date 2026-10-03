@@ -8,6 +8,7 @@ import {
   Package, 
   Monitor, 
   Users, 
+  Banknote,
   Truck, 
   Receipt, 
   History, 
@@ -33,8 +34,9 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo as BrandLogo } from '../common/MangoLogo';
-import { hasFeature } from '../../stores/businessStore';
-import { usePlanStore, planAllows } from '../../stores/planStore';
+import { hasFeature, useBusinessStore } from '../../stores/businessStore';
+import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
+import { menuAllows } from '../../stores/businessStore';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -100,6 +102,14 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder).length);
 
   const planFeatures = usePlanStore((s) => s.features);
+  const intents = useBusinessStore((s) => s.intents);
+  const agendaOnly = isAgendaOnly(planFeatures);
+  // Botón principal y subtítulo según lo que hace el comercio con Ventra
+  const home = planFeatures.caja
+    ? { path: '/pos', label: 'Punto de Venta', icon: ShoppingBag, subtitle: 'Sistema de ventas' }
+    : agendaOnly
+      ? { path: '/agenda', label: 'Mi agenda', icon: CalendarDays, subtitle: 'Turnos online' }
+      : { path: '/tienda', label: 'Mi tienda', icon: Globe, subtitle: 'Tienda online' };
 
   const menuGroups = [
     {
@@ -134,7 +144,12 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
-        ...(user?.role === 'ADMIN' ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
+        ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
+        // Sin caja, los turnos se cobran en la agenda: clientes y cobros propios
+        ...(user?.role === 'ADMIN' && !planFeatures.caja && planFeatures.agenda ? [
+          { label: agendaOnly ? 'Clientes' : 'Clientes de la agenda', icon: Users, path: '/agenda/clientes' },
+          { label: agendaOnly ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
+        ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         { label: 'Facturación', icon: Calculator, path: '/fiscal' },
         { 
@@ -151,7 +166,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
-        ...(user?.role === 'ADMIN' ? [
+        ...(user?.role === 'ADMIN' && !agendaOnly ? [
           { label: 'Acceso Remoto', icon: Smartphone, path: '/remote-access' }
         ] : [])
       ]
@@ -162,9 +177,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const visibleGroups = menuGroups.map((group) => ({
     ...group,
     items: group.items
-      .map((item: any) => (item.subItems ? { ...item, subItems: item.subItems.filter((sub: any) => planAllows(planFeatures, sub.path)) } : item))
-      .filter((item: any) => planAllows(planFeatures, item.path) || (item.subItems && item.subItems.length > 0)),
-  }));
+      .map((item: any) => (item.subItems ? { ...item, subItems: item.subItems.filter((sub: any) => menuAllows(planFeatures, intents, sub.path)) } : item))
+      .filter((item: any) => menuAllows(planFeatures, intents, item.path) || (item.subItems && item.subItems.length > 0)),
+  })).filter((group) => group.items.length > 0);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -177,7 +192,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           {!isCollapsed && (
             <div className="min-w-0 leading-none">
               <span className="block font-bold text-[16px] text-slate-900 tracking-tight truncate">Ventra</span>
-              <span className="block text-[11.5px] font-medium text-slate-400 mt-1">{planFeatures.caja ? 'Sistema de ventas' : 'Tienda online'}</span>
+              <span className="block text-[11.5px] font-medium text-slate-400 mt-1">{home.subtitle}</span>
             </div>
           )}
         </div>
@@ -199,11 +214,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         {/* Main Action Buttons */}
         <div className="space-y-1.5">
           <button
-            onClick={() => { navigate(planFeatures.caja ? '/pos' : '/tienda'); onCloseMobile?.(); }}
+            onClick={() => { navigate(home.path); onCloseMobile?.(); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-[13.5px] transition-all active:scale-[0.98] bg-rose-600 text-white hover:bg-rose-700 shadow-[0_6px_16px_-6px_rgba(14,110,82,0.55)] cursor-pointer"
           >
-            {planFeatures.caja ? <ShoppingBag className="w-[18px] h-[18px] shrink-0" /> : <Globe className="w-[18px] h-[18px] shrink-0" />}
-            {!isCollapsed && <span>{planFeatures.caja ? 'Punto de Venta' : 'Mi tienda'}</span>}
+            <home.icon className="w-[18px] h-[18px] shrink-0" />
+            {!isCollapsed && <span>{home.label}</span>}
           </button>
 
           {planFeatures.caja && <button

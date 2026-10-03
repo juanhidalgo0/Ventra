@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Calculator, 
   TrendingUp, 
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { setStoreSetting } from '../../services/storeSettings';
 
 interface SystemStats {
   billing: number;
@@ -61,8 +62,11 @@ export default function EarningsDivisionScreen() {
     ];
   });
 
+  // Se guarda cuando se cambian los socios, no al abrir (los valores por defecto pisaban los de otra caja)
+  const partnersTouched = useRef(false);
   useEffect(() => {
-    localStorage.setItem('earnings_division_partners', JSON.stringify(partners));
+    if (partnersTouched.current) setStoreSetting('earnings_division_partners', JSON.stringify(partners));
+    partnersTouched.current = true;
   }, [partners]);
 
   const handlePartnerCountChange = (count: number) => {

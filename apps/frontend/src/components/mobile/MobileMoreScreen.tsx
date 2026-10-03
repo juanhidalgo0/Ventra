@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
-  Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays,
+  Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -10,9 +10,11 @@ import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
 import PushCard from './PushCard';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
-import { usePlanStore, planAllows } from '../../stores/planStore';
+import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
+import { useBusinessStore, menuAllows } from '../../stores/businessStore';
 
-interface Tile { path: string; label: string; hint: string; icon: any; tint: string }
+/** noCaja: solo sin sistema de ventas (con caja, los turnos se cobran en el POS). */
+interface Tile { path: string; label: string; hint: string; icon: any; tint: string; noCaja?: boolean }
 
 const SECTIONS: { title: string; items: Tile[] }[] = [
   {
@@ -40,6 +42,8 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
       { path: '/fiscal', label: 'Facturación', hint: 'ARCA', icon: FileText, tint: 'bg-slate-100 text-slate-700' },
       { path: '/online-store', label: 'Tienda online', hint: 'Tu catálogo web', icon: Store, tint: 'bg-emerald-50 text-emerald-700' },
       { path: '/agenda', label: 'Agenda', hint: 'Turnos online', icon: CalendarDays, tint: 'bg-rose-50 text-rose-700' },
+      { path: '/agenda/clientes', label: 'Clientes', hint: 'De la agenda', icon: Users, tint: 'bg-sky-50 text-sky-700', noCaja: true },
+      { path: '/agenda/cobros', label: 'Cobros', hint: 'De los turnos', icon: Banknote, tint: 'bg-emerald-50 text-emerald-700', noCaja: true },
       { path: '/notificaciones', label: 'Notificaciones', hint: 'Avisos al celular', icon: Bell, tint: 'bg-amber-50 text-amber-700' },
       { path: '/settings', label: 'Configuración', hint: 'Sistema', icon: Settings, tint: 'bg-slate-100 text-slate-700' },
     ],
@@ -51,9 +55,13 @@ export default function MobileMoreScreen() {
   const { user, logout } = useAuthStore();
   const [owed, setOwed] = useState<number | null>(null);
   const planFeatures = usePlanStore((s) => s.features);
+  const intents = useBusinessStore((s) => s.intents);
   // Solo las secciones que incluye el plan (Caja / Tienda / Full)
   const sections = SECTIONS
-    .map((s) => ({ ...s, items: s.items.filter((i) => planAllows(planFeatures, i.path)) }))
+    .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
+      && !(i.noCaja && planFeatures.caja)
+      // Solo turnos: agenda, clientes y cobros ya son pestañas
+      && !(isAgendaOnly(planFeatures) && i.path.startsWith('/agenda'))) }))
     .filter((s) => s.items.length > 0);
 
   // Un dato vivo en el encabezado: cuánto te deben por fiado

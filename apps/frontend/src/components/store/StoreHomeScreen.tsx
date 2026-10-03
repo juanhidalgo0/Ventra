@@ -7,6 +7,7 @@ import { useOnlineOrders, isNewOrder, startOnlineOrdersSync } from '../../servic
 import { loadStoreConfig, type StoreConfig, type StoreOrder, type OrderStage } from '../../services/onlineStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
+import { GettingStartedCard } from '../onboarding/GettingStarted';
 
 const PUBLIC_BASE = 'https://tienda.ventra.store';
 
@@ -135,6 +136,8 @@ export default function StoreHomeScreen() {
           <ChevronRight className="w-4 h-4 text-slate-400" />
         </button>
       )}
+
+      {storeId && <GettingStartedCard mobile={mobile} />}
 
       <section>
         <p className="text-[12.5px] font-semibold text-slate-500 mb-2 px-1">Administrar</p>

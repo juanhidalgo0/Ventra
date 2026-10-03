@@ -19,6 +19,7 @@ import { MangoLogo } from './components/common/MangoLogo';
 import { toggleFullscreen } from './utils/fullscreen';
 import { shortcutsLocked } from './utils/shortcutLock';
 import { useOwnerMobile } from './utils/ownerMobile';
+import { startStoreSettingsSync } from './services/storeSettings';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
@@ -61,6 +62,8 @@ const MobileFiscalScreen = lazy(() => import('./components/mobile/MobileFiscalSc
 const MobileNotificationsScreen = lazy(() => import('./components/mobile/MobileNotificationsScreen'));
 const StoreHomeScreen = lazy(() => import('./components/store/StoreHomeScreen'));
 const AgendaScreen = lazy(() => import('./components/agenda/AgendaScreen'));
+const AgendaClientsScreen = lazy(() => import('./components/agenda/AgendaClientsScreen'));
+const AgendaPaymentsScreen = lazy(() => import('./components/agenda/AgendaPaymentsScreen'));
 const MobileSettingsScreen = lazy(() => import('./components/mobile/MobileSettingsScreen'));
 const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSettingsScreen').then((m) => ({ default: m.MobileSettingsSection })));
 
@@ -260,6 +263,12 @@ export default function App() {
       wsService.off('product:updated', handleProductUpdated);
     };
   }, [isAuthenticated, setProducts]);
+
+  // Configuración del comercio (rubro, nombre, recargos...) compartida entre todos sus equipos
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return startStoreSettingsSync();
+  }, [isAuthenticated]);
 
   // Escucha en segundo plano los pedidos de la tienda online propia (Ventra) y
   // los guarda como Presupuesto local, además de llegarle al comercio por WhatsApp.
@@ -531,6 +540,8 @@ export default function App() {
                     <Route path="/tienda" element={<AdminRoute><StoreHomeScreen /></AdminRoute>} />
                     <Route path="/pedidos" element={<AdminRoute><OnlineOrdersScreen /></AdminRoute>} />
                     <Route path="/agenda" element={<AdminRoute><AgendaScreen /></AdminRoute>} />
+                    <Route path="/agenda/clientes" element={<AdminRoute><AgendaClientsScreen /></AdminRoute>} />
+                    <Route path="/agenda/cobros" element={<AdminRoute><AgendaPaymentsScreen /></AdminRoute>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
                     <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />

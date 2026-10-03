@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Lock, Store, ShoppingCart } from 'lucide-react';
+import { Lock, Store, ShoppingCart, CalendarDays, Package } from 'lucide-react';
 import { usePlanStore, planAllows, planAreaOf, planHome } from '../../stores/planStore';
 
 const UPGRADE_URL = 'https://ventra.store/cuenta.html';
@@ -36,12 +36,19 @@ export default function PlanGate({ mobile, children }: { mobile: boolean; childr
 
   if (planAllows(features, pathname)) return <>{children}</>;
 
-  if (pathname === '/' || pathname === '/pos' || pathname === '/inicio') {
+  if (pathname === '/' || pathname === '/pos' || pathname === '/inicio' || pathname === '/tienda') {
     return <Navigate to={planHome(features, mobile)} replace />;
   }
 
   const area = planAreaOf(pathname);
-  const Icon = area === 'tienda' ? Store : ShoppingCart;
+  const Icon = area === 'tienda' ? Store : area === 'agenda' ? CalendarDays : area === 'catalogo' ? Package : ShoppingCart;
+  const COPY = {
+    tienda: ['La tienda online no está en tu plan', 'Con Ventra Full sumás tu tienda online: catálogo web, pedidos y avisos al celular.'],
+    agenda: ['La agenda de turnos no está en tu plan', 'Con Ventra Full sumás la agenda: tus clientes reservan solos desde tu página y vos ves todo en el celular.'],
+    catalogo: ['Productos y stock no están en tu plan', 'Tu plan es solo para turnos. Con Ventra Full sumás productos, stock y la caja para vender.'],
+    caja: ['El sistema de ventas no está en tu plan', 'Con Ventra Full sumás la caja: vender, cierres X y Z, facturación, cuentas corrientes y reportes.'],
+  } as const;
+  const [title, text] = COPY[area || 'caja'];
   return (
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="max-w-sm w-full bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm">
@@ -51,14 +58,9 @@ export default function PlanGate({ mobile, children }: { mobile: boolean; childr
             <Lock className="w-3.5 h-3.5 text-white" />
           </span>
         </span>
-        <h2 className="mt-4 text-[17px] font-bold text-slate-900">
-          {area === 'tienda' ? 'La tienda online no está en tu plan' : 'El sistema de ventas no está en tu plan'}
-        </h2>
+        <h2 className="mt-4 text-[17px] font-bold text-slate-900">{title}</h2>
         <p className="mt-1.5 text-[13.5px] text-slate-500 leading-relaxed">
-          {planName ? `Tenés ${planName}. ` : ''}
-          {area === 'tienda'
-            ? 'Con Ventra Full sumás tu tienda online: catálogo web, pedidos y avisos al celular.'
-            : 'Con Ventra Full sumás la caja: vender, cierres X y Z, facturación, cuentas corrientes y reportes.'}
+          {planName ? `Tenés ${planName}. ` : ''}{text}
         </p>
         <button onClick={openUpgrade} className="mt-5 w-full h-11 rounded-xl bg-rose-600 text-white text-[14px] font-semibold active:scale-[0.99]">
           Pasarme a Ventra Full

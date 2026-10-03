@@ -35,13 +35,17 @@ import {
    ChevronRight,
    Circle,
   BadgeCheck,
+  Store,
 } from 'lucide-react';
 import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
 import MercadoPagoCard from './MercadoPagoCard';
 import { useAuthStore } from '../../stores/authStore';
+import { setStoreSetting } from '../../services/storeSettings';
 import { usePOSStore } from '../../stores/posStore';
-import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, type BusinessProfile } from '../../stores/businessStore';
+import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
+import { usePlanStore } from '../../stores/planStore';
+import { effectiveIntents } from '../../utils/gettingStarted';
 
 const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -77,6 +81,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const [uploadedFileToRestore, setUploadedFileToRestore] = useState<File | null>(null);
 
   // System parameters
+  // Nombre del comercio: sale en tickets, cierres y en la app del celular, en todos los equipos
+  const [storeName, setStoreName] = useState(() => localStorage.getItem('gd_store_name') || '');
   const [allowNegativeStock, setAllowNegativeStock] = useState(() => {
     const saved = localStorage.getItem('allow_negative_stock');
     return saved ? saved === 'true' : true;
@@ -153,7 +159,11 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   };
 
   const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'suscripcion' | 'integraciones' | 'mantenimiento'>(() =>
-    (initialTab as any) || (/[?&]tab=suscripcion/.test(window.location.hash) ? 'suscripcion' : 'general'));
+    (initialTab as any) || (() => {
+      // ?tab=... abre una sección directo (desde "Primeros pasos", la suscripción, etc.)
+      const tab = window.location.hash.match(/[?&]tab=([a-z]+)/)?.[1];
+      return tab && ['general', 'posnets', 'recargos', 'personal', 'backups', 'suscripcion', 'integraciones', 'mantenimiento'].includes(tab) ? tab : 'general';
+    })());
 
   // Posnet Config States
   const [posnets, setPosnets] = useState<{ id: string; name: string }[]>(() => {
@@ -249,10 +259,10 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const [virtual2Surcharge, setVirtual2Surcharge] = useState(() => Number(localStorage.getItem('virtual2_surcharge') || '0'));
 
   const handleSaveVirtualConfigs = () => {
-    localStorage.setItem('virtual1_code', virtual1Code.trim().toUpperCase());
-    localStorage.setItem('virtual2_code', virtual2Code.trim().toUpperCase());
-    localStorage.setItem('virtual1_surcharge', virtual1Surcharge.toString());
-    localStorage.setItem('virtual2_surcharge', virtual2Surcharge.toString());
+    setStoreSetting('virtual1_code', virtual1Code.trim().toUpperCase());
+    setStoreSetting('virtual2_code', virtual2Code.trim().toUpperCase());
+    setStoreSetting('virtual1_surcharge', virtual1Surcharge.toString());
+    setStoreSetting('virtual2_surcharge', virtual2Surcharge.toString());
     toast.success('✅ Configuración de Cargas Virtuales guardada con éxito');
   };
 
@@ -591,12 +601,33 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     }
   };
 
+  // Qué hace el comercio con Ventra: lo que no usa sale del menú (ver businessStore)
+  const planFeatures = usePlanStore((s) => s.features);
+  const intents = useBusinessStore((s) => s.intents);
+  const setIntents = useBusinessStore((s) => s.setIntents);
+  const activeIntents = effectiveIntents(planFeatures, intents);
+  const toggleIntent = (i: BusinessIntent) => {
+    const next = activeIntents.includes(i) ? activeIntents.filter((x) => x !== i) : [...activeIntents, i];
+    if (!next.length) { toast.error('Dejá al menos una'); return; }
+    setIntents(next);
+    toast.success('✅ Menú actualizado');
+  };
+
+  const handleSaveStoreName = () => {
+    const name = storeName.trim();
+    if (name.length < 2) { toast.error('Poné el nombre de tu comercio'); return; }
+    setStoreSetting('store_name', name);
+    setStoreName(name);
+    toast.success('✅ Nombre del comercio guardado');
+  };
+
   const handleSaveSystemConfig = () => {
-    localStorage.setItem('allow_negative_stock', String(allowNegativeStock));
-    localStorage.setItem('low_stock_alerts', String(lowStockAlerts));
-    localStorage.setItem('hourly_rate', String(hourlyRate));
+    // Del comercio (viajan a todos los equipos); el modo rendimiento es de esta PC
+    setStoreSetting('allow_negative_stock', String(allowNegativeStock));
+    setStoreSetting('low_stock_alerts', String(lowStockAlerts));
+    setStoreSetting('hourly_rate', String(hourlyRate));
     localStorage.setItem('performance_mode', String(performanceMode));
-    localStorage.setItem('pos_disable_change_calculator', String(disableChangeCalculator));
+    setStoreSetting('pos_disable_change_calculator', String(disableChangeCalculator));
     if ((window as any).__TAURI__) {
       try {
         const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
@@ -797,6 +828,53 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6 max-w-4xl"
               >
+                {/* Comercio (compartido por todos los equipos) */}
+                <div className="card p-6 space-y-4">
+                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                    <Store className="w-4.5 h-4.5 text-rose-500" /> Tu comercio
+                  </h3>
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nombre del comercio</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={storeName}
+                        onChange={(e) => setStoreName(e.target.value)}
+                        maxLength={60}
+                        className="flex-1 min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
+                        placeholder="Ej: Almacén Don Pepe"
+                      />
+                      <button
+                        onClick={handleSaveStoreName}
+                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" /> Guardar
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-slate-405 leading-relaxed">Sale en los tickets, los cierres de caja y la app del celular. Se guarda para todas las cajas del comercio.</p>
+                  </div>
+                  <div className="space-y-1.5 pt-2">
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Qué hacés con Ventra</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {ALL_INTENTS.map((i) => {
+                        const locked = !planFeatures[INTENT_AREA[i]];
+                        const on = !locked && activeIntents.includes(i);
+                        return (
+                          <button key={i} type="button" disabled={locked} onClick={() => toggleIntent(i)} aria-pressed={on}
+                            className={`text-left p-3 rounded-xl border-2 transition-colors ${locked ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : on ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 hover:border-slate-300 cursor-pointer'}`}>
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="text-[12.5px] font-bold text-slate-800">{INTENT_LABELS[i].title}</span>
+                              {on && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+                              {locked && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                            </span>
+                            <span className="block text-[11px] text-slate-500 mt-0.5">{locked ? 'Incluido en Ventra Full' : INTENT_LABELS[i].description}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[9px] text-slate-405 leading-relaxed">Lo que no usás no aparece en el menú. Se guarda para todos los equipos del comercio.</p>
+                  </div>
+                </div>
                 <TicketPrinterCard />
                 {/* PC Identity */}
                 <div className="card p-6 space-y-4">
