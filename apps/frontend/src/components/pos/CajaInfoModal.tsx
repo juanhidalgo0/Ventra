@@ -493,12 +493,16 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
         )}
       </AnimatePresence>
 
+      {/* El Z va en portal, pero sus clics igual suben por el árbol de React: sin este corte
+          llegan al fondo de este modal, que lo cierra y desmonta el Z antes de imprimir */}
       {latestZReport && (
-        <CierreDiaModal
-          zReport={latestZReport}
-          isHistory={true}
-          onClose={() => setLatestZReport(null)}
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <CierreDiaModal
+            zReport={latestZReport}
+            isHistory={true}
+            onClose={() => setLatestZReport(null)}
+          />
+        </div>
       )}
     </MotionDiv>
   );
