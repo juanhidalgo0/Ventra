@@ -91,6 +91,9 @@ export class DemoResetService implements OnModuleInit {
       ['brand', () => this.prisma.brand.deleteMany()],
       ['surcharge', () => this.prisma.surcharge.deleteMany()],
       ['category', () => this.prisma.category.deleteMany()],
+      // La demo la comparten todos los visitantes: rubro, nombre o "qué hacés con Ventra" que
+      // elija uno no pueden quedarle al siguiente (ver store_settings)
+      ['storeSettings', () => this.prisma.$executeRawUnsafe('DELETE FROM store_settings')],
     ];
     for (const [name, run] of wipeSteps) {
       try {

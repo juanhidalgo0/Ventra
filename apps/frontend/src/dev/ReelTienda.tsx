@@ -62,7 +62,7 @@ api.defaults.adapter = async (config: any) => {
   else if (url.startsWith('/categories')) data = CATS.map((c) => ({ ...c, _count: { products: products.filter((p) => p.categoryId === c.id).length } }));
   else if (url.startsWith('/promotions')) data = [];
   else if (url.startsWith('/cash/current')) data = null;
-  else if (url.startsWith('/system/info')) data = { isDemo: false };
+  else if (url.startsWith('/system/info')) data = { isDemo: new URLSearchParams(location.search).has('demo') };
   else if (m !== 'get') data = { ok: true };
   return { data, status: 200, statusText: 'OK', headers: {}, config };
 };

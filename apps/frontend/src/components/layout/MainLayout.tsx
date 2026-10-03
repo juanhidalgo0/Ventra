@@ -24,6 +24,7 @@ import PlanGate from '../subscription/PlanGate';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
 import WelcomeSetup from '../onboarding/WelcomeSetup';
+import DemoPlanSwitcher from '../subscription/DemoPlanSwitcher';
 import { GettingStartedPill } from '../onboarding/GettingStarted';
 
 interface Props { children: React.ReactNode; }
@@ -272,7 +273,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /></MobileShell>;
   }
 
   return (
@@ -400,6 +401,9 @@ export default function MainLayout({ children }: Props) {
 
       {/* Bienvenida del primer uso (solo el dueño, una vez por comercio) */}
       <WelcomeSetup mobile={false} />
+
+      {/* Demo pública: qué plan se está probando y cómo cambiarlo */}
+      <DemoPlanSwitcher mobile={false} />
     </div>
   );
 }

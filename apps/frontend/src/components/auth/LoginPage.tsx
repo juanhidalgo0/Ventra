@@ -7,6 +7,7 @@ import { ShoppingBag, Eye, EyeOff, Loader2, ShieldCheck, UserCheck, UserPlus, Ar
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo } from '../common/MangoLogo';
+import { usePlanStore, PLANS, type PlanId } from '../../stores/planStore';
 
 const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
 const MotionDiv = (perfMode ? 'div' : motion.div) as any;
@@ -27,7 +28,7 @@ export default function LoginPage() {
   const [checkLoading, setCheckLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<PlanId | null>(null);
   const [showBackToSetup, setShowBackToSetup] = useState(false);
 
   const [loadingMessage, setLoadingMessage] = useState('Iniciando servidores locales...');
@@ -149,15 +150,17 @@ export default function LoginPage() {
     detectPortAndCheckInit();
   }, []);
 
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
+  // Demo: el visitante elige qué plan probar; queda en su navegador (el servidor es compartido)
+  const handleDemoLogin = async (plan: PlanId) => {
+    setDemoLoading(plan);
     try {
+      usePlanStore.getState().setDemoPlan(plan);
       await login('ADMIN', '1234');
       navigate('/pos');
     } catch (err: any) {
       toast.error(err.message || 'No se pudo entrar a la demo');
     } finally {
-      setDemoLoading(false);
+      setDemoLoading(null);
     }
   };
 
@@ -285,14 +288,20 @@ export default function LoginPage() {
               <div>
                 {isDemo && (
                   <div className="mb-6 pb-6 border-b border-dashed border-slate-300">
-                    <button
-                      type="button"
-                      onClick={handleDemoLogin}
-                      disabled={demoLoading}
-                      className="w-full btn-primary py-3.5 text-base bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-rose-500/20 font-bold rounded-2xl"
-                    >
-                      {demoLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Entrando...</> : 'Entrar a la demo (un clic)'}
-                    </button>
+                    <p className="text-[15px] font-bold text-slate-900">¿Qué plan querés probar?</p>
+                    <p className="text-[12px] text-slate-500 mb-3">Entrás con un clic, sin registrarte. Adentro podés cambiar de plan cuando quieras.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['caja', 'tienda', 'agenda', 'full'] as PlanId[]).map((id) => (
+                        <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
+                          className={`text-left p-3 rounded-2xl border-2 transition-colors disabled:opacity-60 cursor-pointer ${id === 'full' ? 'border-rose-600 bg-rose-50/60' : 'border-slate-200 hover:border-rose-300 bg-white'}`}>
+                          <span className="flex items-center justify-between gap-1">
+                            <span className="text-[13.5px] font-bold text-slate-900">{PLANS[id].name}</span>
+                            {demoLoading === id && <Loader2 className="w-4 h-4 animate-spin text-rose-600 shrink-0" />}
+                          </span>
+                          <span className="block text-[11.5px] text-slate-500 leading-snug mt-0.5">{PLANS[id].tagline}</span>
+                        </button>
+                      ))}
+                    </div>
                     <p className="text-center text-[10px] text-slate-600 font-semibold mt-2.5">
                       Sin registro. Usuario de prueba: <span className="font-mono font-bold">ADMIN</span> / <span className="font-mono font-bold">1234</span>
                     </p>

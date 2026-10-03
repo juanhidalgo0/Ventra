@@ -10,12 +10,30 @@ import api from '../services/api';
  */
 export interface PlanFeatures { caja: boolean; tienda: boolean; agenda: boolean }
 
+export type PlanId = 'caja' | 'tienda' | 'agenda' | 'full';
+
+/** Planes que se venden. Mismo reparto que planFeatures en el backend (subscription.service). */
+export const PLANS: Record<PlanId, { name: string; tagline: string; features: PlanFeatures }> = {
+  caja: { name: 'Ventra Caja', tagline: 'Mostrador: caja, stock y reportes', features: { caja: true, tienda: false, agenda: false } },
+  tienda: { name: 'Ventra Tienda', tagline: 'Tienda online y agenda de turnos', features: { caja: false, tienda: true, agenda: true } },
+  agenda: { name: 'Ventra Agenda', tagline: 'Solo turnos, desde el celular', features: { caja: false, tienda: false, agenda: true } },
+  full: { name: 'Ventra Full', tagline: 'Todo: caja, tienda y agenda', features: { caja: true, tienda: true, agenda: true } },
+};
+
+const DEMO_PLAN_KEY = 'demo_plan';
+const readDemoPlan = (): PlanId => {
+  try { const v = localStorage.getItem(DEMO_PLAN_KEY) as PlanId | null; return v && PLANS[v] ? v : 'full'; } catch { return 'full'; }
+};
+
 interface PlanState {
   plan: string | null;
   planName: string | null;
   features: PlanFeatures;
   loaded: boolean;
+  /** Demo pública: el visitante elige qué plan probar (queda en su navegador, no en el servidor compartido) */
+  isDemo: boolean;
   load: () => Promise<void>;
+  setDemoPlan: (plan: PlanId) => void;
 }
 
 export const usePlanStore = create<PlanState>((set) => ({
@@ -23,9 +41,18 @@ export const usePlanStore = create<PlanState>((set) => ({
   planName: null,
   features: { caja: true, tienda: true, agenda: true },
   loaded: false,
+  isDemo: false,
   load: async () => {
     try {
-      const { data } = await api.get('/subscription/status', { silent: true } as any);
+      const [{ data }, info] = await Promise.all([
+        api.get('/subscription/status', { silent: true } as any),
+        api.get('/system/info', { silent: true } as any).then((r) => r.data).catch(() => null),
+      ]);
+      if (info?.isDemo) {
+        const demo = readDemoPlan();
+        set({ isDemo: true, plan: demo, planName: PLANS[demo].name, features: PLANS[demo].features, loaded: true });
+        return;
+      }
       set({
         plan: data?.plan ?? null,
         planName: data?.planName ?? null,
@@ -38,6 +65,10 @@ export const usePlanStore = create<PlanState>((set) => ({
     } catch {
       set({ loaded: true });
     }
+  },
+  setDemoPlan: (plan) => {
+    try { localStorage.setItem(DEMO_PLAN_KEY, plan); } catch { /* sin espacio */ }
+    set({ isDemo: true, plan, planName: PLANS[plan].name, features: PLANS[plan].features, loaded: true });
   },
 }));
 
