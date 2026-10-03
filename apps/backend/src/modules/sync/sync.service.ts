@@ -101,6 +101,12 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    */
   private writeLock = false;
 
+  /** Avance de una sincronización larga que NO frena la caja (realineación, tablas nuevas). */
+  getBackgroundProgress(): { label: string; done: number; total: number } | null {
+    if (this.writeLock || !this.progress || (this.phase !== 'full' && this.phase !== 'syncing')) return null;
+    return this.progress;
+  }
+
   /** Lo que se muestra a quien intenta escribir mientras la base está tomada. */
   getWriteLock(): { label: string; done: number; total: number } | null {
     return this.writeLock ? (this.progress || { label: 'Descargando tus datos', done: 0, total: 0 }) : null;
@@ -505,7 +511,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           } catch (err) {
             if (!(err instanceof ResyncError)) throw err;
             console.warn('[Sync] La nube compactó movimientos viejos que esta caja no tenía: realineando');
-            await this.bootstrap(tables, creds.deviceId, true);
+            await this.bootstrap(tables, creds.deviceId, true, true);
             pulled = 1;
           }
           this.pullDelay = pushed || pulled ? CYCLE_MS : Math.min(this.pullDelay * 2, PULL_IDLE_MAX_MS);
@@ -545,7 +551,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    *  - Comercio vacío en la nube: esta caja es la original; sube todo y el saldo inicial de los contadores.
    *  - Comercio con datos: completa en la nube lo que solo tiene esta caja (sin pisar nada) y baja todo.
    */
-  private async bootstrap(tables: string[], deviceId: string, wasBootstrapped: boolean) {
+  private async bootstrap(tables: string[], deviceId: string, wasBootstrapped: boolean, cloudCompacted = false) {
     this.phase = 'full';
     this.writeStatusFile();
     const reg = await this.call('register', { kind: process.env.VENTRA_NODE_KIND || 'pc', v: SYNC_PROTOCOL });
@@ -592,7 +598,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       // La caja de la nube no tiene nada propio (lo suyo ya subió arriba con pushPending): subir
       // todo de nuevo eran cientos de miles de filas antes de poder bajar lo actual.
       const isCloudNode = (process.env.VENTRA_NODE_KIND || 'pc') === 'cloud';
-      if (hasData && wasBootstrapped && !isCloudNode) await this.pushAll(tables, 0, 'Completando datos en la nube');
+      // Si se realinea porque la nube compactó movimientos viejos, la nube ya tiene todo lo de
+      // esta caja (lo pendiente subió arriba): volver a subir la base entera eran cientos de miles
+      // de filas y muchos minutos para nada.
+      if (hasData && wasBootstrapped && !isCloudNode && !cloudCompacted) await this.pushAll(tables, 0, 'Completando datos en la nube');
       await this.pullChanges(true, !hasData, reg.cloudRows);
     }
     await this.setState('bootstrap', 'done');
@@ -686,22 +695,39 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (full) {
-      // Todo en una transacción, bajando y aplicando de a tandas (sin juntar todo en
-      // memoria). Las claves foráneas se controlan al final, así el orden de llegada da igual.
-      this.writeLock = true;
+      // De a tandas, cada una en su propia transacción corta: entre tanda y tanda la caja
+      // sigue vendiendo. Antes era UNA transacción de hasta 30 minutos y, mientras tanto,
+      // no se podía cobrar (con 270 mil registros pasaba en cada realineación).
+      //  - Las filas que apuntan a algo que todavía no llegó se apartan (parkOrphans) y se
+      //    reintentan al final.
+      //  - Los contadores (stock, saldos) se calculan al final: suma de las diferencias de la
+      //    nube + lo que esta caja vendió mientras tanto (sync_deltas todavía sin subir).
+      //  - Si se corta a la mitad, pull_after no avanza y la próxima pasada lo completa.
+      // Solo una caja que arranca vacía (sin usuarios todavía) no deja escribir mientras baja.
+      this.writeLock = wipe;
+      const tx = (fn: (t: Tx) => Promise<void>) => this.prisma.$transaction(async (t) => {
+        await t.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
+        await this.setState('applying', '1', t);
+        await fn(t);
+        await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
+      }, { timeout: 2 * 60 * 1000, maxWait: 30000 });
       try {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(`PRAGMA defer_foreign_keys = ON`);
-        await this.setState('applying', '1', tx);
         if (wipe) {
-          for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
-          for (const t of ['sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
+          await tx(async (t) => {
+            for (const tb of order) await t.$executeRawUnsafe(`DELETE FROM "${tb}"`);
+            for (const tb of ['sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await t.$executeRawUnsafe(`DELETE FROM ${tb}`);
+          });
         }
         for (;;) {
           const page = await this.call('pull', { after, all: true, fresh: wipe });
           head = page.head;
-          await applyPage(tx, page.rows as CloudRow[]);
-          applied += page.rows.length;
+          const rows = page.rows as CloudRow[];
+          const touched = new Map(rows.filter((r) => r.t !== '_delta' && !r.x && r.d).map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
+          await tx(async (t) => {
+            await applyPage(t, rows);
+            await this.parkOrphans(t, tables, touched, touched, true);
+          });
+          applied += rows.length;
           if (this.progress) {
             this.progress.done = applied;
             // La estimación cuenta solo lo vigente (no bajas ni movimientos de stock): pasada, se muestra solo la cantidad
@@ -710,22 +736,28 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
           after = page.last;
           if (!page.more) break;
+          // Un respiro para que entren las ventas que estaban esperando
+          await new Promise((r) => setTimeout(r, 50));
         }
-        // Contadores = suma de todas sus diferencias (incluye el saldo inicial)
-        for (const t of tables) for (const c of await this.counterCols(t)) await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = 0`);
-        for (const [key, sum] of counterSums) {
-          const [t, id, c] = key.split('|');
-          if (!tables.includes(t) || !(await this.counterCols(t)).includes(c)) continue;
-          await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${c}" = ? WHERE id = ?`, sum, id);
-        }
-        await this.parkOrphans(tx, tables, null, new Map());
-        await this.setState('pull_after', String(head), tx);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
-      }, { timeout: 30 * 60 * 1000, maxWait: 30000 });
+        // Contadores = suma de todas sus diferencias (incluye el saldo inicial) + lo vendido mientras bajaba
+        await tx(async (t) => {
+          const local: any[] = await t.$queryRawUnsafe(`SELECT tbl, row_id, col, SUM(delta) AS d FROM sync_deltas GROUP BY tbl, row_id, col`);
+          for (const l of local) {
+            const key = `${l.tbl}|${l.row_id}|${l.col}`;
+            counterSums.set(key, (counterSums.get(key) || 0) + Number(l.d || 0));
+          }
+          for (const tb of tables) for (const c of await this.counterCols(tb)) await t.$executeRawUnsafe(`UPDATE "${tb}" SET "${c}" = 0`);
+          for (const [key, sum] of counterSums) {
+            const [tb, id, c] = key.split('|');
+            if (!tables.includes(tb) || !(await this.counterCols(tb)).includes(c)) continue;
+            await t.$executeRawUnsafe(`UPDATE "${tb}" SET "${c}" = ? WHERE id = ?`, sum, id);
+          }
+          await this.setState('pull_after', String(head), t);
+        });
       } finally {
         this.writeLock = false;
       }
-      return applied;
+      return applied + (await this.retryParked(tables, order));
     }
 
     for (;;) {

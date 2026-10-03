@@ -3,14 +3,16 @@ import { CloudDownload } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 
-type Progress = { label: string; done: number; total: number };
+type Progress = { label: string; done: number; total: number; background: boolean };
 
 /**
  * Aviso mientras una PC nueva (o una recuperación) baja todos los datos de la nube.
  * En ese rato la base está ocupada: no se puede vender, cargar ni crear usuarios.
  * - Sin sesión (login / crear administrador): pantalla completa con la barra de avance,
  *   porque los usuarios del comercio llegan justamente con esta descarga.
- * - Con sesión: barra fija arriba, para que nadie lo tome como un error.
+ * - Con sesión: un aviso chico abajo a la izquierda, que no tapa botones.
+ * Una sincronización larga de fondo (realineación) no frena la caja: se avisa igual,
+ * aclarando que se puede seguir vendiendo.
  */
 export default function SyncDownloadBanner() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -23,8 +25,8 @@ export default function SyncDownloadBanner() {
       let busy = false;
       try {
         const { data } = await api.get('/sync-progress', { timeout: 4000, silent: true } as any);
-        busy = !!data?.downloading;
-        if (alive) setProgress(busy ? { label: data.label, done: data.done || 0, total: data.total || 0 } : null);
+        busy = !!data?.downloading || !!data?.background;
+        if (alive) setProgress(busy ? { label: data.label, done: data.done || 0, total: data.total || 0, background: !data.downloading } : null);
       } catch {
         /* backend todavía arrancando: se reintenta */
       }
@@ -40,7 +42,7 @@ export default function SyncDownloadBanner() {
     ? `${progress.done.toLocaleString('es-AR')} de ${progress.total.toLocaleString('es-AR')}`
     : progress.done > 0 ? `${progress.done.toLocaleString('es-AR')} registros` : 'Preparando…';
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !progress.background) {
     return (
       <div className="fixed inset-0 z-[1000] bg-slate-50 flex items-center justify-center p-6 keep-style">
         <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-xl p-8 text-center">
@@ -67,18 +69,22 @@ export default function SyncDownloadBanner() {
   }
 
   return (
-    <div className="fixed top-0 inset-x-0 z-[998] bg-rose-600 text-white keep-style">
-      <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-3">
-        <CloudDownload className="w-4 h-4 shrink-0 animate-pulse" />
-        <p className="text-[12.5px] font-semibold flex-1 min-w-0 truncate">
-          {progress.label}: {count}
-          <span className="font-normal text-rose-100"> · Esperá a que termine para vender o hacer cambios.</span>
-        </p>
-        {pct !== null && (
-          <div className="w-24 h-1.5 rounded-full bg-white/25 overflow-hidden shrink-0">
-            <div className="h-full bg-orange-200 rounded-full transition-all" style={{ width: `${pct}%` }} />
-          </div>
-        )}
+    <div className="pointer-events-none fixed bottom-3 left-3 z-[998] max-w-[calc(100vw-24px)] keep-style">
+      <div className="flex items-center gap-2.5 rounded-xl bg-white/95 border border-slate-200 shadow-lg px-3 py-2 w-[300px] max-w-full">
+        <CloudDownload className="w-4 h-4 shrink-0 text-rose-600 animate-pulse" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-semibold text-slate-700 truncate">
+            {progress.background ? 'Sincronizando con la nube' : progress.label} · {count}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {progress.background ? 'Podés seguir vendiendo normalmente.' : 'Esperá a que termine para vender o hacer cambios.'}
+          </p>
+          {pct !== null && (
+            <div className="mt-1 h-1 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-rose-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

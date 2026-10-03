@@ -65,7 +65,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/notifications');
+      const { data } = await api.get('/notifications', { silent: true } as any);
       setItems(data.items || []);
       setUnread(data.unread || 0);
       setLive(data.live || { expired: 0, soon: 0, lowStock: 0 });

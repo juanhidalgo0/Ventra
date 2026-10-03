@@ -90,7 +90,10 @@ async function bootstrap() {
   // para mostrar "Descargando tus datos" antes de que haya una sesión iniciada.
   app.use('/api/sync-progress', (_req: any, res: any) => {
     const lock = sync?.getWriteLock?.();
-    res.json(lock ? { downloading: true, label: lock.label, done: lock.done, total: lock.total } : { downloading: false });
+    if (lock) return res.json({ downloading: true, label: lock.label, done: lock.done, total: lock.total });
+    // Sincronización larga de fondo: se informa el avance, pero se puede seguir vendiendo
+    const bg = sync?.getBackgroundProgress?.();
+    res.json(bg ? { downloading: false, background: true, label: bg.label, done: bg.done, total: bg.total } : { downloading: false });
   });
 
   app.use((req: any, res: any, next: any) => {

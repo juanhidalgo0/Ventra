@@ -1031,7 +1031,7 @@ export default function POSScreen() {
   const loadCategories = async () => { try { const { data } = await api.get('/categories'); setCachedCategories(data); } catch {} };
   const loadCurrentSession = async () => {
     try {
-      const { data } = await api.get('/cash/current', { params: { terminalName: terminalNameRef.current } });
+      const { data } = await api.get('/cash/current', { params: { terminalName: terminalNameRef.current }, silent: true } as any);
       setCurrentSession(prev => {
         if (!prev && data) {
           // Reconnection or boot restored! Load all associated POS datasets.
