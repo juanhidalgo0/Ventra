@@ -3,7 +3,7 @@ import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
-import { numberRange } from '../sync/numbering';
+import { numberRange, saleNumberFloor } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { consumeLotsFefo } from '../products/lots.util';
@@ -163,7 +163,8 @@ export class SalesService {
       // Cada caja numera en su propio rango (ver sync/numbering)
       const range = await numberRange(tx);
       const lastSale = await tx.sale.findFirst({ where: { saleNumber: { gte: range.from, lt: range.to } }, orderBy: { saleNumber: 'desc' } });
-      const saleNumber = (lastSale ? lastSale.saleNumber : range.from) + 1;
+      const floor = await saleNumberFloor(tx);
+      const saleNumber = Math.max(lastSale ? lastSale.saleNumber : range.from, floor >= range.from && floor < range.to ? floor : 0) + 1;
 
       const newSale = await tx.sale.create({
         data: {

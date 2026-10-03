@@ -24,3 +24,18 @@ export async function numberRange(db: RawDb): Promise<{ from: number; to: number
   const index = await nodeIndex(db);
   return { from: index * NUMBER_RANGE, to: (index + 1) * NUMBER_RANGE, index };
 }
+
+/**
+ * Último número de venta de esta caja según la nube al terminar la carga total. Las ventas
+ * viejas bajan después (historia en segundo plano): sin esto, una caja que no vendió en el
+ * último mes repetiría números.
+ */
+export async function saleNumberFloor(db: RawDb): Promise<number> {
+  try {
+    const rows: any[] = await db.$queryRawUnsafe(`SELECT value FROM sync_state WHERE key = 'sale_number_floor'`);
+    const n = Number(rows[0]?.value);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0; // Sin sincronización
+  }
+}

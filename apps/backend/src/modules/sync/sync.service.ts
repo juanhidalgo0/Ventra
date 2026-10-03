@@ -198,7 +198,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         await this.setState('applying', '1', tx);
         for (const t of order) await tx.$executeRawUnsafe(`DELETE FROM "${t}"`);
         for (const t of ['sync_outbox', 'sync_deltas', 'sync_images', 'sync_img_fetch', 'sync_stash', 'sync_parked']) await tx.$executeRawUnsafe(`DELETE FROM ${t}`);
-        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev', ${HISTORY_KEYS})`);
+        await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN ('bootstrap', 'pull_after', 'watermark', 'watermark_prev', 'sale_number_floor', ${HISTORY_KEYS})`);
         await this.setState('cloud_gen', String(gen), tx);
         await tx.$executeRawUnsafe(`DELETE FROM sync_state WHERE key = 'applying'`);
       }, { timeout: 10 * 60 * 1000, maxWait: 60000 });
@@ -755,9 +755,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         // segundo plano. La nube fija el corte en la primera tanda; una nube vieja no lo
         // devuelve y manda todo de una, como antes.
         let cut: number | null = null;
+        let numbers: Record<string, number> | null = null;
         for (;;) {
           const page = await this.call('pull', { after, all: true, fresh: wipe, limit: FULL_PULL_PAGE, part: 'live', ...(cut ? { cut } : {}) });
           if (page.cut) cut = Number(page.cut);
+          if (page.numbers) numbers = page.numbers;
           head = page.head;
           const rows = page.rows as CloudRow[];
           const touched = new Map(rows.filter((r) => r.t !== '_delta' && !r.x && r.d).map((r) => [`${r.t}|${r.id}`, Number(r.ts || 0)]));
@@ -792,6 +794,9 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
           await this.setState('pull_after', String(head), t);
           await t.$executeRawUnsafe(`DELETE FROM sync_state WHERE key IN (${HISTORY_KEYS})`);
+          // Las ventas viejas bajan después: la próxima se numera desde el último número de esta caja en la nube
+          const floor = numbers && this.nodeIndex != null ? Number(numbers[String(this.nodeIndex)]) : NaN;
+          if (Number.isFinite(floor)) await this.setState('sale_number_floor', String(floor), t);
           if (cut) {
             await this.setState('history_cut', String(cut), t);
             await this.setState('history_until', String(head), t);
@@ -834,7 +839,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Segundo tiempo de la carga total: la historia vieja (renglones, pagos y movimientos de
+   * Segundo tiempo de la carga total: la historia vieja (ventas, renglones, pagos y movimientos de
    * más de 30 días) baja de a pocas tandas por ciclo, con la caja ya vendiendo. Cada tanda
    * es su propia transacción corta y deja anotado hasta dónde llegó, así que si se corta
    * sigue desde ahí. Lo que cambió después de la carga total ya llegó por las novedades.
