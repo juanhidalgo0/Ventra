@@ -14,6 +14,7 @@ interface SyncStatus {
   lastSyncAt: string | null;
   lastError: string | null;
   progress: { label: string; done: number; total: number } | null;
+  history?: { done: number } | null;
 }
 
 const ago = (iso: string | null) => {
@@ -113,6 +114,16 @@ export default function CloudSyncPanel() {
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
             <div className="h-full bg-sky-500 transition-all" style={{ width: `${pct ?? 30}%` }} />
           </div>
+        </div>
+      )}
+
+      {status.history && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-[12.5px] text-sky-800">
+          <div className="flex justify-between font-semibold">
+            <span className="inline-flex items-center gap-1.5"><CloudDownload className="w-3.5 h-3.5" /> Bajando ventas de hace más de un mes</span>
+            <span className="tabular-nums">{status.history.done.toLocaleString('es-AR')}</span>
+          </div>
+          <p className="mt-1 text-sky-700">La caja ya funciona. Hasta que termine, los reportes viejos pueden salir incompletos.</p>
         </div>
       )}
 
