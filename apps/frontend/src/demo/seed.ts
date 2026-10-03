@@ -15,9 +15,9 @@ export function seedDemoData(put: (path: string, data: Record<string, any>) => v
     { id: 'st_ma', name: 'Martín', color: '#2563EB', hours: week('12:00', '20:00'), active: true },
   ];
   const services = [
-    { id: 'sv_corte', name: 'Corte', durationMin: 30, price: 9000, active: true },
-    { id: 'sv_color', name: 'Color', durationMin: 90, price: 28000, staffIds: ['st_lu'], active: true },
-    { id: 'sv_barba', name: 'Barba', durationMin: 30, price: 6000, staffIds: ['st_ma'], active: true },
+    { id: 'sv_consulta', name: 'Consulta', durationMin: 30, price: 9000, active: true },
+    { id: 'sv_sesion', name: 'Sesión completa', durationMin: 90, price: 28000, staffIds: ['st_lu'], active: true },
+    { id: 'sv_seguimiento', name: 'Seguimiento', durationMin: 30, price: 6000, staffIds: ['st_ma'], active: true },
   ];
 
   put(`ventra_stores/${DEMO_STORE_ID}`, {

@@ -23,8 +23,10 @@ export interface AgendaWords {
   title: string;
   cliente: string;
   clientes: string;
-  /** Quienes atienden ("barberos", "profesionales", "docentes") */
+  /** Quienes atienden ("barberos", "profesionales", "docentes", "canchas") */
   staff: string;
+  /** Uno de ellos ("profesional", "cancha") */
+  staffUno: string;
   turno: string;
   turnos: string;
   /** Ejemplo de servicio para los textos ("un corte o un color") */
@@ -38,7 +40,7 @@ export interface AgendaWords {
 }
 
 const BASE: AgendaWords = {
-  title: 'tu negocio', cliente: 'cliente', clientes: 'clientes', staff: 'profesionales', turno: 'turno', turnos: 'turnos',
+  title: 'tu negocio', cliente: 'cliente', clientes: 'clientes', staff: 'profesionales', staffUno: 'profesional', turno: 'turno', turnos: 'turnos',
   ejemplo: 'un servicio', bloqueo: 'el almuerzo o un trámite',
   consejo: { title: 'Un consejo', body: 'Mandá el **recordatorio por WhatsApp** el día anterior: es la forma más simple de que **nadie falte** a su turno.' },
   servicios: 'Cargá cada servicio con **cuánto dura de verdad**: así la agenda nunca te superpone dos turnos.',
@@ -51,12 +53,12 @@ export const AGENDA_WORDS: Record<AgendaKind, AgendaWords> = {
     servicios: 'Un corte no dura lo mismo que un color: poné **la duración real de cada servicio** para que la agenda no te superponga turnos.',
   },
   barberia: {
-    ...BASE, title: 'tu barbería', staff: 'barberos', ejemplo: 'un corte y barba',
+    ...BASE, title: 'tu barbería', staff: 'barberos', staffUno: 'barbero', ejemplo: 'un corte y barba',
     consejo: { title: 'Turnos cortos, agenda llena', body: 'En barbería los turnos son cortos: probá mostrar horarios **cada 15 o 20 minutos** en Reglas de reserva para **aprovechar cada hueco**.' },
     servicios: 'Si hacés **corte y barba juntos**, cargalo como un servicio aparte con su propia duración: es lo que más se reserva.',
   },
   unas: {
-    ...BASE, title: 'tu estudio de uñas', staff: 'manicuras', ejemplo: 'un semipermanente o un kapping',
+    ...BASE, title: 'tu estudio de uñas', staff: 'manicuras', staffUno: 'manicura', ejemplo: 'un semipermanente o un kapping',
     consejo: { title: 'Retiros y service', body: 'Cargá el **retiro** como un servicio aparte: así quien viene solo a sacarse el esmalte ocupa **el tiempo justo**, y no un turno entero.' },
     servicios: 'Esculpidas, kapping y semi duran muy distinto: con **la duración real** de cada uno la agenda nunca te junta dos clientas.',
   },
@@ -70,9 +72,29 @@ export const AGENDA_WORDS: Record<AgendaKind, AgendaWords> = {
     servicios: 'La **primera consulta** suele llevar más tiempo que un control: cargalas como servicios separados.',
   },
   clases: {
-    ...BASE, title: 'tus clases', cliente: 'alumno', clientes: 'alumnos', staff: 'docentes', turno: 'clase', turnos: 'clases', ejemplo: 'una clase de prueba', bloqueo: 'feriados o vacaciones',
+    ...BASE, title: 'tus clases', cliente: 'alumno', clientes: 'alumnos', staff: 'docentes', staffUno: 'docente', turno: 'clase', turnos: 'clases', ejemplo: 'una clase de prueba', bloqueo: 'feriados o vacaciones',
     consejo: { title: 'Clases de prueba', body: 'Ofrecé una **clase de prueba** corta: es la forma más fácil de que un alumno nuevo **reserve por primera vez** desde tu link.' },
     servicios: 'Cargá cada tipo de clase con su duración. Una **clase de prueba** más corta ayuda a sumar alumnos nuevos.',
+  },
+  profesionales: {
+    ...BASE, title: 'tu estudio', ejemplo: 'una primera consulta', bloqueo: 'una audiencia o un trámite',
+    consejo: { title: 'Primera reunión', body: 'Ofrecé una **primera consulta** con su propia duración: es la que más se reserva online y te ordena la semana.' },
+    servicios: 'Separá la **primera consulta** de los seguimientos: suelen durar distinto y tienen otro precio.',
+  },
+  mascotas: {
+    ...BASE, title: 'tu veterinaria o peluquería canina', ejemplo: 'un baño o una consulta',
+    consejo: { title: 'Pedí los datos de la mascota', body: 'En la nota del turno tus clientes pueden contarte **raza y tamaño**: así sabés cuánto tiempo te va a llevar.' },
+    servicios: 'Un perro grande lleva más tiempo que uno chico: podés cargar **el mismo servicio por tamaño**, cada uno con su duración y precio.',
+  },
+  taller: {
+    ...BASE, title: 'tu taller', ejemplo: 'un service o un diagnóstico', bloqueo: 'un trabajo largo o una salida a domicilio',
+    consejo: { title: 'Trabajos largos', body: 'Si un trabajo te ocupa medio día, **bloqueá ese horario**: la agenda no ofrece turnos mientras estás con él.' },
+    servicios: 'Cargá cada trabajo con **el tiempo que de verdad te lleva**: así nunca se te juntan dos clientes.',
+  },
+  deportes: {
+    ...BASE, title: 'tus canchas', staff: 'canchas', staffUno: 'cancha', ejemplo: 'una hora de cancha', bloqueo: 'un torneo o mantenimiento',
+    consejo: { title: 'Cada cancha, su agenda', body: 'Cargá cada **cancha como si fuera un profesional**: tiene sus horarios y se reserva por separado.' },
+    servicios: 'Ofrecé turnos de **1 hora y de 90 minutos**: así cada grupo reserva el tiempo que juega.',
   },
   otro: BASE,
 };

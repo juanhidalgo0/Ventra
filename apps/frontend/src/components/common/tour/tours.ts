@@ -118,7 +118,7 @@ export const TOURS = {
     { target: 'agenda-days', title: 'Elegí el día', body: `Tocá un día para ver sus ${c.w.turnos}. Debajo de cada fecha ves **cuántos ${c.w.turnos} tiene**, así encontrás rápido los días libres.` },
     { target: 'agenda-new', title: `${cap(c.w.turno)} a mano`, body: `Para el ${c.w.cliente} que **te llama o te escribe**: elegís ${c.w.ejemplo}, el día y uno de los **horarios libres**, que ya respetan la duración.` },
     { target: 'agenda-block', title: 'Bloquear horarios', body: `¿No atendés en algún momento? Bloqueá ${c.w.bloqueo} y **nadie puede reservar** en ese horario.` },
-    { target: 'agenda-staff', title: 'Cada uno con su agenda', body: `Filtrá por ${c.w.staff}: cada uno tiene **su color, sus horarios y sus servicios**.` },
+    { target: 'agenda-staff', title: 'Una agenda por separado', body: `Filtrá por ${c.w.staff}: cada agenda tiene **su color, sus horarios y sus servicios**.` },
     { target: 'agenda-list', title: `Tus ${c.w.turnos}`, body: `Tocá uno para **confirmarlo**, avisarle por **WhatsApp**${c.plan.caja ? '' : ', **cobrarlo**'} o marcar si **no vino**. El que está en curso se marca en vivo.` },
     { target: 'agenda-preview', title: 'Mirala como tu cliente', body: `Abrí tu página **como la ven tus ${c.w.clientes}** y probá pedir un ${c.w.turno}: es de prueba, no se crea nada de verdad.` },
     { target: 'agenda-share', title: 'Compartí tu link', body: `Pegalo en tu **Instagram y tu WhatsApp**: tus ${c.w.clientes} reservan solos, a cualquier hora, y el ${c.w.turno} aparece acá al instante.` },
@@ -130,7 +130,10 @@ export const TOURS = {
     { title: `Armemos la agenda de ${c.w.title}`, body: `Con tres cosas tus ${c.w.clientes} ya pueden reservar solos: **servicios**, **quién atiende** y **cuándo**.` },
     { target: 'agenda-cfg-page', title: 'Tu página de turnos', body: `El **nombre**, la **dirección** que les pasás a tus ${c.w.clientes} y tu **WhatsApp**.` },
     { target: 'agenda-cfg-services', title: 'Servicios', body: `${c.w.servicios} Si arrancás de cero, tocá tu rubro y te cargamos los **servicios típicos**.` },
-    { target: 'agenda-cfg-staff', title: cap(c.w.staff), body: 'Quiénes atienden y **en qué horarios**. Si trabajás solo o sola, agregate a vos. Se puede usar **horario cortado** (9 a 13 y 17 a 21).' },
+    { target: 'agenda-cfg-kind', title: 'Tu rubro', body: 'Elegí a qué te dedicás y adaptamos los textos y los consejos. ¿No está el tuyo? Dejá **Otro**: la agenda funciona igual para cualquier negocio con turnos.' },
+    { target: 'agenda-cfg-staff', title: cap(c.w.staff), body: c.agendaKind === 'deportes'
+      ? 'Cada cancha con **sus horarios**: se reservan por separado. Se puede usar **horario cortado** (9 a 13 y 17 a 24).'
+      : 'Quiénes atienden y **en qué horarios**. Si trabajás solo o sola, agregate a vos. Se puede usar **horario cortado** (9 a 13 y 17 a 21).' },
     { target: 'agenda-cfg-rules', title: 'Reglas de reserva', body: `Cada cuánto se ofrecen horarios, **cuánta anticipación** pedís y si los ${c.w.turnos} online se **confirman solos**.` },
     { target: 'agenda-cfg-online', title: 'Tomar turnos online', body: `Cuando esté todo, **prendé esto y guardá**: tu página empieza a recibir ${c.w.turnos}.` },
   ],

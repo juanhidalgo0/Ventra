@@ -5,7 +5,8 @@
 // escrituras, lotes, transacciones y onSnapshot.
 import { seedDemoData } from '../seed';
 
-const KEY = 'ventra_demo_firestore';
+// v2: servicios de ejemplo neutros (antes eran de peluquería). Cambiar la clave rearma los datos de ejemplo.
+const KEY = 'ventra_demo_firestore_v2';
 
 // ─── Timestamp ───
 export class Timestamp {

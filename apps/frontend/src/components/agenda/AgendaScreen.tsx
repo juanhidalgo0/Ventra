@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye,
+  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -11,7 +11,7 @@ import { setStoreSetting } from '../../services/storeSettings';
 import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../services/agendaTemplates';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
-import { setTourScreen } from '../common/tour/tourContext';
+import { setTourScreen, AGENDA_WORDS } from '../common/tour/tourContext';
 import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
 import { IS_DEMO_BUILD } from '../../demo/flag';
 import {
@@ -426,7 +426,7 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 space-y-2.5 text-[14px] text-slate-700">
           <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-slate-400" /> {dayLabel(b.dateKey)}, {hhmm(b.startMin)} a {hhmm(b.endMin)}</p>
-          <p className="flex items-center gap-2.5"><Scissors className="w-4 h-4 text-slate-400" /> {b.serviceName}{b.price ? ` · ${money(b.price)}` : ''}</p>
+          <p className="flex items-center gap-2.5"><ClipboardList className="w-4 h-4 text-slate-400" /> {b.serviceName}{b.price ? ` · ${money(b.price)}` : ''}</p>
           {b.staffName && <p className="flex items-center gap-2.5"><User className="w-4 h-4 text-slate-400" /> {b.staffName}</p>}
           {b.customerPhone && <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium" href={`tel:${b.customerPhone}`}>{b.customerPhone}</a></p>}
           {b.customerNote && <p className="text-[13px] text-slate-500 whitespace-pre-line border-t border-slate-200 pt-2.5">“{b.customerNote}”</p>}
@@ -564,7 +564,7 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
         </div>
         {staffOk.length > 1 && (
           <div>
-            <span className={label}>Profesional</span>
+            <span className={label}>{cap1(AGENDA_WORDS[detectAgendaKind(agenda)].staffUno)}</span>
             <div className="flex flex-wrap gap-2">
               {staffOk.map((s) => (
                 <button key={s.id} onClick={() => setStaffId(s.id)} className={`h-9 px-3.5 rounded-full text-[13px] font-semibold border ${staff?.id === s.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>{s.name}</button>
@@ -594,7 +594,7 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
           <div><span className={label}>Cliente</span><input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" /></div>
           <div><span className={label}>WhatsApp (opcional)</span><input className={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="11 5555-5555" /></div>
         </div>
-        <div><span className={label}>Nota (opcional)</span><input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: trae su propio tinte" /></div>
+        <div><span className={label}>Nota (opcional)</span><input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: es la primera vez que viene" /></div>
       </div>
     </Modal>
   );
@@ -734,14 +734,14 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
     <div className="space-y-3">
       <div>
         <label className={label}>Nombre del negocio</label>
-        <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej.: Estudio Bella" />
+        <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej.: Estudio Norte" />
       </div>
       <div>
         <label className={label}>Dirección de tu página</label>
         <div className={`flex items-center h-11 rounded-xl border border-slate-200 overflow-hidden ${fixedSlug ? 'bg-slate-100' : 'bg-slate-50 focus-within:border-rose-500 focus-within:bg-white'}`}>
           <span className="pl-3 text-[13.5px] text-slate-400 shrink-0">tienda.ventra.store/</span>
           <input className="flex-1 min-w-0 h-full pr-3 bg-transparent text-[14.5px] outline-none disabled:text-slate-500" value={slug} disabled={fixedSlug}
-            onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)); }} placeholder="estudio-bella" />
+            onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)); }} placeholder="estudio-norte" />
         </div>
         {!fixedSlug && slug.length >= 3 && slugState !== 'idle' && (
           <p className={`mt-1.5 text-[12.5px] font-medium flex items-center gap-1.5 ${slugState === 'ok' ? 'text-emerald-600' : slugState === 'taken' ? 'text-red-600' : 'text-slate-400'}`}>
@@ -792,6 +792,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
   useEffect(() => { setA(agenda); }, [agenda]);
   const dirty = JSON.stringify(a) !== JSON.stringify(agenda);
+  const words = AGENDA_WORDS[detectAgendaKind(a)];
 
   const baseHours = (): DayHours[] => (storeHours && storeHours.length === 7 ? storeHours : [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, from: '09:00', to: '19:00' }))).map((h) => ({ ...h, ranges: dayRanges(h).map((r) => ({ ...r })) }));
   const setService = (id: string, p: Partial<AgendaService>) => setA({ ...a, services: a.services.map((s) => (s.id === id ? { ...s, ...p } : s)) });
@@ -836,7 +837,19 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         <Toggle on={a.enabled} onChange={(v) => setA({ ...a, enabled: v })} />
       </section>
 
-      <Card tour="agenda-cfg-services" icon={Scissors} title="Servicios" hint="Lo que el cliente elige al reservar, con cuánto dura y cuánto sale."
+      <Card tour="agenda-cfg-kind" icon={Globe} title="¿A qué te dedicás?" hint="Adapta los textos y los consejos. La agenda funciona igual para cualquier rubro.">
+        <div className="flex flex-wrap gap-1.5">
+          {[...AGENDA_TEMPLATES.map((t) => ({ id: t.id as string, label: `${t.emoji} ${t.title}` })), { id: 'otro', label: 'Otro' }].map((o) => {
+            const on = (a.kind && AGENDA_TEMPLATES.some((t) => t.id === a.kind) ? a.kind : 'otro') === o.id;
+            return (
+              <button key={o.id} onClick={() => setA({ ...a, kind: o.id === 'otro' ? undefined : o.id })}
+                className={`ag-press transition-colors h-9 px-3.5 rounded-full text-[13px] font-semibold border ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>{o.label}</button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card tour="agenda-cfg-services" icon={ClipboardList} title="Servicios" hint="Lo que el cliente elige al reservar, con cuánto dura y cuánto sale."
         action={<button onClick={() => setA({ ...a, services: [...a.services, { id: newId(), name: '', durationMin: 30, price: 0, active: true }] })} className="h-9 px-3 rounded-xl bg-rose-50 text-rose-700 text-[13px] font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /> Agregar</button>}>
         {a.services.length === 0 ? (
           <div className="py-1">
@@ -886,7 +899,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         )}
       </Card>
 
-      <Card tour="agenda-cfg-staff" icon={Users} title="Profesionales" hint="Quiénes atienden y en qué horarios. Cada uno tiene su propia agenda."
+      <Card tour="agenda-cfg-staff" icon={Users} title={words.staff.charAt(0).toUpperCase() + words.staff.slice(1)} hint={a.kind === 'deportes' ? 'Cada cancha con sus horarios: se reserva por separado.' : 'Quiénes atienden y en qué horarios. Cada uno tiene su propia agenda.'}
         action={<button onClick={() => { const id = newId(); setA({ ...a, staff: [...a.staff, { id, name: '', color: STAFF_COLORS[a.staff.length % STAFF_COLORS.length], hours: baseHours(), active: true }] }); setEditingStaff(id); }} className="h-9 px-3 rounded-xl bg-rose-50 text-rose-700 text-[13px] font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /> Agregar</button>}>
         {a.staff.length === 0 ? <p className="text-[13px] text-slate-400 py-2">Agregá a quienes atienden. Si trabajás solo/a, agregate a vos.</p> : (
           <div className="space-y-3">
@@ -982,3 +995,5 @@ function HoursEditor({ hours, onChange }: { hours: DayHours[]; onChange: (h: Day
     </div>
   );
 }
+
+const cap1 = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
