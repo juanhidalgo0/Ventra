@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle,
+  ExternalLink, Scissors, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -12,6 +12,8 @@ import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../s
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
 import { setTourScreen } from '../common/tour/tourContext';
+import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
+import { IS_DEMO_BUILD } from '../../demo/flag';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
@@ -77,7 +79,7 @@ export default function AgendaScreen() {
   const publicUrl = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : null;
   // Compartir el link es lo que trae los primeros turnos: en el celular abre el menú de compartir
   const shareLink = async () => {
-    if (!publicUrl) return;
+    if (!publicUrl || demoShareInstead(storeId, 'turnos')) return;
     const url = `${publicUrl}#turnos`;
     const text = `Reservá tu turno en ${config?.businessName || 'nuestro local'}:`;
     try {
@@ -89,6 +91,10 @@ export default function AgendaScreen() {
     }
   };
   const canShare = !!publicUrl && agenda.enabled;
+  // Vista del cliente: la página de turnos como la ven los clientes (aunque no esté publicada)
+  const showPreview = useClientPreview((s) => s.show);
+  const canPreview = !!storeId && !!config && agenda.services.length > 0 && agenda.staff.length > 0;
+  const preview = () => storeId && showPreview(storeId, 'turnos');
   const subtitle = !storeId ? 'Armá tu página de turnos' : !config ? 'Cargando…'
     : agenda.enabled ? (config.isPublished || agendaOnly ? 'Tomando turnos online' : 'Activa · la tienda no está publicada') : 'Turnos online apagados';
 
@@ -120,6 +126,7 @@ export default function AgendaScreen() {
         <ScreenHeader back={!agendaOnly} title="Agenda" subtitle={subtitle}
           action={storeId && config ? (
             <span className="flex items-center gap-1.5">
+              {canPreview && <button data-tour="agenda-preview" onClick={preview} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25 ag-press" aria-label="Ver como cliente"><Eye className="w-5 h-5" /></button>}
               <button onClick={() => startTour(tab === 'config' ? 'agendaConfig' : 'agenda')} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25 ag-press" aria-label="Cómo funciona"><HelpCircle className="w-5 h-5" /></button>
               {canShare && <button data-tour="agenda-share" onClick={shareLink} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0 active:bg-white/25 ag-press" aria-label="Compartir mi link"><Share2 className="w-5 h-5" /></button>}
             </span>
@@ -144,9 +151,15 @@ export default function AgendaScreen() {
               <Share2 className="w-4 h-4" /> Compartir mi link
             </button>
           )}
-          {publicUrl && agenda.enabled && (
-            <button onClick={() => window.open(`${publicUrl}#turnos`, '_blank', 'noopener')} className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-2">
-              <ExternalLink className="w-4 h-4" /> {agendaOnly ? 'Ver mi página' : 'Ver en la tienda'}
+          {canPreview && (
+            <button data-tour="agenda-preview" onClick={preview} className="ag-press h-10 px-4 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-2">
+              <Eye className="w-4 h-4" /> Ver como cliente
+            </button>
+          )}
+          {/* La página real (en la demo no existe en internet) */}
+          {!IS_DEMO_BUILD && publicUrl && agenda.enabled && (config?.isPublished || agendaOnly) && (
+            <button onClick={() => window.open(`${publicUrl}#turnos`, '_blank', 'noopener')} title={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} aria-label={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} className="ag-press w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center">
+              <ExternalLink className="w-4 h-4" />
             </button>
           )}
           {storeId && tabs}

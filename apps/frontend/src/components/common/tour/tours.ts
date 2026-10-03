@@ -109,6 +109,7 @@ export const TOURS = {
     { target: 'store-nav-apariencia', click: true, title: 'Apariencia', body: 'Elegí **colores, logo y portada** para que la tienda se vea como tu negocio.' },
     { target: 'store-nav-entregas', click: true, title: 'Entregas y pagos', body: 'Retiro, envío, costos y **medios de pago** que aceptás.' },
     c.plan.agenda && { title: 'Turnos desde la tienda', body: 'Tu plan incluye la **agenda**: si das turnos, configuralos en **Agenda** y tus clientes reservan desde **esta misma tienda**.' },
+    { target: 'store-preview', title: 'Mirala como tu cliente', body: 'Abrí la tienda **como la ven tus clientes** y probá armar un pedido. Es de prueba: **no se envía nada**.' },
     { target: 'store-visible', title: 'Hacerla visible', body: 'Cuando esté lista, **hacé visible la tienda** y compartí el enlace. Si cambiás algo después, aparece un aviso abajo para **publicar los cambios**.' },
   ],
   // Agenda de turnos: textos según el tipo de servicio (peluquería, salud, clases...) y el plan.
@@ -119,6 +120,7 @@ export const TOURS = {
     { target: 'agenda-block', title: 'Bloquear horarios', body: `¿No atendés en algún momento? Bloqueá ${c.w.bloqueo} y **nadie puede reservar** en ese horario.` },
     { target: 'agenda-staff', title: 'Cada uno con su agenda', body: `Filtrá por ${c.w.staff}: cada uno tiene **su color, sus horarios y sus servicios**.` },
     { target: 'agenda-list', title: `Tus ${c.w.turnos}`, body: `Tocá uno para **confirmarlo**, avisarle por **WhatsApp**${c.plan.caja ? '' : ', **cobrarlo**'} o marcar si **no vino**. El que está en curso se marca en vivo.` },
+    { target: 'agenda-preview', title: 'Mirala como tu cliente', body: `Abrí tu página **como la ven tus ${c.w.clientes}** y probá pedir un ${c.w.turno}: es de prueba, no se crea nada de verdad.` },
     { target: 'agenda-share', title: 'Compartí tu link', body: `Pegalo en tu **Instagram y tu WhatsApp**: tus ${c.w.clientes} reservan solos, a cualquier hora, y el ${c.w.turno} aparece acá al instante.` },
     c.w.consejo,
     c.agendaOnly && { title: `${cap(c.w.clientes)} y cobros`, body: `En **Clientes** ves a quién atendiste y cuántas veces vino, y en **Cobros** cuánto entró cada día y con qué medio.` },

@@ -24,6 +24,8 @@ COPY apps/backend/prisma/migrations apps/backend/prisma/migrations
 COPY apps/backend/tsconfig.json apps/backend/nest-cli.json apps/backend/
 
 COPY apps/frontend/src apps/frontend/src
+# La vista del cliente trae la página pública de la tienda (import ?raw)
+COPY firebase/tienda/index.html firebase/tienda/index.html
 COPY apps/frontend/public apps/frontend/public
 COPY apps/frontend/index.html apps/frontend/tsconfig.json apps/frontend/vite.config.ts apps/frontend/tailwind.config.js apps/frontend/postcss.config.js apps/frontend/
 

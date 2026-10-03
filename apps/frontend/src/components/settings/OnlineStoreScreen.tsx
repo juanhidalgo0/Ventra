@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import { useClientPreview, openPublicPage, demoShareInstead } from '../../services/clientPreview';
 import { useNavigate } from 'react-router-dom';
 import ExtrasEditor from '../store/ExtrasEditor';
 import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  Eye,
   Loader2,
   Image as ImageIcon,
   Search,
@@ -361,15 +363,24 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
               <h1 className="text-[22px] font-bold text-slate-900 tracking-tight truncate">{config.businessName || 'Mi tienda'}</h1>
               {savedUrl ? (
                 <div data-tour="store-link" className="flex items-center gap-1 mt-0.5 min-w-0">
-                  <a href={savedUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] text-slate-500 hover:text-rose-700 truncate">{savedUrl}</a>
-                  <IconBtn title="Copiar enlace" onClick={() => { navigator.clipboard?.writeText(savedUrl); toast.success('Enlace copiado: compartilo por WhatsApp o Instagram'); }}><Copy className="w-3.5 h-3.5" /></IconBtn>
-                  <IconBtn title="Abrir la tienda" onClick={() => window.open(savedUrl, '_blank', 'noopener')}><ExternalLink className="w-3.5 h-3.5" /></IconBtn>
+                  <a href={savedUrl} onClick={(e) => { e.preventDefault(); openPublicPage(savedUrl, storeId, 'tienda'); }} className="text-[13px] text-slate-500 hover:text-rose-700 truncate">{savedUrl}</a>
+                  <IconBtn title="Copiar enlace" onClick={() => { if (demoShareInstead(storeId, 'tienda')) return; navigator.clipboard?.writeText(savedUrl); toast.success('Enlace copiado: compartilo por WhatsApp o Instagram'); }}><Copy className="w-3.5 h-3.5" /></IconBtn>
+                  <IconBtn title="Abrir la tienda" onClick={() => openPublicPage(savedUrl, storeId, 'tienda')}><ExternalLink className="w-3.5 h-3.5" /></IconBtn>
                 </div>
               ) : (
                 <button onClick={() => goTo('negocio')} className="text-[13px] font-semibold text-amber-700 hover:underline mt-0.5">Elegí la dirección web de tu tienda →</button>
               )}
             </div>
           </div>
+
+          <button
+            data-tour="store-preview"
+            type="button"
+            onClick={() => useClientPreview.getState().show(storeId, 'tienda')}
+            className="ag-press flex items-center gap-2 px-4 h-12 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 text-[13.5px] font-semibold text-slate-700 shrink-0"
+          >
+            <Eye className="w-4 h-4" /> Ver como cliente
+          </button>
 
           <button
             data-tour="store-visible"

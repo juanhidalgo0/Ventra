@@ -18,6 +18,8 @@ export default defineConfig({
   define: { __VENTRA_DEMO__: JSON.stringify(DEMO) },
   resolve: { alias: [{ find: '@', replacement: path.resolve(__dirname, './src') }, ...demoFirebase] },
   server: {
+    // La vista del cliente importa la página pública (firebase/tienda/index.html)
+    fs: { allow: ['.', '../../firebase/tienda'] },
     port: 5180,
     host: true,
     strictPort: true,

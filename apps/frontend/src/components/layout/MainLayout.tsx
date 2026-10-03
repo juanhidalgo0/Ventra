@@ -20,6 +20,7 @@ import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import MobileShell from '../mobile/MobileShell';
+import ClientPreview from '../common/ClientPreview';
 import PlanGate from '../subscription/PlanGate';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
@@ -273,7 +274,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /><GuidedTour /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /></MobileShell>;
   }
 
   return (
@@ -392,6 +393,7 @@ export default function MainLayout({ children }: Props) {
       {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
       <HelpMenu pathname={location.pathname} side={isPOS ? 'left' : 'right'} />
       <GuidedTour />
+      <ClientPreview />
 
       {/* La calculadora (F3) vive acá para que funcione en cualquier sección y también en modo admin */}
       <CalculatorModal isOpen={showCalculator} onClose={() => setShowCalculator(false)} />

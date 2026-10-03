@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Store, ClipboardList, Package, Tag, Settings, ExternalLink, Share2, ChevronRight, AlertTriangle, Clock, CheckCircle2, Globe, CalendarDays } from 'lucide-react';
+import { Store, ClipboardList, Package, Tag, Settings, ExternalLink, Share2, Eye, ChevronRight, AlertTriangle, Clock, CheckCircle2, Globe, CalendarDays } from 'lucide-react';
 import api from '../../services/api';
 import { useOnlineOrders, isNewOrder, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, type StoreConfig, type StoreOrder, type OrderStage } from '../../services/onlineStore';
@@ -60,13 +61,14 @@ export default function StoreHomeScreen() {
 
   const publicUrl = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : null;
   const share = async () => {
-    if (!publicUrl) return;
+    if (!publicUrl || demoShareInstead(storeId, 'tienda')) return;
     try {
       if ((navigator as any).share) await (navigator as any).share({ title: config?.businessName || 'Mi tienda', url: publicUrl });
       else { await navigator.clipboard.writeText(publicUrl); toast.success('Link copiado'); }
     } catch { /* cancelado */ }
   };
-  const openStore = () => { if (publicUrl) window.open(publicUrl, '_blank', 'noopener'); };
+  // La tienda como la ven los clientes (también sin publicar, y en la demo, donde el link no existe)
+  const openStore = () => { if (storeId) useClientPreview.getState().show(storeId, 'tienda'); };
 
   const title = config?.businessName || 'Mi tienda';
   const status = config ? (config.isPublished ? 'Publicada' : 'Sin publicar') : storeId ? 'Cargando…' : 'Todavía no la creaste';
@@ -155,7 +157,7 @@ export default function StoreHomeScreen() {
   const actions = publicUrl ? (
     <div className="flex gap-2">
       <button onClick={openStore} className={`h-10 px-4 rounded-xl text-[13.5px] font-semibold flex items-center gap-2 ${mobile ? 'bg-white/15 text-white' : 'bg-white border border-slate-200 text-slate-700'}`}>
-        <ExternalLink className="w-4 h-4" /> Ver tienda
+        <Eye className="w-4 h-4" /> Ver como cliente
       </button>
       <button onClick={share} className={`h-10 px-4 rounded-xl text-[13.5px] font-semibold flex items-center gap-2 ${mobile ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'}`}>
         <Share2 className="w-4 h-4" /> Compartir

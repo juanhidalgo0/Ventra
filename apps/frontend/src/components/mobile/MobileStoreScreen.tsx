@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
 import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropModal';
 import toast from 'react-hot-toast';
 import {
@@ -80,7 +81,7 @@ export default function MobileStoreScreen() {
   };
 
   const share = async () => {
-    if (!url) return;
+    if (!url || demoShareInstead(storeId, 'tienda')) return;
     if (navigator.share) await navigator.share({ title: config?.businessName, text: 'Hacé tu pedido online', url }).catch(() => {});
     else { await navigator.clipboard?.writeText(url); toast.success('Enlace copiado'); }
   };
@@ -130,11 +131,11 @@ export default function MobileStoreScreen() {
             </div>
             {url && (
               <div className="grid grid-cols-3 gap-2 mt-3">
-                <HeaderBtn icon={Copy} label="Copiar" onClick={() => { navigator.clipboard?.writeText(url); toast.success('Enlace copiado'); }} />
+                <HeaderBtn icon={Copy} label="Copiar" onClick={() => { if (demoShareInstead(storeId, 'tienda')) return; navigator.clipboard?.writeText(url); toast.success('Enlace copiado'); }} />
                 <HeaderBtn icon={Share2} label="Compartir" onClick={share} />
-                <a href={url} target="_blank" rel="noopener noreferrer" className="h-10 rounded-xl bg-white/15 flex items-center justify-center gap-1.5 text-[13px] font-semibold">
-                  <ExternalLink className="w-4 h-4" /> Ver
-                </a>
+                <button onClick={() => storeId && useClientPreview.getState().show(storeId, 'tienda')} className="h-10 rounded-xl bg-white/15 flex items-center justify-center gap-1.5 text-[13px] font-semibold active:bg-white/25">
+                  <Eye className="w-4 h-4" /> Ver
+                </button>
               </div>
             )}
           </div>
