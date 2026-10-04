@@ -35,6 +35,8 @@ interface TourState {
   /** Starts the tour only the first time the user lands on its screen. */
   startIfUnseen: (id: TourId) => void;
   finish: () => void;
+  /** Corta el recorrido sin darlo por visto (se fue de la pantalla a mitad de camino). */
+  cancel: (id: TourId) => void;
   hasSeen: (id: TourId) => boolean;
   markSeen: (id: TourId) => void;
   resetAll: () => void;
@@ -65,6 +67,9 @@ export const useTourStore = create<TourState>((set, get) => ({
     const id = get().activeTour;
     if (id) writeSeen({ ...readSeen(), [id]: true });
     set({ activeTour: null });
+  },
+  cancel: (id) => {
+    if (get().activeTour === id) set({ activeTour: null });
   },
   hasSeen: (id) => !!readSeen()[id],
   markSeen: (id) => writeSeen({ ...readSeen(), [id]: true }),

@@ -279,4 +279,7 @@ export function useAutoTour(id: keyof typeof TOURS, ready = true) {
     const t = setTimeout(() => startIfUnseen(id), 700);
     return () => clearTimeout(t);
   }, [id, ready, startIfUnseen, userId, paused]);
+  // El recorrido es de esta pantalla: si se va (otra ruta, o en la demo otro plan), se corta.
+  // Si no, seguía abierto en la pantalla nueva solo con sus pasos sin objetivo, fuera de contexto.
+  useEffect(() => () => useTourStore.getState().cancel(id), [id]);
 }
