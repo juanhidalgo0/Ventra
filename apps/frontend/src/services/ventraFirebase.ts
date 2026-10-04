@@ -1,5 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, type User } from 'firebase/auth';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { IS_DEMO_BUILD } from '../demo/flag';
@@ -20,8 +20,14 @@ export function getVentraApp(): FirebaseApp {
   return existing ?? initializeApp(firebaseConfig, 'ventra');
 }
 
+let db: Firestore | null = null;
 export function getVentraDb(): Firestore {
-  return getFirestore(getVentraApp());
+  if (db) return db;
+  const app = getVentraApp();
+  // Un campo en undefined (p. ej. la agenda con rubro "Otro") hacía fallar el guardado entero:
+  // Firestore lo rechaza salvo que se le pida ignorarlo. La demo no lo notaba (guarda en el navegador).
+  try { db = initializeFirestore(app, { ignoreUndefinedProperties: true }); } catch { db = getFirestore(app); }
+  return db;
 }
 
 export function getVentraStorage(): FirebaseStorage {

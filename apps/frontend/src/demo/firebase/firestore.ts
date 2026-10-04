@@ -67,6 +67,7 @@ const join = (base: string, parts: string[]) => [base, ...parts].filter(Boolean)
 const newId = () => Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 10);
 
 export function getFirestore(_app?: any): Firestore { return { __demo: true }; }
+export function initializeFirestore(_app?: any, _settings?: any): Firestore { return { __demo: true }; }
 
 export function collection(parent: any, ...segments: string[]): ColRef {
   const base = parent && parent.type === 'document' ? parent.path : '';

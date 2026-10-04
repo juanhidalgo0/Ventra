@@ -1089,7 +1089,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
     try {
       await onSave({ ...a, services: services.map((s) => ({ ...s, name: s.name.trim(), price: Number(s.price) || 0 })), staff: staff.map((s) => ({ ...s, name: s.name.trim() })) });
       toast.success('Agenda guardada');
-    } catch { toast.error('No se pudo guardar'); } finally { setSaving(false); }
+    } catch (err) { console.error('[Agenda] No se pudo guardar la configuración', err); toast.error('No se pudo guardar'); } finally { setSaving(false); }
   };
 
   return (
@@ -1218,7 +1218,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         <DepositRules a={a} setA={setA} />
       </Card>
 
-      <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-6'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+      <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-20'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button onClick={save} disabled={saving} className={`${mobile ? 'w-full' : 'px-8'} h-12 rounded-2xl bg-rose-600 text-white font-semibold shadow-lg shadow-rose-600/30 disabled:opacity-60`}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
     </div>
