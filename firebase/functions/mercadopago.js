@@ -281,6 +281,7 @@ function isIncomingSale(p, mpUserId) {
   if (NOT_SALES.has(p.operation_type)) return false;
   const ref = String(p.external_reference || "");
   if (/^POTS/i.test(ref) || /^loan-/i.test(ref)) return false; // reservas y préstamos de Mercado Pago
+  if (/^agenda\|/.test(ref)) return false; // señas de turnos de la agenda: no son ventas de la caja
   return true;
 }
 

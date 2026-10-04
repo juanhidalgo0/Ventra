@@ -40,11 +40,16 @@ export interface AgendaConfig {
   maxDaysAhead: number;
   /** Si es false, los turnos online quedan "Por confirmar" */
   autoConfirm: boolean;
+  /**
+   * Seña con Mercado Pago al reservar online (la cobra la función agendaBook con la cuenta de MP
+   * conectada del comercio). percent: % del precio; fixed: monto fijo. Nunca más que el precio.
+   */
+  deposit?: { enabled: boolean; mode: 'percent' | 'fixed'; value: number };
   /** Tipo de servicio (plantilla con la que arrancó: peluqueria, salud...). Adapta textos y recorridos. */
   kind?: string;
 }
 
-export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'DONE' | 'NO_SHOW' | 'CANCELLED' | 'BLOCK';
+export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'DONE' | 'NO_SHOW' | 'CANCELLED' | 'BLOCK' | 'AWAITING_PAYMENT';
 
 export interface Booking {
   id: string;
@@ -60,9 +65,13 @@ export interface Booking {
   price?: number;
   customerName?: string;
   /** 'client': lo canceló el cliente con el link de su turno */
-  cancelledBy?: 'client';
+  cancelledBy?: 'client' | 'expired';
   /** Cuándo se le mandó el recordatorio por WhatsApp */
   remindedAt?: any;
+  /** Esperando seña: hasta cuándo se aparta el horario */
+  holdUntil?: any;
+  /** Seña pedida al reservar online */
+  deposit?: { amount: number; status: 'pending' | 'paid'; paidAmount?: number; paymentId?: string; refundNeeded?: boolean };
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
   customerPhone?: string;
@@ -186,8 +195,21 @@ function staffRanges(h?: DayHours) {
 }
 
 export const canDo = (staff: AgendaStaff, service: AgendaService) => !service.staffIds?.length || service.staffIds.includes(staff.id);
-const OCCUPIES = new Set<BookingStatus>(['PENDING', 'CONFIRMED', 'DONE', 'BLOCK']);
-export const occupies = (b: Booking) => OCCUPIES.has(b.status);
+const OCCUPIES = new Set<BookingStatus>(['PENDING', 'CONFIRMED', 'DONE', 'BLOCK', 'AWAITING_PAYMENT']);
+const holdMs = (b: Booking) => (b.holdUntil?.toMillis ? b.holdUntil.toMillis() : 0);
+/** Ocupa el horario. Esperando seña ocupa solo mientras no venza el plazo para pagar. */
+export const occupies = (b: Booking) => OCCUPIES.has(b.status) && (b.status !== 'AWAITING_PAYMENT' || holdMs(b) > Date.now());
+/** Lo que ya pagó de seña (0 si no pagó) */
+export const depositPaid = (b: Partial<Booking>) => (b.deposit?.status === 'paid' ? Number(b.deposit.paidAmount ?? b.deposit.amount) || 0 : 0);
+/** Seña de un servicio según la agenda (misma cuenta que depositFor en firebase/functions/agenda.js) */
+export function depositFor(agenda: AgendaConfig, service: { price?: number }) {
+  const d = agenda.deposit;
+  if (!d?.enabled) return 0;
+  const price = Number(service.price) || 0;
+  let amount = d.mode === 'fixed' ? Number(d.value) || 0 : Math.round(price * (Number(d.value) || 0) / 100);
+  if (price > 0) amount = Math.min(amount, price);
+  return amount >= 1 ? Math.round(amount) : 0;
+}
 
 /** Horarios de inicio libres (misma lógica que la función agendaBook y la tienda). */
 export function freeStarts(agenda: AgendaConfig, staff: AgendaStaff, service: AgendaService, dateKey: string, bookings: Booking[], minStart = 0, ignoreId?: string) {

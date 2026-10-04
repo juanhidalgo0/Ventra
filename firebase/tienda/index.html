@@ -1203,6 +1203,7 @@ function renderCheckout(){
     +(S.payment==='Transferencia'&&c.transferAlias?'<div class="alias"><span>Alias: <b>'+esc(c.transferAlias)+'</b></span><button class="btn btn-soft" style="height:34px;padding:0 10px" data-act="copy-alias">'+ic('copy')+'Copiar</button></div>':'')
     +'</div>'
     +'<div class="field"><label for="cNote">Aclaraciones (opcional)</label><textarea id="cNote" placeholder="Ej: tocar timbre 2B, sin cebolla, pago con $20.000…"></textarea></div>'
+    +'<p style="font-size:11.5px;line-height:1.45;color:var(--ink-3);margin:6px 0 0">Tus datos los recibe '+esc(S.cfg.businessName)+' solo para tu pedido. <a href="https://ventra.store/privacidad.html#clientes" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Privacidad</a></p>'
     +'</div>'
     +'<div class="sheet-foot">'
     +'<div class="sum"><span>Productos</span><span>'+money(subtotal())+'</span></div>'+promoHtml().replace(/<div class="promo-hint">.*?<\/div>/g,'')
@@ -1300,6 +1301,15 @@ async function sendOrder(btn){
   if(!viaApp) window.location.href=url;
 }
 
+/* Seña del servicio (agenda.deposit): misma cuenta que depositFor en firebase/functions/agenda.js */
+function depositOf(sv){
+  var d=(S.cfg.agenda||{}).deposit; if(!d||!d.enabled||!sv) return 0;
+  var price=Number(sv.price)||0, a=d.mode==='fixed'?Number(d.value)||0:Math.round(price*(Number(d.value)||0)/100);
+  if(price>0) a=Math.min(a,price);
+  return a>=1?Math.round(a):0;
+}
+function payBtn(url,amount){ return '<a class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" href="'+esc(url)+'">Pagar seña '+money(amount)+' con Mercado Pago</a>'; }
+
 /* ───────── link del turno: ver y cancelar (función agendaManage) ───────── */
 var MANAGE_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/agendaManage';
 function manageUrl(id,code){ return 'https://tienda.ventra.store/'+encodeURIComponent(S.cfg.subdomain||'')+'#turno='+id+'.'+code; }
@@ -1320,11 +1330,14 @@ function renderManage(){
   else {
     var d=m.data, off=d.status==='CANCELLED';
     body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+ic(off?'x':'check')+'</div>'
-      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Turno confirmado')+'</h3>'
+      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='AWAITING_PAYMENT'?'Falta pagar la seña':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Turno confirmado')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(d.serviceName)+'</b>'+(d.staffName?' con '+esc(d.staffName):'')+'<br>'+esc(capFirst(dayText(d.date)))+', '+esc(d.time)+' hs</p>'
       +'<span class="code">#'+esc(m.code)+'</span>'
-      +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.</p>':'')+'</div>';
-    if(d.canCancel) foot='<div class="sheet-foot"><button class="btn btn-soft btn-block" style="height:48px;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button>'
+      +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.</p>':'')
+      +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">Seña pagada: <b>'+money(d.deposit.amount)+'</b></p>':'')
+      +(d.payUrl?'<p style="font-size:13px">Si ya pagaste, en unos segundos queda confirmado. <a href="#" data-act="mg-reload" style="color:var(--brand);font-weight:600">Actualizar</a></p>':'')+'</div>';
+    if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
+    else if(d.canCancel) foot='<div class="sheet-foot"><button class="btn btn-soft btn-block" style="height:48px;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button>'
       +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">¿Querés otro horario? Cancelalo y reservá de nuevo.</p></div>';
     else if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:48px" data-act="mg-book">Reservar otro turno</button></div>';
   }
@@ -1501,7 +1514,20 @@ function renderBookingStep(){
       +'<div class="field" id="b-name"><label for="bName">Nombre y apellido</label><input id="bName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
       +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área.</div></div>'
       +'<div class="field"><label for="bNote">Algo que quieras aclarar (opcional)</label><textarea id="bNote" placeholder="Ej: es para mi hija de 8 años"></textarea></div>'
-      +'</div><div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="bk-confirm">Confirmar turno'+(sv.price>0?' · '+money(sv.price):'')+'</button></div>';
+      +'<p style="font-size:11.5px;line-height:1.45;color:var(--ink-3);margin:6px 0 0">Tus datos los recibe '+esc(S.cfg.businessName)+' solo para tu turno y para escribirte sobre él. <a href="https://ventra.store/privacidad.html#clientes" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Privacidad</a></p>'
+      +(depositOf(sv)?'<p style="font-size:13px;line-height:1.45;background:var(--brand-soft);color:var(--ink-2);border-radius:12px;padding:10px 12px;margin:4px 0 0">Para confirmar el turno se paga una <b>seña de '+money(depositOf(sv))+'</b> con Mercado Pago'+(sv.price>0?' (el resto, '+money(sv.price-depositOf(sv))+', se paga en el turno)':'')+'. Tenés 20 minutos para pagarla.</p>':'')
+      +'</div><div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="bk-confirm">'+(depositOf(sv)?'Reservar y pagar seña · '+money(depositOf(sv)):'Confirmar turno'+(sv.price>0?' · '+money(sv.price):''))+'</button></div>';
+    return;
+  }
+  if(b.step==='done' && b.result && b.result.payUrl){
+    var rp=b.result;
+    el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('clock')+'</div>'
+      +'<h3 class="display">Falta la seña</h3>'
+      +'<p><b style="color:var(--ink)">'+esc(rp.serviceName)+'</b>'+(rp.staffName?' con '+esc(rp.staffName):'')+'<br>'+esc(capFirst(dayText(rp.date)))+', '+esc(rp.time)+' hs</p>'
+      +'<p>Te guardamos el horario <b>'+(rp.holdMin||20)+' minutos</b>. Pagá la seña de <b>'+money(rp.deposit)+'</b> y el turno queda confirmado.</p>'
+      +'<span class="code">#'+esc(rp.code)+'</span></div></div>'
+      +'<div class="sheet-foot">'+payBtn(rp.payUrl,rp.deposit)
+      +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">Después de pagar volvés acá y ves tu turno confirmado.</p></div>';
     return;
   }
   if(b.step==='done'){
@@ -1751,6 +1777,7 @@ document.addEventListener('click',function(e){
     case 'clear-search': S.q=''; $('#q').value=''; $('#searchBox').classList.remove('has'); renderList(); $('#q').focus(); break;
     case 'focus-search': var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); setTimeout(function(){ $('#q').focus(); },300); break;
     case 'mg-cancel': cancelMine(t); break;
+    case 'mg-reload': e.preventDefault(); openManage(S.mg.id,S.mg.code); break;
     case 'mg-book': closeSheets(); setTimeout(function(){ openBooking(null); },250); break;
     case 'share':
       if(navigator.share){ navigator.share({title:S.cfg.businessName,text:S.cfg.description||'Mirá mi tienda online',url:location.href}).catch(function(){}); }

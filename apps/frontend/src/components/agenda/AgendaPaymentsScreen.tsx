@@ -5,6 +5,10 @@ import { subscribeBookings, localNow, addDays, weekday, dayLabel, hhmm, PAY_METH
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
+import { depositPaid } from '../../services/agendaCore';
+
+const DEPOSIT_METHOD = 'Seña (Mercado Pago)';
+const amountOf = (b: { payment?: { amount: number } }) => (Number(b.payment?.amount) || 0) + depositPaid(b as any);
 
 type Period = 'day' | 'week' | 'month';
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -61,14 +65,16 @@ export default function AgendaPaymentsScreen() {
 
   const data = useMemo(() => {
     const list = (bookings || []).filter((b) => b.kind === 'booking');
-    const paid = list.filter((b) => b.payment);
-    const total = paid.reduce((s, b) => s + (Number(b.payment!.amount) || 0), 0);
+    // Lo cobrado de cada turno: el cobro y, si pagó seña por Mercado Pago, también la seña
+    const paid = list.filter((b) => b.payment || depositPaid(b));
+    const total = paid.reduce((s, b) => s + amountOf(b), 0);
     const byMethod = new Map<string, number>();
     const byStaff = new Map<string, number>();
     for (const b of paid) {
-      byMethod.set(b.payment!.method, (byMethod.get(b.payment!.method) || 0) + (Number(b.payment!.amount) || 0));
+      if (b.payment) byMethod.set(b.payment.method, (byMethod.get(b.payment.method) || 0) + (Number(b.payment.amount) || 0));
+      if (depositPaid(b)) byMethod.set(DEPOSIT_METHOD, (byMethod.get(DEPOSIT_METHOD) || 0) + depositPaid(b));
       const who = b.staffName || 'Sin asignar';
-      byStaff.set(who, (byStaff.get(who) || 0) + (Number(b.payment!.amount) || 0));
+      byStaff.set(who, (byStaff.get(who) || 0) + amountOf(b));
     }
     // Atendidos sin cobrar, y turnos ya pasados que siguen confirmados (¿vinieron?)
     const unpaid = list.filter((b) => !b.payment && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
@@ -162,8 +168,8 @@ export default function AgendaPaymentsScreen() {
                     <span className="block text-[12.5px] text-slate-500 truncate">{period === 'day' ? hhmm(b.startMin) : dayLabel(b.dateKey, true)} · {b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}</span>
                   </span>
                   <span className="text-right shrink-0">
-                    <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(b.payment!.amount)}</span>
-                    <span className="block text-[11.5px] text-slate-500">{b.payment!.method}</span>
+                    <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(amountOf(b))}</span>
+                    <span className="block text-[11.5px] text-slate-500">{[b.payment?.method, depositPaid(b) ? `seña ${money(depositPaid(b))}` : ''].filter(Boolean).join(' + ')}</span>
                   </span>
                 </div>
               ))}

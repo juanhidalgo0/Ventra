@@ -1411,7 +1411,36 @@ const agenda = require("./agenda");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 
 /** Reserva pública desde la tienda: valida y crea el turno sin superponerse con otro. */
-exports.agendaBook = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.book(db, req, res));
+const mpTokenFor = (uid) => mercadopago.accessTokenFor(uid, mpCreds());
+exports.agendaBook = onRequest({ cors: true, maxInstances: 10, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET] }, (req, res) => agenda.book(db, req, res, { tokenFor: mpTokenFor }));
+
+/** Aviso de Mercado Pago de una seña pagada: confirma el turno y avisa al dueño. */
+exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET] }, async (req, res) => {
+  try {
+    const done = await agenda.payHook(db, req, { tokenFor: mpTokenFor });
+    if (done) {
+      const b = done.booking;
+      const when = `${agenda.fmtDay(b.dateKey)} ${agenda.hhmm(b.startMin)}`;
+      await notify.sendToAccount(db, done.ownerUid, "bookings", {
+        title: done.outcome === "late-clash" ? `Seña pagada tarde: ${b.serviceName || "turno"} · ${when}` : `Seña recibida: ${b.serviceName || "turno"} · ${when}`,
+        body: done.outcome === "late-clash"
+          ? `${b.customerName || "El cliente"} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvé la seña.`
+          : `${b.customerName || "Un cliente"} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`,
+        url: "/#/agenda", tag: "booking-" + b.id,
+      }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar la seña", err.message));
+    }
+  } catch (err) {
+    logger.error("Agenda: error procesando la seña", err);
+    return res.status(500).send("Error"); // Mercado Pago reintenta
+  }
+  res.status(200).send("OK");
+});
+
+/** Cada 5 minutos: las señas que no se pagaron a tiempo liberan su horario. */
+exports.agendaExpireHolds = onSchedule({ schedule: "every 5 minutes", timeZone: "America/Argentina/Buenos_Aires" }, async () => {
+  const n = await agenda.expireHolds(db);
+  if (n) logger.info(`Agenda: ${n} seña(s) vencida(s), horarios liberados`);
+});
 
 /** Link del turno: el cliente ve su turno y lo puede cancelar (ver agenda.manage). */
 exports.agendaManage = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.manage(db, req, res));
@@ -1445,7 +1474,8 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     return;
   }
 
-  if (!before && after && after.kind === "booking" && after.source === "online") {
+  // Esperando seña no avisa todavía: avisa agendaPayHook cuando se paga
+  if (!before && after && after.kind === "booking" && after.source === "online" && after.status !== "AWAITING_PAYMENT") {
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (!uid) return;

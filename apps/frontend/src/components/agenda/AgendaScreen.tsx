@@ -16,10 +16,11 @@ import { useClientPreview, demoShareInstead } from '../../services/clientPreview
 import { IS_DEMO_BUILD } from '../../demo/flag';
 import { useNavigate } from 'react-router-dom';
 import { addTurnoToCart } from '../pos/turnoCobro';
+import api from '../../services/api';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
-  rescheduleBooking, fetchBookingsRange, markReminded,
+  rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, depositFor,
   type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -209,7 +210,13 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   useEffect(() => { const t = setInterval(() => setNowMin(localNow().min), 30000); return () => clearInterval(t); }, []);
 
   // Se escucha una ventana alrededor del día elegido (para los contadores de la tira de días)
-  const from = addDays(day, -3), to = addDays(day, 10);
+  // Vista Día (lista) o Semana (calendario lunes a domingo); se recuerda en este equipo
+  const [view, setView] = useState<'day' | 'week'>(() => { try { return localStorage.getItem('agenda_view') === 'week' ? 'week' : 'day'; } catch { return 'day'; } });
+  const changeView = (v: 'day' | 'week') => { setView(v); try { localStorage.setItem('agenda_view', v); } catch { /* sin almacenamiento */ } };
+  const monday = addDays(day, -((weekday(day) + 6) % 7));
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  // Se escucha una ventana que cubre la tira de días y la semana entera
+  const from = [addDays(day, -3), monday].sort()[0], to = [addDays(day, 10), weekDays[6]].sort()[1];
   useEffect(() => {
     setLoading(true);
     return subscribeBookings(storeId, from, to, (list) => { setBookings(list); setLoading(false); }, () => setLoading(false));
@@ -276,7 +283,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
 
       {/* Días */}
       <div data-tour="agenda-days" className="bg-white rounded-2xl border border-slate-200/80 p-2 flex items-center gap-1 overflow-hidden">
-        <button onClick={() => setDay(addDays(day, -1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día anterior"><ChevronLeft className="w-5 h-5" /></button>
+        <button onClick={() => setDay(addDays(day, view === 'week' ? -7 : -1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día anterior"><ChevronLeft className="w-5 h-5" /></button>
         <div key={day} className={`flex-1 grid grid-cols-7 gap-1 ${dir}`}>
           {strip.map((k) => {
             const n = countFor(k), on = k === day;
@@ -289,19 +296,24 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
             );
           })}
         </div>
-        <button onClick={() => setDay(addDays(day, 1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día siguiente"><ChevronRight className="w-5 h-5" /></button>
+        <button onClick={() => setDay(addDays(day, view === 'week' ? 7 : 1))} className="ag-press w-9 h-14 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50" aria-label="Día siguiente"><ChevronRight className="w-5 h-5" /></button>
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-[18px] font-bold text-slate-900">{dayLabel(day)}</p>
+          <p className="text-[18px] font-bold text-slate-900">{view === 'week' ? `Semana del ${+monday.slice(8)}/${+monday.slice(5, 7)} al ${+weekDays[6].slice(8)}/${+weekDays[6].slice(5, 7)}` : dayLabel(day)}</p>
           <p className="text-[12.5px] text-slate-500">
             {visible.filter((b) => b.kind === 'booking').length} turnos
             {canCharge && dayCharged ? ` · cobrado ${money(dayCharged)}${dayIncome > dayCharged ? ` de ${money(dayIncome)}` : ''}` : dayIncome ? ` · ${money(dayIncome)}` : ''}
             {day !== today && <button onClick={() => setDay(today)} className="ml-2 font-semibold text-rose-700">Ir a hoy</button>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <div data-tour="agenda-view" className="inline-flex p-1 rounded-xl bg-slate-100">
+            {([['day', 'Día'], ['week', 'Semana']] as const).map(([v, t]) => (
+              <button key={v} onClick={() => changeView(v)} className={`ag-press transition-colors h-8 px-3 rounded-lg text-[13px] font-semibold ${view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{t}</button>
+            ))}
+          </div>
           <button data-tour="agenda-block" onClick={() => setBlocking(true)} className="ag-press h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center gap-1.5"><Ban className="w-4 h-4" /> Bloquear</button>
           <button data-tour="agenda-new" onClick={() => setCreating(true)} className="ag-press h-10 px-3.5 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center gap-1.5"><Plus className="w-4 h-4" /> Turno</button>
         </div>
@@ -318,6 +330,11 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
         </div>
       )}
 
+      {view === 'week' ? (
+        <WeekGrid key={`${monday}-${staffFilter}`} className={dir} days={weekDays} today={today} nowMin={nowMin} loading={loading} agenda={agenda} staffById={staffById}
+          bookings={bookings.filter((b) => weekDays.includes(b.dateKey) && b.status !== 'CANCELLED' && (staffFilter === 'ALL' || b.staffId === staffFilter || b.staffId === 'ALL'))}
+          onOpen={setOpen} onDay={(k) => { setDay(k); changeView('day'); }} />
+      ) : (
       <div data-tour="agenda-list" key={`${day}-${staffFilter}`} className={`bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden ${dir}`}>
         {loading ? (
           <div aria-label="Cargando" className="divide-y divide-slate-100">
@@ -385,7 +402,8 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
           );
         })}
       </div>
-      {cancelled.length > 0 && <p className="text-[12.5px] text-slate-400 px-1">{cancelled.length} cancelado{cancelled.length === 1 ? '' : 's'} este día</p>}
+      )}
+      {view === 'day' && cancelled.length > 0 && <p className="text-[12.5px] text-slate-400 px-1">{cancelled.length} cancelado{cancelled.length === 1 ? '' : 's'} este día</p>}
 
       {open && <BookingDetail storeId={storeId} agenda={agenda} slug={slug} booking={bookings.find((b) => b.id === open.id) || open} businessName={businessName} onClose={() => setOpen(null)} onMoved={(b) => setDay(b.dateKey)} />}
       {creating && <NewBooking storeId={storeId} agenda={agenda} bookings={bookings} initialDay={day} onClose={() => setCreating(false)} />}
@@ -432,7 +450,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
     );
   }
 
-  const upcoming = b.status === 'PENDING' || b.status === 'CONFIRMED';
+  const upcoming = b.status === 'PENDING' || b.status === 'CONFIRMED' || b.status === 'AWAITING_PAYMENT';
   if (charging) return <ChargeSheet storeId={storeId} booking={b} onClose={() => setCharging(false)} onDone={onClose} />;
   if (moving) return (
     <RescheduleSheet storeId={storeId} agenda={agenda} booking={b} onClose={() => setMoving(false)} onDone={(nb) => {
@@ -450,11 +468,11 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           </div>
         ) : canCharge ? (
           <button onClick={() => setCharging(true)} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
-            <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(b.price)}` : ''}
+            <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
         ) : (
           <button onClick={chargeInCaja} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
-            <ShoppingCart className="w-5 h-5" /> Cobrar en la caja{b.price ? ` ${money(b.price)}` : ''}
+            <ShoppingCart className="w-5 h-5" /> Cobrar en la caja{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
         )
       ) : undefined}>
@@ -464,6 +482,11 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           {b.code && <span className="text-[12px] font-mono font-semibold text-slate-500 bg-slate-100 rounded-md px-2 py-1">#{b.code}</span>}
           <span className="text-[12px] text-slate-400">{b.source === 'online' ? 'Reservado desde la tienda' : 'Cargado a mano'}</span>
           {b.cancelledBy === 'client' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-red-600">Lo canceló el cliente desde su link</span>}
+          {(b.cancelledBy as string) === 'expired' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-slate-500">No pagó la seña a tiempo</span>}
+          {b.deposit && (depositPaid(b)
+            ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">Seña pagada {money(depositPaid(b))} · Mercado Pago</span>
+            : b.status === 'AWAITING_PAYMENT' ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">Seña de {money(b.deposit.amount)} sin pagar todavía</span> : null)}
+          {b.deposit?.refundNeeded && <span className="text-[12px] font-semibold text-red-600">Pagó la seña tarde y el horario ya estaba ocupado: reprogramalo o devolvé la seña</span>}
           {b.movedFrom && <span className="text-[12px] text-slate-400">Reprogramado (antes {dayLabel(b.movedFrom.dateKey, true)} {hhmm(b.movedFrom.startMin)})</span>}
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 space-y-2.5 text-[14px] text-slate-700">
@@ -487,6 +510,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
         <div>
           <p className={label}>Estado</p>
           <div className="grid grid-cols-2 gap-2">
+            {b.status === 'AWAITING_PAYMENT' && <button disabled={busy} onClick={() => act('CONFIRMED', 'Turno confirmado sin seña')} className="h-11 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center justify-center gap-1.5"><Check className="w-4 h-4" /> Confirmar sin seña</button>}
             {b.status === 'PENDING' && <button disabled={busy} onClick={() => act('CONFIRMED', 'Turno confirmado')} className="h-11 rounded-xl bg-rose-600 text-white text-[13.5px] font-semibold flex items-center justify-center gap-1.5"><Check className="w-4 h-4" /> Confirmar</button>}
             {b.status !== 'DONE' && b.status !== 'CANCELLED' && <button disabled={busy} onClick={() => act('DONE', 'Marcado como atendido')} className="h-11 rounded-xl bg-sky-50 text-sky-800 text-[13.5px] font-semibold">Atendido</button>}
             {upcoming && <button disabled={busy} onClick={() => act('NO_SHOW', 'Marcado: no vino')} className="h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold">No vino</button>}
@@ -510,7 +534,8 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
 
 /** Cobro de un turno: monto (por defecto el precio del servicio) y medio de pago. */
 function ChargeSheet({ storeId, booking: b, onClose, onDone }: { storeId: string; booking: Booking; onClose: () => void; onDone: () => void }) {
-  const [amount, setAmount] = useState(String(b.price || ''));
+  // Lo que falta: el precio menos la seña que ya pagó por Mercado Pago
+  const [amount, setAmount] = useState(String(Math.max(0, (Number(b.price) || 0) - depositPaid(b)) || ''));
   const [method, setMethod] = useState(PAY_METHODS[0]);
   const [busy, setBusy] = useState(false);
   const value = Number(String(amount).replace(/\./g, '').replace(',', '.')) || 0;
@@ -545,6 +570,100 @@ function ChargeSheet({ storeId, booking: b, onClose, onDone }: { storeId: string
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Semana en calendario: una columna por día (lunes a domingo) y los turnos ubicados por hora,
+ * con el color de quien atiende. Si dos turnos se pisan (varios profesionales), van lado a lado.
+ */
+function WeekGrid({ days, today, nowMin, loading, agenda, staffById, bookings, onOpen, onDay, className }: {
+  days: string[]; today: string; nowMin: number; loading: boolean; agenda: AgendaConfig; staffById: Record<string, any>;
+  bookings: Booking[]; onOpen: (b: Booking) => void; onDay: (k: string) => void; className?: string;
+}) {
+  // Franja horaria: de la primera apertura al último cierre de la semana (y lo que haya fuera de eso)
+  let first = 24 * 60, last = 0;
+  for (const st of agenda.staff) for (const h of st.hours || []) if (h?.open) for (const r of dayRanges(h)) { first = Math.min(first, toMin(r.from)); last = Math.max(last, toMin(r.to)); }
+  for (const b of bookings) if (b.kind === 'booking') { first = Math.min(first, b.startMin); last = Math.max(last, b.endMin); }
+  if (first >= last) { first = 9 * 60; last = 20 * 60; }
+  const startH = Math.floor(first / 60), endH = Math.ceil(last / 60);
+  const PX = 0.9; // píxeles por minuto
+  const height = (endH - startH) * 60 * PX;
+  const top = (m: number) => (Math.max(m, startH * 60) - startH * 60) * PX;
+
+  // Carriles por día: los turnos que se pisan se reparten el ancho
+  const lanesOf = (list: Booking[]) => {
+    const sorted = [...list].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+    const ends: number[] = [];
+    const lane = new Map<string, number>();
+    for (const b of sorted) {
+      let i = ends.findIndex((e) => e <= b.startMin);
+      if (i < 0) { i = ends.length; ends.push(0); }
+      ends[i] = b.endMin; lane.set(b.id, i);
+    }
+    return { lane, count: Math.max(1, ends.length) };
+  };
+
+  return (
+    <div className={`bg-white rounded-2xl border border-slate-200/80 overflow-x-auto ${className || ''}`}>
+      <div className="min-w-[720px]">
+        <div className="grid grid-cols-[48px_repeat(7,1fr)] border-b border-slate-100 sticky top-0 bg-white z-10">
+          <span />
+          {days.map((k) => (
+            <button key={k} onClick={() => onDay(k)} className={`ag-press py-2 text-center ${k === today ? 'text-rose-700' : 'text-slate-600'} hover:bg-slate-50`}>
+              <span className="block text-[11px] font-semibold uppercase">{DAY_NAMES[weekday(k)].slice(0, 3)}</span>
+              <span className={`inline-flex w-7 h-7 items-center justify-center rounded-full text-[14px] font-bold ${k === today ? 'bg-rose-600 text-white' : ''}`}>{+k.slice(8)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-[48px_repeat(7,1fr)] relative" style={{ height }}>
+          {/* Horas */}
+          <div className="relative">
+            {Array.from({ length: endH - startH }, (_, i) => (
+              <span key={i} className="absolute right-2 text-[10.5px] text-slate-400 tabular-nums -translate-y-1/2" style={{ top: i * 60 * PX }}>{i ? hhmm((startH + i) * 60) : ''}</span>
+            ))}
+          </div>
+          {days.map((k) => {
+            const list = bookings.filter((b) => b.dateKey === k);
+            const { lane, count } = lanesOf(list.filter((b) => b.kind === 'booking'));
+            return (
+              <div key={k} className={`relative border-l border-slate-100 ${k === today ? 'bg-rose-50/30' : ''}`}>
+                {Array.from({ length: endH - startH }, (_, i) => <span key={i} className="absolute inset-x-0 border-t border-slate-100" style={{ top: i * 60 * PX }} />)}
+                {list.filter((b) => b.kind === 'block').map((b) => (
+                  <button key={b.id} onClick={() => onOpen(b)} title={`Bloqueado${b.reason ? ` · ${b.reason}` : ''}`}
+                    className="absolute inset-x-0.5 rounded-md bg-slate-100 border border-dashed border-slate-300 text-[10.5px] text-slate-500 px-1 overflow-hidden text-left"
+                    style={{ top: top(b.startMin), height: Math.max(14, (Math.min(b.endMin, endH * 60) - Math.max(b.startMin, startH * 60)) * PX) }}>
+                    Bloqueado{b.reason ? ` · ${b.reason}` : ''}
+                  </button>
+                ))}
+                {list.filter((b) => b.kind === 'booking').map((b, i) => {
+                  const color = staffById[b.staffId]?.color || '#94a3b8';
+                  const l = lane.get(b.id) || 0;
+                  const h = Math.max(18, (b.endMin - b.startMin) * PX - 2);
+                  const faded = b.status === 'NO_SHOW' || b.status === 'AWAITING_PAYMENT';
+                  return (
+                    <button key={b.id} onClick={() => onOpen(b)} style={{ '--i': i, top: top(b.startMin) + 1, height: h, left: `calc(${(l / count) * 100}% + 2px)`, width: `calc(${100 / count}% - 4px)`, background: `${color}1f`, borderLeft: `3px solid ${color}` } as React.CSSProperties}
+                      className={`ag-item absolute rounded-md px-1.5 py-0.5 text-left overflow-hidden hover:brightness-95 transition ${faded ? 'opacity-60' : ''}`}
+                      title={`${hhmm(b.startMin)} ${b.customerName} · ${b.serviceName}`}>
+                      <span className="block text-[11px] font-bold text-slate-900 truncate leading-tight">{hhmm(b.startMin)} {b.customerName}</span>
+                      {h > 30 && <span className="block text-[10.5px] text-slate-600 truncate leading-tight">{b.serviceName}</span>}
+                      {b.payment && h > 44 && <span className="block text-[10px] font-semibold text-emerald-700">Cobrado</span>}
+                    </button>
+                  );
+                })}
+                {k === today && nowMin >= startH * 60 && nowMin <= endH * 60 && (
+                  <span className="absolute inset-x-0 z-[5] pointer-events-none" style={{ top: top(nowMin) }}>
+                    <span className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-rose-600 ag-live" />
+                    <span className="block h-px bg-rose-500" />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {loading && <div className="absolute inset-0 bg-white/60 flex items-center justify-center"><Loader2 className="w-6 h-6 text-rose-600 animate-spin" /></div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1096,11 +1215,62 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
           </div>
           <Toggle on={a.autoConfirm} onChange={(v) => setA({ ...a, autoConfirm: v })} />
         </div>
+        <DepositRules a={a} setA={setA} />
       </Card>
 
       <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-6'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button onClick={save} disabled={saving} className={`${mobile ? 'w-full' : 'px-8'} h-12 rounded-2xl bg-rose-600 text-white font-semibold shadow-lg shadow-rose-600/30 disabled:opacity-60`}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Seña con Mercado Pago al reservar online. La cobra la nube con la cuenta de MP conectada del
+ * comercio (Configuración → Integraciones); sin cuenta conectada no se puede prender.
+ */
+function DepositRules({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) => void }) {
+  const [mp, setMp] = useState<null | { connected: boolean; nickname?: string | null; needsReconnect?: boolean }>(null);
+  useEffect(() => {
+    api.get('/mercadopago/status', { silent: true } as any).then(({ data }) => setMp(data)).catch(() => setMp({ connected: false }));
+  }, []);
+  const d = a.deposit || { enabled: false, mode: 'percent' as const, value: 30 };
+  const set = (p: Partial<typeof d>) => setA({ ...a, deposit: { ...d, ...p } });
+  const can = !!mp?.connected && !mp.needsReconnect;
+  const example = a.services.find((s) => s.active !== false && Number(s.price) > 0);
+  return (
+    <div className="mt-4 pt-4 border-t border-slate-100">
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <p className="text-[14px] font-semibold text-slate-800">Pedir seña con Mercado Pago</p>
+          <p className="text-[12.5px] text-slate-500">
+            {d.enabled && can ? 'Para reservar online, el cliente paga la seña. Si no la paga en 20 minutos, el horario se libera solo.'
+              : 'Menos faltazos: el turno se confirma cuando el cliente paga la seña, y la plata entra a tu cuenta de Mercado Pago.'}
+          </p>
+        </div>
+        <Toggle on={d.enabled && can} onChange={(v) => { if (!can) return toast.error('Primero conectá tu cuenta de Mercado Pago'); set({ enabled: v }); }} />
+      </div>
+      {mp && !can && (
+        <a href="#/settings?tab=integraciones" className="mt-2 inline-flex text-[12.5px] font-semibold text-rose-700">
+          {mp.needsReconnect ? 'Tu Mercado Pago se desconectó: volvé a conectarlo →' : 'Conectá tu cuenta en Configuración → Integraciones →'}
+        </a>
+      )}
+      {can && <p className="mt-1 text-[12px] text-emerald-700 font-medium">Mercado Pago conectado{mp?.nickname ? ` · ${mp.nickname}` : ''}</p>}
+      {d.enabled && can && (
+        <div className="mt-3 grid grid-cols-[auto_1fr] gap-2 items-center anim-rise">
+          <div className="inline-flex p-1 rounded-xl bg-slate-100">
+            {([['percent', '% del precio'], ['fixed', 'Monto fijo']] as const).map(([m, t]) => (
+              <button key={m} onClick={() => set({ mode: m, value: m === 'percent' ? 30 : 5000 })} className={`ag-press h-9 px-3 rounded-lg text-[13px] font-semibold ${d.mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{t}</button>
+            ))}
+          </div>
+          <div className="relative">
+            {d.mode === 'fixed' && <span className="absolute left-3 inset-y-0 flex items-center text-slate-400">$</span>}
+            <input className={`${input} ${d.mode === 'fixed' ? 'pl-7' : 'pr-8'}`} inputMode="numeric" value={d.value || ''} onChange={(e) => set({ value: Math.min(d.mode === 'percent' ? 100 : 10_000_000, Number(e.target.value.replace(/\D/g, '')) || 0) })} />
+            {d.mode === 'percent' && <span className="absolute right-3 inset-y-0 flex items-center text-slate-400">%</span>}
+          </div>
+          {example && <p className="col-span-2 text-[12px] text-slate-500">Ejemplo: {example.name} ({money(example.price)}) → seña de {money(depositFor({ ...a, deposit: { ...d, enabled: true } }, example))}.</p>}
+        </div>
+      )}
     </div>
   );
 }

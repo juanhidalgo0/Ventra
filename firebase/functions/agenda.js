@@ -21,7 +21,11 @@ const crypto = require("crypto");
 
 const TZ_OFFSET_MIN = -180;
 /** Estados que ocupan el horario */
-const ACTIVE = new Set(["PENDING", "CONFIRMED", "DONE", "BLOCK"]);
+const ACTIVE = new Set(["PENDING", "CONFIRMED", "DONE", "BLOCK", "AWAITING_PAYMENT"]);
+/** Minutos que se aparta el horario mientras el cliente paga la seña */
+const HOLD_MIN = 20;
+/** Esperando seña con el plazo vencido: ya no ocupa (aunque la tarea que lo cancela no haya pasado) */
+const holdExpired = (b) => b.status === "AWAITING_PAYMENT" && b.holdUntil && b.holdUntil.toMillis() < Date.now();
 
 const toMin = (hhmm) => { const p = String(hhmm || "0:0").split(":"); return (+p[0]) * 60 + (+p[1] || 0); };
 const pad = (n) => String(n).padStart(2, "0");
@@ -79,8 +83,21 @@ function minStartFor(agenda, dateKey, nowMs = Date.now()) {
 
 const busyOf = (docs) => docs
   .map((d) => (typeof d.data === "function" ? d.data() : d))
-  .filter((b) => ACTIVE.has(b.status))
+  .filter((b) => ACTIVE.has(b.status) && !holdExpired(b))
   .map((b) => ({ staffId: b.staffId, s: b.startMin, e: b.endMin }));
+
+/**
+ * Seña del servicio según la agenda: agenda.deposit = { enabled, mode: 'percent' | 'fixed', value }.
+ * Nunca más que el precio del servicio (si tiene precio). 0 = sin seña.
+ */
+function depositFor(agenda, service) {
+  const d = agenda && agenda.deposit;
+  if (!d || !d.enabled) return 0;
+  const price = Number(service.price) || 0;
+  let amount = d.mode === "fixed" ? Number(d.value) || 0 : Math.round(price * (Number(d.value) || 0) / 100);
+  if (price > 0) amount = Math.min(amount, price);
+  return amount >= 1 ? Math.round(amount) : 0;
+}
 
 function code() {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -91,7 +108,7 @@ function code() {
 const clean = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 
 /** POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, note } */
-async function book(db, req, res) {
+async function book(db, req, res, { tokenFor } = {}) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
   const b = req.body || {};
   const storeId = clean(b.storeId, 80), serviceId = clean(b.serviceId, 60), staffId = clean(b.staffId, 60) || "ANY";
@@ -133,6 +150,13 @@ async function book(db, req, res) {
 
   const bookingRef = storeRef.collection("bookings").doc();
   const bookingCode = code();
+
+  // Seña con Mercado Pago: solo si el comercio la pidió y tiene su cuenta de MP conectada
+  let deposit = depositFor(agenda, service);
+  let mpToken = null;
+  if (deposit && cfg.ownerUid && tokenFor) mpToken = await tokenFor(cfg.ownerUid).catch(() => null);
+  if (!mpToken) deposit = 0;
+  const holdUntil = deposit ? admin.firestore.Timestamp.fromMillis(Date.now() + HOLD_MIN * 60000) : null;
   let chosen;
   try {
     chosen = await db.runTransaction(async (tx) => {
@@ -151,7 +175,8 @@ async function book(db, req, res) {
         serviceId: service.id, serviceName: service.name || "", durationMin: dur, price: Number(service.price) || 0,
         customerName: name, customerPhone: phone, customerPhoneKey: phoneDigits.slice(-10), customerNote: note,
         code: bookingCode,
-        status: agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
+        status: deposit ? "AWAITING_PAYMENT" : agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
+        ...(deposit ? { holdUntil, deposit: { amount: deposit, status: "pending" } } : {}),
         source: "online",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -163,11 +188,102 @@ async function book(db, req, res) {
   }
   if (!chosen) return res.status(409).json({ error: "Ese horario se acaba de ocupar. Elegí otro." });
   await rateRef.set({ at: recent.filter((t) => t > hourAgo).concat(Date.now()).slice(-20) }).catch(() => {});
+
+  let status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED";
+  let payUrl = null;
+  if (deposit) {
+    // Link de pago de Mercado Pago a nombre del comercio. Si falla, el turno sigue sin seña
+    // (mejor un turno sin seña que un cliente trabado sin poder reservar).
+    try {
+      const manage = `https://tienda.ventra.store/${encodeURIComponent(cfg.subdomain || "")}#turno=${bookingRef.id}.${bookingCode}`;
+      const pref = await mpPreference(mpToken, {
+        items: [{ title: `Seña · ${service.name} · ${cfg.businessName || "turno"}`.slice(0, 250), quantity: 1, unit_price: deposit, currency_id: "ARS" }],
+        external_reference: `agenda|${storeId}|${bookingRef.id}`,
+        notification_url: `https://us-central1-ventra-9cba5.cloudfunctions.net/agendaPayHook?s=${encodeURIComponent(storeId)}`,
+        back_urls: { success: manage, pending: manage, failure: manage },
+        auto_return: "approved",
+        expires: true,
+        expiration_date_to: new Date(holdUntil.toMillis()).toISOString(),
+        statement_descriptor: String(cfg.businessName || "VENTRA").slice(0, 22),
+      });
+      payUrl = pref.init_point;
+      status = "AWAITING_PAYMENT";
+      await bookingRef.update({ "deposit.payUrl": payUrl, "deposit.preferenceId": pref.id || null });
+    } catch (err) {
+      logger.warn("Agenda: no se pudo crear el link de la seña, el turno queda sin seña", storeId, err.message);
+      await bookingRef.update({ status, holdUntil: admin.firestore.FieldValue.delete(), deposit: admin.firestore.FieldValue.delete() }).catch(() => {});
+    }
+  }
   return res.status(200).json({
     ok: true, id: bookingRef.id, code: bookingCode,
     staffName: chosen.name || "", serviceName: service.name || "",
-    date: dateKey, time: hhmm(startMin), status: agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
+    date: dateKey, time: hhmm(startMin), status,
+    ...(payUrl ? { payUrl, deposit, holdMin: HOLD_MIN } : {}),
   });
+}
+
+async function mpPreference(token, body) {
+  const r = await fetch("https://api.mercadopago.com/checkout/preferences", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.init_point) throw new Error(data.message || `Mercado Pago respondió ${r.status}`);
+  return data;
+}
+
+/**
+ * Aviso de Mercado Pago de un pago de seña (notification_url de la preferencia, ?s=<storeId>).
+ * No se confía en el aviso: se consulta el pago a MP con el token del comercio. Idempotente.
+ * Devuelve la info del turno para que index.js avise al dueño, o null.
+ */
+async function payHook(db, req, { tokenFor }) {
+  const storeId = clean(req.query.s, 80);
+  const q = req.query, b = req.body || {};
+  const topic = q.type || q.topic || b.type || b.topic;
+  const paymentId = clean(q["data.id"] || (b.data && b.data.id) || (topic === "payment" ? q.id : ""), 40);
+  if (!storeId || topic !== "payment" || !/^\d+$/.test(paymentId)) return null;
+  const storeRef = db.collection("ventra_stores").doc(storeId);
+  const store = await storeRef.get();
+  const ownerUid = store.exists && store.data().ownerUid;
+  if (!ownerUid) return null;
+  const token = await tokenFor(ownerUid);
+  if (!token) return null;
+  const r = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Mercado Pago respondió ${r.status} al consultar el pago ${paymentId}`);
+  const p = await r.json();
+  const [tag, refStore, bookingId] = String(p.external_reference || "").split("|");
+  if (tag !== "agenda" || refStore !== storeId || !bookingId || p.status !== "approved") return null;
+  const agenda = store.data().agenda || {};
+  const ref = storeRef.collection("bookings").doc(bookingId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const t = snap.data();
+    if (t.deposit && t.deposit.status === "paid") return null; // ya acreditada
+    const paid = { ...(t.deposit || {}), status: "paid", paymentId: String(p.id), paidAmount: Number(p.transaction_amount) || 0, paidAt: admin.firestore.Timestamp.now() };
+    const patch = { deposit: paid, holdUntil: admin.firestore.FieldValue.delete() };
+    let outcome = "confirmed";
+    if (t.status === "AWAITING_PAYMENT") {
+      patch.status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED";
+    } else if (t.status === "CANCELLED" && t.cancelledBy === "expired") {
+      // Pagó tarde: si el horario sigue libre se reactiva; si no, el comercio tiene que resolverlo
+      const day = await tx.get(storeRef.collection("bookings").where("dateKey", "==", t.dateKey));
+      const clash = busyOf(day.docs.filter((d) => d.id !== bookingId)).some((x) => (x.staffId === t.staffId || x.staffId === "ALL") && x.s < t.endMin && t.startMin < x.e);
+      if (clash) { paid.refundNeeded = true; outcome = "late-clash"; } else { patch.status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED"; patch.cancelledBy = admin.firestore.FieldValue.delete(); outcome = "late-ok"; }
+    }
+    patch.statusAt = admin.firestore.FieldValue.serverTimestamp();
+    tx.update(ref, patch);
+    return { ownerUid, booking: { ...t, id: bookingId }, amount: paid.paidAmount, outcome };
+  });
+}
+
+/** Tarea programada: libera los horarios de las señas que no se pagaron a tiempo. */
+async function expireHolds(db) {
+  const snap = await db.collectionGroup("bookings").where("status", "==", "AWAITING_PAYMENT").get();
+  const now = Date.now();
+  const late = snap.docs.filter((d) => { const h = d.data().holdUntil; return !h || h.toMillis() < now; });
+  await Promise.all(late.map((d) => d.ref.update({ status: "CANCELLED", cancelledBy: "expired", statusAt: admin.firestore.FieldValue.serverTimestamp() })));
+  return late.length;
 }
 
 /** Recalcula lo ocupado del día (público, sin datos personales) */
@@ -257,10 +373,12 @@ async function manage(db, req, res) {
   const snap = await ref.get();
   const t = snap.exists ? snap.data() : null;
   if (!t || t.kind !== "booking" || t.code !== bookingCode) return res.status(404).json({ error: "No encontramos ese turno. Revisá el link o escribile al comercio." });
-  const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED") && t.startAt && t.startAt.toMillis() > Date.now();
+  const awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t);
+  const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED" || awaiting) && t.startAt && t.startAt.toMillis() > Date.now();
   const view = () => ({
     serviceName: t.serviceName || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
-    status: t.status, canCancel: upcoming,
+    status: holdExpired(t) ? "CANCELLED" : t.status, canCancel: upcoming,
+    ...(t.deposit ? { deposit: { amount: t.deposit.amount, status: t.deposit.status }, ...(awaiting && t.deposit.payUrl ? { payUrl: t.deposit.payUrl, holdUntil: t.holdUntil.toMillis() } : {}) } : {}),
   });
   if (action === "get") return res.json(view());
   if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
@@ -270,4 +388,4 @@ async function manage(db, req, res) {
   return res.json({ ...view(), canCancel: false });
 }
 
-module.exports = { book, manage, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };
+module.exports = { book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };
