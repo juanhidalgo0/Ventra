@@ -241,4 +241,33 @@ async function refreshClient(db, storeId, key, sample) {
 const DAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const fmtDay = (dateKey) => { const [, m, d] = dateKey.split("-"); return `${DAYS[weekday(dateKey)]} ${+d}/${+m}`; };
 
-module.exports = { book, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };
+/**
+ * Link del turno para el cliente (tienda.ventra.store/<comercio>#turno=<id>.<código>): ver su
+ * turno y cancelarlo él mismo. El id es aleatorio y largo, y el código tiene que coincidir.
+ * POST { storeId, id, code, action: 'get' | 'cancel' }
+ */
+async function manage(db, req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+  const b = req.body || {};
+  const storeId = clean(b.storeId, 80), id = clean(b.id, 40), bookingCode = clean(b.code, 8).toUpperCase(), action = clean(b.action, 10);
+  if (!/^store_[a-z0-9]{8,64}$|^[A-Za-z0-9_-]{6,80}$/.test(storeId) || !/^[A-Za-z0-9]{10,40}$/.test(id) || !/^[A-Z0-9]{4}$/.test(bookingCode)) {
+    return res.status(400).json({ error: "El link del turno no es válido" });
+  }
+  const ref = db.collection("ventra_stores").doc(storeId).collection("bookings").doc(id);
+  const snap = await ref.get();
+  const t = snap.exists ? snap.data() : null;
+  if (!t || t.kind !== "booking" || t.code !== bookingCode) return res.status(404).json({ error: "No encontramos ese turno. Revisá el link o escribile al comercio." });
+  const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED") && t.startAt && t.startAt.toMillis() > Date.now();
+  const view = () => ({
+    serviceName: t.serviceName || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
+    status: t.status, canCancel: upcoming,
+  });
+  if (action === "get") return res.json(view());
+  if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
+  if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cancelar desde acá. Escribile al comercio." });
+  await ref.update({ status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp() });
+  t.status = "CANCELLED";
+  return res.json({ ...view(), canCancel: false });
+}
+
+module.exports = { book, manage, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };

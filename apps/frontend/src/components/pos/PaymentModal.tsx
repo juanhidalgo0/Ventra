@@ -11,6 +11,7 @@ import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useBusinessStore } from '../../stores/businessStore';
 import { orderNote } from './gastro';
+import { chargeTurnosOfSale } from './turnoCobro';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
 import { hasFeature } from '../../stores/businessStore';
@@ -602,6 +603,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? orderNote(usePOSStore.getState().order) : undefined,
         });
         if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
+        // Turnos de la agenda que iban en el ticket: quedan cobrados con este medio
+        chargeTurnosOfSale(cart, paymentType === 'CASH' ? 'Efectivo' : paymentType === 'MIXED' ? 'Mixto' : paymentType === 'DEBT' ? 'Cuenta corriente'
+          : posnets.find((p) => p.id === paymentType)?.name || String(paymentType || 'Caja'));
         saleData = response.data;
         setCreatedSale(saleData);
       }

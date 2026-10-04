@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye,
+  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -14,9 +14,12 @@ import { useTourStore } from '../common/tour/tourStore';
 import { setTourScreen, AGENDA_WORDS } from '../common/tour/tourContext';
 import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
 import { IS_DEMO_BUILD } from '../../demo/flag';
+import { useNavigate } from 'react-router-dom';
+import { addTurnoToCart } from '../pos/turnoCobro';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
+  rescheduleBooking, fetchBookingsRange,
   type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -114,7 +117,7 @@ export default function AgendaScreen() {
   ) : !config ? (
     <div className="p-10 text-center text-[14px] text-slate-500">Cargando…</div>
   ) : tab === 'agenda' ? (
-    <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} mobile={mobile} onConfigure={() => setTab('config')} />
+    <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => setTab('config')} />
   ) : (
     <ConfigView agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl}
       page={agendaOnly ? <PageSetup mobile={mobile} agendaOnly storeId={storeId} initial={config} onSave={savePage} embedded /> : null} />
@@ -172,7 +175,7 @@ export default function AgendaScreen() {
 
 // ─── Agenda del día ─────────────────────────────────────────
 
-function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { storeId: string; agenda: AgendaConfig; businessName: string; mobile: boolean; onConfigure: () => void }) {
+function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: { storeId: string; agenda: AgendaConfig; businessName: string; slug?: string; mobile: boolean; onConfigure: () => void }) {
   const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const today = localNow().dateKey;
   const [day, setDay] = useState(today);
@@ -367,14 +370,16 @@ function DayView({ storeId, agenda, businessName, mobile, onConfigure }: { store
       </div>
       {cancelled.length > 0 && <p className="text-[12.5px] text-slate-400 px-1">{cancelled.length} cancelado{cancelled.length === 1 ? '' : 's'} este día</p>}
 
-      {open && <BookingDetail storeId={storeId} booking={bookings.find((b) => b.id === open.id) || open} businessName={businessName} onClose={() => setOpen(null)} />}
+      {open && <BookingDetail storeId={storeId} agenda={agenda} slug={slug} booking={bookings.find((b) => b.id === open.id) || open} businessName={businessName} onClose={() => setOpen(null)} onMoved={(b) => setDay(b.dateKey)} />}
       {creating && <NewBooking storeId={storeId} agenda={agenda} bookings={bookings} initialDay={day} onClose={() => setCreating(false)} />}
       {blocking && <NewBlock storeId={storeId} agenda={agenda} initialDay={day} onClose={() => setBlocking(false)} />}
     </div>
   );
 }
 
-function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId: string; booking: Booking; businessName: string; onClose: () => void }) {
+function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClose, onMoved }: { storeId: string; agenda: AgendaConfig; slug?: string; booking: Booking; businessName: string; onClose: () => void; onMoved: (b: Booking) => void }) {
+  const navigate = useNavigate();
+  const [moving, setMoving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [charging, setCharging] = useState(false);
   const canCharge = usePlanStore((s) => !s.features.caja);
@@ -388,7 +393,14 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
     setBusy(true);
     try { await unchargeBooking(storeId, b); toast.success('Cobro quitado'); } catch { toast.error('No se pudo guardar'); } finally { setBusy(false); }
   };
-  const wa = (kind: 'confirm' | 'remind' | 'cancel') => window.open(whatsappToCustomer(b, businessName, kind), '_blank', 'noopener');
+  const wa = (kind: 'confirm' | 'remind' | 'cancel' | 'moved', bk: Booking = b) => window.open(whatsappToCustomer(bk, businessName, kind, slug), '_blank', 'noopener');
+  // Con caja, el turno se cobra en el punto de venta: entra al ticket y al cobrarse queda pagado acá
+  const chargeInCaja = () => {
+    addTurnoToCart(storeId, b);
+    toast.success('Turno agregado al ticket de la caja');
+    onClose();
+    navigate('/pos');
+  };
 
   if (b.kind === 'block') {
     return (
@@ -404,17 +416,27 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
 
   const upcoming = b.status === 'PENDING' || b.status === 'CONFIRMED';
   if (charging) return <ChargeSheet storeId={storeId} booking={b} onClose={() => setCharging(false)} onDone={onClose} />;
+  if (moving) return (
+    <RescheduleSheet storeId={storeId} agenda={agenda} booking={b} onClose={() => setMoving(false)} onDone={(nb) => {
+      setMoving(false); onMoved(nb);
+      if (nb.customerPhone && confirm('¿Le avisás por WhatsApp el nuevo horario?')) wa('moved', nb);
+    }} />
+  );
   return (
     <Modal title={b.customerName || 'Turno'} onClose={onClose}
-      footer={canCharge && b.status !== 'CANCELLED' && b.status !== 'NO_SHOW' ? (
+      footer={b.status !== 'CANCELLED' && b.status !== 'NO_SHOW' ? (
         b.payment ? (
           <div className="flex items-center gap-3">
             <span className="flex-1 min-w-0 text-[14px] text-emerald-800 font-semibold flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Cobrado {money(b.payment.amount)} · {b.payment.method}</span>
             <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>
           </div>
-        ) : (
+        ) : canCharge ? (
           <button onClick={() => setCharging(true)} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
             <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(b.price)}` : ''}
+          </button>
+        ) : (
+          <button onClick={chargeInCaja} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
+            <ShoppingCart className="w-5 h-5" /> Cobrar en la caja{b.price ? ` ${money(b.price)}` : ''}
           </button>
         )
       ) : undefined}>
@@ -423,6 +445,8 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
           <span className={`text-[12px] font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span>
           {b.code && <span className="text-[12px] font-mono font-semibold text-slate-500 bg-slate-100 rounded-md px-2 py-1">#{b.code}</span>}
           <span className="text-[12px] text-slate-400">{b.source === 'online' ? 'Reservado desde la tienda' : 'Cargado a mano'}</span>
+          {b.cancelledBy === 'client' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-red-600">Lo canceló el cliente desde su link</span>}
+          {b.movedFrom && <span className="text-[12px] text-slate-400">Reprogramado (antes {dayLabel(b.movedFrom.dateKey, true)} {hhmm(b.movedFrom.startMin)})</span>}
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 space-y-2.5 text-[14px] text-slate-700">
           <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-slate-400" /> {dayLabel(b.dateKey)}, {hhmm(b.startMin)} a {hhmm(b.endMin)}</p>
@@ -456,6 +480,9 @@ function BookingDetail({ storeId, booking: b, businessName, onClose }: { storeId
               }} className="h-11 rounded-xl bg-red-50 text-red-700 text-[13.5px] font-semibold">Cancelar turno</button>
             )}
             {!upcoming && <button disabled={busy} onClick={() => act('CONFIRMED', 'Turno reactivado')} className="h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold">Volver a confirmado</button>}
+            {!b.payment && b.status !== 'DONE' && (
+              <button disabled={busy} onClick={() => setMoving(true)} className="ag-press h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold flex items-center justify-center gap-1.5"><CalendarClock className="w-4 h-4" /> Reprogramar</button>
+            )}
           </div>
         </div>
       </div>
@@ -496,6 +523,77 @@ function ChargeSheet({ storeId, booking: b, onClose, onDone }: { storeId: string
             {PAY_METHODS.map((m) => (
               <button key={m} onClick={() => setMethod(m)} className={`h-11 rounded-xl text-[13.5px] font-semibold border ${method === m ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'}`}>{m}</button>
             ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Reprogramar: mismo servicio y duración; se elige día, profesional y un horario libre. */
+function RescheduleSheet({ storeId, agenda, booking: b, onClose, onDone }: { storeId: string; agenda: AgendaConfig; booking: Booking; onClose: () => void; onDone: (b: Booking) => void }) {
+  const today = localNow().dateKey;
+  const service = agenda.services.find((s) => s.id === b.serviceId);
+  const staffAll = agenda.staff.filter((s) => s.active !== false && (!service || canDo(s, service)));
+  const [staffId, setStaffId] = useState(staffAll.some((s) => s.id === b.staffId) ? b.staffId : staffAll[0]?.id || '');
+  const staff = staffAll.find((s) => s.id === staffId);
+  const [day, setDay] = useState(b.dateKey < today ? today : b.dateKey);
+  const [dayBookings, setDayBookings] = useState<Booking[] | null>(null);
+  const [start, setStart] = useState<number | null>(null);
+  const [custom, setCustom] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setDayBookings(null); setStart(null);
+    fetchBookingsRange(storeId, day, day).then((l) => alive && setDayBookings(l)).catch(() => alive && setDayBookings([]));
+    return () => { alive = false; };
+  }, [storeId, day]);
+  // Duración real del turno (aunque el servicio haya cambiado después)
+  const svc = { ...(service || { id: b.serviceId || '', name: b.serviceName || '', price: 0 }), durationMin: Math.max(5, b.endMin - b.startMin) } as AgendaService;
+  const now = localNow();
+  const slots = staff && dayBookings ? freeStarts(agenda, staff, svc, day, dayBookings, day === now.dateKey ? now.min : 0, b.id) : [];
+  const save = async () => {
+    const t = custom ? toMin(custom) : start;
+    if (!staff) return toast.error('Elegí quién lo atiende');
+    if (t == null) return toast.error('Elegí el nuevo horario');
+    if (custom && !slots.includes(t) && !confirm('Ese horario se superpone con otro turno o está fuera del horario. ¿Moverlo igual?')) return;
+    setBusy(true);
+    try {
+      const nb = await rescheduleBooking(storeId, b, { dateKey: day, startMin: t, staff });
+      toast.success(`Turno movido: ${dayLabel(day, true)}, ${hhmm(t)}`);
+      onDone(nb);
+    } catch { toast.error('No se pudo mover el turno'); setBusy(false); }
+  };
+  return (
+    <Modal title="Reprogramar turno" onClose={onClose}
+      footer={<button disabled={busy} onClick={save} className="w-full h-12 rounded-2xl bg-rose-600 text-white font-semibold disabled:opacity-60">{busy ? 'Guardando…' : 'Mover turno'}</button>}>
+      <div className="space-y-4">
+        <p className="text-[13.5px] text-slate-500">{b.customerName} · {b.serviceName} · ahora {dayLabel(b.dateKey, true).toLowerCase()} {hhmm(b.startMin)}</p>
+        {staffAll.length > 1 && (
+          <div>
+            <span className={label}>{cap1(AGENDA_WORDS[detectAgendaKind(agenda)].staffUno)}</span>
+            <div className="flex flex-wrap gap-2">
+              {staffAll.map((s) => (
+                <button key={s.id} onClick={() => { setStaffId(s.id); setStart(null); }} className={`ag-press h-9 px-3.5 rounded-full text-[13px] font-semibold border ${staffId === s.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>{s.name}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div><span className={label}>Día</span><DayPicker value={day} onChange={setDay} days={Math.max(30, agenda.maxDaysAhead)} /></div>
+        <div>
+          <span className={label}>Horario libre</span>
+          {!dayBookings ? (
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">{Array.from({ length: 8 }, (_, i) => <span key={i} className="h-10 rounded-lg ag-skel" />)}</div>
+          ) : slots.length ? (
+            <div key={`${staffId}-${day}`} className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+              {slots.map((t, i) => (
+                <button key={t} style={{ '--i': i } as React.CSSProperties} onClick={() => { setStart(t); setCustom(''); }} className={`ag-item ag-press transition-colors h-10 rounded-lg text-[13.5px] font-semibold tabular-nums border ${start === t && !custom ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{hhmm(t)}</button>
+              ))}
+            </div>
+          ) : <p className="text-[13px] text-slate-400">No quedan horarios libres ese día.</p>}
+          <div className="mt-2 flex items-center gap-2 text-[12.5px] text-slate-500">
+            Otro horario:
+            <input type="time" value={custom} onChange={(e) => setCustom(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-200 text-[14px]" />
           </div>
         </div>
       </div>

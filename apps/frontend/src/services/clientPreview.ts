@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { doc, getDoc, getDocs, collection, query, where, limit, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, limit, addDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { getVentraDb, ensureVentraSession } from './ventraFirebase';
 import { fetchOnlineSummary } from './onlineStore';
 import { fullAgenda, startAtMs, toMin } from './agendaCore';
@@ -120,21 +120,39 @@ export async function createPreviewBridge(storeId: string) {
     const status = agenda.autoConfirm === false ? 'PENDING' : 'CONFIRMED';
     const bookingCode = code();
     // Solo en la demo queda guardado (en el navegador): en un comercio real nunca se crea un turno de prueba
+    let id = `preview_${bookingCode}`;
     if (IS_DEMO_BUILD) {
       const phone = b.phone.trim();
-      await addDoc(collection(db, 'ventra_stores', storeId, 'bookings'), {
+      const ref = await addDoc(collection(db, 'ventra_stores', storeId, 'bookings'), {
         kind: 'booking', dateKey: b.date, startMin, endMin: startMin + dur, startAt: Timestamp.fromMillis(startAtMs(b.date, startMin)),
         staffId: staff.id, staffName: staff.name, serviceId: service.id, serviceName: service.name, durationMin: dur, price: Number(service.price) || 0,
         customerName: b.name.trim(), customerPhone: phone, customerPhoneKey: phone.replace(/\D/g, '').slice(-10), customerNote: (b.note || '').trim(),
         code: bookingCode, status, source: 'online', createdAt: serverTimestamp(),
       });
+      id = ref.id;
     }
-    return { status: 200, body: { ok: true, id: `preview_${bookingCode}`, code: bookingCode, staffName: staff.name, serviceName: service.name, date: b.date, time: b.time, status } };
+    return { status: 200, body: { ok: true, id, code: bookingCode, staffName: staff.name, serviceName: service.name, date: b.date, time: b.time, status } };
+  };
+
+  /** Link del turno (función agendaManage): ver y cancelar. Cancelar solo vale en la demo. */
+  const manage = async (m: { id: string; code: string; action: string }) => {
+    if (String(m.id).startsWith('preview_')) return { status: 404, body: { error: 'En la vista previa el turno de prueba no se guarda.' } };
+    const ref = doc(db, 'ventra_stores', storeId, 'bookings', m.id);
+    const snap = await getDoc(ref).catch(() => null);
+    const t: any = snap?.exists() ? snap.data() : null;
+    if (!t || t.code !== m.code) return { status: 404, body: { error: 'No encontramos ese turno.' } };
+    const startMs = t.startAt?.toMillis ? t.startAt.toMillis() : startAtMs(t.dateKey, t.startMin);
+    const view = (status: string) => ({ serviceName: t.serviceName || '', staffName: t.staffName || '', date: t.dateKey, time: `${String(Math.floor(t.startMin / 60)).padStart(2, '0')}:${String(t.startMin % 60).padStart(2, '0')}`, status, canCancel: (status === 'PENDING' || status === 'CONFIRMED') && startMs > Date.now() });
+    if (m.action !== 'cancel') return { status: 200, body: view(t.status) };
+    if (!IS_DEMO_BUILD) return { status: 409, body: { error: 'Vista previa: el turno no se cancela de verdad.' } };
+    await updateDoc(ref, { status: 'CANCELLED', cancelledBy: 'client', statusAt: serverTimestamp() });
+    return { status: 200, body: { ...view('CANCELLED'), canCancel: false } };
   };
 
   return {
     slug,
     bridge: {
+      manage: (json: string) => manage(JSON.parse(json)).then((r) => JSON.stringify(r)),
       slug,
       get: (path: string) => get(path).then((r) => JSON.stringify(r ?? null)),
       list: (path: string, wheres: [string, string, any][], lim: number) => list(path, wheres, lim).then((r) => JSON.stringify(r)),
@@ -189,9 +207,15 @@ fs.FieldValue={serverTimestamp:function(){ return null; }};
 window.firebase={initializeApp:function(){},firestore:fs};
 var realFetch=window.fetch.bind(window);
 window.fetch=function(u,o){
+  if(String(u).indexOf('/agendaManage')>=0){ var mb=JSON.parse(o.body); return P.manage(JSON.stringify(mb)).then(function(j){ var r=JSON.parse(j); return new Response(JSON.stringify(r.body),{status:r.status,headers:{'Content-Type':'application/json'}}); }); }
   if(String(u).indexOf('/agendaBook')>=0) return P.book(o.body).then(function(j){ var r=JSON.parse(j); return new Response(JSON.stringify(r.body),{status:r.status,headers:{'Content-Type':'application/json'}}); });
   return realFetch(u,o);
 };
+document.addEventListener('click',function(e){
+  var a=e.target&&e.target.closest?e.target.closest('a[href*="#turno="]'):null; if(!a) return;
+  var m=a.getAttribute('href').match(/#turno=([A-Za-z0-9_]+)\\.([A-Za-z0-9]{4})/); if(!m||!window.openManage) return;
+  e.preventDefault(); if(window.closeSheets) window.closeSheets(); setTimeout(function(){ window.openManage(m[1],m[2].toUpperCase()); },150);
+},true);
 window.__previewWhatsApp=function(){ if(window.toast) window.toast('Vista previa: el pedido no se envía de verdad'); };
 })();`;
 

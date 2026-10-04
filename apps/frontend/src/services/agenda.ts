@@ -77,7 +77,26 @@ export async function setBookingStatus(storeId: string, id: string, status: Book
   if (booking) refreshClientOf(storeId, { ...booking, status });
 }
 
-/** Cobra el turno (planes sin caja): queda como atendido con el medio y el monto. */
+/**
+ * Mueve un turno a otro día, horario o profesional. Si estaba "no vino" o cancelado, vuelve a
+ * quedar confirmado. La función ventraBookingWritten libera el horario viejo y ocupa el nuevo.
+ */
+export async function rescheduleBooking(storeId: string, b: Booking, to: { dateKey: string; startMin: number; staff: AgendaStaff }) {
+  await ensureVentraSession();
+  const dur = Math.max(5, (b.endMin - b.startMin) || Number(b.durationMin) || 30);
+  const status = b.status === 'PENDING' ? 'PENDING' : 'CONFIRMED';
+  const patch = {
+    dateKey: to.dateKey, startMin: to.startMin, endMin: to.startMin + dur,
+    startAt: Timestamp.fromMillis(startAtMs(to.dateKey, to.startMin)),
+    staffId: to.staff.id, staffName: to.staff.name, status,
+    movedFrom: { dateKey: b.dateKey, startMin: b.startMin }, statusAt: serverTimestamp(),
+  };
+  await updateDoc(doc(bookingsCol(storeId), b.id), patch);
+  refreshClientOf(storeId, { ...b, ...patch } as any);
+  return { ...b, ...patch } as Booking;
+}
+
+/** Cobra el turno: queda como atendido con el medio y el monto (con caja, lo hace la venta del POS). */
 export async function chargeBooking(storeId: string, b: Booking, payment: { method: string; amount: number }) {
   await ensureVentraSession();
   const p: BookingPayment = { method: payment.method, amount: Math.max(0, Number(payment.amount) || 0) };
@@ -187,8 +206,12 @@ const waDigits = (phone: string) => {
   return d;
 };
 
-/** Link de WhatsApp al cliente con el mensaje ya escrito. */
-export function whatsappToCustomer(b: Booking, businessName: string, kind: 'confirm' | 'remind' | 'cancel') {
+/** Link del turno para el cliente: lo ve y lo puede cancelar (función agendaManage). */
+export const bookingManageUrl = (b: Booking, slug?: string | null) =>
+  slug && b.id && b.code ? `https://tienda.ventra.store/${encodeURIComponent(slug)}#turno=${b.id}.${b.code}` : '';
+
+/** Link de WhatsApp al cliente con el mensaje ya escrito (con el link del turno, si la página tiene dirección). */
+export function whatsappToCustomer(b: Booking, businessName: string, kind: 'confirm' | 'remind' | 'cancel' | 'moved', slug?: string | null) {
   const when = `${dayLabel(b.dateKey).toLowerCase()} a las ${hhmm(b.startMin)}`;
   const who = b.staffName ? ` con ${b.staffName}` : '';
   const hi = `Hola ${String(b.customerName || '').split(' ')[0]}!`;
@@ -196,6 +219,12 @@ export function whatsappToCustomer(b: Booking, businessName: string, kind: 'conf
     ? `${hi} Te confirmamos tu turno en *${businessName}*: *${b.serviceName}*${who}, ${when}. ¡Te esperamos!`
     : kind === 'remind'
       ? `${hi} Te recordamos tu turno en *${businessName}*: *${b.serviceName}*${who}, ${when}. Si no podés venir, avisanos por acá. ¡Gracias!`
-      : `${hi} Lamentablemente tuvimos que cancelar tu turno en *${businessName}* (${b.serviceName}, ${when}). Escribinos y te damos otro horario.`;
+      : kind === 'moved'
+        ? `${hi} Te cambiamos el turno en *${businessName}*: *${b.serviceName}*${who}, ahora es ${when}. Si no te queda bien, avisanos por acá.`
+        : `${hi} Lamentablemente tuvimos que cancelar tu turno en *${businessName}* (${b.serviceName}, ${when}). Escribinos y te damos otro horario.`;
+  const link = kind !== 'cancel' ? bookingManageUrl(b, slug) : '';
+  if (link) return `https://wa.me/${waDigits(b.customerPhone || '')}?text=${encodeURIComponent(`${text}
+
+Tu turno (para verlo o cancelarlo): ${link}`)}`;
   return `https://wa.me/${waDigits(b.customerPhone || '')}?text=${encodeURIComponent(text)}`;
 }

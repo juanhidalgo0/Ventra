@@ -946,6 +946,12 @@ function render(){
   var q=$('#q');
   if(q) q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
   if(location.hash==='#turnos' && agendaOn()) setTimeout(function(){ openBooking(null); },200);
+  var tm=(window.__PREVIEW_TURNO||location.hash).match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/);
+  if(tm) setTimeout(function(){ openManage(tm[1],tm[2].toUpperCase()); },200);
+  window.addEventListener('hashchange',function(){
+    var hm=location.hash.match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/);
+    if(hm){ closeSheets(); setTimeout(function(){ openManage(hm[1],hm[2].toUpperCase()); },150); }
+  });
   var tb=$('#topbar');
   var onScroll=function(){ tb.classList.toggle('scrolled',window.scrollY>200); };
   window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
@@ -1294,6 +1300,45 @@ async function sendOrder(btn){
   if(!viaApp) window.location.href=url;
 }
 
+/* ───────── link del turno: ver y cancelar (función agendaManage) ───────── */
+var MANAGE_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/agendaManage';
+function manageUrl(id,code){ return 'https://tienda.ventra.store/'+encodeURIComponent(S.cfg.subdomain||'')+'#turno='+id+'.'+code; }
+function manageCall(body){
+  return fetch(MANAGE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({storeId:S.storeId},body))})
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ if(!r.ok) throw new Error(d.error||'No se pudo cargar el turno'); return d; }); });
+}
+function openManage(id,code){
+  S.mg={id:id,code:code,state:'loading'}; renderManage(); openSheet('bookSheet');
+  manageCall({id:id,code:code,action:'get'})
+    .then(function(d){ S.mg.data=d; S.mg.state='show'; renderManage(); })
+    .catch(function(e){ S.mg.state='error'; S.mg.err=e.message; renderManage(); });
+}
+function renderManage(){
+  var m=S.mg, body, foot='';
+  if(m.state==='loading') body='<div style="padding:40px 0;text-align:center"><span class="spin"></span></div>';
+  else if(m.state==='error') body='<div class="done"><div class="done-ic">'+ic('x')+'</div><h3 class="display">No encontramos tu turno</h3><p>'+esc(m.err)+'</p></div>';
+  else {
+    var d=m.data, off=d.status==='CANCELLED';
+    body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+ic(off?'x':'check')+'</div>'
+      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Tu turno')+'</h3>'
+      +'<p><b style="color:var(--ink)">'+esc(d.serviceName)+'</b>'+(d.staffName?' con '+esc(d.staffName):'')+'<br>'+esc(capFirst(dayText(d.date)))+', '+esc(d.time)+' hs</p>'
+      +'<span class="code">#'+esc(m.code)+'</span>'
+      +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.</p>':'')+'</div>';
+    if(d.canCancel) foot='<div class="sheet-foot"><button class="btn btn-soft btn-block" style="height:48px;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button>'
+      +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">¿Querés otro horario? Cancelalo y reservá de nuevo.</p></div>';
+    else if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:48px" data-act="mg-book">Reservar otro turno</button></div>';
+  }
+  $('#bookSheet').innerHTML='<div class="grab"></div><div class="sheet-head"><h3 class="display">Tu turno</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
+    +'<div class="sheet-body">'+body+'</div>'+foot;
+}
+function cancelMine(btn){
+  if(!confirm('¿Cancelar tu turno? El horario queda libre para otra persona.')) return;
+  btn.disabled=true;
+  manageCall({id:S.mg.id,code:S.mg.code,action:'cancel'})
+    .then(function(d){ S.mg.data=d; renderManage(); toast('Turno cancelado'); })
+    .catch(function(e){ btn.disabled=false; toast(e.message); });
+}
+
 /* ───────── turnos ─────────
    Misma lógica de horarios libres que firebase/functions/agenda.js (que valida la reserva). */
 var BOOK_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/agendaBook';
@@ -1467,13 +1512,15 @@ function renderBookingStep(){
       +'&dates='+start+'/'+r.date.replace(/-/g,'')+'T'+hhmm(endMin).replace(':','')+'00&ctz=America/Argentina/Buenos_Aires'
       +(S.cfg.address?'&location='+encodeURIComponent(S.cfg.address):'')+'&details='+encodeURIComponent('Turno #'+r.code+(r.staffName?' con '+r.staffName:''));
     var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+r.serviceName+'*'+(r.staffName?' con '+r.staffName:''),'*Día:* '+dayText(r.date)+', '+r.time+' hs','*Turno:* #'+r.code,'*Nombre:* '+b.name];
+    if(r.id) L.push('','Ver o cancelar mi turno: '+manageUrl(r.id,r.code));
     var wa=S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
     el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('check')+'</div>'
       +'<h3 class="display">'+(pending?'¡Turno pedido!':'¡Turno reservado!')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(r.serviceName)+'</b>'+(r.staffName?' con '+esc(r.staffName):'')+'<br>'+esc(capFirst(dayText(r.date)))+', '+esc(r.time)+' hs</p>'
       +(pending?'<p>'+esc(S.cfg.businessName)+' te lo va a confirmar por WhatsApp.</p>':'')
       +'<span class="code">#'+esc(r.code)+'</span>'
-      +(S.cfg.address?'<p style="font-size:13px">'+esc(S.cfg.address)+'</p>':'')+'</div></div>'
+      +(S.cfg.address?'<p style="font-size:13px">'+esc(S.cfg.address)+'</p>':'')
+      +(r.id?'<p style="font-size:13px">Si no podés ir, cancelalo desde <a href="'+esc(manageUrl(r.id,r.code))+'" style="color:var(--brand);font-weight:600">el link de tu turno</a>'+(wa?' (también va en el mensaje de WhatsApp).':'.')+'</p>':'')+'</div></div>'
       +'<div class="sheet-foot">'
       +(wa?'<a class="btn btn-wa btn-block" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
       +'<a class="btn btn-ghost btn-block" style="margin-top:8px;height:48px" href="'+esc(gcal)+'" target="_blank" rel="noopener">'+ic('clock')+'Agregar a mi calendario</a>'
@@ -1703,6 +1750,8 @@ document.addEventListener('click',function(e){
     case 'ups-add': setQty(id,(S.cart[id]||0)+1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'clear-search': S.q=''; $('#q').value=''; $('#searchBox').classList.remove('has'); renderList(); $('#q').focus(); break;
     case 'focus-search': var tb=document.querySelector('.toolbar'); window.scrollTo({top:tb.offsetTop-60+1,behavior:'smooth'}); setTimeout(function(){ $('#q').focus(); },300); break;
+    case 'mg-cancel': cancelMine(t); break;
+    case 'mg-book': closeSheets(); setTimeout(function(){ openBooking(null); },250); break;
     case 'share':
       if(navigator.share){ navigator.share({title:S.cfg.businessName,text:S.cfg.description||'Mirá mi tienda online',url:location.href}).catch(function(){}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(location.href); toast('Enlace copiado'); }

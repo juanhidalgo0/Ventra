@@ -1413,6 +1413,9 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 /** Reserva pública desde la tienda: valida y crea el turno sin superponerse con otro. */
 exports.agendaBook = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.book(db, req, res));
 
+/** Link del turno: el cliente ve su turno y lo puede cancelar (ver agenda.manage). */
+exports.agendaManage = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.manage(db, req, res));
+
 /** Cada cambio de un turno: actualiza lo ocupado del día y avisa al dueño si es una reserva online nueva. */
 exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookings/{bookingId}", async (event) => {
   const before = event.data && event.data.before.exists ? event.data.before.data() : null;
@@ -1427,6 +1430,20 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
   const keys = new Map();
   for (const b of [before, after]) { const k = agenda.clientKeyOf(b); if (k && !keys.has(k)) keys.set(k, b); }
   await Promise.all([...keys].map(([k, b]) => agenda.refreshClient(db, storeId, k, b).catch((err) => logger.warn("No se pudo actualizar el cliente de la agenda", { storeId, err: err.message }))));
+
+  // El cliente canceló con el link de su turno: se avisa al dueño (el horario ya quedó libre)
+  if (before && after && after.cancelledBy === "client" && before.status !== "CANCELLED" && after.status === "CANCELLED") {
+    const store = await db.collection("ventra_stores").doc(storeId).get();
+    const uid = store.exists && store.data().ownerUid;
+    if (uid) {
+      await notify.sendToAccount(db, uid, "bookings", {
+        title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
+        body: `${after.customerName || "El cliente"} lo canceló desde su link. El horario quedó libre.`,
+        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+      }, { storeId });
+    }
+    return;
+  }
 
   if (!before && after && after.kind === "booking" && after.source === "online") {
     const store = await db.collection("ventra_stores").doc(storeId).get();

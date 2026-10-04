@@ -59,6 +59,10 @@ export interface Booking {
   durationMin?: number;
   price?: number;
   customerName?: string;
+  /** 'client': lo canceló el cliente con el link de su turno */
+  cancelledBy?: 'client';
+  /** Día y hora anteriores, si se reprogramó */
+  movedFrom?: { dateKey: string; startMin: number };
   customerPhone?: string;
   customerNote?: string;
   customerPhoneKey?: string;
