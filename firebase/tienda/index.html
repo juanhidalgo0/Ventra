@@ -1320,7 +1320,7 @@ function renderManage(){
   else {
     var d=m.data, off=d.status==='CANCELLED';
     body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+ic(off?'x':'check')+'</div>'
-      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Tu turno')+'</h3>'
+      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Turno confirmado')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(d.serviceName)+'</b>'+(d.staffName?' con '+esc(d.staffName):'')+'<br>'+esc(capFirst(dayText(d.date)))+', '+esc(d.time)+' hs</p>'
       +'<span class="code">#'+esc(m.code)+'</span>'
       +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.</p>':'')+'</div>';
