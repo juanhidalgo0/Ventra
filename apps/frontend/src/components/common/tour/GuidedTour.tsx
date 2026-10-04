@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { TOURS, tourSteps, type TourStep } from './tours';
+import { TOURS, tourSteps, PRACTICE_TOURS, type TourStep } from './tours';
 import { getTourCtx } from './tourContext';
-import { useTourStore, setTourKeyHandler } from './tourStore';
+import { useTourStore, setTourKeyHandler, runTourAction, hasTourAction } from './tourStore';
 import { useAuthStore } from '../../../stores/authStore';
 
 const SPOT_PAD = 6;
@@ -67,10 +67,22 @@ export default function GuidedTour() {
   const activeTour = useTourStore((s) => s.activeTour);
   const finish = useTourStore((s) => s.finish);
 
-  // Resolve which steps actually exist on this screen right now.
-  const steps = useMemo<TourStep[]>(() => {
-    if (!activeTour) return [];
-    return tourSteps(activeTour, getTourCtx()).filter((s) => !s.target || findTarget(s));
+  // Los pasos que existen en pantalla. Los recorridos con modo práctica primero arman la caja
+  // de práctica (caja abierta, productos de ejemplo) y recién después se fija qué pasos hay.
+  // Los pasos `lazy` se quedan aunque su objetivo todavía no exista (aparece con una acción).
+  const [steps, setSteps] = useState<TourStep[]>([]);
+  useEffect(() => {
+    setSteps([]);
+    if (!activeTour) return;
+    const practice = PRACTICE_TOURS.has(activeTour) && hasTourAction('practice:start');
+    if (practice) runTourAction('practice:start');
+    const resolve = () => setSteps(tourSteps(activeTour, getTourCtx()).filter((s) => !s.target || s.lazy || findTarget(s)));
+    const t = setTimeout(resolve, practice ? 450 : 0);
+    return () => {
+      clearTimeout(t);
+      // Al terminar (o cambiar de recorrido) la caja vuelve a como estaba
+      if (practice) runTourAction('practice:end');
+    };
   }, [activeTour]);
 
   const [index, setIndex] = useState(0);
@@ -86,9 +98,10 @@ export default function GuidedTour() {
   const next = useCallback(() => (isLast ? finish() : setIndex((i) => i + 1)), [isLast, finish]);
   const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
 
-  // Enter a step: optionally click the target, then bring it into view.
+  // Enter a step: run its screen action, optionally click the target, then bring it into view.
   useEffect(() => {
     if (!step) return;
+    if (step.run) runTourAction(step.run);
     const el = findTarget(step);
     if (!el) { setRect(null); return; }
     if (step.click) el.click();

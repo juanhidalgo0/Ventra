@@ -35,8 +35,22 @@ interface TourState {
   startIfUnseen: (id: TourId) => void;
   finish: () => void;
   hasSeen: (id: TourId) => boolean;
+  markSeen: (id: TourId) => void;
   resetAll: () => void;
 }
+
+/**
+ * Acciones que una pantalla le presta al recorrido (abrir la ventana de cobro, armar un ticket
+ * de práctica...). Los pasos las piden por nombre (TourStep.run); 'practice:start' y
+ * 'practice:end' las usan los recorridos con modo práctica (PRACTICE_TOURS).
+ */
+const tourActions = new Map<string, () => void>();
+export function registerTourActions(actions: Record<string, () => void>) {
+  for (const [k, fn] of Object.entries(actions)) tourActions.set(k, fn);
+  return () => { for (const [k, fn] of Object.entries(actions)) if (tourActions.get(k) === fn) tourActions.delete(k); };
+}
+export const runTourAction = (name: string) => { try { tourActions.get(name)?.(); } catch (e) { console.warn('[Recorrido]', name, e); } };
+export const hasTourAction = (name: string) => tourActions.has(name);
 
 export const useTourStore = create<TourState>((set, get) => ({
   activeTour: null,
@@ -52,6 +66,7 @@ export const useTourStore = create<TourState>((set, get) => ({
     set({ activeTour: null });
   },
   hasSeen: (id) => !!readSeen()[id],
+  markSeen: (id) => writeSeen({ ...readSeen(), [id]: true }),
   resetAll: () => writeSeen({}),
 }));
 

@@ -58,10 +58,10 @@ function playSaleSuccessSound() {
   }
 }
 
-export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void }) {
+export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange, practice }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void; /** Modo práctica del recorrido: muestra un cobro en efectivo y nunca registra la venta */ practice?: boolean }) {
   const storeName = (localStorage.getItem('gd_store_name') || 'Ventra POS').toUpperCase();
   const { cart, getCartItemsWithDiscounts, getCheckoutPayload, products, setLastSale } = usePOSStore();
-  useAutoTour('payment', !isDebtPayment);
+  useAutoTour('payment', !isDebtPayment && !practice);
 
   // Mientras se cobra, ningún atajo F del sistema responde (ni los del navegador,
   // como F5 que recargaría la página): solo se usa esta ventana.
@@ -221,6 +221,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   }, [finalTotal, disableChangeCalc]);
 
   const change = paymentType === 'CASH' ? Math.max(0, cashReceived - finalTotal) : 0;
+  // Práctica del recorrido: elige efectivo y un billete redondo, para que se vea el vuelto
+  useEffect(() => {
+    if (!practice) return;
+    const t = setTimeout(() => {
+      setPaymentType('CASH');
+      setCashReceived(Math.ceil((finalTotal + 1) / 5000) * 5000);
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [practice]);
   const mixedTotal = mixedAmount1 + mixedAmount2;
   const mixedValid = Math.abs(mixedTotal - finalTotal) < 0.01 && mixedMethod1 !== mixedMethod2;
 
@@ -519,6 +529,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   const handleConfirm = () => {
     if (processingRef.current || pointCharge) return;
+    if (practice) { toast('Modo práctica: la venta no se registra', { icon: '🎓' }); return; }
     if (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment) {
       toast.error('Seleccioná un cliente para la cuenta corriente');
       return;
@@ -540,7 +551,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   };
 
   const registerSale = async (mpReference?: string) => {
-    if (processingRef.current) return;
+    if (processingRef.current || practice) return;
     processingRef.current = true;
     setIsProcessing(true);
     try {

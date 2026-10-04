@@ -12,7 +12,14 @@ export interface TourStep {
   body: string;
   /** Click the target when the step opens (e.g. to switch to a settings tab). */
   click?: boolean;
+  /** Acción de la pantalla que se ejecuta al entrar al paso (ver registerTourActions) */
+  run?: string;
+  /** Su objetivo aparece recién después de una acción (la ventana de cobro): no se descarta al empezar */
+  lazy?: boolean;
 }
+
+/** Recorridos de la caja que se hacen en modo práctica: caja abierta y productos de ejemplo (ver pos/posPractice.ts) */
+export const PRACTICE_TOURS = new Set(['pos', 'posCaja', 'posHerramientas', 'posFerreteria']);
 
 type Tour = TourStep[] | ((c: TourCtx) => (TourStep | false | null | undefined)[]);
 
@@ -37,20 +44,30 @@ const adminBody = (c: TourCtx) => {
 export const TOURS = {
   // Tour inicial: lo mínimo para hacer la primera venta. Se abre solo la primera vez.
   pos: (c) => [
-    { title: 'Punto de Venta', body: 'Este es tu **mostrador digital**. En menos de un minuto te mostramos cómo hacer tu primera venta.' },
-    { target: 'pos-caja', title: 'Abrí la caja', body: 'Todo empieza acá: abrí la caja para empezar el turno. Al cerrarla contás el efectivo y el sistema calcula solo las diferencias.' },
+    { title: 'Una venta de práctica', body: 'Abrimos una **caja de práctica** con productos de ejemplo de tu rubro y hacemos una venta juntos. **Nada de esto se guarda**: al terminar, todo vuelve a como estaba.' },
+    { target: 'pos-caja', title: 'La caja', body: 'Cada turno empieza **abriendo la caja**: acá ves el estado y la cerrás al final, contando el efectivo. El sistema calcula solo las diferencias.' },
     { target: 'pos-search', title: 'Escaneá o buscá', body: 'Pasá el **lector de código de barras** o escribí el nombre del producto y presioná **Enter**.' },
     { target: 'pos-rapida', title: 'Venta rápida', body: c.profile === 'GASTRONOMIA'
       ? 'Para algo que no está cargado (un agregado, un pedido especial): tocá acá, presioná **F1** o escribí **1** y Enter. Solo cargás **precio y cantidad**.'
       : 'Para lo que no tiene código (caramelos, bolsas): tocá acá, presioná **F1** o escribí **1** y Enter. Solo cargás **precio y cantidad**.' },
-    { target: 'pos-products', title: 'O tocá un producto', body: 'Cada producto que tocás se **suma al ticket**. Filtrá por categoría para encontrarlo más rápido.' },
+    { target: 'pos-products', title: 'O tocá un producto', body: c.profile === 'GASTRONOMIA'
+      ? 'Estos son productos de ejemplo. Las pizzas te preguntan el **tamaño** al tocarlas; el resto se **suma al ticket** directo.'
+      : c.biz.variants
+        ? 'Estos son productos de ejemplo. Las prendas te preguntan **talle y color** al tocarlas; el resto se **suma al ticket** directo.'
+        : 'Estos son productos de ejemplo: cada uno que tocás se **suma al ticket**. Filtrá por categoría para encontrarlo más rápido.' },
     RUBRO_POS[c.profile],
     c.biz.expiry && c.profile !== 'GASTRONOMIA' && { title: 'Vencimientos', body: 'Si cargás la **fecha de vencimiento** de cada lote, Ventra te avisa **antes de que se venza** para que lo vendas primero.' },
-    { target: 'pos-cart', title: 'Ticket en curso', body: 'Acá se arma la venta: cambiá **cantidades** o quitá ítems antes de cobrar.' },
-    { target: 'pos-confirm', title: 'Confirmar venta', body: 'Cobrá con este botón o con **Enter** con el buscador vacío. Se abre la ventana de pago y el stock se descuenta **automáticamente**.' },
-    { target: 'pos-admin', title: 'Panel de administración', body: adminBody(c) },
+    { target: 'pos-cart', run: 'pos:addSample', title: 'Ticket en curso', body: c.biz.fractional
+      ? 'Sumamos productos al ticket. Lo que va **por metro o kilo** acepta decimales: cambiá la **cantidad** o quitá ítems antes de cobrar.'
+      : 'Sumamos unos productos al ticket. Acá cambiás **cantidades** o quitás ítems antes de cobrar.' },
+    { target: 'pos-confirm', run: 'pos:closePayment', title: 'Cobrar', body: 'Cobrás con este botón o con **Enter** con el buscador vacío. Abrimos la ventana de cobro…' },
+    { target: 'pay-total', lazy: true, run: 'pos:openPayment', title: 'Total a cobrar', body: 'El **importe final** con descuentos y recargos aplicados. Si el medio de pago tiene recargo, se suma acá.' },
+    { target: 'pay-metodos', lazy: true, title: 'Medio de pago', body: 'Efectivo, tarjeta, transferencia o **mixto**. Cada uno tiene su tecla (**1, 2, 3…**) para elegirlo sin mouse.' },
+    { target: 'pay-detalle', lazy: true, title: 'Con cuánto paga', body: 'Elegimos **efectivo** y cargamos con cuánto paga el cliente: el **vuelto** se calcula solo.' },
+    { target: 'pay-finalizar', lazy: true, title: 'Finalizar', body: 'Con este botón o con **Enter** se registra la venta, se descuenta el **stock** y sale el ticket. En la práctica no se registra nada.' },
+    { target: 'pos-admin', run: 'pos:closePayment', title: 'Panel de administración', body: adminBody(c) },
     c.plan.tienda && { title: 'Pedidos de la tienda online', body: 'Los pedidos que entran por tu tienda te llegan con un **aviso en la caja**, para prepararlos y cobrarlos como una venta más.' },
-    { title: '¡Listo para vender!', body: 'Eso es lo básico. Con el **botón de ayuda** (abajo a la izquierda) ves más recorridos y la lista de **atajos de teclado**.' },
+    { title: '¡Listo para vender!', body: 'Cerramos la práctica: tu caja y tus productos **vuelven a como estaban**. Con el **botón de ayuda** (abajo a la izquierda) ves más recorridos y los **atajos de teclado**.' },
   ],
   posCaja: [
     { title: 'Caja y dinero', body: 'Todo lo que tiene que ver con **la plata del turno**: cobros, pagos y control.' },

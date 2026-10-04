@@ -41,6 +41,9 @@ import QuotesListModal from './QuotesListModal';
 import AcopioModal from './AcopioModal';
 import SubstitutesModal from './SubstitutesModal';
 import { toggleFullscreen } from '../../utils/fullscreen';
+import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from './posPractice';
+import { registerTourActions, useTourStore } from '../common/tour/tourStore';
+import { useBusinessStore } from '../../stores/businessStore';
 
 interface Product { 
   id: string; 
@@ -971,6 +974,7 @@ export default function POSScreen() {
   }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showCobroCtaCte]);
 
   const loadProducts = async (force = false) => {
+    if (inPractice()) { setIsLoading(false); return; }
     if (!force && cachedProducts.length > 200) {
       setIsLoading(false);
       return;
@@ -996,6 +1000,7 @@ export default function POSScreen() {
         if (bSales !== aSales) return bSales - aSales;
         return (a.name || '').localeCompare(b.name || '');
       });
+      if (inPractice()) return;
       setCachedProducts(processedProducts);
       usePOSStore.getState().setProducts(processedProducts);
     } catch {
@@ -1019,6 +1024,7 @@ export default function POSScreen() {
           if (bSales !== aSales) return bSales - aSales;
           return (a.name || '').localeCompare(b.name || '');
         });
+        if (inPractice()) return;
         setCachedProducts(processed);
         usePOSStore.getState().setProducts(processed);
       } catch {}
@@ -1040,10 +1046,11 @@ export default function POSScreen() {
     }
   };
 
-  const loadCategories = async () => { try { const { data } = await api.get('/categories'); setCachedCategories(data); } catch {} };
+  const loadCategories = async () => { try { const { data } = await api.get('/categories'); if (!inPractice()) setCachedCategories(data); } catch {} };
   const loadCurrentSession = async () => {
     try {
       const { data } = await api.get('/cash/current', { params: { terminalName: terminalNameRef.current }, silent: true } as any);
+      if (inPractice()) return;
       setCurrentSession(prev => {
         if (!prev && data) {
           // Reconnection or boot restored! Load all associated POS datasets.
@@ -1055,8 +1062,51 @@ export default function POSScreen() {
       });
     } catch {}
   };
-  const loadPromotions = async () => { try { const { data } = await api.get('/promotions'); setCachedPromotions(data); } catch {} };
+  const loadPromotions = async () => { try { const { data } = await api.get('/promotions'); if (!inPractice()) setCachedPromotions(data); } catch {} };
+
+  // ─── Modo práctica del recorrido (ver posPractice.ts) ───
+  // Caja abierta simulada y productos de ejemplo del rubro mientras dura el recorrido; al
+  // terminar vuelve la sesión real (o ninguna) y el catálogo de siempre.
+  const sessionBeforePractice = useRef<any>(null);
+  const currentSessionRef = useRef<any>(null);
+  currentSessionRef.current = currentSession;
+  useEffect(() => {
+    const unregister = registerTourActions({
+      'practice:start': () => {
+        if (inPractice()) return;
+        sessionBeforePractice.current = currentSessionRef.current;
+        setShowPayment(false); setShowAbrirCaja(false); setShowCajaInfo(false); setShowQuickSale(false);
+        setSearchQuery(''); setSelectedCategory(null); setShowPromosOnly(false);
+        usePosPractice.getState().start(useBusinessStore.getState().profile);
+        setCurrentSession({ id: PRACTICE_SESSION_ID, terminalName: terminalNameRef.current, openingAmount: 0, openedAt: new Date().toISOString(), status: 'OPEN' });
+      },
+      'practice:end': () => {
+        if (!inPractice()) return;
+        setShowPayment(false);
+        usePosPractice.getState().end();
+        setCurrentSession(sessionBeforePractice.current);
+        sessionBeforePractice.current = null;
+        // La ventana de cobro ya se mostró en la práctica: su recorrido no se repite
+        useTourStore.getState().markSeen('payment');
+        loadCurrentSession();
+      },
+      'pos:addSample': () => {
+        const st = usePOSStore.getState();
+        if (!inPractice() || st.cart.length) return;
+        for (const { product, qty } of practiceTicket(useBusinessStore.getState().profile, st.products)) st.addToCart(product, undefined, qty);
+      },
+      'pos:openPayment': () => { if (inPractice() && usePOSStore.getState().cart.length) setShowPayment(true); },
+      'pos:closePayment': () => setShowPayment(false),
+    });
+    return () => {
+      unregister();
+      // Si la pantalla se cierra en medio de la práctica, se devuelve todo igual
+      if (inPractice()) usePosPractice.getState().end();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const loadPendingArqueos = async () => {
+    if (inPractice()) return;
     try {
       const { data } = await api.get('/cash/pending-arqueos', { silent: true } as any);
       setPendingArqueos(data);
@@ -2828,7 +2878,7 @@ export default function POSScreen() {
           />
         )}
         {showPayment && (
-          <PaymentModal 
+          <PaymentModal practice={currentSession?.id === PRACTICE_SESSION_ID} 
             key="payment-modal" 
             total={getFinalTotal()} 
             sessionId={currentSession?.id} 
