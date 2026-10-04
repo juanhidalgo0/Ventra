@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ventra</string>
+    <string name="title_activity_main">Ventra</string>
+    <string name="package_name">store.ventra.app</string>
+    <string name="custom_url_scheme">store.ventra.app</string>
+</resources>

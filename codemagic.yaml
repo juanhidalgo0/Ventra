@@ -1,0 +1,49 @@
+# App de iPhone de Ventra (Capacitor, apps/frontend). Se compila en una Mac de Codemagic
+# porque no hay Mac propia; se lanza a mano desde codemagic.io (no en cada push).
+# La app abre https://web.ventra.store (capacitor.config.json), así que no se compila la web:
+# solo se copia native-shell (página sin conexión) al proyecto de iOS.
+workflows:
+  ventra-ios:
+    name: Ventra iOS
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: apps/frontend
+    integrations:
+      # La misma clave de App Store Connect que GoDelivery (misma cuenta de Apple)
+      app_store_connect: GO! Key
+    environment:
+      groups:
+        - apple_credentials
+      node: 22
+      xcode: latest
+    scripts:
+      - name: Dependencias
+        script: npm ci --legacy-peer-deps
+      - name: Copiar a iOS
+        script: npx cap sync ios
+      - name: Número de build
+        script: |
+          cd ios/App
+          agvtool new-version -all $(($BUILD_NUMBER + 1))
+      - name: Firma
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "store.ventra.app" --type IOS_APP_STORE --create --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Compilar .ipa
+        script: |
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
+          xcode-project build-ipa --project ios/App/App.xcodeproj --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      email:
+        recipients:
+          - juanhidalgobaez@gmail.com  # el mismo aviso que GoDelivery
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

@@ -1,0 +1,32 @@
+{
+  "appId": "store.ventra.app",
+  "appName": "Ventra",
+  "webDir": "native-shell",
+  "server": {
+    "url": "https://web.ventra.store",
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#F6F8F7"
+  },
+  "ios": {
+    "backgroundColor": "#F6F8F7",
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 400,
+      "launchAutoHide": true,
+      "launchFadeDuration": 150,
+      "backgroundColor": "#177261",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "androidSplashResourceName": "splash"
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#0E6E52",
+      "overlaysWebView": false
+    }
+  }
+}
