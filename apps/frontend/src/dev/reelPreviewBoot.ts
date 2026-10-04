@@ -8,4 +8,4 @@ localStorage.setItem('refreshToken', 'demo');
 localStorage.setItem('user', JSON.stringify({ id: 'demo', username: 'sofi', fullName: 'Sofi', role: 'ADMIN' }));
 // Sin tours de bienvenida en la grabación
 import { TOURS } from '../components/common/tour/tours';
-localStorage.setItem('ventra_tours_seen:demo', JSON.stringify(Object.fromEntries(Object.keys(TOURS).map((k) => [k, true]))));
+localStorage.setItem('ventra_tours_seen_v2:demo', JSON.stringify(Object.fromEntries(Object.keys(TOURS).map((k) => [k, true]))));

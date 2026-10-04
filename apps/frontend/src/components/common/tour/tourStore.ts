@@ -6,7 +6,8 @@ import { useAuthStore } from '../../../stores/authStore';
 // even if another user already went through them on this computer.
 function seenKey() {
   const user = useAuthStore.getState().user;
-  return `ventra_tours_seen:${user?.id || user?.username || 'anon'}`;
+  // v2: recorridos rehechos (modo práctica, por rubro y plan): cada usuario los vuelve a ver una vez
+  return `ventra_tours_seen_v2:${user?.id || user?.username || 'anon'}`;
 }
 
 function readSeen(): Record<string, boolean> {
