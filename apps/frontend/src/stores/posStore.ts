@@ -24,8 +24,8 @@ export interface CartItem {
   imageUrl?: string;
   /** Gastronomía: aclaración del ítem ("sin cebolla"), va en la comanda y en el ticket */
   note?: string;
-  /** Gastronomía: pizza mitad y mitad */
-  half?: { a: string; b: string };
+  /** Gastronomía: pizza mitad y mitad (cada mitad, con el precio entero de su pizza) */
+  half?: { a: string; b: string; pa: number; pb: number };
 }
 
 interface POSState {
@@ -891,6 +891,11 @@ export const usePOSStore = create<POSState>()(
 
           addExplodedItem(pp.productId, pp.quantity * item.quantity, itemShareDiscount, pp.price);
         });
+      } else if (item.half) {
+        // Mitad y mitad: se registra media pizza de cada una a su precio (así suman bien el
+        // total y los reportes de lo más vendido)
+        addExplodedItem(item.half.a, item.quantity * 0.5, 0, item.half.pa, item.categoryId);
+        addExplodedItem(item.half.b, item.quantity * 0.5, 0, item.half.pb, item.categoryId);
       } else {
         addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId);
       }

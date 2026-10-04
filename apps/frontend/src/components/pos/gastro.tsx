@@ -97,8 +97,8 @@ export function setItemNote(cartKey: string, note: string) {
 }
 
 /**
- * Convierte una pizza del ticket en mitad y mitad con otra del mismo tamaño. Se cobra la más
- * cara (lo habitual en las pizzerías) y la venta registra ese producto.
+ * Convierte una pizza del ticket en mitad y mitad con otra del mismo tamaño: se cobra la mitad
+ * del precio de cada una (y la venta registra media pizza de cada una, ver getCheckoutPayload).
  */
 export function makeHalf(cartKey: string, otherId: string) {
   const st = usePOSStore.getState();
@@ -106,16 +106,16 @@ export function makeHalf(cartKey: string, otherId: string) {
   const a = st.products.find((p) => p.id === item?.productId);
   const b = st.products.find((p) => p.id === otherId);
   if (!item || !a || !b) return;
-  const top = Number(b.salePrice) > Number(a.salePrice) ? b : a;
-  const price = Math.max(Number(a.salePrice) || 0, Number(b.salePrice) || 0);
+  const pa = Number(a.salePrice) || 0, pb = Number(b.salePrice) || 0;
+  const price = Math.round(((pa + pb) / 2) * 100) / 100;
   const size = sizeOf(a);
   const half = {
     ...item,
     cartKey: `half_${a.id}_${b.id}_${Date.now()}`,
-    productId: top.id,
+    productId: a.id,
     name: `Pizza ½ ${shortName(a)} ½ ${shortName(b)}${size ? ` (${size})` : ''}`,
     price, regularPrice: price, originalSalePrice: price, isCustomPrice: true,
-    half: { a: a.id, b: b.id },
+    half: { a: a.id, b: b.id, pa, pb },
   };
   usePOSStore.setState({ cart: st.cart.map((i) => (i.cartKey === cartKey ? half : i)) });
 }
