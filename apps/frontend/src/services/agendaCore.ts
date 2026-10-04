@@ -61,6 +61,8 @@ export interface Booking {
   customerName?: string;
   /** 'client': lo canceló el cliente con el link de su turno */
   cancelledBy?: 'client';
+  /** Cuándo se le mandó el recordatorio por WhatsApp */
+  remindedAt?: any;
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
   customerPhone?: string;

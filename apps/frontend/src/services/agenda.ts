@@ -206,6 +206,12 @@ const waDigits = (phone: string) => {
   return d;
 };
 
+/** Marca que ya se le mandó el recordatorio por WhatsApp (para la lista de recordatorios de mañana). */
+export async function markReminded(storeId: string, id: string) {
+  await ensureVentraSession();
+  await updateDoc(doc(bookingsCol(storeId), id), { remindedAt: serverTimestamp() });
+}
+
 /** Link del turno para el cliente: lo ve y lo puede cancelar (función agendaManage). */
 export const bookingManageUrl = (b: Booking, slug?: string | null) =>
   slug && b.id && b.code ? `https://tienda.ventra.store/${encodeURIComponent(slug)}#turno=${b.id}.${b.code}` : '';

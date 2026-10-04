@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart,
+  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart, BellRing,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -19,7 +19,7 @@ import { addTurnoToCart } from '../pos/turnoCobro';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
-  rescheduleBooking, fetchBookingsRange,
+  rescheduleBooking, fetchBookingsRange, markReminded,
   type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -185,6 +185,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   const [open, setOpen] = useState<Booking | null>(null);
   const [creating, setCreating] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  const [reminding, setReminding] = useState(false);
   // Hacia dónde se movió el día: la tira y la lista entran desde ese lado
   const prevDay = useRef(day);
   const dir = day === prevDay.current ? '' : day > prevDay.current ? 'ag-from-right' : 'ag-from-left';
@@ -251,6 +252,22 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
           <ChevronRight className="w-4 h-4 text-amber-700" />
         </button>
       )}
+      {/* Recordatorios de mañana: un toque por cliente, quedan marcados */}
+      {(() => {
+        const tomorrow = addDays(today, 1);
+        const list = bookings.filter((b) => b.dateKey === tomorrow && b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone);
+        const left = list.filter((b) => !b.remindedAt).length;
+        if (!list.length || !left) return null;
+        return (
+          <button onClick={() => setReminding(true)} className="anim-rise ag-press w-full text-left bg-sky-50 border border-sky-200 rounded-2xl p-4 flex items-center gap-3">
+            <BellRing className="w-5 h-5 text-sky-700 shrink-0" />
+            <span className="flex-1 text-[13.5px] text-sky-900">
+              <b>Mañana tenés {list.length} turno{list.length === 1 ? '' : 's'}.</b> {left === list.length ? 'Mandales el recordatorio por WhatsApp' : `Faltan ${left} recordatorio${left === 1 ? '' : 's'}`}: así nadie se olvida.
+            </span>
+            <ChevronRight className="w-4 h-4 text-sky-700" />
+          </button>
+        );
+      })()}
       {pending > 0 && (
         <div className="anim-rise bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-[13.5px] text-amber-900 font-medium">
           {pending === 1 ? 'Hay 1 turno por confirmar' : `Hay ${pending} turnos por confirmar`}
@@ -372,6 +389,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
 
       {open && <BookingDetail storeId={storeId} agenda={agenda} slug={slug} booking={bookings.find((b) => b.id === open.id) || open} businessName={businessName} onClose={() => setOpen(null)} onMoved={(b) => setDay(b.dateKey)} />}
       {creating && <NewBooking storeId={storeId} agenda={agenda} bookings={bookings} initialDay={day} onClose={() => setCreating(false)} />}
+      {reminding && <RemindersSheet storeId={storeId} businessName={businessName} slug={slug} list={bookings.filter((b) => b.dateKey === addDays(today, 1) && b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone).sort((a, b) => a.startMin - b.startMin)} onClose={() => setReminding(false)} />}
       {blocking && <NewBlock storeId={storeId} agenda={agenda} initialDay={day} onClose={() => setBlocking(false)} />}
     </div>
   );
@@ -524,6 +542,41 @@ function ChargeSheet({ storeId, booking: b, onClose, onDone }: { storeId: string
               <button key={m} onClick={() => setMethod(m)} className={`h-11 rounded-xl text-[13.5px] font-semibold border ${method === m ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'}`}>{m}</button>
             ))}
           </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Recordatorios de mañana: cada uno abre WhatsApp con el mensaje (y el link del turno) y queda marcado. */
+function RemindersSheet({ storeId, businessName, slug, list, onClose }: { storeId: string; businessName: string; slug?: string; list: Booking[]; onClose: () => void }) {
+  const [sent, setSent] = useState<Set<string>>(new Set());
+  const send = (b: Booking) => {
+    window.open(whatsappToCustomer(b, businessName, 'remind', slug), '_blank', 'noopener');
+    setSent((s) => new Set(s).add(b.id));
+    markReminded(storeId, b.id).catch(() => {});
+  };
+  const done = list.filter((b) => b.remindedAt || sent.has(b.id)).length;
+  return (
+    <Modal title="Recordatorios de mañana" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-[13px] text-slate-500">Tocá cada uno: se abre WhatsApp con el mensaje listo y el link para que vea o cancele su turno. {done ? `Mandados: ${done} de ${list.length}.` : ''}</p>
+        <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+          {list.map((b, i) => {
+            const ok = !!b.remindedAt || sent.has(b.id);
+            return (
+              <div key={b.id} style={{ '--i': i } as React.CSSProperties} className="ag-item flex items-center gap-3 px-3.5 py-3">
+                <span className="w-12 shrink-0 text-[14px] font-bold text-slate-900 tabular-nums">{hhmm(b.startMin)}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[14px] font-semibold text-slate-900 truncate">{b.customerName}</span>
+                  <span className="block text-[12px] text-slate-500 truncate">{b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}</span>
+                </span>
+                <button onClick={() => send(b)} className={`ag-press h-9 px-3 rounded-xl text-[12.5px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-[#1FAF55] text-white'}`}>
+                  {ok ? <><Check className="w-4 h-4" /> Enviado</> : <><MessageCircle className="w-4 h-4" /> WhatsApp</>}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </Modal>
