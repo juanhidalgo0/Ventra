@@ -5,7 +5,7 @@ import {
   ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart, BellRing,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
-import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
+import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, StoreOwnedElsewhereError, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { setStoreSetting } from '../../services/storeSettings';
 import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../services/agendaTemplates';
@@ -1089,7 +1089,10 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
     try {
       await onSave({ ...a, services: services.map((s) => ({ ...s, name: s.name.trim(), price: Number(s.price) || 0 })), staff: staff.map((s) => ({ ...s, name: s.name.trim() })) });
       toast.success('Agenda guardada');
-    } catch (err) { console.error('[Agenda] No se pudo guardar la configuración', err); toast.error('No se pudo guardar'); } finally { setSaving(false); }
+    } catch (err) {
+      console.error('[Agenda] No se pudo guardar la configuración', err);
+      toast.error(err instanceof StoreOwnedElsewhereError ? err.message : 'No se pudo guardar');
+    } finally { setSaving(false); }
   };
 
   return (

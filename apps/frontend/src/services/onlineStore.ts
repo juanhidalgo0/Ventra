@@ -25,8 +25,8 @@ import { resolveServerUrl } from './api';
 const getDb = getVentraDb;
 
 export class StoreOwnedElsewhereError extends Error {
-  constructor() {
-    super('Esta tienda online está vinculada a otra instalación de Ventra.');
+  constructor(message = 'Esta tienda online está vinculada a otra instalación de Ventra.') {
+    super(message);
   }
 }
 
@@ -48,6 +48,13 @@ export async function claimStore(storeId: string): Promise<void> {
   if (!owner) {
     await updateDoc(ref, { ownerUid: user.uid, claimed: true, updatedAt: serverTimestamp() });
   } else if (owner !== user.uid) {
+    // La pantalla tenía la tienda de otra cuenta (quedó guardada en el navegador) y la sesión ya
+    // trajo la de esta: se vuelve a cargar la correcta en vez de quedar trabado sin poder guardar.
+    const current = localStorage.getItem(STORE_ID_KEY);
+    if (current && current !== storeId) {
+      import('./onlineStoreOrders').then((m) => { m.stopOnlineOrdersSync(); m.startOnlineOrdersSync(); }).catch(() => {});
+      throw new StoreOwnedElsewhereError('Se actualizó la tienda de tu cuenta. Revisá los datos y guardá de nuevo.');
+    }
     throw new StoreOwnedElsewhereError();
   }
 }

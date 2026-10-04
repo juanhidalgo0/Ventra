@@ -38,6 +38,8 @@ export function setStorePublished(published: boolean) {
 
 let unsubscribe: (() => void) | null = null;
 let starting = false;
+let retry: ReturnType<typeof setTimeout> | null = null;
+let retries = 0; // el plan Caja nunca tiene sesión de tienda: no se insiste para siempre
 const SEEN_KEY = 'ventra_orders_seen';
 
 function playChime() {
@@ -61,8 +63,16 @@ export async function startOnlineOrdersSync() {
   if (unsubscribe || starting) return;
   starting = true;
   try {
-    // Con la PC vinculada, la sesión trae la tienda de la cuenta (y la deja en STORE_ID_KEY)
-    await ensureVentraSession().catch(() => null);
+    // Con la PC vinculada, la sesión trae la tienda de la cuenta (y la deja en STORE_ID_KEY).
+    // Sin sesión NO se usa lo que haya guardado: en web.ventra.store el navegador lo comparte
+    // entre cuentas y puede ser la tienda de otra (al guardar, "vinculada a otra instalación").
+    // Pasa sobre todo mientras la caja en la nube arranca: se reintenta en un rato.
+    const user = await ensureVentraSession().catch(() => null);
+    if (!user) {
+      if (!retry && retries < 6) retry = setTimeout(() => { retry = null; retries++; startOnlineOrdersSync(); }, 15000);
+      return;
+    }
+    retries = 0;
     const storeId = localStorage.getItem(STORE_ID_KEY);
     if (!storeId) return; // este comercio todavía no tiene tienda online
 
@@ -97,6 +107,7 @@ export async function startOnlineOrdersSync() {
 }
 
 export function stopOnlineOrdersSync() {
+  if (retry) { clearTimeout(retry); retry = null; }
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
