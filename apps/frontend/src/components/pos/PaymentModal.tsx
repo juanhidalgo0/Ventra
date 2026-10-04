@@ -10,7 +10,7 @@ import { canPrintSilently, getAutoPrintInvoice, printSilently } from '../../util
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useBusinessStore } from '../../stores/businessStore';
-import { orderNote } from './gastro';
+import { saleNote } from './gastro';
 import { chargeTurnosOfSale } from './turnoCobro';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
@@ -600,7 +600,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           isAcopio: isAcopio ? true : undefined,
           appliedPromotions: appliedPromosInfo,
           // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
-          notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? orderNote(usePOSStore.getState().order) : undefined,
+          notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : undefined,
         });
         if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
         // Turnos de la agenda que iban en el ticket: quedan cobrados con este medio

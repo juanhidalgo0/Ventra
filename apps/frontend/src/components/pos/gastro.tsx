@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Utensils, ShoppingBag, Bike } from 'lucide-react';
 import { usePOSStore } from '../../stores/posStore';
+import { lockShortcuts } from '../../utils/shortcutLock';
 
 /**
  * Modo gastronomía de la caja (rubro GASTRONOMIA): la misma caja, con lo que pide un local de
@@ -76,4 +78,99 @@ export function OrderTypeBar() {
       )}
     </div>
   );
+}
+
+// ─── Comanda: aclaración por ítem y pizzas mitad y mitad ───
+
+const isPizza = (p: any) => /pizza/i.test(`${p?.category?.name || ''} ${p?.baseName || ''} ${p?.name || ''}`);
+const sizeOf = (p: any) => Object.values(parseAttrs(p?.variantAttrs)).join(' · ');
+function parseAttrs(raw: any): Record<string, string> {
+  if (!raw) return {};
+  try { const v = typeof raw === 'string' ? JSON.parse(raw) : raw; return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+const shortName = (p: any) => String(p?.baseName || p?.name || '').replace(/^pizza\s+/i, '');
+
+/** Cambia la aclaración de un ítem del ticket */
+export function setItemNote(cartKey: string, note: string) {
+  const st = usePOSStore.getState();
+  usePOSStore.setState({ cart: st.cart.map((i) => (i.cartKey === cartKey ? { ...i, note: note.trim().slice(0, 120) || undefined } : i)) });
+}
+
+/**
+ * Convierte una pizza del ticket en mitad y mitad con otra del mismo tamaño. Se cobra la más
+ * cara (lo habitual en las pizzerías) y la venta registra ese producto.
+ */
+export function makeHalf(cartKey: string, otherId: string) {
+  const st = usePOSStore.getState();
+  const item = st.cart.find((i) => i.cartKey === cartKey);
+  const a = st.products.find((p) => p.id === item?.productId);
+  const b = st.products.find((p) => p.id === otherId);
+  if (!item || !a || !b) return;
+  const top = Number(b.salePrice) > Number(a.salePrice) ? b : a;
+  const price = Math.max(Number(a.salePrice) || 0, Number(b.salePrice) || 0);
+  const size = sizeOf(a);
+  const half = {
+    ...item,
+    cartKey: `half_${a.id}_${b.id}_${Date.now()}`,
+    productId: top.id,
+    name: `Pizza ½ ${shortName(a)} ½ ${shortName(b)}${size ? ` (${size})` : ''}`,
+    price, regularPrice: price, originalSalePrice: price, isCustomPrice: true,
+    half: { a: a.id, b: b.id },
+  };
+  usePOSStore.setState({ cart: st.cart.map((i) => (i.cartKey === cartKey ? half : i)) });
+}
+
+/** Debajo de cada ítem del ticket: su aclaración y, en las pizzas, "½ y ½" */
+export function ItemComanda({ item }: { item: any }) {
+  const products = usePOSStore((s) => s.products);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(item.note || '');
+  const [picking, setPicking] = useState(false);
+  const product = products.find((p) => p.id === item.productId);
+  const canHalf = !item.half && !item.isPromo && !item.isReturn && product && isPizza(product);
+  const others = canHalf ? products.filter((p) => p.id !== product.id && isPizza(p) && sizeOf(p) === sizeOf(product)) : [];
+
+  const save = () => { setItemNote(item.cartKey, text); setEditing(false); };
+  if (editing) {
+    return (
+      <input autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={120}
+        onFocus={() => { (window as any).__releaseNoteLock = lockShortcuts(); }}
+        onBlur={() => { (window as any).__releaseNoteLock?.(); save(); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === 'Escape') { e.stopPropagation(); setText(item.note || ''); setEditing(false); } }}
+        placeholder="Ej.: sin cebolla, bien cocida"
+        className="mt-1 w-full h-8 px-2 rounded-lg border border-amber-300 bg-amber-50/60 dark:bg-amber-950/30 text-[12px] outline-none focus:border-amber-500" />
+    );
+  }
+  return (
+    <div className="mt-1 relative">
+      {item.note && (
+        <button type="button" onClick={() => { setText(item.note || ''); setEditing(true); }} className="block text-left text-[11.5px] italic font-medium text-amber-700 dark:text-amber-300 leading-snug">“{item.note}”</button>
+      )}
+      <div className="flex gap-1.5 mt-0.5">
+        {!item.note && (
+          <button type="button" onClick={() => { setText(''); setEditing(true); }} className="text-[11px] font-semibold text-slate-400 hover:text-amber-700 dark:hover:text-amber-300">+ Aclaración</button>
+        )}
+        {canHalf && others.length > 0 && (
+          <button type="button" onClick={() => setPicking((v) => !v)} className="text-[11px] font-semibold text-slate-400 hover:text-amber-700 dark:hover:text-amber-300">½ y ½</button>
+        )}
+      </div>
+      {picking && (
+        <div className="absolute z-30 left-0 top-full mt-1 w-56 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-1 anim-rise">
+          <p className="px-2 pt-1.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">La otra mitad</p>
+          {others.map((p) => (
+            <button key={p.id} type="button" onClick={() => { makeHalf(item.cartKey, p.id); setPicking(false); }}
+              className="w-full text-left px-2 py-1.5 rounded-lg text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-slate-800">
+              {shortName(p)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Nota de la venta en gastronomía: tipo de pedido y, debajo, las aclaraciones de la comanda */
+export function saleNote(order: { type: string; table: string; address: string }, cart: any[]): string {
+  const lines = cart.filter((i) => i.note).map((i) => `${i.quantity}x ${i.name}: ${i.note}`);
+  return [orderNote(order), ...lines].join('\n').slice(0, 1000);
 }

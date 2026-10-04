@@ -118,8 +118,12 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
 
       {/* Gastronomía: tipo de pedido bien grande (Mesa 4 / Para llevar / Delivery) */}
       {isOrderNote(createdSale.notes) && (
-        <div style={{ textAlign: 'center', fontSize: '12pt', fontWeight: 'bold', border: '2px solid #000', padding: '4px 0', margin: '4px 0' }}>
-          {createdSale.notes}
+        <div style={{ border: '2px solid #000', padding: '4px 6px', margin: '4px 0' }}>
+          <div style={{ textAlign: 'center', fontSize: '12pt', fontWeight: 'bold' }}>{String(createdSale.notes).split('\n')[0]}</div>
+          {/* Aclaraciones de la comanda ("1x Pizza muzzarella: sin aceitunas") */}
+          {String(createdSale.notes).split('\n').slice(1).map((line: string, i: number) => (
+            <div key={i} style={{ fontSize: '7.5pt', fontWeight: 'bold', marginTop: '2px' }}>» {line}</div>
+          ))}
         </div>
       )}
 

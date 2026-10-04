@@ -22,6 +22,10 @@ export interface CartItem {
   categoryId?: string;
   productsMetadata?: { productId: string; name: string; price: number; quantity: number }[];
   imageUrl?: string;
+  /** Gastronomía: aclaración del ítem ("sin cebolla"), va en la comanda y en el ticket */
+  note?: string;
+  /** Gastronomía: pizza mitad y mitad */
+  half?: { a: string; b: string };
 }
 
 interface POSState {

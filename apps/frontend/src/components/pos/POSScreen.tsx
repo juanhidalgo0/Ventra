@@ -44,7 +44,7 @@ import { toggleFullscreen } from '../../utils/fullscreen';
 import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from './posPractice';
 import { registerTourActions, useTourStore } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
-import { OrderTypeBar, foodEmoji } from './gastro';
+import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
 
 interface Product { 
   id: string; 
@@ -2659,7 +2659,11 @@ export default function POSScreen() {
                         className={`py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5 anim-rise`}
                       >
                         {/* Product Image */}
-                        {item.productId === QUICK_SALE_PRODUCT_ID ? (
+                        {gastro && item.productId !== QUICK_SALE_PRODUCT_ID && !item.imageUrl ? (
+                        <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 flex-shrink-0 flex items-center justify-center text-[22px] leading-none select-none" aria-hidden>
+                          {foodEmoji((cachedProducts.find((p: any) => p.id === item.productId) as any)?.category?.name || item.name)}
+                        </div>
+                        ) : item.productId === QUICK_SALE_PRODUCT_ID ? (
                         <div className="keep-style w-10 h-10 rounded-lg bg-gradient-to-br from-rose-400 to-rose-600 text-white flex-shrink-0 flex items-center justify-center shadow-xs">
                           <QuickSaleIcon className="w-5 h-5" />
                         </div>
@@ -2681,6 +2685,7 @@ export default function POSScreen() {
                         {/* Product Name & High-Contrast Unit Price */}
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2 pr-1">{item.name}</h4>
+                          {gastro && <ItemComanda item={item} />}
                           {item.isPromo && item.productsMetadata && (
                             <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mt-0.5 tracking-tight leading-relaxed">
                               {item.productsMetadata.map(pm => `${pm.quantity}x ${pm.name}`).join(' + ')}
