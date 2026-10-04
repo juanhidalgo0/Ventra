@@ -1,3 +1,4 @@
+import { isOrderNote } from './gastro';
 interface TicketReceiptProps {
   createdSale: any;
   storeName: string;
@@ -114,6 +115,13 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
           <span>{createdSale.createdAt ? new Date(createdSale.createdAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
         </div>
       </div>
+
+      {/* Gastronomía: tipo de pedido bien grande (Mesa 4 / Para llevar / Delivery) */}
+      {isOrderNote(createdSale.notes) && (
+        <div style={{ textAlign: 'center', fontSize: '12pt', fontWeight: 'bold', border: '2px solid #000', padding: '4px 0', margin: '4px 0' }}>
+          {createdSale.notes}
+        </div>
+      )}
 
       {/* Receptor */}
       {fiscal?.receptor && (

@@ -14,7 +14,7 @@ export const PRACTICE_SESSION_ID = 'PRACTICE';
 interface PracticeState {
   active: boolean;
   /** Lo que había antes de la práctica (se devuelve al terminar) */
-  backup: null | { products: any[]; categories: any[]; promotions: any[]; cart: any[]; selectedClient: any };
+  backup: null | { products: any[]; categories: any[]; promotions: any[]; cart: any[]; selectedClient: any; order: any };
   start: (profile: BusinessProfile) => void;
   end: () => void;
 }
@@ -109,7 +109,7 @@ export const usePosPractice = create<PracticeState>((set, get) => ({
   start: (profile) => {
     if (get().active) return;
     const s = usePOSStore.getState();
-    const backup = { products: s.products, categories: s.categories, promotions: s.promotions, cart: s.cart, selectedClient: s.selectedClient };
+    const backup = { products: s.products, categories: s.categories, promotions: s.promotions, cart: s.cart, selectedClient: s.selectedClient, order: s.order };
     const { categories, products } = sampleCatalog(profile);
     usePOSStore.setState({ products, categories, promotions: [], cart: [], selectedClient: null } as any);
     set({ active: true, backup });
@@ -117,7 +117,7 @@ export const usePosPractice = create<PracticeState>((set, get) => ({
   end: () => {
     const { active, backup } = get();
     if (!active) return;
-    if (backup) usePOSStore.setState({ products: backup.products, categories: backup.categories, promotions: backup.promotions, cart: backup.cart, selectedClient: backup.selectedClient } as any);
+    if (backup) usePOSStore.setState({ products: backup.products, categories: backup.categories, promotions: backup.promotions, cart: backup.cart, selectedClient: backup.selectedClient, order: backup.order } as any);
     set({ active: false, backup: null });
   },
 }));

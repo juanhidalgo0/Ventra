@@ -60,6 +60,7 @@ export const TOURS = {
     { target: 'pos-cart', run: 'pos:addSample', title: 'Ticket en curso', body: c.biz.fractional
       ? 'Sumamos productos al ticket. Lo que va **por metro o kilo** acepta decimales: cambiá la **cantidad** o quitá ítems antes de cobrar.'
       : 'Sumamos unos productos al ticket. Acá cambiás **cantidades** o quitás ítems antes de cobrar.' },
+    c.profile === 'GASTRONOMIA' && { target: 'pos-pedido', run: 'pos:sampleOrder', title: 'Mesa, para llevar o delivery', body: 'Antes de cobrar elegí **cómo es el pedido**: la mesa (acá, la **4**), para llevar o delivery con la dirección. Sale **bien grande en el ticket**.' },
     { target: 'pos-confirm', run: 'pos:closePayment', title: 'Cobrar', body: 'Cobrás con este botón o con **Enter** con el buscador vacío. Abrimos la ventana de cobro…' },
     { target: 'pay-total', lazy: true, run: 'pos:openPayment', title: 'Total a cobrar', body: 'El **importe final** con descuentos y recargos aplicados. Si el medio de pago tiene recargo, se suma acá.' },
     { target: 'pay-metodos', lazy: true, title: 'Medio de pago', body: 'Efectivo, tarjeta, transferencia o **mixto**. Cada uno tiene su tecla (**1, 2, 3…**) para elegirlo sin mouse.' },

@@ -61,6 +61,11 @@ interface POSState {
 
   lastSale: any | null;
   setLastSale: (sale: any) => void;
+
+  /** Gastronomía: cómo es el pedido en curso (ver components/pos/gastro.tsx). No se guarda entre sesiones. */
+  order: { type: 'LLEVAR' | 'MESA' | 'DELIVERY'; table: string; address: string };
+  setOrder: (patch: Partial<{ type: 'LLEVAR' | 'MESA' | 'DELIVERY'; table: string; address: string }>) => void;
+  resetOrder: () => void;
 }
 
 function autoCombineCombos(cart: CartItem[], promotions: any[], productsList: any[] = []): CartItem[] {
@@ -898,6 +903,9 @@ export const usePOSStore = create<POSState>()(
 
   lastSale: null,
   setLastSale: (sale: any) => set({ lastSale: sale }),
+  order: { type: 'LLEVAR', table: '', address: '' },
+  setOrder: (patch) => set((st) => ({ order: { ...st.order, ...patch } })),
+  resetOrder: () => set({ order: { type: 'LLEVAR', table: '', address: '' } }),
     }),
     {
       name: 'paulos-pos-cache',

@@ -9,6 +9,8 @@ import TicketReceipt from './TicketReceipt';
 import { canPrintSilently, getAutoPrintInvoice, printSilently } from '../../utils/ticketPrinter';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
+import { useBusinessStore } from '../../stores/businessStore';
+import { orderNote } from './gastro';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
 import { hasFeature } from '../../stores/businessStore';
@@ -595,8 +597,11 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           clientId: (paymentType === 'DEBT' || isAcopio) ? selectedClientId : undefined,
           pickedUpBy: (paymentType === 'DEBT' || isAcopio) && pickedUpBy ? pickedUpBy.trim() : undefined,
           isAcopio: isAcopio ? true : undefined,
-          appliedPromotions: appliedPromosInfo
+          appliedPromotions: appliedPromosInfo,
+          // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
+          notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? orderNote(usePOSStore.getState().order) : undefined,
         });
+        if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
         saleData = response.data;
         setCreatedSale(saleData);
       }

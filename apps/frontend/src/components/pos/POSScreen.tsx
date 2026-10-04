@@ -44,6 +44,7 @@ import { toggleFullscreen } from '../../utils/fullscreen';
 import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from './posPractice';
 import { registerTourActions, useTourStore } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
+import { OrderTypeBar, foodEmoji } from './gastro';
 
 interface Product { 
   id: string; 
@@ -262,6 +263,13 @@ export default function POSScreen() {
   const canSubstitute = useFeature('substitutes');
   const isHardwareStore = useFeature('fractional');
   const useVariants = useFeature('variants');
+  // Gastronomía: carta con pestañas grandes, tarjetas sin código ni stock y tipo de pedido (ver gastro.tsx)
+  const gastro = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
+  const catCls = gastro
+    ? 'px-4 py-2.5 rounded-2xl text-sm whitespace-nowrap transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer '
+    : 'px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ';
+  const catOn = gastro ? 'bg-amber-500 text-white font-bold shadow-sm border border-amber-500' : 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white font-bold shadow-xs border border-teal-700 dark:border-teal-600 ring-1 ring-teal-700/15';
+  const catOff = gastro ? 'bg-white dark:bg-slate-850 hover:bg-amber-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold border border-slate-200 dark:border-slate-750 shadow-2xs' : 'bg-white dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-250 font-medium border border-slate-250 dark:border-slate-750 shadow-2xs';
 
   // Indumentaria: un modelo con talles aparece una sola vez, con el stock de todas sus variantes sumado
   const displayedProducts = useMemo(
@@ -1097,6 +1105,7 @@ export default function POSScreen() {
       },
       'pos:openPayment': () => { if (inPractice() && usePOSStore.getState().cart.length) setShowPayment(true); },
       'pos:closePayment': () => setShowPayment(false),
+      'pos:sampleOrder': () => { if (inPractice()) usePOSStore.getState().setOrder({ type: 'MESA', table: '4' }); },
     });
     return () => {
       unregister();
@@ -1974,17 +1983,13 @@ export default function POSScreen() {
             </div>
 
             {/* Categories horizontal bar: los rubros scrollean, el botón de "todos" queda siempre fijo */}
-            <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+            <div className={`px-4 ${gastro ? 'py-3 bg-amber-50/40 dark:bg-slate-900/70' : 'py-2.5 bg-slate-50/70 dark:bg-slate-900/70'} flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 shrink-0`}>
             <ScrollRow data-tour="pos-categorias">
-              <button 
-                onClick={() => { setSelectedCategory(null); setShowPromosOnly(false); }} 
-                className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                  !selectedCategory && !showPromosOnly 
-                    ? 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white font-bold shadow-xs border border-teal-700 dark:border-teal-600 ring-1 ring-teal-700/15'
-                    : 'bg-white dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-250 font-medium border border-slate-250 dark:border-slate-750 shadow-2xs'
-                }`}
+              <button
+                onClick={() => { setSelectedCategory(null); setShowPromosOnly(false); }}
+                className={catCls + (!selectedCategory && !showPromosOnly ? catOn : catOff)}
               >
-                Todos
+                {gastro && <span aria-hidden>🍽️</span>}{gastro ? 'Toda la carta' : 'Todos'}
               </button>
               
               {hasActivePromos && (
@@ -2005,14 +2010,10 @@ export default function POSScreen() {
                 return (
                   <button 
                     key={cat.id} 
-                    onClick={() => { setSelectedCategory(cat.id); setShowPromosOnly(false); }} 
-                    className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                      isSelected 
-                        ? 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white font-bold shadow-xs border border-teal-700 dark:border-teal-600 ring-1 ring-teal-700/15'
-                        : 'bg-white dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-250 font-medium border border-slate-250 dark:border-slate-750 shadow-2xs'
-                    }`} 
+                    onClick={() => { setSelectedCategory(cat.id); setShowPromosOnly(false); }}
+                    className={catCls + (isSelected ? catOn : catOff)}
                   >
-                    {cat.name}
+                    {gastro && <span aria-hidden>{foodEmoji(cat.name)}</span>}{cat.name}
                   </button>
                 );
               })}
@@ -2244,8 +2245,10 @@ export default function POSScreen() {
                             }`}
                           >
                             {/* Top: Image Container */}
-                            <div className="w-full h-[106px] rounded-xl bg-slate-50 dark:bg-slate-100 border border-slate-100 dark:border-slate-300/70 overflow-hidden flex-shrink-0 flex items-center justify-center relative mb-2 p-1.5 group-hover:bg-slate-100/70 dark:group-hover:bg-white transition-colors">
-                              <img 
+                            <div className={`w-full h-[106px] rounded-xl ${gastro && !product.imageUrl ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40' : 'bg-slate-50 dark:bg-slate-100 border border-slate-100 dark:border-slate-300/70 group-hover:bg-slate-100/70 dark:group-hover:bg-white'} overflow-hidden flex-shrink-0 flex items-center justify-center relative mb-2 p-1.5 transition-colors`}>
+                              {gastro && !product.imageUrl ? (
+                                <span className="text-[46px] leading-none select-none transition-transform group-hover:scale-110" aria-hidden>{foodEmoji(product.category?.name || product.name)}</span>
+                              ) : <img  
                                 src={product.imageUrl || './product-placeholder.png'} 
                                 alt={product.name} 
                                 loading="lazy"
@@ -2254,15 +2257,15 @@ export default function POSScreen() {
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = './product-placeholder.png';
                                 }}
-                              />
-                              
-                              {/* Stock Tag overlaid on Image */}
-                              <div className="absolute bottom-1.5 left-1.5 z-10">
+                              />}
+
+                              {/* Stock Tag overlaid on Image (en gastronomía se cocina a pedido: no se muestra) */}
+                              {!gastro && <div className="absolute bottom-1.5 left-1.5 z-10">
                                 <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md leading-none bg-white/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700 ${stockBadge.tone}`}>
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
                                   {stockBadge.text}
                                 </span>
-                              </div>
+                              </div>}
 
                               {/* Category Tag overlaid on top-left of Image */}
                               {product.category?.name && (
@@ -2279,7 +2282,7 @@ export default function POSScreen() {
                               <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1">
                                 {product.name}
                               </h3>
-                              {product.barcode && (
+                              {product.barcode && !gastro && (
                                 <div className="mt-0.5">
                                   <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none tracking-tight select-all">
                                     {product.barcode}
@@ -2603,6 +2606,8 @@ export default function POSScreen() {
                 </button>
               </div>
             </div>
+
+            {gastro && <OrderTypeBar />}
 
             <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
               {isCartBusy && (
