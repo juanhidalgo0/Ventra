@@ -58,6 +58,18 @@ if (FRESH) {
 } else localStorage.setItem(STORE_ID_KEY, STORE_ID);
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Cupones en memoria (ver services/onlineStore.ts)
+export type CouponType = 'percent' | 'fixed' | 'shipping';
+export interface StoreCoupon { code: string; type: CouponType; value: number; minOrder?: number; maxDiscount?: number; maxUses?: number; uses?: number; oncePerCustomer?: boolean; validFrom?: string; validUntil?: string; active: boolean }
+export const normCouponCode = (c: string) => c.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 20);
+let coupons: StoreCoupon[] = [{ code: 'VERANO10', type: 'percent', value: 10, maxDiscount: 5000, uses: 7, maxUses: 50, active: true, validUntil: '2026-12-31' }];
+export async function fetchCoupons(_s: string) { await pause(150); return coupons.map((c) => ({ ...c })); }
+export async function saveCoupon(_s: string, c: StoreCoupon, isNew: boolean) {
+  if (isNew && coupons.some((x) => x.code === c.code)) throw new Error('Ya tenés un cupón con ese código');
+  coupons = isNew ? [...coupons, { ...c, uses: 0 }] : coupons.map((x) => (x.code === c.code ? { ...x, ...c } : x));
+}
+export async function deleteCoupon(_s: string, code: string) { coupons = coupons.filter((x) => x.code !== code); }
+
 export async function claimStore(_storeId: string): Promise<void> {}
 export async function resolveStoreId(): Promise<string> { localStorage.setItem(STORE_ID_KEY, STORE_ID); return STORE_ID; }
 export async function loadStoreConfig(_storeId: string): Promise<StoreConfig> { return { ...config }; }

@@ -1226,11 +1226,19 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const notify = require("./notify");
 
+// ─── Cupones de la tienda online (ver coupons.js) ───
+const coupons = require("./coupons");
+/** La tienda valida un cupón que escribió el cliente. */
+exports.storeCouponCheck = onRequest({ cors: true, maxInstances: 10 }, (req, res) =>
+  coupons.check(db, req, res).catch((err) => { logger.error("Cupón: error al validar", err); res.status(500).json({ error: "No se pudo validar el cupón" }); }));
+
 /** Pedido online nuevo */
 exports.ventraOrderPush = onDocumentCreated("ventra_stores/{storeId}/orders/{orderId}", async (event) => {
   const order = event.data && event.data.data();
   if (!order) return;
   const storeId = event.params.storeId;
+  // Cupón: se valida de nuevo y se cuenta el uso (si no corresponde, el pedido queda marcado)
+  if (order.coupon) await coupons.redeem(db, event.data.ref, storeId, order).catch((err) => logger.warn("Cupón: no se pudo validar", { storeId, err: err.message }));
   const store = await db.collection("ventra_stores").doc(storeId).get();
   const uid = store.exists && store.data().ownerUid;
   if (!uid) return;

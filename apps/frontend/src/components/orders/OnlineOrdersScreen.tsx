@@ -278,8 +278,14 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
             {!!o.deliveryCost && (
               <div className="flex justify-between px-4 py-2.5 text-[13.5px] text-slate-600"><span>Envío</span><span className="tabular-nums">{money(o.deliveryCost)}</span></div>
             )}
+            {o.coupon && (
+              <div className={`flex justify-between px-4 py-2.5 text-[13.5px] ${o.couponProblem ? 'text-red-600' : 'text-emerald-700'}`}><span>Cupón <span className="font-mono font-semibold">{o.coupon.code}</span></span><span className="tabular-nums">-{money(o.coupon.discount)}</span></div>
+            )}
             <div className="flex justify-between px-4 py-3 text-[15px] font-bold text-slate-900"><span>Total</span><span className="tabular-nums">{money(o.total || subtotal)}</span></div>
           </div>
+          {o.couponProblem && (
+            <p className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-[13px] text-red-800"><b>Revisá el cupón antes de cobrar:</b> {o.couponProblem}.</p>
+          )}
 
           {o.customerPhone && (
             <a href={waLink(o.customerPhone, customerMessage(o, stage))} target="_blank" rel="noopener noreferrer" className="w-full h-11 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-[14px] flex items-center justify-center gap-2">

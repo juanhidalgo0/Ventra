@@ -108,6 +108,16 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Cupones: solo el dueño (los códigos no son públicos). La tienda los valida con la
+      // función storeCouponCheck y los usos los cuenta la nube al llegar el pedido.
+      match /coupons/{code} {
+        allow read, write: if storeOwner();
+        match /redemptions/{phone} {
+          allow read: if storeOwner();
+          allow write: if false;
+        }
+      }
+
       match /orders/{orderId} {
         // Cualquier cliente puede hacer un pedido, con formato válido.
         allow create: if validNewOrder();
@@ -117,8 +127,12 @@ service cloud.firestore {
         function validNewOrder() {
           let o = request.resource.data;
           return o.keys().hasOnly(['items', 'total', 'customerName', 'customerPhone', 'customerNote', 'status', 'syncedLocal', 'createdAt',
-                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount'])
+                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount', 'coupon'])
             && (!('discount' in o) || (o.discount is number && o.discount >= 0))
+            // El cupón lo valida la nube al crearse el pedido (coupon.valid o couponProblem)
+            && (!('coupon' in o) || (o.coupon is map && o.coupon.keys().hasOnly(['code', 'discount', 'type'])
+                && o.coupon.code is string && o.coupon.code.size() <= 24
+                && o.coupon.discount is number && o.coupon.discount >= 0))
             && (!('orderCode' in o) || (o.orderCode is string && o.orderCode.size() <= 12))
             && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY', 'TABLE'])
             && (!('address' in o) || (o.address is string && o.address.size() <= 300))

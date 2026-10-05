@@ -292,6 +292,15 @@
   .line-note{font-size:12.5px;color:var(--ink-3);margin-top:1px;font-style:italic}
   .sum.promo{color:var(--ok);font-weight:600}
   .promo-hint{background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:10px}
+  /* Cupón de descuento (checkout) */
+  .lnk{background:none;border:0;padding:0;font:inherit;font-size:13px;font-weight:600;color:var(--brand-ink);text-decoration:underline;cursor:pointer}
+  .coupon-open{display:block;margin:0 0 10px}
+  .coupon-row{display:flex;gap:8px;margin-bottom:8px}
+  .coupon-row input{flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;outline:none}
+  .coupon-row input:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+  .coupon-row .btn{height:42px;padding:0 14px}
+  .coupon-err{font-size:12.5px;font-weight:600;color:#B4412B;margin:-2px 0 10px}
+  .sum.promo .lnk{margin-left:8px;font-size:12px;color:var(--ink-3)}
 
   /* Promos destacadas */
   .promo-strip{grid-column:1/-1;display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:14px 0 0;padding:2px 0 4px;min-width:0}
@@ -624,6 +633,51 @@ function deliveryCost(){
   var sub=subtotal();
   if(c.freeDeliveryFrom>0 && sub>=c.freeDeliveryFrom) return 0;
   return c.deliveryCost||0;
+}
+/* ───────── cupón de descuento ─────────
+   El comercio crea los cupones en Ventra (no son públicos): el código se valida con la función
+   storeCouponCheck y, al llegar el pedido, la nube lo vuelve a validar y cuenta el uso. */
+var COUPON_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/storeCouponCheck';
+/* Mismo cálculo que discountFor en firebase/functions/coupons.js: mantener iguales */
+function couponCalc(){
+  var c=S.coupon; if(!c) return {discount:0};
+  var items=Math.max(0,itemsTotal());
+  if(c.minOrder>0 && items<c.minOrder) return {discount:0,error:'Este cupón es para compras desde '+money(c.minOrder)};
+  if(c.type==='shipping'){
+    if(S.delivery!=='DELIVERY') return {discount:0,error:'Este cupón es de envío gratis: elegí envío a domicilio'};
+    return {discount:Math.round(deliveryCost())};
+  }
+  var d=c.type==='percent'?items*Math.min(100,Math.max(0,Number(c.value)||0))/100:Number(c.value)||0;
+  if(c.type==='percent' && c.maxDiscount>0) d=Math.min(d,c.maxDiscount);
+  return {discount:Math.round(Math.min(items,Math.max(0,d)))};
+}
+function couponDiscount(){ return couponCalc().discount; }
+function couponHtml(){
+  if(!S.cfg.couponsEnabled && !S.coupon) return '';
+  if(S.coupon){
+    var r=couponCalc();
+    return '<div class="sum promo"><span>Cupón '+esc(S.coupon.code)+'<button class="lnk" data-act="coupon-remove">Quitar</button></span><span>'+(r.discount?'-'+money(r.discount):'')+'</span></div>'
+      +(r.error?'<div class="promo-hint">'+esc(r.error)+'</div>':'');
+  }
+  if(!S.couponOpen) return '<button class="lnk coupon-open" data-act="coupon-open">¿Tenés un cupón de descuento?</button>';
+  return '<div class="coupon-row"><input id="cCoupon" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" placeholder="Código del cupón"><button class="btn btn-soft" data-act="coupon-apply">Aplicar</button></div>'
+    +(S.couponMsg?'<div class="coupon-err">'+esc(S.couponMsg)+'</div>':'');
+}
+async function applyCoupon(btn){
+  var input=$('#cCoupon'), code=input?input.value.trim().toUpperCase().replace(/\s+/g,''):'';
+  if(!code){ if(input) input.focus(); return; }
+  snapshotForm(); _form.cCoupon=code;
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
+  var msg=null;
+  try{
+    var phone=($('#cPhone')||{}).value||'';
+    var res=await fetch(COUPON_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,code:code,itemsTotal:itemsTotal(),deliveryCost:deliveryCost(),delivery:S.delivery||'PICKUP',phone:phone})});
+    var data=await res.json().catch(function(){ return {}; });
+    if(data && data.coupon){ S.coupon=data.coupon; S.couponMsg=null; delete _form.cCoupon; toast(data.ok?'Cupón aplicado':'Cupón guardado'); }
+    else msg=(data&&data.error)||'No pudimos validar el cupón';
+  }catch(e){ msg='No pudimos validar el cupón. Revisá tu conexión.'; }
+  S.couponMsg=msg;
+  renderCartSheet(); restoreForm();
 }
 function setQty(id,qty){
   if(qty<=0){ delete S.cart[id]; delete S.notes[id]; delete S.lines[id]; } else S.cart[id]=qty;
@@ -1209,7 +1263,8 @@ function renderCheckout(){
     +'<div class="sum"><span>Productos</span><span>'+money(subtotal())+'</span></div>'+promoHtml().replace(/<div class="promo-hint">.*?<\/div>/g,'')
     +(S.delivery==='DELIVERY'?'<div class="sum"><span>Envío</span><span>'+(dc?money(dc):'Gratis')+'</span></div>':'')
     +(S.delivery==='GODELIVERY'?'<div class="sum"><span>Envío</span><span>Lo cobra GoDelivery</span></div>':'')
-    +'<div class="sum total"><span>Total</span><span>'+money(sub+dc)+'</span></div>'
+    +couponHtml()
+    +'<div class="sum total"><span>Total</span><span>'+money(sub+dc-couponDiscount())+'</span></div>'
     +(cantOrder()?'<div class="note" style="margin:10px 0 0">'+esc(cantOrder())+'</div>':'')
     +(c.orderChannel==='APP'?'<button class="btn btn-brand btn-block" style="margin-top:12px" data-act="send"'+(cantOrder()?' disabled':'')+'>'+ic('check')+'Enviar pedido</button></div>'
       :'<button class="btn btn-wa btn-block" style="margin-top:12px" data-act="send"'+(cantOrder()?' disabled':'')+'>'+ic('wa')+'Enviar pedido por WhatsApp</button></div>');
@@ -1251,18 +1306,19 @@ async function sendOrder(btn){
     return it;
   });
   var promos=promoLines().filter(function(x){ return x.discount>0; }), disc=promoDiscount();
-  var sub=subtotal(), dc=deliveryCost(), total=sub-disc+dc, code=orderCode(), channel=c.orderChannel||'BOTH';
+  var cpn=S.coupon&&couponDiscount()>0?{code:S.coupon.code,discount:couponDiscount(),type:S.coupon.type}:null;
+  var sub=subtotal(), dc=deliveryCost(), total=sub-disc+dc-(cpn?cpn.discount:0), code=orderCode(), channel=c.orderChannel||'BOTH';
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
 
   var base={items:items,total:total,customerName:name,customerPhone:phone,customerNote:note,status:'PENDING',syncedLocal:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc},disc?{discount:disc}:{});
+  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc},disc?{discount:disc}:{},cpn?{coupon:cpn}:{});
   var orders=db.collection('ventra_stores').doc(S.storeId).collection('orders'), saved=false;
   // "Solo WhatsApp": el pedido no se guarda en la app, llega únicamente por WhatsApp
   if(channel!=='WHATSAPP'){
     try{ await orders.add(rich); saved=true; }
     catch(e){
       // Reglas viejas: se guarda con el formato anterior y los detalles en la nota
-      var extra=['#'+code, S.delivery==='DELIVERY'?'Envío a: '+addr:S.delivery==='GODELIVERY'?'Envío con GoDelivery a: '+addr:'Retira en el local', 'Paga con: '+(S.payment||'-'), note].filter(Boolean).join(' — ');
+      var extra=['#'+code, cpn?'Cupón '+cpn.code+': -'+money(cpn.discount):'', S.delivery==='DELIVERY'?'Envío a: '+addr:S.delivery==='GODELIVERY'?'Envío con GoDelivery a: '+addr:'Retira en el local', 'Paga con: '+(S.payment||'-'), note].filter(Boolean).join(' — ');
       try{ await orders.add(Object.assign({},base,{customerNote:extra.slice(0,1000)})); saved=true; }catch(e2){ console.warn('El pedido se envía solo por WhatsApp',e2); }
     }
   }
@@ -1283,6 +1339,7 @@ async function sendOrder(btn){
   L.push('');
   promos.forEach(function(x){ L.push('Promo '+x.name+(x.times>1?' x'+x.times:'')+': -'+money(x.discount)); });
   if(S.delivery==='DELIVERY') L.push('Envío: '+(dc?money(dc):'gratis'));
+  if(cpn) L.push('Cupón '+cpn.code+': -'+money(cpn.discount));
   L.push('*Total: '+money(total)+'*');
   L.push('');
   L.push(S.delivery==='TABLE'?'*Mesa '+S.table+'*':S.delivery==='DELIVERY'?'*Envío a:* '+addr:S.delivery==='GODELIVERY'?'*Envío con GoDelivery a:* '+addr+' (el envío lo cobra GoDelivery)':'*Retiro en el local*');
@@ -1295,7 +1352,7 @@ async function sendOrder(btn){
   var viaApp=channel==='APP' && saved;
   if(channel==='APP' && !saved) toast('No pudimos enviarlo online: mandalo por WhatsApp');
   S.lastOrder={code:code,url:c.whatsappNumber?url:'',viaApp:viaApp,phone:phone};
-  S.cart={}; S.notes={}; S.lines={}; saveCart(); refreshCartBar();
+  S.cart={}; S.notes={}; S.lines={}; S.coupon=null; S.couponOpen=false; S.couponMsg=null; saveCart(); refreshCartBar();
   S.products.forEach(function(p){ refreshProduct(p.id); });
   S.step='done'; renderCartSheet();
   if(!viaApp) window.location.href=url;
@@ -1758,6 +1815,9 @@ document.addEventListener('click',function(e){
     case 'back-cart': S.step='cart'; renderCartSheet(); break;
     case 'delivery': snapshotForm(); S.delivery=t.getAttribute('data-v'); renderCartSheet(); restoreForm(); break;
     case 'pay': snapshotForm(); S.payment=t.getAttribute('data-v'); renderCartSheet(); restoreForm(); break;
+    case 'coupon-open': snapshotForm(); S.couponOpen=true; S.couponMsg=null; renderCartSheet(); restoreForm(); var ci=$('#cCoupon'); if(ci) ci.focus(); break;
+    case 'coupon-apply': applyCoupon(t); break;
+    case 'coupon-remove': snapshotForm(); S.coupon=null; S.couponOpen=true; S.couponMsg=null; renderCartSheet(); restoreForm(); break;
     case 'copy-alias': if(navigator.clipboard) navigator.clipboard.writeText(S.cfg.transferAlias); toast('Alias copiado'); break;
     case 'send': sendOrder(t); break;
     case 'book-open': openBooking(null); break;
@@ -1789,7 +1849,9 @@ document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeSheet
 
 // Al cambiar forma de entrega o pago se vuelve a dibujar el formulario: se conservan los datos escritos
 var _form={};
-function snapshotForm(){ ['cName','cPhone','cAddr','cNote'].forEach(function(k){ var el=document.getElementById(k); if(el) _form[k]=el.value; }); }
+// Enter en el campo del cupón lo aplica
+document.addEventListener('keydown',function(e){ if(e.key==='Enter' && e.target && e.target.id==='cCoupon'){ e.preventDefault(); applyCoupon(document.querySelector('[data-act="coupon-apply"]')); } });
+function snapshotForm(){ ['cName','cPhone','cAddr','cNote','cCoupon'].forEach(function(k){ var el=document.getElementById(k); if(el) _form[k]=el.value; }); }
 function restoreForm(){ Object.keys(_form).forEach(function(k){ var el=document.getElementById(k); if(el && _form[k]!=null) el.value=_form[k]; }); }
 
 // Arrastrar hacia abajo para cerrar las hojas en el celular

@@ -4,6 +4,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -146,6 +147,8 @@ export interface StoreConfig {
   orderChannel?: 'BOTH' | 'APP' | 'WHATSAPP';
   /** Extras con precio (borde relleno, agregados) que el cliente elige en la ficha del producto */
   extraGroups?: ExtraGroup[];
+  /** Hay algún cupón activo: la tienda muestra el campo del cupón (lo mantiene saveCoupon) */
+  couponsEnabled?: boolean;
   /** Productos pausados ("hoy no hay"): se ven como no disponibles sin volver a publicar */
   pausedIds?: string[];
   /** Promos por cantidad publicadas desde Promociones (ej. docena de empanadas de cualquier gusto) */
@@ -525,12 +528,79 @@ export interface StoreOrder {
   deliveryCost?: number;
   /** Descuento de promos por cantidad (docena de empanadas) */
   discount?: number;
+  /** Cupón que usó el cliente; valid lo marca la nube al validarlo (ver functions/coupons.js) */
+  coupon?: { code: string; discount: number; type?: CouponType; valid?: boolean };
+  /** El cupón no correspondía (vencido, agotado, descuento distinto): revisar antes de cobrar */
+  couponProblem?: string;
   status: 'PENDING' | 'SYNCED';
   /** Seguimiento del pedido en el local (sin valor = recién llegado) */
   stage?: OrderStage;
   stageAt?: any;
   syncedLocal?: boolean;
   createdAt?: any;
+}
+
+// ─── Cupones de descuento ───
+// En ventra_stores/{id}/coupons/{CÓDIGO}, solo el dueño los ve: la tienda los valida con la función
+// storeCouponCheck y la nube cuenta los usos al llegar cada pedido (firebase/functions/coupons.js).
+export type CouponType = 'percent' | 'fixed' | 'shipping';
+
+export interface StoreCoupon {
+  code: string;
+  type: CouponType;
+  /** % o $ según el tipo (en envío gratis no se usa) */
+  value: number;
+  /** Compra mínima en productos (0 = sin mínimo) */
+  minOrder?: number;
+  /** Tope del descuento para los de % (0 = sin tope) */
+  maxDiscount?: number;
+  /** Cuántas veces se puede usar en total (0 = sin límite) */
+  maxUses?: number;
+  uses?: number;
+  /** Una vez por cliente (por teléfono) */
+  oncePerCustomer?: boolean;
+  /** Días 'AAAA-MM-DD' de Argentina, inclusive */
+  validFrom?: string;
+  validUntil?: string;
+  active: boolean;
+  createdAt?: any;
+  lastUsedAt?: any;
+}
+
+export const normCouponCode = (c: string) => c.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 20);
+
+const couponsCol = (storeId: string) => collection(getDb(), 'ventra_stores', storeId, 'coupons');
+
+export async function fetchCoupons(storeId: string): Promise<StoreCoupon[]> {
+  await claimStore(storeId);
+  const snap = await getDocs(couponsCol(storeId));
+  return snap.docs.map((d) => ({ ...(d.data() as any), code: d.id }) as StoreCoupon)
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.code.localeCompare(b.code));
+}
+
+/** La tienda muestra el campo del cupón solo si hay alguno activo (dato público, sin los códigos). */
+async function syncCouponsFlag(storeId: string) {
+  const snap = await getDocs(couponsCol(storeId));
+  const any = snap.docs.some((d) => d.data().active !== false);
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId), { couponsEnabled: any });
+}
+
+/** Crea o actualiza un cupón. isNew: falla si ese código ya existe. */
+export async function saveCoupon(storeId: string, c: StoreCoupon, isNew: boolean) {
+  await claimStore(storeId);
+  const code = normCouponCode(c.code);
+  if (!/^[A-Z0-9_-]{3,20}$/.test(code)) throw new Error('El código va de 3 a 20 letras o números, sin espacios');
+  const ref = doc(couponsCol(storeId), code);
+  if (isNew && (await getDoc(ref)).exists()) throw new Error('Ya tenés un cupón con ese código');
+  const { code: _c, uses: _u, createdAt: _ca, lastUsedAt: _l, ...rest } = c as any;
+  await setDoc(ref, { ...rest, code, ...(isNew ? { uses: 0, createdAt: serverTimestamp() } : {}), updatedAt: serverTimestamp() }, { merge: true });
+  await syncCouponsFlag(storeId);
+}
+
+export async function deleteCoupon(storeId: string, code: string) {
+  await claimStore(storeId);
+  await deleteDoc(doc(couponsCol(storeId), code));
+  await syncCouponsFlag(storeId);
 }
 
 /** Pedidos de la tienda entre dos fechas (más nuevos primero), para las métricas. */

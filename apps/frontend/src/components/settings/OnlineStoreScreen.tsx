@@ -39,7 +39,9 @@ import {
   Undo2,
   UploadCloud,
   ShoppingBag,
+  Ticket,
 } from 'lucide-react';
+import StoreCoupons from './StoreCoupons';
 import {
   resolveStoreId,
   loadStoreConfig,
@@ -82,7 +84,7 @@ const EDIT_KEYS = [
 ] as const;
 type EditKey = typeof EDIT_KEYS[number];
 
-type SectionId = 'resumen' | 'negocio' | 'productos' | 'apariencia' | 'entregas' | 'horarios' | 'extras';
+type SectionId = 'resumen' | 'negocio' | 'productos' | 'apariencia' | 'entregas' | 'horarios' | 'extras' | 'cupones';
 
 const SECTIONS: { id: SectionId; label: string; icon: any; keys: EditKey[] }[] = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, keys: [] },
@@ -92,6 +94,7 @@ const SECTIONS: { id: SectionId; label: string; icon: any; keys: EditKey[] }[] =
   { id: 'entregas', label: 'Entregas y pagos', icon: Truck, keys: ['pickupEnabled', 'deliveryEnabled', 'goDeliveryEnabled', 'deliveryCost', 'freeDeliveryFrom', 'deliveryZone', 'deliveryEta', 'pickupEta', 'minOrder', 'transferAlias', 'paymentMethods'] },
   { id: 'horarios', label: 'Horarios', icon: Clock, keys: ['hours'] },
   { id: 'extras', label: 'Extras y agregados', icon: Plus, keys: [] },
+  { id: 'cupones', label: 'Cupones', icon: Ticket, keys: [] },
 ];
 
 const pickEditable = (c: StoreConfig) => Object.fromEntries(EDIT_KEYS.map((k) => [k, (c as any)[k] ?? null])) as Record<EditKey, any>;
@@ -610,6 +613,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
           {tab === 'extras' && (
             <Card title="Extras y agregados" text="Opciones con precio que el cliente suma al producto: borde relleno, agregados, salsas. Se guardan al instante.">
               <ExtrasEditor storeId={storeId} initial={config.extraGroups || []} onSaved={(g) => setConfig((c) => (c ? { ...c, extraGroups: g } : c))} />
+            </Card>
+          )}
+
+          {tab === 'cupones' && (
+            <Card title="Cupones de descuento" text="Códigos que tus clientes escriben al hacer el pedido: un % de descuento, un monto fijo o el envío gratis. Se guardan al instante y los usos se cuentan solos.">
+              <StoreCoupons storeId={storeId} storeUrl={config.subdomain ? `tienda.ventra.store/${config.subdomain}` : undefined} />
             </Card>
           )}
         </main>
