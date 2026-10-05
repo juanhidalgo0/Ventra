@@ -7,6 +7,7 @@ import { ShoppingBag, Eye, EyeOff, Loader2, ShieldCheck, UserCheck, UserPlus, Ar
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo } from '../common/MangoLogo';
+import AdminRecovery from './AdminRecovery';
 import { usePlanStore, PLANS, type PlanId } from '../../stores/planStore';
 
 const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
@@ -30,6 +31,7 @@ export default function LoginPage() {
   const [isDemo, setIsDemo] = useState(false);
   const [demoLoading, setDemoLoading] = useState<PlanId | null>(null);
   const [showBackToSetup, setShowBackToSetup] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   const [loadingMessage, setLoadingMessage] = useState('Iniciando servidores locales...');
 
@@ -332,11 +334,17 @@ export default function LoginPage() {
                     {isLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Ingresando...</> : 'Iniciar Turno'}
                   </button>
                 </form>
+                {!isDemo && (
+                  <button type="button" onClick={() => setRecovering(true)} className="mt-4 w-full text-center text-[12px] font-semibold text-slate-500 hover:text-rose-600 cursor-pointer">
+                    ¿Olvidaste la contraseña del administrador?
+                  </button>
+                )}
               </div>
             )}
         </MotionDiv>
         <MotionDiv {...staggerItem} className="text-center text-slate-600/60 text-[10px] font-bold uppercase tracking-widest mt-8">© 2026 Ventra POS — v2.0</MotionDiv>
       </MotionDiv>
+      {recovering && <AdminRecovery onClose={() => setRecovering(false)} />}
     </div>
   );
 }

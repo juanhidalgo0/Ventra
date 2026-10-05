@@ -87,7 +87,7 @@ export class AuthService {
     return this.issueSession(user, false, 'SUPPORT_LOGIN');
   }
 
-  private async issueSession(
+  async issueSession(
     user: { id: string; username: string; fullName: string; role: string; avatarUrl: string | null },
     longSession: boolean,
     action: string,

@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
+import { PasswordRecoveryService } from './password-recovery.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { ProductsModule } from '../products/products.module';
@@ -22,7 +23,7 @@ import { ProductsModule } from '../products/products.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, GoogleAuthService, JwtStrategy],
+  providers: [AuthService, GoogleAuthService, PasswordRecoveryService, JwtStrategy],
   exports: [AuthService, GoogleAuthService, JwtModule],
 })
 export class AuthModule {}

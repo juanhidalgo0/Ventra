@@ -1,5 +1,7 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Req, BadRequestException, Header, Headers } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request, Req, BadRequestException, Header, Headers, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { PasswordRecoveryService } from './password-recovery.service';
+import { recoveryPage } from './recovery-page';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
@@ -38,7 +40,8 @@ function loginOrigin(req: any): string {
 export class AuthController {
   constructor(
     private authService: AuthService,
-    private googleAuthService: GoogleAuthService
+    private googleAuthService: GoogleAuthService,
+    private recovery: PasswordRecoveryService,
   ) {}
 
   @Post('login')
@@ -50,6 +53,35 @@ export class AuthController {
   @Post('support-login')
   async supportLogin(@Headers('x-ventra-support-key') key: string) {
     return this.authService.supportLogin(key);
+  }
+
+  // ── Olvidé la contraseña del administrador (ver PasswordRecoveryService) ──
+  @Post('recover/start')
+  recoverStart() {
+    return this.recovery.start();
+  }
+
+  @Post('recover/verify')
+  recoverVerify(@Body() dto: { id: string; idToken: string }) {
+    return this.recovery.verify(dto?.id, dto?.idToken);
+  }
+
+  @Get('recover/status')
+  recoverStatus(@Query('id') id: string) {
+    return this.recovery.status(id);
+  }
+
+  @Post('recover/reset')
+  recoverReset(@Body() dto: { id: string; username: string; newPassword: string }) {
+    return this.recovery.reset(dto?.id, dto?.username, String(dto?.newPassword || ''));
+  }
+
+  /** Página que se abre en el navegador de Windows para entrar con Google (la app no puede). */
+  @Get('recover/page')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  recoverPage(@Query('id') id: string) {
+    return recoveryPage(/^[a-f0-9]{48}$/.test(String(id || '')) ? id : '');
   }
 
   @Post('google-link-verify')
