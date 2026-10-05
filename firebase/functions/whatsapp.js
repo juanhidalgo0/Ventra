@@ -17,8 +17,12 @@ const agenda = require("./agenda");
 const usage = require("./usage");
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-/** Identificador del número de Ventra (WhatsApp → Configuración de la API). Vacío: no se manda nada. */
-const PHONE_ID = process.env.VENTRA_WA_PHONE_ID || "";
+/**
+ * Identificador del número de Ventra (WhatsApp → Configuración de la API). Vacío: no se manda nada.
+ * App "Ventra" del portfolio "Ventra | Sistema de ventas"; cuenta de WhatsApp Business 1116867764202620.
+ * Por ahora es el número de prueba de Meta: al pasar al número real, cambiar este valor.
+ */
+const PHONE_ID = process.env.VENTRA_WA_PHONE_ID || "1394951223698201";
 const TEMPLATE = { name: "turno_recordatorio", lang: "es_AR" };
 /** No se escribe de noche (hora de Argentina) */
 const QUIET_FROM = 22 * 60, QUIET_TO = 8 * 60;
