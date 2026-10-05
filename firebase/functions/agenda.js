@@ -388,4 +388,4 @@ async function manage(db, req, res) {
   return res.json({ ...view(), canCancel: false });
 }
 
-module.exports = { book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges };
+module.exports = { book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges, localNow, addDays, weekday, startAtMs };

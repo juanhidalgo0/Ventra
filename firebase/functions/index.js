@@ -1442,6 +1442,25 @@ exports.agendaExpireHolds = onSchedule({ schedule: "every 5 minutes", timeZone: 
   if (n) logger.info(`Agenda: ${n} seña(s) vencida(s), horarios liberados`);
 });
 
+// ─── Recordatorios por WhatsApp (ver whatsapp.js) ───
+// Mientras no estén cargados de verdad, los tres secretos pueden tener un valor provisorio:
+// sin el número configurado en whatsapp.js no se manda nada.
+const whatsapp = require("./whatsapp");
+const VENTRA_WA_TOKEN = defineSecret("VENTRA_WA_TOKEN");
+const VENTRA_WA_APP_SECRET = defineSecret("VENTRA_WA_APP_SECRET");
+const VENTRA_WA_VERIFY_TOKEN = defineSecret("VENTRA_WA_VERIFY_TOKEN");
+
+/** Cada 15 minutos: los recordatorios que tocan (el día anterior o unas horas antes, según el comercio). */
+exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone: "America/Argentina/Buenos_Aires", secrets: [VENTRA_WA_TOKEN] }, async () => {
+  const r = await whatsapp.remindersRun(db, { token: VENTRA_WA_TOKEN.value() });
+  if (r.sent || r.failed) logger.info(`WhatsApp: ${r.sent} recordatorio(s) enviado(s), ${r.failed} con error`);
+});
+
+/** Webhook de Meta: entregas, botones de los recordatorios y mensajes de los clientes. */
+exports.agendaWaHook = onRequest({ maxInstances: 10, secrets: [VENTRA_WA_TOKEN, VENTRA_WA_APP_SECRET, VENTRA_WA_VERIFY_TOKEN] }, (req, res) =>
+  whatsapp.hook(db, req, res, { token: VENTRA_WA_TOKEN.value(), appSecret: VENTRA_WA_APP_SECRET.value(), verifyToken: VENTRA_WA_VERIFY_TOKEN.value() })
+    .catch((err) => { logger.error("WhatsApp: error en el webhook", err); res.status(500).send("Error"); }));
+
 /** Link del turno: el cliente ve su turno y lo puede cancelar (ver agenda.manage). */
 exports.agendaManage = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.manage(db, req, res));
 
@@ -1467,7 +1486,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     if (uid) {
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
-        body: `${after.customerName || "El cliente"} lo canceló desde su link. El horario quedó libre.`,
+        body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.`,
         url: "/#/agenda", tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }

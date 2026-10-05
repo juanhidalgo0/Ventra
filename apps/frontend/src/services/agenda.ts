@@ -1,5 +1,6 @@
-import { collection, doc, query, where, orderBy, limit, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDocs, writeBatch, deleteField, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, doc, query, where, orderBy, limit, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch, deleteField, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { getVentraDb, ensureVentraSession } from './ventraFirebase';
+import { IS_DEMO_BUILD } from '../demo/flag';
 import { claimStore } from './onlineStore';
 import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
 
@@ -12,6 +13,21 @@ export * from './agendaCore';
  * función agendaBook, que evita superposiciones. Ver firebase/functions/agenda.js.
  * Horario de Argentina (UTC-3): las horas se guardan como minutos del día.
  */
+
+/**
+ * Si Ventra ya manda recordatorios automáticos por WhatsApp: lo marca la nube (whatsapp.js) cuando
+ * el número de Ventra está configurado. Hasta entonces la opción se muestra como "Muy pronto".
+ * En la demo se muestra activa, para que se vea cómo funciona.
+ */
+export async function waRemindersAvailable(): Promise<boolean> {
+  if (IS_DEMO_BUILD) return true;
+  try {
+    const snap = await getDoc(doc(getVentraDb(), 'ventra_desktop', 'whatsapp'));
+    return !!(snap.exists() && snap.data().reminders);
+  } catch {
+    return false;
+  }
+}
 
 const bookingsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'bookings');
 const clientsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'agenda_clients');

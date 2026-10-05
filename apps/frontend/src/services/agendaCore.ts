@@ -47,6 +47,24 @@ export interface AgendaConfig {
   deposit?: { enabled: boolean; mode: 'percent' | 'fixed'; value: number };
   /** Tipo de servicio (plantilla con la que arrancó: peluqueria, salud...). Adapta textos y recorridos. */
   kind?: string;
+  /** Recordatorio automático por WhatsApp desde el número de Ventra (firebase/functions/whatsapp.js) */
+  reminders?: { enabled: boolean; when: ReminderWhen };
+}
+
+/** Cuándo sale el recordatorio automático (mismas claves que WHEN en whatsapp.js) */
+export type ReminderWhen = 'dayBefore18' | 'dayBefore20' | 'hours3' | 'hours2';
+export const REMINDER_WHEN: [ReminderWhen, string][] = [
+  ['dayBefore18', 'El día anterior a las 18 h'],
+  ['dayBefore20', 'El día anterior a las 20 h'],
+  ['hours3', '3 horas antes'],
+  ['hours2', '2 horas antes'],
+];
+
+/** Recordatorio automático de un turno: lo escribe la nube */
+export interface BookingReminder {
+  status: 'sending' | 'retry' | 'sent' | 'delivered' | 'read' | 'failed';
+  tries?: number;
+  error?: string;
 }
 
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'DONE' | 'NO_SHOW' | 'CANCELLED' | 'BLOCK' | 'AWAITING_PAYMENT';
@@ -68,6 +86,12 @@ export interface Booking {
   cancelledBy?: 'client' | 'expired';
   /** Cuándo se le mandó el recordatorio por WhatsApp */
   remindedAt?: any;
+  /** 'auto': lo mandó Ventra solo (ver reminder) */
+  remindedBy?: 'auto';
+  reminder?: BookingReminder;
+  /** Tocó "Confirmo" en el recordatorio */
+  clientConfirmedAt?: any;
+  cancelVia?: 'whatsapp';
   /** Esperando seña: hasta cuándo se aparta el horario */
   holdUntil?: any;
   /** Seña pedida al reservar online */

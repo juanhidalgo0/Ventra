@@ -6,10 +6,10 @@ export * from '../services/agendaCore';
 
 const today = localNow().dateKey;
 let list: Booking[] = [
-  { id: 'b1', kind: 'booking', dateKey: today, startMin: 600, endMin: 660, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Carla Gómez', customerPhone: '11 5555-0004', status: 'CONFIRMED', source: 'online', code: 'K7PZ' },
+  { id: 'b1', kind: 'booking', dateKey: today, startMin: 600, endMin: 660, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Carla Gómez', customerPhone: '11 5555-0004', status: 'CONFIRMED', source: 'online', code: 'K7PZ', remindedAt: 1, remindedBy: 'auto', reminder: { status: 'read' }, clientConfirmedAt: 1 },
   { id: 'b2', kind: 'booking', dateKey: today, startMin: 690, endMin: 720, staffId: 'a', staffName: 'Mía', serviceId: 's2', serviceName: 'Arreglo de ruedo', price: 6000, customerName: 'Lucía Fernández', customerPhone: '11 4444-1234', status: 'PENDING', source: 'online', code: 'Q2M8', customerNote: 'Son dos jeans' },
   { id: 'b3', kind: 'block', dateKey: today, startMin: 780, endMin: 840, staffId: 'ALL', status: 'BLOCK', reason: 'Almuerzo' },
-  { id: 'b4', kind: 'booking', dateKey: today, startMin: 900, endMin: 960, staffId: 'b', staffName: 'Lucía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Sofía Ruiz', customerPhone: '11 3333-9876', status: 'CONFIRMED', source: 'manual', code: 'AB12' },
+  { id: 'b4', kind: 'booking', dateKey: today, startMin: 900, endMin: 960, staffId: 'b', staffName: 'Lucía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Sofía Ruiz', customerPhone: '11 3333-9876', status: 'CONFIRMED', source: 'manual', code: 'AB12', remindedAt: 1, remindedBy: 'auto', reminder: { status: 'read' } },
   { id: 'h1', kind: 'booking', dateKey: addDays(today, -6), startMin: 600, endMin: 660, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Carla Gómez', customerPhone: '11 5555-0004', status: 'DONE', source: 'online', code: 'H1H1', payment: { method: 'Transferencia', amount: 25000 } },
   { id: 'h2', kind: 'booking', dateKey: addDays(today, -2), startMin: 720, endMin: 750, staffId: 'b', staffName: 'Lucía', serviceId: 's2', serviceName: 'Arreglo de ruedo', price: 6000, customerName: 'Sofía Ruiz', customerPhone: '11 3333-9876', status: 'DONE', source: 'manual', code: 'H2H2', payment: { method: 'Efectivo', amount: 6000 } },
   { id: 'h3', kind: 'booking', dateKey: addDays(today, -1), startMin: 660, endMin: 720, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Martina López', customerPhone: '11 7777-2020', status: 'NO_SHOW', source: 'online', code: 'H3H3' },
@@ -53,6 +53,12 @@ export async function hasAnyBooking() { return list.some((b) => b.kind === 'book
 export async function rebuildClients() { return clientsNow().length; }
 export async function fetchBookingsRange(_s: string, fromKey: string, toKey: string) {
   return list.filter((b) => b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
+}
+export async function waRemindersAvailable() { return true; }
+export async function markReminded(_s: string, id: string) { list = list.map((b) => (b.id === id ? { ...b, remindedAt: Date.now() } : b)); emit(); }
+export async function rescheduleBooking(_s: string, b: Booking, to: { dateKey: string; startMin: number; staff: AgendaStaff }) {
+  list = list.map((x) => (x.id === b.id ? { ...x, dateKey: to.dateKey, startMin: to.startMin, endMin: to.startMin + (x.endMin - x.startMin), staffId: to.staff.id, staffName: to.staff.name, movedFrom: { dateKey: x.dateKey, startMin: x.startMin } } : x));
+  emit();
 }
 export async function deleteBooking(_s: string, id: string) { list = list.filter((b) => b.id !== id); emit(); }
 export function whatsappToCustomer(b: Booking, businessName: string, kind: string) {

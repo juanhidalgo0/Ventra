@@ -20,8 +20,8 @@ import api from '../../services/api';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
-  rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, depositFor,
-  type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
+  rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, depositFor, waRemindersAvailable, REMINDER_WHEN,
+  type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
@@ -265,6 +265,18 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
         const list = bookings.filter((b) => b.dateKey === tomorrow && b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone);
         const left = list.filter((b) => !b.remindedAt).length;
         if (!list.length || !left) return null;
+        // Con los automáticos prendidos solo se avisa de los que no llegaron (número mal cargado, etc.)
+        if (agenda.reminders?.enabled) {
+          const failed = list.filter((b) => !b.remindedAt && b.reminder?.status === 'failed').length;
+          if (!failed) return null;
+          return (
+            <button onClick={() => setReminding(true)} className="anim-rise ag-press w-full text-left bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+              <BellRing className="w-5 h-5 text-red-700 shrink-0" />
+              <span className="flex-1 text-[13.5px] text-red-900"><b>{failed === 1 ? 'A 1 cliente no le llegó' : `A ${failed} clientes no les llegó`} el recordatorio de mañana.</b> Tocá para mandarlo vos por WhatsApp.</span>
+              <ChevronRight className="w-4 h-4 text-red-700" />
+            </button>
+          );
+        }
         return (
           <button onClick={() => setReminding(true)} className="anim-rise ag-press w-full text-left bg-sky-50 border border-sky-200 rounded-2xl p-4 flex items-center gap-3">
             <BellRing className="w-5 h-5 text-sky-700 shrink-0" />
@@ -389,6 +401,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
                         <span className="truncate">{b.customerName}</span>
                       </span>
                       <span className="block text-[12.5px] text-slate-500 truncate">{live ? 'En curso · ' : ''}{b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}{b.source === 'online' ? ' · online' : ''}</span>
+                      {(() => { const r = reminderInfo(b); return r && !past ? <span className={`flex items-center gap-1 text-[11.5px] font-semibold ${r.cls}`}><MessageCircle className="w-3 h-3" /> {r.text}</span> : null; })()}
                     </>
                   )}
                 </span>
@@ -481,7 +494,8 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           <span className={`text-[12px] font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset ${st.cls}`}>{st.label}</span>
           {b.code && <span className="text-[12px] font-mono font-semibold text-slate-500 bg-slate-100 rounded-md px-2 py-1">#{b.code}</span>}
           <span className="text-[12px] text-slate-400">{b.source === 'online' ? 'Reservado desde la tienda' : 'Cargado a mano'}</span>
-          {b.cancelledBy === 'client' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-red-600">Lo canceló el cliente desde su link</span>}
+          {b.cancelledBy === 'client' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-red-600">Lo canceló el cliente {b.cancelVia === 'whatsapp' ? 'desde el recordatorio de WhatsApp' : 'desde su link'}</span>}
+          {(() => { const r = reminderInfo(b); return r && b.status !== 'CANCELLED' ? <span className={`text-[12px] font-semibold flex items-center gap-1 ${r.cls}`}><MessageCircle className="w-3.5 h-3.5" /> {r.text}{b.reminder?.status === 'failed' && b.reminder.error ? ` (${b.reminder.error})` : ''}</span> : null; })()}
           {(b.cancelledBy as string) === 'expired' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-slate-500">No pagó la seña a tiempo</span>}
           {b.deposit && (depositPaid(b)
             ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">Seña pagada {money(depositPaid(b))} · Mercado Pago</span>
@@ -1221,6 +1235,10 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
         <DepositRules a={a} setA={setA} />
       </Card>
 
+      <Card icon={BellRing} title="Recordatorios por WhatsApp">
+        <WhatsAppReminders a={a} setA={setA} />
+      </Card>
+
       <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-20'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button onClick={save} disabled={saving} className={`${mobile ? 'w-full' : 'px-8'} h-12 rounded-2xl bg-rose-600 text-white font-semibold shadow-lg shadow-rose-600/30 disabled:opacity-60`}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
@@ -1276,6 +1294,63 @@ function DepositRules({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) =>
       )}
     </div>
   );
+}
+
+/**
+ * Recordatorio automático: lo manda Ventra desde su número de WhatsApp con el nombre del comercio
+ * y dos botones (Confirmo / Necesito cambiarlo). Ver firebase/functions/whatsapp.js.
+ */
+function WhatsAppReminders({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) => void }) {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => { waRemindersAvailable().then(setAvailable); }, []);
+  const r = a.reminders || { enabled: false, when: 'dayBefore18' as ReminderWhen };
+  const set = (p: Partial<typeof r>) => setA({ ...a, reminders: { ...r, ...p } });
+  if (available === null) return <p className="text-[12.5px] text-slate-400">Cargando…</p>;
+  if (!available) {
+    return (
+      <div className="flex items-start gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 rounded-full px-2.5 py-1 shrink-0">Muy pronto</span>
+        <p className="text-[13px] text-slate-500">Ventra le va a mandar a cada cliente un WhatsApp antes de su turno, con botones para confirmar o cancelar, sin que tengas que hacer nada. Mientras tanto, los mandás con un toque desde la agenda.</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <p className="text-[14px] font-semibold text-slate-800">Mandar recordatorios automáticos</p>
+          <p className="text-[12.5px] text-slate-500">
+            {r.enabled
+              ? 'A cada cliente con WhatsApp le llega el recordatorio solo. Si toca "Confirmo" el turno queda confirmado; si toca "Necesito cambiarlo" se cancela y te avisamos.'
+              : 'Ventra le manda a cada cliente un WhatsApp antes de su turno, con tu nombre y botones para confirmar o cancelar. Menos faltazos, sin que hagas nada.'}
+          </p>
+        </div>
+        <Toggle on={r.enabled} onChange={(v) => set({ enabled: v })} />
+      </div>
+      {r.enabled && (
+        <div className="mt-3 anim-rise">
+          <span className={label}>Cuándo se manda</span>
+          <select className={input} value={r.when} onChange={(e) => set({ when: e.target.value as ReminderWhen })}>
+            {REMINDER_WHEN.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </select>
+          <p className="mt-2 text-[12px] text-slate-500">Nunca de noche (entre las 22 y las 8 h) y no a quien reservó hace un rato. Sale del número de WhatsApp de Ventra; si el cliente escribe, le pasamos tu WhatsApp.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Cómo va el recordatorio automático de un turno (en la lista y en el detalle). */
+function reminderInfo(b: Booking): { text: string; cls: string } | null {
+  if (b.kind !== 'booking') return null;
+  if (b.clientConfirmedAt && b.status === 'CONFIRMED') return { text: 'Confirmó por WhatsApp', cls: 'text-emerald-700' };
+  const s = b.reminder?.status;
+  if (!s) return null;
+  if (s === 'failed') return { text: 'No le llegó el recordatorio', cls: 'text-red-600' };
+  if (s === 'read') return { text: 'Leyó el recordatorio', cls: 'text-sky-700' };
+  if (s === 'delivered') return { text: 'Recordatorio entregado', cls: 'text-slate-500' };
+  if (s === 'sent') return { text: 'Recordatorio enviado', cls: 'text-slate-500' };
+  return null;
 }
 
 function hoursSummary(hours: DayHours[]) {
