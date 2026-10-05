@@ -127,7 +127,10 @@ const configured = (token) => !!(PHONE_ID && token && token.length > 20);
 
 /** Tarea programada: manda los recordatorios que tocan. Devuelve cuántos mandó. */
 async function remindersRun(db, { token }) {
-  if (!configured(token)) return { sent: 0, skipped: "sin configurar" };
+  if (!configured(token)) {
+    logger.warn("WhatsApp: recordatorios sin configurar", { phoneId: !!PHONE_ID, tokenLength: (token || "").length });
+    return { sent: 0, skipped: "sin configurar" };
+  }
   await db.collection("ventra_desktop").doc("whatsapp").set({ reminders: true, checkedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   const now = Date.now();
   const { dateKey: today } = agenda.localNow(now);
