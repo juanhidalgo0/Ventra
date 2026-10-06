@@ -493,7 +493,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         sessionId,
         employeeConsumption: true,
         payments: [],
-        items: adjustedItems.map((i: any) => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, price: i.price })),
+        items: adjustedItems.map((i: any) => ({ productId: i.productId, productName: (i.productName || products?.find((p: any) => p.id === i.productId)?.name || 'Producto'), quantity: i.quantity, price: i.price })),
       });
       toast.success('Consumo registrado: se descontó del stock');
       onSuccess();
@@ -1401,7 +1401,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
               <ul className="mt-3 max-h-36 overflow-y-auto rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700">
                 {adjustedItems.map((i: any, idx: number) => (
                   <li key={idx} className="flex justify-between gap-3 px-3 py-1.5 text-[13px] text-slate-700 dark:text-slate-300">
-                    <span className="truncate">{i.productName}</span>
+                    <span className="truncate">{(i.productName || products?.find((p: any) => p.id === i.productId)?.name || 'Producto')}</span>
                     <span className="font-bold tabular-nums shrink-0">x{(Math.round(Number(i.quantity) * 100) / 100).toLocaleString('es-AR')}</span>
                   </li>
                 ))}

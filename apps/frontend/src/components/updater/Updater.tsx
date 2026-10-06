@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { PENDING_UPDATE_KEY, useUpdaterStore } from '../../stores/updaterStore';
+import { usePOSStore } from '../../stores/posStore';
 import { subscribeToLatestVersion } from '../../services/updatePush';
 
 // Re-check for updates periodically while the app stays open (POS terminals
@@ -43,14 +44,18 @@ export default function Updater() {
   // (a POS terminal that won't close is much worse than one that waits for
   // an explicit click). A postponed update is installed on the NEXT START instead.
 
-  // Al abrir la app: si una versión quedó para después, se instala sola en cuanto está
-  // descargada. Solo en los primeros minutos, para no reiniciar en medio de una venta.
+  // Al abrir la app: si hay una versión descargada, se instala sola (aunque nadie haya tocado
+  // el cartel de actualizar). Solo en los primeros minutos y con la caja vacía, para no
+  // reiniciar en medio de una venta. Si no se pudo, queda para la próxima vez que se abra.
   useEffect(() => {
     if (status !== 'ready' || !update) return;
-    let pending = false;
-    try { pending = !!localStorage.getItem(PENDING_UPDATE_KEY); } catch { /* sin almacenamiento */ }
     const openedRecently = performance.now() < 3 * 60 * 1000;
-    if (pending && openedRecently) install();
+    if (!openedRecently) {
+      try { localStorage.setItem(PENDING_UPDATE_KEY, update.version || '1'); } catch { /* sin almacenamiento */ }
+      return;
+    }
+    if (usePOSStore.getState().cart.length > 0) return;
+    install();
   }, [status, update, install]);
 
   return null;
