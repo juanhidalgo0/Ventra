@@ -7,7 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 
-type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched';
+type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption';
 interface QueuedEvent { type: EventType; data: any; at: number; tries: number }
 interface LowStockItem { id: string; name: string; stock: number; minStock: number }
 
@@ -246,6 +246,15 @@ export function localMessage(type: EventType, d: any): { title: string; body: st
           ? `Pago ${canal} a las ${hora}: la venta #${d.saleNumber} de ese monto se cargó como ${metodo}. Revisala.`
           : `Pago ${canal} a las ${hora} (N° ${d.paymentId}): no hay ninguna venta de ese monto cerca de esa hora.`,
         url: '/cash-control',
+      };
+    }
+    case 'employeeConsumption': {
+      const items: string[] = Array.isArray(d.items) ? d.items : [];
+      const count = Number(d.count) || items.length;
+      return {
+        title: `Consumo de ${d.user || 'un empleado'}: ${money(d.total)}`,
+        body: items.slice(0, 4).join(', ') + (count > 4 ? ` y ${count - 4} más` : ''),
+        url: '/employee-consumption',
       };
     }
     default:

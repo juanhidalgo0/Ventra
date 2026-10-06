@@ -120,6 +120,29 @@ export class CashRegisterService {
     return session;
   }
 
+  /**
+   * Consumo de empleados del turno (ventas INTERNAL, sin cargo): quién consumió qué. Va en el
+   * resumen del cierre solo a modo informativo: no cambia ningún monto de la caja.
+   */
+  async employeeConsumptionOf(sessionId: string) {
+    const sales = await this.prisma.sale.findMany({
+      where: { sessionId, status: 'INTERNAL' },
+      include: { items: { select: { productName: true, quantity: true } }, user: { select: { fullName: true, username: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const byUser = new Map<string, { name: string; units: number; items: Map<string, number> }>();
+    for (const sale of sales) {
+      const name = sale.user?.fullName || sale.user?.username || 'Usuario';
+      const e = byUser.get(sale.userId) || { name, units: 0, items: new Map<string, number>() };
+      for (const i of sale.items) {
+        e.units += i.quantity;
+        e.items.set(i.productName, (e.items.get(i.productName) || 0) + i.quantity);
+      }
+      byUser.set(sale.userId, e);
+    }
+    return [...byUser.values()].map((e) => ({ name: e.name, units: e.units, items: [...e.items].map(([name, quantity]) => ({ name, quantity })) }));
+  }
+
   async close(sessionId: string, userId: string, data: { closingAmountCounted?: number; closingNotes?: string; clientId?: string }) {
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Sesión de caja no encontrada');
@@ -214,7 +237,8 @@ export class CashRegisterService {
       virtual1Surcharge,
       virtual2Sales: virtual2Total,
       virtual2Base,
-      virtual2Surcharge
+      virtual2Surcharge,
+      employeeConsumption: await this.employeeConsumptionOf(sessionId),
     };
 
     const updated = await this.prisma.cashRegisterSession.update({
@@ -923,7 +947,8 @@ export class CashRegisterService {
       virtual1Surcharge,
       virtual2Sales: virtual2Total,
       virtual2Base,
-      virtual2Surcharge
+      virtual2Surcharge,
+      employeeConsumption: await this.employeeConsumptionOf(session.id),
     };
 
     await this.prisma.cashRegisterSession.update({

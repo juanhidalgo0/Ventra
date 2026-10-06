@@ -48,6 +48,24 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   // cuando el cajero sale del cartel (así puede imprimir el comprobante)
   useEffect(() => holdLogout(), []);
 
+  // Consumo de empleados del turno (sin cargo): solo informativo, no cambia ningún monto
+  const [consumption, setConsumption] = useState<{ name: string; items: { name: string; quantity: number }[] }[]>([]);
+  useEffect(() => {
+    api.get('/sales', { params: { sessionId: activeSession.id, limit: 2500 } })
+      .then(({ data }) => {
+        const byUser = new Map<string, { name: string; items: Map<string, number> }>();
+        for (const sale of (Array.isArray(data) ? data : []).filter((x: any) => x.status === 'INTERNAL')) {
+          const name = sale.user?.fullName || sale.user?.username || 'Usuario';
+          const e = byUser.get(sale.userId) || { name, items: new Map<string, number>() };
+          for (const i of sale.items || []) e.items.set(i.productName, (e.items.get(i.productName) || 0) + i.quantity);
+          byUser.set(sale.userId, e);
+        }
+        setConsumption([...byUser.values()].map((e) => ({ name: e.name, items: [...e.items].map(([name, quantity]) => ({ name, quantity })) })));
+      })
+      .catch(() => setConsumption([]));
+  }, [activeSession.id]);
+  const qtyText = (n: number) => (Math.round(Number(n) * 100) / 100).toLocaleString('es-AR');
+
   const reloadSession = async () => {
     try {
       const { data } = await api.get(`/cash/session/${activeSession.id}`);
@@ -732,6 +750,16 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                     <p className="text-xs font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest mb-0.5">Total Esperado</p>
                     <p className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(totalExpected)}</p>
                   </div>
+                  {consumption.length > 0 && (
+                    <div className="mt-2.5 pt-2.5 border-t border-dashed border-slate-300 dark:border-slate-700">
+                      <p className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-1.5">☕ Consumo de empleados (sin cargo)</p>
+                      {consumption.map((e) => (
+                        <p key={e.name} className="text-[13px] text-slate-700 dark:text-slate-300 leading-snug">
+                          <b>{e.name}:</b> {e.items.map((i) => `${qtyText(i.quantity)} ${i.name}`).join(', ')}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Declarado */}
@@ -1019,6 +1047,31 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   </tfoot>
                 </table>
               </div>
+
+              {/* C: Consumo de empleados (sin cargo, solo informativo) */}
+              {consumption.length > 0 && (
+                <div style={{ marginBottom: '2.5mm' }}>
+                  <h3 style={{ fontSize: '9px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #000000', paddingBottom: '1mm', marginBottom: '1.5mm' }}>Consumo de empleados (sin cargo, informativo)</h3>
+                  <table style={{ width: '100%', fontSize: '8.5px', borderCollapse: 'collapse', color: '#000000' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #000000', fontWeight: 'bold' }}>
+                        <th style={{ textAlign: 'left', padding: '2px 3px' }}>Empleado</th>
+                        <th style={{ textAlign: 'left', padding: '2px 3px' }}>Producto</th>
+                        <th style={{ textAlign: 'right', padding: '2px 3px' }}>Cant.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {consumption.flatMap((e) => e.items.map((it, idx) => (
+                        <tr key={e.name + it.name} style={{ borderBottom: '1px solid #000000' }}>
+                          <td style={{ padding: '2px 3px', fontWeight: 'bold' }}>{idx === 0 ? e.name.toUpperCase() : ''}</td>
+                          <td style={{ padding: '2px 3px' }}>{it.name}</td>
+                          <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{qtyText(it.quantity)}</td>
+                        </tr>
+                      )))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* D: Conciliación General */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '4mm', marginTop: '2mm', borderTop: '2px solid #000000', paddingTop: '2mm' }}>

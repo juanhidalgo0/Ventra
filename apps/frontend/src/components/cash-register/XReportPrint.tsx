@@ -85,9 +85,19 @@ export function parseXSession(session: any) {
   };
 }
 
+/** Consumo de empleados del turno (sin cargo, informativo): viene en el resumen del cierre. */
+export interface ShiftConsumption { name: string; units: number; items: { name: string; quantity: number }[] }
+export function shiftConsumption(session: any): ShiftConsumption[] {
+  let parsed: any = session?.closingSummaryParsed;
+  if (!parsed && session?.closingSummary) { try { parsed = JSON.parse(session.closingSummary); } catch { parsed = null; } }
+  return Array.isArray(parsed?.employeeConsumption) ? parsed.employeeConsumption : [];
+}
+const qtyText = (n: number) => (Math.round(Number(n) * 100) / 100).toLocaleString('es-AR');
+
 export default function XReportPrint({ session }: { session: any }) {
   const data = parseXSession(session);
   if (!data) return null;
+  const consumption = shiftConsumption(session);
   const cashSales = data.summary.paymentBreakdown?.CASH || 0;
   const cloverSales = data.summary.paymentBreakdown?.CLOVER || 0;
   const mpSales = data.summary.paymentBreakdown?.MERCADOPAGO || 0;
@@ -371,6 +381,31 @@ export default function XReportPrint({ session }: { session: any }) {
             </tfoot>
           </table>
         </div>
+
+        {/* C: Consumo de empleados (sin cargo, solo informativo: no cambia los montos) */}
+        {consumption.length > 0 && (
+          <div style={{ marginBottom: '2.5mm' }}>
+            <h3 style={{ fontSize: '9px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #000000', paddingBottom: '1mm', marginBottom: '1.5mm' }}>Sección C: Consumo de empleados (sin cargo, informativo)</h3>
+            <table style={{ width: '100%', fontSize: '8.5px', borderCollapse: 'collapse', color: '#000000' }}>
+              <thead>
+                <tr style={{ borderBottom: '1.5px solid #000000', fontWeight: 'bold' }}>
+                  <th style={{ textAlign: 'left', padding: '2px 3px' }}>Empleado</th>
+                  <th style={{ textAlign: 'left', padding: '2px 3px' }}>Producto</th>
+                  <th style={{ textAlign: 'right', padding: '2px 3px' }}>Cant.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consumption.flatMap((e) => e.items.map((it, idx) => (
+                  <tr key={e.name + it.name} style={{ borderBottom: '1px solid #000000' }}>
+                    <td style={{ padding: '2px 3px', fontWeight: 'bold' }}>{idx === 0 ? e.name.toUpperCase() : ''}</td>
+                    <td style={{ padding: '2px 3px' }}>{it.name}</td>
+                    <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{qtyText(it.quantity)}</td>
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* D: Conciliación General */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '4mm', marginTop: '2mm', borderTop: '2px solid #000000', paddingTop: '2mm' }}>

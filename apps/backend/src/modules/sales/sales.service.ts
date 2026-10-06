@@ -18,7 +18,18 @@ interface CreateSaleDto {
   pickedUpBy?: string;
   appliedPromotions?: { promotionId: string; quantitySold: number }[];
   isAcopio?: boolean;
+  /** Consumo propio del empleado logueado: ver createEmployeeConsumption */
+  employeeConsumption?: boolean;
 }
+
+/**
+ * Consumo de empleados, SIN CARGO: el empleado arma el ticket con su usuario y lo registra como
+ * consumo propio. Queda como venta a $0 con estado INTERNAL: descuenta el stock y nada más. No
+ * suma a las ventas, a la caja ni a la facturación (todo eso cuenta solo ventas COMPLETED).
+ * El dueño lo activa en Configuración (store_settings.employee_consumption) y lo ve por empleado,
+ * valuado al costo, en /sales/employee-consumption.
+ */
+export const CONSUMPTION_METHOD = 'CONSUMO';
 
 @Injectable()
 export class SalesService {
@@ -31,9 +42,61 @@ export class SalesService {
     private fiscal: FiscalService,
   ) {}
 
+  /** ¿El dueño activó el consumo de empleados? */
+  async employeeConsumptionEnabled(): Promise<boolean> {
+    type Row = { value: string };
+    const rows: Row[] = await this.prisma
+      .$queryRawUnsafe<Row[]>(`SELECT value FROM store_settings WHERE id = 'employee_consumption'`)
+      .catch(() => [] as Row[]);
+    try { return String(JSON.parse(rows[0]?.value ?? 'null')) === '1'; } catch { return false; }
+  }
+
+  /** Consumo de empleados de un mes (AAAA-MM, por defecto el actual): por empleado, valuado al costo de hoy. */
+  async employeeConsumptionReport(month?: string) {
+    const now = new Date();
+    const [y, m] = /^\d{4}-\d{2}$/.test(String(month || '')) ? String(month).split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
+    const from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
+    const sales = await this.prisma.sale.findMany({
+      where: { status: 'INTERNAL', createdAt: { gte: from, lt: to } },
+      include: { items: { include: { product: { select: { costPrice: true } } } }, user: { select: { id: true, fullName: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    const byUser = new Map<string, any>();
+    let totalCost = 0;
+    for (const s of sales) {
+      const key = s.userId;
+      if (!byUser.has(key)) byUser.set(key, { userId: key, name: s.user?.fullName || s.user?.username || 'Usuario', username: s.user?.username || '', count: 0, units: 0, cost: 0, products: new Map(), sales: [] });
+      const e = byUser.get(key);
+      let saleCost = 0;
+      const items = s.items.map((i) => {
+        const cost = (Number(i.product?.costPrice) || 0) * i.quantity;
+        saleCost += cost; e.units += i.quantity;
+        const p = e.products.get(i.productName) || { name: i.productName, quantity: 0, cost: 0 };
+        p.quantity += i.quantity; p.cost += cost; e.products.set(i.productName, p);
+        return { name: i.productName, quantity: i.quantity, cost };
+      });
+      e.count += 1; e.cost += saleCost; totalCost += saleCost;
+      e.sales.push({ id: s.id, saleNumber: s.saleNumber, createdAt: s.createdAt, cost: saleCost, items });
+    }
+    const employees = [...byUser.values()]
+      .map((e) => ({ ...e, products: [...e.products.values()].sort((a: any, b: any) => b.cost - a.cost) }))
+      .sort((a, b) => b.cost - a.cost);
+    return { month: `${y}-${String(m).padStart(2, '0')}`, totalCost, count: sales.length, employees };
+  }
+
   async create(userId: string, dto: CreateSaleDto) {
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: dto.sessionId } });
     if (!session || session.status !== 'OPEN') throw new BadRequestException('No hay una caja abierta para esta sesión');
+
+    const consumption = !!dto.employeeConsumption;
+    // Valor al costo de lo consumido (para el aviso al dueño)
+    let consumedCost = 0;
+    if (consumption) {
+      if (!(await this.employeeConsumptionEnabled())) throw new BadRequestException('El consumo de empleados no está activado. Lo activa el dueño en Configuración.');
+      if (dto.clientId || dto.isAcopio || dto.appliedPromotions?.length) throw new BadRequestException('Un consumo propio no lleva cliente, acopio ni promos');
+      if (!dto.items?.length || dto.items.some((i) => !(Number(i.quantity) > 0))) throw new BadRequestException('El consumo tiene que tener productos');
+    }
 
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
     // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
@@ -87,9 +150,11 @@ export class SalesService {
         if (!product.isActive) throw new BadRequestException(`Producto inactivo: ${product.name}`);
         // Removed stock check to allow negative stock sales as per user request
 
-        const unitPrice = item.price !== undefined ? item.price : product.salePrice;
+        // Consumo de empleado: sin cargo
+        const unitPrice = consumption ? 0 : item.price !== undefined ? item.price : product.salePrice;
+        if (consumption) consumedCost += (Number(product.costPrice) || 0) * item.quantity;
         const itemSubtotal = unitPrice * item.quantity;
-        const itemDiscount = item.discount || 0;
+        const itemDiscount = consumption ? 0 : item.discount || 0;
         const itemTotal = itemSubtotal - itemDiscount;
         saleItems.push({ productId: product.id, productName: (item as any).productName || product.name, unitPrice, quantity: item.quantity, subtotal: itemSubtotal, discount: itemDiscount, total: itemTotal });
         subtotal += itemTotal;
@@ -120,7 +185,7 @@ export class SalesService {
                   quantity: -childQty,
                   stockBefore: childStockBefore,
                   stockAfter: childNewStock,
-                  reference: isItemReturn ? `Devolución Kit: ${product.name}` : `Despiece Kit: ${product.name}`
+                  reference: consumption ? `Consumo de empleado (kit: ${product.name})` : isItemReturn ? `Devolución Kit: ${product.name}` : `Despiece Kit: ${product.name}`
                 }
               });
               productsToSync.push({
@@ -146,7 +211,7 @@ export class SalesService {
               quantity: -item.quantity, 
               stockBefore, 
               stockAfter: newStock, 
-              reference: isItemReturn ? 'Devolución en Venta POS' : 'Venta POS' 
+              reference: consumption ? 'Consumo de empleado' : isItemReturn ? 'Devolución en Venta POS' : 'Venta POS' 
             } 
           });
 
@@ -158,10 +223,13 @@ export class SalesService {
         }
       }
 
-      const totalPayments = dto.payments.reduce((sum, p) => sum + p.amount, 0);
-      if (Math.abs(totalPayments - subtotal) > 0.01) throw new BadRequestException(`El total de pagos ($${totalPayments}) no coincide con el total de la venta ($${subtotal})`);
+      // El consumo no se cobra: un solo "pago" interno de $0 que no toca la caja
+      const payments: { method: string; amount: number; reference?: string }[] = consumption ? [{ method: CONSUMPTION_METHOD, amount: 0 }] : dto.payments;
+      if (!consumption && payments.some((p) => p.method === CONSUMPTION_METHOD)) throw new BadRequestException('Forma de pago inválida');
+      const totalPayments = payments.reduce((sum, p) => sum + p.amount, 0);
+      if (Math.abs(totalPayments - subtotal) > 0.01) throw new BadRequestException(`El total de pagos (${totalPayments}) no coincide con el total de la venta (${subtotal})`);
 
-      const paymentMethodSummary = dto.payments.length === 1 ? dto.payments[0].method : 'MIXED';
+      const paymentMethodSummary = payments.length === 1 ? payments[0].method : 'MIXED';
       // Cada caja numera en su propio rango (ver sync/numbering)
       const range = await numberRange(tx);
       const lastSale = await tx.sale.findFirst({ where: { saleNumber: { gte: range.from, lt: range.to } }, orderBy: { saleNumber: 'desc' } });
@@ -170,17 +238,20 @@ export class SalesService {
 
       const newSale = await tx.sale.create({
         data: {
-          saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary, notes: dto.notes, clientId: dto.clientId, pickedUpBy: dto.pickedUpBy || null,
+          saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary,
+          notes: consumption ? 'Consumo de empleado (sin cargo)' : dto.notes,
+          ...(consumption ? { status: 'INTERNAL' } : {}),
+          clientId: dto.clientId, pickedUpBy: dto.pickedUpBy || null,
           isAcopio: dto.isAcopio ? true : false,
           acopioStatus: dto.isAcopio ? 'PENDING' : 'NONE',
           items: { create: saleItems },
-          payments: { create: dto.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })) },
+          payments: { create: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })) },
         },
         include: { items: true, payments: true, user: { select: { fullName: true, username: true } } },
       });
 
       // Handle Credit Account (DEBT)
-      const debtAmount = dto.payments.filter(p => p.method === 'DEBT').reduce((sum, p) => sum + p.amount, 0);
+      const debtAmount = payments.filter(p => p.method === 'DEBT').reduce((sum, p) => sum + p.amount, 0);
       if (debtAmount !== 0) {
         if (!dto.clientId) throw new BadRequestException('Se requiere un cliente para ventas a crédito o saldos a favor');
         const client = await tx.client.findUnique({ where: { id: dto.clientId } });
@@ -247,6 +318,16 @@ export class SalesService {
       this.prisma.product.findMany({ where: { id: { in: soldIds } }, select: { id: true, name: true, stock: true, minStock: true, unlimitedStock: true } })
         .then((ps) => this.notify.checkLowStock(ps, sold))
         .catch(() => { /* el aviso no puede frenar la venta */ });
+    }
+
+    if (consumption) {
+      // Aviso al dueño: quién consumió qué. No se factura ni entra a la caja.
+      this.notify.enqueue('employeeConsumption', {
+        user: sale.user?.fullName || sale.user?.username || 'Un empleado',
+        total: Math.round(consumedCost), saleId: sale.id, count: sale.items.length,
+        items: sale.items.slice(0, 6).map((i) => `${i.quantity} ${i.productName}`),
+      });
+      return sale;
     }
 
     // Con factura automática la venta entra a la cola de comprobantes (no la frena: ARCA va aparte)
@@ -327,7 +408,7 @@ export class SalesService {
   async cancel(id: string, userId: string) {
     const sale = await this.prisma.sale.findUnique({ where: { id }, include: { items: true, payments: true } });
     if (!sale) throw new NotFoundException('Venta no encontrada');
-    if (sale.status !== 'COMPLETED') throw new BadRequestException('Solo se pueden cancelar ventas completadas');
+    if (sale.status !== 'COMPLETED' && sale.status !== 'INTERNAL') throw new BadRequestException('Solo se pueden cancelar ventas completadas');
 
     // El Cierre Z es el cierre definitivo del día: si la venta ya entró en uno, anularla
     // dejaría el Z con números que no coinciden con la caja.
@@ -385,7 +466,7 @@ export class SalesService {
       }
 
       const updated = await tx.sale.update({ where: { id }, data: { status: 'CANCELLED' }, include: { items: true, payments: true } });
-      await tx.auditLog.create({ data: { userId, entityType: 'SALE', entityId: sale.id, action: 'CANCEL', oldValues: JSON.stringify({ status: 'COMPLETED' }), newValues: JSON.stringify({ status: 'CANCELLED' }) } });
+      await tx.auditLog.create({ data: { userId, entityType: 'SALE', entityId: sale.id, action: 'CANCEL', oldValues: JSON.stringify({ status: sale.status }), newValues: JSON.stringify({ status: 'CANCELLED' }) } });
       return updated;
     });
 
@@ -715,6 +796,12 @@ export class SalesService {
       }),
     ]);
 
+    // Consumo de empleados del mes, valuado al costo (las ventas INTERNAL son sin cargo)
+    const internalRows = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT COALESCE(SUM(si.quantity * COALESCE(p.cost_price, 0)), 0) AS total
+       FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+       WHERE s.status = 'INTERNAL' AND s.created_at >= ? AND s.created_at <= ?`, startOfMonth, endOfPeriod,
+    ).catch(() => [{ total: 0 }]);
     const totalSales = num(totalsRows[0]?.count);
     const totalRevenue = num(totalsRows[0]?.total);
     const totalCost = num(costRows[0]?.cost);
@@ -778,7 +865,7 @@ export class SalesService {
         purchases: monthlyPurchaseTotal,
         supplierPayments: monthlySuppPaymentTotal,
         boxSales: monthlyRevenue,
-        internalConsumption: 0
+        internalConsumption: num(internalRows[0]?.total)
       }
     };
   }

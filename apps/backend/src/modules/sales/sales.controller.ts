@@ -51,6 +51,12 @@ export class SalesController {
   @Roles('ADMIN')
   getTodaySummary(@Query('from') from?: string, @Query('to') to?: string) { return this.salesService.getTodaySummary(from, to); }
 
+  /** Consumo de empleados (sin cargo) del mes, por empleado y valuado al costo. ?month=AAAA-MM */
+  @Get('employee-consumption')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getEmployeeConsumption(@Query('month') month?: string) { return this.salesService.employeeConsumptionReport(month); }
+
   @Get('owner-summary')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

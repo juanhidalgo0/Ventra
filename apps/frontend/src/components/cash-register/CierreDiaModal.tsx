@@ -233,7 +233,9 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
       virtual2Surcharge = virtual2Sales - virtual2Base;
     }
 
+    const consumption: { name: string; items: { name: string; quantity: number }[] }[] = Array.isArray(sum.employeeConsumption) ? sum.employeeConsumption : [];
     return {
+      consumption,
       notesClean,
       metadata,
       totalGross,
@@ -549,6 +551,18 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
                           <p style={{ margin: '0.5mm 0 0 0', fontSize: '8.5px', fontStyle: 'italic', color: '#000000', wordBreak: 'break-word', lineHeight: 1.2 }}>{sData.notesClean}</p>
                         </div>
                       )}
+
+                      {/* G: Consumo de empleados del turno (sin cargo, informativo) */}
+                      {sData.consumption.length > 0 && (
+                        <div style={{ marginTop: '1.5mm', border: '1px solid #000000', borderRadius: '1.5mm', padding: '1.5mm' }}>
+                          <span style={{ fontSize: '8px', fontWeight: '900', textTransform: 'uppercase', display: 'block', color: '#000000' }}>Consumo de empleados (sin cargo):</span>
+                          {sData.consumption.map((e) => (
+                            <p key={e.name} style={{ margin: '0.5mm 0 0 0', fontSize: '8.5px', color: '#000000', lineHeight: 1.25 }}>
+                              <b>{e.name.toUpperCase()}:</b> {e.items.map((it) => `${(Math.round(Number(it.quantity) * 100) / 100).toLocaleString('es-AR')} ${it.name}`).join(', ')}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -658,6 +672,33 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
                           <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>-{fmt(movement.amount)}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Consumo de empleados por turno (sin cargo, informativo) */}
+              {sessionsToRender.some((s: any) => parseSessionData(s).consumption.length > 0) && (
+                <div style={{ marginBottom: '3mm' }}>
+                  <h3 style={{ fontSize: '9px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #000000', paddingBottom: '1mm', marginBottom: '1mm' }}>Consumo de empleados (sin cargo, informativo)</h3>
+                  <table style={{ width: '100%', fontSize: '8.5px', borderCollapse: 'collapse', color: '#000000' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #000000', fontWeight: 'bold' }}>
+                        <th style={{ textAlign: 'left', padding: '2px 3px' }}>Turno</th>
+                        <th style={{ textAlign: 'left', padding: '2px 3px' }}>Empleado</th>
+                        <th style={{ textAlign: 'left', padding: '2px 3px' }}>Producto</th>
+                        <th style={{ textAlign: 'right', padding: '2px 3px' }}>Cant.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionsToRender.flatMap((session: any, sIdx: number) => parseSessionData(session).consumption.flatMap((e) => e.items.map((it, iIdx) => (
+                        <tr key={`${sIdx}-${e.name}-${it.name}`} style={{ borderBottom: '1px solid #000000' }}>
+                          <td style={{ padding: '2px 3px' }}>{iIdx === 0 ? `${session.user?.fullName || 'Turno'} · ${session.terminalName || ''}` : ''}</td>
+                          <td style={{ padding: '2px 3px', fontWeight: 'bold' }}>{iIdx === 0 ? e.name.toUpperCase() : ''}</td>
+                          <td style={{ padding: '2px 3px' }}>{it.name}</td>
+                          <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{(Math.round(Number(it.quantity) * 100) / 100).toLocaleString('es-AR')}</td>
+                        </tr>
+                      ))))}
                     </tbody>
                   </table>
                 </div>

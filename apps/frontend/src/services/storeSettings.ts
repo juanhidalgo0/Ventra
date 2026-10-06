@@ -32,6 +32,8 @@ const SHARED: Record<string, string> = {
   purchase_default_margin: 'purchase_default_margin',
   purchase_use_iva: 'purchase_use_iva',
   earnings_division_partners: 'earnings_division_partners',
+  /** Los empleados pueden registrar su consumo (sin cargo, solo descuenta stock): '1' / '0' */
+  employee_consumption: 'employee_consumption',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;

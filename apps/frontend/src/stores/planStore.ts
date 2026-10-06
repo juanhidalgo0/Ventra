@@ -86,7 +86,7 @@ export const usePlanStore = create<PlanState>((set) => ({
 }));
 
 /** Secciones que solo incluye el plan Caja (sistema de ventas). */
-const CAJA_PATHS = ['/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard', '/fiscal', '/earnings-division', '/quotes', '/inicio'];
+const CAJA_PATHS = ['/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard', '/fiscal', '/earnings-division', '/quotes', '/inicio', '/employee-consumption'];
 /** Secciones que solo incluye el plan Tienda (tienda online). */
 const TIENDA_PATHS = ['/tienda', '/online-store', '/pedidos'];
 /** Agenda de turnos: planes Tienda, Agenda y Full. */

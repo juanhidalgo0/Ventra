@@ -31,6 +31,7 @@ const CuentasCorrientesScreen = lazy(() => import('./components/clients/CuentasC
 const PromosScreen = lazy(() => import('./components/products/PromosScreen'));
 const DashboardScreen = lazy(() => import('./components/dashboard/DashboardScreen'));
 const ReportsScreen = lazy(() => import('./components/dashboard/ReportsScreen'));
+const EmployeeConsumptionScreen = lazy(() => import('./components/reports/EmployeeConsumptionScreen'));
 const FiscalScreen = lazy(() => import('./components/dashboard/FiscalScreen'));
 const PurchasesScreen = lazy(() => import('./components/products/PurchasesScreen'));
 const StockControlScreen = lazy(() => import('./components/products/StockControlScreen'));
@@ -526,6 +527,7 @@ export default function App() {
                     <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />
                     <Route path="/gastos" element={<OwnerMobileOr mobile={<MobileExpensesScreen />}><GastosScreen /></OwnerMobileOr>} />
                     <Route path="/reports" element={<OwnerMobileOr mobile={<MobileReportsScreen />}><ReportsScreen /></OwnerMobileOr>} />
+                    <Route path="/employee-consumption" element={<EmployeeConsumptionScreen />} />
                     
                     <Route path="/inventory" element={<ProductsScreen />} />
                     <Route path="/promos" element={<OwnerMobileOr mobile={<MobilePromosScreen />}><PromosScreen /></OwnerMobileOr>} />

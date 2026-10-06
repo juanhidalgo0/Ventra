@@ -17,6 +17,7 @@ import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
 import { hasFeature } from '../../stores/businessStore';
 import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
 import PointChargeOverlay from './PointChargeOverlay';
+import { useAuthStore } from '../../stores/authStore';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -455,6 +456,35 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   const handleNewSale = () => {
     onSuccess();
+  };
+
+  /**
+   * Consumo propio del empleado (sin cargo): descuenta el stock y no toca la caja. Queda a nombre
+   * del usuario conectado; el servidor lo registra a $0 y le avisa al dueño. Se activa en
+   * Configuración (store_settings.employee_consumption).
+   */
+  const consumptionEnabled = !isDebtPayment && !practice && localStorage.getItem('employee_consumption') === '1';
+  const registerConsumption = async () => {
+    if (processingRef.current) return;
+    const me = useAuthStore.getState().user;
+    if (!confirm(`¿Registrar estos productos como consumo de ${me?.fullName || me?.username || 'tu usuario'}?\n\nEs sin cargo: descuenta el stock y no entra en la caja.`)) return;
+    processingRef.current = true;
+    setIsProcessing(true);
+    try {
+      await api.post('/sales', {
+        sessionId,
+        employeeConsumption: true,
+        payments: [],
+        items: adjustedItems.map((i: any) => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, price: i.price })),
+      });
+      toast.success('Consumo registrado: se descontó del stock');
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo registrar el consumo');
+    } finally {
+      processingRef.current = false;
+      setIsProcessing(false);
+    }
   };
 
   /**
@@ -1338,6 +1368,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
         {/* Fixed Modal Footer */}
         <div className="shrink-0 pt-3 border-t border-slate-200 dark:border-slate-750">
+          {consumptionEnabled && (
+            <button type="button" onClick={registerConsumption} disabled={isProcessing}
+              className="w-full mb-2 py-2.5 px-4 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer transition-all">
+              ☕ Consumo propio (sin cargo)
+            </button>
+          )}
           <button data-tour="pay-finalizar" onClick={handleConfirm}
             disabled={isProcessing || !paymentType || (paymentType === 'CASH' && !disableChangeCalc && cashReceived < finalTotal) || (paymentType === 'MIXED' && !mixedValid) || (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment)}
             className="w-full btn-success py-3.5 px-4 text-base flex items-center justify-center gap-2.5 disabled:opacity-30 disabled:grayscale shadow-lg shadow-emerald-600/20 cursor-pointer transition-all active:scale-[0.98] rounded-2xl" id="confirm-payment-btn">

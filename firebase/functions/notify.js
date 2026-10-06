@@ -23,6 +23,7 @@ const DEFAULT_PREFS = {
   expiry: true,        // productos vencidos o por vencer (una vez por día)
   mpUnmatched: true,   // entró un pago a Mercado Pago y no hay venta de MP de ese monto
   saleCancel: false,   // venta anulada (solo importes grandes)
+  employeeConsumption: true, // un empleado registró un consumo propio
   dailySummary: false, // resumen del día
   summaryHour: 21,
   quietFrom: 23,       // horario de silencio (salvo pedidos)
@@ -110,6 +111,15 @@ function messageFor(ev) {
         title: `${d.terminal || "Una caja"} cerró con ${diff < 0 ? "faltante" : "sobrante"} de ${money(Math.abs(diff))}`,
         body: `${d.user || "Sin usuario"} · esperado ${money(d.expected)} · declarado ${money(d.counted)}`,
         url: "/#/cash-control", tag: "cash-" + (d.sessionId || Date.now()),
+      };
+    }
+    case "employeeConsumption": {
+      const items = (Array.isArray(d.items) ? d.items : []).slice(0, 6).map((x) => String(x).slice(0, 60));
+      const count = Number(d.count) || items.length;
+      return {
+        title: `Consumo de ${String(d.user || "un empleado").slice(0, 40)}: ${money(d.total)}`,
+        body: items.slice(0, 4).join(", ") + (count > 4 ? ` y ${count - 4} más` : ""),
+        url: "/#/employee-consumption", tag: "consumo-" + (d.saleId || Date.now()),
       };
     }
     case "saleCancel":

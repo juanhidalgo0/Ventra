@@ -94,6 +94,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     const saved = localStorage.getItem('allow_negative_stock');
     return saved ? saved === 'true' : true;
   });
+  // Consumo de empleados: sin cargo, solo descuenta stock (ver sales.service createEmployeeConsumption)
+  const [employeeConsumption, setEmployeeConsumption] = useState(() => localStorage.getItem('employee_consumption') === '1');
   const [lowStockAlerts, setLowStockAlerts] = useState(() => {
     const saved = localStorage.getItem('low_stock_alerts');
     return saved ? saved === 'true' : true;
@@ -632,6 +634,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     // Del comercio (viajan a todos los equipos); el modo rendimiento es de esta PC
     setStoreSetting('allow_negative_stock', String(allowNegativeStock));
     setStoreSetting('low_stock_alerts', String(lowStockAlerts));
+    setStoreSetting('employee_consumption', employeeConsumption ? '1' : '0');
     setStoreSetting('hourly_rate', String(hourlyRate));
     localStorage.setItem('performance_mode', String(performanceMode));
     setStoreSetting('pos_disable_change_calculator', String(disableChangeCalculator));
@@ -993,6 +996,19 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                           type="checkbox" 
                           checked={allowNegativeStock} 
                           onChange={(e) => setAllowNegativeStock(e.target.checked)} 
+                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between cursor-pointer group">
+                        <div className="max-w-[80%]">
+                          <span className="text-xs font-bold text-slate-700 block">Consumo de empleados (sin cargo)</span>
+                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Cada empleado registra lo que consume con su usuario: descuenta el stock y no toca la caja. Te avisamos al celular. <a href="#/employee-consumption" onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold underline">Ver consumos</a></span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={employeeConsumption}
+                          onChange={(e) => setEmployeeConsumption(e.target.checked)}
                           className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
                         />
                       </label>
