@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<!-- Plantilla de las imágenes para compartir (1200×630). Se generan con firebase/og-src/build-og.js -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=block" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; margin:0; }
+  html, body{ width:1200px; height:630px; overflow:hidden; }
+  body{ font-family:Inter, sans-serif; color:#F6F2EC; position:relative;
+    background:radial-gradient(700px 420px at 92% -8%, rgba(52,172,126,.42), transparent 62%), radial-gradient(520px 380px at 70% 110%, rgba(22,113,96,.55), transparent 60%), #06261D; }
+  body::before{ content:''; position:absolute; inset:0; opacity:.55;
+    background-image:linear-gradient(rgba(246,242,236,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(246,242,236,.05) 1px, transparent 1px);
+    background-size:56px 56px; -webkit-mask-image:radial-gradient(ellipse 80% 80% at 30% 40%, #000 30%, transparent 80%); }
+  .left{ position:absolute; left:72px; top:78px; width:560px; }
+  .brand{ display:flex; align-items:center; gap:14px; font-size:30px; font-weight:700; letter-spacing:-.03em; }
+  .brand img{ width:52px; height:52px; border-radius:14px; }
+  .eyebrow{ margin-top:44px; font-size:16px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#67C7A0; }
+  h1{ margin-top:14px; font-size:66px; line-height:1.02; font-weight:800; letter-spacing:-.045em; }
+  h1 span{ color:#67C7A0; display:block; }
+  h1.long{ font-size:54px; }
+  .sub{ margin-top:22px; font-size:24px; line-height:1.4; color:rgba(246,242,236,.72); }
+  .foot{ position:absolute; left:72px; bottom:58px; display:flex; align-items:center; gap:14px; font-size:22px; font-weight:650; color:#67C7A0; }
+  .price{ display:inline-flex; align-items:center; height:42px; padding:0 18px; border-radius:999px; background:#F6F2EC; color:#06261D; font-weight:750; font-size:20px; }
+  /* Celular con WhatsApp */
+  .phone{ position:absolute; right:84px; top:84px; width:340px; height:640px; border-radius:48px; background:#0B0F0E; padding:12px; box-shadow:0 40px 90px -20px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.08) inset; transform:rotate(3deg); }
+  .scr{ height:100%; border-radius:37px; overflow:hidden; background:#E7DDD3; }
+  .wa-top{ background:#075E54; color:#fff; display:flex; align-items:center; gap:12px; padding:34px 18px 14px; }
+  .av{ width:40px; height:40px; border-radius:50%; background:#F6F2EC; color:#06261D; display:grid; place-items:center; font-weight:800; font-size:15px; }
+  .wa-top b{ display:block; font-size:18px; }
+  .wa-top small{ font-size:13px; opacity:.8; }
+  .body{ padding:16px 12px; display:flex; flex-direction:column; gap:9px; font-size:16.5px; line-height:1.42; color:#111B21; }
+  .bub{ max-width:90%; background:#fff; border-radius:12px; border-top-left-radius:3px; padding:10px 12px 8px; box-shadow:0 1px .5px rgba(0,0,0,.13); }
+  .bub.out{ align-self:flex-end; background:#D9FDD3; border-radius:12px; border-top-right-radius:3px; }
+  .bub small{ display:block; text-align:right; font-size:12px; color:#667781; }
+  .btns{ display:grid; gap:5px; max-width:90%; }
+  .btns span{ background:#fff; color:#027EB5; text-align:center; font-weight:600; padding:10px; border-radius:12px; font-size:16px; }
+  .toast{ position:absolute; right:170px; top:26px; z-index:2; width:330px; display:flex; gap:12px; align-items:center; background:rgba(255,255,255,.97); color:#0F1F1A; border-radius:22px; padding:14px 16px; box-shadow:0 24px 50px -16px rgba(0,0,0,.7); font-size:16px; line-height:1.35; transform:rotate(-2deg); }
+  .toast img{ width:42px; height:42px; border-radius:11px; }
+  .toast b{ display:block; font-size:17px; }
+  /* Home: tres tarjetas en abanico */
+  .stack{ position:absolute; right:70px; top:96px; width:440px; height:460px; }
+  .card{ position:absolute; width:380px; border-radius:24px; background:#FBF9F5; color:#0F1F1A; padding:20px 22px; box-shadow:0 30px 60px -20px rgba(0,0,0,.75); }
+  .card .k{ font-size:13px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#167160; }
+  .card .t{ margin-top:6px; font-size:22px; font-weight:750; letter-spacing:-.02em; }
+  .card .s{ margin-top:4px; font-size:16px; color:#56655F; }
+  .card .chk{ position:absolute; right:18px; top:18px; padding:6px 12px; border-radius:999px; background:#34AC7E; color:#03140F; font-weight:800; font-size:14px; }
+  .c1{ top:0; right:40px; transform:rotate(-4deg); }
+  .c2{ top:150px; right:0; transform:rotate(2deg); }
+  .c3{ top:300px; right:56px; transform:rotate(-1.5deg); }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand"><img src="../web/ventra-logo.png" alt="">Ventra</div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 id="h1"></h1>
+    <p class="sub" id="sub"></p>
+  </div>
+  <div class="foot"><span id="url"></span><span class="price" id="price"></span></div>
+
+  <div id="wa" hidden>
+    <div class="toast"><img src="../web/ventra-icon-192.png" alt=""><div><b id="tTitle"></b><span id="tText"></span></div></div>
+    <div class="phone"><div class="scr">
+      <div class="wa-top"><div class="av" id="av"></div><div><b id="who"></b><small id="whoSub"></small></div></div>
+      <div class="body" id="chat"></div>
+    </div></div>
+  </div>
+
+  <div id="home" class="stack" hidden>
+    <div class="card c1"><span class="chk">Cobrado ✓</span><div class="k">Caja</div><div class="t">Ticket $15.650</div><div class="s">Yerba, gaseosas y alfajores</div></div>
+    <div class="card c2"><span class="chk">Nuevo</span><div class="k">Tienda online</div><div class="t">Pedido #4821</div><div class="s">Sofía · $16.150 · envío</div></div>
+    <div class="card c3"><span class="chk">Confirmo ✓</span><div class="k">Agenda</div><div class="t">Jueves 16:30</div><div class="s">Corte y brushing con Lu</div></div>
+  </div>
+
+<script>
+var V = {
+  home: { eyebrow:'Caja · Tienda online · Turnos', h1:'Tu negocio,<span>ordenado.</span>', sub:'El sistema para vender en tu local, por internet y con turnos. Empezá con lo que necesitás.', url:'ventra.store', price:'Probá la demo gratis', show:'home' },
+  'tienda-online': { eyebrow:'Tienda online', h1:'Tu tienda online.<span>Los pedidos, por WhatsApp.</span>', sub:'Tus clientes arman el pedido solos y te llega ordenado. Sin comisión por venta.', url:'ventra.store/tienda-online', price:'Desde $9.900/mes', show:'wa',
+    av:'SP', who:'Sofía Pérez', whoSub:'en línea', tTitle:'Nuevo pedido online', tText:'#4821 · Sofía · $16.150',
+    chat:'<div class="bub">Hola! Hice un pedido en <b>Almacén Don Pepe</b><br><br><b>Pedido #4821</b><br><b>2x</b> Yerba mate 1 kg — $10.200<br><b>1x</b> Aceite girasol 1,5 L — $3.950<br><b>1x</b> Galletitas surtidas — $2.000<br><br><b>Total: $16.150</b><br>Envío a: Calle 7 1234<br><b>Pago:</b> Transferencia<small>18:02</small></div><div class="bub out">¡Gracias Sofía! Te lo llevamos en 40 minutos 🙌<small>18:04 ✓✓</small></div>' },
+  turnos: { eyebrow:'Agenda de turnos online', h1:'Menos turnos perdidos.<span>Más tiempo para atender.</span>', sub:'Reservan solos y les llega el recordatorio por WhatsApp.', long:true, url:'ventra.store/turnos', price:'Desde $9.900/mes', show:'wa',
+    av:'CS', who:'Consultorio Sur', whoSub:'Recordatorio de turno', tTitle:'Turno confirmado', tText:'Sofía · Primera consulta, mañana 16:30',
+    chat:'<div class="bub">Hola <b>Sofía</b> 👋 Te recordamos tu turno en <b>Consultorio Sur</b>:<br><br>🩺 Primera consulta con la Lic. Paz<br>📅 Mañana jueves, 16:30 hs<br><br>¿Venís?<small>18:00</small></div><div class="btns"><span>Confirmo</span><span>Necesito cambiarlo</span></div><div class="bub out">Confirmo<small>18:02 ✓✓</small></div>' },
+  peluquerias: { eyebrow:'Peluquerías · Barberías · Uñas · Estética', h1:'Menos turnos perdidos.<span>Más sillas ocupadas.</span>', sub:'Reservas desde tu link y recordatorio por WhatsApp.', long:true, url:'ventra.store/peluquerias', price:'Desde $9.900/mes', show:'wa',
+    av:'EL', who:'Estudio Lu', whoSub:'Recordatorio de turno', tTitle:'Turno confirmado', tText:'Sofía · Corte y brushing, mañana 16:30',
+    chat:'<div class="bub">Hola <b>Sofía</b> 👋 Te recordamos tu turno en <b>Estudio Lu</b>:<br><br>✂️ Corte y brushing con Lu<br>📅 Mañana jueves, 16:30 hs<br><br>¿Venís?<small>18:00</small></div><div class="btns"><span>Confirmo</span><span>Necesito cambiarlo</span></div><div class="bub out">Confirmo<small>18:02 ✓✓</small></div>' }
+};
+var v = V[new URLSearchParams(location.search).get('v')] || V.home;
+['eyebrow', 'h1', 'sub', 'url', 'price'].forEach(function(k){ document.getElementById(k).innerHTML = v[k]; });
+if (v.long) document.getElementById('h1').classList.add('long');
+if (v.show === 'home') document.getElementById('home').hidden = false;
+else {
+  document.getElementById('wa').hidden = false;
+  ['av', 'who', 'whoSub', 'tTitle', 'tText'].forEach(function(k){ document.getElementById(k).textContent = v[k]; });
+  document.getElementById('chat').innerHTML = v.chat;
+}
+</script>
+</body>
+</html>
