@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { PENDING_UPDATE_KEY, useUpdaterStore } from '../../stores/updaterStore';
 import { usePOSStore } from '../../stores/posStore';
+
+/** Minutos sin tocar la caja para instalar una actualización con la app abierta */
+const IDLE_INSTALL_MS = 10 * 60 * 1000;
 import { subscribeToLatestVersion } from '../../services/updatePush';
 
 // Re-check for updates periodically while the app stays open (POS terminals
@@ -56,6 +59,26 @@ export default function Updater() {
     }
     if (usePOSStore.getState().cart.length > 0) return;
     install();
+  }, [status, update, install]);
+
+  // Con la app abierta todo el día (kioscos 24 h) no hay "próximo inicio": la versión descargada
+  // se instala sola cuando la caja queda quieta 10 minutos con el carrito vacío. Reinicia en
+  // menos de un minuto y no corta ninguna venta.
+  useEffect(() => {
+    if (!(window as any).__TAURI__ || status !== 'ready' || !update) return;
+    let lastActivity = Date.now();
+    const touch = () => { lastActivity = Date.now(); };
+    const events = ['keydown', 'mousedown', 'touchstart', 'wheel'] as const;
+    events.forEach((e) => window.addEventListener(e, touch, true));
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivity < IDLE_INSTALL_MS) return;
+      if (usePOSStore.getState().cart.length > 0) return;
+      install();
+    }, 30_000);
+    return () => {
+      clearInterval(timer);
+      events.forEach((e) => window.removeEventListener(e, touch, true));
+    };
   }, [status, update, install]);
 
   return null;
