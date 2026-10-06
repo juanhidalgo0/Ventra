@@ -49,6 +49,8 @@ export interface AgendaConfig {
   kind?: string;
   /** Recordatorio automático por WhatsApp desde el número de Ventra (firebase/functions/whatsapp.js) */
   reminders?: { enabled: boolean; when: ReminderWhen };
+  /** Recordatorio por email, gratis en todos los planes. Sin el campo = prendido. */
+  emailReminders?: { enabled: boolean };
 }
 
 /** Cuándo sale el recordatorio automático (mismas claves que WHEN en whatsapp.js) */
@@ -100,6 +102,8 @@ export interface Booking {
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
   customerPhone?: string;
+  /** Opcional en la reserva online: para el recordatorio por email */
+  customerEmail?: string;
   customerNote?: string;
   customerPhoneKey?: string;
   code?: string;

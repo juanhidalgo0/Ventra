@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
-  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart, BellRing,
+  ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart, BellRing, Mail,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, StoreOwnedElsewhereError, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -511,6 +511,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           <p className="flex items-center gap-2.5"><ClipboardList className="w-4 h-4 text-slate-400" /> {b.serviceName}{b.price ? ` · ${money(b.price)}` : ''}</p>
           {b.staffName && <p className="flex items-center gap-2.5"><User className="w-4 h-4 text-slate-400" /> {b.staffName}</p>}
           {b.customerPhone && <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium" href={`tel:${b.customerPhone}`}>{b.customerPhone}</a></p>}
+          {b.customerEmail && <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium break-all" href={`mailto:${b.customerEmail}`}>{b.customerEmail}</a></p>}
           {b.customerNote && <p className="text-[13px] text-slate-500 whitespace-pre-line border-t border-slate-200 pt-2.5">“{b.customerNote}”</p>}
         </div>
 
@@ -1245,6 +1246,21 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
 
       <Card icon={BellRing} title="Recordatorios por WhatsApp">
         <WhatsAppReminders a={a} setA={setA} />
+      </Card>
+
+      <Card icon={BellRing} title="Recordatorio por email">
+        {/* Gratis en todos los planes: lo manda la nube (firebase/functions/email-reminders.js) */}
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <p className="text-[14px] font-semibold text-slate-800">Mandar recordatorio por email <span className="ml-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5 align-middle">Gratis</span></p>
+            <p className="text-[12.5px] text-slate-500">
+              {a.emailReminders?.enabled === false
+                ? 'Apagado: la reserva online no pide email.'
+                : 'Al reservar online, el cliente puede dejar su email. Le llega un recordatorio con el link para ver o cancelar el turno y el turno para su calendario, a la misma hora que el de WhatsApp.'}
+            </p>
+          </div>
+          <Toggle on={a.emailReminders?.enabled !== false} onChange={(v) => setA({ ...a, emailReminders: { enabled: v } })} />
+        </div>
       </Card>
 
       <div className={`fixed ${mobile ? 'left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] px-4' : 'left-auto right-6 bottom-20'} z-30 transition-all duration-300 ease-out ${dirty ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>

@@ -1580,6 +1580,7 @@ function renderBookingStep(){
       +'<p class="bk-sub">Para confirmarte el turno</p>'
       +'<div class="field" id="b-name"><label for="bName">Nombre y apellido</label><input id="bName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
       +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área.</div></div>'
+      +(AG().emailReminders&&AG().emailReminders.enabled===false?'':'<div class="field" id="b-email"><label for="bEmail">Email (opcional, para recordarte el turno)</label><input id="bEmail" type="email" inputmode="email" autocomplete="email" value="'+esc(saved.email||'')+'" placeholder="juana@gmail.com"><div class="err">Revisá tu email.</div></div>')
       +'<div class="field"><label for="bNote">Algo que quieras aclarar (opcional)</label><textarea id="bNote" placeholder="Ej: es para mi hija de 8 años"></textarea></div>'
       +'<p style="font-size:11.5px;line-height:1.45;color:var(--ink-3);margin:6px 0 0">Tus datos los recibe '+esc(S.cfg.businessName)+' solo para tu turno y para escribirte sobre él. <a href="https://ventra.store/privacidad.html#clientes" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Privacidad</a></p>'
       +(depositOf(sv)?'<p style="font-size:13px;line-height:1.45;background:var(--brand-soft);color:var(--ink-2);border-radius:12px;padding:10px 12px;margin:4px 0 0">Para confirmar el turno se paga una <b>seña de '+money(depositOf(sv))+'</b> con Mercado Pago'+(sv.price>0?' (el resto, '+money(sv.price-depositOf(sv))+', se paga en el turno)':'')+'. Tenés 20 minutos para pagarla.</p>':'')
@@ -1708,12 +1709,15 @@ async function confirmBooking(btn){
   $('#b-name').classList.toggle('invalid',name.length<2); if(name.length<2) ok=false;
   var digits=phone.replace(/\D/g,'');
   $('#b-phone').classList.toggle('invalid',digits.length<8); if(digits.length<8) ok=false;
+  var email=$('#bEmail')?$('#bEmail').value.trim():'';
+  var badEmail=!!email&&!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email);
+  if($('#b-email')) $('#b-email').classList.toggle('invalid',badEmail); if(badEmail) ok=false;
   if(!ok){ toast('Revisá los datos marcados'); return; }
-  try{ var prev=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); localStorage.setItem('ventra_customer',JSON.stringify(Object.assign(prev,{name:name,phone:phone}))); }catch(e){}
+  try{ var prev=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); localStorage.setItem('ventra_customer',JSON.stringify(Object.assign(prev,{name:name,phone:phone},email?{email:email}:{}))); }catch(e){}
   var label=btn.innerHTML;
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
   try{
-    var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,note:note})});
+    var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,email:email,note:note})});
     var data=await res.json().catch(function(){ return {}; });
     if(!res.ok){
       toast(data.error||'No se pudo reservar');

@@ -1522,6 +1522,16 @@ exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone:
   logger.info(`WhatsApp: pasada de recordatorios · ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error, ${r.noPlan} sin plan, ${r.noQuota} sin cupo`}`);
 });
 
+// ─── Recordatorio por email (gratis en todos los planes, ver email-reminders.js) ───
+// Mientras no se cargue la clave real de Resend, el secreto puede tener un valor provisorio:
+// sin una clave "re_…" no se manda nada.
+const emailReminders = require("./email-reminders");
+const VENTRA_RESEND_KEY = defineSecret("VENTRA_RESEND_KEY");
+exports.agendaEmailReminders = onSchedule({ schedule: "every 15 minutes", timeZone: "America/Argentina/Buenos_Aires", secrets: [VENTRA_RESEND_KEY] }, async () => {
+  const r = await emailReminders.emailRemindersRun(db, { apiKey: String(VENTRA_RESEND_KEY.value() || "").trim() });
+  if (r.sent || r.failed) logger.info(`Email: pasada de recordatorios · ${r.sent} enviado(s), ${r.failed} con error`);
+});
+
 // ─── Paquetes de recordatorios (ver reminder-quota.js) ───
 // El comercio lo compra solo (desde Agenda → Configurar o Mi cuenta) y se acredita solo cuando
 // Mercado Pago avisa el pago: nadie de Ventra tiene que cargar nada a mano.

@@ -107,7 +107,9 @@ function code() {
 
 const clean = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 
-/** POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, note } */
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+
+/** POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, email?, note } */
 async function book(db, req, res, { tokenFor } = {}) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
   const b = req.body || {};
@@ -115,6 +117,9 @@ async function book(db, req, res, { tokenFor } = {}) {
   const dateKey = clean(b.date, 10), time = clean(b.time, 5);
   const name = clean(b.name, 80), note = clean(b.note, 500);
   const phone = clean(b.phone, 40), phoneDigits = phone.replace(/\D/g, "");
+  // Email opcional: recordatorio por email, gratis en todos los planes (ver email-reminders.js)
+  const email = clean(b.email, 120).toLowerCase();
+  if (email && !EMAIL_RE.test(email)) return res.status(400).json({ error: "Revisá tu email" });
   if (!/^store_[a-z0-9]{8,64}$|^[A-Za-z0-9_-]{6,80}$/.test(storeId)) return res.status(400).json({ error: "Tienda inválida" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: "Fecha u hora inválida" });
   if (name.length < 2) return res.status(400).json({ error: "Escribí tu nombre" });
@@ -174,6 +179,7 @@ async function book(db, req, res, { tokenFor } = {}) {
         staffId: s.id, staffName: s.name || "",
         serviceId: service.id, serviceName: service.name || "", durationMin: dur, price: Number(service.price) || 0,
         customerName: name, customerPhone: phone, customerPhoneKey: phoneDigits.slice(-10), customerNote: note,
+        ...(email ? { customerEmail: email } : {}),
         code: bookingCode,
         status: deposit ? "AWAITING_PAYMENT" : agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
         ...(deposit ? { holdUntil, deposit: { amount: deposit, status: "pending" } } : {}),

@@ -72,7 +72,7 @@
       "publisher": { "@id": "https://ventra.store/#org" },
       "offers": [
         { "@type": "Offer", "name": "Ventra Agenda", "price": "9900", "priceCurrency": "ARS", "url": "https://ventra.store/peluquerias#plan", "availability": "https://schema.org/InStock",
-          "description": "Agenda de turnos online con página propia, seña con Mercado Pago y recordatorio de un toque." },
+          "description": "Agenda de turnos online con página propia, seña con Mercado Pago, recordatorio automático por email y recordatorio de un toque por WhatsApp." },
         { "@type": "Offer", "name": "Ventra Agenda Pro", "price": "19900", "priceCurrency": "ARS", "url": "https://ventra.store/peluquerias#plan", "availability": "https://schema.org/InStock",
           "description": "Todo Ventra Agenda más 200 recordatorios automáticos por WhatsApp por mes." }
       ]
@@ -84,7 +84,7 @@
         { "@type": "Question", "name": "¿Mis clientes tienen que descargar una app para sacar turno?",
           "acceptedAnswer": { "@type": "Answer", "text": "No. Reservan desde tu link (por ejemplo tienda.ventra.store/tu-salon), que abre en el navegador del celular. Lo podés poner en la bio de Instagram, en tu WhatsApp Business o en Google Maps." } },
         { "@type": "Question", "name": "¿Cómo funciona el recordatorio por WhatsApp?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Ventra le manda al cliente un mensaje de WhatsApp con el nombre de tu negocio, el servicio, el día y la hora, con dos botones: Confirmo o Necesito cambiarlo. Elegís cuándo sale: el día anterior a las 18 o a las 20 hs, o unas horas antes del turno. Si el cliente confirma, cancela o pide cambiarlo, te llega el aviso al celular. Viene con Ventra Agenda Pro; con Ventra Agenda lo mandás vos con un toque y la app arma el mensaje." } },
+          "acceptedAnswer": { "@type": "Answer", "text": "Ventra le manda al cliente un mensaje de WhatsApp con el nombre de tu negocio, el servicio, el día y la hora, con dos botones: Confirmo o Necesito cambiarlo. Elegís cuándo sale: el día anterior a las 18 o a las 20 hs, o unas horas antes del turno. Si el cliente confirma, cancela o pide cambiarlo, te llega el aviso al celular. Viene con Ventra Agenda Pro; con Ventra Agenda lo mandás vos con un toque y la app arma el mensaje. En los dos planes, si el cliente dejó su email, también le llega un recordatorio por email con el turno para su calendario, sin costo." } },
         { "@type": "Question", "name": "¿Cuántos recordatorios automáticos incluye?",
           "acceptedAnswer": { "@type": "Answer", "text": "Ventra Agenda Pro trae 200 por mes y se renuevan el 1° de cada mes. Si te quedás corto, sumás 100 por $7.500 con Mercado Pago desde la app: se acreditan solos y los de paquetes no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios los mandás con un toque." } },
         { "@type": "Question", "name": "¿Puedo cobrar seña con Mercado Pago?",
@@ -435,12 +435,13 @@
     <div class="plans">
       <div class="plan-box">
         <div class="pname">Ventra Agenda</div>
-        <div class="pfor">Tu agenda online. Los recordatorios los mandás vos, con un toque.</div>
+        <div class="pfor">Tu agenda online, con recordatorio por email que sale solo.</div>
         <div class="price"><span class="amt">$9.900</span><span class="per">/ mes</span></div>
         <div class="perday">Equivale a $330 por día · se paga con Mercado Pago</div>
         <ul>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Página de turnos propia, abierta las 24 horas</li>
-          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Recordatorio con un toque: la app arma el WhatsApp de cada cliente</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Recordatorio automático por email, gratis</li>
+          <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Recordatorio por WhatsApp con un toque: la app arma el mensaje</li>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Seña con tu cuenta de Mercado Pago</li>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Varios profesionales con sus horarios</li>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Ficha de clientes y control de cobros</li>
@@ -475,7 +476,7 @@
     <div class="sec-head center"><span class="eyebrow"><i></i>Preguntas frecuentes</span><h2>Lo que nos preguntan los salones.</h2></div>
     <div class="faq">
       <details><summary>¿Mis clientes tienen que descargar una app para sacar turno?</summary><p>No. Reservan desde tu link (por ejemplo tienda.ventra.store/tu-salon), que abre en el navegador del celular. Lo podés poner en la bio de Instagram, en tu WhatsApp Business o en Google Maps.</p></details>
-      <details><summary>¿Cómo funciona el recordatorio por WhatsApp?</summary><p>Ventra le manda al cliente un mensaje de WhatsApp con el nombre de tu negocio, el servicio, el día y la hora, con dos botones: “Confirmo” o “Necesito cambiarlo”. Elegís cuándo sale: el día anterior a las 18 o a las 20 hs, o unas horas antes del turno. Si el cliente confirma, cancela o pide cambiarlo, te llega el aviso al celular. Viene con Ventra Agenda Pro; con Ventra Agenda lo mandás vos con un toque y la app arma el mensaje.</p></details>
+      <details><summary>¿Cómo funciona el recordatorio por WhatsApp?</summary><p>Ventra le manda al cliente un mensaje de WhatsApp con el nombre de tu negocio, el servicio, el día y la hora, con dos botones: “Confirmo” o “Necesito cambiarlo”. Elegís cuándo sale: el día anterior a las 18 o a las 20 hs, o unas horas antes del turno. Si el cliente confirma, cancela o pide cambiarlo, te llega el aviso al celular. Viene con Ventra Agenda Pro; con Ventra Agenda lo mandás vos con un toque y la app arma el mensaje. En los dos planes, si el cliente dejó su email, también le llega un recordatorio por email con el turno para su calendario, sin costo.</p></details>
       <details><summary>¿Cuántos recordatorios automáticos incluye?</summary><p>Ventra Agenda Pro trae 200 por mes y se renuevan el 1° de cada mes. Si te quedás corto, sumás 100 por $7.500 con Mercado Pago desde la app: se acreditan solos y los de paquetes no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios los mandás con un toque.</p></details>
       <details><summary>¿Puedo cobrar seña con Mercado Pago?</summary><p>Sí. Conectás tu cuenta de Mercado Pago y elegís un porcentaje o un monto fijo. El turno queda reservado cuando el cliente paga la seña, y la plata va directo a tu cuenta.</p></details>
       <details><summary>¿Sirve si somos varios profesionales?</summary><p>Sí. Cada profesional tiene sus horarios y sus servicios, y el cliente elige con quién atenderse. Ves la agenda del día y de la semana de todo el equipo.</p></details>
