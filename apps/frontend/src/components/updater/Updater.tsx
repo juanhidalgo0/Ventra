@@ -3,7 +3,7 @@ import { PENDING_UPDATE_KEY, useUpdaterStore } from '../../stores/updaterStore';
 import { usePOSStore } from '../../stores/posStore';
 
 /** Minutos sin tocar la caja para instalar una actualización con la app abierta */
-const IDLE_INSTALL_MS = 10 * 60 * 1000;
+const IDLE_INSTALL_MS = 60 * 60 * 1000;
 import { subscribeToLatestVersion } from '../../services/updatePush';
 
 // Re-check for updates periodically while the app stays open (POS terminals
@@ -62,7 +62,8 @@ export default function Updater() {
   }, [status, update, install]);
 
   // Con la app abierta todo el día (kioscos 24 h) no hay "próximo inicio": la versión descargada
-  // se instala sola cuando la caja queda quieta 10 minutos con el carrito vacío. Reinicia en
+  // se instala sola cuando la caja queda quieta 1 hora con el carrito vacío (casi siempre, con el
+  // local cerrado). Reinicia en
   // menos de un minuto y no corta ninguna venta.
   useEffect(() => {
     if (!(window as any).__TAURI__ || status !== 'ready' || !update) return;
