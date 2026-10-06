@@ -47,11 +47,15 @@
         {
           "source": "/sistema-de-ventas",
           "destination": "/sistema-de-ventas.html"
+        },
+        {
+          "source": "/turnos",
+          "destination": "/turnos.html"
         }
       ],
       "redirects": [
         {
-          "regex": "^/(peluquerias|tienda-online|sistema-de-ventas)\\.html$",
+          "regex": "^/(peluquerias|tienda-online|sistema-de-ventas|turnos)\\.html$",
           "destination": "/:1",
           "type": 301
         }

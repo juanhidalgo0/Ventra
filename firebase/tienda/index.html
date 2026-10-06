@@ -1104,7 +1104,7 @@ function hoursHtml(c,st){
    del rubro (belleza → /peluquerias) con UTM, así se mide cuántas altas trae cada comercio. */
 var BEAUTY_KINDS={peluqueria:1,barberia:1,unas:1,estetica:1};
 function ventraLink(medium){
-  var kind=AG().kind, path=AG().enabled&&BEAUTY_KINDS[kind]?'/peluquerias':'/';
+  var kind=AG().kind, path=!AG().enabled?'/tienda-online':BEAUTY_KINDS[kind]?'/peluquerias':'/turnos';
   return 'https://ventra.store'+path+'?utm_source=tienda&utm_medium='+medium+'&utm_campaign='+encodeURIComponent((S.cfg&&S.cfg.subdomain)||'');
 }
 function footerHtml(){
@@ -1123,7 +1123,7 @@ function footerHtml(){
     + hoursHtml(c,st)
     +'</div>'
     +(function(){
-      var turnos=AG().enabled&&BEAUTY_KINDS[AG().kind], href=esc(ventraLink('badge'));
+      var turnos=!!AG().enabled, href=esc(ventraLink('badge'));
       return '<div class="made"><a href="'+href+'" target="_blank" rel="noopener"><img src="ventra-logo.png" alt="">'+(turnos?'Turnos online con':'Tienda hecha con')+' <b>Ventra</b></a>'
         +'<a class="cta" href="'+href+'" target="_blank" rel="noopener">'+(turnos?'¿Das turnos? Armá tu agenda':'¿Tenés un negocio? Creá tu tienda')+'</a></div>';
     })()

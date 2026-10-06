@@ -1526,7 +1526,7 @@ exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone:
 // Cada evento suma 1 en ventra_site_stats/{AAAA-MM}: vistas de cada landing, tarjeta elegida en
 // la home y botón de plan tocado. Solo eventos de esta lista: no se guarda nada que mande el navegador.
 const SITE_EVENTS = new Set([
-  "view_home", "view_sistema-de-ventas", "view_tienda-online", "view_peluquerias",
+  "view_home", "view_sistema-de-ventas", "view_tienda-online", "view_peluquerias", "view_turnos",
   "card_local", "card_online", "card_turnos",
   "plan_caja", "plan_full", "plan_tienda", "plan_agenda", "plan_agenda_pro",
 ]);

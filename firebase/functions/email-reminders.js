@@ -21,6 +21,8 @@ const QUIET_FROM = 22 * 60, QUIET_TO = 8 * 60;
 const MIN_LEAD_MS = 30 * 60 * 1000;
 const MAX_TRIES = 3;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+/** Rubros de belleza: sus emails llevan a /peluquerias; el resto de la agenda, a /turnos */
+const BEAUTY = new Set(["peluqueria", "barberia", "unas", "estetica"]);
 const DAY_NAMES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
@@ -101,7 +103,7 @@ function emailFor(b, store, nowMs = Date.now()) {
     ${wa ? `<a href="https://wa.me/${wa}" style="display:block;text-align:center;color:${brand};text-decoration:none;font-weight:600;padding:14px 0 0">Escribirle a ${esc(biz)} por WhatsApp</a>` : ""}
     <p style="margin:20px 0 0;font-size:13px;color:#56655F">Si no podés ir, cancelalo desde el link así el horario le queda a otra persona. Adjuntamos el turno para que lo agregues a tu calendario.</p>
   </div>
-  <p style="margin:16px 0 0;font-size:11.5px;color:#8A958F;text-align:center">Recibís este email porque reservaste un turno en ${esc(biz)}. Turnos online con <a href="https://ventra.store/peluquerias?utm_source=email&utm_medium=recordatorio" style="color:#8A958F">Ventra</a>.</p>
+  <p style="margin:16px 0 0;font-size:11.5px;color:#8A958F;text-align:center">Recibís este email porque reservaste un turno en ${esc(biz)}. Turnos online con <a href="https://ventra.store/${BEAUTY.has(store.agenda && store.agenda.kind) ? "peluquerias" : "turnos"}?utm_source=email&utm_medium=recordatorio" style="color:#8A958F">Ventra</a>.</p>
 </div></body></html>`;
   const text = `${first ? `Hola ${first}, ` : ""}te esperamos ${when} en ${biz}.\n\n${what}${store.address ? `\n${store.address}` : ""}${b.code ? `\nTurno #${b.code}` : ""}\n\nVer o cancelar mi turno: ${manage}${wa ? `\nWhatsApp de ${biz}: https://wa.me/${wa}` : ""}`;
   return { subject, html, text };
