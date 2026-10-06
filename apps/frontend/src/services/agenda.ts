@@ -29,6 +29,46 @@ export async function waRemindersAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * Cupo de recordatorios automáticos de la cuenta (lo cuenta la nube: firebase/functions/reminder-quota.js).
+ * Mismos números que PLAN_REMINDERS y PACK de allá.
+ */
+export const REMINDER_PLAN_QUOTA: Record<string, number> = { agenda_pro: 200, full: 200, prueba: 200 };
+export const REMINDER_PACK = { qty: 100, price: 7500 };
+export interface ReminderQuota { included: number; used: number; extra: number; left: number }
+
+const monthKeyAR = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7);
+
+/** Cuánto le queda a la cuenta este mes, en vivo. El mes nuevo arranca de cero aunque la nube todavía no lo haya tocado. */
+export function subscribeReminderQuota(plan: string | null, onChange: (q: ReminderQuota) => void) {
+  const included = (plan && REMINDER_PLAN_QUOTA[plan]) || 0;
+  const emit = (d: any) => {
+    const used = d && d.month === monthKeyAR() ? Number(d.used) || 0 : 0;
+    const extra = Math.max(0, Number(d?.extra) || 0);
+    onChange({ included, used, extra, left: Math.max(0, included - used) + extra });
+  };
+  if (IS_DEMO_BUILD) { emit({ month: monthKeyAR(), used: 37, extra: 0 }); return () => {}; }
+  let unsub: (() => void) | null = null, cancelled = false;
+  ensureVentraSession().then((user) => {
+    if (cancelled || user.isAnonymous) return emit(null);
+    unsub = onSnapshot(doc(getVentraDb(), 'ventra_wa_quota', user.uid), (snap) => emit(snap.exists() ? snap.data() : null), () => emit(null));
+  }).catch(() => emit(null));
+  return () => { cancelled = true; unsub?.(); };
+}
+
+/** Link de pago de un paquete de recordatorios. Se acredita solo cuando Mercado Pago confirma el pago. */
+export async function buyReminderPack(): Promise<string> {
+  const user = await ensureVentraSession();
+  const res = await fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/buyReminderPack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.initPoint) throw new Error(data.error || 'No se pudo iniciar el pago');
+  return data.initPoint;
+}
+
 const bookingsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'bookings');
 const clientsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'agenda_clients');
 const docsOf = (snap: any): Booking[] => snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }));

@@ -95,6 +95,13 @@
   .msg{ margin-top:10px; font-size:13px; font-weight:600; min-height:20px; }
   .msg.ok{ color:var(--pine); } .msg.err{ color:var(--red); }
   .dl-meta{ margin-top:10px; font-size:12.5px; color:var(--ink-3); }
+  .bar{ height:8px; border-radius:99px; background:var(--sand); overflow:hidden; margin-top:14px; }
+  .bar i{ display:block; height:100%; border-radius:99px; background:var(--mint); transition:width .4s var(--ease); }
+  .plans-alt{ display:grid; gap:10px; margin-top:16px; }
+  .plan-opt{ display:flex; align-items:center; gap:14px; justify-content:space-between; background:#fff; border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+  .plan-opt b{ display:block; font-size:14.5px; }
+  .plan-opt span{ color:var(--ink-2); font-size:13px; }
+  @media (max-width:640px){ .plan-opt{ flex-wrap:wrap; } .plan-opt .btn{ width:100%; } }
 
   .gate{ text-align:center; padding:40px 26px; }
   .gate img{ width:56px; height:56px; border-radius:16px; margin:0 auto 16px; display:block; }
@@ -168,6 +175,26 @@
       <div class="hidden" id="renewRow"></div>
     </section>
 
+    <!-- Recordatorios automáticos (Agenda Pro y Full) -->
+    <section class="card hidden" id="remindersCard">
+      <h2>Recordatorios automáticos por WhatsApp</h2>
+      <p class="lead" id="remText">—</p>
+      <div class="bar"><i id="remBar" style="width:0"></i></div>
+      <div class="dl-meta num" id="remMeta"></div>
+      <div class="row">
+        <button class="btn" id="packBtn">Sumar 100 recordatorios · $7.500</button>
+      </div>
+      <div class="dl-meta">Se pagan con Mercado Pago y se suman solos apenas se acredita el pago. Los de paquetes no vencen.</div>
+    </section>
+
+    <!-- Cambiar de plan -->
+    <section class="card hidden" id="changeCard">
+      <h2>Cambiar de plan</h2>
+      <p class="lead">El cambio es inmediato y el precio nuevo se cobra desde tu próximo pago, en la misma suscripción de Mercado Pago.</p>
+      <div class="plans-alt" id="plansAlt"></div>
+      <div class="msg" id="changeMsg"></div>
+    </section>
+
     <!-- Descarga -->
     <section class="card hidden" id="downloadCard">
       <h2>Descargá Ventra</h2>
@@ -215,15 +242,17 @@
 
     var LINK_CONFIRM_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/ventraLinkConfirm";
     var GRACE_DAYS = 7, DAY = 864e5;
-    var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda:{ name:'Ventra Agenda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+    var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda:{ name:'Ventra Agenda', amount:9900 }, agenda_pro:{ name:'Ventra Agenda Pro', amount:19900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
     var STATE_LABEL = { ACTIVE:'Activa', GRACE:'En período de gracia', READ_ONLY:'Vencida · solo lectura', UNPAID:'Esperando el pago' };
 
     var $ = function(id){ return document.getElementById(id); };
-    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','planCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
+    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','planCard','remindersCard','changeCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
     var fdate = function(d){ return d.toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' }); };
     var money = function(n){ return '$ ' + Number(n).toLocaleString('es-AR'); };
     var params = new URLSearchParams(location.search);
-    var fromCheckout = params.has('preapproval_id') || params.has('status');
+    // Volver de pagar un paquete de recordatorios (?pack=…) no es volver de suscribirse
+    var fromPack = params.has('pack');
+    var fromCheckout = !fromPack && (params.has('preapproval_id') || params.has('status'));
 
     // Mismas reglas que la app: vigente → gracia de 7 días → solo lectura
     function stateOf(paidUntil){
@@ -237,7 +266,7 @@
     function renderAccount(data){
       var plan = PLANS[data.plan] || {};
       // Planes Tienda y Agenda: se usan desde web.ventra.store (no hay app de Windows ni PCs que vincular)
-      var agendaOnly = data.plan === 'agenda';
+      var agendaOnly = data.plan === 'agenda' || data.plan === 'agenda_pro';
       var storeOnly = data.plan === 'tienda' || agendaOnly;
       $('openBtn').textContent = agendaOnly ? 'Abrir mi agenda' : storeOnly ? 'Abrir mi tienda' : 'Abrir mi Ventra';
       $('panelBtn').classList.toggle('hidden', storeOnly);
@@ -262,11 +291,90 @@
         ? '¡Gracias por suscribirte! Tu tienda ya está activa: tocá "Abrir mi tienda" para armarla. No hace falta instalar nada.'
         : '¡Gracias por suscribirte! Tu cuenta ya está activa: descargá la app y vinculá tu PC.';
       notice.className = 'notice ' + (fromCheckout && (s.state === 'ACTIVE' || s.state === 'UNPAID') ? 'THANKS' : s.state);
+      if (fromPack && params.get('pack') !== 'error' && s.state !== 'READ_ONLY') {
+        text = params.get('pack') === 'ok'
+          ? '¡Gracias! Los recordatorios del paquete se suman solos apenas Mercado Pago acredita el pago (suele ser al instante).'
+          : 'Tu pago está pendiente: los recordatorios se suman solos cuando Mercado Pago lo acredite.';
+        notice.className = 'notice THANKS';
+      }
       notice.textContent = text; notice.classList.toggle('hidden', !text);
       $('renewBtn').classList.toggle('hidden', !(s.state === 'GRACE' || s.state === 'READ_ONLY'));
 
       $('heroTitle').textContent = fromCheckout ? '¡Bienvenido a Ventra!' : 'Mi cuenta';
-      show(storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']);
+      var extra = [];
+      if (REMINDER_PLANS[data.plan]) { renderReminders(data.plan); extra.push('remindersCard'); }
+      if (renderPlanChange(data)) extra.push('changeCard');
+      show((storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']).concat(extra));
+    }
+
+    // ── Recordatorios: mismo cupo que firebase/functions/reminder-quota.js ──
+    var REMINDER_PLANS = { agenda_pro:200, full:200, prueba:200 };
+    var FN = 'https://us-central1-ventra-9cba5.cloudfunctions.net/';
+    var PACK_LABEL = 'Sumar 100 recordatorios · $7.500';
+    var remUnsub = null;
+    function renderReminders(plan){
+      var included = REMINDER_PLANS[plan], user = firebase.auth().currentUser;
+      var month = new Date().toLocaleDateString('en-CA', { timeZone:'America/Argentina/Buenos_Aires' }).slice(0, 7);
+      if (remUnsub) remUnsub();
+      remUnsub = firebase.firestore().collection('ventra_wa_quota').doc(user.uid).onSnapshot(function(doc){
+        var d = doc.exists ? doc.data() : {};
+        var used = d.month === month ? Number(d.used) || 0 : 0, packs = Math.max(0, Number(d.extra) || 0);
+        var left = Math.max(0, included - used) + packs;
+        $('remText').textContent = left > 0 ? 'Te quedan ' + left + ' recordatorios este mes.' : 'Se terminaron tus recordatorios de este mes: sumá un paquete para que sigan saliendo solos.';
+        $('remBar').style.width = Math.min(100, Math.min(used, included) / included * 100) + '%';
+        $('remMeta').textContent = Math.min(used, included) + ' de ' + included + ' del plan' + (packs ? ' · ' + packs + ' de paquetes' : '') + ' · el 1° de cada mes se renuevan';
+      }, function(){});
+    }
+    $('packBtn').onclick = function(){
+      var btn = this, user = firebase.auth().currentUser;
+      if (!user) return;
+      btn.disabled = true; btn.textContent = 'Abriendo Mercado Pago…';
+      user.getIdToken().then(function(token){
+        return fetch(FN + 'buyReminderPack', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body:'{}' });
+      }).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(res){ if (!res.ok || !res.d.initPoint) throw new Error(res.d.error || 'Error'); location.href = res.d.initPoint; })
+        .catch(function(err){ alert(err.message || 'No se pudo iniciar el pago.'); btn.disabled = false; btn.textContent = PACK_LABEL; });
+    };
+
+    // ── Cambiar de plan: misma suscripción de Mercado Pago (ver changeVentraPlan) ──
+    var PLAN_PITCH = {
+      agenda:'Turnos online, recordatorio con un toque', agenda_pro:'Turnos con recordatorio automático por WhatsApp (200 por mes)',
+      tienda:'Tienda online y agenda', caja:'Caja, stock y reportes', full:'Todo: caja, tienda, agenda y recordatorios automáticos'
+    };
+    // Lo que tiene sentido ofrecer según el plan actual
+    var PLAN_PATHS = { agenda:['agenda_pro','full'], agenda_pro:['agenda','full'], tienda:['full','agenda_pro'], caja:['full'], full:['caja','tienda'] };
+    function renderPlanChange(data){
+      var opts = PLAN_PATHS[data.plan] || [];
+      if (!opts.length || data.status !== 'active') return false;
+      $('plansAlt').innerHTML = '';
+      opts.forEach(function(id){
+        var p = PLANS[id], row = document.createElement('div'); row.className = 'plan-opt';
+        var up = p.amount > ((PLANS[data.plan] || {}).amount || 0);
+        row.innerHTML = '<div><b></b><span></span></div>';
+        row.querySelector('b').textContent = p.name + ' · ' + money(p.amount) + ' / mes';
+        row.querySelector('span').textContent = PLAN_PITCH[id];
+        var b = document.createElement('button'); b.className = 'btn' + (up ? '' : ' ghost'); b.textContent = 'Pasarme a ' + p.name.replace('Ventra ', '');
+        b.onclick = function(){ changePlan(id, b); };
+        row.appendChild(b); $('plansAlt').appendChild(row);
+      });
+      return true;
+    }
+    function changePlan(id, btn){
+      var p = PLANS[id];
+      if (!confirm('¿Pasarte a ' + p.name + '? El cambio es ya y desde tu próximo pago se cobra ' + money(p.amount) + ' por mes.')) return;
+      var user = firebase.auth().currentUser, msgEl = $('changeMsg');
+      btn.disabled = true; msgEl.className = 'msg'; msgEl.textContent = 'Cambiando el plan…';
+      user.getIdToken().then(function(token){
+        return fetch(FN + 'changeVentraPlan', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body:JSON.stringify({ plan:id }) });
+      }).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(res){
+          if (!res.ok) throw new Error(res.d.error || 'No se pudo cambiar el plan');
+          return firebase.firestore().collection('ventra_accounts').doc(user.uid).get().then(function(doc){
+            if (doc.exists) renderAccount(doc.data());
+            var m = $('changeMsg'); m.className = 'msg ok'; m.textContent = '¡Listo! Ya tenés ' + p.name + '. La app lo toma en unos minutos.';
+          });
+        })
+        .catch(function(err){ msgEl.className = 'msg err'; msgEl.textContent = err.message; btn.disabled = false; });
     }
 
     // Descarga directa del instalador. La versión la registra la compilación en la nube

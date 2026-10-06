@@ -8,16 +8,21 @@ import api from '../services/api';
  * Mientras no se sabe (o sin conexión con el backend) se muestra todo: el límite real lo
  * pone el servidor.
  */
-export interface PlanFeatures { caja: boolean; tienda: boolean; agenda: boolean }
+export interface PlanFeatures {
+  caja: boolean; tienda: boolean; agenda: boolean;
+  /** Recordatorios automáticos por WhatsApp (Agenda Pro y Full). El cupo lo cuenta la nube. */
+  reminders: boolean;
+}
 
-export type PlanId = 'caja' | 'tienda' | 'agenda' | 'full';
+export type PlanId = 'caja' | 'tienda' | 'agenda' | 'agenda_pro' | 'full';
 
 /** Planes que se venden. Mismo reparto que planFeatures en el backend (subscription.service). */
 export const PLANS: Record<PlanId, { name: string; tagline: string; features: PlanFeatures }> = {
-  caja: { name: 'Ventra Caja', tagline: 'Mostrador: caja, stock y reportes', features: { caja: true, tienda: false, agenda: false } },
-  tienda: { name: 'Ventra Tienda', tagline: 'Tienda online y agenda de turnos', features: { caja: false, tienda: true, agenda: true } },
-  agenda: { name: 'Ventra Agenda', tagline: 'Solo turnos, desde el celular', features: { caja: false, tienda: false, agenda: true } },
-  full: { name: 'Ventra Full', tagline: 'Todo: caja, tienda y agenda', features: { caja: true, tienda: true, agenda: true } },
+  caja: { name: 'Ventra Caja', tagline: 'Mostrador: caja, stock y reportes', features: { caja: true, tienda: false, agenda: false, reminders: false } },
+  tienda: { name: 'Ventra Tienda', tagline: 'Tienda online y agenda de turnos', features: { caja: false, tienda: true, agenda: true, reminders: false } },
+  agenda: { name: 'Ventra Agenda', tagline: 'Solo turnos, desde el celular', features: { caja: false, tienda: false, agenda: true, reminders: false } },
+  agenda_pro: { name: 'Ventra Agenda Pro', tagline: 'Turnos con recordatorio automático', features: { caja: false, tienda: false, agenda: true, reminders: true } },
+  full: { name: 'Ventra Full', tagline: 'Todo: caja, tienda y agenda', features: { caja: true, tienda: true, agenda: true, reminders: true } },
 };
 
 const DEMO_PLAN_KEY = 'demo_plan';
@@ -28,6 +33,8 @@ const readDemoPlan = (): PlanId => {
 interface PlanState {
   plan: string | null;
   planName: string | null;
+  /** Rubro con el que se suscribió desde una landing por rubro (ver services/signupRubro) */
+  signupRubro: string | null;
   features: PlanFeatures;
   loaded: boolean;
   /** Demo pública: el visitante elige qué plan probar (queda en su navegador, no en el servidor compartido) */
@@ -39,7 +46,8 @@ interface PlanState {
 export const usePlanStore = create<PlanState>((set) => ({
   plan: null,
   planName: null,
-  features: { caja: true, tienda: true, agenda: true },
+  signupRubro: null,
+  features: { caja: true, tienda: true, agenda: true, reminders: true },
   loaded: false,
   isDemo: false,
   load: async () => {
@@ -56,10 +64,15 @@ export const usePlanStore = create<PlanState>((set) => ({
       set({
         plan: data?.plan ?? null,
         planName: data?.planName ?? null,
+        signupRubro: data?.rubro ?? null,
         // Backends viejos no mandan `agenda`: venía incluida en la tienda
         features: data?.features
-          ? { caja: !!data.features.caja, tienda: !!data.features.tienda, agenda: data.features.agenda ?? !!data.features.tienda }
-          : { caja: true, tienda: true, agenda: true },
+          ? {
+            caja: !!data.features.caja, tienda: !!data.features.tienda, agenda: data.features.agenda ?? !!data.features.tienda,
+            // Backends anteriores a Agenda Pro no lo mandan: se deduce del plan (el límite real lo pone la nube)
+            reminders: data.features.reminders ?? (!data.plan || ['full', 'agenda_pro', 'prueba'].includes(data.plan)),
+          }
+          : { caja: true, tienda: true, agenda: true, reminders: true },
         loaded: true,
       });
     } catch {

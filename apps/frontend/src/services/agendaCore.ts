@@ -62,7 +62,8 @@ export const REMINDER_WHEN: [ReminderWhen, string][] = [
 
 /** Recordatorio automático de un turno: lo escribe la nube */
 export interface BookingReminder {
-  status: 'sending' | 'retry' | 'sent' | 'delivered' | 'read' | 'failed';
+  /** noquota: la cuenta se quedó sin recordatorios automáticos este mes (reminder-quota.js) */
+  status: 'sending' | 'retry' | 'sent' | 'delivered' | 'read' | 'failed' | 'noquota';
   tries?: number;
   error?: string;
 }

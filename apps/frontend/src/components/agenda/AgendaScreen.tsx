@@ -9,6 +9,7 @@ import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable,
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { setStoreSetting } from '../../services/storeSettings';
 import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../services/agendaTemplates';
+import { agendaTemplateForRubro } from '../../services/signupRubro';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useTourStore } from '../common/tour/tourStore';
 import { setTourScreen, AGENDA_WORDS } from '../common/tour/tourContext';
@@ -21,9 +22,11 @@ import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
   rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, depositFor, waRemindersAvailable, REMINDER_WHEN,
+  subscribeReminderQuota, buyReminderPack, REMINDER_PACK, type ReminderQuota,
   type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { openExternal } from '../subscription/SubscriptionPanel';
 import { ScreenHeader, money } from '../mobile/ui';
 import { Modal, STATUS, input, label, PUBLIC_BASE } from './agendaUi';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
@@ -1092,6 +1095,11 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
     });
     toast.success('Listo: revisá las duraciones, poné tus precios y guardá');
   };
+  // El rubro con el que se suscribió (landing /peluquerias…) va primero y marcado
+  const signupTemplate = agendaTemplateForRubro(usePlanStore((s) => s.signupRubro));
+  const templates = signupTemplate
+    ? [...AGENDA_TEMPLATES].sort((x, y) => Number(y.id === signupTemplate) - Number(x.id === signupTemplate))
+    : AGENDA_TEMPLATES;
   const missingPrices = a.services.filter((x) => x.active !== false && x.name.trim() && !(Number(x.price) > 0)).length;
 
   const save = async () => {
@@ -1142,8 +1150,8 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
           <div className="py-1">
             <p className="text-[13px] text-slate-500 mb-2.5">Empezá con los servicios típicos de tu rubro y después los ajustás:</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {AGENDA_TEMPLATES.map((t) => (
-                <button key={t.id} onClick={() => applyTemplate(t)} className="ag-press transition-colors h-12 rounded-xl border border-slate-200 bg-white hover:border-rose-300 hover:bg-rose-50/50 text-[14px] font-semibold text-slate-800 flex items-center justify-center gap-2">
+              {templates.map((t) => (
+                <button key={t.id} onClick={() => applyTemplate(t)} className={`ag-press transition-colors h-12 rounded-xl border text-[14px] font-semibold text-slate-800 flex items-center justify-center gap-2 ${t.id === signupTemplate ? 'border-rose-400 bg-rose-50 ring-2 ring-rose-200' : 'border-slate-200 bg-white hover:border-rose-300 hover:bg-rose-50/50'}`}>
                   <span className="text-[18px]">{t.emoji}</span> {t.title}
                 </button>
               ))}
@@ -1302,10 +1310,30 @@ function DepositRules({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) =>
  */
 function WhatsAppReminders({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) => void }) {
   const [available, setAvailable] = useState<boolean | null>(null);
+  const { plan, features } = usePlanStore();
+  const [quota, setQuota] = useState<ReminderQuota | null>(null);
+  const [buying, setBuying] = useState(false);
   useEffect(() => { waRemindersAvailable().then(setAvailable); }, []);
+  useEffect(() => (available && features.reminders ? subscribeReminderQuota(plan, setQuota) : undefined), [available, features.reminders, plan]);
   const r = a.reminders || { enabled: false, when: 'dayBefore18' as ReminderWhen };
   const set = (p: Partial<typeof r>) => setA({ ...a, reminders: { ...r, ...p } });
+  const buy = async () => {
+    setBuying(true);
+    try { openExternal(await buyReminderPack()); } catch (err: any) { toast.error(err.message || 'No se pudo iniciar el pago'); } finally { setBuying(false); }
+  };
   if (available === null) return <p className="text-[12.5px] text-slate-400">Cargando…</p>;
+  if (available && !features.reminders) {
+    // Plan Agenda / Tienda: recordatorio de un toque. Los automáticos vienen con Agenda Pro
+    return (
+      <div className="flex items-start gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 rounded-full px-2.5 py-1 shrink-0">Agenda Pro</span>
+        <div className="flex-1">
+          <p className="text-[13px] text-slate-500">Con tu plan, los recordatorios los mandás con un toque desde la agenda. Con <b className="text-slate-700">Ventra Agenda Pro</b> salen solos: a cada cliente le llega un WhatsApp con botones para confirmar o cancelar, y te avisamos lo que responde.</p>
+          <button onClick={() => openExternal('https://ventra.store/cuenta.html')} className="mt-2.5 h-9 px-3.5 rounded-xl bg-slate-900 text-white text-[13px] font-semibold">Ver Agenda Pro</button>
+        </div>
+      </div>
+    );
+  }
   if (!available) {
     return (
       <div className="flex items-start gap-3">
@@ -1336,6 +1364,25 @@ function WhatsAppReminders({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfi
           <p className="mt-2 text-[12px] text-slate-500">Nunca de noche (entre las 22 y las 8 h) y no a quien reservó hace un rato. Sale del número de WhatsApp de Ventra; si el cliente escribe, le pasamos tu WhatsApp.</p>
         </div>
       )}
+      {quota && quota.included > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-[13px] font-semibold text-slate-800">Recordatorios de este mes</p>
+            <p className={`text-[13px] font-bold tabular-nums ${quota.left === 0 ? 'text-red-600' : 'text-slate-700'}`}>Te quedan {quota.left}</p>
+          </div>
+          <div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden">
+            <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${Math.min(100, (Math.min(quota.used, quota.included) / quota.included) * 100)}%` }} />
+          </div>
+          <p className="mt-1.5 text-[12px] text-slate-500 tabular-nums">
+            {Math.min(quota.used, quota.included)} de {quota.included} del plan{quota.extra > 0 ? ` · ${quota.extra} de paquetes (no vencen)` : ''} · el 1° de cada mes se renuevan
+          </p>
+          {quota.left === 0 && <p className="mt-2 text-[12.5px] font-medium text-red-700">Se terminaron: los recordatorios no salen solos hasta el mes que viene. Mandalos con un toque desde la agenda o sumá un paquete.</p>}
+          <button onClick={buy} disabled={buying} className="mt-3 h-10 w-full sm:w-auto px-4 rounded-xl bg-emerald-600 text-white text-[13.5px] font-semibold disabled:opacity-60">
+            {buying ? 'Abriendo Mercado Pago…' : `Sumar ${REMINDER_PACK.qty} recordatorios · ${money(REMINDER_PACK.price)}`}
+          </button>
+          <p className="mt-1.5 text-[11.5px] text-slate-400">Se pagan con Mercado Pago y se suman solos apenas se acredita el pago.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1347,6 +1394,7 @@ function reminderInfo(b: Booking): { text: string; cls: string } | null {
   const s = b.reminder?.status;
   if (!s) return null;
   if (s === 'failed') return { text: 'No le llegó el recordatorio', cls: 'text-red-600' };
+  if (s === 'noquota') return { text: 'Sin recordatorios automáticos: mandalo con un toque', cls: 'text-amber-700' };
   if (s === 'read') return { text: 'Leyó el recordatorio', cls: 'text-sky-700' };
   if (s === 'delivered') return { text: 'Recordatorio entregado', cls: 'text-slate-500' };
   if (s === 'sent') return { text: 'Recordatorio enviado', cls: 'text-slate-500' };

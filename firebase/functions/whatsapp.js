@@ -15,6 +15,9 @@ const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const agenda = require("./agenda");
 const usage = require("./usage");
+const quota = require("./reminder-quota");
+const notify = require("./notify");
+const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 /**
@@ -135,10 +138,19 @@ async function remindersRun(db, { token }) {
   const now = Date.now();
   const { dateKey: today } = agenda.localNow(now);
   const stores = await db.collection("ventra_stores").where("agenda.reminders.enabled", "==", true).get();
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, noPlan = 0, noQuota = 0;
+  const accounts = new Map();
   for (const storeDoc of stores.docs) {
     const store = storeDoc.data();
     const cfg = store.agenda.reminders;
+    // Solo los planes que traen recordatorios automáticos, al día (o en los días de gracia)
+    const uid = store.ownerUid;
+    if (!uid) continue;
+    if (!accounts.has(uid)) accounts.set(uid, await db.collection("ventra_accounts").doc(uid).get().then((d) => (d.exists ? d.data() : null)).catch(() => null));
+    const acc = accounts.get(uid);
+    const paidUntil = acc && acc.paidUntil && acc.paidUntil.toMillis ? acc.paidUntil.toMillis() : 0;
+    if (!acc || !quota.includedFor(acc.plan) || paidUntil + GRACE_DAYS * DAY_MS < now) { noPlan++; continue; }
+    if ((await quota.status(db, uid, acc.plan)).left <= 0) { noQuota++; continue; }
     const snap = await storeDoc.ref.collection("bookings").where("dateKey", "in", [today, agenda.addDays(today, 1)]).get();
     const due = dueReminders(cfg, snap.docs.map((d) => ({ id: d.id, ...d.data() })), now);
     for (const b of due) {
@@ -153,6 +165,14 @@ async function remindersRun(db, { token }) {
         return n;
       });
       if (!tries) continue;
+      // Un recordatorio del cupo del mes o de un paquete. Sin cupo, el turno vuelve a la lista a mano
+      const q = await quota.claim(db, uid, acc.plan);
+      await quotaNotice(db, uid, q, storeDoc.id);
+      if (!q.ok) {
+        await ref.update({ reminder: { status: "noquota", at: admin.firestore.Timestamp.now(), tries: tries - 1 } }).catch(() => {});
+        noQuota++;
+        break;
+      }
       const to = waNumber(b.customerPhone);
       try {
         const data = await graph(token, `${PHONE_ID}/messages`, {
@@ -174,7 +194,7 @@ async function remindersRun(db, { token }) {
         });
         const waId = data.messages && data.messages[0] && data.messages[0].id;
         const at = admin.firestore.FieldValue.serverTimestamp();
-        await ref.update({ remindedAt: at, remindedBy: "auto", reminder: { status: "sent", at: admin.firestore.Timestamp.now(), tries, waId: waId || null } });
+        await ref.update({ remindedAt: at, remindedBy: "auto", reminder: { status: "sent", at: admin.firestore.Timestamp.now(), tries, waId: waId || null, quota: { source: q.source, month: q.month, uid } } });
         await Promise.all([
           waId && db.collection("ventra_wa_messages").doc(waId).set({ storeId: storeDoc.id, bookingId: b.id, at }),
           db.collection("ventra_wa_contacts").doc(to).set({ storeId: storeDoc.id, bookingId: b.id, at }, { merge: true }),
@@ -182,6 +202,8 @@ async function remindersRun(db, { token }) {
         usage.track(store.ownerUid, { waReminders: 1 });
         sent++;
       } catch (err) {
+        // No salió: no se cobra (si se reintenta, el próximo intento vuelve a reservar)
+        await quota.refund(db, uid, q.source, q.month).catch(() => {});
         // Error de Meta (número inválido, plantilla, etc.): no se insiste. Red o caída: se reintenta
         const retry = !err.status || err.status >= 500 || err.status === 429;
         const status = retry && tries < MAX_TRIES ? "retry" : "failed";
@@ -192,7 +214,26 @@ async function remindersRun(db, { token }) {
     }
   }
   await usage.flush(true);
-  return { sent, failed };
+  return { sent, failed, noPlan, noQuota };
+}
+
+/** Le avisa al dueño cuando le quedan pocos recordatorios o se le terminaron (una vez por mes). */
+async function quotaNotice(db, uid, q, storeId) {
+  const pack = `${quota.PACK.qty} por $${quota.PACK.price.toLocaleString("es-AR")}`;
+  let msg = null;
+  if (q.empty) {
+    msg = {
+      title: "Se terminaron tus recordatorios automáticos",
+      body: `Sumá ${pack} desde Agenda → Configurar y siguen saliendo solos. Mientras tanto, mandalos con un toque desde la agenda.`,
+    };
+  } else if (q.warn) {
+    msg = {
+      title: `Te quedan ${q.left} recordatorios automáticos`,
+      body: `Si se terminan, mandalos con un toque o sumá ${pack} desde Agenda → Configurar.`,
+    };
+  }
+  if (!msg) return;
+  await notify.sendToAccount(db, uid, "reminderQuota", { ...msg, url: "/#/agenda", tag: "wa-quota" }, { storeId }).catch((err) => logger.warn("WhatsApp: no se pudo avisar el cupo", err.message));
 }
 
 /** Firma de Meta (X-Hub-Signature-256) sobre el cuerpo tal cual llegó. */
@@ -210,18 +251,22 @@ async function onStatus(db, s) {
   if (!map.exists) return;
   const { storeId, bookingId } = map.data();
   const ref = db.collection("ventra_stores").doc(storeId).collection("bookings").doc(bookingId);
+  let refundAfter = null;
   await db.runTransaction(async (tx) => {
+    refundAfter = null;
     const cur = await tx.get(ref);
     if (!cur.exists) return;
     const r = cur.data().reminder || {};
     if (s.status === "failed") {
       const e = (s.errors && s.errors[0]) || {};
-      // No llegó: vuelve a la lista de recordatorios a mano
-      tx.update(ref, { reminder: { ...r, status: "failed", error: param(e.title || e.message || "No se pudo entregar", 200) }, remindedAt: admin.firestore.FieldValue.delete() });
+      // No llegó: vuelve a la lista de recordatorios a mano (y Meta no lo cobra: se devuelve al cupo)
+      tx.update(ref, { reminder: { ...r, status: "failed", quota: null, error: param(e.title || e.message || "No se pudo entregar", 200) }, remindedAt: admin.firestore.FieldValue.delete() });
+      refundAfter = r.quota && r.status !== "failed" ? r.quota : null;
     } else if (ORDER[s.status] != null && ORDER[s.status] > (ORDER[r.status] ?? -1) && r.status !== "failed") {
       tx.update(ref, { "reminder.status": s.status });
     }
   });
+  if (refundAfter && refundAfter.uid) await quota.refund(db, refundAfter.uid, refundAfter.source, refundAfter.month).catch(() => {});
 }
 
 async function onButton(db, token, from, payload) {

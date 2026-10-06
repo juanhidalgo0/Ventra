@@ -78,7 +78,7 @@ export default function DemoPlanSwitcher({ mobile }: { mobile: boolean }) {
       {open && (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-[300px] bg-white rounded-2xl border border-slate-200 shadow-2xl p-2">
           <p className="px-2.5 pt-1.5 pb-2 text-[12px] font-semibold text-slate-500">Probá la demo como…</p>
-          {(['caja', 'tienda', 'agenda', 'full'] as PlanId[]).map((id) => (
+          {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
             <button key={id} onClick={() => pick(id)}
               className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-left ${id === current ? 'bg-rose-50' : 'hover:bg-slate-50'}`}>
               <span className="flex-1 min-w-0">

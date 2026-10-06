@@ -1100,6 +1100,13 @@ function hoursHtml(c,st){
     +(st?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+(st.open?'Abierto ahora':'Cerrado ahora')+'</span>':'')
     +'</div>'+rows+'</div>';
 }
+/* Cada página de un comercio es una vidriera de Ventra: el "hecho con Ventra" lleva a la landing
+   del rubro (belleza → /peluquerias) con UTM, así se mide cuántas altas trae cada comercio. */
+var BEAUTY_KINDS={peluqueria:1,barberia:1,unas:1,estetica:1};
+function ventraLink(medium){
+  var kind=AG().kind, path=AG().enabled&&BEAUTY_KINDS[kind]?'/peluquerias':'/';
+  return 'https://ventra.store'+path+'?utm_source=tienda&utm_medium='+medium+'&utm_campaign='+encodeURIComponent((S.cfg&&S.cfg.subdomain)||'');
+}
 function footerHtml(){
   var c=S.cfg, st=openStatus(c.hours);
   var ig=(c.instagram||'').replace(/^@/,'').trim();
@@ -1115,8 +1122,11 @@ function footerHtml(){
     +'</div>'
     + hoursHtml(c,st)
     +'</div>'
-    +'<div class="made"><a href="https://ventra.store" target="_blank" rel="noopener"><img src="ventra-logo.png" alt="">Tienda hecha con <b>Ventra</b></a>'
-    +'<a class="cta" href="https://ventra.store" target="_blank" rel="noopener">¿Tenés un negocio? Creá tu tienda</a></div>'
+    +(function(){
+      var turnos=AG().enabled&&BEAUTY_KINDS[AG().kind], href=esc(ventraLink('badge'));
+      return '<div class="made"><a href="'+href+'" target="_blank" rel="noopener"><img src="ventra-logo.png" alt="">'+(turnos?'Turnos online con':'Tienda hecha con')+' <b>Ventra</b></a>'
+        +'<a class="cta" href="'+href+'" target="_blank" rel="noopener">'+(turnos?'¿Das turnos? Armá tu agenda':'¿Tenés un negocio? Creá tu tienda')+'</a></div>';
+    })()
     +'</div></footer>';
 }
 
@@ -1607,7 +1617,8 @@ function renderBookingStep(){
       +'<div class="sheet-foot">'
       +(wa?'<a class="btn btn-wa btn-block" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
       +'<a class="btn btn-ghost btn-block" style="margin-top:8px;height:48px" href="'+esc(gcal)+'" target="_blank" rel="noopener">'+ic('clock')+'Agregar a mi calendario</a>'
-      +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px;border:0" data-act="close">Listo</button></div>';
+      +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px;border:0" data-act="close">Listo</button>'
+      +'<p style="text-align:center;font-size:11.5px;color:var(--ink-3);margin:10px 0 0"><a href="'+esc(ventraLink('reserva'))+'" target="_blank" rel="noopener" style="color:inherit">¿Das turnos? Armá tu agenda online con <b>Ventra</b></a></p></div>';
   }
 }
 /* ── Día y horario: se actualiza solo lo que cambia (sin redibujar la hoja ni mover la tira de días) ── */

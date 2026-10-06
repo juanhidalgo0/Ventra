@@ -22,6 +22,15 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
+    // Cupo de recordatorios automáticos por WhatsApp (reminder-quota.js): el dueño ve cuánto le
+    // queda; lo cuentan y acreditan solo las funciones. Los pagos de paquetes, ni eso.
+    match /ventra_wa_quota/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /ventra_wa_packs/{paymentId} {
+      allow read, write: if false;
+    }
 
     // ── Tiendas online ──────────────────────────────────────────────
     // ownerUid = sesión (anónima) del POS dueño de la tienda.

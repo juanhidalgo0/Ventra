@@ -30,6 +30,11 @@ export default function LoginPage() {
   const [registering, setRegistering] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [demoLoading, setDemoLoading] = useState<PlanId | null>(null);
+  // Las landings por rubro mandan a la demo con ?plan= (ej. /peluquerias → agenda): ese plan va marcado
+  const [demoSuggested] = useState<PlanId>(() => {
+    const p = new URLSearchParams(window.location.search).get('plan') as PlanId | null;
+    return p && PLANS[p] ? p : 'full';
+  });
   const [showBackToSetup, setShowBackToSetup] = useState(false);
   const [recovering, setRecovering] = useState(false);
 
@@ -293,9 +298,9 @@ export default function LoginPage() {
                     <p className="text-[15px] font-bold text-slate-900">¿Qué plan querés probar?</p>
                     <p className="text-[12px] text-slate-500 mb-3">Entrás con un clic, sin registrarte. Adentro podés cambiar de plan cuando quieras.</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {(['caja', 'tienda', 'agenda', 'full'] as PlanId[]).map((id) => (
+                      {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
                         <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
-                          className={`text-left p-3 rounded-2xl border-2 transition-colors disabled:opacity-60 cursor-pointer ${id === 'full' ? 'border-rose-600 bg-rose-50/60' : 'border-slate-200 hover:border-rose-300 bg-white'}`}>
+                          className={`text-left p-3 rounded-2xl border-2 transition-colors disabled:opacity-60 cursor-pointer ${id === demoSuggested ?'border-rose-600 bg-rose-50/60' : 'border-slate-200 hover:border-rose-300 bg-white'}`}>
                           <span className="flex items-center justify-between gap-1">
                             <span className="text-[13.5px] font-bold text-slate-900">{PLANS[id].name}</span>
                             {demoLoading === id && <Loader2 className="w-4 h-4 animate-spin text-rose-600 shrink-0" />}

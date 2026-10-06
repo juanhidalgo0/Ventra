@@ -45,6 +45,8 @@ const VENTRA_PLANS = {
   tienda: { name: "Ventra Tienda", amount: 9900 },
   // Solo turnos online (peluquerías, estética, consultorios): sin productos ni caja
   agenda: { name: "Ventra Agenda", amount: 9900 },
+  // Agenda + recordatorios automáticos por WhatsApp (cupo en reminder-quota.js)
+  agenda_pro: { name: "Ventra Agenda Pro", amount: 19900 },
   // Plan oculto para probar cobros reales de punta a punta: solo para administradores.
   prueba: { name: "Ventra Prueba", amount: 100, adminOnly: true },
 };
@@ -86,6 +88,22 @@ async function verifyAccountToken(idToken) {
 // Orígenes de Ventra para CORS: el dominio exacto o un subdominio (no "otroventra.store")
 const VENTRA_ORIGINS = [/^https:\/\/([a-z0-9-]+\.)*ventra\.store$/, /^https:\/\/ventra-9cba5\.(web\.app|firebaseapp\.com)$/];
 
+// Rubros que mandan las landings por rubro (/peluquerias…): plantillas de la agenda y perfiles de
+// la caja. Se guarda en la cuenta y viaja en la licencia para que la app arranque con ese rubro.
+const SIGNUP_RUBROS = new Set([
+  "peluqueria", "barberia", "unas", "estetica", "salud", "clases", "profesionales", "mascotas", "taller", "deportes",
+  "kiosco", "ferreteria", "ropa", "gastronomia", "multirubro",
+]);
+const cleanUtm = (utm) => {
+  if (!utm || typeof utm !== "object") return null;
+  const out = {};
+  for (const k of ["source", "medium", "campaign"]) {
+    const v = String(utm[k] || "").trim().slice(0, 60);
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+};
+
 // La landing lo llama cuando el usuario (logueado con Google) elige un plan.
 // Crea/actualiza su cuenta y una suscripción recurrente de Mercado Pago, y
 // devuelve la URL de pago.
@@ -97,7 +115,7 @@ exports.createVentraSubscription = onRequest(
     const user = await verifyUser(req);
     if (!user || !user.email) return res.status(401).json({ error: "Iniciá sesión para suscribirte" });
 
-    const { plan, payerEmail } = req.body || {};
+    const { plan, payerEmail, rubro, utm } = req.body || {};
     const planInfo = VENTRA_PLANS[plan];
     if (!planInfo || (planInfo.adminOnly && !isAdmin(user))) return res.status(400).json({ error: "Plan inválido" });
 
@@ -138,6 +156,9 @@ exports.createVentraSubscription = onRequest(
         planName: planInfo.name,
         status: "pending_payment",
         mpPreapprovalId: response.id,
+        // Solo si vino de una landing por rubro: un cambio de plan desde la home no lo borra
+        ...(SIGNUP_RUBROS.has(rubro) ? { signupRubro: rubro } : {}),
+        ...(cleanUtm(utm) ? { signupUtm: cleanUtm(utm) } : {}),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -152,6 +173,42 @@ exports.createVentraSubscription = onRequest(
     }
   },
 );
+
+// Cambio de plan desde Mi cuenta (ej. Agenda → Agenda Pro): se cambia el monto de la MISMA
+// suscripción de Mercado Pago. Suscribirse de nuevo desde la landing crearía una segunda
+// suscripción y Mercado Pago cobraría las dos. El plan nuevo rige desde ya; el monto nuevo,
+// desde el próximo cobro.
+exports.changeVentraPlan = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP_ACCESS_TOKEN] }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: "Iniciá sesión para cambiar de plan" });
+  const { plan } = req.body || {};
+  const planInfo = VENTRA_PLANS[plan];
+  if (!planInfo || planInfo.adminOnly) return res.status(400).json({ error: "Plan inválido" });
+  const ref = db.collection("ventra_accounts").doc(user.uid);
+  const acc = (await ref.get()).data() || {};
+  if (acc.plan === plan) return res.status(400).json({ error: "Ya tenés ese plan" });
+  if (!acc.mpPreapprovalId || acc.status !== "active") {
+    return res.status(409).json({ error: "Tu suscripción no está activa en Mercado Pago. Escribinos por WhatsApp y te cambiamos el plan." });
+  }
+  try {
+    const preapproval = new PreApproval(new MercadoPagoConfig({ accessToken: String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim() }));
+    await preapproval.update({
+      id: acc.mpPreapprovalId,
+      body: { reason: `Suscripción ${planInfo.name}`, auto_recurring: { transaction_amount: planInfo.amount, currency_id: "ARS" } },
+    });
+    await ref.set({
+      plan, planName: planInfo.name,
+      planChanges: admin.firestore.FieldValue.arrayUnion({ from: acc.plan || null, to: plan, at: new Date().toISOString() }),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    logger.info(`Ventra: ${user.uid} cambió de plan ${acc.plan} → ${plan}`);
+    res.status(200).json({ ok: true, plan, planName: planInfo.name, amount: planInfo.amount });
+  } catch (err) {
+    logger.error("Ventra: no se pudo cambiar el plan", user.uid, err);
+    res.status(500).json({ error: "Mercado Pago no aceptó el cambio. Probá de nuevo o escribinos por WhatsApp." });
+  }
+});
 
 // Mercado Pago avisa cada cambio de una suscripción y cada cobro mensual.
 // Siempre se consulta el dato real en la API (nunca se confía en el payload).
@@ -337,6 +394,7 @@ exports.ventraDeviceStatus = onRequest({ cors: true, secrets: [VENTRA_LICENSE_PR
     email: acc.email || null,
     plan: acc.plan || null,
     planName: acc.planName || null,
+    rubro: acc.signupRubro || null,
     status: acc.status || null,
     paidUntil: acc.paidUntil ? acc.paidUntil.toDate().toISOString() : null,
     graceDays: GRACE_DAYS,
@@ -1461,7 +1519,81 @@ const VENTRA_WA_VERIFY_TOKEN = defineSecret("VENTRA_WA_VERIFY_TOKEN");
 /** Cada 15 minutos: los recordatorios que tocan (el día anterior o unas horas antes, según el comercio). */
 exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone: "America/Argentina/Buenos_Aires", secrets: [VENTRA_WA_TOKEN] }, async () => {
   const r = await whatsapp.remindersRun(db, { token: VENTRA_WA_TOKEN.value() });
-  logger.info(`WhatsApp: pasada de recordatorios · ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error`}`);
+  logger.info(`WhatsApp: pasada de recordatorios · ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error, ${r.noPlan} sin plan, ${r.noQuota} sin cupo`}`);
+});
+
+// ─── Paquetes de recordatorios (ver reminder-quota.js) ───
+// El comercio lo compra solo (desde Agenda → Configurar o Mi cuenta) y se acredita solo cuando
+// Mercado Pago avisa el pago: nadie de Ventra tiene que cargar nada a mano.
+const reminderQuota = require("./reminder-quota");
+const PACK_HOOK_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/ventraReminderPackHook";
+
+exports.buyReminderPack = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP_ACCESS_TOKEN] }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  // Vale la sesión de Google (Mi cuenta) y la de la app (sesión de la tienda con el uid de la
+  // cuenta): comprar un paquete no da permisos sobre nada, solo suma recordatorios a esa cuenta.
+  const match = String(req.headers.authorization || "").match(/^Bearer (.+)$/);
+  let user = null;
+  try { user = match ? await admin.auth().verifyIdToken(match[1]) : null; } catch { user = null; }
+  if (!user || (user.firebase && user.firebase.sign_in_provider === "anonymous")) return res.status(401).json({ error: "Iniciá sesión para comprar" });
+  const account = await db.collection("ventra_accounts").doc(user.uid).get();
+  const plan = account.exists ? account.data().plan : null;
+  if (!reminderQuota.includedFor(plan)) return res.status(400).json({ error: "Los recordatorios automáticos vienen con Ventra Agenda Pro y Ventra Full" });
+  const { qty, price } = reminderQuota.PACK;
+  try {
+    const r = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ title: `${qty} recordatorios por WhatsApp · Ventra`, quantity: 1, unit_price: price, currency_id: "ARS" }],
+        external_reference: `wapack|${user.uid}|${qty}|${Date.now()}`,
+        notification_url: PACK_HOOK_URL,
+        back_urls: { success: "https://ventra.store/cuenta.html?pack=ok", pending: "https://ventra.store/cuenta.html?pack=pendiente", failure: "https://ventra.store/cuenta.html" },
+        auto_return: "approved",
+        statement_descriptor: "VENTRA",
+      }),
+    });
+    const pref = await r.json().catch(() => ({}));
+    if (!r.ok || !pref.init_point) throw new Error(`Mercado Pago respondió ${r.status}`);
+    res.status(200).json({ initPoint: pref.init_point });
+  } catch (err) {
+    logger.error("Recordatorios: no se pudo crear el pago del paquete", err);
+    res.status(500).json({ error: "No se pudo iniciar el pago. Probá de nuevo en un momento." });
+  }
+});
+
+/** Aviso de Mercado Pago de un paquete pagado: se acredita solo (una sola vez por pago). */
+exports.ventraReminderPackHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_ACCESS_TOKEN] }, async (req, res) => {
+  const q = req.query, b = req.body || {};
+  const topic = q.type || q.topic || b.type || b.topic;
+  const paymentId = String(q["data.id"] || (b.data && b.data.id) || (topic === "payment" ? q.id : "") || "").replace(/[^0-9]/g, "");
+  if (topic !== "payment" || !paymentId) return res.status(200).send("OK");
+  try {
+    // Nunca se confía en el aviso: se consulta el pago real con el token de Ventra
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers: { Authorization: `Bearer ${String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim()}` } });
+    if (!r.ok) throw new Error(`Mercado Pago respondió ${r.status} al consultar el pago ${paymentId}`);
+    const p = await r.json();
+    const [tag, uid, qtyText] = String(p.external_reference || "").split("|");
+    const qty = Number(qtyText) || 0;
+    if (tag !== "wapack" || !uid || qty <= 0 || p.status !== "approved") return res.status(200).send("OK");
+    if (Number(p.transaction_amount) < reminderQuota.PACK.price * (qty / reminderQuota.PACK.qty)) {
+      logger.warn("Recordatorios: pago de paquete con monto menor al precio", { paymentId, amount: p.transaction_amount });
+      return res.status(200).send("OK");
+    }
+    const credited = await reminderQuota.creditPack(db, uid, paymentId, qty, Number(p.transaction_amount) || 0);
+    if (credited) {
+      logger.info(`Recordatorios: +${qty} a ${uid} (pago ${paymentId})`);
+      await notify.sendToAccount(db, uid, "reminderQuota", {
+        title: `Listo: sumaste ${qty} recordatorios automáticos`,
+        body: "Los recordatorios por WhatsApp siguen saliendo solos. Los del paquete no vencen.",
+        url: "/#/agenda", tag: "wa-quota",
+      }, { ignoreQuiet: true }).catch(() => {});
+    }
+  } catch (err) {
+    logger.error("Recordatorios: error acreditando un paquete", err);
+    return res.status(500).send("Error"); // Mercado Pago reintenta
+  }
+  res.status(200).send("OK");
 });
 
 /** Webhook de Meta: entregas, botones de los recordatorios y mensajes de los clientes. */
@@ -1495,6 +1627,20 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.`,
+        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+      }, { storeId });
+    }
+    return;
+  }
+
+  // El cliente tocó "Confirmo" en el recordatorio de WhatsApp (ver whatsapp.js onButton)
+  if (before && after && !before.clientConfirmedAt && after.clientConfirmedAt && after.status === "CONFIRMED") {
+    const store = await db.collection("ventra_stores").doc(storeId).get();
+    const uid = store.exists && store.data().ownerUid;
+    if (uid) {
+      await notify.sendToAccount(db, uid, "bookings", {
+        title: `Turno confirmado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
+        body: `${after.customerName || "El cliente"}${after.staffName ? " con " + after.staffName : ""} confirmó desde el recordatorio de WhatsApp.`,
         url: "/#/agenda", tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }

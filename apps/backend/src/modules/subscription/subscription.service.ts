@@ -40,6 +40,8 @@ interface SignedLicense {
   email: string | null;
   plan: string | null;
   planName: string | null;
+  /** Rubro con el que se suscribió desde una landing por rubro (licencias viejas no lo traen) */
+  rubro?: string | null;
   status: string | null;
   paidUntil: string | null;
   graceDays: number;
@@ -62,17 +64,23 @@ interface StoredSubscription {
 
 /**
  * Qué incluye el plan. Caja = sistema de ventas; Tienda = tienda online (trae la agenda);
- * Agenda = solo turnos online, sin productos ni caja; Full = todo.
+ * Agenda = solo turnos online, sin productos ni caja; Agenda Pro = Agenda + recordatorios
+ * automáticos por WhatsApp; Full = todo.
  * Sin plan conocido (PCs sin vincular, instalaciones viejas, cuentas sin plan) se habilita
  * todo, igual que antes de que existieran los planes.
  */
-export interface PlanFeatures { caja: boolean; tienda: boolean; agenda: boolean }
+export interface PlanFeatures {
+  caja: boolean; tienda: boolean; agenda: boolean;
+  /** Recordatorios automáticos por WhatsApp (el cupo lo lleva la nube, ver reminder-quota.js) */
+  reminders: boolean;
+}
 
 export function planFeatures(plan: string | null | undefined): PlanFeatures {
-  if (plan === 'caja') return { caja: true, tienda: false, agenda: false };
-  if (plan === 'tienda') return { caja: false, tienda: true, agenda: true };
-  if (plan === 'agenda') return { caja: false, tienda: false, agenda: true };
-  return { caja: true, tienda: true, agenda: true };
+  if (plan === 'caja') return { caja: true, tienda: false, agenda: false, reminders: false };
+  if (plan === 'tienda') return { caja: false, tienda: true, agenda: true, reminders: false };
+  if (plan === 'agenda') return { caja: false, tienda: false, agenda: true, reminders: false };
+  if (plan === 'agenda_pro') return { caja: false, tienda: false, agenda: true, reminders: true };
+  return { caja: true, tienda: true, agenda: true, reminders: true };
 }
 
 export interface SubscriptionStatus {
@@ -82,6 +90,7 @@ export interface SubscriptionStatus {
   plan?: string | null;
   features: PlanFeatures;
   planName?: string | null;
+  rubro?: string | null;
   paidUntil?: string | null;
   graceEndsAt?: string | null;
   daysLeft?: number;
@@ -228,6 +237,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       // La licencia viene firmada por Ventra: el plan no se puede cambiar desde la PC
       features: planFeatures(license.plan),
       planName: license.planName,
+      rubro: license.rubro ?? null,
       paidUntil: license.paidUntil,
       graceEndsAt: graceEnd.toISOString(),
       daysLeft,

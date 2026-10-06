@@ -35,6 +35,27 @@
         {
           "source": "/panel",
           "destination": "/panel.html"
+        },
+        {
+          "source": "/peluquerias",
+          "destination": "/peluquerias.html"
+        }
+      ],
+      "redirects": [
+        {
+          "source": "/peluquerias.html",
+          "destination": "/peluquerias",
+          "type": 301
+        }
+      ],
+      "headers": [
+        {
+          "source": "/ventra-cuenta.js",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        },
+        {
+          "source": "/@(sitemap.xml|robots.txt)",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
         }
       ]
     },

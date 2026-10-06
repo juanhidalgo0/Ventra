@@ -10,6 +10,7 @@ import {
 } from '../../stores/businessStore';
 import { setStoreSetting, whenStoreSettingsReady } from '../../services/storeSettings';
 import { useTourStore } from '../common/tour/tourStore';
+import { intentForRubro, profileForRubro } from '../../services/signupRubro';
 
 const UPGRADE_URL = 'https://ventra.store/cuenta.html';
 const INTENT_ICON: Record<BusinessIntent, any> = { mostrador: Store, online: Globe, turnos: CalendarDays };
@@ -41,6 +42,7 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
   const role = useAuthStore((s) => s.user?.role);
   const features = usePlanStore((s) => s.features);
   const planLoaded = usePlanStore((s) => s.loaded);
+  const signupRubro = usePlanStore((s) => s.signupRubro);
   const { setProfile, setIntents } = useBusinessStore();
   const [show, setShow] = useState(false);
   const [step, setStep] = useState<Step>('intent');
@@ -62,7 +64,9 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
     if (role !== 'ADMIN' || !planLoaded) return;
     if (isAgendaOnly(features)) { setToursPaused(false); return; }
     let alive = true;
-    const askRubro = () => { setRubroOnly(true); setStep('rubro'); setShow(true); };
+    // Si se suscribió desde una landing por rubro (/ropa, /kioscos…), ese rubro ya viene marcado
+    const fromLanding = profileForRubro(signupRubro);
+    const askRubro = () => { setRubroOnly(true); setProfileChoice(fromLanding); setStep('rubro'); setShow(true); };
     (async () => {
       await whenStoreSettingsReady();
       if (!alive) return;
@@ -81,7 +85,9 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
           if (needsRubro) askRubro(); else setToursPaused(false);
           return;
         }
-        setChosen(allowed.includes('mostrador') ? ['mostrador'] : allowed.slice(0, 1));
+        const landingIntent = intentForRubro(signupRubro);
+        setChosen(landingIntent && allowed.includes(landingIntent) ? [landingIntent] : allowed.includes('mostrador') ? ['mostrador'] : allowed.slice(0, 1));
+        setProfileChoice(fromLanding);
         setName(localStorage.getItem('gd_store_name') || '');
         setStep(allowed.length > 1 ? 'intent' : 'rubro');
         setShow(true);
@@ -92,7 +98,7 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, planLoaded, features.caja, features.tienda, features.agenda]);
+  }, [role, planLoaded, signupRubro, features.caja, features.tienda, features.agenda]);
 
   if (!show) return null;
 
