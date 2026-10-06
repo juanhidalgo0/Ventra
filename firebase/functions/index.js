@@ -1522,6 +1522,25 @@ exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone:
   logger.info(`WhatsApp: pasada de recordatorios · ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error, ${r.noPlan} sin plan, ${r.noQuota} sin cupo`}`);
 });
 
+// ─── Métricas del sitio (ventra.store), sin cookies ni datos personales ───
+// Cada evento suma 1 en ventra_site_stats/{AAAA-MM}: vistas de cada landing, tarjeta elegida en
+// la home y botón de plan tocado. Solo eventos de esta lista: no se guarda nada que mande el navegador.
+const SITE_EVENTS = new Set([
+  "view_home", "view_sistema-de-ventas", "view_tienda-online", "view_peluquerias",
+  "card_local", "card_online", "card_turnos",
+  "plan_caja", "plan_full", "plan_tienda", "plan_agenda", "plan_agenda_pro",
+]);
+exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, memory: "128MiB" }, async (req, res) => {
+  let e = "";
+  try { e = String((typeof req.body === "string" ? JSON.parse(req.body) : req.body || {}).e || ""); } catch { e = ""; }
+  if (req.method !== "POST" || !SITE_EVENTS.has(e)) return res.status(204).end();
+  const month = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).slice(0, 7);
+  await db.collection("ventra_site_stats").doc(month)
+    .set({ [e]: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    .catch((err) => logger.warn("Sitio: no se pudo contar el evento", e, err.message));
+  res.status(204).end();
+});
+
 // ─── Recordatorio por email (gratis en todos los planes, ver email-reminders.js) ───
 // Mientras no se cargue la clave real de Resend, el secreto puede tener un valor provisorio:
 // sin una clave "re_…" no se manda nada.

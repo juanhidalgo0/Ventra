@@ -18,6 +18,23 @@
   var authAreas = [document.getElementById('authArea'), document.getElementById('authAreaMobile')];
   var auth = null, pendingPlan = null, loading = null, firstState = null;
 
+  // Métricas propias, sin cookies ni datos personales (ver ventraSiteEvent): vista de la página
+  // (<html data-page>), tarjetas con data-track y botones de plan. Si falla, no pasa nada.
+  var EVENT_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraSiteEvent';
+  function track(e){
+    try {
+      var body = JSON.stringify({ e: e });
+      if (!(navigator.sendBeacon && navigator.sendBeacon(EVENT_URL, body))) fetch(EVENT_URL, { method:'POST', body: body, keepalive: true }).catch(function(){});
+    } catch(err){}
+  }
+  var page = document.documentElement.getAttribute('data-page');
+  if (page && !/^(localhost|127\.)/.test(location.hostname)) track('view_' + page);
+  document.addEventListener('click', function(ev){
+    var el = ev.target && ev.target.closest ? ev.target.closest('[data-track], .plan-btn') : null;
+    if (!el || /^(localhost|127\.)/.test(location.hostname)) return;
+    track(el.getAttribute('data-track') || 'plan_' + el.getAttribute('data-plan'));
+  }, true);
+
   // Las landings por rubro (/peluquerias…) marcan <html data-rubro="…">: viaja con la
   // suscripción para que la app arranque con ese rubro elegido. Las UTM de la visita
   // también, para saber qué aviso o canal trae cada alta.
@@ -74,7 +91,8 @@
   // funciona normal y web.ventra.store pide entrar.
   document.addEventListener('click', function(e){
     var a = e.target && e.target.closest ? e.target.closest('a[href^="https://web.ventra.store"]') : null;
-    var user = firebase.auth().currentUser;
+    // Antes de que cargue el SDK no hay sesión que pasar: el link funciona normal
+    var user = a && auth ? auth.currentUser : null;
     if (!a || !user || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
     var target = '_self';

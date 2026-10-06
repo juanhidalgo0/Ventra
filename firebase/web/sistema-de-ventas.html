@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-page="sistema-de-ventas">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1429,7 +1429,8 @@
     </div>
 
     <div style="text-align:center" class="reveal">
-      <div class="billing" id="billing" role="group" aria-label="Frecuencia de pago">
+      <!-- Oculto hasta que exista el cobro anual: hoy la suscripción de Mercado Pago es solo mensual -->
+      <div class="billing" id="billing" role="group" aria-label="Frecuencia de pago" style="display:none">
         <span class="knob"></span>
         <button type="button" class="active" data-period="monthly">Mensual</button>
         <button type="button" data-period="annual">Anual <span class="save">2 meses gratis</span></button>
@@ -1586,7 +1587,7 @@
   <div class="shell foot">
     <a href="/" class="brand"><img src="/ventra-logo.png" alt="" width="28" height="28">Ventra</a>
     <nav aria-label="Pie de página">
-      <a href="#producto">Producto</a><a href="#tienda">Tienda online</a><a href="#planes">Planes</a><a href="#preguntas">Preguntas</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
+      <a href="#producto">Producto</a><a href="#tienda">Tienda online</a><a href="#planes">Planes</a><a href="#preguntas">Preguntas</a><a href="/tienda-online">Tienda online</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
     </nav>
     <small>© <span id="year">2026</span> Ventra · El sistema de ventas para comercios argentinos</small>
   </div>
