@@ -194,3 +194,39 @@ footer{ background:var(--pine-950); color:var(--on-dark-3); font-size:13.5px; pa
 .dock small{ color:var(--on-dark-3); font-size:12px; }
 .dock.show{ transform:none; }
 @media (max-width:760px){ .dock{ display:flex; } }
+
+/* ═════════ Animaciones y detalles compartidos (home y landings) ═════════ */
+.hero, .final{ isolation:isolate; }
+.final{ position:relative; overflow:hidden; }
+.aurora{ position:absolute; inset:-20% -10% auto; height:120%; z-index:-1; pointer-events:none; filter:blur(70px); opacity:.75; }
+.aurora i{ position:absolute; border-radius:50%; mix-blend-mode:screen; }
+.aurora i:nth-child(1){ width:46vw; height:46vw; left:-6vw; top:-8vw; background:radial-gradient(circle, rgba(52,172,126,.55), transparent 65%); animation:drift1 22s ease-in-out infinite alternate; }
+.aurora i:nth-child(2){ width:40vw; height:40vw; right:-8vw; top:-4vw; background:radial-gradient(circle, rgba(22,113,96,.7), transparent 65%); animation:drift2 26s ease-in-out infinite alternate; }
+.aurora i:nth-child(3){ width:34vw; height:34vw; left:32vw; top:18vw; background:radial-gradient(circle, rgba(205,238,224,.22), transparent 65%); animation:drift3 30s ease-in-out infinite alternate; }
+@keyframes drift1{ to{ transform:translate(8vw, 6vw) scale(1.15); } }
+@keyframes drift2{ to{ transform:translate(-10vw, 8vw) scale(.9); } }
+@keyframes drift3{ to{ transform:translate(-6vw, -6vw) scale(1.2); } }
+.gridbg{ position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.5;
+  background-image:linear-gradient(rgba(246,242,236,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(246,242,236,.05) 1px, transparent 1px);
+  background-size:56px 56px; -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); }
+.hero .accent{ background:linear-gradient(100deg, var(--mint-300) 20%, #E8FFF4 45%, var(--mint) 60%, var(--mint-300) 80%); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:shine 6s linear infinite; }
+@keyframes shine{ to{ background-position:-250% 0; } }
+/* Aparición al bajar (la clase js la pone el <head>; sin JS se ve todo) */
+html.js .rv{ opacity:0; transform:translateY(22px); transition:opacity .8s var(--ease), transform .8s var(--ease); transition-delay:var(--d, 0s); }
+html.js .rv.in{ opacity:1; transform:none; }
+/* El celular de la portada flota */
+.hero .phone{ animation:float 7s ease-in-out infinite; }
+@keyframes float{ 50%{ transform:translateY(-10px); } }
+/* Detalles al pasar el mouse */
+.step, .feat, .pain, .plan-box, .card:not(.result){ transition:transform .4s var(--ease), box-shadow .4s var(--ease), border-color .3s; }
+.step:hover, .feat:hover, .pain:hover{ transform:translateY(-4px); box-shadow:var(--shadow); border-color:var(--mint-100); }
+.plan-box:hover{ transform:translateY(-6px); box-shadow:0 30px 60px -30px rgba(15,31,26,.35); }
+.plan-box.featured{ box-shadow:0 0 0 6px rgba(52,172,126,.10), var(--shadow); }
+.feat .ic, .step .n{ transition:transform .4s var(--ease); }
+.feat:hover .ic, .step:hover .n{ transform:scale(1.08) rotate(-4deg); }
+.chip{ transition:background-color .2s, color .2s, border-color .2s, transform .25s var(--ease); }
+.chip:hover{ transform:translateY(-1px); }
+@media (prefers-reduced-motion:reduce){
+  .aurora i, .hero .accent, .hero .phone{ animation:none !important; }
+  html.js .rv{ opacity:1; transform:none; transition:none; }
+}

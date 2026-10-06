@@ -2,6 +2,7 @@
 <html lang="es-AR" data-rubro="peluqueria" data-page="peluquerias">
 <head>
 <meta charset="utf-8">
+<script>document.documentElement.classList.add("js")</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sistema de turnos para peluquerías y barberías | Ventra</title>
 <meta name="description" content="Turnos online para peluquerías, barberías, uñas y estética: tus clientes reservan solos y reciben el recordatorio por WhatsApp. Seña con Mercado Pago.">
@@ -100,7 +101,7 @@
   ]
 }
 </script>
-<link rel="stylesheet" href="/landing.css?v=2">
+<link rel="stylesheet" href="/landing.css?v=3">
 </head>
 <body>
 
@@ -117,6 +118,8 @@
 <main>
 
 <section class="hero dark">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="gridbg" aria-hidden="true"></div>
   <div class="shell hero-grid">
     <div>
       <span class="eyebrow"><i></i>Peluquerías · Barberías · Uñas · Estética</span>
@@ -158,13 +161,13 @@
 
 <section id="cuanto">
   <div class="shell">
-    <div class="sec-head">
+    <div class="sec-head rv">
       <span class="eyebrow"><i></i>Hacé la cuenta</span>
       <h2>Un turno que no viene es una hora de silla vacía.</h2>
       <p>Mové los valores con los números de tu negocio y fijate cuánto se te va por mes en clientes que no avisan.</p>
     </div>
     <div class="calc">
-      <div class="card">
+      <div class="card rv">
         <div class="field">
           <label for="faltas">Turnos que faltan por semana <output id="faltasOut" for="faltas">3</output></label>
           <input id="faltas" type="range" min="0" max="15" step="1" value="3">
@@ -174,7 +177,7 @@
           <input id="precio" type="range" min="3000" max="60000" step="1000" value="15000">
         </div>
       </div>
-      <div class="card result" aria-live="polite">
+      <div class="card result rv" aria-live="polite">
         <span class="eyebrow"><i></i>Lo que perdés por mes</span>
         <div class="big" id="perdida">$193.500</div>
         <p>Si el recordatorio evita <b>la mitad</b> de esas faltas, recuperás <b id="recupero">$96.750</b> por mes.</p>
@@ -187,32 +190,32 @@
 
 <section id="como" style="padding-top:0">
   <div class="shell">
-    <div class="sec-head">
+    <div class="sec-head rv">
       <span class="eyebrow"><i></i>Cómo funciona</span>
       <h2>Vos atendés. El turno se agenda y se recuerda solo.</h2>
     </div>
     <div class="steps">
-      <div class="step"><div class="n">1</div><h3>Reservan desde tu link</h3><p>Lo ponés en la bio de Instagram, en tu WhatsApp Business o en Google Maps. Eligen servicio, profesional y horario libre, sin escribirte.</p></div>
-      <div class="step"><div class="n">2</div><h3>Les llega el recordatorio</h3><p>El día anterior Ventra les manda un WhatsApp con tu nombre, el servicio y la hora, con los botones “Confirmo” y “Necesito cambiarlo”.</p></div>
-      <div class="step"><div class="n">3</div><h3>Te avisa al celular</h3><p>Si confirman, cancelan o piden cambiar, te llega el aviso. El horario que se libera vuelve a quedar disponible para otro cliente.</p></div>
+      <div class="step rv"><div class="n">1</div><h3>Reservan desde tu link</h3><p>Lo ponés en la bio de Instagram, en tu WhatsApp Business o en Google Maps. Eligen servicio, profesional y horario libre, sin escribirte.</p></div>
+      <div class="step rv"><div class="n">2</div><h3>Les llega el recordatorio</h3><p>El día anterior Ventra les manda un WhatsApp con tu nombre, el servicio y la hora, con los botones “Confirmo” y “Necesito cambiarlo”.</p></div>
+      <div class="step rv"><div class="n">3</div><h3>Te avisa al celular</h3><p>Si confirman, cancelan o piden cambiar, te llega el aviso. El horario que se libera vuelve a quedar disponible para otro cliente.</p></div>
     </div>
   </div>
 </section>
 
 <section class="features" id="funciones">
   <div class="shell">
-    <div class="sec-head">
+    <div class="sec-head rv">
       <span class="eyebrow"><i></i>Todo lo que incluye</span>
       <h2>La agenda de tu salón, en el bolsillo.</h2>
       <p>Sin cuaderno, sin pasar turnos por chat a la noche y sin depender de tu memoria.</p>
     </div>
     <div class="grid">
-      <div class="feat star"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg></div><h3>Recordatorio automático por WhatsApp</h3><p>Sale solo, a la hora que elijas: el día anterior o unas horas antes. El cliente confirma o pide cambio con un botón. Con Agenda Pro.</p></div>
-      <div class="feat"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><h3>Tu página de turnos</h3><p>Un link propio con tu logo, tus servicios, precios y horarios. Tus clientes reservan las 24 horas, aunque estés atendiendo.</p></div>
-      <div class="feat"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg></div><h3>Seña con Mercado Pago</h3><p>Pedí un porcentaje o un monto fijo para reservar. La plata entra directo a tu cuenta de Mercado Pago.</p></div>
-      <div class="feat"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg></div><h3>Varios profesionales</h3><p>Cada uno con sus horarios y sus servicios. El cliente elige con quién, y vos ves la agenda del día y de la semana de todo el equipo.</p></div>
-      <div class="feat"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><h3>Ficha de cada cliente</h3><p>Cuántas veces vino, cuándo fue la última, qué se hizo y cuánto gastó. Con notas tuyas, como la fórmula del color.</p></div>
-      <div class="feat"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>Cobros del día y del mes</h3><p>Marcá cada turno como cobrado y mirá cuánto entró por efectivo, transferencia o tarjeta, y por profesional.</p></div>
+      <div class="feat star rv"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg></div><h3>Recordatorio automático por WhatsApp</h3><p>Sale solo, a la hora que elijas: el día anterior o unas horas antes. El cliente confirma o pide cambio con un botón. Con Agenda Pro.</p></div>
+      <div class="feat rv"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><h3>Tu página de turnos</h3><p>Un link propio con tu logo, tus servicios, precios y horarios. Tus clientes reservan las 24 horas, aunque estés atendiendo.</p></div>
+      <div class="feat rv"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg></div><h3>Seña con Mercado Pago</h3><p>Pedí un porcentaje o un monto fijo para reservar. La plata entra directo a tu cuenta de Mercado Pago.</p></div>
+      <div class="feat rv"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg></div><h3>Varios profesionales</h3><p>Cada uno con sus horarios y sus servicios. El cliente elige con quién, y vos ves la agenda del día y de la semana de todo el equipo.</p></div>
+      <div class="feat rv"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><h3>Ficha de cada cliente</h3><p>Cuántas veces vino, cuándo fue la última, qué se hizo y cuánto gastó. Con notas tuyas, como la fórmula del color.</p></div>
+      <div class="feat rv"><div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>Cobros del día y del mes</h3><p>Marcá cada turno como cobrado y mirá cuánto entró por efectivo, transferencia o tarjeta, y por profesional.</p></div>
     </div>
   </div>
 </section>
@@ -225,19 +228,19 @@
       <p style="color:var(--ink-2);font-size:17px">Ventra trae los servicios típicos de tu rubro con su duración. Les ponés tus precios, cargás tus horarios y tu página queda publicada.</p>
       <span class="link-pill"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span id="svcLink">tienda.ventra.store/estudio-lu</span></span>
     </div>
-    <ul class="svc-list" id="svcList" aria-label="Servicios de ejemplo"></ul>
+    <ul class="svc-list rv" id="svcList" aria-label="Servicios de ejemplo"></ul>
   </div>
 </section>
 
 <section id="plan" style="padding-top:0">
   <div class="shell">
-    <div class="sec-head center">
+    <div class="sec-head center rv">
       <span class="eyebrow"><i></i>Precio</span>
       <h2>Menos que un turno perdido por mes.</h2>
       <p>Empezá con la agenda y sumá los recordatorios automáticos cuando quieras.</p>
     </div>
     <div class="plans">
-      <div class="plan-box">
+      <div class="plan-box rv">
         <div class="pname">Ventra Agenda</div>
         <div class="pfor">Tu agenda online, con recordatorio por email que sale solo.</div>
         <div class="price"><span class="amt">$9.900</span><span class="per">/ mes</span></div>
@@ -254,7 +257,7 @@
         </ul>
         <button type="button" class="btn btn-ghost btn-block plan-btn" data-plan="agenda">Empezar con Ventra Agenda</button>
       </div>
-      <div class="plan-box featured">
+      <div class="plan-box featured rv">
         <span class="badge">Menos faltazos</span>
         <div class="pname">Ventra Agenda Pro</div>
         <div class="pfor">Todo lo de Agenda, y el recordatorio sale solo por WhatsApp.</div>
@@ -271,14 +274,14 @@
       </div>
     </div>
     <p class="fine" style="text-align:center;margin-top:18px">Sin permanencia: lo das de baja cuando quieras. Podés pasarte de un plan al otro desde Mi cuenta.</p>
-    <p class="plan-alt">¿También vendés productos en el local (shampoo, ceras, tratamientos)? <a href="/sistema-de-ventas#planes">Ventra Full suma la caja y el stock</a>.</p>
+    <p class="plan-alt rv">¿También vendés productos en el local (shampoo, ceras, tratamientos)? <a href="/sistema-de-ventas#planes">Ventra Full suma la caja y el stock</a>.</p>
   </div>
 </section>
 
 <section id="preguntas" style="padding-top:0">
   <div class="shell">
-    <div class="sec-head center"><span class="eyebrow"><i></i>Preguntas frecuentes</span><h2>Lo que nos preguntan los salones.</h2></div>
-    <div class="faq">
+    <div class="sec-head center rv"><span class="eyebrow"><i></i>Preguntas frecuentes</span><h2>Lo que nos preguntan los salones.</h2></div>
+    <div class="faq rv">
       <details><summary>¿Mis clientes tienen que descargar una app para sacar turno?</summary><p>No. Reservan desde tu link (por ejemplo tienda.ventra.store/tu-salon), que abre en el navegador del celular. Lo podés poner en la bio de Instagram, en tu WhatsApp Business o en Google Maps.</p></details>
       <details><summary>¿Cómo funciona el recordatorio por WhatsApp?</summary><p>Ventra le manda al cliente un mensaje de WhatsApp con el nombre de tu negocio, el servicio, el día y la hora, con dos botones: “Confirmo” o “Necesito cambiarlo”. Elegís cuándo sale: el día anterior a las 18 o a las 20 hs, o unas horas antes del turno. Si el cliente confirma, cancela o pide cambiarlo, te llega el aviso al celular. Viene con Ventra Agenda Pro; con Ventra Agenda lo mandás vos con un toque y la app arma el mensaje. En los dos planes, si el cliente dejó su email, también le llega un recordatorio por email con el turno para su calendario, sin costo.</p></details>
       <details><summary>¿Cuántos recordatorios automáticos incluye?</summary><p>Ventra Agenda Pro trae 200 por mes y se renuevan el 1° de cada mes. Si te quedás corto, sumás 100 por $7.500 con Mercado Pago desde la app: se acreditan solos y los de paquetes no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios los mandás con un toque.</p></details>
@@ -291,6 +294,7 @@
 </section>
 
 <section class="final dark">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="shell">
     <span class="eyebrow"><i></i>Empezá hoy</span>
     <h2>Tu agenda llena, sin perseguir a nadie por WhatsApp.</h2>
@@ -390,6 +394,7 @@
   $('year').textContent = new Date().getFullYear();
 })();
 </script>
+<script src="/landing.js?v=1" defer></script>
 <script src="/ventra-cuenta.js?v=3"></script>
 <script src="/ventra-chat.js?v=1" defer></script>
 </body>
