@@ -42,6 +42,21 @@ export default function LoginPage() {
 
   const { login, supportLogin, isLoading } = useAuthStore();
   const navigate = useNavigate();
+  // Sesión de soporte abierta desde ventra.store/admin en esta pestaña
+  const [supportAvailable, setSupportAvailable] = useState(false);
+
+  const enterAsSupport = () => {
+    const rawHost = window.location.hostname;
+    return supportLogin()
+      .then(() => {
+        const host = window.location.port ? `${rawHost}:${window.location.port}` : rawHost;
+        localStorage.setItem('server_ip', host);
+        localStorage.setItem('saved_client_ip', host);
+        localStorage.setItem('connection_mode', 'CLIENT');
+        navigate('/pos');
+      })
+      .catch((err: any) => toast.error(err?.message || 'No se pudo entrar como soporte'));
+  };
 
   useEffect(() => {
     const rawHost = window.location.hostname;
@@ -57,7 +72,9 @@ export default function LoginPage() {
     // used to leave this screen "loading" for up to 150 seconds before falling back.
     if (!isLocalDesktopContext) {
       // Soporte desde ventra.store/admin: el anfitrión de la nube ya validó el acceso,
-      // así que se entra directo como el administrador del comercio.
+      // así que se entra directo como el administrador del comercio, una sola vez por
+      // pestaña. Si después se cierra la sesión, el login queda libre para probar otro
+      // usuario (antes volvía a entrar solo como administrador y no había forma).
       // Fuera de la caja en la nube (la demo, por ejemplo) esa ruta no existe y vuelve
       // la página de la app en vez de JSON: se ignora sin avisar nada.
       fetch('/_ventra/whoami', { credentials: 'same-origin' })
@@ -65,15 +82,12 @@ export default function LoginPage() {
         .catch(() => null)
         .then((who) => {
           if (!who?.support) return;
-          return supportLogin()
-            .then(() => {
-              const host = window.location.port ? `${rawHost}:${window.location.port}` : rawHost;
-              localStorage.setItem('server_ip', host);
-              localStorage.setItem('saved_client_ip', host);
-              localStorage.setItem('connection_mode', 'CLIENT');
-              navigate('/pos');
-            })
-            .catch((err: any) => toast.error(err?.message || 'No se pudo entrar como soporte'));
+          setSupportAvailable(true);
+          try {
+            if (sessionStorage.getItem('ventra_support_entered')) return;
+            sessionStorage.setItem('ventra_support_entered', '1');
+          } catch { /* sin almacenamiento: se entra igual */ }
+          return enterAsSupport();
         });
 
       Promise.all([
@@ -342,6 +356,11 @@ export default function LoginPage() {
                 {!isDemo && (
                   <button type="button" onClick={() => setRecovering(true)} className="mt-4 w-full text-center text-[12px] font-semibold text-slate-500 hover:text-rose-600 cursor-pointer">
                     ¿Olvidaste la contraseña del administrador?
+                  </button>
+                )}
+                {supportAvailable && (
+                  <button type="button" onClick={enterAsSupport} disabled={isLoading} className="mt-2 w-full text-center text-[12px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer disabled:opacity-50">
+                    Volver a entrar como soporte (administrador)
                   </button>
                 )}
               </div>
