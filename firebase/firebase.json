@@ -39,18 +39,26 @@
         {
           "source": "/peluquerias",
           "destination": "/peluquerias.html"
+        },
+        {
+          "source": "/tienda-online",
+          "destination": "/tienda-online.html"
+        },
+        {
+          "source": "/sistema-de-ventas",
+          "destination": "/sistema-de-ventas.html"
         }
       ],
       "redirects": [
         {
-          "source": "/peluquerias.html",
-          "destination": "/peluquerias",
+          "regex": "^/(peluquerias|tienda-online|sistema-de-ventas)\\.html$",
+          "destination": "/:1",
           "type": 301
         }
       ],
       "headers": [
         {
-          "source": "/ventra-cuenta.js",
+          "source": "/@(ventra-cuenta.js|landing.css)",
           "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
         },
         {
