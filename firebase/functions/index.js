@@ -1529,6 +1529,7 @@ const SITE_EVENTS = new Set([
   "view_home", "view_sistema-de-ventas", "view_tienda-online", "view_peluquerias", "view_turnos",
   "card_local", "card_online", "card_turnos",
   "plan_caja", "plan_full", "plan_tienda", "plan_agenda", "plan_agenda_pro",
+  "chat_open", "chat_msg", "chat_handoff",
 ]);
 exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, memory: "128MiB" }, async (req, res) => {
   let e = "";
@@ -1540,6 +1541,16 @@ exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, mem
     .catch((err) => logger.warn("Sitio: no se pudo contar el evento", e, err.message));
   res.status(204).end();
 });
+
+// ─── Asistente con IA de ventra.store (ver chat.js y chat/ventra-kb.md) ───
+// Sin una clave "sk-ant-…" cargada responde 503 y la página ofrece el WhatsApp.
+const chat = require("./chat");
+const VENTRA_ANTHROPIC_KEY = defineSecret("VENTRA_ANTHROPIC_KEY");
+exports.ventraChat = onRequest({
+  cors: [...VENTRA_ORIGINS, /^http:\/\/localhost:\d+$/],
+  secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 120, memory: "256MiB", maxInstances: 10,
+}, (req, res) => chat.handle(db, req, res, { apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() })
+  .catch((err) => { logger.error("Chat: error", err); if (!res.headersSent) res.status(500).json({ error: "Error" }); else res.end(); }));
 
 // ─── Recordatorio por email (gratis en todos los planes, ver email-reminders.js) ───
 // Mientras no se cargue la clave real de Resend, el secreto puede tener un valor provisorio:

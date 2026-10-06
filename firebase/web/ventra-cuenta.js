@@ -27,6 +27,7 @@
       if (!(navigator.sendBeacon && navigator.sendBeacon(EVENT_URL, body))) fetch(EVENT_URL, { method:'POST', body: body, keepalive: true }).catch(function(){});
     } catch(err){}
   }
+  window.ventraTrack = function(e){ if (!/^(localhost|127\.)/.test(location.hostname)) track(e); };
   var page = document.documentElement.getAttribute('data-page');
   if (page && !/^(localhost|127\.)/.test(location.hostname)) track('view_' + page);
   document.addEventListener('click', function(ev){
