@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
 import axios from 'axios';
@@ -351,13 +351,13 @@ export class PurchasesService {
           },
         });
 
-        const stockBefore = product.stock;
-        const stockAfter = stockBefore + totalUnitsAdded;
+        if (!Number.isFinite(totalUnitsAdded)) throw new BadRequestException(`Cantidad inválida en ${product.name}`);
+        const stockAfter = (await tx.product.update({ where: { id: productId }, data: { stock: { increment: totalUnitsAdded } }, select: { stock: true } })).stock;
+        const stockBefore = stockAfter - totalUnitsAdded;
 
         // Update Product Stock, Cost Price and Sale Price
         const updatedSalePrice = item.salePrice || product.salePrice;
         const updateData: any = {
-          stock: stockAfter,
           costPrice: unitCostWithIva, // Store unit cost with IVA
           salePrice: updatedSalePrice,
           isActive: true // Reactivate if soft-deleted
@@ -828,6 +828,9 @@ REGLAS CRÍTICAS:
     const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
 
     const purchase = await this.prisma.$transaction(async (tx) => {
+      const current = await (tx as any).purchase.findUnique({ where: { id }, select: { status: true } });
+      if (!current) throw new NotFoundException('Compra no encontrada');
+      if (current.status !== 'PENDING') throw new BadRequestException('Esta compra ya fue confirmada: su stock ya está cargado');
       // 1. Update Purchase status to COMPLETED and other fields
       const updatedPurchase = await (tx as any).purchase.update({
         where: { id },
@@ -876,13 +879,13 @@ REGLAS CRÍTICAS:
             },
           });
 
-          const stockBefore = product.stock;
-          const stockAfter = stockBefore + totalUnitsAdded;
+          if (!Number.isFinite(totalUnitsAdded)) throw new BadRequestException(`Cantidad inválida en ${product.name}`);
+          const stockAfter = (await tx.product.update({ where: { id: productId }, data: { stock: { increment: totalUnitsAdded } }, select: { stock: true } })).stock;
+          const stockBefore = stockAfter - totalUnitsAdded;
 
           // Update Product Stock, Cost Price and Sale Price
           const updatedSalePrice = item.salePrice || product.salePrice;
           const updateData: any = {
-            stock: stockAfter,
             costPrice: unitCostWithIva,
             salePrice: updatedSalePrice,
             isActive: true
@@ -947,6 +950,41 @@ REGLAS CRÍTICAS:
     return purchase;
   }
 
+  /**
+   * Saca del stock lo que esta compra sumó. Se usa lo que quedó anotado en los movimientos de
+   * inventario de la compra (exacto aunque después cambien las unidades por paquete); para
+   * compras viejas sin movimientos, se calcula por ítem. Una compra pendiente no sumó nada.
+   */
+  private async revertPurchaseStock(tx: any, purchase: any) {
+    if (purchase.status && purchase.status !== 'COMPLETED') return;
+    const moves: { productId: string; quantity: number }[] = await tx.inventoryMovement.findMany({
+      where: { reference: `Compra #${purchase.id}`, type: 'ENTRY' },
+      select: { productId: true, quantity: true },
+    });
+    const units = new Map<string, number>();
+    if (moves.length) {
+      for (const m of moves) units.set(m.productId, (units.get(m.productId) || 0) + m.quantity);
+    } else {
+      for (const item of purchase.items) {
+        if (!item.product) continue;
+        const isPack = item.buyFormat === 'PACK' && item.product.presentationType === 'PACK';
+        const total = item.quantity * (isPack ? (item.product.unitsPerPack || 1) : 1);
+        units.set(item.productId, (units.get(item.productId) || 0) + total);
+      }
+    }
+    for (const [productId, qty] of units) {
+      if (!qty) continue;
+      const exists = await tx.product.findUnique({ where: { id: productId }, select: { id: true } });
+      if (!exists) continue;
+      const { stock: after } = await tx.product.update({ where: { id: productId }, data: { stock: { decrement: qty } }, select: { stock: true } });
+      if (purchase.userId) {
+        await tx.inventoryMovement.create({
+          data: { productId, userId: purchase.userId, type: 'EXIT', quantity: -qty, stockBefore: after + qty, stockAfter: after, reason: 'Compra eliminada', reference: `Compra eliminada #${purchase.id}` },
+        });
+      }
+    }
+  }
+
   async deleteOne(id: string) {
     const purchase = await this.prisma.purchase.findUnique({
       where: { id },
@@ -957,23 +995,7 @@ REGLAS CRÍTICAS:
     await this.prisma.$transaction(async (tx) => {
       // Los lotes que trajo esta compra dejan de existir
       await tx.productLot.updateMany({ where: { purchaseId: id, status: 'ACTIVE' }, data: { status: 'REMOVED' } });
-      // Deduct stock for each item if the product exists
-      for (const item of purchase.items) {
-        if (item.product) {
-          const isPack = item.buyFormat === 'PACK' && item.product.presentationType === 'PACK';
-          const unitsPerPack = isPack ? (item.product.unitsPerPack || 1) : 1;
-          const totalUnits = item.quantity * unitsPerPack;
-          
-          await tx.product.update({
-            where: { id: item.productId },
-            data: {
-              stock: {
-                decrement: totalUnits,
-              },
-            },
-          });
-        }
-      }
+      await this.revertPurchaseStock(tx, purchase);
 
       // Delete the purchase items first, then the purchase
       await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
@@ -989,24 +1011,8 @@ REGLAS CRÍTICAS:
     });
 
     await this.prisma.$transaction(async (tx) => {
-      for (const p of purchases) {
-        for (const item of p.items) {
-          if (item.product) {
-            const isPack = item.buyFormat === 'PACK' && item.product.presentationType === 'PACK';
-            const unitsPerPack = isPack ? (item.product.unitsPerPack || 1) : 1;
-            const totalUnits = item.quantity * unitsPerPack;
-
-            await tx.product.update({
-              where: { id: item.productId },
-              data: {
-                stock: {
-                  decrement: totalUnits,
-                },
-              },
-            });
-          }
-        }
-      }
+      await tx.productLot.updateMany({ where: { purchaseId: { not: null }, status: 'ACTIVE' }, data: { status: 'REMOVED' } });
+      for (const p of purchases) await this.revertPurchaseStock(tx, p);
 
       await tx.purchaseItem.deleteMany({});
       await tx.purchase.deleteMany({});
@@ -1034,8 +1040,9 @@ REGLAS CRÍTICAS:
           const unitsPerPack = isPack ? (product.unitsPerPack || 1) : 1;
           const totalUnits = item.quantity * unitsPerPack;
 
-          // If the product was inactive/deleted, we set stock to the purchase quantity. If it was active, we add to it.
-          const newStock = product.isActive ? (product.stock + totalUnits) : totalUnits;
+          // Activo: la compra ya está en su stock, no se vuelve a sumar. Dado de baja: vuelve con
+          // lo que trajo la compra (una compra pendiente nunca sumó, así que tampoco).
+          const newStock = product.isActive || purchase.status !== 'COMPLETED' ? product.stock : totalUnits;
 
           product = await tx.product.update({
             where: { id: product.id },

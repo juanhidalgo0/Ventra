@@ -17,6 +17,27 @@ export class FirebaseSyncService implements OnModuleInit {
   private productListenerUnsubscribe: (() => void) | null = null;
   private configListenerUnsubscribe: (() => void) | null = null;
   private lastBidirectionalSyncState = false;
+  /**
+   * Stock que esta caja subió a GoDelivery en los últimos minutos, por código. Cuando la nube
+   * devuelve ese mismo valor (el eco de nuestra propia subida) no se aplica: si mientras tanto
+   * se vendió algo, pisaría el stock local con un número viejo y la venta se perdería.
+   */
+  private pushedStock = new Map<string, { values: number[]; at: number }>();
+  private rememberPushedStock(key: string, value: number) {
+    const now = Date.now();
+    const prev = this.pushedStock.get(key);
+    const values = prev && now - prev.at < 10 * 60_000 ? [...prev.values.slice(-19), value] : [value];
+    this.pushedStock.set(key, { values, at: now });
+  }
+  private isOwnStockEcho(keys: (string | undefined | null)[], value: any) {
+    const v = Number(value);
+    const now = Date.now();
+    return keys.some((k) => {
+      if (!k) return false;
+      const e = this.pushedStock.get(k);
+      return !!e && now - e.at < 10 * 60_000 && e.values.includes(v);
+    });
+  }
 
   constructor(
     private config: ConfigService,
@@ -444,6 +465,12 @@ export class FirebaseSyncService implements OnModuleInit {
     if (!this.isInitialized || !this.firestore || !barcode) return;
 
     try {
+      // El valor que trae quien llama puede estar viejo (dos ventas seguidas, el mismo producto dos
+      // veces en una venta): se sube el stock que hay ahora en la base.
+      const current = await this.prisma.product.findFirst({ where: { OR: [{ barcode }, { id: barcode }] }, select: { stock: true } });
+      if (current && Number.isFinite(current.stock)) newStock = current.stock;
+      this.rememberPushedStock(barcode, newStock);
+
       const productsRef = this.firestore.collection('comercios').doc(this.comercioId).collection('products');
       const querySnapshot = await productsRef.where('barcode', '==', barcode).limit(1).get();
       
@@ -911,6 +938,13 @@ export class FirebaseSyncService implements OnModuleInit {
       return;
     }
 
+    // Si el pedido ya se descontó (y lo que falló fue marcarlo en la nube), no se vuelve a descontar
+    const already = await this.prisma.inventoryMovement.findFirst({ where: { reference: `GoDelivery:${orderId}` }, select: { id: true } });
+    if (already) {
+      await this.markOrderAsStockDiscounted(orderId);
+      return;
+    }
+
     try {
       await this.prisma.$transaction(async (tx) => {
         for (const item of cart) {
@@ -949,13 +983,13 @@ export class FirebaseSyncService implements OnModuleInit {
               continue;
             }
 
-            const stockBefore = localProd.stock;
-            const stockAfter = stockBefore - qty;
-
-            await tx.product.update({
+            if (!Number.isFinite(qty) || qty <= 0) continue;
+            const { stock: stockAfter } = await tx.product.update({
               where: { id: localProd.id },
-              data: { stock: stockAfter }
+              data: { stock: { decrement: qty } },
+              select: { stock: true },
             });
+            const stockBefore = stockAfter + qty;
 
             await tx.inventoryMovement.create({
               data: {
@@ -1064,7 +1098,7 @@ export class FirebaseSyncService implements OnModuleInit {
                 if (remoteProd.price !== undefined && remoteProd.price !== localProd.salePrice) {
                   updateData.salePrice = remoteProd.price;
                 }
-                if (remoteProd.stockQuantity !== undefined && !localProd.unlimitedStock && remoteProd.stockQuantity !== localProd.stock) {
+                if (remoteProd.stockQuantity !== undefined && Number.isFinite(Number(remoteProd.stockQuantity)) && !localProd.unlimitedStock && remoteProd.stockQuantity !== localProd.stock && !this.isOwnStockEcho([remoteProd.barcode, localProd.barcode, localProd.id], remoteProd.stockQuantity)) {
                   updateData.stock = remoteProd.stockQuantity;
                 }
                 if (remoteProd.name !== undefined && remoteProd.name !== localProd.name) {
@@ -1271,7 +1305,7 @@ export class FirebaseSyncService implements OnModuleInit {
           if (remoteProd.price !== undefined && remoteProd.price !== localProd.salePrice) {
             updateData.salePrice = remoteProd.price;
           }
-          if (remoteProd.stockQuantity !== undefined && !localProd.unlimitedStock && remoteProd.stockQuantity !== localProd.stock) {
+          if (remoteProd.stockQuantity !== undefined && Number.isFinite(Number(remoteProd.stockQuantity)) && !localProd.unlimitedStock && remoteProd.stockQuantity !== localProd.stock && !this.isOwnStockEcho([remoteProd.barcode, localProd.barcode, localProd.id], remoteProd.stockQuantity)) {
             updateData.stock = remoteProd.stockQuantity;
           }
           if (remoteProd.name !== undefined && remoteProd.name !== localProd.name) {

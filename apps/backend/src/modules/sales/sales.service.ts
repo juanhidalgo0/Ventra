@@ -7,7 +7,7 @@ import { numberRange, saleNumberFloor } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { FiscalService } from '../fiscal/fiscal.service';
-import { consumeLotsFefo } from '../products/lots.util';
+import { consumeLotsFefo, restoreLots } from '../products/lots.util';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -98,6 +98,10 @@ export class SalesService {
       if (!dto.items?.length || dto.items.some((i) => !(Number(i.quantity) > 0))) throw new BadRequestException('El consumo tiene que tener productos');
     }
 
+    if (dto.items?.some((i) => !Number.isFinite(Number(i.quantity)))) {
+      throw new BadRequestException('Hay un producto con una cantidad inválida');
+    }
+
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
     // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
     const sold = new Map<string, number>();
@@ -168,14 +172,17 @@ export class SalesService {
           for (const kitComp of kitComponents) {
             const childQty = kitComp.quantity * item.quantity;
             if (!kitComp.childProduct.unlimitedStock) {
-              const childStockBefore = kitComp.childProduct.stock;
-              const childNewStock = childStockBefore - childQty;
-              await tx.product.update({
+              const { stock: childNewStock } = await tx.product.update({
                 where: { id: kitComp.childProductId },
-                data: { stock: { decrement: childQty } }
+                data: { stock: { decrement: childQty } },
+                select: { stock: true },
               });
+              const childStockBefore = childNewStock + childQty;
               sold.set(kitComp.childProductId, (sold.get(kitComp.childProductId) || 0) + childQty);
-              if (kitComp.childProduct.trackExpiry) await consumeLotsFefo(tx, kitComp.childProductId, childQty);
+              if (kitComp.childProduct.trackExpiry) {
+                if (childQty > 0) await consumeLotsFefo(tx, kitComp.childProductId, childQty);
+                else await restoreLots(tx, kitComp.childProductId, -childQty);
+              }
               const isItemReturn = item.quantity < 0;
               await tx.inventoryMovement.create({
                 data: {
@@ -196,11 +203,13 @@ export class SalesService {
             }
           }
         } else if (!product.unlimitedStock) {
-          const stockBefore = product.stock;
-          const newStock = stockBefore - item.quantity;
-          await tx.product.update({ where: { id: product.id }, data: { stock: { decrement: item.quantity } } });
+          const { stock: newStock } = await tx.product.update({ where: { id: product.id }, data: { stock: { decrement: item.quantity } }, select: { stock: true } });
+          const stockBefore = newStock + item.quantity;
           sold.set(product.id, (sold.get(product.id) || 0) + item.quantity);
-          if (product.trackExpiry) await consumeLotsFefo(tx, product.id, item.quantity);
+          if (product.trackExpiry) {
+            if (item.quantity > 0) await consumeLotsFefo(tx, product.id, item.quantity);
+            else await restoreLots(tx, product.id, -item.quantity);
+          }
 
           const isItemReturn = item.quantity < 0;
           await tx.inventoryMovement.create({ 
@@ -420,21 +429,31 @@ export class SalesService {
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
 
     const updatedSale = await this.prisma.$transaction(async (tx) => {
-      // 1. Restore product stock levels
+      // 1. Devolver al stock exactamente lo que descontó la venta: un kit devuelve sus
+      //    componentes (no el kit), un producto con stock ilimitado no se toca y uno borrado se saltea.
+      const toRestore = new Map<string, number>();
       for (const item of sale.items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
-        const stockBefore = product?.stock || 0;
-        const newStock = stockBefore + item.quantity;
-        await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
-        await tx.inventoryMovement.create({ data: { productId: item.productId, userId, type: 'RETURN', quantity: item.quantity, stockBefore, stockAfter: newStock, reference: `Cancelación venta #${sale.saleNumber}` } });
-        
-        if (product) {
-          productsToSync.push({
-            barcode: product.barcode || product.id,
-            newStock,
-            salePrice: product.salePrice,
-          });
+        const product = await tx.product.findUnique({ where: { id: item.productId }, select: { isKit: true, unlimitedStock: true } });
+        if (!product) continue; // producto borrado del todo: no hay stock que devolver
+        if (product.isKit) {
+          const comps = await tx.productKitItem.findMany({ where: { parentProductId: item.productId }, include: { childProduct: { select: { unlimitedStock: true } } } });
+          for (const c of comps) {
+            if (!c.childProduct || c.childProduct.unlimitedStock) continue;
+            toRestore.set(c.childProductId, (toRestore.get(c.childProductId) || 0) + c.quantity * item.quantity);
+          }
+        } else if (!product.unlimitedStock) {
+          toRestore.set(item.productId, (toRestore.get(item.productId) || 0) + item.quantity);
         }
+      }
+      for (const [productId, qty] of toRestore) {
+        if (!qty) continue;
+        const restored = await tx.product.update({ where: { id: productId }, data: { stock: { increment: qty } }, select: { stock: true, barcode: true, id: true, salePrice: true, trackExpiry: true } });
+        if (restored.trackExpiry) {
+          if (qty > 0) await restoreLots(tx, productId, qty);
+          else await consumeLotsFefo(tx, productId, -qty);
+        }
+        await tx.inventoryMovement.create({ data: { productId, userId, type: 'RETURN', quantity: qty, stockBefore: restored.stock - qty, stockAfter: restored.stock, reference: `Cancelación venta #${sale.saleNumber}` } });
+        productsToSync.push({ barcode: restored.barcode || restored.id, newStock: restored.stock, salePrice: restored.salePrice });
       }
 
       // 2. Reverse client credit account debt if it was checked out on credit

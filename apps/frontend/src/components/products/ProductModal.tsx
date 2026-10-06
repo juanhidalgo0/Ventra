@@ -828,7 +828,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
       let savedProduct = null;
       if (product && product.id) {
-        const res = await api.patch(`/products/${product.id}`, sanitizedData);
+        // stockBase: el stock que se vio al abrir la ficha; el servidor aplica solo lo que se cambió a mano
+        const res = await api.patch(`/products/${product.id}`, { ...sanitizedData, stockBase: product.stock });
         savedProduct = res.data;
         toast.success('Producto actualizado');
       } else {

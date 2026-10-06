@@ -30,3 +30,19 @@ export async function createPurchaseLot(tx: any, product: { id: string; trackExp
   if (isNaN(d.getTime())) return;
   await tx.productLot.create({ data: { productId: product.id, expiresAt: d, quantity, purchaseId: purchaseId || null } });
 }
+
+/**
+ * Devuelve unidades a los lotes (anulación de una venta o devolución): al lote activo que vence
+ * primero, que es de donde salieron con FEFO. Si no queda ninguno activo, se reabre el último
+ * lote que se cerró como vendido. Sin lotes, el stock vuelve igual (solo que sin lote asignado).
+ */
+export async function restoreLots(tx: any, productId: string, quantity: number) {
+  if (!(quantity > 0)) return;
+  const active = await tx.productLot.findFirst({ where: { productId, status: 'ACTIVE' }, orderBy: { expiresAt: 'asc' } });
+  if (active) {
+    await tx.productLot.update({ where: { id: active.id }, data: { quantity: active.quantity + quantity } });
+    return;
+  }
+  const sold = await tx.productLot.findFirst({ where: { productId, status: 'SOLD' }, orderBy: { expiresAt: 'desc' } });
+  if (sold) await tx.productLot.update({ where: { id: sold.id }, data: { quantity, status: 'ACTIVE' } });
+}

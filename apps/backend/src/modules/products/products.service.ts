@@ -10,6 +10,7 @@ import { parse } from 'csv-parse/sync';
 import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { PRODUCT_WITHOUT_IMAGE, productIdFromImageLink, productImageLink } from '../../database/product-select';
+import { consumeLotsFefo } from './lots.util';
 
 function getSearchVariants(token: string): string[] {
   const t = token.trim();
@@ -263,13 +264,12 @@ export class ProductsService {
       // Nunca descuenta más de lo que hay: el lote puede haberse vendido en parte
       const qty = product ? Math.min(lot.quantity, Math.max(product.stock, 0)) : 0;
       if (product && !product.unlimitedStock && qty > 0) {
-        const stockAfter = product.stock - qty;
-        await tx.product.update({ where: { id: lot.productId }, data: { stock: stockAfter } });
+        const { stock: stockAfter } = await tx.product.update({ where: { id: lot.productId }, data: { stock: { decrement: qty } }, select: { stock: true } });
         if (userId) {
           await tx.inventoryMovement.create({
             data: {
               productId: lot.productId, userId, type: 'ADJUSTMENT', quantity: -qty,
-              stockBefore: product.stock, stockAfter, reason: 'Merma por vencimiento', reference: lot.id,
+              stockBefore: stockAfter + qty, stockAfter, reason: 'Merma por vencimiento', reference: lot.id,
             },
           });
         }
@@ -821,7 +821,28 @@ export class ProductsService {
       await this.prisma.priceHistory.create({ data: { productId: id, userId, oldPrice: existing.salePrice, newPrice: data.salePrice } });
     }
 
+    // Stock desde la ficha: si el formulario manda el stock que vio al abrirse (stockBase), se aplica
+    // solo la diferencia que cargó el usuario sobre el stock actual. Así guardar la ficha (por ejemplo
+    // para cambiar el precio) no borra las ventas que hizo otra caja mientras estaba abierta.
+    let stockChange = 0;
+    if (updateData.stock !== undefined) {
+      const wanted = Number(updateData.stock);
+      if (!Number.isFinite(wanted)) throw new BadRequestException('El stock tiene que ser un número');
+      const base = data.stockBase !== undefined && data.stockBase !== null && Number.isFinite(Number(data.stockBase)) ? Number(data.stockBase) : existing.stock;
+      stockChange = Math.round((wanted - base) * 1000) / 1000;
+      delete updateData.stock;
+    }
+
     const updatedProduct = await this.prisma.$transaction(async (tx) => {
+      if (stockChange !== 0) {
+        const { stock: after } = await tx.product.update({ where: { id }, data: { stock: { increment: stockChange } }, select: { stock: true } });
+        if (userId) {
+          await tx.inventoryMovement.create({
+            data: { productId: id, userId, type: stockChange > 0 ? 'ENTRY' : 'EXIT', quantity: stockChange, stockBefore: after - stockChange, stockAfter: after, reason: 'Ajuste desde la ficha del producto' },
+          });
+        }
+        if (existing.trackExpiry && stockChange < 0) await consumeLotsFefo(tx, id, -stockChange);
+      }
       if (additionalBarcodes && Array.isArray(additionalBarcodes)) {
         // Delete old additional barcodes and create new ones
         await tx.productBarcode.deleteMany({ where: { productId: id } });
@@ -1012,13 +1033,21 @@ export class ProductsService {
   async addMovement(productId: string, data: { type: 'ENTRY' | 'EXIT' | 'ADJUSTMENT'; quantity: number; reason: string; note?: string; userId: string }) {
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException('Producto no encontrado');
+    const qty = Number(data.quantity);
+    if (!Number.isFinite(qty) || qty === 0) throw new BadRequestException('La cantidad tiene que ser un número distinto de cero');
 
-    const stockBefore = product.stock;
-    const movementQuantity = data.type === 'EXIT' ? -Math.abs(data.quantity) : Math.abs(data.quantity);
-    const stockAfter = stockBefore + movementQuantity;
+    const movementQuantity = data.type === 'EXIT' ? -Math.abs(qty) : Math.abs(qty);
+    let stockAfter = 0;
 
     const movement = await this.prisma.$transaction(async (tx) => {
-      // 1. Create movement record
+      // 1. Sumar o restar sobre el stock que hay ahora (una venta en el medio no se pierde)
+      ({ stock: stockAfter } = await tx.product.update({ where: { id: productId }, data: { stock: { increment: movementQuantity } }, select: { stock: true } }));
+      const stockBefore = stockAfter - movementQuantity;
+      if (product.trackExpiry) {
+        if (movementQuantity < 0) await consumeLotsFefo(tx, productId, -movementQuantity);
+      }
+
+      // 2. Movimiento de inventario
       const m = await tx.inventoryMovement.create({
         data: {
           productId,
@@ -1030,12 +1059,6 @@ export class ProductsService {
           reason: data.reason,
           reference: data.note,
         },
-      });
-
-      // 2. Update product stock
-      await tx.product.update({
-        where: { id: productId },
-        data: { stock: stockAfter },
       });
 
       return m;
