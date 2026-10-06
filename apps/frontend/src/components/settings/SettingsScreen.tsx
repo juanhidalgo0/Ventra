@@ -53,6 +53,13 @@ const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
  * embedded + initialTab: en la app del celular, cada sección se abre sola (sin la
  * columna de secciones), porque el índice lo muestra MobileSettingsScreen.
  */
+/** El administrador del comercio (hay uno solo): el usuario activo con rol ADMIN, el más antiguo si quedaran varios. */
+function findStoreAdmin(list: any[]): any | null {
+  const admins = list.filter((u) => u.role === 'ADMIN' && u.isActive !== false);
+  admins.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  return admins[0] || null;
+}
+
 export default function SettingsScreen({ initialTab, embedded = false }: { initialTab?: string; embedded?: boolean } = {}) {
   const { user, resetAdminUnlock, logout } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN' || localStorage.getItem('admin_unlocked') === 'true' || sessionStorage.getItem('admin_unlocked') === 'true';
@@ -652,9 +659,12 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     if (!newAdminPassword) return;
     setIsChangingPassword(true);
     try {
-      await api.patch(`/users/${user?.id}`, { password: newAdminPassword });
+      const { data: list } = await api.get('/users');
+      const admin = findStoreAdmin(Array.isArray(list) ? list : []);
+      if (!admin) throw { response: { data: { message: 'El comercio no tiene un administrador activo: creálo en Usuarios' } } };
+      await api.patch(`/users/${admin.id}`, { password: newAdminPassword });
       resetAdminUnlock();
-      toast.success('✅ Contraseña ADMIN actualizada');
+      toast.success(`✅ Contraseña de ${admin.username} actualizada (también es la del acceso de administrador)`);
       setNewAdminPassword('');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al cambiar contraseña');
@@ -1398,8 +1408,9 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                 {/* Password Change Card */}
                 <div className="card p-6 space-y-4">
                   <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-slate-300">
-                    <Key className="w-4.5 h-4.5 text-rose-500" /> Cambiar Contraseña de Administrador (ADMIN)
+                    <Key className="w-4.5 h-4.5 text-rose-500" /> Cambiar Contraseña de Administrador{findStoreAdmin(users) ? ` (${findStoreAdmin(users)!.username})` : ''}
                   </h3>
+                  <p className="text-[11px] text-slate-500 -mt-2">Es la clave del administrador del comercio y la misma que pide el <b>acceso de administrador</b>. Las de los demás usuarios se cambian en <b>Usuarios</b>.</p>
                   <div className="flex gap-3">
                     <input
                       type="password"

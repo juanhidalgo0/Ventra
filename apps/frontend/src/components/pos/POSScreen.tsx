@@ -2939,7 +2939,7 @@ export default function POSScreen() {
                 onKeyDown={async (e) => {
                   if (e.key === 'Enter') {
                     try {
-                      const { data } = await api.post('/auth/login', { username: adminUsername, password: adminPassword });
+                      const { data } = await api.post('/auth/admin-unlock', { password: adminPassword });
                       if (data.user.role !== 'ADMIN') {
                         toast.error('El usuario ingresado no es administrador');
                         return;
@@ -2965,7 +2965,7 @@ export default function POSScreen() {
                 <button 
                   onClick={async () => {
                     try {
-                      const { data } = await api.post('/auth/login', { username: adminUsername, password: adminPassword });
+                      const { data } = await api.post('/auth/admin-unlock', { password: adminPassword });
                       if (data.user.role !== 'ADMIN') {
                         toast.error('El usuario ingresado no es administrador');
                         return;

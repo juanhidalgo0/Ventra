@@ -73,8 +73,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
     if (!adminPassword) return;
     setIsVerifying(true);
     try {
-      // Attempt login as ADMIN using standard backend route
-      const { data } = await api.post('/auth/login', { username: 'ADMIN', password: adminPassword });
+      // Clave del administrador del comercio (el usuario con rol ADMIN, se llame como se llame)
+      const { data } = await api.post('/auth/admin-unlock', { password: adminPassword });
       localStorage.setItem('admin_unlocked', 'true');
       sessionStorage.setItem('admin_unlocked', 'true');
       sessionStorage.setItem('adminAccessToken', data.accessToken);

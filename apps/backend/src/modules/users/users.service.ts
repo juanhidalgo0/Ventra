@@ -23,9 +23,21 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Un comercio tiene UN administrador (el dueño): su clave es la del acceso de administrador
+   * de la caja. Los demás usuarios son supervisores o cajeros.
+   */
+  private async otherActiveAdmin(exceptId?: string) {
+    return this.prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { username: true } });
+  }
+
   async create(data: { username: string; password: string; fullName: string; role: string }) {
     const normUsername = data.username.toUpperCase();
     assertValidPassword(data.password);
+    if (data.role === 'ADMIN') {
+      const admin = await this.otherActiveAdmin();
+      if (admin) throw new ConflictException(`Solo puede haber un administrador y ya es ${admin.username}. Creá este usuario como supervisor o cajero.`);
+    }
     const exists = await this.prisma.user.findUnique({ where: { username: normUsername } });
     if (exists) throw new ConflictException('El usuario ya existe');
     const passwordHash = await bcrypt.hash(data.password, 10);
@@ -38,6 +50,13 @@ export class UsersService {
   async update(id: string, data: { username?: string; fullName?: string; role?: string; isActive?: boolean; password?: string }) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (data.role === 'ADMIN' && user.role !== 'ADMIN') {
+      const admin = await this.otherActiveAdmin(id);
+      if (admin) throw new ConflictException(`Solo puede haber un administrador y ya es ${admin.username}.`);
+    }
+    // Sin administrador nadie podría entrar a la configuración
+    const losesAdmin = user.role === 'ADMIN' && ((data.role && data.role !== 'ADMIN') || data.isActive === false);
+    if (losesAdmin && !(await this.otherActiveAdmin(id))) throw new BadRequestException('El comercio tiene que tener un administrador activo');
     const updateData: any = {};
     if (data.username) {
       const normUsername = data.username.toUpperCase().replace(/\s+/g, '');

@@ -49,6 +49,12 @@ export class AuthController {
     return this.authService.login(dto.username, dto.password, !!dto.longSession, loginOrigin(req));
   }
 
+  /** Candado de administrador de la caja: clave del administrador del comercio (ver AuthService.adminUnlock) */
+  @Post('admin-unlock')
+  async adminUnlock(@Body() body: { password?: string }) {
+    return this.authService.adminUnlock(String(body?.password || ''));
+  }
+
   /** Entrada de soporte en la caja en la nube (ver AuthService.supportLogin) */
   @Post('support-login')
   async supportLogin(@Headers('x-ventra-support-key') key: string) {
