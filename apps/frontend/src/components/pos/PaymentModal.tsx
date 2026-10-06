@@ -93,6 +93,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     ];
   })();
 
+  /**
+   * Atajos de teclado de los medios de pago: un número distinto para cada uno, en el orden en que
+   * se ven (efectivo, posnets, mixto, cuenta corriente). Pasado el 9 el medio queda sin atajo.
+   */
+  const methodOrder = ['CASH', ...posnets.map((p) => p.id), 'MIXED', ...(isDebtPayment ? [] : ['DEBT'])];
+  const shortcutOf = (key: string) => {
+    const n = methodOrder.indexOf(key) + 1;
+    return n >= 1 && n <= 9 ? String(n) : '';
+  };
+
   const [paymentType, setPaymentType] = useState<string | null>(null);
   // Maquinitas Point de esta caja (Configuración → Integraciones) y el cobro en curso
   const [pointTerminals] = useState(() => getPointTerminals());
@@ -131,6 +141,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   }, []);
 
   const processingRef = useRef(false);
+  // Confirmación del consumo propio (dentro del cobro, con el estilo de la app). Mientras está
+  // abierta, Enter confirma y Escape cancela: no finalizan la venta ni cierran el cobro.
+  const [askConsumption, setAskConsumption] = useState(false);
+  const askConsumptionRef = useRef(false);
+  askConsumptionRef.current = askConsumption;
+  const registerConsumptionRef = useRef<() => void>(() => {});
 
   const getSurchargeForCategory = (categoryId: string, method: string) => {
     if (!method || method === 'CASH' || method === 'DEBT') return 0;
@@ -291,13 +307,20 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     }
   }, [paymentType, isDebtPayment, finalTotal]);
 
-  // Main input keyboard shortcut listener (1-5 for payment types, Enter to confirm)
+  // Main input keyboard shortcut listener (1-9 for payment types, Enter to confirm)
   useEffect(() => {
     if (isProcessing || showSuccess || pointCharge) return;
     let lastKeyTime = 0;
     let lastFastBurstTime = 0;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (askConsumptionRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.key === 'Enter') registerConsumptionRef.current();
+        else if (e.key === 'Escape') setAskConsumption(false);
+        return;
+      }
       const now = Date.now();
       const timeDiff = now - lastKeyTime;
       lastKeyTime = now;
@@ -326,20 +349,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         return;
       }
 
-      // Method switching with keys '1'..'5'
+      // Method switching with keys '1'..'9' (methodOrder)
       // Allowed when NOT in a text input (e.g. client search or cash amount typing),
       // OR when in cash mode with change calculator disabled
       const isClientSearchInput = activeElement?.getAttribute('placeholder')?.includes('cliente') || activeElement === input1Ref.current || activeElement === input2Ref.current;
 
       if (!isInput || (disableChangeCalc && paymentType === 'CASH') || !isClientSearchInput) {
-        if (['1', '2', '3', '4', '5'].includes(e.key) && (!isInput || disableChangeCalc || paymentType !== 'CASH')) {
+        const target = /^[1-9]$/.test(e.key) ? methodOrder[Number(e.key) - 1] : undefined;
+        if (target && (!isInput || disableChangeCalc || paymentType !== 'CASH')) {
           e.preventDefault();
-          if (e.key === '1') setPaymentType('CASH');
-          posnets.forEach((p, idx) => {
-            if (e.key === String(idx + 2)) setPaymentType(p.id);
-          });
-          if (e.key === String(posnets.length + 2)) setPaymentType('MIXED');
-          if (e.key === '5' && !isDebtPayment) setPaymentType('DEBT');
+          setPaymentType(target);
           return;
         }
       }
@@ -466,8 +485,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   const consumptionEnabled = !isDebtPayment && !practice && localStorage.getItem('employee_consumption') === '1';
   const registerConsumption = async () => {
     if (processingRef.current) return;
-    const me = useAuthStore.getState().user;
-    if (!confirm(`¿Registrar estos productos como consumo de ${me?.fullName || me?.username || 'tu usuario'}?\n\nEs sin cargo: descuenta el stock y no entra en la caja.`)) return;
+    setAskConsumption(false);
     processingRef.current = true;
     setIsProcessing(true);
     try {
@@ -486,6 +504,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       setIsProcessing(false);
     }
   };
+  registerConsumptionRef.current = registerConsumption;
+  const consumerName = (() => { const me = useAuthStore.getState().user; return me?.fullName || me?.username || 'tu usuario'; })();
 
   /**
    * El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE.
@@ -697,19 +717,23 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   };
 
   const mainMethods = [
-    { key: 'CASH', label: 'Efectivo', icon: Banknote, color: '#10b981', num: '1' },
-    ...posnets.map((p, idx) => {
+    { key: 'CASH', label: 'Efectivo', icon: Banknote, color: '#10b981', num: shortcutOf('CASH') },
+    ...posnets.map((p) => {
       const isMP = p.id === 'MERCADOPAGO' || p.name.toLowerCase().includes('mercadopago');
       return {
         key: p.id,
         label: p.name,
         icon: isMP ? Smartphone : CreditCard,
         color: '#0f766e',
-        num: String(idx + 2)
+        num: shortcutOf(p.id)
       };
     }),
-    { key: 'MIXED', label: 'Mixto', icon: Shuffle, color: '#64748b', num: String(posnets.length + 2) },
+    { key: 'MIXED', label: 'Mixto', icon: Shuffle, color: '#64748b', num: shortcutOf('MIXED') },
   ];
+  // Efectivo va solo arriba, a lo ancho; el resto se reparte en filas parejas debajo
+  const otherCount = mainMethods.length - 1;
+  const otherCols = otherCount <= 4 ? otherCount : otherCount <= 6 ? 3 : 4;
+  const OTHER_GRID = ['grid-cols-1', 'grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][otherCols];
 
   const filteredClients = clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()));
 
@@ -952,7 +976,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       <MotionDiv
         {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
         onClick={(e: any) => e.stopPropagation()}
-        className="card bg-white dark:bg-slate-900 w-full max-w-xl p-4 md:p-5 h-[85vh] sm:h-auto max-h-[90vh] sm:max-h-[95vh] flex flex-col shadow-xl rounded-2xl border border-slate-200 dark:border-slate-800 outline-none"
+        className="card relative bg-white dark:bg-slate-900 w-full max-w-xl p-4 md:p-5 h-[85vh] sm:h-auto max-h-[90vh] sm:max-h-[95vh] flex flex-col shadow-xl rounded-2xl border border-slate-200 dark:border-slate-800 outline-none"
         tabIndex={-1}
         ref={(el: any) => {
           if (el && !isProcessing && !showSuccess && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
@@ -990,14 +1014,15 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           <div className="space-y-3">
             {finalTotal >= 0 ? (
               <>
-                <div data-tour="pay-metodos" className="grid grid-cols-4 gap-2.5">
+                <div data-tour="pay-metodos" className={`grid ${OTHER_GRID} gap-2.5`}>
                   {mainMethods.map((pm) => {
                     const isSelected = paymentType === pm.key;
+                    const isCash = pm.key === 'CASH';
                     return (
                       <button 
                         key={pm.key} 
                         onClick={() => setPaymentType(pm.key)}
-                        className={`relative flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border-2 transition-all duration-150 cursor-pointer select-none group active:scale-[0.98] ${
+                        className={`${isCash ? 'col-span-full flex-row gap-3 py-3.5' : 'flex-col gap-1.5 p-3'} relative flex items-center justify-center px-3 rounded-2xl border-2 transition-all duration-150 cursor-pointer select-none group active:scale-[0.98] ${
                           isSelected 
                             ? 'shadow-lg ring-2 ring-offset-1 dark:ring-offset-slate-900 font-extrabold' 
                             : 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-xs'
@@ -1005,16 +1030,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                         style={isSelected ? { borderColor: pm.color, backgroundColor: `${pm.color}15`, color: pm.color } : {}}>
                         
                         {/* 3D Keycap Badge */}
-                        <span className={`absolute top-2 right-2 min-w-[22px] h-5.5 px-1.5 flex items-center justify-center rounded-md text-[11px] font-mono font-black transition-all ${
+                        {pm.num && <span className={`absolute top-2 right-2 min-w-[22px] h-5.5 px-1.5 flex items-center justify-center rounded-md text-[11px] font-mono font-black transition-all ${
                           isSelected
                             ? 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white shadow-[0_2px_0_0_rgba(0,0,0,0.3)]'
                             : 'bg-slate-100 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200 border border-slate-300/80 dark:border-slate-600 shadow-[0_2px_0_0_rgba(0,0,0,0.12)] group-hover:border-slate-400'
                         }`}>
                           {pm.num}
-                        </span>
+                        </span>}
 
-                        <pm.icon className={`w-6 h-6 mt-1 transition-transform group-hover:scale-110 ${isSelected ? '' : 'text-slate-500 dark:text-slate-400'}`} style={isSelected ? { color: pm.color } : {}} />
-                        <span className="text-[10.5px] font-black text-center leading-tight uppercase tracking-wider">{pm.label}</span>
+                        <pm.icon className={`w-6 h-6 ${isCash ? '' : 'mt-1'} transition-transform group-hover:scale-110 ${isSelected ? '' : 'text-slate-500 dark:text-slate-400'}`} style={isSelected ? { color: pm.color } : {}} />
+                        <span className={`${isCash ? 'text-[12px]' : 'text-[10.5px]'} font-black text-center leading-tight uppercase tracking-wider`}>{pm.label}</span>
                       </button>
                     );
                   })}
@@ -1035,7 +1060,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                         ? 'bg-amber-600 text-white shadow-[0_2px_0_0_rgba(0,0,0,0.3)]'
                         : 'bg-slate-100 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200 border border-slate-300/80 dark:border-slate-600 shadow-[0_2px_0_0_rgba(0,0,0,0.12)]'
                     }`}>
-                      5
+                      {shortcutOf('DEBT')}
                     </span>
                   </button>
                 )}
@@ -1366,10 +1391,37 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           )}
         </div>
 
+        {askConsumption && (
+          <div className="absolute inset-0 z-30 rounded-2xl bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setAskConsumption(false)}>
+            <div role="alertdialog" aria-modal="true" aria-labelledby="consumo-title" onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-[400px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-[0_24px_60px_-12px_rgba(15,23,42,0.35)] p-6">
+              <div className="w-11 h-11 rounded-full flex items-center justify-center bg-amber-50 dark:bg-amber-950/40 text-[22px]">☕</div>
+              <h2 id="consumo-title" className="mt-4 text-[17px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">¿Registrar como consumo de {consumerName}?</h2>
+              <p className="mt-1.5 text-[14px] text-slate-600 dark:text-slate-400 leading-relaxed">Es sin cargo: se descuenta del stock y no entra en la caja.</p>
+              <ul className="mt-3 max-h-36 overflow-y-auto rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700">
+                {adjustedItems.map((i: any, idx: number) => (
+                  <li key={idx} className="flex justify-between gap-3 px-3 py-1.5 text-[13px] text-slate-700 dark:text-slate-300">
+                    <span className="truncate">{i.productName}</span>
+                    <span className="font-bold tabular-nums shrink-0">x{(Math.round(Number(i.quantity) * 100) / 100).toLocaleString('es-AR')}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 flex justify-end gap-2">
+                <button type="button" onClick={() => setAskConsumption(false)} className="h-10 px-4 rounded-xl border border-slate-300 dark:border-slate-600 text-[14px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                  Cancelar <span className="ml-1 text-[11px] text-slate-400 font-mono">Esc</span>
+                </button>
+                <button type="button" onClick={registerConsumption} className="h-10 px-4 rounded-xl text-[14px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 cursor-pointer">
+                  Registrar consumo <span className="ml-1 text-[11px] text-white/70 font-mono">Enter</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Fixed Modal Footer */}
         <div className="shrink-0 pt-3 border-t border-slate-200 dark:border-slate-750">
           {consumptionEnabled && (
-            <button type="button" onClick={registerConsumption} disabled={isProcessing}
+            <button type="button" onClick={() => setAskConsumption(true)} disabled={isProcessing}
               className="w-full mb-2 py-2.5 px-4 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer transition-all">
               ☕ Consumo propio (sin cargo)
             </button>
