@@ -1049,10 +1049,17 @@ function render(){
   var q=$('#q');
   if(q) q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
   if(location.hash==='#turnos' && agendaOn()) setTimeout(function(){ openBooking(null); },200);
-  var tm=(window.__PREVIEW_TURNO||location.hash).match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/);
-  if(tm) setTimeout(function(){ openManage(tm[1],tm[2].toUpperCase()); },200);
+  // Link del turno. Los pagos de antes volvían de Mercado Pago con sus datos pegados atrás (#turno=…?collection_status=…)
+  var tm=(window.__PREVIEW_TURNO||location.hash).match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})(?![A-Za-z0-9])/);
+  if(tm){
+    var hq=new URLSearchParams((location.hash.split('?')[1]||'')+'&'+location.search.slice(1)), hs=hq.get('collection_status')||hq.get('status');
+    try{ sessionStorage.removeItem(PAYING_KEY); if(hs) history.replaceState(null,'',location.pathname+'#turno='+tm[1]+'.'+tm[2]); }catch(e){}
+    if(hs && hs!=='approved' && hs!=='pending' && hs!=='in_process') setTimeout(function(){ abandonPay(tm[1],tm[2].toUpperCase()); },200);
+    else setTimeout(function(){ openManage(tm[1],tm[2].toUpperCase(),hs==='approved'); },200);
+  }
+  else payReturn();
   window.addEventListener('hashchange',function(){
-    var hm=location.hash.match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/);
+    var hm=location.hash.match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})(?![A-Za-z0-9])/);
     if(hm){ closeSheets(); setTimeout(function(){ openManage(hm[1],hm[2].toUpperCase()); },150); }
   });
   var tb=$('#topbar');
@@ -1441,11 +1448,33 @@ function manageCall(body){
   return fetch(MANAGE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({storeId:S.storeId},body))})
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ if(!r.ok) throw new Error(d.error||'No se pudo cargar el turno'); return d; }); });
 }
-function openManage(id,code){
-  var mg=S.mg={id:id,code:code,state:'loading'}; renderManage(); openSheet('bookSheet');
+function openManage(id,code,paying){
+  var mg=S.mg={id:id,code:code,state:'loading',paying:!!paying}; renderManage(); openSheet('bookSheet');
   manageCall({id:id,code:code,action:'get'})
     .then(function(d){ mg.data=d; mg.state='show'; renderManage(); mgWatch(mg,0); })
     .catch(function(e){ mg.state='error'; mg.err=e.message; renderManage(); });
+}
+/* Volvió de Mercado Pago sin pagar (o salió de la ventana de pago): el turno se cancela y el horario se libera ya */
+function abandonPay(id,code,serviceId){
+  var mg=S.mg={id:id,code:code,state:'loading',serviceId:serviceId||''}; renderManage(); openSheet('bookSheet');
+  manageCall({id:id,code:code,action:'abandon'})
+    .then(function(d){ mg.data=d; mg.state='show'; mg.abandoned=!!d.abandoned; if(d.serviceId) mg.serviceId=d.serviceId; renderManage(); })
+    .catch(function(e){ mg.state='error'; mg.err=e.message; renderManage(); });
+}
+/* Vuelta de Mercado Pago: ?turno=<id>.<código>&mp=ok|pending|fail (más los datos que suma Mercado Pago).
+   Sin esos datos pero con un pago empezado en esta pestaña = volvió con el botón atrás sin pagar. */
+var PAYING_KEY='ventra_paying';
+function payReturn(){
+  var q=new URLSearchParams(location.search), t=(q.get('turno')||'').match(/^([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/), flag=null;
+  try{ flag=JSON.parse(sessionStorage.getItem(PAYING_KEY)||'null'); sessionStorage.removeItem(PAYING_KEY); }catch(e){}
+  if(flag && flag.s!==S.storeId) flag=null;
+  if(t) try{ history.replaceState(null,'',location.pathname+location.hash); }catch(e){}
+  var id=t?t[1]:flag&&flag.id, code=t?t[2].toUpperCase():flag&&flag.code;
+  if(!id||!code) return;
+  var mp=q.get('mp'), st=q.get('collection_status')||q.get('status');
+  if(mp==='ok'||st==='approved') return setTimeout(function(){ openManage(id,code,true); },200);
+  if(mp==='pending'||st==='in_process'||st==='pending'||(t&&!mp&&!st)) return setTimeout(function(){ openManage(id,code); },200);
+  setTimeout(function(){ abandonPay(id,code,flag&&flag.sv); },200);
 }
 /* Turno esperando el pago (volvió de Mercado Pago): se vuelve a consultar solo hasta que se acredita */
 function mgWatch(mg,n){
@@ -1464,16 +1493,25 @@ function renderManage(){
   var m=S.mg, body, foot='';
   if(m.state==='loading') body='<div style="padding:40px 0;text-align:center"><span class="spin"></span></div>';
   else if(m.state==='error') body='<div class="done"><div class="done-ic">'+ic('x')+'</div><h3 class="display">No encontramos tu turno</h3><p>'+esc(m.err)+'</p></div>';
+  else if(m.abandoned){
+    var da=m.data;
+    body='<div class="done"><div class="done-ic" style="background:#fee2e2;color:#b91c1c">'+ic('x')+'</div>'
+      +'<h3 class="display">No se completó el pago</h3>'
+      +'<p><b style="color:var(--ink)">'+esc(da.serviceName)+'</b>'+(da.staffName?' con '+esc(da.staffName):'')+'<br>'+esc(capFirst(dayText(da.date)))+', '+esc(da.time)+' hs</p>'
+      +'<p>No te reservamos el turno. Si lo querés, pedilo de nuevo: tarda un minuto.</p></div>';
+    if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="mg-rebook" data-id="'+esc(m.serviceId||'')+'">Reservar de nuevo</button></div>';
+  }
   else {
-    var d=m.data, off=d.status==='CANCELLED';
-    body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+ic(off?'x':'check')+'</div>'
-      +'<h3 class="display">'+(off?'Turno cancelado':d.status==='AWAITING_PAYMENT'?'Falta pagar el turno':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':'Turno confirmado')+'</h3>'
+    var d=m.data, off=d.status==='CANCELLED', confirming=m.paying&&d.status==='AWAITING_PAYMENT';
+    body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+(confirming?'<span class="spin" style="width:40px;height:40px;border-width:4px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>':ic(off?'x':'check'))+'</div>'
+      +'<h3 class="display">'+(off?'Turno cancelado':confirming?'Confirmando tu pago':d.status==='AWAITING_PAYMENT'?'Falta pagar el turno':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':d.deposit&&d.deposit.status==='paid'&&m.paying?'¡Listo! Tu turno está confirmado':'Turno confirmado')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(d.serviceName)+'</b>'+(d.staffName?' con '+esc(d.staffName):'')+'<br>'+esc(capFirst(dayText(d.date)))+', '+esc(d.time)+' hs</p>'
       +'<span class="code">#'+esc(m.code)+'</span>'
       +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.'+(d.deposit&&d.deposit.status==='paid'?' Por la devolución de lo que pagaste, escribile al comercio.':'')+'</p>':'')
-      +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">Pagado con Mercado Pago: <b>'+money(d.deposit.amount)+'</b></p>':'')
+      +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">Pagado con Mercado Pago: <b>'+money(d.deposit.amount)+'</b>'+(m.paying&&!off?'. Te esperamos.':'')+'</p>':'')
       +(d.payUrl?'<p style="font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin" style="width:16px;height:16px;border-width:2px"></span>Si ya pagaste, se confirma solo en unos segundos.</p>':'')+'</div>';
-    if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
+    if(confirming) foot='';
+    else if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
     else if(d.canCancel) foot='<div class="sheet-foot"><button class="btn btn-soft btn-block" style="height:48px;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button>'
       +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">¿Querés otro horario? Cancelalo y reservá de nuevo.</p></div>';
     else if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:48px" data-act="mg-book">Reservar otro turno</button></div>';
@@ -1488,6 +1526,8 @@ function cancelMine(btn){
     .then(function(d){ S.mg.data=d; renderManage(); toast('Turno cancelado'); })
     .catch(function(e){ btn.disabled=false; toast(e.message); });
 }
+
+window.addEventListener('pageshow',function(e){ if(e.persisted && S.storeId){ closeSheets(); payReturn(); } });
 
 /* ───────── turnos ─────────
    Misma lógica de horarios libres que firebase/functions/agenda.js (que valida la reserva). */
@@ -1816,7 +1856,10 @@ async function confirmBooking(btn){
     delete S.bkBusy[b.day];
     b.name=name; b.result=data; b.step='done'; renderBooking();
     // Pago con Mercado Pago: se abre el pago enseguida; al pagar, Mercado Pago avisa y el turno se confirma solo
-    if(data.payUrl) setTimeout(function(){ if(S.bk.result===data) window.location.assign(data.payUrl); },900);
+    if(data.payUrl){
+      try{ sessionStorage.setItem(PAYING_KEY,JSON.stringify({s:S.storeId,id:data.id,code:data.code,sv:b.serviceId})); }catch(e){}
+      setTimeout(function(){ if(S.bk.result===data) window.location.assign(data.payUrl); },900);
+    }
   }catch(e){
     toast('Sin conexión. Probá de nuevo.');
     btn.disabled=false; btn.innerHTML=label;
@@ -1946,6 +1989,7 @@ document.addEventListener('click',function(e){
     case 'mg-cancel': cancelMine(t); break;
     case 'mg-reload': e.preventDefault(); openManage(S.mg.id,S.mg.code); break;
     case 'mg-book': closeSheets(); setTimeout(function(){ openBooking(null); },250); break;
+    case 'mg-rebook': var rs=agServices().filter(function(x){ return x.id===id; })[0]; closeSheets(); setTimeout(function(){ openBooking(rs?rs.id:null); },250); break;
     case 'share':
       if(navigator.share){ navigator.share({title:S.cfg.businessName,text:S.cfg.description||'Mirá mi tienda online',url:location.href}).catch(function(){}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(location.href); toast('Enlace copiado'); }

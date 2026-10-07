@@ -22,8 +22,9 @@ const crypto = require("crypto");
 const TZ_OFFSET_MIN = -180;
 /** Estados que ocupan el horario */
 const ACTIVE = new Set(["PENDING", "CONFIRMED", "DONE", "BLOCK", "AWAITING_PAYMENT"]);
-/** Minutos que se aparta el horario mientras el cliente paga la seña */
-const HOLD_MIN = 20;
+/** Minutos que se aparta el horario mientras el cliente paga. Si vuelve de Mercado Pago sin pagar se libera
+ * enseguida (manage "abandon"); este plazo es para el que cierra la pestaña y no vuelve. */
+const HOLD_MIN = 10;
 /** Esperando seña con el plazo vencido: ya no ocupa (aunque la tarea que lo cancela no haya pasado) */
 const holdExpired = (b) => b.status === "AWAITING_PAYMENT" && b.holdUntil && b.holdUntil.toMillis() < Date.now();
 
@@ -210,13 +211,17 @@ async function book(db, req, res, { tokenFor } = {}) {
     // Link de pago de Mercado Pago a nombre del comercio. Si falla, el turno sigue sin pago online
     // (mejor un turno sin cobrar que un cliente trabado sin poder reservar).
     try {
-      const manage = `https://tienda.ventra.store/${encodeURIComponent(cfg.subdomain || "")}#turno=${bookingRef.id}.${bookingCode}`;
+      // La vuelta va en la dirección (?turno=), no en el #: Mercado Pago le suma sus datos atrás.
+      // La tienda sabe así si volvió pagado (mp=ok) o sin pagar (mp=fail: el horario se libera enseguida)
+      const back = `https://tienda.ventra.store/${encodeURIComponent(cfg.subdomain || "")}?turno=${bookingRef.id}.${bookingCode}&mp=`;
       const pref = await mpPreference(mpToken, {
         items: [{ title: `${deposit >= (Number(service.price) || 0) ? "Turno" : "Seña"} · ${service.name} · ${cfg.businessName || "turno"}`.slice(0, 250), quantity: 1, unit_price: deposit, currency_id: "ARS" }],
         external_reference: `agenda|${storeId}|${bookingRef.id}`,
         notification_url: `https://us-central1-ventra-9cba5.cloudfunctions.net/agendaPayHook?s=${encodeURIComponent(storeId)}`,
-        back_urls: { success: manage, pending: manage, failure: manage },
+        back_urls: { success: `${back}ok`, pending: `${back}pending`, failure: `${back}fail` },
         auto_return: "approved",
+        // Solo medios que se acreditan al momento: un ticket para pagar en efectivo no llega antes de que se libere el horario
+        payment_methods: { excluded_payment_types: [{ id: "ticket" }, { id: "atm" }] },
         expires: true,
         expiration_date_to: new Date(holdUntil.toMillis()).toISOString(),
         statement_descriptor: String(cfg.businessName || "VENTRA").slice(0, 22),
@@ -279,12 +284,14 @@ async function payHook(db, req, { tokenFor }) {
     const patch = { deposit: paid, holdUntil: admin.firestore.FieldValue.delete() };
     let outcome = "confirmed";
     if (t.status === "AWAITING_PAYMENT") {
-      patch.status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED";
-    } else if (t.status === "CANCELLED" && t.cancelledBy === "expired") {
-      // Pagó tarde: si el horario sigue libre se reactiva; si no, el comercio tiene que resolverlo
+      // Pagado = confirmado, aunque el comercio confirme a mano los turnos sin pagar
+      patch.status = "CONFIRMED";
+    } else if (t.status === "CANCELLED" && (t.cancelledBy === "expired" || t.cancelledBy === "unpaid")) {
+      // Pagó tarde (o volvió atrás justo mientras el pago se acreditaba): si el horario sigue libre se reactiva;
+      // si no, el comercio tiene que resolverlo
       const day = await tx.get(storeRef.collection("bookings").where("dateKey", "==", t.dateKey));
       const clash = busyOf(day.docs.filter((d) => d.id !== bookingId)).some((x) => (x.staffId === t.staffId || x.staffId === "ALL") && x.s < t.endMin && t.startMin < x.e);
-      if (clash) { paid.refundNeeded = true; outcome = "late-clash"; } else { patch.status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED"; patch.cancelledBy = admin.firestore.FieldValue.delete(); outcome = "late-ok"; }
+      if (clash) { paid.refundNeeded = true; outcome = "late-clash"; } else { patch.status = "CONFIRMED"; patch.cancelledBy = admin.firestore.FieldValue.delete(); outcome = "late-ok"; }
     }
     patch.statusAt = admin.firestore.FieldValue.serverTimestamp();
     tx.update(ref, patch);
@@ -388,14 +395,22 @@ async function manage(db, req, res) {
   const snap = await ref.get();
   const t = snap.exists ? snap.data() : null;
   if (!t || t.kind !== "booking" || t.code !== bookingCode) return res.status(404).json({ error: "No encontramos ese turno. Revisá el link o escribile al comercio." });
-  const awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t);
+  let awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t);
   const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED" || awaiting) && t.startAt && t.startAt.toMillis() > Date.now();
   const view = () => ({
-    serviceName: t.serviceName || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
+    serviceId: t.serviceId || "", serviceName: t.serviceName || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
     status: holdExpired(t) ? "CANCELLED" : t.status, canCancel: upcoming,
     ...(t.deposit ? { deposit: { amount: t.deposit.amount, status: t.deposit.status }, ...(awaiting && t.deposit.payUrl ? { payUrl: t.deposit.payUrl, holdUntil: t.holdUntil.toMillis() } : {}) } : {}),
   });
   if (action === "get") return res.json(view());
+  // Volvió de Mercado Pago sin pagar (o salió de la ventana de pago): el horario se libera ya, sin esperar el plazo.
+  // Si justo se estaba acreditando, payHook lo reactiva (cancelledBy "unpaid"). No se avisa al dueño: nunca supo de este turno.
+  if (action === "abandon") {
+    if (t.status !== "AWAITING_PAYMENT" || (t.deposit && t.deposit.status === "paid")) return res.json(view());
+    await ref.update({ status: "CANCELLED", cancelledBy: "unpaid", holdUntil: admin.firestore.FieldValue.delete(), statusAt: admin.firestore.FieldValue.serverTimestamp() });
+    t.status = "CANCELLED"; delete t.holdUntil; awaiting = false;
+    return res.json({ ...view(), canCancel: false, abandoned: true });
+  }
   if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
   if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cancelar desde acá. Escribile al comercio." });
   const paid = t.deposit && t.deposit.status === "paid";
