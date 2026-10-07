@@ -88,7 +88,8 @@ export interface Booking {
   price?: number;
   customerName?: string;
   /** 'client': lo canceló el cliente con el link de su turno */
-  cancelledBy?: 'client' | 'expired';
+  /** expired: no pagó a tiempo; unpaid: volvió de Mercado Pago sin pagar */
+  cancelledBy?: 'client' | 'expired' | 'unpaid';
   /** Cuándo se le mandó el recordatorio por WhatsApp */
   remindedAt?: any;
   /** 'auto': lo mandó Ventra solo (ver reminder) */
@@ -105,6 +106,10 @@ export interface Booking {
   deposit?: { amount: number; status: 'pending' | 'paid'; full?: boolean; paidAmount?: number; paymentId?: string; refundNeeded?: boolean };
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
+  /** Quién lo cambió de horario: el cliente desde su link o el comercio */
+  movedBy?: 'client' | 'owner';
+  /** Turno fijo: los de la misma serie comparten el id */
+  seriesId?: string;
   customerPhone?: string;
   /** Opcional en la reserva online: para el recordatorio por email */
   customerEmail?: string;

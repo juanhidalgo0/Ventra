@@ -1660,6 +1660,20 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
   for (const b of [before, after]) { const k = agenda.clientKeyOf(b); if (k && !keys.has(k)) keys.set(k, b); }
   await Promise.all([...keys].map(([k, b]) => agenda.refreshClient(db, storeId, k, b).catch((err) => logger.warn("No se pudo actualizar el cliente de la agenda", { storeId, err: err.message }))));
 
+  // El cliente cambió el horario desde el link de su turno (agenda.js reschedule): se avisa al dueño
+  if (before && after && after.movedBy === "client" && after.status !== "CANCELLED" && (before.dateKey !== after.dateKey || before.startMin !== after.startMin)) {
+    const store = await db.collection("ventra_stores").doc(storeId).get();
+    const uid = store.exists && store.data().ownerUid;
+    if (uid) {
+      await notify.sendToAccount(db, uid, "bookings", {
+        title: `Turno cambiado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
+        body: `${after.customerName || "El cliente"} lo pasó desde su link. Antes era ${agenda.fmtDay(before.dateKey)} ${agenda.hhmm(before.startMin)}: ese horario quedó libre.`,
+        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+      }, { storeId });
+    }
+    return;
+  }
+
   // El cliente canceló con el link de su turno: se avisa al dueño (el horario ya quedó libre)
   if (before && after && after.cancelledBy === "client" && before.status !== "CANCELLED" && after.status === "CANCELLED") {
     const store = await db.collection("ventra_stores").doc(storeId).get();

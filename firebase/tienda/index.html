@@ -1439,6 +1439,27 @@ function depositOf(sv){
   if(price>0) a=Math.min(a,price);
   return a>=1?Math.round(a):0;
 }
+/* Agregar el turno al calendario del celular. iPhone: archivo de calendario (.ics) con aviso 1 hora antes;
+   el resto: Google Calendar. S.cal = {serviceName, staffName, date, time, durationMin, code, id} */
+function icsEsc(t){ return String(t||'').replace(/[\\;,]/g,function(c){ return '\\'+c; }).replace(/\n/g,'\\n'); }
+function addToCalendar(){
+  var o=S.cal; if(!o||!o.date||!o.time) return;
+  var startMs=Date.UTC(+o.date.slice(0,4),+o.date.slice(5,7)-1,+o.date.slice(8,10))+(toMin(o.time)-TZ_OFFSET_MIN)*60000;
+  var endMs=startMs+Math.max(5,Number(o.durationMin)||30)*60000;
+  var f=function(ms){ return new Date(ms).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,''); };
+  var title=o.serviceName+' · '+S.cfg.businessName;
+  var det='Turno #'+o.code+(o.staffName?' con '+o.staffName:'')+(o.id?'\nVer, cambiar o cancelar: '+manageUrl(o.id,o.code):'');
+  if(/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1)){
+    var ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Ventra//Turnos//ES','BEGIN:VEVENT','UID:'+(o.id||o.code)+'@ventra.store','DTSTAMP:'+f(Date.now()),
+      'DTSTART:'+f(startMs),'DTEND:'+f(endMs),'SUMMARY:'+icsEsc(title),'DESCRIPTION:'+icsEsc(det)].concat(S.cfg.address?['LOCATION:'+icsEsc(S.cfg.address)]:[])
+      .concat(['BEGIN:VALARM','TRIGGER:-PT1H','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(title),'END:VALARM','END:VEVENT','END:VCALENDAR']).join('\r\n');
+    window.location.assign('data:text/calendar;charset=utf-8,'+encodeURIComponent(ics));
+    return;
+  }
+  window.open('https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+f(startMs)+'/'+f(endMs)
+    +(S.cfg.address?'&location='+encodeURIComponent(S.cfg.address):'')+'&details='+encodeURIComponent(det),'_blank','noopener');
+}
+function calBtn(style){ return '<button class="btn btn-ghost btn-block" style="height:48px;'+(style||'')+'" data-act="cal-add">'+ic('clock')+'Agregar a mi calendario</button>'; }
 function payBtn(url,amount){ return '<a class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" href="'+esc(url)+'">Pagar '+money(amount)+' con Mercado Pago</a>'; }
 
 /* ───────── link del turno: ver y cancelar (función agendaManage) ───────── */
@@ -1512,8 +1533,12 @@ function renderManage(){
       +(d.payUrl?'<p style="font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin" style="width:16px;height:16px;border-width:2px"></span>Si ya pagaste, se confirma solo en unos segundos.</p>':'')+'</div>';
     if(confirming) foot='';
     else if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
-    else if(d.canCancel) foot='<div class="sheet-foot"><button class="btn btn-soft btn-block" style="height:48px;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button>'
-      +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">¿Querés otro horario? Cancelalo y reservá de nuevo.</p></div>';
+    else if(d.canCancel){
+      S.cal={serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,durationMin:d.durationMin,code:m.code,id:m.id};
+      foot='<div class="sheet-foot">'+calBtn()
+        +(d.canMove&&agendaOn()?'<button class="btn btn-soft btn-block" style="height:48px;margin-top:8px" data-act="mg-move">Cambiar día u horario</button>':'')
+        +'<button class="btn btn-ghost btn-block" style="height:44px;margin-top:4px;border:0;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button></div>';
+    }
     else if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:48px" data-act="mg-book">Reservar otro turno</button></div>';
   }
   $('#bookSheet').innerHTML='<div class="grab"></div><div class="sheet-head"><h3 class="display">Tu turno</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
@@ -1625,14 +1650,14 @@ function bkStepsList(){
   return multi?['service','staff','time','data']:['service','time','data'];
 }
 function bkHead(title,back){
-  var steps=bkStepsList(), idx=steps.indexOf(S.bk.step), pct=idx>=0?Math.round((idx+1)/steps.length*100):0;
+  var steps=S.bk.move?[]:bkStepsList(), idx=steps.indexOf(S.bk.step), pct=idx>=0?Math.round((idx+1)/steps.length*100):0;
   S.bkProgTo=pct;
   return '<div class="grab"></div><div class="sheet-head">'+(back?'<button class="sheet-close" data-act="bk-back" aria-label="Volver">'+ic('back')+'</button>':'')
     +'<div class="bk-title"><h3 class="display">'+title+'</h3>'+(idx>=0?'<small>Paso '+(idx+1)+' de '+steps.length+'</small>':'')+'</div>'
     +'<button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +(idx>=0?'<div class="bk-prog"><i style="width:'+(S.bkProgFrom||0)+'%"></i></div>':'');
 }
-var BK_ORDER=['service','staff','time','data','done'];
+var BK_ORDER=['service','staff','time','moveok','data','done'];
 /* Cada paso entra deslizándose (hacia la izquierda al avanzar, a la derecha al volver) */
 function renderBooking(){
   var b=S.bk, last=S.bkLast, changed=last!==b.step;
@@ -1674,13 +1699,23 @@ function renderBookingStep(){
     var body=!days.length
       ? '<div class="empty"><b>No hay turnos disponibles</b>Escribinos por WhatsApp y lo coordinamos.</div>'
       : '<div class="bk-days"><div class="days">'+days.map(bkDayBtn).join('')+'</div></div><div class="bk-slots" id="bkSlots"></div>';
-    el.innerHTML=bkHead('Elegí día y horario',true)+'<div class="sheet-body"><div class="bk-ctx">'+ic('clock')+'<span><b>'+esc(sv.name)+'</b>'
+    el.innerHTML=bkHead(b.move?'Elegí el nuevo horario':'Elegí día y horario',true)+'<div class="sheet-body"><div class="bk-ctx">'+ic('clock')+'<span><b>'+esc(sv.name)+'</b>'
       +' · '+durLabel(Number(sv.durationMin)||30)+(st?' · con '+esc(st.name):'')+'</span></div>'+body+'</div>';
     if(days.length){
       bkFillSlots(false);
       bkPrefetch(days);
       requestAnimationFrame(function(){ bkScrollDay(false); });
     }
+    return;
+  }
+  if(b.step==='moveok'){
+    var fr=b.move.from;
+    el.innerHTML=bkHead('Cambiar tu turno',true)+'<div class="sheet-body">'
+      +'<div class="bk-ctx" style="margin-bottom:14px">'+ic('clock')+'<span><b>'+esc(sv.name)+'</b>'+(fr.staffName?' · con '+esc(fr.staffName):'')+'</span></div>'
+      +'<div class="bk-sum"><div style="color:var(--ink-3)">'+ic('x')+'<span>Antes: <s>'+esc(capFirst(dayText(fr.date)))+', '+esc(fr.time)+' hs</s></span></div>'
+      +'<div>'+ic('check')+'<span>Ahora: <b>'+esc(capFirst(dayText(b.day)))+', '+esc(hhmm(b.time))+' hs</b></span></div></div>'
+      +'<p style="font-size:13px;color:var(--ink-2);margin:0">El horario anterior queda libre y '+esc(S.cfg.businessName)+' se entera solo.</p></div>'
+      +'<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="mv-confirm">Cambiar a este horario</button></div>';
     return;
   }
   if(b.step==='data'){
@@ -1718,11 +1753,7 @@ function renderBookingStep(){
   }
   if(b.step==='done'){
     var r=b.result, pending=r.status==='PENDING';
-    var start=r.date.replace(/-/g,'')+'T'+r.time.replace(':','')+'00';
-    var endMin=toMin(r.time)+(Number(sv.durationMin)||30);
-    var gcal='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(r.serviceName+' · '+S.cfg.businessName)
-      +'&dates='+start+'/'+r.date.replace(/-/g,'')+'T'+hhmm(endMin).replace(':','')+'00&ctz=America/Argentina/Buenos_Aires'
-      +(S.cfg.address?'&location='+encodeURIComponent(S.cfg.address):'')+'&details='+encodeURIComponent('Turno #'+r.code+(r.staffName?' con '+r.staffName:''));
+    S.cal={serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,durationMin:Number(sv.durationMin)||30,code:r.code,id:r.id};
     var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+r.serviceName+'*'+(r.staffName?' con '+r.staffName:''),'*Día:* '+dayText(r.date)+', '+r.time+' hs','*Turno:* #'+r.code,'*Nombre:* '+b.name];
     if(r.id) L.push('','Ver o cancelar mi turno: '+manageUrl(r.id,r.code));
     var wa=S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
@@ -1735,7 +1766,7 @@ function renderBookingStep(){
       +(r.id?'<p style="font-size:13px">Si no podés ir, cancelalo desde <a href="'+esc(manageUrl(r.id,r.code))+'" style="color:var(--brand);font-weight:600">el link de tu turno</a>'+(wa?' (también va en el mensaje de WhatsApp).':'.')+'</p>':'')+'</div></div>'
       +'<div class="sheet-foot">'
       +(wa?'<a class="btn btn-wa btn-block" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
-      +'<a class="btn btn-ghost btn-block" style="margin-top:8px;height:48px" href="'+esc(gcal)+'" target="_blank" rel="noopener">'+ic('clock')+'Agregar a mi calendario</a>'
+      +calBtn('margin-top:8px')
       +'<button class="btn btn-ghost btn-block" style="margin-top:8px;height:48px;border:0" data-act="close">Listo</button>'
       +'<p style="text-align:center;font-size:11.5px;color:var(--ink-3);margin:10px 0 0"><a href="'+esc(ventraLink('reserva'))+'" target="_blank" rel="noopener" style="color:inherit">¿Das turnos? Armá tu agenda online con <b>Ventra</b></a></p></div>';
   }
@@ -1812,7 +1843,29 @@ function bkPickTime(btn){
   b.time=v;
   document.querySelectorAll('#bookSheet .slot').forEach(function(x){ x.classList.toggle('on', x===btn); });
   /* Se ve el horario elegido un instante antes de pasar a los datos */
-  setTimeout(function(){ if(S.bk.time===v && S.bk.step==='time'){ S.bk.step='data'; renderBooking(); } }, 170);
+  setTimeout(function(){ if(S.bk.time===v && S.bk.step==='time'){ S.bk.step=S.bk.move?'moveok':'data'; renderBooking(); } }, 170);
+}
+
+/* Cambiar el turno desde su link: se elige otro día y horario con el mismo profesional y servicio */
+function startMove(){
+  var m=S.mg, d=m&&m.data, sv=d&&agServices().filter(function(x){ return x.id===d.serviceId; })[0];
+  if(!sv||!agStaff().some(function(x){ return x.id===d.staffId; })){ toast('Para cambiarlo, escribile al comercio'); return; }
+  S.bk={step:'time',serviceId:sv.id,staffId:d.staffId,day:d.date,time:null,dayPicked:false,move:{id:m.id,code:m.code,from:d}};
+  S.bkBusy={}; S.bkLast='time'; S.bkProgFrom=0;
+  renderBooking();
+}
+async function confirmMove(btn){
+  var b=S.bk, mv=b.move, label=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
+  try{
+    var d=await manageCall({id:mv.id,code:mv.code,action:'reschedule',date:b.day,time:hhmm(b.time)});
+    S.bk={step:'service'}; S.bkBusy={};
+    S.mg={id:mv.id,code:mv.code,state:'show',data:d}; renderManage();
+    toast('Listo: cambiamos tu turno');
+  }catch(e){
+    toast(e.message||'No se pudo cambiar el turno');
+    delete S.bkBusy[b.day]; b.step='time'; b.time=null; renderBooking();
+  }
 }
 
 /* Texto del botón de reservar según cómo paga */
@@ -1828,7 +1881,9 @@ function bkPickPay(btn){
 
 function bkBack(){
   var b=S.bk;
-  if(b.step==='data'){ b.step='time'; }
+  if(b.move && b.step==='time'){ var mv=b.move; S.bk={step:'service'}; openManage(mv.id,mv.code); return; }
+  if(b.step==='moveok'){ b.step='time'; b.time=null; }
+  else if(b.step==='data'){ b.step='time'; }
   else if(b.step==='time'){ b.step=bkStaffFor(bkService()).length>1?'staff':'service'; b.time=null; if(b.step==='service') b.staffId=null; }
   else if(b.step==='staff'){ b.step='service'; }
   renderBooking();
@@ -1978,6 +2033,9 @@ document.addEventListener('click',function(e){
     case 'bk-back': bkBack(); break;
     case 'bk-confirm': confirmBooking(t); break;
     case 'bk-pay': bkPickPay(t); break;
+    case 'cal-add': addToCalendar(); break;
+    case 'mg-move': startMove(); break;
+    case 'mv-confirm': confirmMove(t); break;
     case 'new-order': S.step='cart'; closeSheets(); break;
     case 'subcat': S.sub=t.getAttribute('data-cat'); renderList(); break;
     case 'cat': goCat(t.getAttribute('data-cat')); break;

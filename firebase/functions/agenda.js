@@ -398,8 +398,11 @@ async function manage(db, req, res) {
   let awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t);
   const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED" || awaiting) && t.startAt && t.startAt.toMillis() > Date.now();
   const view = () => ({
-    serviceId: t.serviceId || "", serviceName: t.serviceName || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
+    serviceId: t.serviceId || "", serviceName: t.serviceName || "", staffId: t.staffId || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
+    durationMin: Math.max(5, (t.endMin - t.startMin) || Number(t.durationMin) || 30),
     status: holdExpired(t) ? "CANCELLED" : t.status, canCancel: upcoming,
+    // Cambiar de horario desde el link: turnos confirmados o por confirmar (no mientras espera el pago)
+    canMove: upcoming && (t.status === "PENDING" || t.status === "CONFIRMED"),
     ...(t.deposit ? { deposit: { amount: t.deposit.amount, status: t.deposit.status }, ...(awaiting && t.deposit.payUrl ? { payUrl: t.deposit.payUrl, holdUntil: t.holdUntil.toMillis() } : {}) } : {}),
   });
   if (action === "get") return res.json(view());
@@ -411,12 +414,58 @@ async function manage(db, req, res) {
     t.status = "CANCELLED"; delete t.holdUntil; awaiting = false;
     return res.json({ ...view(), canCancel: false, abandoned: true });
   }
+  if (action === "reschedule") return reschedule(db, res, storeId, ref, t, b, view);
   if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
   if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cancelar desde acá. Escribile al comercio." });
   const paid = t.deposit && t.deposit.status === "paid";
   await ref.update({ status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...(paid ? { "deposit.refundNeeded": true } : {}) });
   t.status = "CANCELLED";
   return res.json({ ...view(), canCancel: false });
+}
+
+/**
+ * El cliente cambia el horario desde el link de su turno (manage "reschedule", { date, time }).
+ * Mismo profesional y servicio; mismas reglas que una reserva nueva (anticipación, días para adelante, horario libre).
+ * El recordatorio vuelve a salir para el horario nuevo. El dueño se entera por ventraBookingWritten (movedBy "client").
+ */
+async function reschedule(db, res, storeId, ref, t, b, view) {
+  const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED") && t.startAt && t.startAt.toMillis() > Date.now();
+  if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cambiar desde acá. Escribile al comercio." });
+  const dateKey = clean(b.date, 10), time = clean(b.time, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: "Fecha u hora inválida" });
+  const storeRef = db.collection("ventra_stores").doc(storeId);
+  const store = await storeRef.get();
+  const agenda = store.exists && store.data().agenda;
+  if (!agenda || !agenda.enabled) return res.status(409).json({ error: "El comercio no está tomando turnos online. Escribile para cambiarlo." });
+  const staff = (agenda.staff || []).find((s) => s.id === t.staffId && s.active !== false);
+  if (!staff) return res.status(409).json({ error: "Ese profesional ya no atiende online. Escribile al comercio para cambiarlo." });
+  const dur = Math.max(5, (t.endMin - t.startMin) || Number(t.durationMin) || 30);
+  const service = { ...((agenda.services || []).find((s) => s.id === t.serviceId) || {}), durationMin: dur };
+  const startMin = toMin(time);
+  if (dateKey === t.dateKey && startMin === t.startMin) return res.json(view());
+  const minStart = minStartFor(agenda, dateKey);
+  if (startMin < minStart) return res.status(409).json({ error: "Ese horario ya no se puede reservar. Elegí otro." });
+  const moved = await db.runTransaction(async (tx) => {
+    const cur = await tx.get(ref);
+    const c = cur.exists ? cur.data() : null;
+    if (!c || (c.status !== "PENDING" && c.status !== "CONFIRMED") || c.dateKey !== t.dateKey || c.startMin !== t.startMin) return "changed";
+    const day = await tx.get(storeRef.collection("bookings").where("dateKey", "==", dateKey));
+    const busy = busyOf(day.docs.filter((d) => d.id !== ref.id));
+    if (!freeStarts(agenda, staff, service, dateKey, busy, minStart).includes(startMin)) return "busy";
+    const del = admin.firestore.FieldValue.delete();
+    tx.update(ref, {
+      dateKey, startMin, endMin: startMin + dur, startAt: admin.firestore.Timestamp.fromMillis(startAtMs(dateKey, startMin)),
+      movedFrom: { dateKey: t.dateKey, startMin: t.startMin }, movedBy: "client", movedAt: admin.firestore.FieldValue.serverTimestamp(),
+      // El recordatorio (WhatsApp y email) vuelve a salir para el horario nuevo
+      remindedAt: del, reminder: del, emailRemindedAt: del, emailReminder: del, clientConfirmedAt: del,
+      statusAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return "ok";
+  });
+  if (moved === "busy") return res.status(409).json({ error: "Ese horario se acaba de ocupar. Elegí otro." });
+  if (moved === "changed") return res.status(409).json({ error: "El turno cambió mientras tanto. Volvé a abrir el link." });
+  Object.assign(t, { dateKey, startMin, endMin: startMin + dur });
+  return res.json({ ...view(), moved: true });
 }
 
 module.exports = { book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges, localNow, addDays, weekday, startAtMs };

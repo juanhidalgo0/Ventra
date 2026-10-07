@@ -2,7 +2,7 @@ import { collection, doc, query, where, orderBy, limit, onSnapshot, addDoc, upda
 import { getVentraDb, ensureVentraSession } from './ventraFirebase';
 import { IS_DEMO_BUILD } from '../demo/flag';
 import { claimStore } from './onlineStore';
-import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
+import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, addDays, occupies, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
 
 export * from './agendaCore';
 
@@ -97,6 +97,8 @@ function code() {
 export async function createManualBooking(storeId: string, b: {
   dateKey: string; startMin: number; service: AgendaService; staff: AgendaStaff;
   customerName: string; customerPhone?: string; customerNote?: string;
+  /** Turno fijo: todos los de la serie comparten este id (ver createSeries) */
+  seriesId?: string;
 }) {
   await ensureVentraSession();
   const dur = Math.max(5, Number(b.service.durationMin) || 30);
@@ -109,10 +111,49 @@ export async function createManualBooking(storeId: string, b: {
     serviceId: b.service.id, serviceName: b.service.name, durationMin: dur, price: Number(b.service.price) || 0,
     customerName: b.customerName.trim(), customerPhone: phone, customerPhoneKey: phone.replace(/\D/g, '').slice(-10), customerNote: (b.customerNote || '').trim(),
     code: code(), status: 'CONFIRMED' as const, source: 'manual' as const,
+    ...(b.seriesId ? { seriesId: b.seriesId } : {}),
   };
   const ref = await addDoc(bookingsCol(storeId), { ...data, createdAt: serverTimestamp() });
   refreshClientOf(storeId, data as any);
   return ref;
+}
+
+/**
+ * Turno fijo (el cliente que viene "todos los martes a las 18"): la fecha elegida y las siguientes cada
+ * `everyWeeks` semanas, `times` veces en total. Las fechas en las que ese horario ya está ocupado (otro turno
+ * o un bloqueo) no se cargan y se devuelven para avisarle al comercio.
+ */
+export function seriesDates(b: { dateKey: string; startMin: number; service: AgendaService; staff: AgendaStaff }, everyWeeks: number, times: number, existing: Booking[], agenda: AgendaConfig) {
+  const dur = Math.max(5, Number(b.service.durationMin) || 30);
+  const buf = Math.max(0, Number(agenda.bufferMin) || 0);
+  const ok: string[] = [], taken: string[] = [];
+  for (let i = 0; i < times; i++) {
+    const day = addDays(b.dateKey, i * 7 * everyWeeks);
+    const clash = existing.some((x) => x.dateKey === day && occupies(x) && (x.staffId === b.staff.id || x.staffId === 'ALL') && b.startMin < x.endMin + buf && x.startMin < b.startMin + dur + buf);
+    (i === 0 || !clash ? ok : taken).push(day);
+  }
+  return { ok, taken };
+}
+
+export async function createSeries(storeId: string, b: Parameters<typeof createManualBooking>[1], days: string[]) {
+  const seriesId = `s_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  for (const dateKey of days) await createManualBooking(storeId, { ...b, dateKey, seriesId });
+  return seriesId;
+}
+
+/** Turnos de la misma serie desde un día (sin contar uno), que todavía están por venir. */
+export async function seriesUpcoming(storeId: string, seriesId: string, fromKey: string, exceptId?: string): Promise<Booking[]> {
+  await ensureVentraSession();
+  const snap = await getDocs(query(bookingsCol(storeId), where('seriesId', '==', seriesId)));
+  return docsOf(snap).filter((x) => x.id !== exceptId && x.dateKey >= fromKey && (x.status === 'CONFIRMED' || x.status === 'PENDING')).sort((x, y) => x.dateKey.localeCompare(y.dateKey));
+}
+
+export async function cancelBookings(storeId: string, list: Booking[]) {
+  await ensureVentraSession();
+  const batch = writeBatch(getVentraDb());
+  list.forEach((x) => batch.update(doc(bookingsCol(storeId), x.id), { status: 'CANCELLED', statusAt: serverTimestamp() }));
+  await batch.commit();
+  if (list[0]) refreshClientOf(storeId, { ...list[0], status: 'CANCELLED' });
 }
 
 /** Horario bloqueado (almuerzo, un día libre). staffId 'ALL' = todo el local. */
@@ -145,9 +186,11 @@ export async function rescheduleBooking(storeId: string, b: Booking, to: { dateK
     dateKey: to.dateKey, startMin: to.startMin, endMin: to.startMin + dur,
     startAt: Timestamp.fromMillis(startAtMs(to.dateKey, to.startMin)),
     staffId: to.staff.id, staffName: to.staff.name, status,
-    movedFrom: { dateKey: b.dateKey, startMin: b.startMin }, statusAt: serverTimestamp(),
+    movedFrom: { dateKey: b.dateKey, startMin: b.startMin }, movedBy: 'owner', statusAt: serverTimestamp(),
   };
-  await updateDoc(doc(bookingsCol(storeId), b.id), patch);
+  // El recordatorio automático (WhatsApp y email) vuelve a salir para el horario nuevo
+  const del = deleteField();
+  await updateDoc(doc(bookingsCol(storeId), b.id), { ...patch, remindedAt: del, reminder: del, emailRemindedAt: del, emailReminder: del, clientConfirmedAt: del });
   refreshClientOf(storeId, { ...b, ...patch } as any);
   return { ...b, ...patch } as Booking;
 }

@@ -22,7 +22,7 @@ import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
   rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, paidInFull, waRemindersAvailable, REMINDER_WHEN,
-  subscribeReminderQuota, buyReminderPack, REMINDER_PACK, type ReminderQuota,
+  subscribeReminderQuota, buyReminderPack, REMINDER_PACK, seriesDates, createSeries, seriesUpcoming, cancelBookings, type ReminderQuota,
   type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -528,7 +528,9 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
             : b.status === 'AWAITING_PAYMENT' ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">Pago online de {money(b.deposit.amount)} sin pagar todavía</span> : null)}
           {b.payAt === 'local' && !b.payment && <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800">Paga en el local</span>}
           {b.deposit?.refundNeeded && <span className="text-[12px] font-semibold text-red-600">{b.status === 'CANCELLED' && b.cancelledBy === 'client' ? `Pagó ${money(depositPaid(b))} por Mercado Pago y canceló: devolvéselo desde tu cuenta de Mercado Pago` : 'Pagó tarde y el horario ya estaba ocupado: reprogramalo o devolvele el pago'}</span>}
-          {b.movedFrom && <span className="text-[12px] text-slate-400">Reprogramado (antes {dayLabel(b.movedFrom.dateKey, true)} {hhmm(b.movedFrom.startMin)})</span>}
+          {b.seriesId && <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-700">Turno fijo</span>}
+          {b.movedFrom && <span className={`text-[12px] ${b.movedBy === 'client' ? 'font-semibold text-sky-700' : 'text-slate-400'}`}>{b.movedBy === 'client' ? 'El cliente lo cambió desde su link' : 'Reprogramado'} (antes {dayLabel(b.movedFrom.dateKey, true)} {hhmm(b.movedFrom.startMin)})</span>}
+          {b.cancelledBy === 'unpaid' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-slate-500">No completó el pago</span>}
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 space-y-2.5 text-[14px] text-slate-700">
           <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-slate-400" /> {dayLabel(b.dateKey)}, {hhmm(b.startMin)} a {hhmm(b.endMin)}</p>
@@ -560,6 +562,13 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
               <button disabled={busy} onClick={async () => {
                 if (!(await ask({ title: '¿Cancelar este turno?', message: depositPaid(b) ? `El horario queda libre. Pagó ${money(depositPaid(b))} online: devolvéselo desde tu cuenta de Mercado Pago.` : 'El horario queda libre para otro cliente.', confirmLabel: 'Cancelar turno', cancelLabel: 'Volver', danger: true }))) return;
                 await act('CANCELLED', 'Turno cancelado');
+                // Turno fijo: se ofrece cancelar también los que siguen (ej. el cliente dejó de venir)
+                if (b.seriesId) {
+                  const next = await seriesUpcoming(storeId, b.seriesId, b.dateKey, b.id).catch(() => []);
+                  if (next.length && await ask({ title: `¿Cancelar también los ${next.length} que siguen?`, message: `Son los próximos turnos fijos de ${b.customerName || 'este cliente'}, hasta el ${dayLabel(next[next.length - 1].dateKey, true)}.`, confirmLabel: 'Cancelar los siguientes', cancelLabel: 'Solo este', danger: true })) {
+                    try { await cancelBookings(storeId, next); toast.success(`Se cancelaron ${next.length} turnos más`); } catch { toast.error('No se pudieron cancelar los siguientes'); }
+                  }
+                }
                 offerWa('cancel', b);
               }} className="h-11 rounded-xl bg-red-50 text-red-700 text-[13.5px] font-semibold">Cancelar turno</button>
             )}
@@ -849,6 +858,9 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [note, setNote] = useState('');
+  // Turno fijo: cada cuántas semanas (0 = no se repite) y cuántas veces en total
+  const [every, setEvery] = useState(0);
+  const [times, setTimes] = useState(8);
   const [busy, setBusy] = useState(false);
   const [ask, askDialog] = useConfirm();
 
@@ -863,10 +875,25 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
     if (t == null) return toast.error('Elegí el horario');
     if (!name.trim()) return toast.error('Escribí el nombre del cliente');
     if (custom && !slots.includes(t) && !(await ask({ title: '¿Cargarlo igual?', message: 'Ese horario se superpone con otro turno o está fuera del horario.', confirmLabel: 'Cargarlo igual', cancelLabel: 'Volver' }))) return;
+    const data = { dateKey: day, startMin: t, service, staff, customerName: name, customerPhone: phone, customerNote: note };
     setBusy(true);
     try {
-      await createManualBooking(storeId, { dateKey: day, startMin: t, service, staff, customerName: name, customerPhone: phone, customerNote: note });
-      toast.success('Turno cargado');
+      if (!every) {
+        await createManualBooking(storeId, data);
+        toast.success('Turno cargado');
+        return onClose();
+      }
+      // Turno fijo: se revisa qué semanas tienen ese horario libre antes de cargar
+      const existing = await fetchBookingsRange(storeId, day, addDays(day, every * 7 * (times - 1)));
+      const { ok, taken } = seriesDates(data, every, times, existing, agenda);
+      if (taken.length && !(await ask({
+        title: `¿Cargar ${ok.length} de ${times}?`,
+        message: `Ese horario ya está ocupado ${taken.length === 1 ? 'el' : 'los días'} ${taken.map((k) => dayLabel(k, true)).join(', ')}. Se cargan los demás; esos los resolvés a mano.`,
+        confirmLabel: `Cargar ${ok.length}`, cancelLabel: 'Volver',
+      }))) { setBusy(false); return; }
+      await createSeries(storeId, data, ok);
+      const dn = DAY_NAMES[weekday(day)].toLowerCase(), dns = /o$/.test(dn) ? `${dn}s` : dn;
+      toast.success(`${ok.length} turnos cargados: ${every === 1 ? `todos los ${dns}` : `un ${dn} sí y uno no`} a las ${hhmm(t)}`);
       onClose();
     } catch { toast.error('No se pudo cargar el turno'); setBusy(false); }
   };
@@ -913,6 +940,23 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
           <div><span className={label}>WhatsApp (opcional)</span><input className={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="11 5555-5555" /></div>
         </div>
         <div><span className={label}>Nota (opcional)</span><input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: es la primera vez que viene" /></div>
+        <div>
+          <span className={label}>Repetir</span>
+          <div className="flex flex-wrap gap-1.5">
+            {([[0, 'No se repite'], [1, 'Cada semana'], [2, 'Cada 2 semanas']] as const).map(([v, t]) => (
+              <button key={v} onClick={() => setEvery(v)} className={`ag-press h-9 px-3.5 rounded-full text-[13px] font-semibold border ${every === v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>{t}</button>
+            ))}
+          </div>
+          {every > 0 && (
+            <div className="mt-2 anim-rise flex items-center gap-2 text-[13px] text-slate-600 flex-wrap">
+              Turno fijo, {DAY_NAMES[weekday(day)].toLowerCase()} {custom || (start != null ? hhmm(start) : '…')} hs,
+              <select className="h-9 px-2 rounded-lg border border-slate-200 bg-white text-[13.5px]" value={times} onChange={(e) => setTimes(Number(e.target.value))}>
+                {[4, 8, 12, 16, 26].map((n) => <option key={n} value={n}>{n} veces</option>)}
+              </select>
+              <span className="text-slate-400">(hasta {dayLabel(addDays(day, every * 7 * (times - 1)), true)})</span>
+            </div>
+          )}
+        </div>
       </div>
       {askDialog}
     </Modal>

@@ -142,7 +142,13 @@ export async function createPreviewBridge(storeId: string) {
     const t: any = snap?.exists() ? snap.data() : null;
     if (!t || t.code !== m.code) return { status: 404, body: { error: 'No encontramos ese turno.' } };
     const startMs = t.startAt?.toMillis ? t.startAt.toMillis() : startAtMs(t.dateKey, t.startMin);
-    const view = (status: string) => ({ serviceName: t.serviceName || '', staffName: t.staffName || '', date: t.dateKey, time: `${String(Math.floor(t.startMin / 60)).padStart(2, '0')}:${String(t.startMin % 60).padStart(2, '0')}`, status, canCancel: (status === 'PENDING' || status === 'CONFIRMED') && startMs > Date.now() });
+    const open = (status: string) => (status === 'PENDING' || status === 'CONFIRMED') && startMs > Date.now();
+    const view = (status: string) => ({
+      serviceId: t.serviceId || '', serviceName: t.serviceName || '', staffId: t.staffId || '', staffName: t.staffName || '', date: t.dateKey,
+      time: `${String(Math.floor(t.startMin / 60)).padStart(2, '0')}:${String(t.startMin % 60).padStart(2, '0')}`,
+      durationMin: Math.max(5, (t.endMin - t.startMin) || Number(t.durationMin) || 30), status, canCancel: open(status), canMove: open(status),
+    });
+    if (m.action === 'reschedule') return { status: 409, body: { error: 'Vista previa: el turno no se cambia de verdad.' } };
     if (m.action !== 'cancel') return { status: 200, body: view(t.status) };
     if (!IS_DEMO_BUILD) return { status: 409, body: { error: 'Vista previa: el turno no se cancela de verdad.' } };
     await updateDoc(ref, { status: 'CANCELLED', cancelledBy: 'client', statusAt: serverTimestamp() });
