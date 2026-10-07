@@ -57,3 +57,9 @@ reset.txt
 errores
 scratch
 app-error.txt
+release-token.txt
+*-token.txt
+apps/backend/_backups-dev
+marketing
+*.jpeg
+VentraLOGO.png
