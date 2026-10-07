@@ -744,7 +744,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       <>
         <MotionDiv 
           {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
         >
           <MotionDiv 
             {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })} 
@@ -970,13 +970,13 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   return (
     <MotionDiv 
       {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <MotionDiv
         {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
         onClick={(e: any) => e.stopPropagation()}
-        className="card relative bg-white dark:bg-slate-900 w-full max-w-xl p-4 md:p-5 h-[85vh] sm:h-auto max-h-[90vh] sm:max-h-[95vh] flex flex-col shadow-xl rounded-2xl border border-slate-200 dark:border-slate-800 outline-none"
+        className="card relative bg-white dark:bg-slate-900 w-full max-w-xl p-5 md:p-6 h-[85vh] sm:h-auto max-h-[90vh] sm:max-h-[95vh] flex flex-col shadow-[0_24px_60px_-12px_rgba(15,23,42,0.35)] rounded-2xl border border-slate-200 dark:border-slate-800 outline-none"
         tabIndex={-1}
         ref={(el: any) => {
           if (el && !isProcessing && !showSuccess && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
@@ -986,35 +986,32 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between mb-3 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <MangoIcon className="w-6 h-6" />
-            <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">Confirmar Pago</h2>
-          </div>
+          <h2 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">Cobrar</h2>
           <div className="flex items-center gap-1">
           <button
             onClick={() => useTourStore.getState().start('payment')}
             title="Ver recorrido de la ventana de cobro"
-            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 transition-colors"
+            className="w-8 h-8 grid place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors"
           >
-            <HelpCircle className="w-5 h-5" />
+            <HelpCircle className="w-[18px] h-[18px]" />
           </button>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} aria-label="Cerrar" className="w-8 h-8 grid place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+            <X className="w-[18px] h-[18px]" />
           </button>
           </div>
         </div>
 
         {/* Scrollable Modal Body */}
         <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3 pb-1">
-          <div data-tour="pay-total" className="text-center py-3.5 px-4 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 text-white dark:from-slate-950 dark:to-black border border-slate-800 shadow-inner shrink-0">
-            <p className="text-[10px] font-semibold text-slate-400 mb-1 uppercase tracking-[0.2em]">Total a Cobrar</p>
-            <p className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">{formatPrice(finalTotal)}</p>
+          <div data-tour="pay-total" className="py-3 px-5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 shrink-0 flex items-baseline justify-between gap-4">
+            <p className="text-[14px] font-medium text-slate-600 dark:text-slate-300">Total</p>
+            <p className="text-[34px] sm:text-[40px] leading-none font-semibold text-slate-900 dark:text-white tracking-[-0.03em] tabular-nums">{formatPrice(finalTotal)}</p>
           </div>
 
           <div className="space-y-3">
             {finalTotal >= 0 ? (
               <>
-                <div data-tour="pay-metodos" className={`grid ${OTHER_GRID} gap-2.5`}>
+                <div data-tour="pay-metodos" className={`grid ${OTHER_GRID} gap-2`}>
                   {mainMethods.map((pm) => {
                     const isSelected = paymentType === pm.key;
                     const isCash = pm.key === 'CASH';
@@ -1022,24 +1019,23 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                       <button 
                         key={pm.key} 
                         onClick={() => setPaymentType(pm.key)}
-                        className={`${isCash ? 'col-span-full flex-row gap-3 py-3.5' : 'flex-col gap-1.5 p-3'} relative flex items-center justify-center px-3 rounded-2xl border-2 transition-all duration-150 cursor-pointer select-none group active:scale-[0.98] ${
-                          isSelected 
-                            ? 'shadow-lg ring-2 ring-offset-1 dark:ring-offset-slate-900 font-extrabold' 
-                            : 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-xs'
-                        }`}
-                        style={isSelected ? { borderColor: pm.color, backgroundColor: `${pm.color}15`, color: pm.color } : {}}>
+                        className={`${isCash ? 'col-span-full flex-row gap-3 h-12' : 'flex-col gap-1 h-[64px]'} relative flex items-center justify-center px-3 rounded-xl border transition-colors duration-150 cursor-pointer select-none group active:scale-[0.99] ${
+                          isSelected
+                            ? 'border-slate-900 dark:border-white bg-white dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-900 dark:ring-white'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500'
+                        }`}>
                         
                         {/* 3D Keycap Badge */}
-                        {pm.num && <span className={`absolute top-2 right-2 min-w-[22px] h-5.5 px-1.5 flex items-center justify-center rounded-md text-[11px] font-mono font-black transition-all ${
+                        {pm.num && <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1 grid place-items-center rounded-[5px] border text-[11px] font-medium tabular-nums transition-colors ${
                           isSelected
-                            ? 'bg-teal-700 text-white dark:bg-teal-600 dark:text-white shadow-[0_2px_0_0_rgba(0,0,0,0.3)]'
-                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200 border border-slate-300/80 dark:border-slate-600 shadow-[0_2px_0_0_rgba(0,0,0,0.12)] group-hover:border-slate-400'
+                            ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-300'
                         }`}>
                           {pm.num}
                         </span>}
 
-                        <pm.icon className={`w-6 h-6 ${isCash ? '' : 'mt-1'} transition-transform group-hover:scale-110 ${isSelected ? '' : 'text-slate-500 dark:text-slate-400'}`} style={isSelected ? { color: pm.color } : {}} />
-                        <span className={`${isCash ? 'text-[12px]' : 'text-[10.5px]'} font-black text-center leading-tight uppercase tracking-wider`}>{pm.label}</span>
+                        <pm.icon className={`${isCash ? 'w-5 h-5' : 'w-5 h-5 mt-1'} ${isSelected ? '' : 'text-slate-400 dark:text-slate-500'}`} strokeWidth={1.75} style={isSelected ? { color: pm.color } : {}} />
+                        <span className={`${isCash ? 'text-[15px]' : 'text-[13px]'} font-medium text-center leading-tight`}>{pm.label}</span>
                       </button>
                     );
                   })}
@@ -1048,17 +1044,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                 {!isDebtPayment && (
                   <button 
                     onClick={() => setPaymentType('DEBT')}
-                    className={`relative w-full flex items-center justify-center gap-2.5 p-3 rounded-2xl border-2 transition-all duration-150 cursor-pointer select-none group active:scale-[0.98] ${
-                      paymentType === 'DEBT' 
-                        ? 'shadow-lg border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 ring-2 ring-amber-400 ring-offset-1 dark:ring-offset-slate-900 font-extrabold' 
-                        : 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-amber-300 dark:hover:border-amber-800/50 hover:shadow-xs'
-                    }`}>
-                    <CreditCard className={`w-4.5 h-4.5 transition-transform group-hover:scale-110 ${paymentType === 'DEBT' ? 'text-amber-500' : 'text-amber-500/80'}`} />
-                    <span className="text-[11px] font-black uppercase tracking-[0.12em]">Cuenta Corriente (Cliente)</span>
-                    <span className={`absolute top-2.5 right-3 min-w-[24px] h-5.5 px-1.5 flex items-center justify-center rounded-md text-[11px] font-mono font-black transition-all ${
+                    className={`relative w-full flex items-center justify-center gap-2.5 h-11 rounded-xl border transition-colors duration-150 cursor-pointer select-none group active:scale-[0.99] ${
                       paymentType === 'DEBT'
-                        ? 'bg-amber-600 text-white shadow-[0_2px_0_0_rgba(0,0,0,0.3)]'
-                        : 'bg-slate-100 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200 border border-slate-300/80 dark:border-slate-600 shadow-[0_2px_0_0_rgba(0,0,0,0.12)]'
+                        ? 'border-slate-900 dark:border-white ring-1 ring-slate-900 dark:ring-white bg-white dark:bg-slate-800 text-slate-900 dark:text-white'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500'
+                    }`}>
+                    <CreditCard className={`w-[18px] h-[18px] ${paymentType === 'DEBT' ? 'text-amber-600' : 'text-slate-400'}`} strokeWidth={1.75} />
+                    <span className="text-[14px] font-medium">Cuenta corriente</span>
+                    <span className={`absolute top-1/2 -translate-y-1/2 right-3 min-w-[20px] h-5 px-1 grid place-items-center rounded-[5px] border text-[11px] font-medium tabular-nums transition-colors ${
+                      paymentType === 'DEBT'
+                        ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-300'
                     }`}>
                       {shortcutOf('DEBT')}
                     </span>
@@ -1104,12 +1100,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
               <div className="animate-in slide-in-from-top-2 duration-200">
                 {!disableChangeCalc ? (
                   <>
-                    <div className="flex items-center justify-between mb-1 ml-0.5">
-                      <label className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Monto recibido</label>
-                      <button 
-                        type="button" 
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300">Con cuánto paga</label>
+                      <button
+                        type="button"
                         onClick={() => setCashReceived(finalTotal)}
-                        className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                        className="text-[13px] font-medium text-rose-700 dark:text-rose-400 hover:underline underline-offset-2 cursor-pointer"
                       >
                         Pago exacto ({formatPrice(finalTotal)})
                       </button>
@@ -1127,13 +1123,13 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                           }
                         } 
                       }}
-                      className="input-field text-2xl font-bold text-center py-3 h-14 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" 
+                      className="w-full h-12 rounded-xl px-4 text-[24px] font-semibold tabular-nums text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 outline-none focus:border-slate-900 dark:focus:border-white focus:ring-4 focus:ring-slate-900/5 transition" 
                       autoFocus 
                       placeholder="0" 
                     />
 
                     {/* Quick Smart Cash Suggestions & Increments */}
-                    <div className="mt-2 space-y-1.5">
+                    <div className="mt-2.5 space-y-2">
                       {smartCashOptions.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 justify-center">
                           {smartCashOptions.map((amount) => (
@@ -1141,10 +1137,10 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                               key={`smart_${amount}`}
                               type="button"
                               onClick={() => setCashReceived(amount)}
-                              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs border ${
+                              className={`h-8 px-3 rounded-lg text-[13px] font-medium tabular-nums transition-colors active:scale-[0.98] cursor-pointer border ${
                                 cashReceived === amount
-                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
-                                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                                  : 'bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700'
                               }`}
                             >
                               {amount === finalTotal ? `Exacto ${formatPrice(amount)}` : formatPrice(amount)}
@@ -1153,13 +1149,13 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-1 justify-center pt-0.5">
+                      <div className="flex flex-wrap gap-1.5 justify-center">
                         {quickIncrements.map((inc) => (
                           <button
                             key={`inc_${inc}`}
                             type="button"
                             onClick={() => setCashReceived((prev) => (Number(prev) || 0) + inc)}
-                            className="px-2 py-0.5 rounded-xl text-[10.5px] font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-all active:scale-95 cursor-pointer"
+                            className="h-7 px-2.5 rounded-md text-[12px] font-medium tabular-nums text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-[0.98] cursor-pointer"
                           >
                             +${inc.toLocaleString('es-AR')}
                           </button>
@@ -1167,18 +1163,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                         <button
                           type="button"
                           onClick={() => setCashReceived(0)}
-                          className="px-2 py-0.5 rounded-xl text-[10.5px] font-semibold bg-slate-100 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-800 text-slate-500 transition-all active:scale-95 cursor-pointer"
+                          className="h-7 px-2.5 rounded-md text-[12px] font-medium text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         >
                           Limpiar
                         </button>
                       </div>
                     </div>
 
-                    <p className="text-[9px] text-slate-500 dark:text-slate-400 text-center mt-2 font-semibold uppercase tracking-tight">Presioná <span className="font-black text-slate-800 dark:text-slate-200">[ENTER]</span> para confirmar la venta</p>
                     {cashReceived >= finalTotal && (
-                      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="text-center py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 mt-2.5">
-                        <p className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Vuelto a entregar</p>
-                        <p className="text-3xl font-black text-emerald-600 dark:text-emerald-500">{formatPrice(change)}</p>
+                      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }} className="mt-2.5 px-5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900 flex items-baseline justify-between gap-4">
+                        <p className="text-[14px] font-medium text-rose-800 dark:text-rose-300">Vuelto</p>
+                        <p className="text-[26px] leading-none font-semibold tabular-nums tracking-[-0.02em] text-rose-700 dark:text-rose-300">{formatPrice(change)}</p>
                       </motion.div>
                     )}
                   </>
@@ -1419,27 +1414,26 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         )}
 
         {/* Fixed Modal Footer */}
-        <div className="shrink-0 pt-3 border-t border-slate-200 dark:border-slate-750">
+        <div className="shrink-0 pt-4 mt-1 border-t border-slate-200 dark:border-slate-750">
           {consumptionEnabled && (
             <button type="button" onClick={() => setAskConsumption(true)} disabled={isProcessing}
-              className="w-full mb-2 py-2.5 px-4 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer transition-all">
-              ☕ Consumo propio (sin cargo)
+              className="w-full mb-2 h-10 px-4 rounded-xl text-slate-600 dark:text-slate-300 text-[13px] font-medium flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer transition-colors">
+              Registrar como consumo propio (sin cargo)
             </button>
           )}
           <button data-tour="pay-finalizar" onClick={handleConfirm}
             disabled={isProcessing || !paymentType || (paymentType === 'CASH' && !disableChangeCalc && cashReceived < finalTotal) || (paymentType === 'MIXED' && !mixedValid) || (paymentType === 'DEBT' && !selectedClientId && !isDebtPayment)}
-            className="w-full btn-success py-3.5 px-4 text-base flex items-center justify-center gap-2.5 disabled:opacity-30 disabled:grayscale shadow-lg shadow-emerald-600/20 cursor-pointer transition-all active:scale-[0.98] rounded-2xl" id="confirm-payment-btn">
+            className="w-full h-14 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center gap-2.5 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 cursor-pointer disabled:cursor-not-allowed transition-colors active:scale-[0.99]" id="confirm-payment-btn">
             {isProcessing ? (
               <div className="flex items-center gap-2">
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                <span className="font-extrabold uppercase tracking-wider text-sm">Procesando Venta...</span>
+                <span className="font-medium text-[15px]">Registrando la venta…</span>
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2 w-full">
-                <Check className="w-5 h-5 stroke-[3]" />
-                <span className="font-black uppercase tracking-wider text-sm sm:text-base">{goesToPoint ? 'COBRAR EN LA MAQUINITA' : 'FINALIZAR VENTA'}</span>
-                <span className="bg-black/25 dark:bg-white/25 text-white px-2 py-0.5 rounded-xl text-xs font-black tracking-widest border border-white/30 shadow-xs ml-1">
-                  [ENTER]
+                <span className="font-semibold text-[16px]">{goesToPoint ? 'Cobrar en la maquinita' : 'Finalizar venta'}</span>
+                <span className="ml-1 h-5 px-1.5 grid place-items-center rounded-[5px] border border-white/30 bg-white/10 text-[11px] font-medium">
+                  Enter
                 </span>
               </div>
             )}
