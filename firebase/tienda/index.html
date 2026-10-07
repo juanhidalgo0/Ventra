@@ -1459,6 +1459,15 @@ function addToCalendar(){
   window.open('https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+f(startMs)+'/'+f(endMs)
     +(S.cfg.address?'&location='+encodeURIComponent(S.cfg.address):'')+'&details='+encodeURIComponent(det),'_blank','noopener');
 }
+/* WhatsApp al comercio con los datos y el link del turno: así el cliente se queda con el link en su chat */
+function bookedWa(o){
+  var name=o.name; if(!name) try{ name=(JSON.parse(localStorage.getItem('ventra_customer')||'{}')||{}).name||''; }catch(e){}
+  var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+o.serviceName+'*'+(o.staffName?' con '+o.staffName:''),'*Día:* '+dayText(o.date)+', '+o.time+' hs','*Turno:* #'+o.code];
+  if(name) L.push('*Nombre:* '+name);
+  if(o.paid) L.push('*Pagado con Mercado Pago:* '+money(o.paid));
+  if(o.id) L.push('','Ver, cambiar o cancelar mi turno: '+manageUrl(o.id,o.code));
+  return S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
+}
 function calBtn(style){ return '<button class="btn btn-ghost btn-block" style="height:48px;'+(style||'')+'" data-act="cal-add">'+ic('clock')+'Agregar a mi calendario</button>'; }
 function payBtn(url,amount){ return '<a class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" href="'+esc(url)+'">Pagar '+money(amount)+' con Mercado Pago</a>'; }
 
@@ -1489,10 +1498,11 @@ function payReturn(){
   var q=new URLSearchParams(location.search), t=(q.get('turno')||'').match(/^([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})$/), flag=null;
   try{ flag=JSON.parse(sessionStorage.getItem(PAYING_KEY)||'null'); sessionStorage.removeItem(PAYING_KEY); }catch(e){}
   if(flag && flag.s!==S.storeId) flag=null;
-  if(t) try{ history.replaceState(null,'',location.pathname+location.hash); }catch(e){}
   var id=t?t[1]:flag&&flag.id, code=t?t[2].toUpperCase():flag&&flag.code;
   if(!id||!code) return;
   var mp=q.get('mp'), st=q.get('collection_status')||q.get('status');
+  var lost=!(mp==='ok'||st==='approved'||mp==='pending'||st==='in_process'||st==='pending'||(t&&!mp&&!st));
+  try{ history.replaceState(null,'',location.pathname+(lost?'':'#turno='+id+'.'+code)); }catch(e){}
   if(mp==='ok'||st==='approved') return setTimeout(function(){ openManage(id,code,true); },200);
   if(mp==='pending'||st==='in_process'||st==='pending'||(t&&!mp&&!st)) return setTimeout(function(){ openManage(id,code); },200);
   setTimeout(function(){ abandonPay(id,code,flag&&flag.sv); },200);
@@ -1530,12 +1540,16 @@ function renderManage(){
       +'<span class="code">#'+esc(m.code)+'</span>'
       +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.'+(d.deposit&&d.deposit.status==='paid'?' Por la devolución de lo que pagaste, escribile al comercio.':'')+'</p>':'')
       +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">Pagado con Mercado Pago: <b>'+money(d.deposit.amount)+'</b>'+(m.paying&&!off?'. Te esperamos.':'')+'</p>':'')
+      +(m.paying&&!off&&d.canCancel?'<p style="font-size:12.5px;color:var(--ink-3)">Mandale el aviso por WhatsApp al comercio: te queda el link de tu turno para verlo, cambiarlo o cancelarlo.</p>':'')
       +(d.payUrl?'<p style="font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin" style="width:16px;height:16px;border-width:2px"></span>Si ya pagaste, se confirma solo en unos segundos.</p>':'')+'</div>';
     if(confirming) foot='';
     else if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
     else if(d.canCancel){
       S.cal={serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,durationMin:d.durationMin,code:m.code,id:m.id};
-      foot='<div class="sheet-foot">'+calBtn()
+      var paidWa=m.paying&&d.deposit&&d.deposit.status==='paid'?bookedWa({serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,code:m.code,id:m.id,paid:d.deposit.amount}):'';
+      foot='<div class="sheet-foot">'
+        +(paidWa?'<a class="btn btn-wa btn-block" style="height:48px;margin-bottom:8px" href="'+esc(paidWa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
+        +calBtn()
         +(d.canMove&&agendaOn()?'<button class="btn btn-soft btn-block" style="height:48px;margin-top:8px" data-act="mg-move">Cambiar día u horario</button>':'')
         +'<button class="btn btn-ghost btn-block" style="height:44px;margin-top:4px;border:0;color:#b91c1c" data-act="mg-cancel">Cancelar mi turno</button></div>';
     }
@@ -1754,9 +1768,7 @@ function renderBookingStep(){
   if(b.step==='done'){
     var r=b.result, pending=r.status==='PENDING';
     S.cal={serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,durationMin:Number(sv.durationMin)||30,code:r.code,id:r.id};
-    var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+r.serviceName+'*'+(r.staffName?' con '+r.staffName:''),'*Día:* '+dayText(r.date)+', '+r.time+' hs','*Turno:* #'+r.code,'*Nombre:* '+b.name];
-    if(r.id) L.push('','Ver o cancelar mi turno: '+manageUrl(r.id,r.code));
-    var wa=S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
+    var wa=bookedWa({name:b.name,serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,code:r.code,id:r.id});
     el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('check')+'</div>'
       +'<h3 class="display">'+(pending?'¡Turno pedido!':'¡Turno reservado!')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(r.serviceName)+'</b>'+(r.staffName?' con '+esc(r.staffName):'')+'<br>'+esc(capFirst(dayText(r.date)))+', '+esc(r.time)+' hs</p>'
