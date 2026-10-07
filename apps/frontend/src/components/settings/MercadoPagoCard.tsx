@@ -5,6 +5,8 @@ import { AlertTriangle, BadgeCheck, CreditCard, ExternalLink, Loader2, Plus, Rot
 import api from '../../services/api';
 import { openExternal } from '../subscription/SubscriptionPanel';
 import { getPointTerminals, setPointTerminals, terminalLabel, type PointTerminalChoice } from '../../utils/mpPoint';
+import { comingSoon } from '../../utils/comingSoon';
+import { ComingSoonCard } from '../common/ComingSoon';
 
 interface MpConnection {
   connected: boolean;
@@ -28,6 +30,19 @@ const fmtDate = (iso?: string | null) =>
  * los tokens quedan en la nube de Ventra, nunca en esta PC.
  */
 export default function MercadoPagoCard() {
+  if (comingSoon('mercadoPago')) {
+    return (
+      <ComingSoonCard
+        title="Mercado Pago"
+        description="Muy pronto vas a poder conectar tu cuenta para cobrar con el Point desde la caja y cuadrar los cobros automáticamente en el cierre."
+        icon={Wallet}
+      />
+    );
+  }
+  return <MercadoPagoCardActive />;
+}
+
+function MercadoPagoCardActive() {
   const [status, setStatus] = useState<MpConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);

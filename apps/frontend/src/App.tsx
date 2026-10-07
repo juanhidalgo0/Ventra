@@ -21,6 +21,9 @@ import { toggleFullscreen } from './utils/fullscreen';
 import { shortcutsLocked } from './utils/shortcutLock';
 import { useOwnerMobile } from './utils/ownerMobile';
 import { startStoreSettingsSync } from './services/storeSettings';
+import ComingSoonScreen from './components/common/ComingSoon';
+import { COMING_SOON } from './utils/comingSoon';
+import { Calculator } from 'lucide-react';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
@@ -557,7 +560,9 @@ export default function App() {
                     <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />
                     <Route path="/suppliers" element={<OwnerMobileOr mobile={<MobileSuppliersScreen />}><SuppliersScreen /></OwnerMobileOr>} />
-                    <Route path="/fiscal" element={<OwnerMobileOr mobile={<MobileFiscalScreen />}><FiscalScreen /></OwnerMobileOr>} />
+                    <Route path="/fiscal" element={COMING_SOON.arcaInvoicing
+                      ? <ComingSoonScreen title="Facturación electrónica" description="Muy pronto vas a poder emitir facturas A, B y C de ARCA desde la caja, con el QR y el CAE en el ticket." icon={Calculator} />
+                      : <OwnerMobileOr mobile={<MobileFiscalScreen />}><FiscalScreen /></OwnerMobileOr>} />
                     <Route path="/notificaciones" element={<AdminRoute><MobileNotificationsScreen /></AdminRoute>} />
                     <Route path="/settings" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsScreen />}><SettingsScreen /></OwnerMobileOr></AdminRoute>} />
                     <Route path="/settings/:tab" element={<AdminRoute><OwnerMobileOr mobile={<MobileSettingsSection />}><Navigate to="/settings" replace /></OwnerMobileOr></AdminRoute>} />

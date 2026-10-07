@@ -1,3 +1,5 @@
+import { comingSoon } from './comingSoon';
+
 /**
  * Maquinitas Point de Mercado Pago que usa ESTA caja. Cada PC elige las suyas en
  * Configuración → Integraciones (pueden ser varias, cada una con un nombre); si hay
@@ -14,6 +16,8 @@ export interface PointTerminalChoice {
 }
 
 export function getPointTerminals(): PointTerminalChoice[] {
+  // Mercado Pago todavía no está habilitado: ningún cobro va al Point
+  if (comingSoon('mercadoPago')) return [];
   try {
     const list = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (Array.isArray(list)) return list.filter((t) => t && typeof t.id === 'string' && t.id);

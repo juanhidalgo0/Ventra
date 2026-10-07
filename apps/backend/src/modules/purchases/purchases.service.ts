@@ -6,6 +6,7 @@ import { Jimp } from 'jimp';
 import * as XLSX from 'xlsx';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { createPurchaseLot } from '../products/lots.util';
+import { InvoiceReadError, isPdfFile, isSheetFile, readInvoiceFile, type ParsedInvoice } from './invoice-reader';
 
 function normalizeHeaderCell(s: any): string {
   return String(s || '')
@@ -441,27 +442,56 @@ export class PurchasesService {
   }
 
   async scanInvoice(files: Express.Multer.File[], manualTotal?: number, userId?: string) {
-    const isExcel = files.some(f => {
-      const name = (f.originalname || '').toLowerCase();
-      const mime = (f.mimetype || '').toLowerCase();
-      return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') ||
-             mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv');
-    });
+    // PDF con texto, Excel y CSV se leen en la PC, sin IA ni costo
+    const docFile = files.find(f => isPdfFile(f.originalname || '', f.mimetype) || isSheetFile(f.originalname || '', f.mimetype));
+    const isExcel = !!docFile;
+    let sourceLabel = 'Escaneado automáticamente con IA.';
+    let readCheck: ParsedInvoice['check'] | null = null;
+    let readInfo: Pick<ParsedInvoice, 'docType' | 'letter' | 'supplierCuit' | 'pricesIncludeIva' | 'totals'> | null = null;
 
     let parsedData: any = null;
 
-    if (isExcel) {
-      console.log(`[PurchasesService] Procesando boleta vía motor Excel nativo (100% gratuito, offline)...`);
-      const excelFile = files.find(f => {
-        const name = (f.originalname || '').toLowerCase();
-        const mime = (f.mimetype || '').toLowerCase();
-        return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') ||
-               mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv');
-      }) || files[0];
-
-      parsedData = parseExcelInvoiceData(excelFile, manualTotal);
-      console.log(`[PurchasesService] Excel procesado con éxito: ${parsedData.items.length} productos detectados.`);
+    if (docFile) {
+      const name = docFile.originalname || '';
+      let parsed: ParsedInvoice;
+      try {
+        parsed = await readInvoiceFile(docFile.buffer, name, docFile.mimetype, manualTotal);
+      } catch (err: any) {
+        if (err instanceof InvoiceReadError) throw new BadRequestException(err.message);
+        throw err;
+      }
+      // Planillas con un formato que el lector nuevo no reconoce: se prueba el lector anterior
+      if (!parsed.items.length && isSheetFile(name, docFile.mimetype)) {
+        try { parsedData = parseExcelInvoiceData(docFile, manualTotal); } catch { /* sigue abajo */ }
+      }
+      if (!parsedData) {
+        if (!parsed.items.length) {
+          throw new BadRequestException('No se encontraron productos en la boleta. Revisá que sea la factura o remito con el detalle de productos.');
+        }
+        parsedData = {
+          supplierName: parsed.supplierName,
+          invoiceNumber: parsed.invoiceNumber,
+          date: parsed.date || new Date().toISOString().split('T')[0],
+          totalFacturaAPagar: parsed.totals.total ?? parsed.check.computedTotal,
+          items: parsed.items.map((it) => ({
+            sku: it.sku,
+            barcode: it.barcode,
+            name: it.name,
+            packageQuantity: it.quantity,
+            unitsPerPack: it.unitsPerPack,
+            total: it.netTotal,
+          })),
+        };
+        readCheck = parsed.check;
+        readInfo = { docType: parsed.docType, letter: parsed.letter, supplierCuit: parsed.supplierCuit, pricesIncludeIva: parsed.pricesIncludeIva, totals: parsed.totals };
+      }
+      sourceLabel = isPdfFile(name, docFile.mimetype) ? 'Cargado automáticamente desde el PDF del proveedor.' : 'Cargado automáticamente desde planilla Excel.';
+      console.log(`[PurchasesService] Boleta leída sin IA (${name}): ${parsedData.items.length} productos. ${readCheck?.message || ''}`);
     } else {
+      // Fotos con IA: todavía no habilitado (se prende con VENTRA_AI_INVOICE_SCAN=true)
+      if (process.env.VENTRA_AI_INVOICE_SCAN !== 'true') {
+        throw new BadRequestException('La lectura de fotos de boletas llega próximamente. Por ahora subí la factura en PDF o la planilla Excel del proveedor.');
+      }
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error('La clave de API de Gemini (GEMINI_API_KEY) no está configurada en las variables de entorno.');
@@ -522,7 +552,6 @@ REGLAS CRÍTICAS:
     ];
 
     let lastError = null;
-    let parsedData = null;
     const errors: string[] = [];
 
     for (const model of models) {
@@ -717,7 +746,9 @@ REGLAS CRÍTICAS:
       }
 
       // 2. Create the Purchase in PENDING status
-      const total = items.reduce((acc, item) => acc + item.total, 0) * 1.21;
+      // El total impreso en la boleta (con IVA y percepciones) si se pudo leer; si no, se estima
+      const printedTotal = parseArgentineNumber(parsedData.totalFacturaAPagar);
+      const total = printedTotal > 0 ? printedTotal : items.reduce((acc, item) => acc + item.total, 0) * 1.21;
       
       const purchase = await this.prisma.$transaction(async (tx) => {
         const newPurchase = await (tx as any).purchase.create({
@@ -728,7 +759,7 @@ REGLAS CRÍTICAS:
             total,
             status: 'PENDING',
             paymentStatus: 'OWED',
-            notes: isExcel ? 'Cargado automáticamente desde planilla Excel.' : 'Escaneado automáticamente con IA.',
+            notes: isExcel ? sourceLabel : 'Escaneado automáticamente con IA.',
           },
         });
 
@@ -794,14 +825,17 @@ REGLAS CRÍTICAS:
         invoiceNumber: parsedData.invoiceNumber || '',
         date: parsedData.date || new Date().toISOString().split('T')[0],
         items,
+        // Control de la lectura: si las cuentas de la boleta cierran
+        check: readCheck,
+        invoice: readInfo,
       };
 
     } catch (err: any) {
       console.error('Error scanning/parsing invoice:', err.response?.data || err.message);
       if (err.response?.status === 503) {
-        throw new Error('El servicio está temporalmente saturado. Por favor, intenta de nuevo en unos segundos.');
+        throw new BadRequestException('El servicio está temporalmente saturado. Por favor, intenta de nuevo en unos segundos.');
       }
-      throw new Error(`Error al procesar la boleta: ${err.message}`);
+      throw new BadRequestException(`Error al procesar la boleta: ${err.message}`);
     }
   }
 

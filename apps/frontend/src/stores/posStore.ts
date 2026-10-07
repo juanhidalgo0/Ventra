@@ -28,8 +28,13 @@ export interface CartItem {
   half?: { a: string; b: string; pa: number; pb: number };
 }
 
+/** Presupuesto cargado al carrito: al cobrar esa venta, el presupuesto queda aceptado */
+export interface ActiveQuote { id: string; quoteNumber: string; clientName: string }
+
 interface POSState {
   cart: CartItem[];
+  activeQuote: ActiveQuote | null;
+  setActiveQuote: (quote: ActiveQuote | null) => void;
   promotions: any[];
   setPromotions: (promos: any[]) => void;
   addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean) => void;
@@ -58,7 +63,7 @@ interface POSState {
   setClients: (clients: any[]) => void;
   setIsWarmed: (isWarmed: boolean) => void;
 
-  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string }[];
+  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string; quote?: ActiveQuote | null }[];
   holdCart: (clientName?: string) => void;
   resumeCart: (id: string) => void;
   deleteHeldCart: (id: string) => void;
@@ -207,6 +212,8 @@ export const usePOSStore = create<POSState>()(
   persist(
     (set, get) => ({
       cart: [],
+      activeQuote: null,
+      setActiveQuote: (activeQuote) => set({ activeQuote }),
       promotions: [],
       products: [],
       categories: [],
@@ -222,12 +229,15 @@ export const usePOSStore = create<POSState>()(
           id: Math.random().toString(36).substr(2, 9),
           cart: currentCart,
           createdAt: new Date().toISOString(),
-          clientName: clientName || `Cliente ${get().heldCarts.length + 1}`
+          clientName: clientName || `Cliente ${get().heldCarts.length + 1}`,
+          // El presupuesto viaja con su ticket en espera y vuelve al retomarlo
+          quote: get().activeQuote,
         };
         
         set({
           heldCarts: [newHeldCart, ...get().heldCarts],
-          cart: []
+          cart: [],
+          activeQuote: null,
         });
       },
 
@@ -243,14 +253,16 @@ export const usePOSStore = create<POSState>()(
             id: Math.random().toString(36).substr(2, 9),
             cart: currentCart,
             createdAt: new Date().toISOString(),
-            clientName: `Sesión Anterior (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+            clientName: `Sesión Anterior (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
+            quote: get().activeQuote,
           };
           newHeldCarts = [autoHeld, ...newHeldCarts];
         }
         
         set({
           cart: target.cart,
-          heldCarts: newHeldCarts
+          heldCarts: newHeldCarts,
+          activeQuote: target.quote || null,
         });
       },
 
@@ -617,7 +629,8 @@ export const usePOSStore = create<POSState>()(
     return { cart: combinedCart };
   }),
 
-  clearCart: () => set({ cart: [] }),
+  // Vaciar el ticket también lo desvincula del presupuesto
+  clearCart: () => set({ cart: [], activeQuote: null }),
   
   getTotal: () => {
     const total = get().cart.reduce((sum, item) => {

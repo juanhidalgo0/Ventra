@@ -1030,12 +1030,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
               <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Venta sistema consolidada</span>
-                <span className="text-3xl font-black text-slate-900 leading-tight">
-                  {fmt(
-                    (summary.paymentBreakdown?.CASH || 0) +
-                    Object.values(summary.paymentBreakdown || {}).filter((_, i) => Object.keys(summary.paymentBreakdown || {})[i] !== 'CASH').reduce((a: any, b: any) => a + Number(b), 0)
-                  )}
-                </span>
+                {/* La misma venta que la hoja impresa y la tabla de turnos (incluye cargas virtuales) */}
+                <span className="text-3xl font-black text-slate-900 leading-tight">{fmt(ventaTotalBruto)}</span>
               </div>
               <div className={`rounded-xl px-4 py-3 border ${diferenciaTotalConsolidada >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                 <span className={`text-xs font-bold uppercase tracking-wider block ${diferenciaTotalConsolidada >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>Diferencia total</span>
@@ -1045,16 +1041,17 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
               </div>
               <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Virtual 1 (aparte)</span>
-                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(zReport.virtual1Sales || 0)}</span>
-                {(zReport.virtual1Sales || 0) > 0 && (
-                  <span className="block text-xs text-slate-600 font-medium">{fmt(zReport.virtual1Base || 0)} + {fmt(zReport.virtual1Surcharge || 0)}</span>
+                {/* El Z no guarda las cargas virtuales: se suman las de cada turno */}
+                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(totalVirtual1Sales)}</span>
+                {totalVirtual1Sales > 0 && (
+                  <span className="block text-xs text-slate-600 font-medium">{fmt(totalVirtual1Base)} + {fmt(totalVirtual1Surcharge)}</span>
                 )}
               </div>
               <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Virtual 2 (aparte)</span>
-                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(zReport.virtual2Sales || 0)}</span>
-                {(zReport.virtual2Sales || 0) > 0 && (
-                  <span className="block text-xs text-slate-600 font-medium">{fmt(zReport.virtual2Base || 0)} + {fmt(zReport.virtual2Surcharge || 0)}</span>
+                <span className="text-2xl font-black text-slate-900 leading-tight">{fmt(totalVirtual2Sales)}</span>
+                {totalVirtual2Sales > 0 && (
+                  <span className="block text-xs text-slate-600 font-medium">{fmt(totalVirtual2Base)} + {fmt(totalVirtual2Surcharge)}</span>
                 )}
               </div>
             </div>

@@ -35,6 +35,8 @@ interface PlanState {
   planName: string | null;
   /** Rubro con el que se suscribió desde una landing por rubro (ver services/signupRubro) */
   signupRubro: string | null;
+  /** Email de la cuenta de Ventra (para habilitar antes funciones en prueba, ver utils/comingSoon) */
+  email: string | null;
   features: PlanFeatures;
   loaded: boolean;
   /** Demo pública: el visitante elige qué plan probar (queda en su navegador, no en el servidor compartido) */
@@ -47,6 +49,7 @@ export const usePlanStore = create<PlanState>((set) => ({
   plan: null,
   planName: null,
   signupRubro: null,
+  email: null,
   features: { caja: true, tienda: true, agenda: true, reminders: true },
   loaded: false,
   isDemo: false,
@@ -65,6 +68,7 @@ export const usePlanStore = create<PlanState>((set) => ({
         plan: data?.plan ?? null,
         planName: data?.planName ?? null,
         signupRubro: data?.rubro ?? null,
+        email: data?.email ?? null,
         // Backends viejos no mandan `agenda`: venía incluida en la tienda
         features: data?.features
           ? {

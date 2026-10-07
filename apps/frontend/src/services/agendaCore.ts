@@ -41,10 +41,11 @@ export interface AgendaConfig {
   /** Si es false, los turnos online quedan "Por confirmar" */
   autoConfirm: boolean;
   /**
-   * Seña con Mercado Pago al reservar online (la cobra la función agendaBook con la cuenta de MP
-   * conectada del comercio). percent: % del precio; fixed: monto fijo. Nunca más que el precio.
+   * Pago online con Mercado Pago al reservar (lo cobra la función agendaBook con la cuenta de MP
+   * conectada del comercio). full: el turno completo, al precio del servicio (lo único que ofrece
+   * la app). percent / fixed: señas de configuraciones viejas.
    */
-  deposit?: { enabled: boolean; mode: 'percent' | 'fixed'; value: number };
+  deposit?: { enabled: boolean; mode: 'full' | 'percent' | 'fixed'; value?: number };
   /** Tipo de servicio (plantilla con la que arrancó: peluqueria, salud...). Adapta textos y recorridos. */
   kind?: string;
   /** Recordatorio automático por WhatsApp desde el número de Ventra (firebase/functions/whatsapp.js) */
@@ -96,10 +97,12 @@ export interface Booking {
   /** Tocó "Confirmo" en el recordatorio */
   clientConfirmedAt?: any;
   cancelVia?: 'whatsapp';
-  /** Esperando seña: hasta cuándo se aparta el horario */
+  /** Esperando el pago online: hasta cuándo se aparta el horario */
   holdUntil?: any;
-  /** Seña pedida al reservar online */
-  deposit?: { amount: number; status: 'pending' | 'paid'; paidAmount?: number; paymentId?: string; refundNeeded?: boolean };
+  /** Con el cobro online prendido, el cliente eligió pagar en el local (en efectivo) */
+  payAt?: 'local';
+  /** Pago online pedido al reservar (el turno completo; en turnos viejos, una seña) */
+  deposit?: { amount: number; status: 'pending' | 'paid'; full?: boolean; paidAmount?: number; paymentId?: string; refundNeeded?: boolean };
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
   customerPhone?: string;
@@ -227,15 +230,18 @@ function staffRanges(h?: DayHours) {
 export const canDo = (staff: AgendaStaff, service: AgendaService) => !service.staffIds?.length || service.staffIds.includes(staff.id);
 const OCCUPIES = new Set<BookingStatus>(['PENDING', 'CONFIRMED', 'DONE', 'BLOCK', 'AWAITING_PAYMENT']);
 const holdMs = (b: Booking) => (b.holdUntil?.toMillis ? b.holdUntil.toMillis() : 0);
-/** Ocupa el horario. Esperando seña ocupa solo mientras no venza el plazo para pagar. */
+/** Ocupa el horario. Esperando el pago ocupa solo mientras no venza el plazo para pagar. */
 export const occupies = (b: Booking) => OCCUPIES.has(b.status) && (b.status !== 'AWAITING_PAYMENT' || holdMs(b) > Date.now());
-/** Lo que ya pagó de seña (0 si no pagó) */
+/** Lo que ya pagó online por Mercado Pago (0 si no pagó) */
 export const depositPaid = (b: Partial<Booking>) => (b.deposit?.status === 'paid' ? Number(b.deposit.paidAmount ?? b.deposit.amount) || 0 : 0);
-/** Seña de un servicio según la agenda (misma cuenta que depositFor en firebase/functions/agenda.js) */
+/** Pagó el turno completo online: no queda nada por cobrar */
+export const paidInFull = (b: Partial<Booking>) => depositPaid(b) > 0 && depositPaid(b) >= (Number(b.price) || 0);
+/** Pago online de un servicio según la agenda (misma cuenta que depositFor en firebase/functions/agenda.js) */
 export function depositFor(agenda: AgendaConfig, service: { price?: number }) {
   const d = agenda.deposit;
   if (!d?.enabled) return 0;
   const price = Number(service.price) || 0;
+  if (d.mode !== 'percent' && d.mode !== 'fixed') return price >= 1 ? Math.round(price) : 0;
   let amount = d.mode === 'fixed' ? Number(d.value) || 0 : Math.round(price * (Number(d.value) || 0) / 100);
   if (price > 0) amount = Math.min(amount, price);
   return amount >= 1 ? Math.round(amount) : 0;

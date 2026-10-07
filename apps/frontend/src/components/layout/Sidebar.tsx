@@ -38,6 +38,8 @@ import { MangoLogo as BrandLogo } from '../common/MangoLogo';
 import { hasFeature, useBusinessStore } from '../../stores/businessStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { menuAllows } from '../../stores/businessStore';
+import { ComingSoonBadge } from '../common/ComingSoon';
+import { COMING_SOON } from '../../utils/comingSoon';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -154,7 +156,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           { label: agendaOnly ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
         ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
-        { label: 'Facturación', icon: Calculator, path: '/fiscal' },
+        { label: 'Facturación', icon: Calculator, path: '/fiscal', soon: COMING_SOON.arcaInvoicing },
         { 
           label: 'Tienda Online', 
           icon: Globe, 
@@ -256,6 +258,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                     {!isCollapsed && (
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
                         <span className={`text-[13px] truncate ${itemActive ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
+                        {(item as any).soon && <ComingSoonBadge className="ml-auto" />}
                         {!!(item as any).badge && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-600 text-white text-[10.5px] font-bold flex items-center justify-center">{(item as any).badge}</span>}
                         {item.collapsible && (
                           <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isGroupExpanded ? 'rotate-180' : ''}`} />

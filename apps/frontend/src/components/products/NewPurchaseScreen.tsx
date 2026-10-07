@@ -25,6 +25,8 @@ import api from '../../services/api';
 import { useFeature } from '../../stores/businessStore';
 import { toast } from 'react-hot-toast';
 import { setStoreSetting } from '../../services/storeSettings';
+import { COMING_SOON } from '../../utils/comingSoon';
+import { ComingSoonBadge } from '../common/ComingSoon';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -107,9 +109,14 @@ const isExcelOrCsv = (file: File) => {
   return n.endsWith('.xlsx') || n.endsWith('.xls') || n.endsWith('.csv');
 };
 
+const isPdf = (file: File) => (file.name || '').toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
+/** PDF y planillas se leen en la PC, sin IA ni costo */
+const isDocumentFile = (file: File) => isExcelOrCsv(file) || isPdf(file);
+
 const FilePreview = ({ file }: { file: File }) => {
   const [src, setSrc] = useState<string>('');
-  const isExcel = isExcelOrCsv(file);
+  const isExcel = isDocumentFile(file);
 
   useEffect(() => {
     if (isExcel) return;
@@ -123,12 +130,14 @@ const FilePreview = ({ file }: { file: File }) => {
   if (isExcel) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-1.5 text-center select-none">
-        <FileSpreadsheet className="w-6 h-6 mb-1 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        {isPdf(file)
+          ? <FileText className="w-6 h-6 mb-1 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          : <FileSpreadsheet className="w-6 h-6 mb-1 text-emerald-600 dark:text-emerald-400 shrink-0" />}
         <span className="text-[8px] font-bold truncate max-w-full text-slate-800 dark:text-slate-200" title={file.name}>
           {file.name}
         </span>
         <span className="text-[7px] font-black text-emerald-600 dark:text-emerald-400 uppercase">
-          Excel / CSV
+          {isPdf(file) ? 'PDF' : 'Excel / CSV'}
         </span>
       </div>
     );
@@ -620,10 +629,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const executeScanWithTotal = async (useManualTotal: boolean) => {
     if (!selectedFilesForScan || selectedFilesForScan.length === 0) return;
     setShowTotalPrompt(false);
-    const hasExcel = selectedFilesForScan.some(isExcelOrCsv);
+    const hasExcel = selectedFilesForScan.some(isDocumentFile);
     setIsScanning(true);
     setScanProgress(hasExcel ? 25 : 5);
-    setScanStep(hasExcel ? 'Cargando planilla Excel del proveedor...' : 'Subiendo imágenes a la IA...');
+    setScanStep(hasExcel ? 'Abriendo la boleta del proveedor...' : 'Subiendo imágenes a la IA...');
 
     // Start simulated progress bar interval (expected duration around 15-20s, slowing down as it goes)
     const progressInterval = setInterval(() => {
@@ -648,7 +657,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     }
 
     try {
-      setScanStep(hasExcel ? 'Analizando planilla Excel y cruzando con inventario...' : 'La IA está analizando detalladamente los productos y totales...');
+      setScanStep(hasExcel ? 'Leyendo productos y totales, y cruzando con tu inventario...' : 'La IA está analizando detalladamente los productos y totales...');
       const { data } = await api.post('/purchases/scan-invoice', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -703,6 +712,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           const filtered = prev.filter(p => !newItems.some(n => n.productId === p.productId));
           return [...filtered, ...newItems];
         });
+      }
+
+      // Control de la lectura (PDF/Excel): si las cuentas de la boleta no cierran, se avisa qué revisar
+      if (data.check && !data.check.ok) {
+        const lines = [data.check.message, ...(data.check.details || []).slice(0, 3)].join('\n');
+        toast(lines, { icon: '⚠️', duration: 15000, style: { maxWidth: 520, whiteSpace: 'pre-line' } });
       }
 
       if (unmatched.length > 0) {
@@ -970,7 +985,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             >
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-rose-500" /> Cargar Boleta (Fotos con IA o Planilla Excel)
+                  <FileText className="w-4 h-4 text-rose-500" /> Cargar boleta del proveedor
                 </h3>
                 <button 
                   onClick={() => {
@@ -988,7 +1003,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                 {selectedFilesForScan.length === 0 ? (
                   <div className="text-center text-slate-400 p-6">
                     <p className="text-xs font-bold uppercase tracking-wider mb-1">No hay archivos seleccionados</p>
-                    <p className="text-[10px]">Agrega fotos usando la cámara o sube directamente un archivo Excel / CSV del proveedor.</p>
+                    <p className="text-[10px]">Subí la factura o remito en PDF, o la planilla Excel / CSV que te manda el proveedor.</p>
                   </div>
                 ) : (
                   selectedFilesForScan.map((file, idx) => (
@@ -1008,11 +1023,14 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
               {/* Options to add photos / files */}
               <div className="grid grid-cols-3 gap-2.5 mb-6">
                 {/* Camera Button */}
+                {/* Fotos con IA: todavía no habilitado */}
                 <button 
                   type="button"
+                  disabled={COMING_SOON.aiInvoiceScan}
                   onClick={() => cameraInputRef.current?.click()}
-                  className="flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-300 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98]"
+                  className="relative flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-300 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:active:scale-100"
                 >
+                  {COMING_SOON.aiInvoiceScan && <ComingSoonBadge className="absolute -top-2 right-1 !text-[7px]" />}
                   <Scan className="w-5 h-5 text-rose-500" />
                   <span className="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-center leading-tight">Cámara</span>
                 </button>
@@ -1034,9 +1052,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                 {/* Gallery Button */}
                 <button 
                   type="button"
+                  disabled={COMING_SOON.aiInvoiceScan}
                   onClick={() => galleryInputRef.current?.click()}
-                  className="flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-350 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98]"
+                  className="relative flex flex-col items-center justify-center gap-1.5 p-3 border border-slate-350 dark:border-slate-700 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:active:scale-100"
                 >
+                  {COMING_SOON.aiInvoiceScan && <ComingSoonBadge className="absolute -top-2 right-1 !text-[7px]" />}
                   <Plus className="w-5 h-5 text-rose-500" />
                   <span className="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-center leading-tight">Fotos / Galería</span>
                 </button>
@@ -1065,12 +1085,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                     Gratis
                   </span>
                   <FileSpreadsheet className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider text-center leading-tight">Planilla Excel</span>
+                  <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider text-center leading-tight">PDF o Excel</span>
                 </button>
                 <input 
                   ref={excelInputRef}
                   type="file" 
-                  accept=".xlsx, .xls, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv" 
+                  accept=".pdf, application/pdf, .xlsx, .xls, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv" 
                   className="hidden" 
                   onChange={(e) => {
                     const files = e.target.files;
@@ -1122,7 +1142,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700/80 shadow-2xl flex flex-col items-center w-full max-w-md">
               <RefreshCw className="w-12 h-12 text-rose-400 animate-spin mb-4 keep-animated" />
               <h3 className="text-base font-bold text-slate-100 mb-2">
-                {selectedFilesForScan.some(isExcelOrCsv) ? 'Procesando Planilla Excel' : 'Escaneando Boleta con IA'}
+                {selectedFilesForScan.some(isDocumentFile) ? 'Leyendo la boleta' : 'Escaneando Boleta con IA'}
               </h3>
               <p className="text-xs font-semibold text-slate-350 mb-4">{scanStep}</p>
               
@@ -1172,7 +1192,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
              onClick={() => setShowScanModal(true)}
              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-700 hover:scale-[1.02] active:scale-[0.98] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-widest cursor-pointer shadow-md shadow-rose-150 transition-all select-none border border-rose-500"
            >
-              <Sparkles className="w-4 h-4" /> Escanear con IA
+              <FileText className="w-4 h-4" /> Cargar boleta
            </button>
          )}
       </div>
@@ -1733,12 +1753,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowTotalPrompt(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
                 <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-400 overflow-hidden flex flex-col p-6 space-y-4">
                   <div className="flex items-center gap-2.5 pb-2 border-b border-slate-300">
-                    <Sparkles className="w-5 h-5 text-rose-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Escanear Boleta con IA</h3>
+                    <FileText className="w-5 h-5 text-rose-500" />
+                    <h3 className="text-sm font-bold text-slate-800">Total de la boleta</h3>
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs text-slate-700 font-semibold leading-relaxed">
-                      Para que la IA extraiga los valores de forma 100% exacta, ingresá el **Total a Pagar** de la boleta (opcional pero muy recomendado):
+                      Si querés, ingresá el <strong>total a pagar</strong> de la boleta: lo usamos para controlar que la lectura cierre (si el PDF lo trae impreso, lo tomamos de ahí).
                     </p>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600">$</span>

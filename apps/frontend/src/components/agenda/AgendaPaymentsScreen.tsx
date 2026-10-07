@@ -5,9 +5,9 @@ import { subscribeBookings, localNow, addDays, weekday, dayLabel, hhmm, PAY_METH
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
-import { depositPaid } from '../../services/agendaCore';
+import { depositPaid, paidInFull } from '../../services/agendaCore';
 
-const DEPOSIT_METHOD = 'Seña (Mercado Pago)';
+const DEPOSIT_METHOD = 'Mercado Pago (online)';
 const amountOf = (b: { payment?: { amount: number } }) => (Number(b.payment?.amount) || 0) + depositPaid(b as any);
 
 type Period = 'day' | 'week' | 'month';
@@ -65,7 +65,7 @@ export default function AgendaPaymentsScreen() {
 
   const data = useMemo(() => {
     const list = (bookings || []).filter((b) => b.kind === 'booking');
-    // Lo cobrado de cada turno: el cobro y, si pagó seña por Mercado Pago, también la seña
+    // Lo cobrado de cada turno: el cobro y, si pagó online por Mercado Pago, también ese pago
     const paid = list.filter((b) => b.payment || depositPaid(b));
     const total = paid.reduce((s, b) => s + amountOf(b), 0);
     const byMethod = new Map<string, number>();
@@ -77,7 +77,7 @@ export default function AgendaPaymentsScreen() {
       byStaff.set(who, (byStaff.get(who) || 0) + amountOf(b));
     }
     // Atendidos sin cobrar, y turnos ya pasados que siguen confirmados (¿vinieron?)
-    const unpaid = list.filter((b) => !b.payment && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
+    const unpaid = list.filter((b) => !b.payment && !paidInFull(b) && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
     const methods = [...PAY_METHODS, ...[...byMethod.keys()].filter((m) => !PAY_METHODS.includes(m))]
       .map((m) => [m, byMethod.get(m) || 0] as const).filter(([, v]) => v > 0);
     return { paid, total, methods, staff: [...byStaff].sort((a, b) => b[1] - a[1]), unpaid };
@@ -169,7 +169,7 @@ export default function AgendaPaymentsScreen() {
                   </span>
                   <span className="text-right shrink-0">
                     <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(amountOf(b))}</span>
-                    <span className="block text-[11.5px] text-slate-500">{[b.payment?.method, depositPaid(b) ? `seña ${money(depositPaid(b))}` : ''].filter(Boolean).join(' + ')}</span>
+                    <span className="block text-[11.5px] text-slate-500">{[b.payment?.method, depositPaid(b) ? `Mercado Pago online ${money(depositPaid(b))}` : ''].filter(Boolean).join(' + ')}</span>
                   </span>
                 </div>
               ))}

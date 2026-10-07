@@ -66,6 +66,7 @@ jobs:
         run: |
           npx prisma generate
           npm run test:stock
+          npm run test:boletas
 
       - name: Build frontend
         run: npm run build:frontend

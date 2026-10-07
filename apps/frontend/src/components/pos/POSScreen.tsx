@@ -101,7 +101,7 @@ export default function POSScreen() {
   const ordersVisible = useOrdersVisible();
   const [showOnlineOrders, setShowOnlineOrders] = useState(false);
   const newOnlineOrders = useOnlineOrders((st) => st.orders.filter(isNewOrder).length);
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale } = usePOSStore();
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale, activeQuote, setActiveQuote } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
@@ -1854,13 +1854,14 @@ export default function POSScreen() {
                 setShowPasswords(false);
                 setShowProfile(true);
               }}
-              className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 pl-1 pr-2.5"
+              // Es lo único de la barra que se achica: si falta lugar se recorta el nombre, nunca el logo de Ventra
+              className="group relative flex items-center justify-start gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer min-w-8 shrink overflow-hidden pl-1 pr-2.5"
               title={`Usuario: ${user?.username || 'Usuario'} [F10]`}
             >
               <span className="w-6 h-6 rounded-md bg-rose-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
                 {(user?.username || 'U')[0].toUpperCase()}
               </span>
-              <span className="hidden xl:inline truncate max-w-[90px] text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{user?.username || 'Usuario'}</span>
+              <span className="hidden xl:inline min-w-0 truncate max-w-[90px] text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{user?.username || 'Usuario'}</span>
             </button>
 
             {/* Cerrar sesión (sin atajo: es una acción sensible) */}
@@ -1876,8 +1877,9 @@ export default function POSScreen() {
             <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
 
             {/* Reloj en tiempo real de la PC */}
-            <div className="hidden lg:flex items-center gap-1.5 px-2 text-slate-700 dark:text-slate-200 select-none whitespace-nowrap" title="Hora local del sistema">
-              <Clock strokeWidth={2.25} className="w-4 h-4 text-slate-400" />
+            {/* En pantallas medianas sin el ícono: así entra el aviso de versión nueva sin correr el logo */}
+            <div className="hidden lg:flex items-center gap-1.5 px-1 xl:px-2 text-slate-700 dark:text-slate-200 select-none whitespace-nowrap" title="Hora local del sistema">
+              <Clock strokeWidth={2.25} className="hidden xl:block w-4 h-4 text-slate-400" />
               <span className="text-[13px] font-bold tabular-nums">{currentTime}</span>
             </div>
 
@@ -2606,6 +2608,23 @@ export default function POSScreen() {
                 </button>
               </div>
             </div>
+
+            {/* Ticket armado desde un presupuesto: al cobrarlo, el presupuesto queda aceptado */}
+            {activeQuote && cart.length > 0 && (
+              <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span className="min-w-0 truncate">
+                  Presupuesto <strong>{activeQuote.quoteNumber}</strong>{activeQuote.clientName ? ` · ${activeQuote.clientName}` : ''}
+                </span>
+                <button
+                  onClick={() => setActiveQuote(null)}
+                  className="ml-auto p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer shrink-0"
+                  title="Desvincular: al cobrar, el presupuesto queda pendiente"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {gastro && <OrderTypeBar />}
 

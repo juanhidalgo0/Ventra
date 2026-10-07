@@ -306,6 +306,12 @@ export class SalesService {
         }
       }
 
+      // Venta de un presupuesto cargado al carrito: queda aceptado (si seguía pendiente o vencido)
+      const quoteId = (dto as any).quoteId;
+      if (typeof quoteId === 'string' && quoteId) {
+        await (tx as any).quote.updateMany({ where: { id: quoteId, status: { in: ['PENDING', 'EXPIRED'] } }, data: { status: 'CONVERTED' } });
+      }
+
       await tx.auditLog.create({ data: { userId, entityType: 'SALE', entityId: newSale.id, action: 'CREATE', newValues: JSON.stringify({ saleNumber: newSale.saleNumber, total: newSale.total, paymentMethodSummary, itemCount: saleItems.length }) } });
 
       this.events.emitSaleCreated(newSale);

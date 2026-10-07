@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -49,14 +49,16 @@ export class PurchasesController {
     @Body('manualTotal') manualTotal?: string
   ) {
     if (!files || files.length === 0) {
-      throw new Error('No se recibió ningún archivo');
+      throw new BadRequestException('No se recibió ningún archivo');
     }
     try {
       const parsedTotal = manualTotal ? Number(manualTotal) : undefined;
       return await this.purchasesService.scanInvoice(files, parsedTotal, req.user.sub);
     } catch (err: any) {
       console.error('Controller Error Stack:', err.stack);
-      throw new Error(`Controller Error: ${err.message} -- Stack: ${err.stack}`);
+      // El mensaje tiene que llegar a la pantalla (antes quedaba un "Internal server error")
+      if (err instanceof HttpException) throw err;
+      throw new BadRequestException(err.message || 'No se pudo procesar la boleta');
     }
   }
 

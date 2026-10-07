@@ -18,6 +18,7 @@ import { hasFeature } from '../../stores/businessStore';
 import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
 import PointChargeOverlay from './PointChargeOverlay';
 import { useAuthStore } from '../../stores/authStore';
+import { COMING_SOON } from '../../utils/comingSoon';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -396,6 +397,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   // ¿El comercio factura? Se consulta una vez al abrir el cobro, no en cada venta
   useEffect(() => {
+    if (COMING_SOON.arcaInvoicing) return;
     let vivo = true;
     api.get('/fiscal/config')
       .then(({ data }) => { if (vivo) { setFiscalEnabled(Boolean(data?.enabled)); setFiscalConfig(data); } })
@@ -649,6 +651,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           pickedUpBy: (paymentType === 'DEBT' || isAcopio) && pickedUpBy ? pickedUpBy.trim() : undefined,
           isAcopio: isAcopio ? true : undefined,
           appliedPromotions: appliedPromosInfo,
+          // Ticket armado desde un presupuesto: el servidor lo marca aceptado
+          quoteId: usePOSStore.getState().activeQuote?.id,
           // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
           notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : undefined,
         });
@@ -682,6 +686,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           clientId: paymentType === 'DEBT' ? selectedClientId : undefined,
           pickedUpBy: paymentType === 'DEBT' && pickedUpBy ? pickedUpBy.trim() : undefined,
           appliedPromotions: appliedPromosInfo,
+          quoteId: usePOSStore.getState().activeQuote?.id,
           queuedAt: new Date().toISOString()
         };
         const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales_queue') || '[]');

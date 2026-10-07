@@ -14,7 +14,7 @@ export function addTurnoToCart(storeId: string, booking: any) {
   const st = usePOSStore.getState();
   const cartKey = `turno_${booking.id}`;
   if (st.cart.some((i: any) => i.cartKey === cartKey)) return;
-  // Lo que falta: el precio menos la seña que ya pagó por Mercado Pago
+  // Lo que falta: el precio menos lo que ya pagó online por Mercado Pago
   const paidDeposit = booking.deposit?.status === 'paid' ? Number(booking.deposit.paidAmount ?? booking.deposit.amount) || 0 : 0;
   const price = Math.max(0, (Number(booking.price) || 0) - paidDeposit);
   const who = String(booking.customerName || '').split(' ')[0];

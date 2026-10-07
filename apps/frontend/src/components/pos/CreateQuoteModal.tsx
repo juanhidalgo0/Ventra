@@ -31,18 +31,19 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
 
     setIsSubmitting(true);
     try {
-      const expiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000).toISOString();
+      // Mismos nombres que el servidor (clientName, unitPrice, productName...): con otros el guardado fallaba
       const items = cart.map(item => ({
         productId: item.productId,
+        productName: item.name,
+        unitPrice: item.price,
         quantity: item.quantity,
-        price: item.price
       }));
 
       const res = await api.post('/quotes', {
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim() || undefined,
+        clientName: customerName.trim(),
+        clientPhone: customerPhone.trim() || undefined,
         notes: notes.trim() || undefined,
-        expiresAt,
+        validDays: validityDays,
         items
       });
 
@@ -60,13 +61,13 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
     if (!createdQuote) return '#';
     const lines = [
       '*PRESUPUESTO - ' + storeName.toUpperCase() + '*',
-      'N° #' + createdQuote.quoteNumber.toString().padStart(5, '0'),
-      'Cliente: ' + createdQuote.customerName,
+      'N° ' + createdQuote.quoteNumber,
+      'Cliente: ' + createdQuote.clientName,
       'Fecha: ' + new Date(createdQuote.createdAt).toLocaleDateString('es-AR'),
       'Validez: ' + validityDays + ' días',
       '--------------------------------',
       ...createdQuote.items.map((i: any) => 
-        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString('es-AR')
+        '• ' + i.quantity + 'x ' + (i.productName || i.product?.name || 'Item') + ' - $' + Number(i.subtotal).toLocaleString('es-AR')
       ),
       '--------------------------------',
       '*TOTAL: $' + Number(createdQuote.total).toLocaleString('es-AR') + '*',
@@ -76,7 +77,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
     }
     lines.push('\nPrecios sujetos a modificaciones sin previo aviso.');
 
-    const cleanPhone = (createdQuote.customerPhone || '').replace(/\D/g, '');
+    const cleanPhone = (createdQuote.clientPhone || '').replace(/\D/g, '');
     const phoneParam = cleanPhone ? 'phone=' + (cleanPhone.startsWith('54') ? cleanPhone : '54' + cleanPhone) + '&' : '';
     return 'https://api.whatsapp.com/send?' + phoneParam + 'text=' + encodeURIComponent(lines.join('\n'));
   };
@@ -227,10 +228,10 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900">
-                Presupuesto #{createdQuote.quoteNumber.toString().padStart(5, '0')}
+                Presupuesto {createdQuote.quoteNumber}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Guardado para {createdQuote.customerName} por ${Number(createdQuote.total).toLocaleString('es-AR')}
+                Guardado para {createdQuote.clientName} por ${Number(createdQuote.total).toLocaleString('es-AR')}
               </p>
             </div>
 
@@ -275,11 +276,11 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
               </div>
 
               <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', fontSize: '7.5pt' }}>
-                <div>N° PRESUPUESTO: #{createdQuote.quoteNumber.toString().padStart(6, '0')}</div>
-                <div>CLIENTE: {createdQuote.customerName}</div>
-                {createdQuote.customerPhone && <div>TELÉFONO: {createdQuote.customerPhone}</div>}
+                <div>N° PRESUPUESTO: {createdQuote.quoteNumber}</div>
+                <div>CLIENTE: {createdQuote.clientName}</div>
+                {createdQuote.clientPhone && <div>TELÉFONO: {createdQuote.clientPhone}</div>}
                 <div>FECHA: {new Date(createdQuote.createdAt).toLocaleDateString('es-AR')}</div>
-                <div>VALIDEZ: Hasta {new Date(createdQuote.expiresAt).toLocaleDateString('es-AR')}</div>
+                <div>VALIDEZ: Hasta {new Date(createdQuote.validUntil).toLocaleDateString('es-AR')}</div>
               </div>
 
               <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px' }}>
@@ -291,10 +292,10 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 {createdQuote.items.map((it: any, idx: number) => (
                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ width: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {it.product?.name || 'Producto'}
+                      {it.productName || it.product?.name || 'Producto'}
                     </span>
                     <span style={{ width: '20%', textAlign: 'center' }}>{Number(it.quantity).toFixed(1)}</span>
-                    <span style={{ width: '25%', textAlign: 'right' }}>${Number(it.price * it.quantity).toLocaleString('es-AR')}</span>
+                    <span style={{ width: '25%', textAlign: 'right' }}>${Number(it.subtotal).toLocaleString('es-AR')}</span>
                   </div>
                 ))}
               </div>

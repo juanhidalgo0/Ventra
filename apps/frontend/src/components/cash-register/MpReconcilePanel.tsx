@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Smartphone } from 'lucide-react';
 import api from '../../services/api';
 import { isMercadoPagoMethod } from '../../utils/mpPoint';
+import { comingSoon } from '../../utils/comingSoon';
 
 type Posnet = { id: string; name: string };
 
@@ -58,8 +59,9 @@ export function useMpReconcile(sessionId: string | undefined, posnets: Posnet[],
 
 /** ¿La cuenta de Mercado Pago está conectada? null mientras se consulta */
 export function useMpConnected() {
-  const [connected, setConnected] = useState<boolean | null>(null);
+  const [connected, setConnected] = useState<boolean | null>(comingSoon('mercadoPago') ? false : null);
   useEffect(() => {
+    if (comingSoon('mercadoPago')) return;
     api.get('/mercadopago/status')
       .then(({ data }) => {
         const ok = !!data?.connected && !data?.needsReconnect;

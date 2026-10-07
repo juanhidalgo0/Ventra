@@ -1,9 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, X, Search, ShoppingCart, Share2, Trash2, RefreshCw } from 'lucide-react';
+import { FileText, X, Search, ShoppingCart, Share2, Trash2, RefreshCw, Ban } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
+
+const STATUS_TABS: Record<string, string> = {
+  PENDING: 'Pendientes', CONVERTED: 'Aceptados', EXPIRED: 'Vencidos', CANCELLED: 'Rechazados', ALL: 'Todos',
+};
+
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  PENDING: { label: 'PENDIENTE', cls: 'bg-amber-100 text-amber-800' },
+  CONVERTED: { label: 'ACEPTADO', cls: 'bg-emerald-100 text-emerald-800' },
+  EXPIRED: { label: 'VENCIDO', cls: 'bg-orange-100 text-orange-800' },
+  CANCELLED: { label: 'RECHAZADO', cls: 'bg-slate-100 text-slate-600' },
+};
 
 interface QuotesListModalProps {
   onClose: () => void;
@@ -16,7 +27,7 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING');
 
-  const { addToCart, clearCart } = usePOSStore();
+  const { addToCart, clearCart, setActiveQuote } = usePOSStore();
   const storeName = localStorage.getItem('store_name') || 'Ferretería & Corralón';
 
   const fetchQuotes = async () => {
@@ -46,9 +57,11 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
     clearCart();
     quote.items.forEach((item: any) => {
       if (item.product) {
-        addToCart(item.product, item.price, item.quantity);
+        addToCart(item.product, item.unitPrice, item.quantity);
       }
     });
+    // Al cobrar este ticket, el presupuesto queda aceptado
+    setActiveQuote({ id: quote.id, quoteNumber: quote.quoteNumber, clientName: quote.clientName || '' });
 
     onLoadCart();
     onClose();
@@ -57,13 +70,13 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
   const handleShareWhatsApp = (quote: any) => {
     const lines = [
       '*PRESUPUESTO - ' + storeName.toUpperCase() + '*',
-      'N° #' + quote.quoteNumber.toString().padStart(5, '0'),
-      'Cliente: ' + quote.customerName,
+      'N° ' + quote.quoteNumber,
+      'Cliente: ' + quote.clientName,
       'Fecha: ' + new Date(quote.createdAt).toLocaleDateString('es-AR'),
-      'Válido hasta: ' + new Date(quote.expiresAt).toLocaleDateString('es-AR'),
+      'Válido hasta: ' + new Date(quote.validUntil).toLocaleDateString('es-AR'),
       '--------------------------------',
       ...quote.items.map((i: any) => 
-        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString('es-AR')
+        '• ' + i.quantity + 'x ' + (i.productName || i.product?.name || 'Item') + ' - $' + Number(i.subtotal).toLocaleString('es-AR')
       ),
       '--------------------------------',
       '*TOTAL: $' + Number(quote.total).toLocaleString('es-AR') + '*',
@@ -72,10 +85,21 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
       lines.push('Notas: ' + quote.notes);
     }
 
-    const cleanPhone = (quote.customerPhone || '').replace(/\D/g, '');
+    const cleanPhone = (quote.clientPhone || '').replace(/\D/g, '');
     const phoneParam = cleanPhone ? 'phone=' + (cleanPhone.startsWith('54') ? cleanPhone : '54' + cleanPhone) + '&' : '';
     const url = 'https://api.whatsapp.com/send?' + phoneParam + 'text=' + encodeURIComponent(lines.join('\n'));
     window.open(url, '_blank');
+  };
+
+  const handleRejectQuote = async (quote: any) => {
+    if (!window.confirm(`¿Marcar el presupuesto ${quote.quoteNumber} como rechazado?`)) return;
+    try {
+      await api.patch(`/quotes/${quote.id}/status`, { status: 'CANCELLED' });
+      toast.success('Presupuesto marcado como rechazado');
+      fetchQuotes();
+    } catch (err) {
+      toast.error('No se pudo cambiar el estado');
+    }
   };
 
   const handleDeleteQuote = async (quoteId: string) => {
@@ -88,10 +112,11 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
     }
   };
 
-  const filteredQuotes = quotes.filter(q => 
-    q.customerName.toLowerCase().includes(search.toLowerCase()) ||
-    (q.customerPhone && q.customerPhone.includes(search)) ||
-    q.quoteNumber.toString().includes(search)
+  // Campos con los nombres del servidor; un dato vacío no debe romper la lista
+  const filteredQuotes = quotes.filter(q =>
+    (q.clientName || '').toLowerCase().includes(search.toLowerCase()) ||
+    (q.clientPhone || '').includes(search) ||
+    String(q.quoteNumber || '').includes(search)
   );
 
   return (
@@ -132,7 +157,7 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {['PENDING', 'ACCEPTED', 'ALL'].map((st) => (
+            {['PENDING', 'CONVERTED', 'EXPIRED', 'CANCELLED', 'ALL'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
@@ -142,7 +167,7 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                {st === 'PENDING' ? 'Pendientes' : st === 'ACCEPTED' ? 'Aceptados' : 'Todos'}
+                {STATUS_TABS[st]}
               </button>
             ))}
           </div>
@@ -170,26 +195,22 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-xs bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">
-                      #{quote.quoteNumber.toString().padStart(5, '0')}
+                      {quote.quoteNumber}
                     </span>
-                    <h3 className="font-bold text-slate-900 text-sm">{quote.customerName}</h3>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                      quote.status === 'PENDING'
-                        ? 'bg-amber-100 text-amber-800'
-                        : quote.status === 'ACCEPTED'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}>{quote.status === 'PENDING' ? 'PENDIENTE' : quote.status === 'ACCEPTED' ? 'ACEPTADO' : quote.status}</span>
+                    <h3 className="font-bold text-slate-900 text-sm">{quote.clientName}</h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${(STATUS_BADGE[quote.status] || STATUS_BADGE.CANCELLED).cls}`}>
+                      {(STATUS_BADGE[quote.status] || { label: quote.status }).label}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
                     <span>{new Date(quote.createdAt).toLocaleDateString('es-AR')}</span>
                     <span>•</span>
                     <span>{quote.items?.length || 0} artículos</span>
-                    {quote.customerPhone && (
+                    {quote.clientPhone && (
                       <>
                         <span>•</span>
-                        <span>{quote.customerPhone}</span>
+                        <span>{quote.clientPhone}</span>
                       </>
                     )}
                   </div>
@@ -211,13 +232,25 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
                     <Share2 className="w-4 h-4" />
                   </button>
 
-                  <button
-                    onClick={() => handleLoadToCart(quote)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    <span>Cargar Carrito</span>
-                  </button>
+                  {/* Aceptados y rechazados ya no se cobran desde acá */}
+                  {(quote.status === 'PENDING' || quote.status === 'EXPIRED') && (
+                    <>
+                      <button
+                        onClick={() => handleRejectQuote(quote)}
+                        className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+                        title="El cliente no lo aceptó: marcar como rechazado"
+                      >
+                        <Ban className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleLoadToCart(quote)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer"
+                      >
+                        <ShoppingCart className="w-4 h-4" />
+                        <span>Cargar Carrito</span>
+                      </button>
+                    </>
+                  )}
 
                   <button
                     onClick={() => handleDeleteQuote(quote.id)}

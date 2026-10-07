@@ -13,7 +13,7 @@ export const STATUS: Record<BookingStatus, { label: string; cls: string }> = {
   NO_SHOW: { label: 'No vino', cls: 'bg-red-50 text-red-700 ring-red-200' },
   CANCELLED: { label: 'Cancelado', cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
   BLOCK: { label: 'Bloqueado', cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
-  AWAITING_PAYMENT: { label: 'Esperando seña', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  AWAITING_PAYMENT: { label: 'Esperando pago', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
 };
 
 export const input = 'w-full h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-[14.5px] outline-none focus:border-rose-500 focus:bg-white';
