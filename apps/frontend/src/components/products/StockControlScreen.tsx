@@ -386,7 +386,7 @@ export default function StockControlScreen() {
                      {movements.length > 0 ? (
                         movements.map(m => (
                            <tr key={m.id} className="hover:bg-slate-50/30 transition-colors border-b border-gray-50 last:border-0">
-                              <td className="px-6 py-4 text-[10px] font-bold text-gray-400">{new Date(m.createdAt).toLocaleString()}</td>
+                              <td className="px-6 py-4 text-[10px] font-bold text-gray-400">{new Date(m.createdAt).toLocaleString('es-AR')}</td>
                               <td className="px-6 py-4">
                                  <p className="text-[11px] font-bold text-gray-800">{m.product.name}</p>
                                  <p className="text-[9px] text-gray-400 font-bold">{m.product.barcode}</p>

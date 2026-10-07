@@ -135,7 +135,7 @@ export default function PurchasesScreen() {
           </div>
           <div className="px-4 py-2 bg-[#f0fdf4] border border-emerald-100 rounded-xl flex items-center justify-between sm:justify-start gap-2">
              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-[0.2em]">Gastado:</span>
-             <span className="text-sm md:text-base font-bold text-emerald-700">$ {totalSpent.toLocaleString()}</span>
+             <span className="text-sm md:text-base font-bold text-emerald-700">$ {totalSpent.toLocaleString('es-AR')}</span>
           </div>
         </div>
 
@@ -216,7 +216,7 @@ export default function PurchasesScreen() {
               <tbody className="divide-y divide-slate-50">
                 {purchases.map((p) => (
                   <tr key={p.id} onClick={() => setSelectedPurchase(p)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
-                     <td className="py-4 text-[11px] font-bold text-slate-600 group-hover:text-rose-600 transition-colors">{new Date(p.createdAt).toLocaleDateString()}</td>
+                     <td className="py-4 text-[11px] font-bold text-slate-600 group-hover:text-rose-600 transition-colors">{new Date(p.createdAt).toLocaleDateString('es-AR')}</td>
                      <td className="py-4 text-[11px] font-bold text-slate-700 uppercase">{p.supplier.name}</td>
                      <td className="py-4 text-[11px] font-bold text-slate-600">{p.invoiceNumber || '---'}</td>
                      <td className="py-4 text-center">
@@ -229,7 +229,7 @@ export default function PurchasesScreen() {
                           </span>
                         )}
                      </td>
-                     <td className="py-4 text-right text-[12px] font-bold text-slate-800">$ {p.total.toLocaleString()}</td>
+                     <td className="py-4 text-right text-[12px] font-bold text-slate-800">$ {p.total.toLocaleString('es-AR')}</td>
                      <td className="py-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {p.status === 'PENDING' ? (
@@ -372,8 +372,8 @@ export default function PurchasesScreen() {
                           <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                             <td className="px-4 py-3 text-xs font-bold text-slate-700">{item.productName || 'Producto'}</td>
                             <td className="px-4 py-3 text-xs font-bold text-slate-800 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-xs font-semibold text-slate-700 text-right">$ {item.cost.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-xs font-bold text-slate-800 text-right">$ {(item.cost * item.quantity).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-xs font-semibold text-slate-700 text-right">$ {item.cost.toLocaleString('es-AR')}</td>
+                            <td className="px-4 py-3 text-xs font-bold text-slate-800 text-right">$ {(item.cost * item.quantity).toLocaleString('es-AR')}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -408,7 +408,7 @@ export default function PurchasesScreen() {
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-3">
                   <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Total de la Compra</span>
-                  <span className="text-2xl font-extrabold text-rose-600 tracking-tighter">$ {selectedPurchase.total.toLocaleString()}</span>
+                  <span className="text-2xl font-extrabold text-rose-600 tracking-tighter">$ {selectedPurchase.total.toLocaleString('es-AR')}</span>
                 </div>
               </div>
             </motion.div>

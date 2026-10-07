@@ -3711,7 +3711,7 @@ export default function POSScreen() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-black text-sm text-slate-800 dark:text-slate-200">${totalAmount.toLocaleString()}</span>
+                          <span className="font-black text-sm text-slate-800 dark:text-slate-200">${totalAmount.toLocaleString('es-AR')}</span>
                           <button 
                             onClick={() => {
                               resumeCart(hc.id);

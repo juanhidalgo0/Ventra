@@ -1228,7 +1228,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 )}
                 {parseFloat(formData.listPrice as any) > 0 && (
                   <span className="text-[12px] text-slate-600 ml-auto">
-                    Costo: <b className="text-slate-900">$ {(parseFloat(formData.costPrice as any) || 0).toFixed(2)}</b>
+                    Costo: <b className="text-slate-900">$ {(parseFloat(formData.costPrice as any) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
                     {(parseFloat(formData.taxRate as any) || 0) > 0 ? ' con IVA' : ' sin IVA'}
                   </span>
                 )}
@@ -1308,7 +1308,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 <div className="flex flex-col justify-end">
                   <div className="h-10 rounded-lg bg-slate-50 border border-slate-200 px-3 flex items-center justify-between">
                     <span className="text-[12px] text-slate-500">Ganancia</span>
-                    <span className="text-sm font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toFixed(2)}</span>
+                    <span className="text-sm font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               )}
@@ -1368,7 +1368,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   </div>
                   <div className="pb-1 text-right shrink-0">
                     <span className="block text-[11px] font-semibold uppercase tracking-wider text-rose-700/70">Ganancia</span>
-                    <span className="block text-lg font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toFixed(2)}</span>
+                    <span className="block text-lg font-bold text-rose-700">+$ {((parseFloat(formData.salePrice as any) || 0) - (parseFloat(formData.costPrice as any) || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               )}

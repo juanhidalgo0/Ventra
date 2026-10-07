@@ -430,7 +430,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
                                   const qty = billsMap[den];
                                   return (
                                     <tr key={den} style={{ borderBottom: '0.5px dotted #000000' }}>
-                                      <td style={{ padding: '1px', fontWeight: 'bold' }}>$ {den.toLocaleString()}</td>
+                                      <td style={{ padding: '1px', fontWeight: 'bold' }}>$ {den.toLocaleString('es-AR')}</td>
                                       <td style={{ padding: '1px', textAlign: 'center', color: '#000000' }}>{qty}</td>
                                       <td style={{ padding: '1px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(den * qty)}</td>
                                     </tr>
@@ -845,7 +845,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
                           const qty = data.metadata.bills?.[den] || 0;
                           return (
                             <tr key={den} style={{ borderBottom: '1px solid #000000' }}>
-                              <td style={{ padding: '1.8px 3px', fontWeight: 'bold' }}>$ {den.toLocaleString()}</td>
+                              <td style={{ padding: '1.8px 3px', fontWeight: 'bold' }}>$ {den.toLocaleString('es-AR')}</td>
                               <td style={{ padding: '1.8px 3px', textAlign: 'center', fontWeight: 'bold' }}>{qty}</td>
                               <td style={{ padding: '1.8px 3px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(den * qty)}</td>
                             </tr>

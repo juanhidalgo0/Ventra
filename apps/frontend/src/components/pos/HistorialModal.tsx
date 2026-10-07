@@ -316,7 +316,7 @@ export default function HistorialModal({ sessionId, onClose }: { sessionId?: str
                 <div className="p-5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 shrink-0">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ticket #{selectedSale.saleNumber}</span>
-                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">{new Date(selectedSale.createdAt).toLocaleDateString()}</span>
+                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">{new Date(selectedSale.createdAt).toLocaleDateString('es-AR')}</span>
                   </div>
                   <div className="flex items-end justify-between">
                     <h3 className="text-2xl font-mono font-black text-slate-950 dark:text-white">{fmt(selectedSale.total)}</h3>

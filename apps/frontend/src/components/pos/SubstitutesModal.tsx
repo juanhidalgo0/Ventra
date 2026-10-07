@@ -102,7 +102,7 @@ export default function SubstitutesModal({ product, onClose, onSelectSubstitute 
               {product.name}
             </p>
             <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400 font-bold">
-              Stock actual: {product.stock} un. • Precio: $${product.salePrice.toLocaleString()}
+              Stock actual: {product.stock} un. • Precio: $${product.salePrice.toLocaleString('es-AR')}
             </span>
           </div>
           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
@@ -155,7 +155,7 @@ export default function SubstitutesModal({ product, onClose, onSelectSubstitute 
                     </span>
                     <span>•</span>
                     <span className="font-black text-slate-800 dark:text-slate-200">
-                      $${sub.salePrice.toLocaleString()}
+                      $${sub.salePrice.toLocaleString('es-AR')}
                     </span>
                     {sub.barcode && (
                       <>

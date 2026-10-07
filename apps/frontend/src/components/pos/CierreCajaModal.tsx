@@ -911,7 +911,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                         const qty = bills[den] || 0;
                         return (
                           <tr key={den} style={{ borderBottom: '1px solid #000000' }}>
-                            <td style={{ padding: '1.8px 3px', fontWeight: 'bold' }}>$ {den.toLocaleString()}</td>
+                            <td style={{ padding: '1.8px 3px', fontWeight: 'bold' }}>$ {den.toLocaleString('es-AR')}</td>
                             <td style={{ padding: '1.8px 3px', textAlign: 'center', fontWeight: 'bold', color: '#000000' }}>{qty}</td>
                             <td style={{ padding: '1.8px 3px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(den * qty)}</td>
                           </tr>

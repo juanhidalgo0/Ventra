@@ -285,7 +285,7 @@ export default function GaveteroLabelModal({ products, onClose }: GaveteroLabelM
                         <span className={`font-mono font-black tracking-tight ${
                           labelSize === 'drawer' ? 'text-xs' : 'text-sm'
                         }`}>
-                          $${p.salePrice.toLocaleString()}
+                          $${p.salePrice.toLocaleString('es-AR')}
                         </span>
                       )}
                     </div>

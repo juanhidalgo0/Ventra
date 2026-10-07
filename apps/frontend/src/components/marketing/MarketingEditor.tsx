@@ -250,7 +250,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                               </div>
                               <div>
                                 <p className="text-sm font-bold text-slate-800">{prod.name}</p>
-                                <p className="text-xs text-slate-600">$ {prod.salePrice.toLocaleString()}</p>
+                                <p className="text-xs text-slate-600">$ {prod.salePrice.toLocaleString('es-AR')}</p>
                               </div>
                             </div>
                             <Plus className="w-5 h-5 text-rose-500" />
@@ -288,7 +288,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-sm font-black text-slate-800">$ {prod.salePrice.toLocaleString()}</span>
+                        <span className="text-sm font-black text-slate-800">$ {prod.salePrice.toLocaleString('es-AR')}</span>
                         <button 
                           onClick={() => setItems(items.filter((_, i) => i !== idx))}
                           className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -464,7 +464,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                           <div className="flex-1 min-w-0">
                             <h3 className={`text-2xl font-bold truncate ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>{item.name}</h3>
                             <p className={`text-4xl font-black mt-2 ${theme === 'brand' ? 'text-yellow-300' : theme === 'light' ? 'text-rose-600' : 'text-rose-400'}`}>
-                              $ {item.salePrice.toLocaleString()}
+                              $ {item.salePrice.toLocaleString('es-AR')}
                             </p>
                           </div>
                         </div>
@@ -525,7 +525,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                                   </div>
                                   <div className="text-right ml-4 shrink-0">
                                     <span className="text-[10px] font-bold text-slate-600 block mb-0.5 uppercase tracking-widest">Precio</span>
-                                    <span className="text-2xl font-black text-slate-900 whitespace-nowrap leading-none">$ {item.salePrice.toLocaleString()}</span>
+                                    <span className="text-2xl font-black text-slate-900 whitespace-nowrap leading-none">$ {item.salePrice.toLocaleString('es-AR')}</span>
                                   </div>
                                 </div>
                               ))}
@@ -572,7 +572,7 @@ export default function MarketingEditor({ groupId, onBack }: { groupId: string |
                                   
                                   {/* Bottom right: Price */}
                                   <div className="mt-auto flex justify-end">
-                                    <span className="text-[40px] font-black text-slate-900 leading-none tracking-tight">$ {item.salePrice.toLocaleString()}</span>
+                                    <span className="text-[40px] font-black text-slate-900 leading-none tracking-tight">$ {item.salePrice.toLocaleString('es-AR')}</span>
                                   </div>
                                 </div>
                               </div>

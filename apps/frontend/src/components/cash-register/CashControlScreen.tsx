@@ -1022,7 +1022,7 @@ export default function CashControlScreen() {
                               if (qty === 0) return null;
                               return (
                                 <tr key={den} className="border-b border-slate-50 last:border-0 font-medium">
-                                  <td className="py-2 font-bold text-slate-500">$ {den.toLocaleString()}</td>
+                                  <td className="py-2 font-bold text-slate-500">$ {den.toLocaleString('es-AR')}</td>
                                   <td className="py-2 text-center text-slate-700">{qty}</td>
                                   <td className="py-2 text-right font-bold text-slate-800">{fmt(den * qty)}</td>
                                 </tr>

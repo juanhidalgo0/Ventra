@@ -66,10 +66,10 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
       'Validez: ' + validityDays + ' días',
       '--------------------------------',
       ...createdQuote.items.map((i: any) => 
-        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString()
+        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString('es-AR')
       ),
       '--------------------------------',
-      '*TOTAL: $' + Number(createdQuote.total).toLocaleString() + '*',
+      '*TOTAL: $' + Number(createdQuote.total).toLocaleString('es-AR') + '*',
     ];
     if (createdQuote.notes) {
       lines.push('Notas: ' + createdQuote.notes);
@@ -124,7 +124,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 {createdQuote ? 'Presupuesto Creado' : 'Nuevo Presupuesto / Cotización'}
               </h2>
               <p className="text-xs text-slate-500">
-                {cart.length} artículos por un total de ${Number(total).toLocaleString()}
+                {cart.length} artículos por un total de ${Number(total).toLocaleString('es-AR')}
               </p>
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 Presupuesto #{createdQuote.quoteNumber.toString().padStart(5, '0')}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Guardado para {createdQuote.customerName} por ${Number(createdQuote.total).toLocaleString()}
+                Guardado para {createdQuote.customerName} por ${Number(createdQuote.total).toLocaleString('es-AR')}
               </p>
             </div>
 
@@ -294,14 +294,14 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                       {it.product?.name || 'Producto'}
                     </span>
                     <span style={{ width: '20%', textAlign: 'center' }}>{Number(it.quantity).toFixed(1)}</span>
-                    <span style={{ width: '25%', textAlign: 'right' }}>${Number(it.price * it.quantity).toLocaleString()}</span>
+                    <span style={{ width: '25%', textAlign: 'right' }}>${Number(it.price * it.quantity).toLocaleString('es-AR')}</span>
                   </div>
                 ))}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: 'bold', paddingTop: '4px' }}>
                 <span>TOTAL ESTIMADO:</span>
-                <span>${Number(createdQuote.total).toLocaleString()}</span>
+                <span>${Number(createdQuote.total).toLocaleString('es-AR')}</span>
               </div>
 
               {createdQuote.notes && (

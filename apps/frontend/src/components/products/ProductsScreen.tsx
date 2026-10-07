@@ -1090,18 +1090,21 @@ export default function ProductsScreen() {
                          </div>
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
-                         $ {p.costPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                         $ {p.costPrice.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
-                         {p.presentationType === 'PACK' ? `$ ${(p.costPrice * (p.unitsPerPack || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
+                         {p.presentationType === 'PACK' ? `$ ${(p.costPrice * (p.unitsPerPack || 1)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
                       </td>
                       <td className="px-3 py-3 text-center">
-                         <span className="text-sm font-bold text-slate-800 whitespace-nowrap">$ {p.salePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                         <span className="text-sm font-bold text-slate-800 whitespace-nowrap">$ {p.salePrice.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
                       <td className="px-3 py-3 text-center">
                          <div className="flex items-center justify-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${parseFloat(margin) > 40 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
-                                {margin}%
+                            {/* Más de 500% casi siempre es un costo mal cargado: se marca para revisarlo */}
+                            <span
+                              title={parseFloat(margin) > 500 ? 'Margen muy alto: revisá el precio de costo' : undefined}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${parseFloat(margin) > 500 ? 'bg-amber-50 text-amber-800 border border-amber-300' : parseFloat(margin) > 40 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                                {margin === '---' ? margin : `${parseFloat(margin).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`}
                             </span>
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                <button 

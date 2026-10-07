@@ -171,7 +171,7 @@ export default function SuggestedReplenishmentModal({ onClose }: SuggestedReplen
             <div className="text-right">
               <p className="text-[10px] text-slate-400 uppercase font-bold">Inversión Estimada</p>
               <p className="text-sm font-mono font-black text-slate-900 dark:text-white">
-                $${totalEstimatedCost.toLocaleString()}
+                $${totalEstimatedCost.toLocaleString('es-AR')}
               </p>
             </div>
             <button
@@ -224,7 +224,7 @@ export default function SuggestedReplenishmentModal({ onClose }: SuggestedReplen
 
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 mr-2">
-                        Subtotal: $${groupBudget.toLocaleString()}
+                        Subtotal: $${groupBudget.toLocaleString('es-AR')}
                       </span>
                       <button
                         onClick={() => handleSendWhatsApp(group)}
@@ -284,10 +284,10 @@ export default function SuggestedReplenishmentModal({ onClose }: SuggestedReplen
                                 />
                               </td>
                               <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                                $${(item.costPrice || 0).toLocaleString()}
+                                $${(item.costPrice || 0).toLocaleString('es-AR')}
                               </td>
                               <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
-                                $${lineTotal.toLocaleString()}
+                                $${lineTotal.toLocaleString('es-AR')}
                               </td>
                             </tr>
                           );

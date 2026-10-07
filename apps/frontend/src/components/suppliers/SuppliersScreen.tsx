@@ -199,7 +199,7 @@ export default function SuppliersScreen() {
         <div className="bg-gradient-to-br from-orange-500 to-rose-600 p-4 md:p-5 rounded-xl text-white relative overflow-hidden">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
           <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-2">Deuda Total</p>
-          <p className="text-xl md:text-3xl font-bold">$ {totalDebt.toLocaleString()}</p>
+          <p className="text-xl md:text-3xl font-bold">$ {totalDebt.toLocaleString('es-AR')}</p>
           <div className="mt-2.5 flex items-center gap-1.5 text-[9px] font-bold bg-white/10 w-fit px-2.5 py-0.5 rounded-full">
             <AlertCircle className="w-3 h-3" /> <span>{suppliers.length - upToDateCount} deudores</span>
           </div>
@@ -316,7 +316,7 @@ export default function SuppliersScreen() {
                           </div>
                           <div className="flex items-center justify-between">
                              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Saldo Actual</p>
-                             <p className={`text-sm font-bold ${debt > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>$ {debt.toLocaleString()}</p>
+                             <p className={`text-sm font-bold ${debt > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>$ {debt.toLocaleString('es-AR')}</p>
                           </div>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} 
@@ -365,13 +365,13 @@ export default function SuppliersScreen() {
                     <div className="grid grid-cols-2 gap-6">
                        <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
                           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Saldo Pendiente</p>
-                          <p className="text-4xl font-bold text-rose-500">$ {calculateDebt(selectedSupplier.id).toLocaleString()}</p>
+                          <p className="text-4xl font-bold text-rose-500">$ {calculateDebt(selectedSupplier.id).toLocaleString('es-AR')}</p>
                        </div>
                        <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
                           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Última Compra</p>
                           <p className="text-xl font-bold text-slate-800">
                             {purchases.filter(p => p.supplierId === selectedSupplier.id).length > 0 
-                              ? new Date(Math.max(...purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => new Date(p.createdAt).getTime()))).toLocaleDateString()
+                              ? new Date(Math.max(...purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => new Date(p.createdAt).getTime()))).toLocaleDateString('es-AR')
                               : 'Sin registros'}
                           </p>
                        </div>
@@ -385,7 +385,7 @@ export default function SuppliersScreen() {
                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:grid-cols-3">
                           <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
                              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Productos Vendidos</p>
-                             <p className="text-xl md:text-2xl font-black text-rose-600">{(selectedSupplier.stats?.productsSold || 0).toLocaleString()} u.</p>
+                             <p className="text-xl md:text-2xl font-black text-rose-600">{(selectedSupplier.stats?.productsSold || 0).toLocaleString('es-AR')} u.</p>
                           </div>
                           <div className="bg-white p-5 rounded-2xl border border-slate-300 shadow-sm space-y-1">
                               <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Total Facturado</p>
@@ -420,9 +420,9 @@ export default function SuppliersScreen() {
                             <tbody className="divide-y divide-slate-50">
                                {purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => (
                                  <tr key={p.id}>
-                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{new Date(p.createdAt).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{new Date(p.createdAt).toLocaleDateString('es-AR')}</td>
                                     <td className="px-6 py-4 text-[11px] font-bold text-slate-700">Compra #{p.invoiceNumber || p.id.slice(0,8)}</td>
-                                    <td className="px-6 py-4 text-right text-[11px] font-bold text-rose-500">$ {p.total.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right text-[11px] font-bold text-rose-500">$ {p.total.toLocaleString('es-AR')}</td>
                                  </tr>
                                ))}
                             </tbody>

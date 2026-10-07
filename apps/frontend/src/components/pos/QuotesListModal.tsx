@@ -63,10 +63,10 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
       'Válido hasta: ' + new Date(quote.expiresAt).toLocaleDateString('es-AR'),
       '--------------------------------',
       ...quote.items.map((i: any) => 
-        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString()
+        '• ' + i.quantity + 'x ' + (i.product?.name || 'Item') + ' - $' + Number(i.price * i.quantity).toLocaleString('es-AR')
       ),
       '--------------------------------',
-      '*TOTAL: $' + Number(quote.total).toLocaleString() + '*',
+      '*TOTAL: $' + Number(quote.total).toLocaleString('es-AR') + '*',
     ];
     if (quote.notes) {
       lines.push('Notas: ' + quote.notes);
@@ -200,7 +200,7 @@ export default function QuotesListModal({ onClose, onLoadCart }: QuotesListModal
 
                 <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   <span className="text-base font-extrabold text-slate-900 mr-2">
-                    ${Number(quote.total).toLocaleString()}
+                    ${Number(quote.total).toLocaleString('es-AR')}
                   </span>
 
                   <button

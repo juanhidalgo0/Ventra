@@ -276,9 +276,9 @@ export default function BulkPriceModal({ onClose, onSuccess }: BulkPriceModalPro
               Previsualización de Impacto
             </span>
             <p className="text-xs font-semibold text-slate-700">
-              Un producto que hoy vale <span className="font-bold text-slate-900">${sampleOriginal.toLocaleString()}</span> pasará a valer{' '}
+              Un producto que hoy vale <span className="font-bold text-slate-900">${sampleOriginal.toLocaleString('es-AR')}</span> pasará a valer{' '}
               <span className={`font-bold ${direction === 'INCREASE' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                ${sampleNew.toLocaleString()}
+                ${sampleNew.toLocaleString('es-AR')}
               </span>{' '}
               ({direction === 'INCREASE' ? `+${numPercentage}%` : `-${numPercentage}%`}).
             </p>

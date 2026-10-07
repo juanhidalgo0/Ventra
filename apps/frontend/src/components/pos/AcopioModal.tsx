@@ -264,7 +264,7 @@ export default function AcopioModal({ onClose }: AcopioModalProps) {
                           </p>
                         </div>
                         <span className="text-[11px] font-mono font-black text-slate-900 dark:text-slate-100">
-                          $${acopio.total.toLocaleString()}
+                          $${acopio.total.toLocaleString('es-AR')}
                         </span>
                       </div>
 
@@ -284,7 +284,7 @@ export default function AcopioModal({ onClose }: AcopioModalProps) {
                       </div>
 
                       <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[10px] text-slate-400">
-                        <span>{new Date(acopio.createdAt).toLocaleDateString()}</span>
+                        <span>{new Date(acopio.createdAt).toLocaleDateString('es-AR')}</span>
                         <span>{acopio.deliveryReceipts?.length || 0} remitos emitidos</span>
                       </div>
                     </div>
@@ -463,7 +463,7 @@ export default function AcopioModal({ onClose }: AcopioModalProps) {
                       {getStatusBadge(selectedAcopio.acopioStatus)}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Cliente: <strong className="text-slate-800 dark:text-slate-200">{selectedAcopio.client?.name}</strong> • Fecha: {new Date(selectedAcopio.createdAt).toLocaleString()}
+                      Cliente: <strong className="text-slate-800 dark:text-slate-200">{selectedAcopio.client?.name}</strong> • Fecha: {new Date(selectedAcopio.createdAt).toLocaleString('es-AR')}
                     </p>
                   </div>
 
@@ -580,7 +580,7 @@ export default function AcopioModal({ onClose }: AcopioModalProps) {
           <div className="text-center pb-2 border-b border-black">
             <h1 className="text-sm font-black uppercase tracking-wider">REMITO DE ENTREGA</h1>
             <p className="text-[11px] font-bold">N° {remitoToPrint.remitoNumber?.toString().padStart(8, '0')}</p>
-            <p className="text-[9px] mt-1">{new Date(remitoToPrint.createdAt).toLocaleString()}</p>
+            <p className="text-[9px] mt-1">{new Date(remitoToPrint.createdAt).toLocaleString('es-AR')}</p>
           </div>
 
           <div className="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
