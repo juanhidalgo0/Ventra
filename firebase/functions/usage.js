@@ -66,12 +66,18 @@ async function monthUsage(month) {
 
 /** Bytes de fotos de productos en Storage por comercio (tenants/{uid}/...). */
 async function storageBytesByTenant() {
-  const [files] = await admin.storage().bucket().getFiles({ prefix: "tenants/", autoPaginate: true });
+  // De a una página y pidiendo solo nombre y tamaño: con miles de fotos, traer todo junto agotaba la memoria
+  const bucket = admin.storage().bucket();
   const out = {};
-  files.forEach((f) => {
-    const uid = f.name.split("/")[1];
-    if (uid) out[uid] = (out[uid] || 0) + Number(f.metadata.size || 0);
-  });
+  let query = { prefix: "tenants/", autoPaginate: false, maxResults: 1000, fields: "items(name,size),nextPageToken" };
+  while (query) {
+    const [files, next] = await bucket.getFiles(query);
+    files.forEach((f) => {
+      const uid = f.name.split("/")[1];
+      if (uid) out[uid] = (out[uid] || 0) + Number(f.metadata.size || 0);
+    });
+    query = next || null;
+  }
   return out;
 }
 

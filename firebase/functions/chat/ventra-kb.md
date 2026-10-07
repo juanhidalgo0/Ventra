@@ -8,7 +8,7 @@ Actualizado: octubre 2026.
 Ventra es un sistema para comercios argentinos. Tiene tres productos que se pueden usar por separado o juntos:
 - **Caja (sistema de ventas)** para vender en un local: caja, stock, cuentas corrientes, promos y reportes.
 - **Tienda online** con link propio, donde los clientes arman el pedido y le llega ordenado al comercio por WhatsApp y al celular.
-- **Agenda de turnos** online, con recordatorios por WhatsApp y por email.
+- **Agenda de turnos** online, con recordatorios por WhatsApp (por email, próximamente).
 Todo está conectado: la caja y la tienda comparten el mismo stock, y un turno se puede cobrar en la caja.
 Hay un comercio real usándolo todos los días: Maxikiosco Paulos (Instagram @kiosco_paulos), con más de 5.500 productos.
 
@@ -19,8 +19,8 @@ Se pagan mes a mes con Mercado Pago (suscripción). No hay permanencia ni contra
 |---|---|---|
 | Ventra Caja | $14.900/mes | Caja, arqueo y reporte Z, stock con código de barras, kits, promos y combos, cuentas corrientes, reportes. Sin límite de cajas ni terminales. No incluye tienda online ni agenda. |
 | Ventra Full | $24.900/mes | Todo lo de Caja + tienda online con el mismo stock y precios en vivo + agenda de turnos con 200 recordatorios automáticos por WhatsApp por mes. |
-| Ventra Tienda | $9.900/mes | Tienda online con pedidos por WhatsApp y al celular, retiro/envío, cupones. Incluye la agenda de turnos (recordatorio por email y por WhatsApp con un toque). No incluye la caja del local. |
-| Ventra Agenda | $9.900/mes | Solo turnos: página de turnos propia, seña con Mercado Pago, varios profesionales, ficha de clientes, cobros, recordatorio automático por email y recordatorio por WhatsApp con un toque. Sin caja ni productos. |
+| Ventra Tienda | $9.900/mes | Tienda online con pedidos por WhatsApp y al celular, retiro/envío, cupones. Incluye la agenda de turnos (recordatorio por WhatsApp con un toque). No incluye la caja del local. |
+| Ventra Agenda | $9.900/mes | Solo turnos: página de turnos propia, varios profesionales, ficha de clientes, cobros y recordatorio por WhatsApp con un toque (el recordatorio por email llega próximamente). Sin caja ni productos. |
 | Ventra Agenda Pro | $19.900/mes | Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes. Si se terminan, se compran paquetes de 100 por $7.500 desde la app. |
 
 Cómo elegir:
@@ -70,7 +70,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Página de turnos propia (link tienda.ventra.store/nombre), abierta las 24 horas. Los clientes no descargan nada: reservan desde el navegador del celular eligiendo servicio, profesional y horario libre.
 - Varios profesionales, cada uno con sus horarios y servicios. Vista del día y de la semana.
 - Servicios típicos del rubro ya cargados con su duración (peluquería, barbería, uñas, estética, salud/consultorio, clases, profesionales, mascotas, taller, canchas y deportes); el comercio pone sus precios.
-- Seña con Mercado Pago: porcentaje o monto fijo; el turno queda reservado cuando se paga, y la plata va directo a la cuenta de Mercado Pago del comercio (tiene que conectarla).
+- Cobro online con Mercado Pago (PRÓXIMAMENTE, todavía no está disponible): el cliente va a pagar el turno completo al reservar, el turno queda confirmado cuando paga y la plata va directo a la cuenta de Mercado Pago del comercio. No hay seña parcial.
 - El cliente recibe un link para ver o cancelar su turno; el horario cancelado vuelve a quedar libre.
 - Ficha de cada cliente: cuántas veces vino, última visita, ausencias, cuánto gastó y notas del dueño.
 - Cobros: se marca cada turno como cobrado y se ve cuánto entró por medio de pago y por profesional. Con Ventra Full, el turno se cobra en la caja junto con productos.
@@ -78,7 +78,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Se maneja todo desde el celular (en el navegador) o desde la compu.
 
 ## Recordatorios de turnos
-- **Por email (gratis, todos los planes con agenda)**: si el cliente dejó su email al reservar, le llega un recordatorio con el link para ver o cancelar el turno y el turno para agregar a su calendario.
+- **Por email (PRÓXIMAMENTE, todavía no está disponible; va a ser gratis en todos los planes con agenda)**: el cliente va a poder dejar su email al reservar y le va a llegar un recordatorio con el link para ver o cancelar el turno y el turno para agregar a su calendario.
 - **Por WhatsApp con un toque (todos los planes con agenda)**: la app arma el mensaje de recordatorio de cada cliente y el dueño lo manda tocando un botón.
 - **Por WhatsApp automático (Agenda Pro y Full)**: sale solo desde el número de Ventra, con el nombre del negocio, el servicio, el día y la hora, y dos botones: "Confirmo" y "Necesito cambiarlo". El dueño elige cuándo sale: el día anterior a las 18 o a las 20 hs, o 1, 2 o 3 horas antes del turno. No se manda de noche (entre las 22 y las 8). Si el cliente escribe, se le pasa el WhatsApp del comercio.
 - Cupo: 200 recordatorios automáticos por mes en Agenda Pro y Full; se renuevan el 1° de cada mes y no se acumulan. Paquetes extra de 100 por $7.500, que se compran desde la app o Mi cuenta y se acreditan solos; los de paquete no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios se mandan con un toque. Se avisa cuando quedan pocos.

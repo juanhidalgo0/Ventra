@@ -87,13 +87,15 @@ const busyOf = (docs) => docs
   .map((b) => ({ staffId: b.staffId, s: b.startMin, e: b.endMin }));
 
 /**
- * Seña del servicio según la agenda: agenda.deposit = { enabled, mode: 'percent' | 'fixed', value }.
- * Nunca más que el precio del servicio (si tiene precio). 0 = sin seña.
+ * Pago online del turno según la agenda: agenda.deposit = { enabled, mode: 'full' | 'percent' | 'fixed', value }.
+ * 'full' (lo que ofrece la app): el turno completo, al precio del servicio; sin precio no se cobra.
+ * 'percent' y 'fixed' son señas de configuraciones viejas. Nunca más que el precio. 0 = sin cobro.
  */
 function depositFor(agenda, service) {
   const d = agenda && agenda.deposit;
   if (!d || !d.enabled) return 0;
   const price = Number(service.price) || 0;
+  if (d.mode !== "percent" && d.mode !== "fixed") return price >= 1 ? Math.round(price) : 0;
   let amount = d.mode === "fixed" ? Number(d.value) || 0 : Math.round(price * (Number(d.value) || 0) / 100);
   if (price > 0) amount = Math.min(amount, price);
   return amount >= 1 ? Math.round(amount) : 0;
@@ -109,7 +111,10 @@ const clean = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f\u00
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 
-/** POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, email?, note } */
+/**
+ * POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, email?, note,
+ *        pay?: 'mp' | 'local' } — con el cobro online prendido, 'local' = paga en el local (sin pago online)
+ */
 async function book(db, req, res, { tokenFor } = {}) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
   const b = req.body || {};
@@ -156,8 +161,11 @@ async function book(db, req, res, { tokenFor } = {}) {
   const bookingRef = storeRef.collection("bookings").doc();
   const bookingCode = code();
 
-  // Seña con Mercado Pago: solo si el comercio la pidió y tiene su cuenta de MP conectada
+  // Pago online con Mercado Pago (el turno completo): solo si el comercio lo pidió y tiene su cuenta de MP conectada
   let deposit = depositFor(agenda, service);
+  // El cliente eligió pagar en el local: se reserva como siempre, sin pago online
+  const payLocal = clean(b.pay, 10) === "local" && deposit > 0;
+  if (payLocal) deposit = 0;
   let mpToken = null;
   if (deposit && cfg.ownerUid && tokenFor) mpToken = await tokenFor(cfg.ownerUid).catch(() => null);
   if (!mpToken) deposit = 0;
@@ -182,7 +190,8 @@ async function book(db, req, res, { tokenFor } = {}) {
         ...(email ? { customerEmail: email } : {}),
         code: bookingCode,
         status: deposit ? "AWAITING_PAYMENT" : agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
-        ...(deposit ? { holdUntil, deposit: { amount: deposit, status: "pending" } } : {}),
+        ...(deposit ? { holdUntil, deposit: { amount: deposit, status: "pending", full: deposit >= (Number(service.price) || 0) } } : {}),
+        ...(payLocal ? { payAt: "local" } : {}),
         source: "online",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -198,12 +207,12 @@ async function book(db, req, res, { tokenFor } = {}) {
   let status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED";
   let payUrl = null;
   if (deposit) {
-    // Link de pago de Mercado Pago a nombre del comercio. Si falla, el turno sigue sin seña
-    // (mejor un turno sin seña que un cliente trabado sin poder reservar).
+    // Link de pago de Mercado Pago a nombre del comercio. Si falla, el turno sigue sin pago online
+    // (mejor un turno sin cobrar que un cliente trabado sin poder reservar).
     try {
       const manage = `https://tienda.ventra.store/${encodeURIComponent(cfg.subdomain || "")}#turno=${bookingRef.id}.${bookingCode}`;
       const pref = await mpPreference(mpToken, {
-        items: [{ title: `Seña · ${service.name} · ${cfg.businessName || "turno"}`.slice(0, 250), quantity: 1, unit_price: deposit, currency_id: "ARS" }],
+        items: [{ title: `${deposit >= (Number(service.price) || 0) ? "Turno" : "Seña"} · ${service.name} · ${cfg.businessName || "turno"}`.slice(0, 250), quantity: 1, unit_price: deposit, currency_id: "ARS" }],
         external_reference: `agenda|${storeId}|${bookingRef.id}`,
         notification_url: `https://us-central1-ventra-9cba5.cloudfunctions.net/agendaPayHook?s=${encodeURIComponent(storeId)}`,
         back_urls: { success: manage, pending: manage, failure: manage },
@@ -216,7 +225,7 @@ async function book(db, req, res, { tokenFor } = {}) {
       status = "AWAITING_PAYMENT";
       await bookingRef.update({ "deposit.payUrl": payUrl, "deposit.preferenceId": pref.id || null });
     } catch (err) {
-      logger.warn("Agenda: no se pudo crear el link de la seña, el turno queda sin seña", storeId, err.message);
+      logger.warn("Agenda: no se pudo crear el link de pago, el turno queda sin cobro online", storeId, err.message);
       await bookingRef.update({ status, holdUntil: admin.firestore.FieldValue.delete(), deposit: admin.firestore.FieldValue.delete() }).catch(() => {});
     }
   }
@@ -238,7 +247,7 @@ async function mpPreference(token, body) {
 }
 
 /**
- * Aviso de Mercado Pago de un pago de seña (notification_url de la preferencia, ?s=<storeId>).
+ * Aviso de Mercado Pago de un pago de turno (notification_url de la preferencia, ?s=<storeId>).
  * No se confía en el aviso: se consulta el pago a MP con el token del comercio. Idempotente.
  * Devuelve la info del turno para que index.js avise al dueño, o null.
  */
@@ -283,7 +292,7 @@ async function payHook(db, req, { tokenFor }) {
   });
 }
 
-/** Tarea programada: libera los horarios de las señas que no se pagaron a tiempo. */
+/** Tarea programada: libera los horarios de los turnos que no se pagaron a tiempo. */
 async function expireHolds(db) {
   const snap = await db.collectionGroup("bookings").where("status", "==", "AWAITING_PAYMENT").get();
   const now = Date.now();
@@ -389,7 +398,8 @@ async function manage(db, req, res) {
   if (action === "get") return res.json(view());
   if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
   if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cancelar desde acá. Escribile al comercio." });
-  await ref.update({ status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp() });
+  const paid = t.deposit && t.deposit.status === "paid";
+  await ref.update({ status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...(paid ? { "deposit.refundNeeded": true } : {}) });
   t.status = "CANCELLED";
   return res.json({ ...view(), canCancel: false });
 }

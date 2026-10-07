@@ -292,7 +292,7 @@ async function onButton(db, token, from, payload) {
     await ref.update({ status: "CONFIRMED", clientConfirmedAt: admin.firestore.FieldValue.serverTimestamp(), statusAt: admin.firestore.FieldValue.serverTimestamp() });
     return sendText(token, from, `¡Gracias! Te esperamos ${when} en ${store.businessName || "el local"}.`);
   }
-  await ref.update({ status: "CANCELLED", cancelledBy: "client", cancelVia: "whatsapp", statusAt: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ status: "CANCELLED", cancelledBy: "client", cancelVia: "whatsapp", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...(b.deposit && b.deposit.status === "paid" ? { "deposit.refundNeeded": true } : {}) });
   return sendText(token, from, `Listo, cancelamos tu turno de ${when}.${links.book ? ` Para elegir otro horario: ${links.book}` : links.chat ? ` Para elegir otro horario, escribile a ${store.businessName || "el comercio"}: ${links.chat}` : ""}`);
 }
 

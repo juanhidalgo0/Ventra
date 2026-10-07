@@ -1021,7 +1021,8 @@ async function buildAdminOverview() {
 }
 
 exports.ventraAdmin = onRequest(
-  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL] },
+  // El resumen recorre todas las cuentas, pagos y fotos: con 256 MiB se quedaba sin memoria
+  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL], memory: "1GiB", timeoutSeconds: 120 },
   async (req, res) => {
     const user = await verifyUser(req);
     if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
@@ -1480,7 +1481,7 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const mpTokenFor = (uid) => mercadopago.accessTokenFor(uid, mpCreds());
 exports.agendaBook = onRequest({ cors: true, maxInstances: 10, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET] }, (req, res) => agenda.book(db, req, res, { tokenFor: mpTokenFor }));
 
-/** Aviso de Mercado Pago de una seña pagada: confirma el turno y avisa al dueño. */
+/** Aviso de Mercado Pago de un turno pagado online: confirma el turno y avisa al dueño. */
 exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET] }, async (req, res) => {
   try {
     const done = await agenda.payHook(db, req, { tokenFor: mpTokenFor });
@@ -1488,24 +1489,24 @@ exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT
       const b = done.booking;
       const when = `${agenda.fmtDay(b.dateKey)} ${agenda.hhmm(b.startMin)}`;
       await notify.sendToAccount(db, done.ownerUid, "bookings", {
-        title: done.outcome === "late-clash" ? `Seña pagada tarde: ${b.serviceName || "turno"} · ${when}` : `Seña recibida: ${b.serviceName || "turno"} · ${when}`,
+        title: done.outcome === "late-clash" ? `Pago tarde: ${b.serviceName || "turno"} · ${when}` : `Turno pagado: ${b.serviceName || "turno"} · ${when}`,
         body: done.outcome === "late-clash"
-          ? `${b.customerName || "El cliente"} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvé la seña.`
+          ? `${b.customerName || "El cliente"} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvele el pago.`
           : `${b.customerName || "Un cliente"} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`,
         url: "/#/agenda", tag: "booking-" + b.id,
-      }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar la seña", err.message));
+      }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar el pago del turno", err.message));
     }
   } catch (err) {
-    logger.error("Agenda: error procesando la seña", err);
+    logger.error("Agenda: error procesando el pago del turno", err);
     return res.status(500).send("Error"); // Mercado Pago reintenta
   }
   res.status(200).send("OK");
 });
 
-/** Cada 5 minutos: las señas que no se pagaron a tiempo liberan su horario. */
+/** Cada 5 minutos: los turnos que no se pagaron a tiempo liberan su horario. */
 exports.agendaExpireHolds = onSchedule({ schedule: "every 5 minutes", timeZone: "America/Argentina/Buenos_Aires" }, async () => {
   const n = await agenda.expireHolds(db);
-  if (n) logger.info(`Agenda: ${n} seña(s) vencida(s), horarios liberados`);
+  if (n) logger.info(`Agenda: ${n} turno(s) sin pagar a tiempo, horarios liberados`);
 });
 
 // ─── Recordatorios por WhatsApp (ver whatsapp.js) ───
@@ -1666,7 +1667,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     if (uid) {
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
-        body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.`,
+        body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.${after.deposit && after.deposit.status === "paid" ? ` Había pagado $${after.deposit.paidAmount || after.deposit.amount} por Mercado Pago: devolvéselo desde tu cuenta.` : ""}`,
         url: "/#/agenda", tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
