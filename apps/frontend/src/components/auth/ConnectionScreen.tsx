@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { ArrowLeft, ArrowRight, Loader2, Monitor, Network } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Network, Server, Wifi } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import { MangoLogo } from '../common/MangoLogo';
-import AuthLayout from './AuthLayout';
+import AuthLayout, { authCard, authIconBox, authInput, authLabel, authLead, authPrimaryButton, authSecondaryButton, authTitle } from './AuthLayout';
 
 export const GoDeliveryLogo = MangoLogo;
 
@@ -34,7 +34,6 @@ export default function ConnectionScreen() {
   // Búsqueda terminada sin resultados: se ofrece reintentar o cargar la dirección a mano
   const [scanFailed, setScanFailed] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const [focused, setFocused] = useState(0);
   const navigate = useNavigate();
 
   // Every async connection attempt (scan or manual) is tagged with the current
@@ -219,14 +218,6 @@ export default function ConnectionScreen() {
     navigate('/login');
   };
 
-  // "Ya tengo Ventra en otra PC": se busca sola en la red; la dirección a mano queda de respaldo
-  const openClientMode = () => {
-    operationId.current++; // invalidate any pending auto-detect before switching
-    setFoundServers([]);
-    setMode('CLIENT');
-    handleAutoDetect();
-  };
-
   const backToSelect = () => {
     operationId.current++;
     setIsScanning(false);
@@ -260,144 +251,147 @@ export default function ConnectionScreen() {
   const perfMode = localStorage.getItem('performance_mode') === 'true';
   const scanPct = scanProgress.total > 0 ? Math.min(100, Math.round((scanProgress.done / scanProgress.total) * 100)) : 0;
 
-  // Las opciones del primer paso, para recorrerlas con el teclado (↑ ↓ y Enter)
-  const options = [
-    { key: 'main', title: 'Como caja principal', desc: 'Acá se guardan los productos, las ventas y la caja. Elegila si es la única PC del local o la que ya venías usando.', icon: Monitor, onSelect: handleStartLocal, recommended: true },
-    { key: 'other', title: 'Como caja adicional', desc: 'Se conecta a la caja principal del local y usa los mismos productos y el mismo stock. La buscamos sola en tu red.', icon: Network, onSelect: openClientMode, recommended: false },
-  ];
+  // Caja adicional: escribir la dirección de la caja principal (la búsqueda automática es la fila de abajo)
+  const openManual = () => {
+    operationId.current++;
+    setIsScanning(false);
+    setFoundServers([]);
+    setScanFailed(false);
+    setShowManual(true);
+    setMode('CLIENT');
+  };
+  const openScan = () => {
+    setMode('CLIENT');
+    handleAutoDetect();
+  };
 
-  useEffect(() => {
-    if (mode !== 'SELECT' || isScanning || foundServers.length) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setFocused((f) => Math.min(options.length - 1, f + 1)); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setFocused((f) => Math.max(0, f - 1)); }
-      else if (e.key === 'Enter') { e.preventDefault(); options[focused]?.onSelect(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, isScanning, foundServers.length, focused]);
-
-  // Todo lo de esta pantalla es el paso 1; el 2 es el ingreso con usuario
-  const step = 1;
-  const fade = perfMode ? {} : { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -12 }, transition: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } };
+  const enter = perfMode ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } };
+  const cardIn = (delay: number) => (perfMode ? {} : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25, delay, ease: [0.2, 0.8, 0.2, 1] } });
+  const back = (
+    <button onClick={backToSelect} className="inline-flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-900 mb-5 transition-colors cursor-pointer">
+      <ArrowLeft className="w-3.5 h-3.5" /> Volver
+    </button>
+  );
+  const choice = 'group text-left bg-white rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-400 transition-colors cursor-pointer';
 
   return (
-    <AuthLayout step={step}>
+    <AuthLayout wide>
       <div className="select-none">
-            <AnimatePresence mode="wait">
-              {mode === 'SELECT' ? (
-                <motion.section key="select" {...fade}>
-                  <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">¿Cómo vas a usar esta PC?</h2>
-                  <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Lo elegís una sola vez. Si ya usabas Ventra en esta PC, elegí caja principal: tus datos siguen ahí.</p>
-
-                  <div className="mt-8 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden" role="listbox">
-                    {options.map((o, i) => (
-                      <button
-                        key={o.key}
-                        role="option"
-                        aria-selected={focused === i}
-                        onMouseEnter={() => setFocused(i)}
-                        onClick={o.onSelect}
-                        className={`w-full flex items-start gap-4 px-5 py-[18px] text-left transition-colors duration-fast cursor-pointer outline-none ${focused === i ? 'bg-slate-50' : 'bg-white'}`}
-                      >
-                        <span className={`mt-0.5 w-9 h-9 shrink-0 rounded-lg border grid place-items-center ${focused === i ? 'border-slate-300 text-slate-900 bg-white' : 'border-slate-200 text-slate-500'}`}>
-                          <o.icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="flex items-center gap-2">
-                            <span className="text-[15px] font-semibold">{o.title}</span>
-                            {o.recommended && <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Recomendado</span>}
-                          </span>
-                          <span className="block mt-1 text-[14px] text-slate-600 leading-snug">{o.desc}</span>
-                        </span>
-                        <ArrowRight className={`w-4 h-4 mt-2.5 shrink-0 transition-all duration-fast ${focused === i ? 'text-slate-900 translate-x-0.5' : 'text-slate-300'}`} />
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="mt-6 text-[13px] text-slate-500 leading-relaxed">
-                    ¿Cambiaste de PC? Elegí <span className="font-medium text-slate-700">caja principal</span> e ingresá con tu usuario: si el comercio está vinculado a tu cuenta de Ventra, se baja todo desde la nube.
-                  </p>
-                </motion.section>
-              ) : (
-                <motion.section key="client" {...fade}>
-                  <button onClick={backToSelect} className="inline-flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
-                    <ArrowLeft className="w-3.5 h-3.5" /> Volver
+        <AnimatePresence mode="wait">
+          {foundServers.length > 0 ? (
+            <motion.div key="found" {...enter} className={`${authCard} max-w-[440px] mx-auto`}>
+              {back}
+              <h2 className={authTitle}>Encontramos {foundServers.length} PCs con Ventra</h2>
+              <p className={authLead}>Elegí la caja principal del local.</p>
+              <div className="mt-5 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+                {foundServers.map((s) => (
+                  <button key={s} onClick={() => connectToServer(s, operationId.current)}
+                    className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors cursor-pointer">
+                    <span className={authIconBox}><Server className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+                    <span className="flex-1">
+                      <span className="block text-[14px] font-medium">PC con Ventra</span>
+                      <span className="block text-[13px] text-slate-500 font-mono">{s}</span>
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors" />
                   </button>
+                ))}
+              </div>
+            </motion.div>
+          ) : isScanning ? (
+            <motion.div key="scanning" {...enter} className={`${authCard} max-w-[440px] mx-auto`}>
+              <h2 className={authTitle}>Buscando la caja principal…</h2>
+              <p className={authLead}>Revisamos tu red. Dejá la otra PC prendida y con Ventra abierto.</p>
+              <div className="mt-6 h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-slate-900 rounded-full transition-[width] duration-300 ease-out" style={{ width: `${Math.max(4, scanPct)}%` }} />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[13px] text-slate-500">
+                <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {scanProgress.total > 0 ? `${scanPct}% revisado` : 'Preparando la búsqueda'}</span>
+                <button onClick={() => { cancelScan(); setScanFailed(true); }} className="hover:text-slate-900 transition-colors cursor-pointer">Cancelar</button>
+              </div>
+            </motion.div>
+          ) : mode === 'CLIENT' && scanFailed && !showManual ? (
+            <motion.div key="failed" {...enter} className={`${authCard} max-w-[440px] mx-auto`}>
+              {back}
+              <h2 className={authTitle}>No encontramos la caja principal</h2>
+              <p className={authLead}>Revisá que la otra PC esté prendida, con Ventra abierto y en la misma red (el mismo Wi‑Fi o router).</p>
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button onClick={handleAutoDetect} className={authPrimaryButton}>Buscar de nuevo</button>
+                <button onClick={() => setShowManual(true)} className={authSecondaryButton}>Escribir la dirección</button>
+              </div>
+              <p className="mt-5 text-[13px] text-slate-500">¿Es la única PC del local? <button onClick={handleStartLocal} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Usarla como caja principal</button></p>
+            </motion.div>
+          ) : mode === 'CLIENT' ? (
+            <motion.div key="manual" {...enter} className={`${authCard} max-w-[440px] mx-auto`}>
+              {back}
+              <h2 className={authTitle}>Conectar a la caja principal</h2>
+              <p className={authLead}>Escribí la dirección de la PC principal. La ves en esa PC, en el menú → Acceso remoto.</p>
+              <div className="mt-6">
+                <label htmlFor="server-ip" className={authLabel}>Dirección</label>
+                <input
+                  id="server-ip"
+                  type="text"
+                  inputMode="decimal"
+                  value={ip}
+                  onChange={(e) => setIp(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && ip && !isTesting) handleConnectClient(); }}
+                  placeholder="192.168.0.15"
+                  className={`${authInput} font-mono tabular-nums`}
+                  autoFocus
+                />
+              </div>
+              <button onClick={handleConnectClient} disabled={isTesting || !ip.trim()} className={`${authPrimaryButton} mt-4`}>
+                {isTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Conectando…</> : 'Conectar'}
+              </button>
+              <p className="mt-5 text-[13px] text-slate-500">¿No sabés la dirección? <button onClick={handleAutoDetect} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Buscarla sola en la red</button></p>
+            </motion.div>
+          ) : (
+            <motion.div key="select" className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <motion.button {...cardIn(0.04)} onClick={handleStartLocal} className={`${choice} p-5 flex flex-col justify-between min-h-[172px]`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className={authIconBox}><Server className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+                      <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Recomendado</span>
+                    </div>
+                    <h2 className="text-[15px] font-semibold text-slate-900">Caja principal</h2>
+                    <p className="mt-1 text-[13.5px] text-slate-600 leading-snug">Acá se guardan los productos, las ventas y la caja. Elegila si es la única PC del local o la que ya venías usando.</p>
+                  </div>
+                  <span className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-900">
+                    Comenzar <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </motion.button>
 
-                  {isScanning ? (
-                    <div className="mt-6">
-                      <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Buscando la otra PC…</h2>
-                      <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Revisamos tu red. Dejá la otra PC prendida y con Ventra abierto.</p>
-                      <div className="mt-8">
-                        <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-slate-900 rounded-full transition-[width] duration-300 ease-out" style={{ width: `${Math.max(4, scanPct)}%` }} />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between text-[13px] text-slate-500">
-                          <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {scanProgress.total > 0 ? `${scanPct}% revisado` : 'Preparando la búsqueda'}</span>
-                          <button onClick={() => { cancelScan(); setScanFailed(true); }} className="hover:text-slate-900 transition-colors cursor-pointer">Cancelar</button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : foundServers.length > 0 ? (
-                    <div className="mt-6">
-                      <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Encontramos {foundServers.length} PCs con Ventra</h2>
-                      <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Elegí la caja principal del local.</p>
-                      <div className="mt-8 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
-                        {foundServers.map((s) => (
-                          <button key={s} onClick={() => connectToServer(s, operationId.current)}
-                            className="group w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-slate-50 transition-colors duration-fast cursor-pointer">
-                            <span className="w-9 h-9 shrink-0 rounded-lg border border-slate-200 grid place-items-center text-slate-500"><Monitor className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
-                            <span className="flex-1">
-                              <span className="block text-[15px] font-semibold">PC con Ventra</span>
-                              <span className="block text-[13px] text-slate-500 font-mono">{s}</span>
-                            </span>
-                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-6">
-                      {scanFailed && !showManual ? (
-                        <>
-                          <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">No encontramos otra PC</h2>
-                          <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Revisá que la otra PC esté prendida, con Ventra abierto y conectada a la misma red (el mismo Wi‑Fi o el mismo router).</p>
-                          <div className="mt-8 flex flex-wrap gap-3">
-                            <button onClick={handleAutoDetect} className="h-11 px-5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[14px] font-medium transition-colors cursor-pointer">Buscar de nuevo</button>
-                            <button onClick={() => setShowManual(true)} className="h-11 px-5 rounded-lg border border-slate-300 hover:bg-slate-50 text-[14px] font-medium transition-colors cursor-pointer">Escribir la dirección</button>
-                          </div>
-                          <p className="mt-6 text-[13px] text-slate-500 leading-relaxed">¿Esta es la única PC del local? <button onClick={handleStartLocal} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Usarla como caja principal</button></p>
-                        </>
-                      ) : (
-                        <>
-                          <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Dirección de la otra PC</h2>
-                          <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">En la PC principal la ves en el menú, en Acceso remoto. Tiene esta forma: 192.168.0.15</p>
-                          <label htmlFor="server-ip" className="block mt-8 text-[13px] font-medium text-slate-700">Dirección</label>
-                          <input
-                            id="server-ip"
-                            type="text"
-                            inputMode="decimal"
-                            value={ip}
-                            onChange={(e) => setIp(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && ip && !isTesting) handleConnectClient(); }}
-                            placeholder="192.168.0.15"
-                            className="mt-2 w-full h-11 rounded-lg border border-slate-300 bg-white px-3.5 text-[15px] font-mono tabular-nums text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 transition"
-                            autoFocus
-                          />
-                          <button onClick={handleConnectClient} disabled={isTesting || !ip.trim()}
-                            className="mt-4 w-full h-11 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[14px] font-medium inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
-                            {isTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Conectando…</> : 'Conectar'}
-                          </button>
-                          <p className="mt-6 text-[13px] text-slate-500"><button onClick={handleAutoDetect} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Buscarla sola en la red</button></p>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </motion.section>
-              )}
-            </AnimatePresence>
+                <motion.button {...cardIn(0.08)} onClick={openManual} className={`${choice} p-5 flex flex-col justify-between min-h-[172px]`}>
+                  <div>
+                    <div className="mb-4"><span className={authIconBox}><Network className="w-[18px] h-[18px]" strokeWidth={1.75} /></span></div>
+                    <h2 className="text-[15px] font-semibold text-slate-900">Caja adicional</h2>
+                    <p className="mt-1 text-[13.5px] text-slate-600 leading-snug">Se conecta a la caja principal del local y usa los mismos productos y el mismo stock.</p>
+                  </div>
+                  <span className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-900">
+                    Escribir la dirección <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </motion.button>
+              </div>
+
+              <motion.button {...cardIn(0.12)} onClick={openScan} className={`${choice} w-full p-4 flex items-center justify-between gap-3`}>
+                <span className="flex items-center gap-3 min-w-0">
+                  <span className={authIconBox}><Wifi className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+                  <span className="min-w-0">
+                    <span className="block text-[14px] font-semibold text-slate-900">Buscar la caja principal automáticamente</span>
+                    <span className="block text-[13px] text-slate-600">Para una caja adicional: revisa tu red y se conecta sola.</span>
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-900 shrink-0">
+                  Buscar <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </motion.button>
+
+              <p className="text-center text-[13px] text-slate-500 pt-2">
+                ¿Ya usabas Ventra en esta PC? Elegí <span className="font-medium text-slate-700">Caja principal</span>: tus datos siguen ahí.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </AuthLayout>
   );

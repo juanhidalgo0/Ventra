@@ -5,7 +5,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { Eye, EyeOff, Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
-import AuthLayout, { authInput, authLead, authPrimaryButton, authTitle } from './AuthLayout';
+import AuthLayout, { authCard, authInput, authLabel, authLead, authPrimaryButton, authTitle } from './AuthLayout';
 import AdminRecovery from './AdminRecovery';
 import { usePlanStore, PLANS, type PlanId } from '../../stores/planStore';
 
@@ -207,26 +207,25 @@ export default function LoginPage() {
       <ArrowLeft className="w-3.5 h-3.5" /> Cambiar cómo se usa esta PC
     </button>
   ) : undefined;
-  const step = showBackToSetup ? 2 : undefined;
 
   if (checkLoading) {
     return (
-      <AuthLayout step={step}>
-        <section className="select-none">
+      <AuthLayout>
+        <div className={authCard}>
           <h2 className={authTitle}>Abriendo la caja</h2>
           <p key={loadingMessage} className={`${authLead} anim-rise`}>{loadingMessage}</p>
-          <div className="mt-8 relative h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
+          <div className="mt-6 relative h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
             {/* Barra indeterminada en CSS (transform): se mueve en cualquier modo */}
             <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-rose-600 anim-indeterminate" />
           </div>
           <p className="mt-3 text-[13px] text-slate-500">No cierres la aplicación, tarda unos segundos.</p>
-        </section>
+        </div>
       </AuthLayout>
     );
   }
 
-  const passwordField = (id: string | undefined, placeholder: string) => (
-    <div className="relative mt-2">
+  const passwordField = (id: string, placeholder: string) => (
+    <div className="relative">
       <input
         id={id}
         type={showPassword ? 'text' : 'password'}
@@ -248,87 +247,86 @@ export default function LoginPage() {
   );
 
   return (
-    <AuthLayout step={step} headerAction={changeSetup}>
-      {!isInitialized ? (
-        <section>
-          <h2 className={authTitle}>Creá el usuario administrador</h2>
-          <p className={authLead}>Es el usuario del dueño: con él se configura todo y se dan de alta los empleados. Hay uno solo por comercio.</p>
-
-          <form onSubmit={handleRegisterFirstAdmin} className="mt-8 space-y-5">
-            <div>
-              <label htmlFor="admin-username" className="block text-[13px] font-medium text-slate-700">Usuario</label>
-              <input id="admin-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Por ejemplo, el nombre del comercio" className={`${authInput} mt-2`} autoFocus required />
-            </div>
-            <div>
-              <label htmlFor="admin-password" className="block text-[13px] font-medium text-slate-700">Contraseña</label>
-              {passwordField('admin-password', 'Mejor solo números, así la cargás rápido')}
-            </div>
-            <button type="submit" disabled={registering || !username || !password} className={`${authPrimaryButton} mt-2`}>
-              {registering ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</> : 'Crear y continuar'}
-            </button>
-          </form>
-        </section>
-      ) : (
-        <section>
-          {isDemo && (
-            <div className="mb-10">
-              <h2 className={authTitle}>Probá Ventra</h2>
-              <p className={authLead}>Elegí un plan y entrás con un clic, sin registrarte. Adentro lo podés cambiar cuando quieras.</p>
-              <div className="mt-6 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
-                {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
-                  <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
-                    className="group w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer">
-                    <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2">
-                        <span className="text-[14px] font-semibold">{PLANS[id].name}</span>
-                        {id === demoSuggested && <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Sugerido</span>}
-                      </span>
-                      <span className="block text-[13px] text-slate-500 leading-snug mt-0.5">{PLANS[id].tagline}</span>
-                    </span>
-                    {demoLoading === id
-                      ? <Loader2 className="w-4 h-4 animate-spin text-slate-500 shrink-0" />
-                      : <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <h2 className={isDemo ? 'text-[17px] font-semibold tracking-tight' : authTitle}>{isDemo ? 'O ingresá con un usuario' : 'Ingresá a la caja'}</h2>
-          {isDemo
-            ? <p className="mt-1 text-[13px] text-slate-500">Usuario de prueba: <span className="font-mono">ADMIN</span> · contraseña <span className="font-mono">1234</span></p>
-            : <p className={authLead}>Con tu usuario y contraseña. Cada uno entra con el suyo, así las ventas quedan a su nombre.</p>}
-
-          <form onSubmit={handleSubmit} className={`${isDemo ? 'mt-5' : 'mt-8'} space-y-5`}>
-            <div>
-              <label htmlFor="login-username" className="block text-[13px] font-medium text-slate-700">Usuario</label>
-              <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} className={`${authInput} mt-2`} autoComplete="username" autoFocus={!isDemo} required />
-            </div>
-            <div>
-              <label htmlFor="login-password" className="block text-[13px] font-medium text-slate-700">Contraseña</label>
-              {passwordField('login-password', '')}
-            </div>
-            <button id="login-submit" type="submit" disabled={isLoading || !username || !password} className={`${authPrimaryButton} mt-2`}>
-              {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingresando…</> : 'Iniciar turno'}
-            </button>
-          </form>
-
-          {(!isDemo || supportAvailable) && (
-            <div className="mt-6 flex flex-col items-start gap-2 text-[13px]">
-              {!isDemo && (
-                <button type="button" onClick={() => setRecovering(true)} className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
-                  ¿Olvidaste la contraseña del administrador?
-                </button>
-              )}
-              {supportAvailable && (
-                <button type="button" onClick={enterAsSupport} disabled={isLoading} className="text-amber-700 hover:text-amber-800 transition-colors cursor-pointer disabled:opacity-50">
-                  Volver a entrar como soporte (administrador)
-                </button>
-              )}
-            </div>
-          )}
-        </section>
+    <AuthLayout topLeft={changeSetup}>
+      {isDemo && isInitialized && (
+        <div className={`${authCard} mb-3`}>
+          <h2 className={authTitle}>Probá Ventra</h2>
+          <p className={authLead}>Elegí un plan y entrás con un clic, sin registrarte. Adentro lo podés cambiar cuando quieras.</p>
+          <div className="mt-5 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+            {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
+              <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
+                className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer">
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="text-[14px] font-semibold">{PLANS[id].name}</span>
+                    {id === demoSuggested && <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Sugerido</span>}
+                  </span>
+                  <span className="block text-[13px] text-slate-500 leading-snug mt-0.5">{PLANS[id].tagline}</span>
+                </span>
+                {demoLoading === id
+                  ? <Loader2 className="w-4 h-4 animate-spin text-slate-500 shrink-0" />
+                  : <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
+
+      <div className={authCard}>
+        {!isInitialized ? (
+          <>
+            <h2 className={authTitle}>Creá el usuario administrador</h2>
+            <p className={authLead}>Es el usuario del dueño: con él se configura todo y se dan de alta los empleados. Hay uno solo por comercio.</p>
+            <form onSubmit={handleRegisterFirstAdmin} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="admin-username" className={authLabel}>Usuario</label>
+                <input id="admin-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Por ejemplo, el nombre del comercio" className={authInput} autoFocus required />
+              </div>
+              <div>
+                <label htmlFor="admin-password" className={authLabel}>Contraseña</label>
+                {passwordField('admin-password', 'Mejor solo números, así la cargás rápido')}
+              </div>
+              <button type="submit" disabled={registering || !username || !password} className={`${authPrimaryButton} !mt-6`}>
+                {registering ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</> : 'Crear y continuar'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2 className={authTitle}>{isDemo ? 'O ingresá con un usuario' : 'Ingresá a la caja'}</h2>
+            <p className={authLead}>
+              {isDemo ? <>Usuario de prueba: <span className="font-mono">ADMIN</span> · contraseña <span className="font-mono">1234</span></> : 'Con tu usuario y contraseña. Cada uno entra con el suyo, así las ventas quedan a su nombre.'}
+            </p>
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="login-username" className={authLabel}>Usuario</label>
+                <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} className={authInput} autoComplete="username" autoFocus={!isDemo} required />
+              </div>
+              <div>
+                <label htmlFor="login-password" className={authLabel}>Contraseña</label>
+                {passwordField('login-password', '')}
+              </div>
+              <button id="login-submit" type="submit" disabled={isLoading || !username || !password} className={`${authPrimaryButton} !mt-6`}>
+                {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingresando…</> : 'Iniciar turno'}
+              </button>
+            </form>
+            {(!isDemo || supportAvailable) && (
+              <div className="mt-5 flex flex-col items-center gap-2 text-[13px]">
+                {!isDemo && (
+                  <button type="button" onClick={() => setRecovering(true)} className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                    ¿Olvidaste la contraseña del administrador?
+                  </button>
+                )}
+                {supportAvailable && (
+                  <button type="button" onClick={enterAsSupport} disabled={isLoading} className="text-amber-700 hover:text-amber-800 transition-colors cursor-pointer disabled:opacity-50">
+                    Volver a entrar como soporte (administrador)
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
       {recovering && <AdminRecovery onClose={() => setRecovering(false)} />}
     </AuthLayout>
   );
