@@ -59,6 +59,14 @@ jobs:
           # `prisma db push` fails with "Environment variable not found".
           DATABASE_URL: "file:./dev.db"
 
+      # Stock y caja con los servicios reales sobre una base temporal (sin nube).
+      # Si falla, no se arma la versión: un error de stock no llega ni a borrador.
+      - name: Pruebas de stock y caja
+        working-directory: apps/backend
+        run: |
+          npx prisma generate
+          npm run test:stock
+
       - name: Build frontend
         run: npm run build:frontend
 
