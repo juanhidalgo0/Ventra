@@ -80,7 +80,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 ## Recordatorios de turnos
 - **Por email (gratis, todos los planes con agenda)**: si el cliente dejó su email al reservar, le llega un recordatorio con el link para ver o cancelar el turno y el turno para agregar a su calendario.
 - **Por WhatsApp con un toque (todos los planes con agenda)**: la app arma el mensaje de recordatorio de cada cliente y el dueño lo manda tocando un botón.
-- **Por WhatsApp automático (Agenda Pro y Full)**: sale solo desde el número de Ventra, con el nombre del negocio, el servicio, el día y la hora, y dos botones: "Confirmo" y "Necesito cambiarlo". El dueño elige cuándo sale: el día anterior a las 18 o a las 20 hs, o 2 o 3 horas antes del turno. No se manda de noche (entre las 22 y las 8). Si el cliente escribe, se le pasa el WhatsApp del comercio.
+- **Por WhatsApp automático (Agenda Pro y Full)**: sale solo desde el número de Ventra, con el nombre del negocio, el servicio, el día y la hora, y dos botones: "Confirmo" y "Necesito cambiarlo". El dueño elige cuándo sale: el día anterior a las 18 o a las 20 hs, o 1, 2 o 3 horas antes del turno. No se manda de noche (entre las 22 y las 8). Si el cliente escribe, se le pasa el WhatsApp del comercio.
 - Cupo: 200 recordatorios automáticos por mes en Agenda Pro y Full; se renuevan el 1° de cada mes y no se acumulan. Paquetes extra de 100 por $7.500, que se compran desde la app o Mi cuenta y se acreditan solos; los de paquete no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios se mandan con un toque. Se avisa cuando quedan pocos.
 
 ## Lo que Ventra todavía NO hace (no prometerlo)

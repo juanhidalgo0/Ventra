@@ -54,12 +54,13 @@ export interface AgendaConfig {
 }
 
 /** Cuándo sale el recordatorio automático (mismas claves que WHEN en whatsapp.js) */
-export type ReminderWhen = 'dayBefore18' | 'dayBefore20' | 'hours3' | 'hours2';
+export type ReminderWhen = 'dayBefore18' | 'dayBefore20' | 'hours3' | 'hours2' | 'hours1';
 export const REMINDER_WHEN: [ReminderWhen, string][] = [
   ['dayBefore18', 'El día anterior a las 18 h'],
   ['dayBefore20', 'El día anterior a las 20 h'],
   ['hours3', '3 horas antes'],
   ['hours2', '2 horas antes'],
+  ['hours1', '1 hora antes'],
 ];
 
 /** Recordatorio automático de un turno: lo escribe la nube */

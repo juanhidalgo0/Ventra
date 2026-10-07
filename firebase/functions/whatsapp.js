@@ -42,6 +42,8 @@ const WHEN = {
   dayBefore20: { dayBefore: 20 },
   hours3: { hours: 3 },
   hours2: { hours: 2 },
+  // Lo revisa la nube cada 15 minutos: sale entre 60 y 45 minutos antes del turno
+  hours1: { hours: 1 },
 };
 
 const DAY_NAMES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
