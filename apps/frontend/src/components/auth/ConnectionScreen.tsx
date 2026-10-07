@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { Server, Globe, ChevronRight, Loader2, Wifi, WifiOff, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Monitor, Network } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import { MangoLogo } from '../common/MangoLogo';
+import { APP_VERSION } from '../../appVersion';
 
 export const GoDeliveryLogo = MangoLogo;
 
@@ -15,11 +16,13 @@ const PER_IP_TIMEOUT_MS = 900;
 const BATCH_SIZE = 40;
 const HARD_SCAN_TIMEOUT_MS = 15000; // Never let a scan feel "stuck" forever
 
+type Mode = 'SELECT' | 'CLIENT';
+
 export default function ConnectionScreen() {
   // Se recuerda en la sesión para que un remontaje no devuelva al usuario a la selección
-  const [mode, setModeState] = useState<'SELECT' | 'CLIENT'>(() =>
+  const [mode, setModeState] = useState<Mode>(() =>
     sessionStorage.getItem('setup_mode') === 'CLIENT' ? 'CLIENT' : 'SELECT');
-  const setMode = (m: 'SELECT' | 'CLIENT') => {
+  const setMode = (m: Mode) => {
     sessionStorage.setItem('setup_mode', m);
     setModeState(m);
   };
@@ -28,14 +31,17 @@ export default function ConnectionScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 });
   const [foundServers, setFoundServers] = useState<string[]>([]);
+  // Búsqueda terminada sin resultados: se ofrece reintentar o cargar la dirección a mano
+  const [scanFailed, setScanFailed] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [focused, setFocused] = useState(0);
   const navigate = useNavigate();
 
   // Every async connection attempt (scan or manual) is tagged with the current
   // operationId. If the user cancels, switches screens, or starts a different
   // attempt, the id changes — any older attempt that resolves later checks its
   // captured id against the ref and silently no-ops instead of navigating or
-  // updating state out from under the user. This is what was causing both
-  // reported bugs: a stale scan/connect finishing late and hijacking the UI.
+  // updating state out from under the user.
   const operationId = useRef(0);
   const isMounted = useRef(true);
 
@@ -99,6 +105,8 @@ export default function ConnectionScreen() {
   const handleAutoDetect = async () => {
     const myOpId = ++operationId.current;
     setFoundServers([]);
+    setScanFailed(false);
+    setShowManual(false);
     setIsScanning(true);
     setScanProgress({ done: 0, total: 0 });
 
@@ -107,7 +115,7 @@ export default function ConnectionScreen() {
         operationId.current++; // invalidate this attempt
         if (isMounted.current) {
           setIsScanning(false);
-          toast.error('La búsqueda tardó demasiado y se canceló. Probá conectarte manualmente con la IP del servidor.');
+          setScanFailed(true);
         }
       }
     }, HARD_SCAN_TIMEOUT_MS);
@@ -187,7 +195,7 @@ export default function ConnectionScreen() {
       setIsScanning(false);
 
       if (validIps.length === 0) {
-        toast.error('No se encontró ningún servidor activo en la red local. Si esta PC es el servidor, elegí "Iniciar Servidor".');
+        setScanFailed(true);
       } else if (validIps.length === 1) {
         connectToServer(validIps[0], myOpId);
       } else {
@@ -211,20 +219,30 @@ export default function ConnectionScreen() {
     navigate('/login');
   };
 
+  // "Ya tengo Ventra en otra PC": se busca sola en la red; la dirección a mano queda de respaldo
   const openClientMode = () => {
     operationId.current++; // invalidate any pending auto-detect before switching
-    setIsScanning(false);
     setFoundServers([]);
     setMode('CLIENT');
+    handleAutoDetect();
+  };
+
+  const backToSelect = () => {
+    operationId.current++;
+    setIsScanning(false);
+    setFoundServers([]);
+    setScanFailed(false);
+    setShowManual(false);
+    setMode('SELECT');
   };
 
   const handleConnectClient = async () => {
-    if (!ip) { toast.error('Ingresá una IP válida'); return; }
+    if (!ip.trim()) { toast.error('Escribí la dirección de la otra PC'); return; }
     const myOpId = ++operationId.current;
     setIsTesting(true);
     try {
-      localStorage.setItem('server_ip', ip);
-      localStorage.setItem('saved_client_ip', ip);
+      localStorage.setItem('server_ip', ip.trim());
+      localStorage.setItem('saved_client_ip', ip.trim());
       await api.get('/system/info');
       if (!isMounted.current || myOpId !== operationId.current) return;
       localStorage.setItem('connection_mode', 'CLIENT');
@@ -232,7 +250,7 @@ export default function ConnectionScreen() {
       navigate('/login');
     } catch (err) {
       if (!isMounted.current || myOpId !== operationId.current) return;
-      toast.error('No se pudo conectar al servidor. Verificá la IP y que el servidor esté corriendo.');
+      toast.error('No pudimos conectarnos con esa dirección. Revisá que la otra PC esté prendida y con Ventra abierto.');
       localStorage.removeItem('server_ip');
     } finally {
       if (isMounted.current && myOpId === operationId.current) setIsTesting(false);
@@ -242,204 +260,206 @@ export default function ConnectionScreen() {
   const perfMode = localStorage.getItem('performance_mode') === 'true';
   const scanPct = scanProgress.total > 0 ? Math.min(100, Math.round((scanProgress.done / scanProgress.total) * 100)) : 0;
 
+  // Las opciones del primer paso, para recorrerlas con el teclado (↑ ↓ y Enter)
+  const options = [
+    { key: 'main', title: 'Sí, es la caja principal', desc: 'Los productos, las ventas y la caja se guardan en esta PC. Es lo que eligen casi todos los comercios.', icon: Monitor, onSelect: handleStartLocal, recommended: true },
+    { key: 'other', title: 'No, ya tengo Ventra en otra PC del local', desc: 'Esta PC se suma como otra caja y usa los mismos productos y el mismo stock. La buscamos sola en tu red.', icon: Network, onSelect: openClientMode, recommended: false },
+  ];
+
+  useEffect(() => {
+    if (mode !== 'SELECT' || isScanning || foundServers.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setFocused((f) => Math.min(options.length - 1, f + 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setFocused((f) => Math.max(0, f - 1)); }
+      else if (e.key === 'Enter') { e.preventDefault(); options[focused]?.onSelect(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isScanning, foundServers.length, focused]);
+
+  // Todo lo de esta pantalla es el paso 1; el 2 es el ingreso con usuario
+  const step = 1;
+  const fade = perfMode ? {} : { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -12 }, transition: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } };
+
   return (
-    <div className="h-screen w-screen bg-slate-50 flex items-center justify-center p-3 sm:p-4 relative overflow-hidden select-none">
-      <motion.div
-        {...(perfMode ? {} : { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease: 'easeOut' } })}
-        className="relative z-10 w-full max-w-xl"
-      >
-        <motion.div
-          {...(perfMode ? {} : { initial: { opacity: 0, y: -6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.05, ease: 'easeOut' } })}
-          className="text-center mb-5 sm:mb-6 flex flex-col items-center gap-2.5"
-        >
-          <div className={`p-1 bg-white rounded-2xl ${perfMode ? 'border border-slate-200' : 'shadow-lg shadow-rose-500/10'}`}>
-            <GoDeliveryLogo className="w-12 h-12 sm:w-14 sm:h-14" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight leading-none mb-1.5">Ventra</h1>
-            <p className="text-rose-700 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-1.5">
-               <span>Terminal de Ventas</span>
-               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            </p>
-          </div>
-        </motion.div>
+    <div className="h-screen w-screen flex bg-white text-slate-900 select-none overflow-hidden">
+      {/* Panel de marca */}
+      <aside className="hidden lg:flex w-[40%] max-w-[560px] shrink-0 flex-col justify-between bg-rose-900 text-white px-12 py-10">
+        <div className="flex items-center gap-3">
+          <GoDeliveryLogo className="w-9 h-9 rounded-[10px]" />
+          <span className="text-[17px] font-semibold tracking-tight">Ventra</span>
+        </div>
 
-        <AnimatePresence mode="wait">
-          {foundServers.length > 0 ? (
-            <motion.div key="found" {...(perfMode ? {} : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.25 } })} className="card p-5 sm:p-8 bg-white border border-slate-200 rounded-3xl shadow-xl flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
-                <Server className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-800 mb-1 tracking-tight">Se encontraron varios servidores</h2>
-                <p className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-[280px]">
-                  Elegí a cuál conectarte:
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 w-full mt-1">
-                {foundServers.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => connectToServer(s, operationId.current)}
-                    className="p-3 border border-slate-200 rounded-xl hover:border-rose-400 hover:bg-rose-50/50 text-slate-700 font-bold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
-                  >
-                    Conectar a {s}
+        <div className="max-w-[400px]">
+          <h1 className="text-[34px] leading-[1.15] font-semibold tracking-[-0.02em]">
+            Tu caja, tu stock y tus ventas, en un solo lugar.
+          </h1>
+          <ul className="mt-8 space-y-4 text-[15px] text-rose-100/90">
+            {[
+              'Cobrás rápido, con lector de códigos y todos los medios de pago.',
+              'El stock se actualiza solo con cada venta y cada compra.',
+              'Ves cómo va el negocio desde el celular, estés donde estés.',
+            ].map((t) => (
+              <li key={t} className="flex gap-3">
+                <Check className="w-4 h-4 mt-[3px] shrink-0 text-rose-300" strokeWidth={2.5} />
+                <span className="leading-snug">{t}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="text-[13px] text-rose-200/70">Hecho en Argentina para kioscos, almacenes y comercios de barrio.</p>
+      </aside>
+
+      {/* Contenido */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="flex items-center justify-between px-6 sm:px-10 h-16 shrink-0">
+          <div className="flex items-center gap-2.5 lg:invisible">
+            <GoDeliveryLogo className="w-7 h-7 rounded-lg" />
+            <span className="text-[15px] font-semibold tracking-tight">Ventra</span>
+          </div>
+          <ol className="flex items-center gap-2 text-[13px]" aria-label="Pasos">
+            {['Esta PC', 'Ingresar'].map((label, i) => {
+              const n = i + 1;
+              const done = n < step;
+              const active = n === step;
+              return (
+                <li key={label} className="flex items-center gap-2">
+                  {i > 0 && <span className="w-6 h-px bg-slate-200" />}
+                  <span className={`w-5 h-5 rounded-full grid place-items-center text-[11px] font-semibold tabular-nums ${active ? 'bg-slate-900 text-white' : done ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {done ? <Check className="w-3 h-3" strokeWidth={3} /> : n}
+                  </span>
+                  <span className={active ? 'font-medium text-slate-900' : 'text-slate-500'}>{label}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </header>
+
+        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto">
+          <div className="w-full max-w-[480px] py-10">
+            <AnimatePresence mode="wait">
+              {mode === 'SELECT' ? (
+                <motion.section key="select" {...fade}>
+                  <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">¿Es la primera PC con Ventra en este local?</h2>
+                  <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Si después sumás otra caja, la conectás a esta en un minuto.</p>
+
+                  <div className="mt-8 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden" role="listbox">
+                    {options.map((o, i) => (
+                      <button
+                        key={o.key}
+                        role="option"
+                        aria-selected={focused === i}
+                        onMouseEnter={() => setFocused(i)}
+                        onClick={o.onSelect}
+                        className={`w-full flex items-start gap-4 px-5 py-[18px] text-left transition-colors duration-fast cursor-pointer outline-none ${focused === i ? 'bg-slate-50' : 'bg-white'}`}
+                      >
+                        <span className={`mt-0.5 w-9 h-9 shrink-0 rounded-lg border grid place-items-center ${focused === i ? 'border-slate-300 text-slate-900 bg-white' : 'border-slate-200 text-slate-500'}`}>
+                          <o.icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-2">
+                            <span className="text-[15px] font-semibold">{o.title}</span>
+                            {o.recommended && <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Recomendado</span>}
+                          </span>
+                          <span className="block mt-1 text-[14px] text-slate-600 leading-snug">{o.desc}</span>
+                        </span>
+                        <ArrowRight className={`w-4 h-4 mt-2.5 shrink-0 transition-all duration-fast ${focused === i ? 'text-slate-900 translate-x-0.5' : 'text-slate-300'}`} />
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="mt-6 text-[13px] text-slate-500 leading-relaxed">
+                    ¿Cambiaste de PC? Elegí <span className="font-medium text-slate-700">caja principal</span> e ingresá con tu usuario: si el comercio está vinculado a tu cuenta de Ventra, se baja todo desde la nube.
+                  </p>
+                </motion.section>
+              ) : (
+                <motion.section key="client" {...fade}>
+                  <button onClick={backToSelect} className="inline-flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                    <ArrowLeft className="w-3.5 h-3.5" /> Volver
                   </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setFoundServers([])}
-                className="text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 mt-1 hover:underline cursor-pointer"
-              >
-                Cancelar
-              </button>
-            </motion.div>
-          ) : isScanning ? (
-            <motion.div key="scanning" {...(perfMode ? {} : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.25 } })} className="card p-5 sm:p-8 bg-white border border-slate-200 rounded-3xl shadow-xl flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 relative">
-                <span className="absolute inset-1 rounded-2xl border border-rose-400/50 animate-ping" />
-                <span className="absolute inset-1 rounded-2xl border border-rose-400/30 animate-ping [animation-delay:0.6s]" />
-                <Wifi className="w-6 h-6 relative z-10" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-800 mb-1 tracking-tight">Escaneando red local...</h2>
-                <p className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-[280px]">
-                  Buscando un servidor Ventra activo en tu red. Esto puede tardar unos segundos.
-                </p>
-              </div>
-              <div className="w-full">
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative mb-1.5">
-                  <motion.div
-                    className="h-full bg-rose-600 rounded-full"
-                    animate={{ width: `${scanPct}%` }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
-                  />
-                </div>
-                {scanProgress.total > 0 && (
-                  <p className="text-[10px] font-mono font-bold text-slate-400">{scanProgress.done} / {scanProgress.total} direcciones</p>
-                )}
-              </div>
-              <button
-                onClick={cancelScan}
-                className="text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-rose-600 mt-1 flex items-center gap-1 hover:underline cursor-pointer"
-              >
-                <X className="w-3 h-3" /> Cancelar escaneo
-              </button>
-            </motion.div>
-          ) : mode === 'SELECT' ? (
-            <motion.div key="select" className="space-y-3 sm:space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                <motion.button
-                  initial={perfMode ? false : { opacity: 0, y: 14 }}
-                  animate={perfMode ? false : { opacity: 1, y: 0 }}
-                  transition={perfMode ? undefined : { duration: 0.35, delay: 0.12, ease: 'easeOut' }}
-                  whileHover={perfMode ? {} : { y: -3, scale: 1.01 }}
-                  onClick={handleStartLocal}
-                  className={`card p-4 sm:p-5 text-left group bg-white transition-all duration-300 rounded-3xl ${perfMode ? 'shadow-sm' : 'shadow-md hover:shadow-xl'} border border-slate-200 hover:border-rose-400 text-slate-800 flex flex-col justify-between min-h-[140px] sm:min-h-[180px] cursor-pointer`}
-                >
-                  <div>
-                    <div className={`w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-3 group-hover:bg-rose-600 group-hover:text-white transition-all ${perfMode ? '' : 'shadow-sm'}`}>
-                      <Server className="w-5 h-5" />
+
+                  {isScanning ? (
+                    <div className="mt-6">
+                      <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Buscando la otra PC…</h2>
+                      <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Revisamos tu red. Dejá la otra PC prendida y con Ventra abierto.</p>
+                      <div className="mt-8">
+                        <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-slate-900 rounded-full transition-[width] duration-300 ease-out" style={{ width: `${Math.max(4, scanPct)}%` }} />
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-[13px] text-slate-500">
+                          <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {scanProgress.total > 0 ? `${scanPct}% revisado` : 'Preparando la búsqueda'}</span>
+                          <button onClick={() => { cancelScan(); setScanFailed(true); }} className="hover:text-slate-900 transition-colors cursor-pointer">Cancelar</button>
+                        </div>
+                      </div>
                     </div>
-                    <h2 className="text-base font-bold text-slate-800 mb-1 tracking-tight">Iniciar Servidor</h2>
-                    <p className="text-slate-500 text-[11px] font-medium leading-normal">
-                      Esta PC actuará como el servidor central de la tienda, guardando la base de datos local.
-                    </p>
-                  </div>
-                  <div className="flex items-center text-rose-600 group-hover:text-rose-500 font-extrabold text-xs gap-0.5 mt-3">
-                    Comenzar <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
-                </motion.button>
-
-                <motion.button
-                  initial={perfMode ? false : { opacity: 0, y: 14 }}
-                  animate={perfMode ? false : { opacity: 1, y: 0 }}
-                  transition={perfMode ? undefined : { duration: 0.35, delay: 0.2, ease: 'easeOut' }}
-                  whileHover={perfMode ? {} : { y: -3, scale: 1.01 }}
-                  onClick={openClientMode}
-                  className={`card p-4 sm:p-5 text-left group bg-white transition-all duration-300 rounded-3xl ${perfMode ? 'shadow-sm' : 'shadow-md hover:shadow-xl'} border border-slate-200 hover:border-amber-400 text-slate-800 flex flex-col justify-between min-h-[140px] sm:min-h-[180px] cursor-pointer`}
-                >
-                  <div>
-                    <div className={`w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:bg-amber-600 group-hover:text-white transition-all ${perfMode ? '' : 'shadow-sm'}`}>
-                      <Globe className="w-5 h-5" />
+                  ) : foundServers.length > 0 ? (
+                    <div className="mt-6">
+                      <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Encontramos {foundServers.length} PCs con Ventra</h2>
+                      <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Elegí la caja principal del local.</p>
+                      <div className="mt-8 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+                        {foundServers.map((s) => (
+                          <button key={s} onClick={() => connectToServer(s, operationId.current)}
+                            className="group w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-slate-50 transition-colors duration-fast cursor-pointer">
+                            <span className="w-9 h-9 shrink-0 rounded-lg border border-slate-200 grid place-items-center text-slate-500"><Monitor className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+                            <span className="flex-1">
+                              <span className="block text-[15px] font-semibold">PC con Ventra</span>
+                              <span className="block text-[13px] text-slate-500 font-mono">{s}</span>
+                            </span>
+                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors" />
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <h2 className="text-base font-bold text-slate-800 mb-1 tracking-tight">Conectar Cliente</h2>
-                    <p className="text-slate-500 text-[11px] font-medium leading-normal">
-                      Conectate a un servidor del POS existente. Ideal para terminales adicionales de venta.
-                    </p>
-                  </div>
-                  <div className="flex items-center text-amber-600 group-hover:text-amber-500 font-extrabold text-xs gap-0.5 mt-3">
-                    Configurar IP <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
-                </motion.button>
-              </div>
-
-              <motion.button
-                initial={perfMode ? false : { opacity: 0, y: 14 }}
-                animate={perfMode ? false : { opacity: 1, y: 0 }}
-                transition={perfMode ? undefined : { duration: 0.35, delay: 0.28, ease: 'easeOut' }}
-                onClick={handleAutoDetect}
-                className={`w-full group relative overflow-hidden p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-400 ${perfMode ? '' : 'hover:shadow-md'} transition-all text-left flex items-center justify-between cursor-pointer`}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shrink-0">
-                    <Wifi className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="text-sm sm:text-base font-bold text-slate-800 mb-0.5 tracking-tight">Buscar Servidor Automáticamente</h2>
-                    <p className="text-slate-500 text-[11px] font-medium leading-normal truncate">
-                      Escanea tu red local en busca de un servidor activo.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center text-emerald-600 group-hover:text-emerald-500 font-extrabold text-xs gap-0.5 shrink-0 ml-2">
-                  Detectar <ChevronRight className="w-3.5 h-3.5" />
-                </div>
-              </motion.button>
-            </motion.div>
-          ) : (
-            <motion.div key="client" {...(perfMode ? {} : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.25 } })} className="card p-5 sm:p-8 bg-white border border-slate-200 rounded-3xl shadow-xl">
-              <button onClick={() => setMode('SELECT')} className="text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:text-amber-800 mb-4 flex items-center gap-0.5 cursor-pointer">
-                ← Volver atrás
-              </button>
-              <h2 className="text-lg font-bold text-slate-800 mb-1 tracking-tight">Conectar al Servidor</h2>
-              <p className="text-[11px] font-medium text-slate-500 mb-4">Ingresá la dirección IP de la PC que está actuando como servidor del POS.</p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-widest mb-1.5 ml-0.5">Dirección IP del Servidor</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={ip}
-                      onChange={(e) => setIp(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && ip && !isTesting) handleConnectClient(); }}
-                      placeholder="Ej: 192.168.0.15"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-10 py-2.5 text-base font-mono tracking-wider focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 outline-none text-slate-800 transition-all"
-                      autoFocus
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      {ip ? <Wifi className="w-4 h-4 text-amber-600" /> : <WifiOff className="w-4 h-4 text-slate-300" />}
+                  ) : (
+                    <div className="mt-6">
+                      {scanFailed && !showManual ? (
+                        <>
+                          <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">No encontramos otra PC</h2>
+                          <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Revisá que la otra PC esté prendida, con Ventra abierto y conectada a la misma red (el mismo Wi‑Fi o el mismo router).</p>
+                          <div className="mt-8 flex flex-wrap gap-3">
+                            <button onClick={handleAutoDetect} className="h-11 px-5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[14px] font-medium transition-colors cursor-pointer">Buscar de nuevo</button>
+                            <button onClick={() => setShowManual(true)} className="h-11 px-5 rounded-lg border border-slate-300 hover:bg-slate-50 text-[14px] font-medium transition-colors cursor-pointer">Escribir la dirección</button>
+                          </div>
+                          <p className="mt-6 text-[13px] text-slate-500 leading-relaxed">¿Esta es la única PC del local? <button onClick={handleStartLocal} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Usarla como caja principal</button></p>
+                        </>
+                      ) : (
+                        <>
+                          <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Dirección de la otra PC</h2>
+                          <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">En la PC principal la ves en el menú, en Acceso remoto. Tiene esta forma: 192.168.0.15</p>
+                          <label htmlFor="server-ip" className="block mt-8 text-[13px] font-medium text-slate-700">Dirección</label>
+                          <input
+                            id="server-ip"
+                            type="text"
+                            inputMode="decimal"
+                            value={ip}
+                            onChange={(e) => setIp(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && ip && !isTesting) handleConnectClient(); }}
+                            placeholder="192.168.0.15"
+                            className="mt-2 w-full h-11 rounded-lg border border-slate-300 bg-white px-3.5 text-[15px] font-mono tabular-nums text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 transition"
+                            autoFocus
+                          />
+                          <button onClick={handleConnectClient} disabled={isTesting || !ip.trim()}
+                            className="mt-4 w-full h-11 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[14px] font-medium inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                            {isTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Conectando…</> : 'Conectar'}
+                          </button>
+                          <p className="mt-6 text-[13px] text-slate-500"><button onClick={handleAutoDetect} className="font-medium text-slate-900 underline underline-offset-2 cursor-pointer">Buscarla sola en la red</button></p>
+                        </>
+                      )}
                     </div>
-                  </div>
-                </div>
+                  )}
+                </motion.section>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
 
-                <button
-                  onClick={handleConnectClient}
-                  disabled={isTesting || !ip}
-                  className="w-full btn-primary py-3 text-sm bg-amber-700 hover:bg-amber-800 text-white shadow-md flex items-center justify-center gap-1.5 cursor-pointer rounded-xl font-bold disabled:opacity-50"
-                >
-                  {isTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Conectando...</> : 'Probar Conexión'}
-                </button>
-
-                <p className="text-center text-[9px] font-bold text-slate-400">
-                  Asegurate de que ambas PCs estén en la misma red Wi-Fi o cableada.
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        <footer className="flex items-center justify-between px-6 sm:px-10 h-14 shrink-0 text-[12px] text-slate-500">
+          <span>{APP_VERSION ? `Versión ${APP_VERSION}` : 'Ventra'}</span>
+          <a href="https://ventra.store" target="_blank" rel="noreferrer" className="hover:text-slate-900 transition-colors">¿Necesitás ayuda? ventra.store</a>
+        </footer>
+      </main>
     </div>
   );
 }

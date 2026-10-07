@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+// Versión de la app (la del package.json raíz, la misma que publica el instalador)
+const APP_VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8')).version || ''; } catch { return ''; }
+})();
 
 // Demo pública (go-portal-pos): VENTRA_DEMO=true cambia el SDK de Firebase por versiones locales
 // (src/demo/firebase) que guardan todo en el navegador. Así la demo nunca crea nada real.
@@ -15,7 +21,7 @@ const demoFirebase = DEMO
 export default defineConfig({
   base: './',
   plugins: [react()],
-  define: { __VENTRA_DEMO__: JSON.stringify(DEMO) },
+  define: { __VENTRA_DEMO__: JSON.stringify(DEMO), __APP_VERSION__: JSON.stringify(APP_VERSION) },
   resolve: { alias: [{ find: '@', replacement: path.resolve(__dirname, './src') }, ...demoFirebase] },
   server: {
     // La vista del cliente importa la página pública (firebase/tienda/index.html)
