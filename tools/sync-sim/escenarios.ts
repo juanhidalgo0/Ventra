@@ -232,6 +232,26 @@ async function main() {
   let bad3 = 0;
   for (const t of synced) { const [a, b] = [await dump(A.prisma, t), await dump(B.prisma, t)]; const sb = new Set(b); const sa = new Set(a); if (a.some((x) => !sb.has(x)) || b.some((x) => !sa.has(x))) { bad3++; console.log(`  ✗ tras volver B ${t}: A=${a.length} B=${b.length}`); } }
   log(bad3 ? `DIFERENCIAS tras volver B en ${bad3} tablas` : `B volvió, se realineó y quedó IDÉNTICA a A (${r} ciclos)`);
+  // Actualización de Ventra en B que rehace TODAS las tablas (las migraciones de SQLite recrean
+  // la tabla y se llevan sus triggers): B no tiene que volver a bajar todo de la nube.
+  const bootstrapOrig = B.svc.bootstrap.bind(B.svc);
+  let boots = 0;
+  B.svc.bootstrap = async (...args: any[]) => { boots++; return bootstrapOrig(...args); };
+  for (const { name } of (await B.prisma.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'ventra_sync%'`)) as any[]) {
+    await B.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${name}"`);
+  }
+  const prodU: any = ((await A.prisma.$queryRawUnsafe(`SELECT id FROM products LIMIT 1`)) as any[])[0];
+  await A.prisma.$executeRawUnsafe(`UPDATE products SET stock = stock - 3 WHERE id = ?`, prodU.id);
+  await A.cycle();
+  await B.cycle(); await B.cycle();
+  await pg.query(`UPDATE sync_rows SET updated_at = now() - interval '1 minute' WHERE updated_at > now() - interval '1 minute'`);
+  B.svc.nextPullAt = 0; await B.cycle(); await A.cycle();
+  const trigB = Number(((await B.prisma.$queryRawUnsafe(`SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'ventra_sync%'`)) as any[])[0].n);
+  let bad4 = 0;
+  for (const t of synced) { const [a, b] = [await dump(A.prisma, t), await dump(B.prisma, t)]; const sb = new Set(b); const sa = new Set(a); if (a.some((x) => !sb.has(x)) || b.some((x) => !sa.has(x))) { bad4++; console.log(`  ✗ tras actualizar B ${t}: A=${a.length} B=${b.length}`); } }
+  log(`actualización que rehace todas las tablas en B: bajadas completas=${boots} (tiene que ser 0), triggers repuestos=${trigB}`);
+  log(bad4 ? `DIFERENCIAS tras actualizar B en ${bad4} tablas` : 'B sigue IDÉNTICA a A después de la actualización');
+  if (boots !== 0 || bad4) process.exitCode = 1;
   log('filas en Neon:', (await pg.query(`SELECT count(*)::int n FROM sync_rows`)).rows[0].n, '| archivos:', Object.keys(files).length);
   await A.prisma.$disconnect(); await B.prisma.$disconnect();
 }

@@ -519,16 +519,20 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       const consistent = file.deviceId === creds.deviceId && !!dbWm
         && (dbWm === file.watermark || (!!dbWmPrev && dbWmPrev === file.watermark));
 
-      // Una tabla nueva (una actualización que agrega tablas) solo necesita subir esa tabla:
-      // rehacer todo dejaba la caja bloqueada un buen rato en cada actualización
-      const onlyNewTables = bootstrapped && consistent && installedNow.size > 0 && installedNow.size < tables.length;
-      if (onlyNewTables) {
-        console.log(`[Sync] Tablas nuevas: ${[...installedNow].join(', ')}`);
+      // Triggers recién puestos en una caja que ya estaba sincronizada y cuya base es la misma
+      // (la marca de agua coincide): pasa cuando una actualización agrega tablas o rehace alguna
+      // (las migraciones de SQLite recrean la tabla y se llevan sus triggers). Alcanza con subir
+      // esas tablas por detrás. Una actualización nunca vuelve a bajar todo, aunque se hayan
+      // rehecho todas las tablas a la vez: eso dejaba la caja bloqueada un buen rato.
+      const retrigger = bootstrapped && consistent && installedNow.size > 0;
+      if (retrigger) {
+        console.log(`[Sync] Tablas con triggers nuevos: ${[...installedNow].join(', ')}`);
         this.phase = 'syncing';
-        await this.pushAll([...installedNow], 0, 'Subiendo tablas nuevas');
+        await this.pushAll([...installedNow], 0, 'Actualizando la copia en la nube');
         this.progress = null;
       }
-      if (!bootstrapped || !consistent || (installedNow.size > 0 && !onlyNewTables)) await this.bootstrap(tables, creds.deviceId, bootstrapped);
+      // Bajada completa solo si la base es nueva o cambió por fuera (backup restaurado, otra PC)
+      if (!bootstrapped || !consistent) await this.bootstrap(tables, creds.deviceId, bootstrapped);
       else {
         const pushed = await this.pushPending();
         if (pushed || Date.now() >= this.nextPullAt) {
