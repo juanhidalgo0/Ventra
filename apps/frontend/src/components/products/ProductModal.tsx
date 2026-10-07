@@ -76,14 +76,10 @@ interface ProductModalProps {
  * campo enfocado se resalta sola con `focus-within`: el contorno usa `outline`
  * (no ocupa espacio) para que no se mueva nada al encenderse.
  */
-function FormSection({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
+function FormSection({ title, children }: { icon?: any; title: string; children: React.ReactNode }) {
   return (
-    <section className="group rounded-2xl outline outline-2 outline-offset-[10px] outline-transparent transition-[outline-color] duration-200 focus-within:outline-rose-200">
-      <div className="flex items-center gap-2 mb-2.5">
-        <Icon className="w-4 h-4 text-rose-600" />
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 transition-colors group-focus-within:text-rose-700">{title}</h3>
-        <div className="flex-1 h-px bg-slate-100 transition-colors group-focus-within:bg-rose-200" />
-      </div>
+    <section>
+      <h3 className="text-[13px] font-semibold text-slate-900 mb-2.5">{title}</h3>
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -115,9 +111,9 @@ function Collapsible({ icon: Icon, title, hint, defaultOpen, badge, children }: 
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
   return (
-    <div className={`rounded-xl border transition-colors ${open ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50'}`}>
-      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-3 py-2 text-left">
-        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${open ? 'bg-rose-50 text-rose-600' : 'bg-white border border-slate-200 text-slate-500'}`}>
+    <div className={`rounded-xl border transition-colors ${open ? 'border-slate-300 bg-white' : 'border-transparent hover:bg-slate-50'}`}>
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-2 py-1.5 text-left">
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${open ? 'bg-rose-50 text-rose-600' : 'text-slate-400'}`}>
           <Icon className="w-4 h-4" />
         </span>
         <span className="flex-1 min-w-0">
@@ -891,8 +887,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         {/* Header */}
         <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
           <div>
-            <p className="eyebrow">{isEditing ? 'Inventario · Edición' : 'Inventario'}</p>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight mt-0.5">{isEditing ? 'Editar producto' : 'Agregar producto'}</h2>
+            <h2 className="text-lg font-semibold text-slate-900 tracking-tight">{isEditing ? 'Editar producto' : 'Agregar producto'}</h2>
           </div>
           <button onClick={onClose} type="button" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors" aria-label="Cerrar">
             <X className="w-5 h-5" />
@@ -920,18 +915,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
             </div>
 
             <div>
-              <label className={labelCls}>Descripción <span className="font-normal text-slate-400">(opcional, se ve en la tienda online)</span></label>
-              <textarea
-                value={formData.description}
-                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                maxLength={300}
-                rows={2}
-                placeholder="Ej: Salsa de tomate, muzzarella, jamón y aceitunas"
-                className={inputCls + ' py-2 resize-none'}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Código de barras</label>
                 <div className="relative">
@@ -962,16 +945,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                     </button>
                   )}
                 </div>
-              </div>
-              <div>
-                <label className={labelCls}>SKU <span className="text-slate-400 font-normal text-[12px]">(opcional)</span></label>
-                <input
-                  type="text"
-                  value={formData.sku}
-                  onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
-                  onFocus={e => e.target.select()}
-                  className={inputCls}
-                />
               </div>
             </div>
 
@@ -1054,7 +1027,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
           {/* ── Organización ── */}
           <FormSection icon={FolderTree} title="Organización">
-            <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[12.5px] font-semibold text-slate-800">Categoría</label>
@@ -1102,6 +1074,12 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 )}
               </div>
 
+            <Collapsible
+              icon={FolderTree}
+              title="Más datos"
+              hint={isHardwareStore ? 'Marca, proveedor, SKU y ubicación' : 'Marca, proveedor y SKU'}
+              defaultOpen={!!(formData.brandId || formData.supplierId || formData.sku || formData.location)}
+            >
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[12.5px] font-semibold text-slate-800">Marca</label>
@@ -1133,7 +1111,6 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                   </div>
                 )}
               </div>
-            </div>
 
             <div>
               <label className={labelCls}>Proveedor <span className="text-slate-400 font-normal text-[12px]">({suppliers.length} disponibles)</span></label>
@@ -1144,6 +1121,17 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 </select>
                 <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>SKU <span className="text-slate-400 font-normal text-[12px]">(código interno, opcional)</span></label>
+              <input
+                type="text"
+                value={formData.sku}
+                onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                onFocus={e => e.target.select()}
+                className={inputCls}
+              />
             </div>
 
             {isHardwareStore && (
@@ -1158,6 +1146,23 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 />
               </div>
             )}
+            </Collapsible>
+
+            <Collapsible
+              icon={Package}
+              title="Descripción para la tienda online"
+              hint="Lo que lee el cliente en tu tienda"
+              defaultOpen={!!formData.description}
+            >
+              <textarea
+                value={formData.description}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                maxLength={300}
+                rows={2}
+                placeholder="Ej: Salsa de tomate, muzzarella, jamón y aceitunas"
+                className={inputCls + ' h-auto py-2 resize-none'}
+              />
+            </Collapsible>
           </FormSection>
 
           </div>
@@ -1453,7 +1458,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           <div className="space-y-5 min-w-0 md:col-span-2 xl:col-span-1">
           {/* ── Inventario ── */}
           <FormSection icon={Boxes} title="Inventario">
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 cursor-pointer select-none">
+            <label className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 -mx-2 hover:bg-slate-50 cursor-pointer select-none">
               <span>
                 <span className="block text-[13px] font-semibold text-slate-800">Stock ilimitado</span>
                 <span className="block text-[11.5px] text-slate-500">Para servicios o productos que no se cuentan</span>
@@ -1510,7 +1515,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
             {canUseExpiry && (
               <>
-                <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 cursor-pointer select-none">
+                <label className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 -mx-2 hover:bg-slate-50 cursor-pointer select-none">
                   <span>
                     <span className="block text-[13px] font-semibold text-slate-800">Controla vencimiento</span>
                     <span className="block text-[11.5px] text-slate-500">Cargá las fechas por lote y te avisamos antes de que venzan</span>
