@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { ArrowLeft, ArrowRight, Check, Loader2, Monitor, Network } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Monitor, Network } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import { MangoLogo } from '../common/MangoLogo';
-import { APP_VERSION } from '../../appVersion';
+import AuthLayout from './AuthLayout';
 
 export const GoDeliveryLogo = MangoLogo;
 
@@ -283,62 +283,8 @@ export default function ConnectionScreen() {
   const fade = perfMode ? {} : { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -12 }, transition: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } };
 
   return (
-    <div className="h-screen w-screen flex bg-white text-slate-900 select-none overflow-hidden">
-      {/* Panel de marca */}
-      <aside className="hidden lg:flex w-[40%] max-w-[560px] shrink-0 flex-col justify-between bg-rose-900 text-white px-12 py-10">
-        <div className="flex items-center gap-3">
-          <GoDeliveryLogo className="w-9 h-9 rounded-[10px]" />
-          <span className="text-[17px] font-semibold tracking-tight">Ventra</span>
-        </div>
-
-        <div className="max-w-[400px]">
-          <h1 className="text-[34px] leading-[1.15] font-semibold tracking-[-0.02em]">
-            Tu caja, tu stock y tus ventas, en un solo lugar.
-          </h1>
-          <ul className="mt-8 space-y-4 text-[15px] text-rose-100/90">
-            {[
-              'Cobrás rápido, con lector de códigos y todos los medios de pago.',
-              'El stock se actualiza solo con cada venta y cada compra.',
-              'Ves cómo va el negocio desde el celular, estés donde estés.',
-            ].map((t) => (
-              <li key={t} className="flex gap-3">
-                <Check className="w-4 h-4 mt-[3px] shrink-0 text-rose-300" strokeWidth={2.5} />
-                <span className="leading-snug">{t}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="text-[13px] text-rose-200/70">Hecho en Argentina para kioscos, almacenes y comercios de barrio.</p>
-      </aside>
-
-      {/* Contenido */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="flex items-center justify-between px-6 sm:px-10 h-16 shrink-0">
-          <div className="flex items-center gap-2.5 lg:invisible">
-            <GoDeliveryLogo className="w-7 h-7 rounded-lg" />
-            <span className="text-[15px] font-semibold tracking-tight">Ventra</span>
-          </div>
-          <ol className="flex items-center gap-2 text-[13px]" aria-label="Pasos">
-            {['Esta PC', 'Ingresar'].map((label, i) => {
-              const n = i + 1;
-              const done = n < step;
-              const active = n === step;
-              return (
-                <li key={label} className="flex items-center gap-2">
-                  {i > 0 && <span className="w-6 h-px bg-slate-200" />}
-                  <span className={`w-5 h-5 rounded-full grid place-items-center text-[11px] font-semibold tabular-nums ${active ? 'bg-slate-900 text-white' : done ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {done ? <Check className="w-3 h-3" strokeWidth={3} /> : n}
-                  </span>
-                  <span className={active ? 'font-medium text-slate-900' : 'text-slate-500'}>{label}</span>
-                </li>
-              );
-            })}
-          </ol>
-        </header>
-
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto">
-          <div className="w-full max-w-[480px] py-10">
+    <AuthLayout step={step}>
+      <div className="select-none">
             <AnimatePresence mode="wait">
               {mode === 'SELECT' ? (
                 <motion.section key="select" {...fade}>
@@ -452,14 +398,7 @@ export default function ConnectionScreen() {
                 </motion.section>
               )}
             </AnimatePresence>
-          </div>
-        </div>
-
-        <footer className="flex items-center justify-between px-6 sm:px-10 h-14 shrink-0 text-[12px] text-slate-500">
-          <span>{APP_VERSION ? `Versión ${APP_VERSION}` : 'Ventra'}</span>
-          <a href="https://ventra.store" target="_blank" rel="noreferrer" className="hover:text-slate-900 transition-colors">¿Necesitás ayuda? ventra.store</a>
-        </footer>
-      </main>
-    </div>
+      </div>
+    </AuthLayout>
   );
 }

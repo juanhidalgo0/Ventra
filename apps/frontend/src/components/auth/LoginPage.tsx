@@ -1,25 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { motion, AnimatePresence } from 'framer-motion';
 
-import { ShoppingBag, Eye, EyeOff, Loader2, ShieldCheck, UserCheck, UserPlus, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
-import { MangoLogo } from '../common/MangoLogo';
+import AuthLayout, { authInput, authLead, authPrimaryButton, authTitle } from './AuthLayout';
 import AdminRecovery from './AdminRecovery';
 import { usePlanStore, PLANS, type PlanId } from '../../stores/planStore';
-
-const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
-const MotionDiv = (perfMode ? 'div' : motion.div) as any;
-const fadeUp = perfMode ? {} : { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
-const staggerParent = perfMode ? {} : {
-  initial: 'hidden', animate: 'visible',
-  variants: { hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } } }
-};
-const staggerItem = perfMode ? {} : {
-  variants: { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } } }
-};
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -38,7 +26,7 @@ export default function LoginPage() {
   const [showBackToSetup, setShowBackToSetup] = useState(false);
   const [recovering, setRecovering] = useState(false);
 
-  const [loadingMessage, setLoadingMessage] = useState('Iniciando servidores locales...');
+  const [loadingMessage, setLoadingMessage] = useState('Abriendo la base de datos…');
 
   const { login, supportLogin, isLoading } = useAuthStore();
   const navigate = useNavigate();
@@ -132,7 +120,7 @@ export default function LoginPage() {
                 const isServerMode = localStorage.getItem('connection_mode') !== 'CLIENT';
                 if (isServerMode && infoData.localIp && infoData.localIp !== 'localhost') {
                   toast.success(
-                    `Servidor iniciado. Conexión en red: http://${infoData.localIp}:${p}`, 
+                    `Caja lista. Para sumar otra PC, usá la dirección ${infoData.localIp}`, 
                     { duration: 8000, id: 'server-started-toast' }
                   );
                 }
@@ -152,13 +140,13 @@ export default function LoginPage() {
       console.warn(`[Frontend] Backend not ready on ports 3001-3005, retry #${retries}...`);
 
       if (retries >= 35) {
-        setLoadingMessage('Estableciendo conexión final con el backend...');
+        setLoadingMessage('Sigue cargando. Si pasa más de un minuto, cerrá Ventra y volvé a abrirlo.');
       } else if (retries >= 20) {
-        setLoadingMessage('Iniciando el servidor de base de datos local...');
+        setLoadingMessage('Ya casi está: cargando tus productos y ventas…');
       } else if (retries >= 5) {
-        setLoadingMessage('Instalando dependencias de la aplicación... (Solo la primera vez, esto puede tardar un momento)');
+        setLoadingMessage('La primera vez tarda un poco más: estamos preparando todo.');
       } else {
-        setLoadingMessage('Iniciando servidores locales...');
+        setLoadingMessage('Abriendo la base de datos…');
       }
 
       if (retries < maxRetries) {
@@ -210,165 +198,138 @@ export default function LoginPage() {
     }
   };
 
+  const changeSetup = showBackToSetup ? (
+    <button
+      type="button"
+      onClick={() => { localStorage.removeItem('server_ip'); localStorage.removeItem('connection_mode'); navigate('/setup'); }}
+      className="inline-flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+    >
+      <ArrowLeft className="w-3.5 h-3.5" /> Cambiar cómo se usa esta PC
+    </button>
+  ) : undefined;
+  const step = showBackToSetup ? 2 : undefined;
+
   if (checkLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
-        <MotionDiv
-          {...(perfMode ? {} : { initial: { opacity: 0, scale: 0.96, y: 8 }, animate: { opacity: 1, scale: 1, y: 0 }, transition: { duration: 0.35, ease: 'easeOut' } })}
-          className="relative z-10 w-full max-w-md card p-8 bg-white border border-slate-400/80 shadow-2xl text-center flex flex-col items-center gap-6"
-        >
-          <MotionDiv {...staggerParent} className="flex flex-col items-center gap-6 w-full">
-            <MotionDiv {...staggerItem} className="boot-halo">
-              <MangoLogo className="w-16 h-16 relative z-10 boot-halo__logo" />
-            </MotionDiv>
-
-            <MotionDiv {...staggerItem} className="space-y-2">
-              <h2 className="text-xl font-bold text-slate-800 tracking-tight">Preparando tu terminal</h2>
-              <p className="text-rose-600 text-[10px] text-center font-extrabold uppercase tracking-widest flex items-center justify-center gap-1.5">
-                <span>Cargando sistema POS</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-              </p>
-            </MotionDiv>
-
-            <MotionDiv {...staggerItem} className="w-full bg-slate-50 p-6 rounded-2xl border border-slate-400/50 flex flex-col items-center gap-4">
-              <Loader2 className="w-8 h-8 text-rose-600 animate-spin" />
-              <div className="space-y-1 text-center">
-                <p key={loadingMessage} className="text-slate-700 text-xs font-bold leading-normal px-2 anim-rise">{loadingMessage}</p>
-                <p className="text-[10px] text-slate-600 font-semibold">
-                  Por favor, no cierres la aplicación
-                </p>
-              </div>
-            </MotionDiv>
-
-            <MotionDiv {...staggerItem} className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative">
-              {/* Barra indeterminada en CSS (transform): se mueve en cualquier modo */}
-              <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-rose-600 anim-indeterminate" />
-            </MotionDiv>
-          </MotionDiv>
-        </MotionDiv>
-      </div>
+      <AuthLayout step={step}>
+        <section className="select-none">
+          <h2 className={authTitle}>Abriendo la caja</h2>
+          <p key={loadingMessage} className={`${authLead} anim-rise`}>{loadingMessage}</p>
+          <div className="mt-8 relative h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
+            {/* Barra indeterminada en CSS (transform): se mueve en cualquier modo */}
+            <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-rose-600 anim-indeterminate" />
+          </div>
+          <p className="mt-3 text-[13px] text-slate-500">No cierres la aplicación, tarda unos segundos.</p>
+        </section>
+      </AuthLayout>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center relative overflow-hidden">
-      {showBackToSetup && (
-        <button
-          type="button"
-          onClick={() => { localStorage.removeItem('server_ip'); localStorage.removeItem('connection_mode'); navigate('/setup'); }}
-          className="absolute top-5 left-5 z-20 flex items-center gap-1.5 text-slate-500 hover:text-rose-600 text-[11px] font-bold cursor-pointer transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Cambiar servidor
-        </button>
-      )}
-      <MotionDiv {...staggerParent} className="relative z-10 w-full max-w-md px-6">
-        <MotionDiv {...staggerItem} className="text-center mb-8 flex flex-col items-center gap-3">
-          <MangoLogo className="w-16 h-16" />
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 tracking-tight mb-0.5 leading-none">Ventra</h1>
-            <p className="text-[10px] text-rose-600 font-extrabold tracking-widest uppercase flex items-center justify-center gap-1.5 mt-2">
-              <span>Conectado a tu tienda online</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-            </p>
-          </div>
-        </MotionDiv>
-
-        <MotionDiv {...staggerItem} className="card p-8 bg-white border border-slate-400/80 shadow-2xl text-slate-800 w-full">
-            {!isInitialized ? (
-              <div>
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-500/20">
-                    <UserPlus className="w-4 h-4" />
-                  </div>
-                  <h2 className="text-lg font-bold text-slate-800 tracking-tight">Configurar Administrador</h2>
-                </div>
-                <p className="text-xs text-slate-700 mb-6 font-medium leading-relaxed">
-                  Esta es la primera vez que se inicia el sistema. Debes crear una cuenta de administrador inicial obligatoria para poder acceder.
-                </p>
- 
-                <form onSubmit={handleRegisterFirstAdmin} className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Usuario (ADMIN)</label>
-                    <input type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ej: ADMIN" className="w-full bg-slate-50 border border-slate-400 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Contraseña (Solo números)</label>
-                    <div className="relative">
-                      <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ej: 1234" className="w-full bg-slate-50 border border-slate-400 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-650 transition-colors">
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={registering || !username || !password} className="w-full btn-primary py-3.5 text-base bg-rose-600 hover:bg-rose-750 text-white flex items-center justify-center gap-2 disabled:opacity-50 mt-6 cursor-pointer shadow-lg shadow-rose-500/20 font-bold rounded-2xl">
-                    {registering ? <><Loader2 className="w-5 h-5 animate-spin" /> Registrando...</> : 'Crear y Continuar'}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div>
-                {isDemo && (
-                  <div className="mb-6 pb-6 border-b border-dashed border-slate-300">
-                    <p className="text-[15px] font-bold text-slate-900">¿Qué plan querés probar?</p>
-                    <p className="text-[12px] text-slate-500 mb-3">Entrás con un clic, sin registrarte. Adentro podés cambiar de plan cuando quieras.</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
-                        <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
-                          className={`text-left p-3 rounded-2xl border-2 transition-colors disabled:opacity-60 cursor-pointer ${id === demoSuggested ?'border-rose-600 bg-rose-50/60' : 'border-slate-200 hover:border-rose-300 bg-white'}`}>
-                          <span className="flex items-center justify-between gap-1">
-                            <span className="text-[13.5px] font-bold text-slate-900">{PLANS[id].name}</span>
-                            {demoLoading === id && <Loader2 className="w-4 h-4 animate-spin text-rose-600 shrink-0" />}
-                          </span>
-                          <span className="block text-[11.5px] text-slate-500 leading-snug mt-0.5">{PLANS[id].tagline}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-center text-[10px] text-slate-600 font-semibold mt-2.5">
-                      Sin registro. Usuario de prueba: <span className="font-mono font-bold">ADMIN</span> / <span className="font-mono font-bold">1234</span>
-                    </p>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center border border-rose-500/20">
-                    <UserCheck className="w-4 h-4" />
-                  </div>
-                  <h2 className="text-lg font-bold text-slate-800 tracking-tight">{isDemo ? 'O ingresá manualmente' : 'Acceso de Empleado'}</h2>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Usuario</label>
-                    <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Ingresá tu usuario" className="w-full bg-slate-50 border border-slate-400 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" autoFocus required />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1.5 ml-1">Contraseña</label>
-                    <div className="relative">
-                      <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ingresá tu contraseña" className="w-full bg-slate-50 border border-slate-400 rounded-2xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-rose-500 outline-none text-slate-800 transition-all font-semibold" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-650 transition-colors">
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                  </div>
-                  <button id="login-submit" type="submit" disabled={isLoading || !username || !password} className="w-full btn-primary py-3.5 text-base bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center gap-2 disabled:opacity-50 mt-6 cursor-pointer shadow-lg shadow-rose-500/20 font-bold rounded-2xl">
-                    {isLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Ingresando...</> : 'Iniciar Turno'}
-                  </button>
-                </form>
-                {!isDemo && (
-                  <button type="button" onClick={() => setRecovering(true)} className="mt-4 w-full text-center text-[12px] font-semibold text-slate-500 hover:text-rose-600 cursor-pointer">
-                    ¿Olvidaste la contraseña del administrador?
-                  </button>
-                )}
-                {supportAvailable && (
-                  <button type="button" onClick={enterAsSupport} disabled={isLoading} className="mt-2 w-full text-center text-[12px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer disabled:opacity-50">
-                    Volver a entrar como soporte (administrador)
-                  </button>
-                )}
-              </div>
-            )}
-        </MotionDiv>
-        <MotionDiv {...staggerItem} className="text-center text-slate-600/60 text-[10px] font-bold uppercase tracking-widest mt-8">© 2026 Ventra POS — v2.0</MotionDiv>
-      </MotionDiv>
-      {recovering && <AdminRecovery onClose={() => setRecovering(false)} />}
+  const passwordField = (id: string | undefined, placeholder: string) => (
+    <div className="relative mt-2">
+      <input
+        id={id}
+        type={showPassword ? 'text' : 'password'}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={placeholder}
+        className={`${authInput} pr-11`}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setShowPassword(!showPassword)}
+        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 grid place-items-center rounded-md text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+      >
+        {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
+      </button>
     </div>
+  );
+
+  return (
+    <AuthLayout step={step} headerAction={changeSetup}>
+      {!isInitialized ? (
+        <section>
+          <h2 className={authTitle}>Creá el usuario administrador</h2>
+          <p className={authLead}>Es el usuario del dueño: con él se configura todo y se dan de alta los empleados. Hay uno solo por comercio.</p>
+
+          <form onSubmit={handleRegisterFirstAdmin} className="mt-8 space-y-5">
+            <div>
+              <label htmlFor="admin-username" className="block text-[13px] font-medium text-slate-700">Usuario</label>
+              <input id="admin-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} placeholder="Por ejemplo, el nombre del comercio" className={`${authInput} mt-2`} autoFocus required />
+            </div>
+            <div>
+              <label htmlFor="admin-password" className="block text-[13px] font-medium text-slate-700">Contraseña</label>
+              {passwordField('admin-password', 'Mejor solo números, así la cargás rápido')}
+            </div>
+            <button type="submit" disabled={registering || !username || !password} className={`${authPrimaryButton} mt-2`}>
+              {registering ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</> : 'Crear y continuar'}
+            </button>
+          </form>
+        </section>
+      ) : (
+        <section>
+          {isDemo && (
+            <div className="mb-10">
+              <h2 className={authTitle}>Probá Ventra</h2>
+              <p className={authLead}>Elegí un plan y entrás con un clic, sin registrarte. Adentro lo podés cambiar cuando quieras.</p>
+              <div className="mt-6 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+                {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
+                  <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
+                    className="group w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer">
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="text-[14px] font-semibold">{PLANS[id].name}</span>
+                        {id === demoSuggested && <span className="text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-100 rounded-full px-2 py-px">Sugerido</span>}
+                      </span>
+                      <span className="block text-[13px] text-slate-500 leading-snug mt-0.5">{PLANS[id].tagline}</span>
+                    </span>
+                    {demoLoading === id
+                      ? <Loader2 className="w-4 h-4 animate-spin text-slate-500 shrink-0" />
+                      : <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-900 transition-colors shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h2 className={isDemo ? 'text-[17px] font-semibold tracking-tight' : authTitle}>{isDemo ? 'O ingresá con un usuario' : 'Ingresá a la caja'}</h2>
+          {isDemo
+            ? <p className="mt-1 text-[13px] text-slate-500">Usuario de prueba: <span className="font-mono">ADMIN</span> · contraseña <span className="font-mono">1234</span></p>
+            : <p className={authLead}>Con tu usuario y contraseña. Cada uno entra con el suyo, así las ventas quedan a su nombre.</p>}
+
+          <form onSubmit={handleSubmit} className={`${isDemo ? 'mt-5' : 'mt-8'} space-y-5`}>
+            <div>
+              <label htmlFor="login-username" className="block text-[13px] font-medium text-slate-700">Usuario</label>
+              <input id="login-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.toUpperCase())} className={`${authInput} mt-2`} autoComplete="username" autoFocus={!isDemo} required />
+            </div>
+            <div>
+              <label htmlFor="login-password" className="block text-[13px] font-medium text-slate-700">Contraseña</label>
+              {passwordField('login-password', '')}
+            </div>
+            <button id="login-submit" type="submit" disabled={isLoading || !username || !password} className={`${authPrimaryButton} mt-2`}>
+              {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingresando…</> : 'Iniciar turno'}
+            </button>
+          </form>
+
+          {(!isDemo || supportAvailable) && (
+            <div className="mt-6 flex flex-col items-start gap-2 text-[13px]">
+              {!isDemo && (
+                <button type="button" onClick={() => setRecovering(true)} className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                  ¿Olvidaste la contraseña del administrador?
+                </button>
+              )}
+              {supportAvailable && (
+                <button type="button" onClick={enterAsSupport} disabled={isLoading} className="text-amber-700 hover:text-amber-800 transition-colors cursor-pointer disabled:opacity-50">
+                  Volver a entrar como soporte (administrador)
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+      {recovering && <AdminRecovery onClose={() => setRecovering(false)} />}
+    </AuthLayout>
   );
 }

@@ -26,8 +26,8 @@
       {
         "label": "splashscreen",
         "url": "splashscreen.html",
-        "width": 320,
-        "height": 320,
+        "width": 440,
+        "height": 260,
         "resizable": false,
         "decorations": false,
         "alwaysOnTop": true,

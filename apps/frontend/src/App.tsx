@@ -13,6 +13,7 @@ import Updater from './components/updater/Updater';
 import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
+import { APP_VERSION } from './appVersion';
 
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { MangoLogo } from './components/common/MangoLogo';
@@ -475,26 +476,30 @@ export default function App() {
     return (
       <>
       <SyncDownloadBanner />
-      <div className="fixed inset-0 bg-slate-50 flex flex-col items-center justify-center p-4 z-50">
-        <div className="w-full max-w-[400px] bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center text-center">
-          <div className="boot-halo mb-6">
-            <MangoLogo className="w-16 h-16 relative z-10 boot-halo__logo" />
+      <div className="fixed inset-0 bg-white flex items-center justify-center p-6 z-50">
+        <div className="w-full max-w-[360px]">
+          <div className="flex items-center gap-2.5">
+            <MangoLogo className="w-7 h-7 rounded-lg" />
+            <span className="text-[15px] font-semibold tracking-tight text-slate-900">Ventra</span>
           </div>
-          <h2 className="text-xl font-bold tracking-tight mb-1 text-slate-900">Ventra POS</h2>
-          <p className="text-slate-500 text-[13px] mb-6">Preparando el punto de venta</p>
+          <h2 className="mt-8 text-[24px] leading-tight font-semibold tracking-[-0.02em] text-slate-900">Preparando la caja</h2>
+          <p key={warmingStatus} className="mt-2 text-[14px] text-slate-600 anim-rise">{warmingStatus}</p>
 
-          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4 relative">
+          <div className="mt-8 relative h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
             <div
               className="h-full w-full rounded-full bg-rose-600 origin-left transition-transform duration-500 ease-out"
               style={{ transform: `scaleX(${Math.max(0.04, warmingProgress / 100)})` }}
             />
             {warmingProgress < 100 && (
-              <div className="absolute inset-y-0 left-0 w-1/4 bg-white/45 anim-indeterminate" />
+              <div className="absolute inset-y-0 left-0 w-1/4 bg-white/50 anim-indeterminate" />
             )}
           </div>
+          <div className="mt-2.5 flex justify-between text-[12px] text-slate-500 tabular-nums">
+            <span>{Math.round(warmingProgress)}%</span>
+            {APP_VERSION && <span>Versión {APP_VERSION}</span>}
+          </div>
 
-          <p key={warmingStatus} className="text-[13px] font-medium text-slate-600 mb-1 anim-rise">{warmingStatus}</p>
-          {warmingError && <p className="text-[12px] font-semibold text-rose-700 mt-2 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">{warmingError}</p>}
+          {warmingError && <p className="mt-6 text-[13px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{warmingError}</p>}
         </div>
       </div>
       </>
