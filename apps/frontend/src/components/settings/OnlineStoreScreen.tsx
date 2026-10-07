@@ -40,8 +40,11 @@ import {
   UploadCloud,
   ShoppingBag,
   Ticket,
+  CalendarDays,
 } from 'lucide-react';
 import StoreCoupons from './StoreCoupons';
+import { ColorField, ImagePick, StorePreview, StoreHoursEditor, Switch } from '../store/StoreLook';
+import { usePlanStore } from '../../stores/planStore';
 import {
   resolveStoreId,
   loadStoreConfig,
@@ -53,8 +56,6 @@ import {
   ORDER_CHANNELS,
   publishProductImages,
   PAYMENT_OPTIONS,
-  dayRanges,
-  withRanges,
   subscribeToStoreOrders,
   fetchAllProducts,
   loadPublishedCatalog,
@@ -155,6 +156,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [confirm, confirmDialog] = useConfirm();
   const barRight = useLeftOfHelpButton();
+  const hasAgenda = usePlanStore((s) => s.features.agenda);
 
   useEffect(() => {
     (async () => {
@@ -531,6 +533,12 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
           {tab === 'apariencia' && (
             <Card title="Apariencia" text="Colores, logo y portada: que la tienda se vea como tu negocio.">
+              {hasAgenda && (
+                <p className="flex items-start gap-2.5 rounded-xl bg-sky-50 border border-sky-100 px-3.5 py-2.5 text-[13px] text-sky-900 -mt-1">
+                  <CalendarDays className="w-4 h-4 mt-0.5 shrink-0 text-sky-600" />
+                  <span>Es la misma página donde te reservan turnos: el logo, los colores, la portada y los horarios también se cambian desde <b>Agenda → Configurar → Mi página</b>, y lo que cambies en un lado se ve en el otro.</span>
+                </p>
+              )}
               <div className="grid grid-cols-1 xl:grid-cols-[1fr,1.1fr] gap-7">
                 <div className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
@@ -545,7 +553,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                     <input type="text" maxLength={90} value={config.announcement || ''} onChange={(e) => update({ announcement: e.target.value })} className={inputBase} placeholder="Envío gratis en compras desde $30.000" />
                   </Field>
                 </div>
-                <StorePreview config={config} accent={accent} />
+                <StorePreview config={config} accent={accent} subtitle={config.description || (RUBROS.find((r) => r.id === config.rubro) || RUBROS[0]).label} />
               </div>
               {crop && (
                 <ImageCropModal
@@ -606,7 +614,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
           {tab === 'horarios' && (
             <Card title="Horarios de atención" text='La tienda muestra "Abierto ahora" o "Cerrado". Los pedidos se pueden hacer igual.'>
-              <HoursEditor config={config} update={update} />
+              <StoreHoursEditor hours={config.hours} onChange={(hours) => update({ hours })} />
             </Card>
           )}
 
@@ -917,91 +925,6 @@ function ProductsSection({ products, isLoading, diff, publishedCount, pendingTog
   );
 }
 
-// ─── Horarios ────────────────────────────────────────────────────
-const WEEK = [
-  { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
-  { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
-];
-
-function HoursEditor({ config, update }: { config: StoreConfig; update: (p: Partial<StoreConfig>) => void }) {
-  const allHours = config.hours || [0, 1, 2, 3, 4, 5, 6].map(() => ({ open: false, from: '09:00', to: '20:00' }));
-  return (
-    <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-      {WEEK.map(({ idx, label }) => {
-        const h = allHours[idx] || { open: false, from: '09:00', to: '20:00' };
-        const ranges = dayRanges(h);
-        const saveDay = (next: typeof h) => { const hours = [...allHours]; hours[idx] = next; update({ hours }); };
-        const setRange = (i: number, patch: Partial<{ from: string; to: string }>) =>
-          saveDay(withRanges(h, ranges.map((r, j) => (j === i ? { ...r, ...patch } : r))));
-        return (
-          <div key={idx} className="flex items-start gap-4 px-4 py-3">
-            <button type="button" onClick={() => saveDay({ ...h, open: !h.open })} className="flex items-center gap-3 w-36 h-9 shrink-0">
-              <Switch on={h.open} small />
-              <span className={`text-[14px] font-semibold ${h.open ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
-            </button>
-            {h.open ? (
-              <div className="flex-1 flex flex-col gap-1.5">
-                {ranges.map((r, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[13px] text-slate-500">
-                    <input type="time" value={r.from} onChange={(e) => setRange(i, { from: e.target.value })} className="h-9 border border-slate-300 rounded-lg px-2 text-slate-800" />
-                    a
-                    <input type="time" value={r.to} onChange={(e) => setRange(i, { to: e.target.value })} className="h-9 border border-slate-300 rounded-lg px-2 text-slate-800" />
-                    {ranges.length > 1 && (
-                      <button type="button" onClick={() => saveDay(withRanges(h, ranges.filter((_, j) => j !== i)))} className="text-[12.5px] font-semibold text-slate-400 hover:text-rose-600 px-1.5">Quitar</button>
-                    )}
-                  </div>
-                ))}
-                <div className="flex items-center gap-4">
-                  {ranges.length < 3 && (
-                    <button type="button" onClick={() => {
-                      const last = ranges[ranges.length - 1];
-                      saveDay(withRanges(h, [...ranges, { from: last && last.to < '17:00' ? '17:00' : '20:00', to: last && last.to < '17:00' ? '21:00' : '23:00' }]));
-                    }} className="text-[12.5px] font-semibold text-rose-700 hover:underline">+ Agregar otro horario</button>
-                  )}
-                  {idx === 1 && (
-                    <button type="button" onClick={() => update({ hours: allHours.map((d, j) => (j === 0 ? d : { ...h, ranges: [...ranges] })) })} className="text-[12.5px] font-semibold text-slate-500 hover:text-slate-800">
-                      Copiar a lunes–sábado
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <span className="text-[13px] text-slate-400 h-9 flex items-center">Cerrado</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Vista previa ────────────────────────────────────────────────
-function StorePreview({ config, accent }: { config: StoreConfig; accent: string }) {
-  const rubro = RUBROS.find((r) => r.id === config.rubro) || RUBROS[0];
-  return (
-    <div>
-      <p className="text-[12px] font-semibold text-slate-500 mb-2">Vista previa</p>
-      <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm bg-white">
-        {config.announcement && <div className="px-3 py-1.5 text-center text-[11.5px] font-semibold text-white truncate" style={{ backgroundColor: accent }}>{config.announcement}</div>}
-        <div className="aspect-[3/1] bg-slate-100 overflow-hidden">
-          {config.bannerUrl ? <img src={config.bannerUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full" style={{ background: `linear-gradient(135deg, ${accent}, ${config.secondaryColor})` }} />}
-        </div>
-        <div className="p-4 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl border-2 border-white shadow-md -mt-10 overflow-hidden shrink-0 flex items-center justify-center" style={{ backgroundColor: config.logoUrl ? '#fff' : accent }}>
-            {config.logoUrl ? <img src={config.logoUrl} alt="" className="w-full h-full object-cover" /> : <Store className="w-5 h-5 text-white" />}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[14.5px] font-bold text-slate-900 truncate">{config.businessName || 'Mi negocio'}</p>
-            <p className="text-[12px] text-slate-500 truncate">{config.description || rubro.label}</p>
-          </div>
-          <span className="ml-auto text-white text-[11.5px] font-bold px-3 py-2 rounded-lg shrink-0" style={{ backgroundColor: accent }}>Ver carrito</span>
-        </div>
-      </div>
-      <p className="text-[12px] text-slate-500 mt-2">Se actualiza mientras editás. Tus clientes lo ven recién al publicar.</p>
-    </div>
-  );
-}
-
 // ─── Piezas ──────────────────────────────────────────────────────
 function Card({ title, text, action, children }: { title: string; text?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -1045,14 +968,6 @@ function IconBtn({ title, onClick, children }: { title: string; onClick: () => v
   );
 }
 
-function Switch({ on, small }: { on: boolean; small?: boolean }) {
-  return (
-    <span className={`keep-style relative inline-flex shrink-0 rounded-full p-0.5 transition-colors ${small ? 'h-5 w-9' : 'h-6 w-11'}`} style={{ backgroundColor: on ? '#10b981' : '#cbd5e1' }}>
-      <span className={`keep-style block rounded-full bg-white shadow transition-transform ${small ? 'h-4 w-4' : 'h-5 w-5'} ${on ? (small ? 'translate-x-4' : 'translate-x-5') : 'translate-x-0'}`} />
-    </span>
-  );
-}
-
 function Pill({ tone, children }: { tone: 'emerald' | 'amber' | 'slate'; children: React.ReactNode }) {
   const cls = tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : tone === 'amber' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-slate-100 text-slate-600 ring-slate-200';
   return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ring-1 shrink-0 ${cls}`}>{children}</span>;
@@ -1077,43 +992,6 @@ function ToggleCard({ title, text, on, onChange }: { title: string; text: string
       </span>
       <Switch on={on} />
     </button>
-  );
-}
-
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300">
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border border-slate-300 shrink-0" />
-      <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-slate-800">{label}</span>
-        <span className="block text-[12px] text-slate-500 font-mono uppercase">{value}</span>
-      </span>
-    </label>
-  );
-}
-
-function ImagePick({ label, hint, src, contain, onPick, onClear }: { label: string; hint: string; src?: string; contain?: boolean; onPick: (f: File) => void; onClear: () => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <span className="text-[13px] font-semibold text-slate-800">{label}</span>
-        {src && <button type="button" onClick={onClear} className="text-[12px] font-semibold text-slate-400 hover:text-rose-600">Quitar</button>}
-      </div>
-      <p className="text-[12px] text-slate-500">{hint}</p>
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f); }} />
-      <button type="button" onClick={() => ref.current?.click()}
-        className="mt-2 w-full h-28 rounded-xl bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden hover:border-rose-400 hover:bg-white transition-colors group">
-        {src ? (
-          <img src={src} alt="" className={contain ? 'max-h-full max-w-full object-contain p-2' : 'w-full h-full object-cover'} />
-        ) : (
-          <span className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-slate-600">
-            <ImageIcon className="w-5 h-5" />
-            <span className="text-[12px] font-semibold">Subir {label.toLowerCase()}</span>
-          </span>
-        )}
-      </button>
-    </div>
   );
 }
 

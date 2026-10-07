@@ -30,6 +30,7 @@ import { openExternal } from '../subscription/SubscriptionPanel';
 import { ScreenHeader, money } from '../mobile/ui';
 import { Modal, STATUS, input, label, PUBLIC_BASE } from './agendaUi';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
+import PageLook from './PageLook';
 
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -124,7 +125,10 @@ export default function AgendaScreen() {
     <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => setTab('config')} />
   ) : (
     <ConfigView agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl}
-      page={agendaOnly ? <PageSetup mobile={mobile} agendaOnly storeId={storeId} initial={config} onSave={savePage} embedded /> : null} />
+      page={agendaOnly ? <PageSetup mobile={mobile} agendaOnly storeId={storeId} initial={config} onSave={savePage} embedded /> : null}
+      look={<PageLook storeId={storeId} config={config} mobile={mobile} sharedWithStore={!agendaOnly}
+        kindLabel={AGENDA_TEMPLATES.find((t) => t.id === agenda.kind)?.title}
+        onSaved={(patch) => setConfig((c) => (c ? { ...c, ...patch } : c))} />} />
   );
 
   if (mobile) {
@@ -1048,7 +1052,7 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
 
   if (embedded) {
     return (
-      <Card tour="agenda-cfg-page" icon={Globe} title="Tu página de turnos" hint="Cómo te encuentran tus clientes para reservar."
+      <Card tour="agenda-cfg-page" icon={Globe} title="Tu página de turnos" hint="Nombre, link y WhatsApp: cómo te encuentran tus clientes para reservar."
         action={dirty ? <button onClick={submit} disabled={saving} className="h-9 px-3 rounded-xl bg-rose-600 text-white text-[13px] font-semibold disabled:opacity-60">{saving ? 'Guardando…' : 'Guardar'}</button> : undefined}>
         {fields}
       </Card>
@@ -1074,7 +1078,7 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
   );
 }
 
-function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null; page?: React.ReactNode }) {
+function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page, look }: { agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null; page?: React.ReactNode; look?: React.ReactNode }) {
   const [a, setA] = useState<AgendaConfig>(agenda);
   const [saving, setSaving] = useState(false);
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
@@ -1121,6 +1125,7 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page }: { a
   return (
     <div className={`${mobile ? 'px-4 py-4 pb-28' : 'p-6 max-w-5xl w-full mx-auto pb-28'} space-y-4`}>
       {page}
+      {look}
       <section data-tour="agenda-cfg-online" className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 flex items-center gap-4">
         <div className="flex-1">
           <p className="text-[15px] font-bold text-slate-900">Tomar turnos online</p>
