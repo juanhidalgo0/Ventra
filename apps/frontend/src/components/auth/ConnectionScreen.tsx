@@ -262,8 +262,8 @@ export default function ConnectionScreen() {
 
   // Las opciones del primer paso, para recorrerlas con el teclado (↑ ↓ y Enter)
   const options = [
-    { key: 'main', title: 'Sí, es la caja principal', desc: 'Los productos, las ventas y la caja se guardan en esta PC. Es lo que eligen casi todos los comercios.', icon: Monitor, onSelect: handleStartLocal, recommended: true },
-    { key: 'other', title: 'No, ya tengo Ventra en otra PC del local', desc: 'Esta PC se suma como otra caja y usa los mismos productos y el mismo stock. La buscamos sola en tu red.', icon: Network, onSelect: openClientMode, recommended: false },
+    { key: 'main', title: 'Como caja principal', desc: 'Acá se guardan los productos, las ventas y la caja. Elegila si es la única PC del local o la que ya venías usando.', icon: Monitor, onSelect: handleStartLocal, recommended: true },
+    { key: 'other', title: 'Como caja adicional', desc: 'Se conecta a la caja principal del local y usa los mismos productos y el mismo stock. La buscamos sola en tu red.', icon: Network, onSelect: openClientMode, recommended: false },
   ];
 
   useEffect(() => {
@@ -342,8 +342,8 @@ export default function ConnectionScreen() {
             <AnimatePresence mode="wait">
               {mode === 'SELECT' ? (
                 <motion.section key="select" {...fade}>
-                  <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">¿Es la primera PC con Ventra en este local?</h2>
-                  <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Si después sumás otra caja, la conectás a esta en un minuto.</p>
+                  <h2 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">¿Cómo vas a usar esta PC?</h2>
+                  <p className="mt-2 text-[15px] text-slate-600 leading-relaxed">Lo elegís una sola vez. Si ya usabas Ventra en esta PC, elegí caja principal: tus datos siguen ahí.</p>
 
                   <div className="mt-8 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden" role="listbox">
                     {options.map((o, i) => (
