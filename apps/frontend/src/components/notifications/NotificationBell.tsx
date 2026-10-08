@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarClock, PackageMinus, Wallet, Ban, FileWarning, CheckCheck } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useFeature } from '../../stores/businessStore';
 import ExpiringProductsModal from '../dashboard/ExpiringProductsModal';
+import LowStockAlertsModal from '../dashboard/LowStockAlertsModal';
 
 interface Item { id: string; type: string; title: string; body: string; url?: string | null; createdAt: string; readAt?: string | null }
 interface Live { expired: number; soon: number; lowStock: number }
@@ -60,6 +62,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
   const [live, setLive] = useState<Live>({ expired: 0, soon: 0, lowStock: 0 });
   const [open, setOpen] = useState(false);
   const [showExpiring, setShowExpiring] = useState(false);
+  const [showLowStock, setShowLowStock] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const allowed = role === 'ADMIN' || role === 'SUPERVISOR';
 
@@ -92,11 +95,13 @@ export default function NotificationBell({ className = '' }: { className?: strin
   const expiring = expiryEnabled ? live.expired + live.soon : 0;
   const badge = unread + (expiring > 0 ? 1 : 0);
 
-  const go = (url?: string | null) => {
+  // Cada aviso abre lo que hace falta para resolverlo: stock mínimo → la lista de productos con
+  // stock bajo (para reponer); vencimientos → los lotes por vencer; el resto, su pantalla
+  const go = (url?: string | null, type?: string) => {
     setOpen(false);
-    if (!url) return;
-    if (url === '#expiring') setShowExpiring(true);
-    else navigate(url);
+    if (type === 'lowStock' || url === '/stock-control') setShowLowStock(true);
+    else if (type === 'expiry' || url === '#expiring') setShowExpiring(true);
+    else if (url) navigate(url);
   };
 
   const toggle = async () => {
@@ -137,7 +142,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
             <div className="p-2 border-b border-slate-100 space-y-1">
               <p className="px-2 pt-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Ahora</p>
               {expiring > 0 && (
-                <button onClick={() => go('#expiring')} className="w-full flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 text-left">
+                <button onClick={() => go(null, 'expiry')} className="w-full flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 text-left">
                   <span className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><CalendarClock className="w-4 h-4" /></span>
                   <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-800">
                     {[live.expired && `${live.expired} vencido${live.expired > 1 ? 's' : ''}`, live.soon && `${live.soon} por vencer`].filter(Boolean).join(' · ')}
@@ -145,7 +150,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
                 </button>
               )}
               {live.lowStock > 0 && (
-                <button onClick={() => go('/stock-control')} className="w-full flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 text-left">
+                <button onClick={() => go(null, 'lowStock')} className="w-full flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 text-left">
                   <span className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><PackageMinus className="w-4 h-4" /></span>
                   <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-800">
                     {live.lowStock} producto{live.lowStock > 1 ? 's' : ''} en stock mínimo
@@ -161,7 +166,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
               const ic = ICONS[i.type] || { icon: Bell, cls: 'bg-slate-100 text-slate-600' };
               const Icon = ic.icon;
               return (
-                <button key={i.id} onClick={() => go(i.url)} className={`w-full flex items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-50 ${!i.readAt ? 'bg-emerald-50/50' : ''}`}>
+                <button key={i.id} onClick={() => go(i.url, i.type)} className={`w-full flex items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-50 ${!i.readAt ? 'bg-emerald-50/50' : ''}`}>
                   <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ic.cls}`}><Icon className="w-4 h-4" /></span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-semibold text-slate-800 leading-snug">{i.title}</span>
@@ -176,7 +181,9 @@ export default function NotificationBell({ className = '' }: { className?: strin
         </div>
       )}
 
-      {showExpiring && <ExpiringProductsModal onClose={() => { setShowExpiring(false); load(); }} />}
+      {/* Fuera del encabezado: si no, la barra lateral tapa parte de la ventana */}
+      {showExpiring && createPortal(<ExpiringProductsModal onClose={() => { setShowExpiring(false); load(); }} />, document.body)}
+      {showLowStock && createPortal(<LowStockAlertsModal onClose={() => { setShowLowStock(false); load(); }} />, document.body)}
     </div>
   );
 }

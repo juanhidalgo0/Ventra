@@ -15,13 +15,13 @@ import { useTourStore } from '../common/tour/tourStore';
 import { setTourScreen, AGENDA_WORDS } from '../common/tour/tourContext';
 import { useClientPreview, demoShareInstead } from '../../services/clientPreview';
 import { IS_DEMO_BUILD } from '../../demo/flag';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { addTurnoToCart } from '../pos/turnoCobro';
 import api from '../../services/api';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
-  rescheduleBooking, fetchBookingsRange, markReminded, depositPaid, paidInFull, waRemindersAvailable, REMINDER_WHEN,
+  rescheduleBooking, fetchBookingsRange, fetchBooking, markReminded, depositPaid, paidInFull, waRemindersAvailable, REMINDER_WHEN,
   subscribeReminderQuota, buyReminderPack, REMINDER_PACK, seriesDates, createSeries, seriesUpcoming, cancelBookings, type ReminderQuota,
   type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
@@ -50,7 +50,9 @@ export default function AgendaScreen() {
   const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const { storeId } = useOnlineOrders();
   const [config, setConfig] = useState<StoreConfig | null>(null);
-  const [tab, setTab] = useState<'agenda' | 'config'>('agenda');
+  // Los avisos abren directo lo suyo: ?ver=config (cupo de recordatorios) o ?turno=<id> (en DayView)
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<'agenda' | 'config'>(params.get('ver') === 'config' ? 'config' : 'agenda');
 
   useEffect(() => { startOnlineOrdersSync(); }, []);
   useEffect(() => {
@@ -197,6 +199,24 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   const [creating, setCreating] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [reminding, setReminding] = useState(false);
+  // Aviso de un turno (?turno=<id>): se abre su día y su detalle
+  const [params, setParams] = useSearchParams();
+  const turnoId = params.get('turno');
+  useEffect(() => {
+    if (!turnoId || !storeId) return;
+    let alive = true;
+    fetchBooking(storeId, turnoId).then((b) => {
+      if (!alive) return;
+      if (b && b.kind === 'booking') { setDay(b.dateKey); setOpen(b); }
+      else toast('Ese turno ya no está en la agenda');
+    }).catch(() => {}).finally(() => {
+      if (!alive) return;
+      params.delete('turno');
+      setParams(params, { replace: true });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnoId, storeId]);
   // Hacia dónde se movió el día: la tira y la lista entran desde ese lado
   const prevDay = useRef(day);
   const dir = day === prevDay.current ? '' : day > prevDay.current ? 'ag-from-right' : 'ag-from-left';

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ShoppingBag, Clock, ChefHat, PackageCheck, CheckCircle2, XCircle, MessageCircle, Phone, MapPin,
@@ -65,8 +65,16 @@ export default function OnlineOrdersScreen({ modal = false, onClose }: { modal?:
   const { orders, storeId, ready } = useOnlineOrders();
   const mobile = useOwnerMobile().active && !modal;
   const [tab, setTab] = useState<Tab>('ACTIVE');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // El aviso de un pedido nuevo abre ese pedido: /pedidos?pedido=<id>
+  const [params, setParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(modal ? null : params.get('pedido'));
   const selected = orders.find((o) => o.id === selectedId) || null;
+  useEffect(() => {
+    if (modal || !ready || !params.get('pedido')) return;
+    params.delete('pedido');
+    setParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { NEW: 0, PREPARING: 0, READY: 0, DONE: 0 };

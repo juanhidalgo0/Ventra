@@ -235,7 +235,7 @@ async function quotaNotice(db, uid, q, storeId) {
     };
   }
   if (!msg) return;
-  await notify.sendToAccount(db, uid, "reminderQuota", { ...msg, url: "/#/agenda", tag: "wa-quota" }, { storeId }).catch((err) => logger.warn("WhatsApp: no se pudo avisar el cupo", err.message));
+  await notify.sendToAccount(db, uid, "reminderQuota", { ...msg, url: "/#/agenda?ver=config", tag: "wa-quota" }, { storeId }).catch((err) => logger.warn("WhatsApp: no se pudo avisar el cupo", err.message));
 }
 
 /** Firma de Meta (X-Hub-Signature-256) sobre el cuerpo tal cual llegó. */

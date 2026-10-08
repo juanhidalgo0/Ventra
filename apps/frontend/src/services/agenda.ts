@@ -285,6 +285,13 @@ export async function hasAnyBooking(storeId: string): Promise<boolean> {
   return !snap.empty;
 }
 
+/** Un turno por su id (para abrirlo desde un aviso). null si no existe. */
+export async function fetchBooking(storeId: string, id: string): Promise<Booking | null> {
+  await claimStore(storeId);
+  const snap = await getDoc(doc(bookingsCol(storeId), id));
+  return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as Booking) : null;
+}
+
 /** Turnos entre dos días (inclusive), una sola lectura: para los cobros del período. */
 export async function fetchBookingsRange(storeId: string, fromKey: string, toKey: string): Promise<Booking[]> {
   await claimStore(storeId);

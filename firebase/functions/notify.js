@@ -157,7 +157,7 @@ function messageFor(ev) {
       return {
         title: `Vencimientos: ${parts.join(" y ")}`,
         body: items.slice(0, 4).map((i) => `${i.name} (${when(Number(i.daysLeft))})`).join(", ") + (items.length > 4 ? ` y ${items.length - 4} más` : ""),
-        url: "/#/products", tag: "expiry",
+        url: "/#/products?ver=vencimientos", tag: "expiry",
       };
     }
     default:

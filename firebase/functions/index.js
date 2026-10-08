@@ -1306,7 +1306,7 @@ exports.ventraOrderPush = onDocumentCreated("ventra_stores/{storeId}/orders/{ord
   await notify.sendToAccount(db, uid, "orders", {
     title: `Nuevo pedido${order.orderCode ? " #" + order.orderCode : ""}: ${notify.money(order.total)}`,
     body: `${order.customerName || "Un cliente"} · ${count} ${count === 1 ? "producto" : "productos"} · ${how}`,
-    url: "/#/pedidos", tag: "order-" + event.params.orderId,
+    url: "/#/pedidos?pedido=" + encodeURIComponent(event.params.orderId), tag: "order-" + event.params.orderId,
   }, { storeId });
 });
 
@@ -1493,7 +1493,7 @@ exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT
         body: done.outcome === "late-clash"
           ? `${b.customerName || "El cliente"} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvele el pago.`
           : `${b.customerName || "Un cliente"} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`,
-        url: "/#/agenda", tag: "booking-" + b.id,
+        url: "/#/agenda?turno=" + encodeURIComponent(b.id), tag: "booking-" + b.id,
       }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar el pago del turno", err.message));
     }
   } catch (err) {
@@ -1627,7 +1627,7 @@ exports.ventraReminderPackHook = onRequest({ maxInstances: 10, secrets: [VENTRA_
       await notify.sendToAccount(db, uid, "reminderQuota", {
         title: `Listo: sumaste ${qty} recordatorios automáticos`,
         body: "Los recordatorios por WhatsApp siguen saliendo solos. Los del paquete no vencen.",
-        url: "/#/agenda", tag: "wa-quota",
+        url: "/#/agenda?ver=config", tag: "wa-quota",
       }, { ignoreQuiet: true }).catch(() => {});
     }
   } catch (err) {
@@ -1668,7 +1668,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cambiado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"} lo pasó desde su link. Antes era ${agenda.fmtDay(before.dateKey)} ${agenda.hhmm(before.startMin)}: ese horario quedó libre.`,
-        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+        url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
     return;
@@ -1682,7 +1682,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.${after.deposit && after.deposit.status === "paid" ? ` Había pagado $${after.deposit.paidAmount || after.deposit.amount} por Mercado Pago: devolvéselo desde tu cuenta.` : ""}`,
-        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+        url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
     return;
@@ -1696,7 +1696,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno confirmado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"}${after.staffName ? " con " + after.staffName : ""} confirmó desde el recordatorio de WhatsApp.`,
-        url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+        url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
     return;
@@ -1710,7 +1710,7 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     await notify.sendToAccount(db, uid, "bookings", {
       title: `Nuevo turno: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
       body: `${after.customerName || "Un cliente"}${after.staffName ? " con " + after.staffName : ""}${after.status === "PENDING" ? " · para confirmar" : ""}`,
-      url: "/#/agenda", tag: "booking-" + event.params.bookingId,
+      url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
     }, { storeId });
   }
 });

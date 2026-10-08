@@ -7,6 +7,8 @@ import { useBusinessStore } from '../../stores/businessStore';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ProductThumb, money, qty, parseAmount } from './ui';
 import ProductPhoto from './ProductPhoto';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
+import { useSearchParams } from 'react-router-dom';
+import ExpiringProductsModal from '../dashboard/ExpiringProductsModal';
 
 type Filter = 'ALL' | 'LOW' | 'OUT';
 const PAGE = 50;
@@ -19,6 +21,9 @@ export default function MobileProductsScreen({ initialFilter = 'ALL', title = 'P
   const setProducts = usePOSStore((s) => s.setProducts);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>(initialFilter);
+  // El aviso de vencimientos (celular) abre la lista de lotes por vencer: /products?ver=vencimientos
+  const [params, setParams] = useSearchParams();
+  const showExpiring = params.get('ver') === 'vencimientos';
   const [lowIds, setLowIds] = useState<Map<string, number>>(new Map());
   const [limit, setLimit] = useState(PAGE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -155,6 +160,7 @@ export default function MobileProductsScreen({ initialFilter = 'ALL', title = 'P
         }}
       />
       {scanning && <BarcodeScanner onCode={onCode} onClose={() => setScanning(false)} />}
+      {showExpiring && <ExpiringProductsModal onClose={() => { params.delete('ver'); setParams(params, { replace: true }); }} />}
     </div>
   );
 }
