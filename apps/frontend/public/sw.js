@@ -19,14 +19,17 @@ self.addEventListener('push', (e) => {
   }));
 });
 
+// Tocar un aviso: si la app ya está abierta, se la trae al frente y se le pide que vaya a la
+// pantalla del aviso (mensaje 'ventra:open', lo atiende index.html cambiando el # sin recargar).
+// (client.navigate() no anda en todos los celulares, como el iPhone, y además recarga la app.)
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const target = new URL(e.notification.data && e.notification.data.url || './', self.registration.scope).href;
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-    for (const c of list) {
-      if (c.url.startsWith(self.registration.scope)) { c.focus(); return c.navigate(target).catch(() => {}); }
-    }
-    return self.clients.openWindow(target);
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (list) => {
+    const app = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (!app) return self.clients.openWindow(target);
+    try { await app.focus(); } catch (err) { /* algunos sistemas no dejan enfocar */ }
+    app.postMessage({ type: 'ventra:open', url: target });
   }));
 });
 

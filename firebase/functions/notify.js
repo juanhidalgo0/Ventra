@@ -61,16 +61,28 @@ async function tokenDocs(db, uid, storeId) {
   return out;
 }
 
+/** Avisos que cayeron en el horario de silencio: esperan acá y salen cuando termina (flushDeferred) */
+const DEFERRED = "pushDeferred";
+const ms = (t) => (t && typeof t.toMillis === "function" ? t.toMillis() : Number(t) || 0);
+
 /**
  * Manda un aviso a los celulares de la cuenta.
- * Devuelve { sent, reason } — reason: 'off' (apagado), 'quiet' (silencio), 'no-devices'.
+ * Devuelve { sent, reason } — reason: 'off' (apagado), 'deferred' (horario de silencio: se guarda
+ * y sale al terminar), 'no-devices'. Antes se devolvía 'quiet' y el aviso se perdía (salvo los de
+ * la PC, que lo reintentaba si seguía prendida).
  */
 async function sendToAccount(db, uid, type, msg, opts = {}) {
   const prefs = await getPrefs(db, uid);
   if (prefs[type] === false) return { sent: 0, reason: "off" };
-  if (!URGENT.has(type) && !opts.ignoreQuiet && inQuiet(prefs)) return { sent: 0, reason: "quiet" };
   const tokens = await tokenDocs(db, uid, opts.storeId);
   if (!tokens.length) return { sent: 0, reason: "no-devices" };
+  if (!URGENT.has(type) && !opts.ignoreQuiet && inQuiet(prefs)) {
+    await db.collection("ventra_push").doc(uid).collection(DEFERRED).add({
+      type, storeId: opts.storeId || null, at: admin.firestore.Timestamp.now(),
+      msg: { title: String(msg.title || ""), body: String(msg.body || ""), url: msg.url || "", tag: msg.tag || type },
+    });
+    return { sent: 0, reason: "deferred" };
+  }
 
   const res = await admin.messaging().sendEachForMulticast({
     tokens: tokens.map((t) => t.token),
@@ -88,6 +100,48 @@ async function sendToAccount(db, uid, type, msg, opts = {}) {
 }
 
 const money = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
+
+/**
+ * Manda los avisos que esperaban el fin del horario de silencio (corre cada hora).
+ * Por etiqueta queda el último (un solo "stock bajo", por ejemplo) y al título se le suma la hora
+ * en que pasó. Si el dueño apagó ese tipo de aviso mientras tanto, no sale.
+ */
+async function flushDeferred(db) {
+  const snap = await db.collectionGroup(DEFERRED).get();
+  if (snap.empty) return 0;
+  const byUid = new Map();
+  for (const d of snap.docs) {
+    const uid = d.ref.parent.parent.id;
+    if (!byUid.has(uid)) byUid.set(uid, []);
+    byUid.get(uid).push(d);
+  }
+  let sent = 0;
+  for (const [uid, docs] of byUid) {
+    try {
+      const prefs = await getPrefs(db, uid);
+      if (inQuiet(prefs)) continue;
+      const fresh = docs.filter((d) => Date.now() - ms(d.data().at) < 36 * 3600000)
+        .sort((a, b) => ms(a.data().at) - ms(b.data().at));
+      // Misma etiqueta (p. ej. dos tandas de stock bajo): un solo aviso con todo, porque en el
+      // celular uno taparía al otro
+      const byTag = new Map();
+      for (const d of fresh) { const x = d.data(); const k = x.msg.tag || x.type; if (!byTag.has(k)) byTag.set(k, []); byTag.get(k).push(x); }
+      for (const group of [...byTag.values()].slice(-8)) {
+        const x = group[group.length - 1];
+        const when = new Intl.DateTimeFormat("es-AR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ms(x.at)));
+        const msg = group.length === 1
+          ? { ...x.msg, title: `${x.msg.title} (${when})` }
+          : { ...x.msg, title: `${x.msg.title} y ${group.length - 1} aviso${group.length > 2 ? "s" : ""} más`, body: group.map((g) => g.msg.title).reverse().join(" · ").slice(0, 300) };
+        const r = await sendToAccount(db, uid, x.type, msg, { storeId: x.storeId || undefined, ignoreQuiet: true });
+        sent += r.sent || 0;
+      }
+      await Promise.all(docs.map((d) => d.ref.delete()));
+    } catch (err) {
+      logger.warn(`Ventra avisos en espera: error (${uid})`, err.message);
+    }
+  }
+  return sent;
+}
 
 /** Arma el mensaje de un evento que manda la PC. null = evento desconocido o incompleto. */
 function messageFor(ev) {
@@ -165,4 +219,4 @@ function messageFor(ev) {
   }
 }
 
-module.exports = { DEFAULT_PREFS, sendToAccount, messageFor, getPrefs, inQuiet, localHour, money, TZ };
+module.exports = { DEFAULT_PREFS, sendToAccount, flushDeferred, messageFor, getPrefs, inQuiet, localHour, money, TZ };

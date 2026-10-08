@@ -44,6 +44,16 @@
         const isWeb = location.protocol === 'https:' && !/tauri/.test(location.hostname) && !/electron/i.test(navigator.userAgent);
         if (isWeb) {
           window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+          // Tocaron un aviso con la app abierta: se va a su pantalla sin recargar (ver sw.js)
+          navigator.serviceWorker.addEventListener('message', (e) => {
+            if (!e.data || e.data.type !== 'ventra:open' || !e.data.url) return;
+            try {
+              const u = new URL(e.data.url, location.href);
+              if (u.origin !== location.origin) return;
+              if (u.pathname === location.pathname && u.hash) location.hash = u.hash;
+              else location.href = u.href;
+            } catch (err) { /* dirección inválida: se queda donde está */ }
+          });
         } else {
           navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()));
         }

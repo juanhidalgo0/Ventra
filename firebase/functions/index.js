@@ -1313,7 +1313,8 @@ exports.ventraOrderPush = onDocumentCreated("ventra_stores/{storeId}/orders/{ord
 /**
  * Eventos que manda la PC del comercio (stock mínimo, cierre con diferencia, anulación,
  * factura rechazada). Se autentica con la vinculación del equipo.
- * Responde { ok, sent, reason }: con reason 'quiet' la PC lo guarda y lo reintenta después.
+ * Responde { ok, sent, reason }. En horario de silencio la nube lo guarda (reason 'deferred') y lo
+ * manda al terminar; las PCs viejas reintentaban solo con 'quiet', que ya no se devuelve.
  */
 exports.ventraNotify = onRequest({ cors: true }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
@@ -1332,7 +1333,7 @@ exports.ventraNotify = onRequest({ cors: true }, async (req, res) => {
   if (!msg) return res.status(400).json({ error: "Evento inválido" });
   try {
     const r = await notify.sendToAccount(db, uid, String(event.type), msg);
-    if (event.type === "lowStock" && r.reason !== "quiet") {
+    if (event.type === "lowStock") {
       const patch = {};
       event.data.items.forEach((i) => { patch["lowStockSeen." + i.id] = Date.now(); });
       await db.collection("ventra_push").doc(uid).set({}, { merge: true });
@@ -1402,6 +1403,9 @@ exports.ventraOrderIdle = onSchedule({ schedule: "every 5 minutes", timeZone: no
 
 /** Resumen del día, a la hora que eligió cada dueño */
 exports.ventraDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL] }, async () => {
+  // Primero, los avisos que esperaban el fin del horario de silencio
+  const late = await notify.flushDeferred(db).catch((err) => { logger.warn("Ventra avisos en espera: error", err.message); return 0; });
+  if (late) logger.info(`Ventra avisos en espera: ${late} enviados`);
   const hour = notify.localHour();
   const wanted = await db.collection("ventra_push").where("prefs.dailySummary", "==", true).get();
   // Solo se consulta Neon si a alguien le toca el resumen a esta hora: si no, se despertaba la base cada hora
