@@ -7,6 +7,7 @@ import { cashClosingResult } from '../../utils/cashDifference';
 import { downloadPrintableAsPdf, afterPaint } from '../../utils/printToPdf';
 import XReportPrint from '../cash-register/XReportPrint';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
+import { useConfirm } from '../common/ConfirmDialog';
 import { ScreenHeader, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount, METHOD_LABELS } from './ui';
 
 const time = (d: string) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -57,14 +58,22 @@ export default function MobileCashScreen() {
   const [closing, setClosing] = useState<{ session: any; mode: 'close' | 'arqueo' } | null>(null);
   const [historyItem, setHistoryItem] = useState<any | null>(null);
   const [zItem, setZItem] = useState<any | null>(null);
+  /** Turnos cerrados que todavía no entraron en un Cierre Z (null = no hay) */
+  const [zPending, setZPending] = useState<any | null>(null);
+  const [makingZ, setMakingZ] = useState(false);
+  const [ask, askDialog] = useConfirm();
 
   const load = useCallback(async () => {
-    const [a, p, x, z] = await Promise.all([
+    const [a, p, x, z, zp] = await Promise.all([
       api.get('/cash/active').then((r) => r.data || []).catch(() => []),
       api.get('/cash/pending-arqueos/all').then((r) => r.data || []).catch(() => []),
       api.get('/cash/history', { params: { limit: X_PAGE, skip: 0 } }).then((r) => r.data || []).catch(() => []),
       api.get('/cash/z-reports', { params: { limit: Z_PAGE, skip: 0 } }).then((r) => r.data || []).catch(() => []),
+      api.get('/cash/z-report/pending').then((r) => r.data || null).catch(() => null),
     ]);
+    // Turnos cerrados sin Cierre Z (también los sin movimiento: el Z los incluye igual)
+    const zTurns = zp ? (zp.allSessions?.length ?? zp.sessions?.length ?? 0) : 0;
+    setZPending(zTurns > 0 ? { ...zp, turns: zTurns } : null);
     setActive(a);
     setPending(p);
     setXList(x); setMoreX(x.length === X_PAGE);
@@ -128,6 +137,31 @@ export default function MobileCashScreen() {
 
   const totalCash = (active || []).reduce((s, x) => s + (x.expectedAmount || 0), 0);
 
+  // Cierre Z desde el celular: el cierre del día, igual que desde la PC (Control de cajas)
+  const makeZ = async () => {
+    if (!zPending || makingZ) return;
+    const n = zPending.turns;
+    const ok = await ask({
+      title: '¿Hacer el Cierre Z?',
+      message: `Cierra el día con ${n} ${n === 1 ? 'turno' : 'turnos'}. No se puede deshacer.${(active || []).length ? ' Las cajas que siguen abiertas no entran en este cierre.' : ''} Si tenés la caja abierta con tu usuario en la PC, ahí se cierra tu sesión.`,
+      confirmLabel: 'Hacer el Cierre Z',
+      cancelLabel: 'Volver',
+    });
+    if (!ok) return;
+    setMakingZ(true);
+    try {
+      const { data } = await api.post('/cash/z-report/generate', { clientId: getClientId() });
+      toast.success('Cierre Z hecho');
+      await load();
+      setTab('Z');
+      setZItem(data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo hacer el Cierre Z');
+    } finally {
+      setMakingZ(false);
+    }
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <ScreenHeader back title="Cajas" subtitle={active ? `${active.length} ${active.length === 1 ? 'abierta' : 'abiertas'}` : 'Cargando…'}>
@@ -154,6 +188,30 @@ export default function MobileCashScreen() {
                       <ChevronRight className="w-4 h-4 text-amber-700" />
                     </button>
                   ))}
+                </div>
+              </section>
+            )}
+
+            {zPending && (
+              <section>
+                <SectionTitle>Cierre del día</SectionTitle>
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <div className="flex items-start gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0"><FileText className="w-5 h-5 text-slate-600" /></span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] font-semibold text-slate-900">{zPending.turns} {zPending.turns === 1 ? 'turno' : 'turnos'} sin Cierre Z</p>
+                      <p className="text-[12px] text-slate-500">
+                        {pending.length > 0 ? 'Primero hacé los arqueos pendientes.' : 'Junta todos los turnos cerrados en el cierre final del día.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={makeZ}
+                    disabled={makingZ || pending.length > 0}
+                    className="mt-3 w-full h-11 rounded-xl bg-slate-900 text-white text-[14px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-40"
+                  >
+                    <Lock className="w-4 h-4" /> {makingZ ? 'Haciendo el Cierre Z…' : 'Hacer el Cierre Z'}
+                  </button>
                 </div>
               </section>
             )}
@@ -220,7 +278,7 @@ export default function MobileCashScreen() {
                 )
               ) : zList.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-slate-200/80">
-                  <EmptyState icon={FileText} title="Todavía no hay Cierres Z" text="El Cierre Z es el cierre final del día: junta todos los turnos. Se genera desde la PC." />
+                  <EmptyState icon={FileText} title="Todavía no hay Cierres Z" text="El Cierre Z es el cierre final del día: junta todos los turnos. Lo hacés acá o desde la PC, cuando están todos los arqueos." />
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
@@ -237,6 +295,7 @@ export default function MobileCashScreen() {
         )}
       </div>
 
+      {askDialog}
       <SessionSheet session={selected} onClose={() => setSelected(null)} onCloseCash={(s) => { setSelected(null); setClosing({ session: s, mode: 'close' }); }} />
       <CloseSheet data={closing} onClose={() => setClosing(null)} onDone={() => { setClosing(null); load(); }} />
       <HistorySheet session={historyItem} onClose={() => setHistoryItem(null)} onPdf={downloadX} pdfBusy={!!pdfJob} />

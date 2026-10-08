@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import { holdLogout } from '../../utils/logoutHold';
+import { useConfirm } from '../common/ConfirmDialog';
 import CategoryPickerModal from './CategoryPickerModal';
 import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
@@ -16,6 +17,7 @@ import toast from 'react-hot-toast';
 import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
+import { wsService } from '../../services/websocket';
 import GastosModal from './GastosModal';
 import ProveedoresModal from './ProveedoresModal';
 import PaymentModal from './PaymentModal';
@@ -1119,10 +1121,60 @@ export default function POSScreen() {
     try {
       const { data } = await api.get('/cash/pending-arqueos', { silent: true } as any);
       setPendingArqueos(data);
+      // El arqueo que está abierto acá se completó en otro dispositivo (el celular con el QR, otra PC)
+      const open = sessionToArqueoRef.current;
+      if (open && Array.isArray(data) && !data.some((a: any) => a.id === open.id)) arqueoDoneElsewhere();
     } catch (err) {
       console.error('Error loading pending arqueos', err);
     }
   };
+  // Para saber, desde la consulta periódica y los avisos en vivo, qué arqueo está abierto en pantalla
+  const sessionToArqueoRef = useRef<any | null>(null);
+  const generateZRef = useRef(false);
+  useEffect(() => { sessionToArqueoRef.current = sessionToArqueo; }, [sessionToArqueo]);
+  useEffect(() => { generateZRef.current = generateZAfterArqueo; }, [generateZAfterArqueo]);
+  const [askConfirm, confirmDialog] = useConfirm();
+  // Genera el Cierre Z y muestra el cartel para imprimirlo (al salir de él se cierra la sesión)
+  const generateZNow = async () => {
+    const release = holdLogout();
+    try {
+      const res = await api.post('/cash/z-report/generate', { clientId: getClientId() });
+      setZReportData(res.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al generar cierre Z');
+    } finally {
+      setTimeout(release, 3000);
+    }
+  };
+  const arqueoDoneElsewhere = async () => {
+    const withZ = generateZRef.current;
+    sessionToArqueoRef.current = null;
+    setShowCierre(false);
+    setSessionToArqueo(null);
+    setGenerateZAfterArqueo(false);
+    if (!withZ) {
+      toast.success('El arqueo ya se hizo desde otro dispositivo', { duration: 6000 });
+      focusSearch();
+      return;
+    }
+    // Acá se había elegido el Cierre Z: el arqueo lo hizo otro (el celular), el Z se puede hacer igual acá
+    const ok = await askConfirm({
+      title: 'El arqueo ya se hizo desde otro dispositivo',
+      message: 'Acá habías elegido el Cierre Z del día. ¿Lo hacemos ahora?',
+      confirmLabel: 'Hacer el Cierre Z',
+      cancelLabel: 'Ahora no',
+    });
+    if (ok) await generateZNow();
+    else focusSearch();
+  };
+  // Aviso en vivo del servidor: una caja se abrió, se cerró o se arqueó en otro dispositivo
+  useEffect(() => {
+    const onCash = () => { loadPendingArqueos(); };
+    wsService.on('cash:updated', onCash);
+    return () => wsService.off('cash:updated', onCash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleInstantClose = async (sessionId: string, doZ: boolean = false) => {
     try {
       await api.post(`/cash/${sessionId}/close`, { clientId: getClientId() });
@@ -1734,12 +1786,25 @@ export default function POSScreen() {
             <button
               onClick={() => {
                 setSessionToArqueo(pendingArqueos[0]);
+                setGenerateZAfterArqueo(false);
                 setShowCierre(true);
               }}
               className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer z-10 whitespace-nowrap"
             >
               Completar Arqueo Pendiente
             </button>
+            {pendingArqueos.length === 1 && (
+              <button
+                onClick={() => {
+                  setSessionToArqueo(pendingArqueos[0]);
+                  setGenerateZAfterArqueo(true);
+                  setShowCierre(true);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-800 font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer z-10 whitespace-nowrap"
+              >
+                Arqueo y Cierre Z
+              </button>
+            )}
           </motion.div>
         )}
 
@@ -3037,6 +3102,7 @@ export default function POSScreen() {
                     posnetDeclarations: data.posnetDeclarations
                   });
                   toast.success('✅ Arqueo completado correctamente');
+                  sessionToArqueoRef.current = null; // lo completó esta PC: que la consulta no lo tome como "hecho en otro lado"
                   setSessionToArqueo(null);
                   loadPendingArqueos();
                 } else {
@@ -3068,12 +3134,15 @@ export default function POSScreen() {
                   }
                 }
               } catch (err: any) {
-                toast.error(err.response?.data?.message || 'Error al completar arqueo');
+                const msg = err.response?.data?.message || '';
+                if (sessionToArqueo && /ya fue completado/i.test(msg)) { arqueoDoneElsewhere(); loadPendingArqueos(); return; }
+                toast.error(msg || 'Error al completar arqueo');
                 throw err;
               }
             }} 
           />
         )}
+        {confirmDialog}
         {zReportData && (
           <CierreDiaModal
             zReport={zReportData}
