@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { assertValidPassword } from './password-policy';
+import { LoginThrottle } from './login-throttle';
 
 @Injectable()
 export class AuthService {
@@ -16,15 +17,19 @@ export class AuthService {
     private productsService: ProductsService,
   ) {}
 
-  // Sin límite de intentos fallidos: lo pidió el dueño de Ventra (los comercios quedaban
-  // bloqueados hasta 15 minutos). `origin` queda en la firma por compatibilidad con el controlador.
-  async login(username: string, password: string, longSession = false, _origin = '') {
-    const normUsername = username.toUpperCase();
-    const user = await this.prisma.user.findUnique({ where: { username: normUsername } });
-    const passwordValid = !!user && user.isActive && await bcrypt.compare(password, user.passwordHash);
-    if (!user || !passwordValid) throw new UnauthorizedException('Credenciales inválidas');
+  // Sin bloqueos largos (lo pidió el dueño de Ventra: los comercios quedaban afuera hasta 15
+  // minutos), pero con una demora creciente por equipo después de varias claves incorrectas.
+  private throttle = new LoginThrottle();
 
-    return this.issueSession(user, longSession && user.role === 'ADMIN', 'LOGIN');
+  async login(username: string, password: string, longSession = false, origin = '') {
+    return this.throttle.run(origin || 'local', async () => {
+      const normUsername = username.toUpperCase();
+      const user = await this.prisma.user.findUnique({ where: { username: normUsername } });
+      const passwordValid = !!user && user.isActive && await bcrypt.compare(password, user.passwordHash);
+      if (!user || !passwordValid) throw new UnauthorizedException('Credenciales inválidas');
+
+      return this.issueSession(user, longSession && user.role === 'ADMIN', 'LOGIN');
+    });
   }
 
   /**
@@ -33,12 +38,15 @@ export class AuthService {
    * Antes se probaba contra un usuario llamado literalmente "ADMIN" y en los comercios cuyo
    * administrador tiene otro nombre la clave nunca coincidía.
    */
-  async adminUnlock(password: string) {
-    const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, orderBy: { createdAt: 'asc' } });
-    for (const admin of admins) {
-      if (await bcrypt.compare(String(password || ''), admin.passwordHash)) return this.issueSession(admin, false, 'ADMIN_UNLOCK');
-    }
-    throw new UnauthorizedException('Contraseña de administrador incorrecta');
+  async adminUnlock(password: string, origin = '') {
+    // Misma demora que la entrada: este candado pide solo la clave, así que es el más fácil de probar
+    return this.throttle.run(origin || 'local', async () => {
+      const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, orderBy: { createdAt: 'asc' } });
+      for (const admin of admins) {
+        if (await bcrypt.compare(String(password || ''), admin.passwordHash)) return this.issueSession(admin, false, 'ADMIN_UNLOCK');
+      }
+      throw new UnauthorizedException('Contraseña de administrador incorrecta');
+    });
   }
 
   /**

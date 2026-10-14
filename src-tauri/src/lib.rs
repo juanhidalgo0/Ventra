@@ -536,6 +536,9 @@ pub fn run() {
                         .env("PORT", port.to_string())
                         .env("DATABASE_URL", &database_url)
                         .env("GEMINI_API_KEY", &gemini_api_key)
+                        // Solo para la demo y las pruebas: en una PC, una variable de Windows con
+                        // este nombre apagaba el control de la suscripción
+                        .env_remove("VENTRA_SUBSCRIPTION_EXEMPT")
                         .current_dir(&app_data_dir);
 
                     #[cfg(target_os = "windows")]

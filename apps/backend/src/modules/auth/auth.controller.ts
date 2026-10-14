@@ -28,11 +28,12 @@ class ChangePasswordDto {
 }
 
 /**
- * De dónde viene el intento de entrada, para frenar a quien prueba claves. En la caja en
- * la nube todo llega por el anfitrión (127.0.0.1): ahí vale la IP que anota fly.io.
+ * De dónde viene el intento de entrada, para frenar a quien prueba claves. En fly.io (caja en
+ * la nube y demo) todo llega por el mismo proxy: ahí vale la IP que anota fly. En una PC ese
+ * encabezado no se mira, porque cualquiera en la red lo podría inventar.
  */
 function loginOrigin(req: any): string {
-  if (process.env.VENTRA_NODE_KIND === 'cloud') return String(req.headers?.['fly-client-ip'] || 'cloud');
+  if (process.env.VENTRA_NODE_KIND === 'cloud' || process.env.FLY_APP_NAME) return String(req.headers?.['fly-client-ip'] || 'cloud');
   return String(req.ip || req.socket?.remoteAddress || '');
 }
 
@@ -51,8 +52,8 @@ export class AuthController {
 
   /** Candado de administrador de la caja: clave del administrador del comercio (ver AuthService.adminUnlock) */
   @Post('admin-unlock')
-  async adminUnlock(@Body() body: { password?: string }) {
-    return this.authService.adminUnlock(String(body?.password || ''));
+  async adminUnlock(@Body() body: { password?: string }, @Req() req: any) {
+    return this.authService.adminUnlock(String(body?.password || ''), loginOrigin(req));
   }
 
   /** Entrada de soporte en la caja en la nube (ver AuthService.supportLogin) */
