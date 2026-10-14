@@ -39,18 +39,6 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
-      # .env is gitignored and tauri.conf.json bundles it into the installer, so
-      # a fresh CI checkout has no .env at all — the resource path has to exist
-      # for the tauri-action bundling step to succeed. Every setting the backend
-      # actually needs is already passed straight to the process by
-      # src-tauri/src/lib.rs when it spawns Node (DATABASE_URL, Firebase creds,
-      # sync token, etc.), so this is intentionally just a placeholder — no
-      # secrets go in it, since this repo is public and it ships inside the
-      # publicly downloadable installer.
-      - name: Create placeholder .env (required to exist for bundling)
-        shell: bash
-        run: touch .env
-
       - name: Reset local dev database (fresh schema, no seed data bundled)
         run: npm run db:reset
         env:
@@ -67,6 +55,7 @@ jobs:
           npx prisma generate
           npm run test:stock
           npm run test:boletas
+          npm run test:fiscal
 
       - name: Build frontend
         run: npm run build:frontend

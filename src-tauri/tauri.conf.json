@@ -56,6 +56,10 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "Ventra",
+    "copyright": "© 2026 Ventra",
+    "homepage": "https://ventra.store",
+    "shortDescription": "Ventra - Sistema de ventas",
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
@@ -67,8 +71,7 @@
     "resources": [
       "../apps/backend/dist/ncc",
       "../apps/backend/bin/*",
-      "../apps/frontend/dist",
-      "../.env"
+      "../apps/frontend/dist"
     ],
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
@@ -77,6 +80,7 @@
         "headerImage": "installer-header.bmp",
         "sidebarImage": "installer-sidebar.bmp",
         "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh",
         "displayLanguageSelector": false,
         "languages": ["Spanish"]
       }

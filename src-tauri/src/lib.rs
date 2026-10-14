@@ -535,8 +535,6 @@ pub fn run() {
                         .env("NODE_ENV", "production")
                         .env("PORT", port.to_string())
                         .env("DATABASE_URL", &database_url)
-                        .env("GODELIVERY_COMERCIO_ID", "7mdgE7txSCQqWQl1Hzrqa5PCo8C2")
-                        .env("LOCAL_SYNC_TOKEN", "paulos-local-sync-token-secret-2026")
                         .env("GEMINI_API_KEY", &gemini_api_key)
                         .current_dir(&app_data_dir);
 

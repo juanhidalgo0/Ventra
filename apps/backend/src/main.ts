@@ -197,11 +197,11 @@ async function bootstrap() {
     console.error('[Tunnel Error] Failed to start SSH tunnel process:', err);
   }
 
-  console.log('--- RESTARTING MAXIKIOSCO PAULOS BACKEND ---');
+  console.log('--- VENTRA BACKEND ---');
   console.log('--- TIME: ' + new Date().toISOString() + ' ---');
   console.log(`
   ╔══════════════════════════════════════════╗
-  ║     Maxikiosco Paulos POS - Backend      ║
+  ║            Ventra - Backend              ║
   ╠══════════════════════════════════════════╣
   ║  🚀 Server running on port ${port}          ║
   ║  📡 WebSocket ready                      ║

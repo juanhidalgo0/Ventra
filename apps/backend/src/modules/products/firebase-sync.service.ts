@@ -120,7 +120,7 @@ export class FirebaseSyncService implements OnModuleInit {
         }
 
         console.log('  ======================================================');
-        console.log('  📡 Maxikiosco Paulos POS - CONEXIÓN NUBE ACTIVA');
+        console.log('  📡 Ventra - CONEXIÓN NUBE ACTIVA');
         console.log(`  🔗 Conectado a Firestore. Comercio ID base: "${this.comercioId}"`);
         console.log('  📈 Optimizaciones listas para reducir operaciones de Firebase.');
         console.log('  ======================================================');
