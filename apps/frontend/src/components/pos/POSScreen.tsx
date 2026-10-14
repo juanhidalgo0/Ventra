@@ -47,6 +47,7 @@ import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from 
 import { registerTourActions, useTourStore } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
 import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
+import { canPrintSilently, printSilently, printFailMessage } from '../../utils/ticketPrinter';
 
 interface Product { 
   id: string; 
@@ -394,7 +395,9 @@ export default function POSScreen() {
     setReprintSale(lastSale);
     toast.success(`🖨️ Imprimiendo ${factura ? 'la factura' : 'el ticket'} #${lastSale.saleNumber || ''}`);
     setTimeout(() => {
-      window.print();
+      // App de escritorio: directo a la impresora de tickets; si falla, el cuadro de impresión
+      if (canPrintSilently()) printSilently('ticket').catch((err) => toast.error(printFailMessage(err), { duration: 8000 }));
+      else window.print();
     }, 250);
   };
 
@@ -2305,47 +2308,48 @@ export default function POSScreen() {
                               handleProductAdd(product, e);
                             }}
                             style={{ contain: 'content', contentVisibility: 'auto' }}
-                            className={`group p-3 text-left transition-[transform,border-color,background-color] duration-fast ease-out-soft active:scale-[0.98] select-none flex flex-col justify-between h-[258px] rounded-2xl ${
+                            className={`group p-3 text-left transition-[transform,border-color,background-color] duration-fast ease-out-soft active:scale-[0.98] select-none flex flex-col justify-between h-[258px] rounded-2xl overflow-hidden ${
                               selectedProductIndex === navIndex
                                 ? 'border-2 border-rose-500 dark:border-rose-400 bg-rose-50/40 dark:bg-rose-950/30 shadow-md ring-2 ring-rose-500/20'
                                 : 'bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-500 hover:-translate-y-0.5 shadow-xs'
                             }`}
                           >
-                            {/* Top: Image Container */}
-                            <div className={`w-full h-[106px] rounded-xl ${gastro && !product.imageUrl ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40' : 'bg-slate-50 dark:bg-slate-100 border border-slate-100 dark:border-slate-300/70 group-hover:bg-slate-100/70 dark:group-hover:bg-white'} overflow-hidden flex-shrink-0 flex items-center justify-center relative mb-2 p-1.5 transition-colors`}>
+                            {/* Foto de borde a borde, entera (sin recortar): los productos tienen formas muy distintas */}
+                            <div className={`-mx-3 -mt-3 mb-2 h-[106px] flex-shrink-0 flex items-center justify-center relative overflow-hidden border-b ${gastro && !product.imageUrl ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40' : product.imageUrl ? 'bg-white border-slate-100 dark:border-slate-700/60' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/60'}`}>
                               {gastro && !product.imageUrl ? (
                                 <span className="text-[46px] leading-none select-none transition-transform group-hover:scale-110" aria-hidden>{foodEmoji(product.category?.name || product.name)}</span>
-                              ) : <img  
-                                src={product.imageUrl || './product-placeholder.png'} 
-                                alt={product.name} 
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-contain mix-blend-multiply"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = './product-placeholder.png';
-                                }}
-                              />}
+                              ) : product.imageUrl ? (
+                                <img
+                                  src={product.imageUrl}
+                                  alt={product.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="w-full h-full object-contain p-2 transition-transform duration-fast group-hover:scale-[1.03]"
+                                  onError={(e) => {
+                                    // Foto rota: queda el recuadro de "sin foto"
+                                    const el = e.target as HTMLImageElement;
+                                    el.style.display = 'none';
+                                    el.parentElement?.classList.replace('bg-white', 'bg-slate-50');
+                                    el.nextElementSibling?.classList.remove('hidden');
+                                  }}
+                                />
+                              ) : null}
+                              {!gastro && (
+                                <Package className={`${product.imageUrl ? 'hidden ' : ''}w-8 h-8 text-slate-300 dark:text-slate-600`} strokeWidth={1.5} aria-hidden />
+                              )}
 
-                              {/* Stock Tag overlaid on Image (en gastronomía se cocina a pedido: no se muestra) */}
-                              {!gastro && <div className="absolute bottom-1.5 left-1.5 z-10">
-                                <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md leading-none bg-white/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700 ${stockBadge.tone}`}>
+                              {/* Stock: marca chica en la esquina (en gastronomía se cocina a pedido: no se muestra) */}
+                              {!gastro && (
+                                <span className={`absolute top-2 right-2 z-10 inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md leading-none bg-white/95 dark:bg-slate-900/90 shadow-xs ring-1 ring-slate-200/80 dark:ring-slate-700 ${stockBadge.tone}`}>
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
                                   {stockBadge.text}
                                 </span>
-                              </div>}
-
-                              {/* Category Tag overlaid on top-left of Image */}
-                              {product.category?.name && (
-                                <div className="absolute top-1.5 left-1.5 z-10">
-                                  <span className="text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md bg-white/95 dark:bg-slate-900/90 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 leading-none max-w-[120px] truncate block">
-                                    {product.category.name}
-                                  </span>
-                                </div>
                               )}
                             </div>
 
                             {/* Middle: Title & Barcode Info */}
                             <div className="flex-1 flex flex-col justify-start min-w-0 mb-1">
+                              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 truncate leading-none mb-1 min-h-[10.5px]">{product.category?.name || ''}</p>
                               <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1">
                                 {product.name}
                               </h3>

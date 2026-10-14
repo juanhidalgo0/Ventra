@@ -16,7 +16,8 @@ export interface PlanFeatures {
 
 export type PlanId = 'caja' | 'tienda' | 'agenda' | 'agenda_pro' | 'full';
 
-/** Planes que se venden. Mismo reparto que planFeatures en el backend (subscription.service). */
+/** Planes y lo que habilita cada uno. Mismo reparto que planFeatures en el backend (subscription.service).
+ *  Caja ya no se vende (la caja va con Full): queda solo para las cuentas que lo tenían. */
 export const PLANS: Record<PlanId, { name: string; tagline: string; features: PlanFeatures }> = {
   caja: { name: 'Ventra Caja', tagline: 'Mostrador: caja, stock y reportes', features: { caja: true, tienda: false, agenda: false, reminders: false } },
   tienda: { name: 'Ventra Tienda', tagline: 'Tienda online y agenda de turnos', features: { caja: false, tienda: true, agenda: true, reminders: false } },
@@ -25,9 +26,12 @@ export const PLANS: Record<PlanId, { name: string; tagline: string; features: Pl
   full: { name: 'Ventra Full', tagline: 'Todo: caja, tienda y agenda', features: { caja: true, tienda: true, agenda: true, reminders: true } },
 };
 
+/** Los que se venden hoy: los que se ofrecen en la demo. */
+export const SOLD_PLANS: PlanId[] = ['tienda', 'agenda', 'agenda_pro', 'full'];
+
 const DEMO_PLAN_KEY = 'demo_plan';
 const readDemoPlan = (): PlanId => {
-  try { const v = localStorage.getItem(DEMO_PLAN_KEY) as PlanId | null; return v && PLANS[v] ? v : 'full'; } catch { return 'full'; }
+  try { const v = localStorage.getItem(DEMO_PLAN_KEY) as PlanId | null; return v && SOLD_PLANS.includes(v) ? v : 'full'; } catch { return 'full'; }
 };
 
 interface PlanState {

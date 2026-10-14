@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#08362A">
+<title>Instagram — Ventra</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine-950:#03140F; --pine-900:#06261D; --pine-850:#08362A; --pine-800:#0A4736; --pine-700:#0E5E48;
+    --pine:#167160; --mint:#34AC7E; --mint-100:#CDEEE0; --mint-50:#EAF7F1;
+    --paper:#FBF9F5; --sand:#EFE9DF; --line:#E4DDD1; --line-2:#EFE9DF;
+    --ink:#0F1F1A; --ink-2:#56655F; --ink-3:#8A958F;
+    --on-dark:#F6F2EC; --on-dark-2:rgba(246,242,236,.66); --line-dark:rgba(246,242,236,.12);
+    --amber:#A15C07; --amber-bg:#FDF3E1; --amber-line:#F3D9A8;
+    --red:#B4412B; --red-bg:#FBECE8; --red-line:#F1C7BD;
+    --gray-bg:#F1EEE8;
+    --sans:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+    --r:14px; --r-lg:20px;
+    --shadow-sm:0 1px 2px rgba(15,31,26,.06), 0 2px 8px rgba(15,31,26,.04);
+    --shadow:0 2px 6px rgba(15,31,26,.05), 0 18px 40px -18px rgba(15,31,26,.22);
+    --shadow-lg:0 30px 80px -30px rgba(3,20,15,.55);
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  input,textarea,select{ font:inherit; color:inherit; }
+  :focus-visible{ outline:2px solid var(--mint); outline-offset:2px; border-radius:6px; }
+  .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .muted{ color:var(--ink-2); }
+  .small{ font-size:12px; color:var(--ink-3); }
+  .hidden{ display:none !important; }
+
+  .topbar{ background:var(--pine-850); color:var(--on-dark); }
+  .topbar-in{ max-width:1100px; margin:0 auto; padding:14px 16px; display:flex; align-items:center; gap:12px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; font-size:16px; color:inherit; text-decoration:none; }
+  .brand img{ width:30px; height:30px; border-radius:8px; }
+  .brand .tag{ font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--on-dark-2); border:1px solid var(--line-dark); padding:3px 8px; border-radius:999px; }
+  .spacer{ flex:1; }
+  .who{ font-size:13px; color:var(--on-dark-2); }
+  .btn-dark{ height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--line-dark); color:var(--on-dark); font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:7px; text-decoration:none; }
+  .btn-dark:hover{ background:rgba(246,242,236,.08); }
+
+  main{ max-width:1100px; margin:0 auto; padding:24px 16px 64px; display:flex; flex-direction:column; gap:16px; }
+  h1{ margin:0; font-size:24px; font-weight:700; letter-spacing:-.035em; line-height:1.15; }
+  h2{ margin:0; font-size:15px; font-weight:700; letter-spacing:-.01em; }
+  .sub{ margin-top:4px; font-size:13px; color:var(--ink-2); }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); padding:18px; box-shadow:var(--shadow-sm); min-width:0; }
+  .card-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .grid2{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
+
+  .btn{ height:36px; padding:0 14px; border-radius:999px; font-size:13px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--line); background:#fff; white-space:nowrap; }
+  .btn:hover{ border-color:var(--ink-3); }
+  .btn.primary{ background:var(--pine-850); border-color:var(--pine-850); color:var(--on-dark); }
+  .btn.primary:hover{ background:var(--pine-800); }
+  .btn.danger{ color:var(--red); border-color:var(--red-line); }
+  .btn:disabled{ opacity:.55; cursor:default; }
+  .btn.sm{ height:30px; padding:0 11px; font-size:12px; }
+
+  .pill{ display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; border:1px solid transparent; }
+  .pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .pill.ok{ background:var(--mint-50); color:var(--pine); border-color:var(--mint-100); }
+  .pill.warn{ background:var(--amber-bg); color:var(--amber); border-color:var(--amber-line); }
+  .pill.bad{ background:var(--red-bg); color:var(--red); border-color:var(--red-line); }
+  .pill.off{ background:var(--gray-bg); color:var(--ink-2); border-color:var(--line); }
+
+  .field{ display:flex; flex-direction:column; gap:5px; margin-top:10px; }
+  .field label{ font-size:12px; font-weight:600; color:var(--ink-2); }
+  .field input, .field textarea{ width:100%; border:1px solid var(--line); border-radius:12px; padding:9px 12px; background:#fff; font-size:13px; }
+  .field textarea{ min-height:150px; resize:vertical; line-height:1.45; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
+  .copy{ display:flex; gap:8px; align-items:center; margin-top:6px; }
+  .copy code{ flex:1; min-width:0; overflow-x:auto; white-space:nowrap; font-family:var(--mono); font-size:12px; background:var(--gray-bg); border:1px solid var(--line); border-radius:10px; padding:7px 10px; }
+  ol.steps{ margin:8px 0 0; padding-left:20px; color:var(--ink-2); font-size:13px; }
+  ol.steps li{ margin:4px 0; }
+  ol.steps b{ color:var(--ink); }
+
+  .toggle{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--line-2); }
+  .toggle:first-of-type{ border-top:0; }
+  .toggle .t{ font-weight:600; }
+  .switch{ position:relative; width:44px; height:26px; flex:none; }
+  .switch input{ position:absolute; opacity:0; inset:0; margin:0; cursor:pointer; }
+  .switch span{ position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .15s; pointer-events:none; }
+  .switch span::after{ content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:var(--shadow-sm); transition:transform .15s; }
+  .switch input:checked + span{ background:var(--pine); }
+  .switch input:checked + span::after{ transform:translateX(18px); }
+  .switch input:focus-visible + span{ outline:2px solid var(--mint); outline-offset:2px; }
+  .meter{ height:6px; border-radius:999px; background:var(--line-2); overflow:hidden; margin-top:6px; }
+  .meter i{ display:block; height:100%; background:var(--pine); }
+  .alert{ border:1px solid var(--red-line); background:var(--red-bg); color:var(--red); border-radius:12px; padding:10px 12px; font-size:13px; margin-top:10px; overflow-wrap:anywhere; }
+  .note{ border:1px solid var(--amber-line); background:var(--amber-bg); color:var(--amber); border-radius:12px; padding:10px 12px; font-size:13px; margin-top:10px; }
+
+  .list{ display:flex; flex-direction:column; }
+  .row{ display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-top:1px solid var(--line-2); }
+  .row:first-child{ border-top:0; }
+  .row .body{ flex:1; min-width:0; }
+  .row .body p{ margin:2px 0 0; overflow-wrap:anywhere; }
+  .row .reply{ margin-top:4px; padding-left:10px; border-left:2px solid var(--mint-100); color:var(--ink-2); overflow-wrap:anywhere; }
+  .empty{ color:var(--ink-3); font-size:13px; padding:8px 0; }
+
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ height:32px; padding:0 12px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .chip.on{ background:var(--pine-850); border-color:var(--pine-850); color:var(--on-dark); }
+  .chip .c{ font-family:var(--mono); font-size:11px; opacity:.75; margin-left:4px; }
+
+  .posts{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; margin-top:14px; }
+  .post{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-sm); display:flex; flex-direction:column; min-width:0; }
+  .media{ position:relative; background:var(--pine-950); display:flex; overflow-x:auto; scroll-snap-type:x mandatory; }
+  .media > *{ flex:0 0 100%; width:100%; max-height:420px; object-fit:contain; scroll-snap-align:start; background:var(--pine-950); display:block; }
+  .media .count{ position:absolute; top:10px; right:10px; flex:none; width:auto; background:rgba(3,20,15,.7); color:#fff; font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; }
+  .post-body{ padding:14px 16px 16px; display:flex; flex-direction:column; gap:4px; flex:1; }
+  .post-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .post .why{ font-size:12.5px; color:var(--ink-2); background:var(--gray-bg); border-radius:10px; padding:8px 10px; margin-top:6px; overflow-wrap:anywhere; }
+  .post .caption-ro{ white-space:pre-wrap; font-size:13px; margin-top:8px; overflow-wrap:anywhere; max-height:220px; overflow-y:auto; }
+  .post-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .chars{ font-size:11.5px; color:var(--ink-3); text-align:right; }
+
+  .perf-top{ display:flex; gap:20px; align-items:flex-end; flex-wrap:wrap; }
+  .big{ font-size:28px; font-weight:600; letter-spacing:-.03em; line-height:1; }
+  .delta{ font-size:12px; font-weight:600; }
+  .delta.up{ color:var(--pine); } .delta.down{ color:var(--red); }
+  .spark{ flex:1; min-width:180px; height:48px; }
+  .table-wrap{ overflow-x:auto; margin-top:14px; border:1px solid var(--line); border-radius:var(--r); }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; font-size:11.5px; font-weight:600; color:var(--ink-3); padding:9px 12px; background:var(--paper); border-bottom:1px solid var(--line); white-space:nowrap; }
+  td{ padding:9px 12px; border-bottom:1px solid var(--line-2); vertical-align:top; }
+  tr:last-child td{ border-bottom:0; }
+  th.r, td.r{ text-align:right; }
+  td a{ color:var(--pine); text-decoration:none; font-weight:600; }
+  .cap-cell{ max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .learn{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:14px; }
+  .learn h3{ margin:0 0 6px; font-size:12px; font-weight:600; color:var(--ink-2); }
+  .bar-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; margin:4px 0; }
+  .bar-row .lbl{ width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-row .b{ flex:1; height:6px; border-radius:999px; background:var(--line-2); overflow:hidden; }
+  .bar-row .b i{ display:block; height:100%; background:var(--mint); }
+  .bar-row .n{ font-family:var(--mono); font-size:11.5px; color:var(--ink-3); min-width:22px; text-align:right; }
+  .gate{ min-height:calc(100vh - 60px); display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+  .gate-card{ max-width:400px; width:100%; background:#fff; border:1px solid var(--line); border-radius:24px; padding:36px 28px; text-align:center; box-shadow:var(--shadow); }
+  .gate-card img{ width:56px; height:56px; border-radius:16px; margin:0 auto 18px; display:block; }
+  .gate-card h2{ font-size:20px; margin-bottom:6px; }
+  .gate-card p{ margin:0 0 20px; color:var(--ink-2); font-size:13.5px; }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translate(-50%,20px); background:var(--pine-900); color:var(--on-dark); padding:11px 18px; border-radius:999px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:all .2s; z-index:60; max-width:calc(100vw - 32px); text-align:center; }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  .toast.err{ background:var(--red); }
+  .demo-flag{ background:var(--amber-bg); color:var(--amber); border-bottom:1px solid var(--amber-line); font-size:12.5px; font-weight:600; text-align:center; padding:7px 16px; }
+
+  @media (max-width: 760px){
+    .grid2{ grid-template-columns:minmax(0,1fr); }
+    .posts{ grid-template-columns:minmax(0,1fr); }
+    .hide-sm{ display:none; }
+    .learn{ grid-template-columns:minmax(0,1fr); }
+    h1{ font-size:21px; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="/admin"><img src="/ventra-logo.png" alt=""> Ventra <span class="tag">Instagram</span></a>
+      <div class="spacer"></div>
+      <span class="who hide-sm" id="who"></span>
+      <a class="btn-dark" href="/admin">Panel</a>
+      <button class="btn-dark hidden" id="logoutBtn">Salir</button>
+    </div>
+  </header>
+  <div id="demoFlag" class="demo-flag hidden">Modo demostración: datos inventados, las acciones no se guardan.</div>
+
+  <section class="gate hidden" id="gate">
+    <div class="gate-card">
+      <img src="/ventra-logo.png" alt="">
+      <h2 id="gateTitle">Instagram de Ventra</h2>
+      <p id="gateText">Ingresá con la cuenta de Google de administrador.</p>
+      <button class="btn primary" id="loginBtn">Iniciar sesión con Google</button>
+    </div>
+  </section>
+
+  <main id="app" class="hidden">
+    <div>
+      <h1 id="title">Instagram</h1>
+      <div class="sub" id="status">Cargando…</div>
+    </div>
+
+    <div class="grid2">
+      <section class="card" id="botsCard">
+        <div class="card-head"><h2>Respuestas automáticas</h2><span id="aiPill"></span></div>
+        <div class="toggle"><div><div class="t">Mensajes directos</div><div class="small">Contesta al instante con la información de Ventra. Si hace falta una persona, te deja la conversación.</div></div><label class="switch"><input type="checkbox" id="botDm" aria-label="Responder mensajes directos"><span></span></label></div>
+        <div class="toggle"><div><div class="t">Comentarios</div><div class="small">Responde en público los comentarios nuevos (los revisa cada 5 minutos). Ignora el spam.</div></div><label class="switch"><input type="checkbox" id="botComments" aria-label="Responder comentarios"><span></span></label></div>
+        <div style="margin-top:8px">
+          <div class="small" id="spendText"></div>
+          <div class="meter"><i id="spendBar" style="width:0"></i></div>
+        </div>
+        <div id="errorBox"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Para responder vos</h2><a class="btn sm" href="https://www.instagram.com/direct/inbox/" target="_blank" rel="noopener">Abrir mensajes</a></div>
+        <div class="small" style="margin-top:-6px">El bot se calla en estas conversaciones; si contestás desde Instagram, se quita solo.</div>
+        <div class="list" id="handoffs" style="margin-top:6px"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="card-head"><h2>Rendimiento</h2><span class="small">Se actualiza una vez por día</span></div>
+      <div class="perf-top">
+        <div><div class="small">Seguidores</div><div class="big num" id="followersNow">—</div><div id="followersDelta"></div></div>
+        <svg class="spark" id="spark" viewBox="0 0 300 48" preserveAspectRatio="none" role="img" aria-label="Seguidores en los últimos 30 días"></svg>
+      </div>
+      <div id="insightsNote"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Publicación</th><th class="r">Alcance</th><th class="r">Interacción</th><th class="r hide-sm">Guardados</th><th class="r hide-sm">Compartidos</th><th class="r hide-sm">Seguidores nuevos</th></tr></thead>
+          <tbody id="mediaRows"></tbody>
+        </table>
+      </div>
+      <div class="learn">
+        <div><h3>Lo que más preguntan (30 días)</h3><div id="lTopics"></div></div>
+        <div><h3>Rubros que escriben</h3><div id="lRubros"></div></div>
+        <div><h3>Intención</h3><div id="lIntents"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Publicaciones</h2>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="toggle" style="border-top:0;padding-top:0">
+        <div><div class="t">Piloto automático</div><div class="small" id="autoText">El agente crea las publicaciones de la semana y las programa solo, con al menos 12 h de anticipación y hasta 5 por semana. Mientras tanto aparecen en "Programadas" y las podés frenar o descartar.</div></div>
+        <label class="switch"><input type="checkbox" id="autoPilot" aria-label="Publicar sin mi aprobación"><span></span></label>
+      </div>
+      <div class="small" id="postsHelp"></div>
+      <div class="posts" id="posts"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Lo que respondió el bot</h2><span class="small">Últimos movimientos</span></div>
+      <div class="list" id="activity"></div>
+    </section>
+
+    <section class="card" id="setupCard">
+      <div class="card-head"><h2>Conexión con Instagram</h2><span id="connPill"></span></div>
+      <ol class="steps">
+        <li>En <b>developers.facebook.com</b>, en la app de Ventra, agregá el producto <b>Instagram</b> y elegí “API con inicio de sesión de Instagram”.</li>
+        <li>En “Generar tokens de acceso”, agregá la cuenta de Instagram de Ventra (tiene que ser <b>profesional</b>) con los permisos <b>instagram_business_basic</b>, <b>instagram_business_manage_messages</b>, <b>instagram_business_manage_comments</b>, <b>instagram_business_content_publish</b> e <b>instagram_business_manage_insights</b>, y copiá el token.</li>
+        <li>En “Configurar webhooks”, pegá la URL y el token de verificación de abajo y suscribite al campo <b>messages</b>.</li>
+        <li>Pasá la app a modo <b>Activo</b> (Meta solo manda los mensajes a apps activas).</li>
+      </ol>
+      <div class="field"><label>URL del webhook</label><div class="copy"><code id="hookUrl"></code><button class="btn sm" data-copy="hookUrl">Copiar</button></div></div>
+      <div class="field" id="verifyWrap"><label>Token de verificación</label><div class="copy"><code id="verifyToken"></code><button class="btn sm" data-copy="verifyToken">Copiar</button></div></div>
+      <div class="field"><label for="tokenIn">Token de acceso de Instagram</label><input id="tokenIn" type="password" autocomplete="off" placeholder="IGAA…"></div>
+      <div class="field"><label for="secretIn">Clave secreta de la app de Instagram (opcional)</label><input id="secretIn" type="password" autocomplete="off" placeholder="Solo si Meta firma los avisos con la de Instagram"></div>
+      <div class="post-actions"><button class="btn primary" id="connectBtn">Conectar</button></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script>
+  (function(){
+    var API = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraInstagram';
+    var DEMO = /[?&]demo\b/.test(location.search);
+    var TABS = [
+      { key:'draft', label:'Para aprobar', match:function(p){ return p.status === 'draft'; } },
+      { key:'scheduled', label:'Programadas', match:function(p){ return p.status === 'approved' || p.status === 'processing'; } },
+      { key:'published', label:'Publicadas', match:function(p){ return p.status === 'published'; } },
+      { key:'failed', label:'Con error', match:function(p){ return p.status === 'failed'; } }
+    ];
+    var TYPE = { image:'Foto', reel:'Reel', carousel:'Carrusel', story:'Historia' };
+    var STATUS = { draft:['Borrador','warn'], approved:['Programada','ok'], processing:['Publicando','ok'], published:['Publicada','ok'], failed:['Con error','bad'] };
+    var data = null, tab = 'draft', auth = null;
+
+    var $ = function(id){ return document.getElementById(id); };
+    var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); };
+    // Argentina no tiene horario de verano: siempre UTC-3
+    var toArInput = function(iso){ return iso ? new Date(new Date(iso).getTime() - 3 * 3600e3).toISOString().slice(0, 16) : ''; };
+    var fromArInput = function(v){ return v ? v + ':00-03:00' : null; };
+    var fwhen = function(iso){ return iso ? new Date(iso).toLocaleString('es-AR', { timeZone:'America/Argentina/Buenos_Aires', weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : 'sin fecha'; };
+    var ago = function(iso){
+      if (!iso) return '';
+      var m = Math.round((Date.now() - new Date(iso)) / 60000);
+      if (m < 2) return 'recién'; if (m < 60) return 'hace ' + m + ' min';
+      var h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h';
+      var d = Math.round(h / 24); return 'hace ' + d + (d === 1 ? ' día' : ' días');
+    };
+    var toastTimer;
+    function toast(msg, err){
+      var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+      clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.className = 'toast'; }, 2800);
+    }
+
+    function api(method, body){
+      if (DEMO) return demoApi(method, body);
+      return auth.currentUser.getIdToken().then(function(token){
+        return fetch(API, { method:method, headers: Object.assign({ 'Authorization':'Bearer ' + token }, body ? { 'Content-Type':'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });
+      }).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ if (!r.ok) throw Object.assign(new Error(d.error || 'Error'), { status:r.status }); return d; }); });
+    }
+    function load(){
+      return api('GET').then(function(d){ data = d; render(); showApp(); }).catch(function(err){
+        if (err.status === 403) return showGate('Sin acceso', 'La cuenta ' + (auth && auth.currentUser && auth.currentUser.email || '') + ' no es administradora de Ventra.', true);
+        toast('No se pudo cargar', true);
+      });
+    }
+    function act(body, okMsg, btn){
+      if (btn) btn.disabled = true;
+      return api('POST', body).then(function(){ toast(okMsg); return load(); })
+        .catch(function(err){ toast(err.message || 'No se pudo aplicar el cambio', true); })
+        .then(function(){ if (btn) btn.disabled = false; });
+    }
+
+    function render(){
+      var d = data;
+      $('status').textContent = d.connected
+        ? '@' + d.username + (d.commentsCheckedAt ? ' · comentarios revisados ' + ago(d.commentsCheckedAt) : '')
+        : 'Todavía no está conectada la cuenta de Instagram';
+      $('connPill').innerHTML = d.connected ? '<span class="pill ok">Conectada como @' + esc(d.username) + '</span>' : '<span class="pill off">Sin conectar</span>';
+      $('aiPill').innerHTML = d.aiReady ? '<span class="pill ok">IA lista</span>' : '<span class="pill bad">Falta la clave de la IA</span>';
+      $('botDm').checked = d.bots.dm; $('botComments').checked = d.bots.comments;
+      var ap = d.autopilot || { enabled:false };
+      $('autoPilot').checked = !!ap.enabled; $('autoPilot').disabled = !d.connected;
+      $('postsHelp').textContent = ap.enabled
+        ? 'Lo programado por el piloto automático sale a su hora (hora de Argentina). Si algo no te gusta, tocá "Frenar" antes.'
+        : 'Nada sale sin tu aprobación. Lo aprobado se publica a su hora (hora de Argentina), con unos minutos de margen.';
+      $('botDm').disabled = $('botComments').disabled = !d.connected;
+      var pct = Math.min(100, 100 * d.usage.costUsd / d.usage.limitUsd);
+      $('spendText').textContent = 'Este mes: ' + d.usage.dm + ' respuestas a mensajes y ' + d.usage.comments + ' a comentarios · gasto de IA US$ ' + d.usage.costUsd.toFixed(2) + ' de ' + d.usage.limitUsd + ' (compartido con el asistente de la web)';
+      $('spendBar').style.width = pct + '%';
+      var errs = '';
+      if (d.lastError) errs += '<div class="alert"><b>Último problema</b> (' + esc(ago(d.lastErrorAt)) + '): ' + esc(d.lastError) + '</div>';
+      if (d.connected && d.subscribed && String(d.subscribed).indexOf('error') === 0) errs += '<div class="note">No se pudo suscribir la cuenta a los avisos de mensajes (' + esc(d.subscribed) + '). Revisá el paso 3 y volvé a conectar.</div>';
+      if (d.connected && d.expiresAt && new Date(d.expiresAt) - Date.now() < 10 * 864e5) errs += '<div class="note">El token de Instagram vence ' + esc(fwhen(d.expiresAt)) + ' y no se pudo renovar solo. Generá uno nuevo y volvé a conectar.</div>';
+      $('errorBox').innerHTML = errs;
+
+      $('hookUrl').textContent = d.webhookUrl;
+      $('verifyWrap').classList.toggle('hidden', !d.verifyToken);
+      $('verifyToken').textContent = d.verifyToken || '';
+      $('connectBtn').textContent = d.connected ? 'Cambiar token' : 'Conectar';
+      // Conectada: la configuración pasa al final; sin conectar, es lo primero que se ve
+      var main = $('app');
+      if (!d.connected) main.insertBefore($('setupCard'), main.children[1]); else main.appendChild($('setupCard'));
+
+      $('handoffs').innerHTML = d.handoffs.length ? d.handoffs.map(function(h){
+        return '<div class="row"><div class="body"><div class="small">' + esc(h.why) + ' · ' + esc(ago(h.at)) + '</div><p>' + esc(h.lastText || '(sin texto)') + '</p></div><button class="btn sm" data-resolve="' + esc(h.thread) + '">Listo</button></div>';
+      }).join('') : '<div class="empty">Nada pendiente.</div>';
+
+      $('chips').innerHTML = TABS.map(function(t){
+        var n = d.posts.filter(t.match).length;
+        return '<button class="chip' + (tab === t.key ? ' on' : '') + '" data-tab="' + t.key + '">' + t.label + '<span class="c">' + n + '</span></button>';
+      }).join('');
+      var current = TABS.filter(function(t){ return t.key === tab; })[0];
+      var list = d.posts.filter(current.match);
+      if (tab === 'scheduled') list.sort(function(a, b){ return String(a.publishAt).localeCompare(String(b.publishAt)); });
+      $('posts').innerHTML = list.length ? list.map(postCard).join('') : '<div class="empty">' + ({ draft:'No hay borradores para aprobar.', scheduled:'No hay nada programado.', published:'Todavía no se publicó nada desde acá.', failed:'Sin errores.' })[tab] + '</div>';
+
+      renderPerf(d);
+
+      $('activity').innerHTML = d.activity.length ? d.activity.map(function(a){
+        var who = a.kind === 'comment' ? 'Comentario de @' + (a.username || 'alguien') : 'Mensaje directo';
+        var st = ({ replied:['Respondió','ok'], handoff:['Te lo pasó','warn'], skipped:['Lo ignoró','off'], 'human-needed':['Para vos','warn'], paused:['En pausa','off'], limit:['Tope del día','warn'], off:['Apagado','off'], error:['Error','bad'], human:['Respondiste vos','ok'] })[a.status] || [a.status, 'off'];
+        return '<div class="row"><div class="body"><div class="small">' + esc(who) + ' · ' + esc(ago(a.at)) + '</div><p>' + esc(a.text || '(sin texto)') + '</p>' + (a.reply ? '<div class="reply">' + esc(a.reply) + '</div>' : '') + (a.privateReply ? '<div class="reply"><span class="small">Por privado:</span> ' + esc(a.privateReply) + '</div>' : '') + (a.why && a.status === 'error' ? '<div class="small">' + esc(a.why) + '</div>' : '') + '</div><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span></div>';
+      }).join('') : '<div class="empty">Todavía no respondió nada.</div>';
+    }
+
+    var INTENT = { listo_para_comprar:'Quiere comprar', interesado:'Interesado', consulta:'Consulta', soporte:'Ya es cliente', ninguna:'Charla o elogio' };
+    var fmt = function(n){ return n == null ? '—' : Number(n).toLocaleString('es-AR'); };
+    function bars(list, labels){
+      if (!list || !list.length) return '<div class="empty">Todavía sin datos.</div>';
+      var max = list[0].n;
+      return list.map(function(x){ return '<div class="bar-row"><span class="lbl" title="' + esc(x.name) + '">' + esc(labels && labels[x.name] || x.name) + '</span><span class="b"><i style="width:' + (100 * x.n / max) + '%"></i></span><span class="n">' + x.n + '</span></div>'; }).join('');
+    }
+    function renderPerf(d){
+      var f = d.followers || [];
+      var last = f.length ? f[f.length - 1].n : null;
+      $('followersNow').textContent = fmt(last);
+      var back = Math.min(7, f.length - 1), base = f.length > 1 ? f[f.length - 1 - back].n : null;
+      var diff = last != null && base != null ? last - base : null;
+      $('followersDelta').innerHTML = diff == null ? '<span class="small">Sin historia todavía</span>' : '<span class="delta ' + (diff >= 0 ? 'up' : 'down') + '">' + (diff >= 0 ? '+' : '') + fmt(diff) + '</span> <span class="small">en ' + back + (back === 1 ? ' día' : ' días') + '</span>';
+      var svg = '';
+      if (f.length > 1) {
+        var vals = f.map(function(x){ return x.n; });
+        var min = Math.min.apply(null, vals), span = Math.max(1, Math.max.apply(null, vals) - min);
+        var pts = f.map(function(x, i){ return (i * 300 / (f.length - 1)).toFixed(1) + ',' + (44 - 40 * (x.n - min) / span).toFixed(1); });
+        svg = '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#167160" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+      }
+      $('spark').innerHTML = svg;
+      $('insightsNote').innerHTML = d.insightsError ? '<div class="note">' + esc(d.insightsError) + '. Para ver alcance y guardados, el token necesita el permiso <b>instagram_business_manage_insights</b>: generalo de nuevo con ese permiso y volvé a conectar.</div>' : '';
+      $('mediaRows').innerHTML = (d.media || []).length ? d.media.map(function(m){
+        var x = m.metrics || {};
+        var inter = x.total_interactions != null ? x.total_interactions : (m.likes || 0) + (m.comments || 0) + (x.saved || 0) + (x.shares || 0);
+        var rate = x.reach ? ' <span class="small">' + (100 * inter / x.reach).toFixed(1) + '%</span>' : '';
+        return '<tr><td class="small" style="white-space:nowrap">' + esc(fwhen(m.at)) + '</td><td class="cap-cell"><a href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' + esc(TYPE[m.type] || m.type) + '</a> ' + esc(m.caption || '') + '</td><td class="r num">' + fmt(x.reach) + '</td><td class="r num">' + fmt(inter) + rate + '</td><td class="r num hide-sm">' + fmt(x.saved) + '</td><td class="r num hide-sm">' + fmt(x.shares) + '</td><td class="r num hide-sm">' + fmt(x.follows) + '</td></tr>';
+      }).join('') : '<tr><td colspan="7" class="empty" style="padding:12px">Las métricas aparecen al día siguiente de conectar la cuenta.</td></tr>';
+      var l = d.learned || {};
+      $('lTopics').innerHTML = bars(l.topics);
+      $('lRubros').innerHTML = bars(l.rubros);
+      $('lIntents').innerHTML = bars(l.intents, INTENT);
+    }
+
+    function postCard(p){
+      var editable = p.status === 'draft' || p.status === 'approved' || p.status === 'failed';
+      var media = p.media.map(function(m){
+        return m.kind === 'video'
+          ? '<video src="' + esc(m.url) + '" controls playsinline preload="metadata"' + (p.coverUrl ? ' poster="' + esc(p.coverUrl) + '"' : '') + '></video>'
+          : '<img src="' + esc(m.url) + '" alt="" loading="lazy">';
+      }).join('') + (p.media.length > 1 ? '<span class="count">' + p.media.length + ' piezas · deslizá</span>' : '');
+      var st = STATUS[p.status] || [p.status, 'off'];
+      var when = p.status === 'published' ? 'Publicada ' + fwhen(p.publishedAt) : fwhen(p.publishAt);
+      var html = '<article class="post" data-id="' + esc(p.id) + '"><div class="media">' + media + '</div><div class="post-body">' +
+        '<div class="post-meta"><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span><b>' + esc(TYPE[p.type] || p.type) + '</b><span class="small">' + esc(when) + '</span>' + (p.approvedBy === 'piloto automático' ? '<span class="small">· piloto automático</span>' : '') + '</div>';
+      if (p.note) html += '<div class="why">' + esc(p.note) + '</div>';
+      if (p.error) html += '<div class="alert">' + esc(p.error) + '</div>';
+      if (editable) {
+        if (p.type !== 'story') html += '<div class="field"><label for="cap-' + esc(p.id) + '">Texto</label><textarea id="cap-' + esc(p.id) + '" data-cap maxlength="2200">' + esc(p.caption) + '</textarea><div class="chars" data-chars>' + p.caption.length + ' / 2200</div></div>';
+        html += '<div class="field"><label for="when-' + esc(p.id) + '">Cuándo (hora de Argentina)</label><input type="datetime-local" id="when-' + esc(p.id) + '" data-when value="' + esc(toArInput(p.publishAt)) + '"></div>';
+        html += '<div class="post-actions">';
+        if (p.status === 'draft') html += '<button class="btn primary" data-act="approve">Aprobar</button><button class="btn" data-act="update">Guardar</button><button class="btn danger" data-act="reject">Descartar</button>';
+        if (p.status === 'approved') html += '<button class="btn" data-act="update">Guardar cambios</button><button class="btn" data-act="unapprove">Frenar</button><button class="btn danger" data-act="reject">Descartar</button>';
+        if (p.status === 'failed') html += '<button class="btn primary" data-act="approve">Reintentar</button><button class="btn danger" data-act="reject">Descartar</button>';
+        html += '</div>';
+      } else {
+        if (p.caption) html += '<div class="caption-ro">' + esc(p.caption) + '</div>';
+        if (p.permalink) html += '<div class="post-actions"><a class="btn sm" href="' + esc(p.permalink) + '" target="_blank" rel="noopener">Ver en Instagram</a></div>';
+      }
+      return html + '</div></article>';
+    }
+
+    // ── Eventos ──
+    $('chips').addEventListener('click', function(e){ var b = e.target.closest('[data-tab]'); if (!b) return; tab = b.getAttribute('data-tab'); render(); });
+    $('handoffs').addEventListener('click', function(e){ var b = e.target.closest('[data-resolve]'); if (b) act({ action:'resolve', thread:b.getAttribute('data-resolve') }, 'Marcada como resuelta', b); });
+    $('posts').addEventListener('input', function(e){
+      if (!e.target.matches('[data-cap]')) return;
+      var c = e.target.closest('.field').querySelector('[data-chars]'), n = e.target.value.length, tags = (e.target.value.match(/#[\p{L}\p{N}_]+/gu) || []).length;
+      c.textContent = n + ' / 2200' + (tags ? ' · ' + tags + ' hashtags' : '') + (tags > 30 ? ' (máximo 30)' : '');
+    });
+    $('posts').addEventListener('click', function(e){
+      var b = e.target.closest('[data-act]'); if (!b) return;
+      var card = b.closest('[data-id]'), id = card.getAttribute('data-id'), a = b.getAttribute('data-act');
+      var cap = card.querySelector('[data-cap]'), when = card.querySelector('[data-when]');
+      var body = { action:a, id:id };
+      if (a === 'approve' || a === 'update') {
+        if (cap) body.caption = cap.value;
+        if (when && when.value) body.publishAt = fromArInput(when.value);
+      }
+      if (a === 'approve') {
+        var t = when && when.value ? new Date(fromArInput(when.value)).getTime() : 0;
+        var msg = !t || t <= Date.now() ? '¿Publicar ahora? Sale en los próximos minutos.' : '¿Aprobar? Se publica el ' + fwhen(new Date(t).toISOString()) + '.';
+        if (!confirm(msg)) return;
+        return act(body, 'Aprobada', b);
+      }
+      if (a === 'reject') {
+        var fb = prompt('¿Por qué la descartás? (opcional, sirve para las próximas)');
+        if (fb === null) return;
+        body.feedback = fb;
+        return act(body, 'Descartada', b);
+      }
+      act(body, a === 'unapprove' ? 'Volvió a borradores' : 'Cambios guardados', b);
+    });
+    $('autoPilot').addEventListener('change', function(){
+      var on = $('autoPilot').checked;
+      if (on && !confirm('Con el piloto automático, lo que cree el agente se publica sin tu aprobación (con al menos 12 h para frenarlo). ¿Lo prendés?')) { $('autoPilot').checked = false; return; }
+      act({ action:'autopilot', enabled:on }, on ? 'Piloto automático prendido' : 'Piloto automático apagado');
+    });
+    function saveBots(){ act({ action:'bots', dm:$('botDm').checked, comments:$('botComments').checked }, 'Listo'); }
+    $('botDm').addEventListener('change', saveBots);
+    $('botComments').addEventListener('change', saveBots);
+    $('connectBtn').addEventListener('click', function(){
+      var token = $('tokenIn').value.trim();
+      if (!token) return toast('Pegá el token de Instagram', true);
+      act({ action:'connect', token:token, appSecret:$('secretIn').value.trim() || undefined }, 'Instagram conectado', $('connectBtn'))
+        .then(function(){ $('tokenIn').value = ''; $('secretIn').value = ''; });
+    });
+    document.addEventListener('click', function(e){
+      var b = e.target.closest('[data-copy]'); if (!b) return;
+      var text = $(b.getAttribute('data-copy')).textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){ toast('Copiado'); }, function(){ toast('No se pudo copiar', true); });
+    });
+
+    function showApp(){ $('gate').classList.add('hidden'); $('app').classList.remove('hidden'); $('logoutBtn').classList.toggle('hidden', DEMO); }
+    function showGate(title, text, signedIn){
+      $('app').classList.add('hidden'); $('gate').classList.remove('hidden');
+      $('gateTitle').textContent = title; $('gateText').textContent = text;
+      $('loginBtn').classList.toggle('hidden', !!signedIn); $('logoutBtn').classList.toggle('hidden', !signedIn);
+    }
+
+    if (DEMO){ $('demoFlag').classList.remove('hidden'); $('who').textContent = 'demo@ventra.store'; load(); return; }
+
+    firebase.initializeApp({
+      apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
+      authDomain: /(^|\.)ventra\.store$/.test(location.hostname) ? location.hostname : "ventra-9cba5.firebaseapp.com",
+      projectId: "ventra-9cba5",
+      storageBucket: "ventra-9cba5.firebasestorage.app",
+      messagingSenderId: "23136382753",
+      appId: "1:23136382753:web:5d2f4115a77a607435d860"
+    });
+    auth = firebase.auth();
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt:'select_account' });
+    $('loginBtn').onclick = function(){ auth.signInWithPopup(provider).catch(function(){ auth.signInWithRedirect(provider); }); };
+    $('logoutBtn').onclick = function(){ auth.signOut(); };
+    auth.onAuthStateChanged(function(user){
+      $('who').textContent = user ? user.email : '';
+      if (!user){ data = null; return showGate('Instagram de Ventra', 'Ingresá con la cuenta de Google de administrador.', false); }
+      load();
+    });
+
+    // ── Datos de demostración (solo con ?demo) ──
+    var demo = null;
+    function demoApi(method, body){
+      var now = Date.now(), iso = function(ms){ return new Date(ms).toISOString(); };
+      var img = function(t, bg){ return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="100%" height="100%" fill="' + bg + '"/><text x="80" y="700" font-family="sans-serif" font-size="90" font-weight="700" fill="#F6F2EC">' + t + '</text></svg>'); };
+      if (!demo) demo = {
+        connected:true, username:'ventra.store', expiresAt:iso(now + 48 * 864e5), webhookUrl:'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraIgHook', verifyToken:'3f9c1e0b7a2d4c6e8f1a3b5c7d9e0f12', hasAppSecret:false, subscribed:'messages,comments',
+        bots:{ dm:true, comments:false }, autopilot:{ enabled:true, leadHours:12, perWeek:5 }, aiReady:true, commentsCheckedAt:iso(now - 3 * 60000), lastError:null, lastErrorAt:null,
+        usage:{ costUsd:1.84, limitUsd:50, dm:96, comments:31 },
+        posts:[
+          { id:'p1', type:'carousel', caption:'¿Tu kiosco cierra la caja a ojo? 👀\n\nCon Ventra el arqueo te dice al peso cuánto tiene que haber.\n\nProbalo gratis, link en la bio.\n\n#kiosco #almacen #sistemadeventas', note:'Carrusel de dolor → solución para dueños de kiosco. Martes 19 h es el mejor horario de las últimas semanas.', media:[{ url:img('Cierre de caja', '#08362A'), kind:'image' }, { url:img('Arqueo al peso', '#167160'), kind:'image' }, { url:img('Probalo gratis', '#0A4736'), kind:'image' }], status:'draft', publishAt:iso(now + 3 * 864e5), createdAt:iso(now - 3600e3) },
+          { id:'p2', type:'image', caption:'Turnos que se confirman solos por WhatsApp. 💬\n#peluqueria #turnosonline', note:'Para peluquerías: recordatorio automático (Agenda Pro).', media:[{ url:img('Chau faltazos', '#167160'), kind:'image' }], status:'draft', publishAt:null, createdAt:iso(now - 7200e3) },
+          { id:'p3', type:'image', caption:'Tu tienda online con el mismo stock que tu local.', note:'Prueba H2: pieza para emprendedores que venden por Instagram.', media:[{ url:img('Tienda online', '#0E5E48'), kind:'image' }], status:'approved', approvedBy:'piloto automático', publishAt:iso(now + 864e5), createdAt:iso(now - 864e5) },
+          { id:'p4', type:'image', caption:'Ventra: caja, tienda y turnos.', note:'', media:[{ url:img('Ventra', '#06261D'), kind:'image' }], status:'published', publishAt:iso(now - 2 * 864e5), publishedAt:iso(now - 2 * 864e5), permalink:'https://www.instagram.com/', createdAt:iso(now - 4 * 864e5) }
+        ],
+        activity:[
+          { kind:'dm', text:'Hola! cuánto sale para una peluquería?', reply:'¡Hola! Para turnos te conviene Ventra Agenda, $9.900 por mes. Si querés que el recordatorio por WhatsApp salga solo, Agenda Pro a $19.900. Podés probarlo gratis en https://app.ventra.store', status:'replied', at:iso(now - 25 * 60000) },
+          { kind:'comment', username:'almacen.don.tito', text:'Sirve para almacén?', reply:'¡Sí! Te escribí por privado con todo 🙌', privateReply:'¡Hola! Para un almacén va Ventra Full: caja, stock con código de barras y fiado. Probalo gratis acá: https://app.ventra.store/?utm_source=instagram&utm_medium=comentario ¿Usás lector de códigos?', status:'replied', at:iso(now - 3 * 3600e3) },
+          { kind:'dm', text:'Me cobraron dos veces este mes', reply:'Uh, perdón por eso. Una persona del equipo lo revisa y te responde por acá a la brevedad.', status:'handoff', at:iso(now - 5 * 3600e3) },
+          { kind:'comment', username:'seguidores_baratos', text:'Gana 10k seguidores 🔥 entra a mi perfil', reply:null, status:'skipped', at:iso(now - 9 * 3600e3) }
+        ],
+        handoffs:[ { thread:'t2', why:'Posible venta', lastText:'Dale, ¿cómo pago el plan Full?', at:iso(now - 40 * 60000) }, { thread:'t1', why:'El bot pidió una persona', lastText:'Me cobraron dos veces este mes', at:iso(now - 5 * 3600e3) } ],
+        insightsError:null,
+        followers:(function(){ var a = []; for (var i = 30; i >= 0; i--) a.push({ day:new Date(now - i * 864e5).toISOString().slice(0, 10), n:1180 + Math.round((30 - i) * 7.4 + Math.sin(i) * 6) }); return a; })(),
+        media:[
+          { id:'m1', type:'reel', caption:'Chau faltazos: el turno se confirma solo por WhatsApp', at:iso(now - 2 * 864e5), permalink:'https://www.instagram.com/', likes:212, comments:18, metrics:{ reach:9800, views:15400, saved:96, shares:71, total_interactions:397, follows:44 }, ours:true },
+          { id:'m2', type:'carousel', caption:'5 errores al cerrar la caja del kiosco', at:iso(now - 5 * 864e5), permalink:'https://www.instagram.com/', likes:88, comments:9, metrics:{ reach:2600, views:4100, saved:61, shares:12, total_interactions:170, follows:9 }, ours:true },
+          { id:'m3', type:'image', caption:'Ventra: caja, tienda y turnos', at:iso(now - 9 * 864e5), permalink:'https://www.instagram.com/', likes:31, comments:2, metrics:{ reach:980, views:1300, saved:3, shares:1, total_interactions:37, follows:1 }, ours:false }
+        ],
+        learned:{ topics:[{ name:'precio', n:41 }, { name:'agenda', n:27 }, { name:'tienda online', n:15 }, { name:'facturación', n:9 }, { name:'soporte', n:4 }], rubros:[{ name:'peluquería', n:22 }, { name:'kiosco', n:14 }, { name:'ropa', n:9 }, { name:'estética', n:6 }], intents:[{ name:'consulta', n:38 }, { name:'interesado', n:29 }, { name:'listo_para_comprar', n:7 }, { name:'soporte', n:4 }] }
+      };
+      if (method === 'GET') return Promise.resolve(JSON.parse(JSON.stringify(demo)));
+      var p = demo.posts.filter(function(x){ return x.id === body.id; })[0];
+      if (body.action === 'bots') demo.bots = { dm:body.dm, comments:body.comments };
+      if (body.action === 'autopilot') demo.autopilot.enabled = body.enabled;
+      if (body.action === 'resolve') demo.handoffs = demo.handoffs.filter(function(h){ return h.thread !== body.thread; });
+      if (p && (body.action === 'update' || body.action === 'approve')) { if (body.caption != null) p.caption = body.caption; if (body.publishAt) p.publishAt = new Date(body.publishAt).toISOString(); if (body.action === 'approve') { p.status = 'approved'; if (!p.publishAt) p.publishAt = iso(now); } }
+      if (p && body.action === 'unapprove') p.status = 'draft';
+      if (p && body.action === 'reject') demo.posts = demo.posts.filter(function(x){ return x !== p; });
+      return Promise.resolve({});
+    }
+  })();
+  </script>
+</body>
+</html>

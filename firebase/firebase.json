@@ -37,6 +37,10 @@
           "destination": "/panel.html"
         },
         {
+          "source": "/instagram",
+          "destination": "/instagram.html"
+        },
+        {
           "source": "/peluquerias",
           "destination": "/peluquerias.html"
         },

@@ -14,6 +14,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
 import { escapeHtml } from '../../utils/escapeHtml';
 import { MpSessionControl } from './MpReconcilePanel';
+import { printReport } from '../../utils/ticketPrinter';
 
 export default function CashControlScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -1220,7 +1221,7 @@ export default function CashControlScreen() {
 
               <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
                 <button 
-                  onClick={() => window.print()}
+                  onClick={() => printReport()}
                   className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                 >
                   <Printer className="w-4 h-4" /> Imprimir Arqueo A4
@@ -1299,7 +1300,7 @@ export default function CashControlScreen() {
               <div className="flex gap-3 pt-2">
                 <button 
                   onClick={async () => {
-                    if (!window.confirm("¿Estás seguro de que deseas cerrar la caja?\n\nRecordá verificar si ya te cobraste tu sueldo de hoy.")) {
+                    if (!window.confirm("¿Estás seguro de que deseas cerrar la caja?")) {
                       return;
                     }
                     try {

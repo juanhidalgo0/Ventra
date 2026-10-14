@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 import AuthLayout, { authCard, authInput, authLabel, authLead, authPrimaryButton, authTitle } from './AuthLayout';
 import AdminRecovery from './AdminRecovery';
-import { usePlanStore, PLANS, type PlanId } from '../../stores/planStore';
+import { usePlanStore, PLANS, SOLD_PLANS, type PlanId } from '../../stores/planStore';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -21,7 +21,7 @@ export default function LoginPage() {
   // Las landings por rubro mandan a la demo con ?plan= (ej. /peluquerias → agenda): ese plan va marcado
   const [demoSuggested] = useState<PlanId>(() => {
     const p = new URLSearchParams(window.location.search).get('plan') as PlanId | null;
-    return p && PLANS[p] ? p : 'full';
+    return p && SOLD_PLANS.includes(p) ? p : 'full';
   });
   const [showBackToSetup, setShowBackToSetup] = useState(false);
   const [recovering, setRecovering] = useState(false);
@@ -253,7 +253,7 @@ export default function LoginPage() {
           <h2 className={authTitle}>Probá Ventra</h2>
           <p className={authLead}>Elegí un plan y entrás con un clic, sin registrarte. Adentro lo podés cambiar cuando quieras.</p>
           <div className="mt-5 rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
-            {(['caja', 'tienda', 'agenda', 'agenda_pro', 'full'] as PlanId[]).map((id) => (
+            {SOLD_PLANS.map((id) => (
               <button key={id} type="button" onClick={() => handleDemoLogin(id)} disabled={!!demoLoading}
                 className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer">
                 <span className="flex-1 min-w-0">

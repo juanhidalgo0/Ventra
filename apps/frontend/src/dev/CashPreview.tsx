@@ -77,7 +77,7 @@ function Preview() {
         <button onClick={() => { const id = toast.loading('Sincronizando ventas…'); setTimeout(() => toast.success('3 ventas offline sincronizadas', { id }), 1500); }} className="px-3 py-1.5 rounded-lg text-sm border bg-white">Cargando</button>
       </div>
       {view === 'info' && <CajaInfoModal sessionId={session.id} terminalName="Terminal 2" onClose={() => setView(null)} onTriggerClose={() => setView('cierre')} onTriggerCloseAndZ={() => setView('z')} />}
-      {view === 'cierre' && <CierreCajaModal session={session} onClose={() => setView(null)} onConfirm={async () => { setView(null); }} />}
+      {view === 'cierre' && <CierreCajaModal session={session} onClose={() => setView(null)} onConfirm={async () => {}} />}
       {view === 'z' && <CierreDiaModal zReport={zReport} onClose={() => setView(null)} />}
       <AppToaster />
       <HelpMenu pathname="/pos" side="left" />

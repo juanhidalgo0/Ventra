@@ -113,9 +113,13 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       // to actually release the files, not just requesting termination) avoids
       // that race entirely, instead of hoping the timing works out.
       // Que la sincronización termine la tanda en curso antes de cerrar el servidor
+      // Solo el servidor de esta PC: una terminal conectada a la PC del local actualiza su
+      // propia app, y pausar el servidor de la otra PC la dejaba sin sincronizar
       try {
         const { default: api } = await import('../services/api');
-        await api.post('/sync/pause', {}, { timeout: 20000 });
+        if (/^http:\/\/127\.0\.0\.1:/.test(String(api.defaults.baseURL || ''))) {
+          await api.post('/sync/pause', {}, { timeout: 20000 });
+        }
       } catch { /* sin servidor o sin sesión: se cierra igual */ }
       await invokeTauri('stop_backend_for_update');
       try { localStorage.removeItem(PENDING_UPDATE_KEY); } catch { /* sin almacenamiento */ }

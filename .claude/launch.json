@@ -2,28 +2,164 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "frontend-3005",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/bca7d6de-ba43-40c3-808f-6db71f461e13/scratchpad/frontend-3005.mjs"
+      ],
+      "port": 5186
+    },
+    {
+      "name": "tienda-pago",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/bca7d6de-ba43-40c3-808f-6db71f461e13/scratchpad/tienda-server.js"
+      ],
+      "port": 5191
+    },
+    {
+      "name": "tienda-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/769c70e5-1683-41a9-8c52-f76b74d8828b/scratchpad/tienda-server.js"
+      ],
+      "port": 5190
+    },
+    {
+      "name": "reel-tienda",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/Desktop/Kiosco/apps/frontend/node_modules/vite/bin/vite.js",
+        "C:/Users/PC/Desktop/Kiosco/apps/frontend",
+        "--config",
+        "C:/Users/PC/Desktop/Kiosco/apps/frontend/vite.reel.config.ts"
+      ],
+      "port": 5181
+    },
+    {
+      "name": "kiosco-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:backend"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "kiosco-backend-preview",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\PC\\Desktop\\Kiosco\\apps\\backend && set DATABASE_URL=file:C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/61fe72fa-30db-4a13-9c61-d6f520ebe5ae/scratchpad/preview-db/test.db&& set VENTRA_SUBSCRIPTION_EXEMPT=true&& set VENTRA_FUNCTIONS_URL=http://127.0.0.1:9&& set FIREBASE_CREDENTIALS_JSON=x&& set FIREBASE_SERVICE_ACCOUNT_PATH=C:/no-existe.json&& set PORT=3005&& node dist/main.js"
+      ],
+      "port": 3005
+    },
+    {
       "name": "kiosco-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5180
     },
     {
       "name": "kiosco-frontend-only",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\PC\\Desktop\\Kiosco\\apps\\frontend"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:\\Users\\PC\\Desktop\\Kiosco\\apps\\frontend"
+      ],
       "port": 5180
     },
     {
       "name": "mango-landing",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "C:\\Users\\PC\\Desktop\\GoDelivery\\mango-landing"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791",
+        "--directory",
+        "C:\\Users\\PC\\Desktop\\GoDelivery\\mango-landing"
+      ],
       "port": 8791
     },
     {
       "name": "godelivery-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\PC\\Desktop\\GoDelivery"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:\\Users\\PC\\Desktop\\GoDelivery"
+      ],
       "port": 5173
+    },
+    {
+      "name": "tienda-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/Desktop/Kiosco/marketing/reel-tienda-ropa/tienda-demo/server.js"
+      ],
+      "port": 8793
+    },
+    {
+      "name": "ventra-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8792",
+        "--directory",
+        "C:/Users/PC/Desktop/Kiosco/firebase/web"
+      ],
+      "port": 8792
+    },
+    {
+      "name": "godelivery-celular",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/Desktop/GoDelivery/node_modules/vite/bin/vite.js",
+        "C:/Users/PC/Desktop/GoDelivery",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "godelivery-vista-previa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/Desktop/GoDelivery/node_modules/vite/bin/vite.js",
+        "C:/Users/PC/Desktop/GoDelivery",
+        "--config",
+        "C:/Users/PC/Desktop/GoDelivery/vite.preview.config.js",
+        "--port",
+        "5175",
+        "--strictPort"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "kiosco-backend-3002",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/4cb4adc2-8ac7-4b71-bb87-71386ee3fea9/scratchpad/backend-3002.js"
+      ],
+      "port": 3002
+    },
+    {
+      "name": "kiosco-frontend-3002",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/PC/AppData/Local/Temp/claude/C--Users-PC-Desktop-Kiosco/4cb4adc2-8ac7-4b71-bb87-71386ee3fea9/scratchpad/frontend-3002.mjs"
+      ],
+      "port": 5182
     }
   ]
 }

@@ -6,7 +6,7 @@ Actualizado: octubre 2026.
 
 ## Qué es Ventra
 Ventra es un sistema para comercios argentinos. Tiene tres productos que se pueden usar por separado o juntos:
-- **Caja (sistema de ventas)** para vender en un local: caja, stock, cuentas corrientes, promos y reportes.
+- **Caja (sistema de ventas)** para vender en un local: caja, stock, cuentas corrientes, promos y reportes. Viene con Ventra Full (no se vende sola).
 - **Tienda online** con link propio, donde los clientes arman el pedido y le llega ordenado al comercio por WhatsApp y al celular.
 - **Agenda de turnos** online, con recordatorios por WhatsApp (por email, próximamente).
 Todo está conectado: la caja y la tienda comparten el mismo stock, y un turno se puede cobrar en la caja.
@@ -17,14 +17,15 @@ Se pagan mes a mes con Mercado Pago (suscripción). No hay permanencia ni contra
 
 | Plan | Precio | Qué incluye |
 |---|---|---|
-| Ventra Caja | $14.900/mes | Caja, arqueo y reporte Z, stock con código de barras, kits, promos y combos, cuentas corrientes, reportes. Sin límite de cajas ni terminales. No incluye tienda online ni agenda. |
-| Ventra Full | $24.900/mes | Todo lo de Caja + tienda online con el mismo stock y precios en vivo + agenda de turnos con 200 recordatorios automáticos por WhatsApp por mes. |
+| Ventra Full | $24.900/mes | El plan para vender en un local: caja, arqueo y reporte Z, stock con código de barras, kits, promos y combos, cuentas corrientes, reportes, sin límite de cajas ni terminales. Además tienda online con el mismo stock y precios en vivo + agenda de turnos con 200 recordatorios automáticos por WhatsApp por mes. |
 | Ventra Tienda | $9.900/mes | Tienda online con pedidos por WhatsApp y al celular, retiro/envío, cupones. Incluye la agenda de turnos (recordatorio por WhatsApp con un toque). No incluye la caja del local. |
 | Ventra Agenda | $9.900/mes | Solo turnos: página de turnos propia, varios profesionales, ficha de clientes, cobros y recordatorio por WhatsApp con un toque (el recordatorio por email llega próximamente). Sin caja ni productos. |
 | Ventra Agenda Pro | $19.900/mes | Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes. Si se terminan, se compran paquetes de 100 por $7.500 desde la app. |
 
+No hay un plan solo de caja: la caja del local viene únicamente con Ventra Full. Si preguntan por un plan más barato solo para el mostrador, explicar que no existe y que Full ya incluye la tienda online y la agenda.
+
 Cómo elegir:
-- Tiene un local (kiosco, almacén, ferretería, ropa, bazar) → Caja. Si además vende online → Full.
+- Tiene un local (kiosco, almacén, ferretería, ropa, bazar) → Full.
 - Vende por Instagram o WhatsApp y no necesita caja → Tienda.
 - Trabaja con turnos (consultorio, peluquería, barbería, uñas, estética, clases, canchas, veterinaria, taller, profesionales) → Agenda; si quiere que el recordatorio por WhatsApp salga solo → Agenda Pro.
 - Peluquería que también vende productos en el local → Full (caja + agenda con recordatorios).
@@ -37,7 +38,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - **Demo gratis**: app.ventra.store, sin registrarse ni tarjeta. Se elige qué plan probar y se usa con datos de ejemplo. La demo se reinicia sola cada pocas horas: no usarla para datos reales.
 - **Suscribirse**: en la página del plan, tocar el botón del plan, entrar con una cuenta de Google y pagar con Mercado Pago. Se pide el correo de la cuenta de Mercado Pago (tiene que ser el de Mercado Pago, aunque sea distinto del de Google).
 - **Agenda y Tienda** se usan desde el navegador (web.ventra.store), en la compu o el celular. No hay que instalar nada.
-- **Caja / Full**: se puede usar desde el navegador (web.ventra.store) o instalar la app de Windows en la PC del local. La app se descarga desde "Mi cuenta" y la PC se vincula con un código de 8 caracteres. La versión instalada sigue vendiendo aunque se corte internet.
+- **Full (caja del local)**: se puede usar desde el navegador (web.ventra.store) o instalar la app de Windows en la PC del local. La app se descarga desde "Mi cuenta" y la PC se vincula con un código de 8 caracteres. La versión instalada sigue vendiendo aunque se corte internet.
 - **Ayuda para arrancar**: el equipo de Ventra ayuda a pasar los productos y precios (por ejemplo desde una planilla de Excel). Se pide por WhatsApp.
 
 ## Caja (sistema de ventas)

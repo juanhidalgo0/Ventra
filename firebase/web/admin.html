@@ -261,6 +261,7 @@
       <div class="brand"><img src="/ventra-logo.png" alt=""> Ventra <span class="tag">Administración</span></div>
       <div class="spacer"></div>
       <span class="who" id="who"></span>
+      <a class="btn-dark" href="/instagram" style="text-decoration:none">Instagram</a>
       <button class="btn-dark hidden" id="refreshBtn" title="Actualizar">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         <span class="hide-sm">Actualizar</span>
@@ -394,7 +395,8 @@
       READ_ONLY: { label:'Solo lectura', color:'#B4412B' },
       UNPAID: { label:'Sin pago', color:'#B9B2A6' }
     };
-    var data = null, filter = 'ALL', query = '', openUid = null, auth = null;
+    // data: cuentas y cobros (llega enseguida). stats: servicios, uso, costos y registrados (llega después)
+    var data = null, stats = null, filter = 'ALL', query = '', openUid = null, auth = null;
 
     var $ = function(id){ return document.getElementById(id); };
     var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); };
@@ -421,10 +423,10 @@
     }
 
     // ── Datos ──────────────────────────────────────
-    function api(method, body){
-      if (DEMO) return demoApi(method, body);
+    function api(method, body, part){
+      if (DEMO) return demoApi(method, body, part);
       return auth.currentUser.getIdToken().then(function(token){
-        return fetch(ADMIN_URL, {
+        return fetch(ADMIN_URL + (part ? '?part=' + part : ''), {
           method: method,
           headers: Object.assign({ 'Authorization': 'Bearer ' + token }, body ? { 'Content-Type': 'application/json' } : {}),
           body: body ? JSON.stringify(body) : undefined
@@ -435,11 +437,38 @@
     function load(){
       $('refreshBtn').disabled = true;
       return api('GET').then(function(d){
-        data = d; render(); showApp();
+        data = d; merge(); render(); showApp();
+        if (!stats) loadStats();
       }).catch(function(err){
         if (err.status === 403) return showGate('Sin acceso', 'La cuenta ' + (auth.currentUser && auth.currentUser.email || '') + ' no es administradora de Ventra.', true);
         toast('No se pudo cargar el panel', true);
       }).then(function(){ $('refreshBtn').disabled = false; });
+    }
+
+    // Estado de Neon, fly.io y las copias, uso y costo por cliente, y registrados sin plan:
+    // tarda más (despierta servicios), así que llega aparte y se suma a lo que ya se ve
+    var statsLoading = null;
+    function loadStats(){
+      if (statsLoading) return statsLoading;
+      statsLoading = api('GET', null, 'stats').then(function(s){
+        stats = s; merge();
+        if (data) render(true);
+      }).catch(function(err){
+        if (err.status !== 403) toast('No se pudo revisar el estado de los servicios', true);
+      }).then(function(){ statsLoading = null; });
+      return statsLoading;
+    }
+
+    function merge(){
+      if (!data) return;
+      var s = stats || {}, byUid = s.byUid || {}, uids = {};
+      data.accounts.forEach(function(a){
+        var x = byUid[a.uid] || {};
+        a.cloud = x.cloud || null; a.usage = x.usage || {}; a.cost = x.cost; uids[a.uid] = true;
+      });
+      // Quien acaba de recibir un plan ya figura en las cuentas: no se repite como registrado
+      data.registered = (s.registered || []).filter(function(u){ return !uids[u.uid]; });
+      if (s.system) Object.keys(s.system).forEach(function(k){ data.system[k] = s.system[k]; });
     }
 
     function act(body, okMsg){
@@ -448,7 +477,8 @@
     }
 
     // ── Render ─────────────────────────────────────
-    function render(){
+    // keepDrawer: cuando llegan las estadísticas no se redibuja la ficha abierta (se perdería lo que se está escribiendo)
+    function render(keepDrawer){
       var m = data.metrics;
       $('updatedAt').textContent = 'Actualizado ' + new Date(data.generatedAt).toLocaleString('es-AR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 
@@ -467,7 +497,7 @@
       renderPlans(m.byPlan);
       renderChips();
       renderRows();
-      if (openUid) openDrawer(openUid);
+      if (openUid && !keepDrawer) openDrawer(openUid);
     }
 
     var mb = function(b){ b = Number(b) || 0; return b >= 1073741824 ? (b / 1073741824).toLocaleString('es-AR', { maximumFractionDigits:2 }) + ' GB' : (b / 1048576).toLocaleString('es-AR', { maximumFractionDigits:1 }) + ' MB'; };
@@ -480,7 +510,8 @@
           (pct != null ? '<div class="meter"><span style="width:' + Math.min(100, pct) + '%"></span></div>' : '') + '</div></div>' });
       };
       var n = s.neon;
-      if (!n) card('warn', 'Base en la nube (Neon)', 'Sin datos');
+      if (!stats) card('', 'Servicios', 'Revisando Neon, las cajas en la nube, la copia de seguridad y Firebase…');
+      else if (!n) card('warn', 'Base en la nube (Neon)', 'Sin datos');
       else if (!n.ok) card('bad', 'Base en la nube (Neon)', 'No responde: ' + esc(n.error));
       else { var p = 100 * n.bytes / n.limitBytes; card(p > 90 ? 'bad' : p > 70 ? 'warn' : '', 'Base en la nube (Neon)', mb(n.bytes) + ' de ' + mb(n.limitBytes) + ' (' + Math.round(p) + '%)', p); }
       var h = s.cloudHost;
@@ -511,14 +542,14 @@
       cards.sort(function(a, b){ return order[a.level] - order[b.level]; });
       $('health').innerHTML = cards.map(function(c){ return c.html; }).join('');
       var bad = cards.filter(function(c){ return c.level === 'bad'; }).length, warn = cards.filter(function(c){ return c.level === 'warn'; }).length;
-      $('healthSum').textContent = bad ? bad + ' con problemas' + (warn ? ' · ' + warn + ' para revisar' : '') : warn ? warn + ' para revisar' : 'Todo en orden';
+      $('healthSum').textContent = bad ? bad + ' con problemas' + (warn ? ' · ' + warn + ' para revisar' : '') : warn ? warn + ' para revisar' : stats ? 'Todo en orden' : 'Revisando…';
     }
 
     function renderCosts(){
       var c = data.costs || { entered:{} }, e = c.entered || {};
       var total = (Number(e.neon) || 0) + (Number(e.firebase) || 0) + (Number(e.fly) || 0) + (Number(e.other) || 0);
       var monthName = c.month ? new Date(c.month + '-15').toLocaleDateString('es-AR', { month:'long', year:'numeric' }) : '';
-      $('costSub').textContent = 'Uso medido en ' + monthName + (total ? '' : ' · todavía no cargaste los costos de este mes');
+      $('costSub').textContent = 'Uso medido en ' + monthName + (total ? '' : ' · todavía no cargaste los costos de este mes') + (stats ? (stats.sizesAt ? ' · tamaños medidos ' + ago(stats.sizesAt) : '') : ' · calculando el uso…');
       var paid = data.accounts.reduce(function(s, a){ return s + (a.monthPaid || 0); }, 0);
       $('costKpis').innerHTML =
         '<div class="kpi"><div class="kpi-label">Costo total de servicios</div><div class="kpi-value num">' + money(total) + '</div><div class="kpi-foot">Neon ' + money(e.neon) + ' · Firebase ' + money(e.firebase) + '</div></div>' +
@@ -603,7 +634,7 @@
     }
 
     function renderPlans(byPlan){
-      var plans = data.plans, keys = Object.keys(plans).filter(function(k){ return k !== 'prueba' || byPlan[k]; });
+      var plans = data.plans, keys = Object.keys(plans).filter(function(k){ return (k !== 'prueba' && !plans[k].legacy) || byPlan[k]; });
       $('plans').innerHTML = keys.map(function(k){
         return '<div class="plan-row"><div class="plan-name">' + esc(plans[k].name) + '<div class="plan-price num">' + money(plans[k].amount) + ' / mes</div></div><div class="plan-count num">' + (byPlan[k] || 0) + '</div></div>';
       }).join('');
@@ -664,7 +695,7 @@
       var u = registered().filter(function(x){ return x.uid === uid; })[0];
       if (!u) return closeDrawer();
       openUid = null;
-      var plans = Object.keys(data.plans).filter(function(k){ return k !== 'prueba'; });
+      var plans = Object.keys(data.plans).filter(function(k){ return k !== 'prueba' && !data.plans[k].legacy; });
       $('drawer').innerHTML =
         '<div class="drawer-head">' + avatarHtml(u.email, u.photoUrl) + '<div class="drawer-title"><h3>' + esc(u.email) + '</h3><p>' + esc(u.name || 'Sin nombre') + ' · sin plan</p></div>' +
         '<button class="icon-btn" id="closeDrawer" aria-label="Cerrar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>' +
@@ -725,14 +756,14 @@
             '<div class="fact"><dt>Total cobrado</dt><dd class="num">' + money(a.totalPaid) + '</dd></div>' +
             '<div class="fact"><dt>Cobro</dt><dd>' + esc({ active:'Mercado Pago activo', pending_payment:'MP: esperando pago', cancelled:'MP: cancelada', paused:'MP: pausada', manual:'Pago manual' }[a.mpStatus] || a.mpStatus || '—') + '</dd></div>' +
             '<div class="fact"><dt>Cliente desde</dt><dd class="num">' + fdate(a.createdAt) + '</dd></div>' +
-            '<div class="fact"><dt>Datos en la nube</dt><dd>' + (a.cloud ? '<span class="num">' + (a.cloud.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB</span> · ' + a.cloud.rows.toLocaleString('es-AR') + ' registros' : 'Sin copia todavía') + '</dd></div>' +
-            '<div class="fact"><dt>Última sincronización</dt><dd>' + (a.cloud ? ago(a.cloud.lastPushAt) : '—') + '</dd></div>' +
+            '<div class="fact"><dt>Datos en la nube</dt><dd>' + (!stats ? 'Calculando…' : a.cloud ? '<span class="num">' + (a.cloud.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB</span> · ' + a.cloud.rows.toLocaleString('es-AR') + ' registros' : 'Sin copia todavía') + '</dd></div>' +
+            '<div class="fact"><dt>Última sincronización</dt><dd>' + (!stats ? 'Calculando…' : a.cloud ? ago(a.cloud.lastPushAt) : '—') + '</dd></div>' +
           '</dl></div>' +
           '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
             '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado.</p></div>' +
           usageSection(a) +
           storeSection(a) +
-          '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
+          '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).filter(function(k){ return !data.plans[k].legacy || k === a.plan; }).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
           '<div class="section"><h4>Registrar pago manual</h4><div class="pay-box"><div class="form-grid">' +
             '<div class="field"><label for="payMonths">Meses</label><input id="payMonths" type="number" min="1" max="36" value="1"></div>' +
             '<div class="field"><label for="payAmount">Monto cobrado ($)</label><input id="payAmount" type="number" min="0" step="1" value="' + (a.planAmount || '') + '"></div>' +
@@ -903,7 +934,7 @@
     $('scrim').onclick = function(){ if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
     function closeNew(){ $('newModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
     $('newClientBtn').onclick = function(){
-      $('ncPlan').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba'; }).map(function(k){ return '<option value="' + k + '">' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('');
+      $('ncPlan').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba' && !data.plans[k].legacy; }).map(function(k){ return '<option value="' + k + '">' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('');
       $('ncEmail').value = ''; $('ncDays').value = 30;
       $('newModal').classList.remove('hidden'); $('scrim').classList.add('open'); $('ncEmail').focus();
     };
@@ -918,7 +949,7 @@
         .then(function(){ btn.disabled = false; });
     };
     document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
-    $('refreshBtn').onclick = function(){ load().then(function(){ toast('Datos actualizados'); }); };
+    $('refreshBtn').onclick = function(){ Promise.all([load(), loadStats()]).then(function(){ toast('Datos actualizados'); }); };
 
     if (DEMO){
       $('demoFlag').classList.remove('hidden'); $('who').textContent = 'demo@ventra.store';
@@ -945,10 +976,10 @@
     });
 
     // ── Datos de demostración (solo con ?demo) ──────
-    function demoApi(method, body){
+    function demoApi(method, body, part){
       if (method === 'POST') return Promise.resolve({ ok:true });
       var day = 864e5, now = Date.now(), iso = function(ms){ return new Date(ms).toISOString(); };
-      var plans = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+      var plans = { caja:{ name:'Ventra Caja', amount:14900, legacy:true }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
       var mk = function(email, plan, paidInDays, state, daysLeft, nPay, pcs, mp){
         var payments = []; for (var i = 0; i < nPay; i++) payments.push({ id:'p' + i, amount:plans[plan].amount, paidAt:iso(now - (i * 30 + 3) * day) });
         var devices = []; for (var j = 0; j < pcs; j++) devices.push({ deviceId:email + j, name:['CAJA-1','MOSTRADOR','DEPOSITO'][j], linkedAt:iso(now - 80 * day), lastSeenAt:iso(now - (j + 1) * 37 * 60000) });
@@ -975,7 +1006,7 @@
       accounts[5].store = { id:'s2', name:'Tienda Rosario', subdomain:'tienda-rosario', published:false, url:'https://tienda.ventra.store/tienda-rosario', logoUrl:null, primaryColor:'#DB2777', products:18, orders:0, updatedAt:iso(now - 5 * 3600000) };
       var monthly = [], nowD = new Date();
       for (var k = 11; k >= 0; k--){ var d = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth() - k, 1)); monthly.push({ month:d.toISOString().slice(0,7), amount: Math.max(0, Math.round((12 - k) * 11800 + (k % 3) * 4200 - 20000)) }); }
-      return Promise.resolve({
+      var full = {
         generatedAt: iso(now), graceDays: 7, plans: plans,
         metrics: { mrr: 14900 * 1 + 24900 * 2 + 9900, totalRevenue: accounts.reduce(function(s,a){ return s + a.totalPaid; }, 0), monthRevenue: 64600,
           accounts: accounts.length, devices: 8, byState:{ ACTIVE:3, GRACE:1, READ_ONLY:1, UNPAID:1 }, byPlan:{ caja:3, full:2, tienda:1 }, monthly: monthly },
@@ -993,6 +1024,13 @@
           { uid:'r1', email:'boutique.luna@gmail.com', name:'Luna Pérez', photoUrl:null, createdAt:iso(now - 2 * day), lastSignInAt:iso(now - 3 * 3600000), store:null, devices:0 },
           { uid:'r2', email:'despensa.el.sol@gmail.com', name:'Carlos Sol', photoUrl:null, createdAt:iso(now - 9 * day), lastSignInAt:iso(now - 6 * day), store:null, devices:1 }
         ]
+      };
+      if (part !== 'stats') return Promise.resolve(full);
+      var byUid = {};
+      accounts.forEach(function(a){ byUid[a.uid] = { cloud:a.cloud, usage:a.usage, cost:a.cost }; });
+      var sy = full.system;
+      return new Promise(function(r){ setTimeout(r, 900); }).then(function(){
+        return { generatedAt: iso(now), sizesAt: iso(now - 5 * 3600000), byUid: byUid, registered: full.registered, system: { neon:sy.neon, cloudHost:sy.cloudHost, backup:sy.backup, firestore:sy.firestore } };
       });
     }
   })();

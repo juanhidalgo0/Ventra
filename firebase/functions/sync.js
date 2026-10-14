@@ -516,4 +516,17 @@ async function adminSummary(url) {
   return map;
 }
 
-module.exports = { oldExpr, ARCHIVE_TABLES, fullStart, pullTable, reset, tenantGen, db, run, ensureSchema, register, report, claimLedger, push, pull, status, adminSummary, validRows, maintain, maintainAll, MAX_ROWS_PER_PUSH };
+/** Última sincronización de cada comercio (tabla chica: se puede leer cada vez que se abre el panel). */
+async function syncTimes(url) {
+  const rows = await run(db(url), `SELECT tenant_id, last_push_at, last_full_at FROM sync_tenants`, []);
+  const map = {};
+  rows.forEach((r) => {
+    map[r.tenant_id] = {
+      lastPushAt: r.last_push_at ? new Date(r.last_push_at).toISOString() : null,
+      lastFullAt: r.last_full_at ? new Date(r.last_full_at).toISOString() : null,
+    };
+  });
+  return map;
+}
+
+module.exports = { oldExpr, ARCHIVE_TABLES, fullStart, pullTable, reset, tenantGen, db, run, ensureSchema, register, report, claimLedger, push, pull, status, adminSummary, syncTimes, validRows, maintain, maintainAll, MAX_ROWS_PER_PUSH };

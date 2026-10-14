@@ -24,7 +24,9 @@
 //   (ver scripts/arca-credenciales.js para armarlo desde los archivos).
 // ═══════════════════════════════════════════════════
 const https = require("https");
-const forge = require("node-forge");
+// node-forge pesa: se carga recién al firmar o leer un certificado, no al arrancar cada función
+let forgeLib;
+const forge = () => (forgeLib = forgeLib || require("node-forge"));
 
 const ENDPOINTS = {
   HOMOLOGACION: {
@@ -117,8 +119,8 @@ function loadCredentials(raw) {
     try {
       const certPem = String(c.cert).replace(/\\n/g, "\n");
       const keyPem = String(c.key).replace(/\\n/g, "\n");
-      const cert = forge.pki.certificateFromPem(certPem);
-      const key = forge.pki.privateKeyFromPem(keyPem);
+      const cert = forge().pki.certificateFromPem(certPem);
+      const key = forge().pki.privateKeyFromPem(keyPem);
       // ARCA pone la CUIT en el serialNumber del sujeto ("CUIT 20123456789"), OID 2.5.4.5
       const serial = (cert.subject.attributes.find((a) => a.type === "2.5.4.5") || {}).value || "";
       const cuit = String(serial).replace(/\D/g, "") || String(c.cuit || "").replace(/\D/g, "");
@@ -150,21 +152,21 @@ function buildTra(service, now = new Date()) {
 }
 
 function signTra(tra, creds) {
-  const p7 = forge.pkcs7.createSignedData();
-  p7.content = forge.util.createBuffer(tra, "utf8");
+  const p7 = forge().pkcs7.createSignedData();
+  p7.content = forge().util.createBuffer(tra, "utf8");
   p7.addCertificate(creds.cert);
   p7.addSigner({
     key: creds.key,
     certificate: creds.cert,
-    digestAlgorithm: forge.pki.oids.sha256,
+    digestAlgorithm: forge().pki.oids.sha256,
     authenticatedAttributes: [
-      { type: forge.pki.oids.contentType, value: forge.pki.oids.data },
-      { type: forge.pki.oids.messageDigest },
-      { type: forge.pki.oids.signingTime, value: new Date() },
+      { type: forge().pki.oids.contentType, value: forge().pki.oids.data },
+      { type: forge().pki.oids.messageDigest },
+      { type: forge().pki.oids.signingTime, value: new Date() },
     ],
   });
   p7.sign({ detached: false });
-  return forge.util.encode64(forge.asn1.toDer(p7.toAsn1()).getBytes());
+  return forge().util.encode64(forge().asn1.toDer(p7.toAsn1()).getBytes());
 }
 
 async function loginCms(env, creds) {

@@ -46,7 +46,7 @@ export default function PlanGate({ mobile, children }: { mobile: boolean; childr
     tienda: ['La tienda online no está en tu plan', 'Con Ventra Full sumás tu tienda online: catálogo web, pedidos y avisos al celular.'],
     agenda: ['La agenda de turnos no está en tu plan', 'Con Ventra Full sumás la agenda: tus clientes reservan solos desde tu página y vos ves todo en el celular.'],
     catalogo: ['Productos y stock no están en tu plan', 'Tu plan es solo para turnos. Con Ventra Full sumás productos, stock y la caja para vender.'],
-    caja: ['El sistema de ventas no está en tu plan', 'Con Ventra Full sumás la caja: vender, cierres X y Z, facturación, cuentas corrientes y reportes.'],
+    caja: ['El sistema de ventas no está en tu plan', 'Con Ventra Full sumás la caja: vender, cierres X y Z, cuentas corrientes y reportes.'],
   } as const;
   const [title, text] = COPY[area || 'caja'];
   return (

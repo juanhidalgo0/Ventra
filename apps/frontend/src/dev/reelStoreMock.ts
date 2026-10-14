@@ -39,6 +39,26 @@ let config: StoreConfig = {
   pickupEnabled: true, deliveryEnabled: true, goDeliveryEnabled: false, deliveryCost: 2500, freeDeliveryFrom: 60000,
   deliveryZone: '', minOrder: 0, paymentMethods: ['Efectivo', 'Transferencia', 'Mercado Pago'], transferAlias: '', showOutOfStock: true,
 };
+if (new URLSearchParams(location.search).get('rubro') === 'pelu') {
+  const semana = (from: string, to: string) => [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, from, to }));
+  config = {
+    ...config, businessName: 'Estudio Norte', rubro: 'PELUQUERIA', subdomain: 'estudio-norte', whatsappNumber: '2215550100', isPublished: true,
+    hours: semana('09:00', '20:00'),
+    agenda: {
+      enabled: true, kind: 'peluqueria', slotStepMin: 30, bufferMin: 0, minNoticeMin: 60, maxDaysAhead: 30, autoConfirm: true,
+      reminders: { enabled: true, when: 'dayBefore20' },
+      staff: [
+        { id: 'm', name: 'Diego', color: '#0E7A5A', hours: semana('09:00', '19:00'), active: true },
+        { id: 's', name: 'Sofi', color: '#D97757', hours: semana('10:00', '20:00'), active: true },
+      ],
+      services: [
+        { id: 'corte', name: 'Corte', durationMin: 45, price: 15000, active: true },
+        { id: 'barba', name: 'Corte y barba', durationMin: 45, price: 19000, active: true },
+        { id: 'color', name: 'Color', durationMin: 90, price: 38000, active: true },
+      ],
+    },
+  } as any;
+}
 let orders: StoreOrder[] = [];
 const listeners = new Set<(o: StoreOrder[]) => void>();
 const emit = () => listeners.forEach((fn) => fn([...orders]));

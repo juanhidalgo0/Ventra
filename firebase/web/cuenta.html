@@ -341,8 +341,9 @@
       agenda:'Turnos online, recordatorio con un toque', agenda_pro:'Turnos con recordatorio automático por WhatsApp (200 por mes)',
       tienda:'Tienda online y agenda', caja:'Caja, stock y reportes', full:'Todo: caja, tienda, agenda y recordatorios automáticos'
     };
-    // Lo que tiene sentido ofrecer según el plan actual
-    var PLAN_PATHS = { agenda:['agenda_pro','full'], agenda_pro:['agenda','full'], tienda:['full','agenda_pro'], caja:['full'], full:['caja','tienda'] };
+    // Lo que tiene sentido ofrecer según el plan actual. Caja ya no se vende (la caja va con Full):
+    // queda solo para las cuentas que lo tenían, que pueden pasarse a Full.
+    var PLAN_PATHS = { agenda:['agenda_pro','full'], agenda_pro:['agenda','full'], tienda:['full','agenda_pro'], caja:['full'], full:['tienda'] };
     function renderPlanChange(data){
       var opts = PLAN_PATHS[data.plan] || [];
       if (!opts.length || data.status !== 'active') return false;

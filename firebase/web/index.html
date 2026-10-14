@@ -63,7 +63,6 @@
       "image": "https://ventra.store/og/home.jpg",
       "publisher": { "@id": "https://ventra.store/#org" },
       "offers": [
-        { "@type": "Offer", "name": "Ventra Caja", "price": "14900", "priceCurrency": "ARS", "url": "https://ventra.store/sistema-de-ventas#planes", "availability": "https://schema.org/InStock" },
         { "@type": "Offer", "name": "Ventra Full", "price": "24900", "priceCurrency": "ARS", "url": "https://ventra.store/sistema-de-ventas#planes", "availability": "https://schema.org/InStock" },
         { "@type": "Offer", "name": "Ventra Tienda", "price": "9900", "priceCurrency": "ARS", "url": "https://ventra.store/tienda-online#plan", "availability": "https://schema.org/InStock" },
         { "@type": "Offer", "name": "Ventra Agenda", "price": "9900", "priceCurrency": "ARS", "url": "https://ventra.store/turnos#plan", "availability": "https://schema.org/InStock" },
@@ -249,7 +248,8 @@
   .prow .pr{ font-weight:750; font-size:18px; letter-spacing:-.02em; white-space:nowrap; color:var(--ink); }
   .prow .pr small{ color:var(--ink-3); font-weight:500; font-size:13px; }
   .prow a{ color:var(--pine); font-weight:650; font-size:14px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
-  @media (max-width:700px){ .prow{ grid-template-columns:1fr auto; gap:4px 12px; } .prow span{ grid-column:1 / -1; grid-row:2; } .prow a{ grid-column:1 / -1; } }
+  /* Celular: nombre y precio arriba, la descripción abajo a todo el ancho y después el link */
+  @media (max-width:700px){ .prow{ grid-template-columns:1fr auto; gap:4px 12px; align-items:baseline; } .prow > span:not(.pr){ grid-column:1 / -1; grid-row:2; } .prow .pr{ grid-column:2; grid-row:1; } .prow a{ grid-column:1 / -1; grid-row:3; justify-self:start; } }
 
   .wa-fab{ position:fixed; right:18px; bottom:18px; z-index:40; width:56px; height:56px; border-radius:50%; display:grid; place-items:center; background:var(--wa); color:#fff; box-shadow:0 14px 30px -10px rgba(0,0,0,.45); transition:transform .3s var(--ease); }
   .wa-fab:hover{ transform:scale(1.06); }
@@ -307,7 +307,7 @@
           <span class="ex">Kiosco, almacén, ferretería, ropa, bazar</span>
           <p>Caja, stock, cuentas corrientes y reportes. Cerrás la caja sin diferencias y sigue vendiendo aunque se corte internet.</p>
         </div>
-        <span class="go"><b>Ventra Caja · desde $14.900</b><span>Ver <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></span>
+        <span class="go"><b>Ventra Full · $24.900</b><span>Ver <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></span>
       </a>
       <a class="door rv" style="--d:.8s" href="/tienda-online" data-track="card_online">
         <div class="scene" aria-hidden="true">
@@ -439,8 +439,7 @@
     <div class="plan-table rv">
       <div class="pgroup">
         <h3>Para tu local</h3>
-        <div class="prow"><b>Ventra Caja</b><span>Caja, stock, cuentas corrientes, promos y reportes</span><span class="pr">$14.900 <small>/ mes</small></span><a href="/sistema-de-ventas#planes" data-track="card_local">Ver plan</a></div>
-        <div class="prow"><b>Ventra Full</b><span>Caja + tienda online con el mismo stock + agenda con recordatorios</span><span class="pr">$24.900 <small>/ mes</small></span><a href="/sistema-de-ventas#planes" data-track="card_local">Ver plan</a></div>
+        <div class="prow"><b>Ventra Full</b><span>Caja, stock, cuentas corrientes y reportes + tienda online con el mismo stock + agenda con recordatorios</span><span class="pr">$24.900 <small>/ mes</small></span><a href="/sistema-de-ventas#planes" data-track="card_local">Ver plan</a></div>
       </div>
       <div class="pgroup">
         <h3>Para vender por internet</h3>

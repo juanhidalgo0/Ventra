@@ -1,13 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Lock, DollarSign, Wallet, Smartphone, Banknote, CreditCard, ChevronRight, AlertCircle, CheckCircle2, Printer, Plus, Trash2, Edit2 } from 'lucide-react';
+import { X, Lock, Smartphone, CreditCard, ChevronRight, AlertCircle, CheckCircle2, Printer, Plus, Trash2, Edit2, Check, Receipt, ArrowUpRight } from 'lucide-react';
+import Kbd from '../ui/Kbd';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import GastosModal from './GastosModal';
 import { holdLogout } from '../../utils/logoutHold';
+import { useOpeningFloat } from '../../utils/openingFloat';
 import MpReconcilePanel, { mpReconcileNote, useMpConnected, useMpReconcile } from '../cash-register/MpReconcilePanel';
+import { printReport } from '../../utils/ticketPrinter';
 
 interface CierreCajaModalProps {
   session: any;
@@ -20,6 +23,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const denominations = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
   const { user: currentUser } = useAuthStore();
   const [activeSession, setActiveSession] = useState(session);
+  const openingFloat = useOpeningFloat();
   const [step, setStep] = useState(1); // 1: Validar Gastos, 2: Arqueo Cash, 3: Arqueo Virtual, 4: Validación, 5: Confirmación, 6: Exito
   const [bills, setBills] = useState<Record<number, number>>(
     Object.fromEntries(denominations.map(d => [d, 0]))
@@ -284,7 +288,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const differenceTotal = totalDeclared - totalExpected;
 
   const handlePrintZReport = () => {
-    window.print();
+    printReport();
   };
 
   useEffect(() => {
@@ -301,12 +305,87 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [step, cashToWithdraw, posnetDeclarations, notes, onClose]);
 
+  // ── Presentación ─────────────────────────────────────────────────
+  const STEPS = ['Gastos', 'Efectivo', 'Tarjetas y QR', 'Revisión'];
+  const movements: any[] = activeSession?.cashMovements || [];
+  const splitMovement = (desc?: string) => ({
+    text: (desc || '').split(' | METODO: ')[0] || 'Gasto operativo',
+    transfer: !!desc?.includes('METODO: TRANSFER'),
+  });
+  const hhmm = (d: string) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const shiftSalesCount = (activeSession?.sales || []).length;
+  const shiftSalesTotal = (activeSession?.sales || []).reduce((sum: number, v: any) => sum + (Number(v.total ?? v.totalAmount) || 0), 0);
+  const billCount = Object.values(bills).reduce((a, b) => a + (Number(b) || 0), 0);
+  // Las cargas virtuales se reparten en proporción y pueden dejar centavos sueltos
+  const isZero = (n: number) => Math.abs(n) < 0.5;
+  const signed = (n: number) => (isZero(n) ? fmt(0) : `${n > 0 ? '+' : '−'}${fmt(Math.abs(n))}`);
+  const diffClass = (n: number) => (isZero(n) ? 'text-emerald-600 dark:text-emerald-400' : n < 0 ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400');
+
+  // Sistema contra declarado por medio, con lo que se cargó de cada terminal
+  const terminalsOf = (id: string): number[] => (id === 'CLOVER' ? cloverInputs : id === 'MERCADOPAGO' && !mpAuto ? mpInputs : []).map((v) => Number(v) || 0);
+  const reviewRows = [
+    { key: 'CASH', label: 'Efectivo', expected: expectedCashProfits, declared: cashToWithdraw, terminals: [] as number[] },
+    ...posnets.map((p) => ({
+      key: p.id,
+      label: p.name === 'MercadoPago' ? 'Mercado Pago' : p.name,
+      expected: getPosnetSales(p.id),
+      declared: posnetDeclarations[p.id] || 0,
+      terminals: terminalsOf(p.id),
+    })),
+  ];
+
+  const balance = isZero(differenceTotal)
+    ? {
+        label: 'La caja cierra justo',
+        hint: 'Lo declarado coincide con lo que registró el sistema.',
+        box: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-900/60',
+        icon: 'bg-emerald-600 text-white',
+        title: 'text-emerald-700 dark:text-emerald-300',
+      }
+    : differenceTotal < 0
+      ? {
+          label: 'Falta plata',
+          hint: 'Lo declarado es menos de lo que registró el sistema. Revisá el conteo y los gastos.',
+          box: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/60',
+          icon: 'bg-red-600 text-white',
+          title: 'text-red-700 dark:text-red-300',
+        }
+      : {
+          label: 'Sobra plata',
+          hint: 'Lo declarado es más de lo registrado. Puede haber una venta sin cargar.',
+          box: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-900/60',
+          icon: 'bg-amber-500 text-white',
+          title: 'text-amber-700 dark:text-amber-300',
+        };
+
+  /** Diferencia de cada medio (y lo de cada terminal), para la confirmación y el final */
+  const diffSummary = (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 text-left text-[13.5px] overflow-hidden tabular-nums">
+      {reviewRows.map((r) => (
+        <div key={r.key} className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between gap-3">
+            <span className="font-medium text-slate-800 dark:text-slate-200">{r.label}</span>
+            <span className={`font-semibold ${diffClass(r.declared - r.expected)}`}>{signed(r.declared - r.expected)}</span>
+          </div>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+            Sistema {fmt(r.expected)} · Declarado {fmt(r.declared)}
+            {r.terminals.length > 1 && ` (${r.terminals.map((t, i) => `T${i + 1} ${fmt(t)}`).join(' · ')})`}
+          </p>
+        </div>
+      ))}
+      <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 flex justify-between font-semibold">
+        <span className="text-slate-900 dark:text-slate-100">Diferencia total</span>
+        <span className={diffClass(differenceTotal)}>{signed(differenceTotal)}</span>
+      </div>
+    </div>
+  );
+
   const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
   return (
-    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-3" onClick={onClose}>
-      <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[calc(100dvh-16px)]">
+    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-0 sm:p-3" onClick={onClose}>
+      <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 sm:rounded-2xl w-full max-w-5xl shadow-2xl sm:border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col h-[100dvh] sm:h-[min(660px,calc(100dvh-24px))]">
         <style>{`
           @media print {
             #root {
@@ -337,151 +416,145 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
           }
         `}</style>
         
-        {/* Header */}
-        <div className="px-4 sm:px-8 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${step <= 3 ? 'bg-rose-600 dark:bg-rose-700 shadow-rose-100 dark:shadow-none' : step === 4 ? 'bg-emerald-500 shadow-emerald-100 dark:shadow-none' : step === 5 ? 'bg-rose-500 shadow-rose-100 dark:shadow-none' : 'bg-green-500 shadow-green-100 dark:shadow-none'} text-white shadow-md`}>
-              {step <= 3 ? <Wallet className="w-5 h-5" /> : step === 4 ? <CheckCircle2 className="w-5 h-5" /> : step === 5 ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-100 leading-tight">
-                {step === 1 ? 'Control de Gastos' : step === 2 ? 'Arqueo de Efectivo' : step === 3 ? 'Arqueo Virtual y Posnets' : step === 4 ? 'Validación de Cierre' : 'Confirmación'}
+        {/* Encabezado con los pasos */}
+        <div className="px-4 sm:px-7 pt-4 pb-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
+                {step <= 4 ? 'Arqueo de caja' : step === 5 ? 'Cerrar el turno' : 'Turno cerrado'}
               </h2>
-              {/* Desktop breadcrumb */}
-              <p className="hidden sm:flex text-xs font-bold text-slate-600 uppercase tracking-widest mt-1 items-center gap-1.5">
-                <span className={step === 1 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Gastos</span>
-                <ChevronRight className="w-2.5 h-2.5" />
-                <span className={step >= 2 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Efectivo</span>
-                <ChevronRight className="w-2.5 h-2.5" />
-                <span className={step >= 3 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Virtual</span>
-                <ChevronRight className="w-2.5 h-2.5" />
-                <span className={step >= 4 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : ''}>Validación</span>
-              </p>
-              {/* Mobile step pill */}
-              <p className="flex sm:hidden text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider mt-0.5">
-                Paso {step} de 4 · {step === 1 ? 'Gastos' : step === 2 ? 'Efectivo' : step === 3 ? 'Virtual' : 'Validación'}
+              <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {[activeSession?.user?.fullName || activeSession?.user?.username, activeSession?.terminalName].filter(Boolean).join(' · ') || 'Turno actual'}
               </p>
             </div>
+            <button onClick={onClose} title="Cerrar (Esc)" className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          {step <= 5 && (
+            <ol className="mt-3.5 grid grid-cols-4 gap-2">
+              {STEPS.map((label, i) => {
+                const n = i + 1;
+                const done = step > n;
+                const current = step === n || (step === 5 && n === 4);
+                return (
+                  <li key={label} className="min-w-0">
+                    <div className={`h-1 rounded-full ${done || current ? 'bg-rose-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                    <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
+                      <span className={`w-[18px] h-[18px] rounded-full text-[10.5px] font-bold flex items-center justify-center shrink-0 ${done ? 'bg-rose-600 text-white' : current ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-600 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>
+                        {done ? <Check className="w-3 h-3" strokeWidth={3} /> : n}
+                      </span>
+                      <span className={`text-[12.5px] truncate ${current ? '' : 'hidden sm:inline '}${current ? 'font-semibold text-slate-900 dark:text-slate-100' : done ? 'font-medium text-slate-700 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{label}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white dark:bg-slate-900">
+        {/* Contenido */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white dark:bg-slate-900 tabular-nums">
           {step === 1 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full p-4 sm:p-8 flex flex-col overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-7 sm:h-8 bg-rose-500 rounded-full shrink-0" />
-                  <div>
-                    <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Gastos y Egresos Registrados</h3>
-                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Revisá o agregá gastos antes del arqueo</p>
-                  </div>
+            <div className="px-4 sm:px-7 py-4 sm:py-5">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5">
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 sm:px-4 py-2.5 sm:py-3 min-w-0">
+                  <p className="text-[12px] sm:text-[12.5px] text-slate-500 dark:text-slate-400 truncate">Ventas del turno</p>
+                  <p className="text-[17px] sm:text-[22px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight truncate">{fmt(shiftSalesTotal)}</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400">{shiftSalesCount} {shiftSalesCount === 1 ? 'venta' : 'ventas'}</p>
                 </div>
-                <button 
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 sm:px-4 py-2.5 sm:py-3 min-w-0">
+                  <p className="text-[12px] sm:text-[12.5px] text-slate-500 dark:text-slate-400 truncate">Gastos</p>
+                  <p className="text-[17px] sm:text-[22px] font-extrabold text-red-600 dark:text-red-400 tracking-tight truncate">{expenses ? `−${fmt(expenses)}` : fmt(0)}</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400">{movements.filter((m: any) => m.type !== 'WITHDRAWAL').length} cargados</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 sm:px-4 py-2.5 sm:py-3 min-w-0">
+                  <p className="text-[12px] sm:text-[12.5px] text-slate-500 dark:text-slate-400 truncate">Retiros</p>
+                  <p className="text-[17px] sm:text-[22px] font-extrabold text-red-600 dark:text-red-400 tracking-tight truncate">{withdrawals ? `−${fmt(withdrawals)}` : fmt(0)}</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400">{movements.filter((m: any) => m.type === 'WITHDRAWAL').length} cargados</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Gastos y retiros del turno</h3>
+                  <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">Revisá que esté todo lo que salió de la caja antes de contar.</p>
+                </div>
+                <button
                   onClick={() => { setEditingGasto(null); setShowGastosModal(true); }}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-rose-600 text-white font-bold text-xs rounded-xl hover:bg-rose-700 active:scale-[0.97] transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-[13px] font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Registrar Nuevo Gasto
+                  <Plus className="w-4 h-4" /> Agregar gasto
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                {(!activeSession?.cashMovements || activeSession.cashMovements.length === 0) ? (
-                  <div className="text-center py-12 sm:py-16 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-750 rounded-2xl p-4">
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No hay gastos o egresos registrados en este turno.</p>
-                    <p className="text-xs text-slate-600 mt-1">Si pagaste sueldos, proveedores o realizaste retiros, agrégalos ahora.</p>
+              {movements.length === 0 ? (
+                <div className="text-center py-12 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                  <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center mx-auto mb-3">
+                    <Receipt className="w-5 h-5" />
                   </div>
-                ) : (
-                  <div className="space-y-2 sm:space-y-0 sm:border sm:border-slate-200 sm:dark:border-slate-700 sm:rounded-2xl sm:overflow-hidden sm:bg-white sm:dark:bg-slate-800">
-                    {/* Desktop table */}
-                    <table className="hidden sm:table w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                          <th className="py-3 px-4">Descripción / Motivo</th>
-                          <th className="py-3 px-4">Método</th>
-                          <th className="py-3 px-4 text-right">Monto</th>
-                          <th className="py-3 px-4 text-right">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {activeSession.cashMovements.map((mov: any) => {
-                          const isTransfer = mov.description?.includes('METODO: TRANSFER');
-                          const cleanDesc = mov.description?.split(' | METODO: ')[0] || 'Gasto operativo';
-                          return (
-                            <tr key={mov.id} className="text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                              <td className="py-3.5 px-4 font-bold uppercase">{cleanDesc}</td>
-                              <td className="py-3.5 px-4 font-semibold uppercase">{isTransfer ? '🏦 Transferencia' : '💵 Efectivo'}</td>
-                              <td className="py-3.5 px-4 text-right font-black text-red-600 dark:text-red-400">-{fmt(mov.amount)}</td>
-                              <td className="py-3.5 px-4 text-right">
-                                <div className="flex justify-end gap-1.5">
-                                  <button 
-                                    onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }}
-                                    className="p-1.5 rounded-lg text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
-                                    title="Editar gasto"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDeleteGasto(mov.id)}
-                                    className="p-1.5 rounded-lg text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer"
-                                    title="Eliminar gasto"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile cards */}
-                    <div className="flex sm:hidden flex-col gap-2">
-                      {activeSession.cashMovements.map((mov: any) => {
-                        const isTransfer = mov.description?.includes('METODO: TRANSFER');
-                        const cleanDesc = mov.description?.split(' | METODO: ')[0] || 'Gasto operativo';
-                        return (
-                          <div key={mov.id} className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase truncate">{cleanDesc}</p>
-                              <p className="text-xs text-slate-600 mt-0.5">{isTransfer ? '🏦 Transferencia' : '💵 Efectivo'}</p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-sm font-black text-red-600 dark:text-red-400">-{fmt(mov.amount)}</span>
-                              <button onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }} className="p-1.5 text-slate-500 hover:text-rose-600"><Edit2 className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDeleteGasto(mov.id)} className="p-1.5 text-slate-500 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">No hubo gastos ni retiros</p>
+                  <p className="text-[13px] text-slate-500 mt-1 max-w-xs mx-auto">Si pagaste a un proveedor, un sueldo o sacaste plata del cajón, agregalo ahora.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  {movements.map((mov: any) => {
+                    const { text, transfer } = splitMovement(mov.description);
+                    const isExpense = mov.type !== 'WITHDRAWAL';
+                    return (
+                      <div key={mov.id} className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 border-b last:border-b-0 border-slate-100 dark:border-slate-800 group">
+                        <div className={`hidden sm:flex w-8 h-8 rounded-lg items-center justify-center shrink-0 ${isExpense ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'}`}>
+                          {isExpense ? <Receipt className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">{text}</p>
+                          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {mov.createdAt ? `${hhmm(mov.createdAt)} h · ` : ''}{isExpense ? 'Gasto' : 'Retiro'} · {transfer ? 'Transferencia' : 'Efectivo'}
+                          </p>
+                        </div>
+                        <span className="text-[14px] font-bold text-red-600 dark:text-red-400 shrink-0">−{fmt(mov.amount)}</span>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => { setEditingGasto(mov); setShowGastosModal(true); }} title="Editar" className="p-1.5 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteGasto(mov.id)} title="Eliminar" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 text-[13px]">
+                    <span className="text-slate-600 dark:text-slate-300">{movements.length} {movements.length === 1 ? 'movimiento' : 'movimientos'}</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">−{fmt(expenses + withdrawals)}</span>
                   </div>
-                )}
-              </div>
-            </motion.div>
+                </div>
+              )}
+            </div>
           )}
 
           {step === 2 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full px-4 sm:px-6 py-4 flex flex-col overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-7 sm:h-8 bg-rose-600 dark:bg-rose-500 rounded-full shrink-0" />
-                  <div>
-                    <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Conteo de Billetes</h3>
-                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Detalla el efectivo total a retirar</p>
+            <div className="flex flex-col md:grid md:grid-cols-[1fr,260px] min-h-full">
+              {/* Total contado: arriba y fijo en el celular, al costado en la PC */}
+              <aside className="sticky top-0 z-10 md:static order-first md:order-last border-b md:border-b-0 md:border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 md:bg-slate-50/70 md:dark:bg-slate-900/50 px-4 sm:px-6 py-3 md:py-5 flex md:flex-col items-center md:items-stretch justify-between gap-3 md:gap-4">
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-medium text-slate-500 dark:text-slate-400">Efectivo contado</p>
+                  <p className="text-[28px] md:text-[38px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-none mt-1">{fmt(cashToWithdraw)}</p>
+                  <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1.5">{billCount} {billCount === 1 ? 'billete' : 'billetes'}</p>
+                </div>
+                {openingFloat != null && openingFloat > 0 && (
+                  <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 md:py-2.5 shrink-0 max-w-[180px] md:max-w-none">
+                    <p className="text-[12.5px] font-semibold text-emerald-800 dark:text-emerald-300">Fondo: {fmt(openingFloat)}</p>
+                    <p className="text-[12px] text-emerald-700/90 dark:text-emerald-300/80 mt-0.5 leading-snug">No lo cuentes: queda en el cajón.</p>
                   </div>
+                )}
+                <p className="hidden md:block text-[12px] text-slate-500 dark:text-slate-400 leading-snug mt-auto">Lo que el sistema espera se muestra recién en la revisión, así el conteo no se acomoda al número.</p>
+              </aside>
+
+              <div className="px-4 sm:px-6 py-4 sm:py-5">
+                <div className="flex items-baseline justify-between gap-3 mb-3">
+                  <h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Contá el efectivo que se retira</h3>
+                  <p className="hidden sm:block text-[12.5px] text-slate-500 dark:text-slate-400 shrink-0"><Kbd>Enter</Kbd> pasa al siguiente</p>
                 </div>
-                <div className="px-4 py-1.5 sm:px-5 sm:py-2 bg-rose-50/80 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800/50 rounded-2xl flex sm:block items-center justify-between">
-                  <span className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider block sm:mb-0.5">Total contado</span>
-                  <span className="text-3xl sm:text-4xl font-black text-rose-700 dark:text-rose-300 tracking-tight tabular-nums">{fmt(cashToWithdraw)}</span>
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
                   {denominations.map((den, i) => (
                     <div 
@@ -494,7 +567,9 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                         <input 
                           id={`bill-input-${i}`}
                           type="number" 
+                          inputMode="numeric"
                           value={bills[den] || ''} 
+                          onFocus={(e) => e.currentTarget.select()}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               const next = document.getElementById(`bill-input-${i + 1}`);
@@ -511,322 +586,247 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   ))}
                 </div>
               </div>
-            </motion.div>
+            </div>
           )}
 
           {step === 3 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full flex flex-col lg:grid lg:grid-cols-[1fr,360px] overflow-y-auto">
-              <div className="p-4 sm:p-8 flex flex-col gap-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-7 sm:h-8 bg-rose-600 dark:bg-rose-500 rounded-full shrink-0" />
-                  <div>
-                    <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 leading-none">Comprobantes y Virtual</h3>
-                    <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">Ingresa los totales de cada posnet</p>
-                  </div>
+            <div className="grid md:grid-cols-[1fr,300px] min-h-full">
+              <div className="px-4 sm:px-7 py-4 sm:py-5 space-y-5">
+                <div>
+                  <h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Tarjetas y QR</h3>
+                  <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">El total del cierre de lote de cada terminal.</p>
                 </div>
 
-                <div className="space-y-4">
-                  {/* MercadoPago Section */}
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">MercadoPago</span>
-                      {mpAuto ? (
-                        <button
-                          type="button"
-                          onClick={() => setMpManual(true)}
-                          className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
-                        >
-                          Cargar a mano
-                        </button>
-                      ) : (
-                      <button 
-                        type="button" 
-                        onClick={() => setMpInputs([...mpInputs, 0])}
-                        className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Agregar Terminal
-                      </button>
-                      )}
-                    </div>
+                {/* Mercado Pago */}
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="flex items-center gap-2 text-[13.5px] font-semibold text-slate-800 dark:text-slate-200">
+                      <Smartphone className="w-4 h-4 text-slate-500" /> Mercado Pago
+                    </span>
                     {mpAuto ? (
-                      <div className="p-3.5 sm:p-4 bg-sky-50/70 dark:bg-sky-900/20 rounded-xl border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shrink-0">
-                            <Smartphone className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Traído de Mercado Pago</p>
-                            <p className="text-[11.5px] text-slate-500">
-                              {mpData.result
-                                ? `${mpData.result.real.count} pago(s) recibidos en el turno. No hace falta tipearlo.`
-                                : mpData.error || 'Consultando los pagos del turno…'}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-2xl font-black text-slate-900 dark:text-slate-100 tabular-nums text-right">
-                          {mpData.result ? fmt(mpData.result.realForSession) : '—'}
-                        </span>
-                      </div>
-                    ) : mpInputs.map((val, idx) => (
-                      <div key={`mp-${idx}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 gap-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 shrink-0">
-                            <Smartphone className="w-4 h-4" />
-                          </div>
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Terminal MP {idx + 1}</span>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                          <span className="text-sm font-bold text-slate-500">$</span>
-                          <input 
-                            type="number" 
-                            value={val || ''} 
-                            onChange={(e) => {
-                              const copy = [...mpInputs];
-                              copy[idx] = Number(e.target.value);
-                              setMpInputs(copy);
-                            }}
-                            className="flex-1 sm:w-40 h-12 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-xl px-3 text-xl font-black text-slate-900 dark:text-slate-100 outline-none text-right tabular-nums focus:border-rose-500 focus:ring-4 focus:ring-rose-500/20 transition-all"
-                            placeholder="0"
-                          />
-                          {mpInputs.length > 2 && (
-                            <button 
-                              type="button" 
-                              onClick={() => setMpInputs(mpInputs.filter((_, i) => i !== idx))}
-                              className="text-rose-500 hover:text-rose-700 transition-colors p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Clover Section */}
-                  <div className="space-y-2.5 pt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Clover</span>
-                      <button 
-                        type="button" 
-                        onClick={() => setCloverInputs([...cloverInputs, 0])}
-                        className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Agregar Terminal
+                      <button type="button" onClick={() => setMpManual(true)} className="text-[12.5px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer">
+                        Cargar a mano
                       </button>
+                    ) : (
+                      <button type="button" onClick={() => setMpInputs([...mpInputs, 0])} className="flex items-center gap-1 text-[12.5px] font-semibold text-rose-700 dark:text-rose-300 hover:underline cursor-pointer">
+                        <Plus className="w-3.5 h-3.5" /> Agregar terminal
+                      </button>
+                    )}
+                  </div>
+                  {mpAuto ? (
+                    <div className="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-900/20 px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Traído de Mercado Pago</p>
+                        <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
+                          {mpData.result ? `${mpData.result.real.count} pago(s) en el turno. No hace falta tipearlo.` : mpData.error || 'Consultando los pagos del turno…'}
+                        </p>
+                      </div>
+                      <span className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 shrink-0">{mpData.result ? fmt(mpData.result.realForSession) : '—'}</span>
                     </div>
-                    {cloverInputs.map((val, idx) => (
-                      <div key={`clover-${idx}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 gap-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 shrink-0">
-                            <CreditCard className="w-4 h-4" />
-                          </div>
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Terminal Clover {idx + 1}</span>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                          <span className="text-sm font-bold text-slate-500">$</span>
-                          <input 
-                            type="number" 
-                            value={val || ''} 
-                            onChange={(e) => {
-                              const copy = [...cloverInputs];
-                              copy[idx] = Number(e.target.value);
-                              setCloverInputs(copy);
-                            }}
-                            className="flex-1 sm:w-40 h-12 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-xl px-3 text-xl font-black text-slate-900 dark:text-slate-100 outline-none text-right tabular-nums focus:border-rose-500 focus:ring-4 focus:ring-rose-500/20 transition-all"
-                            placeholder="0"
-                          />
-                          {cloverInputs.length > 1 && (
-                            <button 
-                              type="button" 
-                              onClick={() => setCloverInputs(cloverInputs.filter((_, i) => i !== idx))}
-                              className="text-rose-500 hover:text-rose-700 transition-colors p-1"
-                            >
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                      {mpInputs.map((val, idx) => (
+                        <div key={`mp-${idx}`} className="flex items-center gap-3 px-4 py-2.5">
+                          <span className="flex-1 text-[13.5px] text-slate-700 dark:text-slate-300">Terminal {idx + 1}</span>
+                          <MoneyInput value={val} onChange={(v) => { const copy = [...mpInputs]; copy[idx] = v; setMpInputs(copy); }} />
+                          {mpInputs.length > 2 ? (
+                            <button type="button" onClick={() => setMpInputs(mpInputs.filter((_, i) => i !== idx))} title="Quitar" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer">
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          )}
+                          ) : <span className="w-7" />}
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Clover */}
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="flex items-center gap-2 text-[13.5px] font-semibold text-slate-800 dark:text-slate-200">
+                      <CreditCard className="w-4 h-4 text-slate-500" /> Clover
+                    </span>
+                    <button type="button" onClick={() => setCloverInputs([...cloverInputs, 0])} className="flex items-center gap-1 text-[12.5px] font-semibold text-rose-700 dark:text-rose-300 hover:underline cursor-pointer">
+                      <Plus className="w-3.5 h-3.5" /> Agregar terminal
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                    {cloverInputs.map((val, idx) => (
+                      <div key={`clover-${idx}`} className="flex items-center gap-3 px-4 py-2.5">
+                        <span className="flex-1 text-[13.5px] text-slate-700 dark:text-slate-300">Terminal {idx + 1}</span>
+                        <MoneyInput value={val} onChange={(v) => { const copy = [...cloverInputs]; copy[idx] = v; setCloverInputs(copy); }} />
+                        {cloverInputs.length > 1 ? (
+                          <button type="button" onClick={() => setCloverInputs(cloverInputs.filter((_, i) => i !== idx))} title="Quitar" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        ) : <span className="w-7" />}
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
               </div>
 
-              <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-850 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 flex flex-col gap-2.5">
-                <h3 className="text-[12.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Notas y Observaciones</h3>
-                <textarea 
-                  value={notes} 
-                  onChange={(e) => setNotes(e.target.value)} 
-                  className="h-24 lg:flex-1 w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3.5 text-sm sm:text-base font-medium text-slate-700 dark:text-slate-200 outline-none resize-none focus:ring-2 focus:ring-rose-500 transition-all"
-                  placeholder="Ej: Diferencia por error en ticket, retiro de socio, etc..."
+              <aside className="border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-5 py-5 flex flex-col gap-2">
+                <label htmlFor="arqueo-notas" className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-200">Notas</label>
+                <p className="text-[12.5px] text-slate-500 dark:text-slate-400 -mt-1">Opcional. Salen en el comprobante y las ve el dueño.</p>
+                <textarea
+                  id="arqueo-notas"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="min-h-[120px] flex-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 text-[14px] text-slate-800 dark:text-slate-200 outline-none resize-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25"
+                  placeholder="Ej: un ticket se cobró dos veces, faltó cambio…"
                 />
-              </div>
-            </motion.div>
+              </aside>
+            </div>
           )}
 
           {step === 4 && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="px-4 sm:px-6 py-4 h-full min-h-0 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
-              {/* Diferencia de Caja Banner (Top - Always Visible) */}
-              <div className={`px-4 py-3 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-xs ${differenceTotal === 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50'}`}>
-                <div className="flex items-center gap-3.5 text-center sm:text-left">
-                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${differenceTotal === 0 ? 'bg-emerald-500' : 'bg-red-500'} text-white shadow-md`}>
-                    {differenceTotal === 0 ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                  </div>
-                  <div>
-                    <p className={`text-xs font-black uppercase tracking-widest ${differenceTotal === 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>Diferencia de Caja</p>
-                    <p className={`text-2xl sm:text-3xl font-black ${differenceTotal === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {differenceTotal > 0 && '+'}{fmt(differenceTotal)}
-                    </p>
-                  </div>
+            <div className="px-4 sm:px-7 py-4 sm:py-5 space-y-4">
+              {/* Resultado */}
+              <div className={`rounded-xl border px-4 py-3.5 flex items-center gap-3.5 ${balance.box}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${balance.icon}`}>
+                  {differenceTotal === 0 ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                 </div>
-                {differenceTotal !== 0 ? (
-                  <div className="text-center sm:text-right">
-                    <p className="text-xs font-bold text-red-700 dark:text-red-400 uppercase">Caja fuera de balance</p>
-                    <p className="text-[11.5px] font-medium text-red-600 dark:text-red-300">Revisa los registros antes de confirmar.</p>
-                  </div>
-                ) : (
-                  <div className="text-center sm:text-right">
-                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Caja Balanceada</p>
-                    <p className="text-[11.5px] font-medium text-emerald-500 dark:text-emerald-300">Los valores coinciden exactamente.</p>
-                  </div>
-                )}
+                <div className="min-w-0 flex-1">
+                  <p className={`text-[15px] font-semibold ${balance.title}`}>{balance.label}</p>
+                  <p className="hidden sm:block text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">{balance.hint}</p>
+                </div>
+                <p className={`text-[22px] sm:text-[26px] font-extrabold tracking-tight shrink-0 ${balance.title}`}>{signed(differenceTotal)}</p>
               </div>
 
               {mpConnected && (
                 <MpReconcilePanel data={mpData} posnets={posnets} onFixed={reloadSession} />
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                {/* Sistema */}
-                <div className="px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col">
-                  <div className="flex items-center gap-2.5 mb-2.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    <span className="text-[12.5px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Sistema</span>
-                  </div>
-                  <div className="space-y-1.5 flex-1">
-                    <div className="flex justify-between items-center text-sm sm:text-base">
-                      <span className="font-semibold text-slate-600 dark:text-slate-400">Ventas Efectivo</span>
-                      <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(cashSales)}</span>
-                    </div>
-                    {posnets.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center text-sm sm:text-base">
-                        <span className="font-semibold text-slate-600 dark:text-slate-400">Ventas {p.name}</span>
-                        <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(getPosnetSales(p.id))}</span>
-                      </div>
+              {/* Sistema contra declarado, por medio de pago */}
+              <div className="sm:hidden">{diffSummary}</div>
+              <div className="hidden sm:block rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <table className="w-full text-[13.5px]">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                      <th className="py-2 px-4 font-medium">Medio</th>
+                      <th className="py-2 px-4 font-medium text-right">Según el sistema</th>
+                      <th className="py-2 px-4 font-medium text-right">Declarado</th>
+                      <th className="py-2 px-4 font-medium text-right">Diferencia</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {reviewRows.map((r) => (
+                      <tr key={r.key} className="align-top">
+                        <td className="py-2.5 px-4 text-slate-800 dark:text-slate-200 font-medium">
+                          {r.label}
+                          {r.terminals.length > 1 && (
+                            <div className="mt-1 space-y-0.5">
+                              {r.terminals.map((t, i) => (
+                                <p key={i} className="text-[12px] font-normal text-slate-500 dark:text-slate-400">Terminal {i + 1}</p>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-right text-slate-700 dark:text-slate-300">{fmt(r.expected)}</td>
+                        <td className="py-2.5 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">
+                          {fmt(r.declared)}
+                          {r.terminals.length > 1 && (
+                            <div className="mt-1 space-y-0.5">
+                              {r.terminals.map((t, i) => (
+                                <p key={i} className="text-[12px] font-normal text-slate-500 dark:text-slate-400">{fmt(t)}</p>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className={`py-2.5 px-4 text-right font-semibold ${diffClass(r.declared - r.expected)}`}>{signed(r.declared - r.expected)}</td>
+                      </tr>
                     ))}
-                    <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 dark:border-slate-700 text-sm sm:text-base">
-                      <span className="font-bold text-red-700 dark:text-red-400 uppercase tracking-tight">(-) Gastos Turno</span>
-                      <span className="font-black text-red-600 dark:text-red-400 tabular-nums">-{fmt(expenses)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-0.5 text-sm sm:text-base">
-                      <span className="font-bold text-red-700 dark:text-red-400 uppercase tracking-tight">(-) Retiros a Caja Fuerte</span>
-                      <span className="font-black text-red-600 dark:text-red-400 tabular-nums">-{fmt(withdrawals)}</span>
-                    </div>
-                    {(virtual1SalesTotal > 0 || virtual2SalesTotal > 0) && (<>
-                    <div className="flex justify-between items-center pt-2.5 border-t border-dashed border-slate-300 dark:border-slate-700 text-sm sm:text-base">
-                      <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-tight">Virtual 1 (No afecta caja)</span>
-                      <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">
-                        {fmt(virtual1SalesTotal)}
-                        {virtual1SalesTotal > 0 && (
-                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium ml-1.5">
-                            ({fmt(virtual1Base)} + {fmt(virtual1Surcharge)})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-0.5 text-sm sm:text-base">
-                      <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-tight">Virtual 2 (No afecta caja)</span>
-                      <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">
-                        {fmt(virtual2SalesTotal)}
-                        {virtual2SalesTotal > 0 && (
-                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium ml-1.5">
-                            ({fmt(virtual2Base)} + {fmt(virtual2Surcharge)})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    </>)}
-                  </div>
-                  <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-center">
-                    <p className="text-xs font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest mb-0.5">Total Esperado</p>
-                    <p className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(totalExpected)}</p>
-                  </div>
-                  {consumption.length > 0 && (
-                    <div className="mt-2.5 pt-2.5 border-t border-dashed border-slate-300 dark:border-slate-700">
-                      <p className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-1.5">☕ Consumo de empleados (sin cargo)</p>
-                      {consumption.map((e) => (
-                        <p key={e.name} className="text-[13px] text-slate-700 dark:text-slate-300 leading-snug">
-                          <b>{e.name}:</b> {e.items.map((i) => `${qtyText(i.quantity)} ${i.name}`).join(', ')}
-                        </p>
-                      ))}
-                    </div>
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700">
+                      <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Total</td>
+                      <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-slate-100">{fmt(totalExpected)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-slate-100">{fmt(totalDeclared)}</td>
+                      <td className={`py-3 px-4 text-right font-bold ${diffClass(differenceTotal)}`}>{signed(differenceTotal)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* De dónde sale el efectivo esperado */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-[13.5px] space-y-1.5">
+                  <p className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-200 mb-1">Efectivo esperado</p>
+                  <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Ventas en efectivo</span><span className="text-slate-800 dark:text-slate-100">{fmt(cashSales)}</span></div>
+                  <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Gastos</span><span className="text-red-600 dark:text-red-400">{expenses ? `−${fmt(expenses)}` : fmt(0)}</span></div>
+                  <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Retiros</span><span className="text-red-600 dark:text-red-400">{withdrawals ? `−${fmt(withdrawals)}` : fmt(0)}</span></div>
+                  <div className="flex justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100"><span>Esperado</span><span>{fmt(expectedCashProfits)}</span></div>
+                  {openingFloat != null && openingFloat > 0 && (
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400 pt-1">Aparte queda el fondo inicial de {fmt(openingFloat)} en el cajón.</p>
                   )}
                 </div>
 
-                {/* Declarado */}
-                <div className="px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-white dark:bg-slate-800 border border-rose-100 dark:border-slate-700 flex flex-col shadow-xs">
-                  <div className="flex items-center gap-2.5 mb-2.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="text-[12.5px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Resumen Declarado</span>
-                  </div>
-                  <div className="space-y-1.5 flex-1 text-sm sm:text-base">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-slate-600 dark:text-slate-400">Efectivo Contado</span>
-                      <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(cashToWithdraw)}</span>
-                    </div>
-                    {posnets.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center">
-                        <span className="font-semibold text-slate-600 dark:text-slate-400">{p.name}</span>
-                        <span className="font-black text-slate-900 dark:text-slate-100 text-base sm:text-lg tabular-nums">{fmt(posnetDeclarations[p.id] || 0)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-center">
-                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5">Total Declarado</p>
-                    <p className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(totalDeclared)}</p>
-                  </div>
+                {/* Lo que no cambia la caja */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-[13.5px] space-y-1.5">
+                  <p className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-200 mb-1">No cambia la caja</p>
+                  {debtSales > 0 && (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Ventas a cuenta corriente</span><span className="text-slate-800 dark:text-slate-100">{fmt(debtSales)}</span></div>
+                  )}
+                  {virtual1SalesTotal > 0 && (
+                    <div className="flex justify-between gap-3 text-slate-600 dark:text-slate-300"><span>Carga virtual 1</span><span className="text-slate-800 dark:text-slate-100 text-right">{fmt(virtual1SalesTotal)} <span className="text-[12px] text-slate-500">({fmt(virtual1Base)} + {fmt(virtual1Surcharge)})</span></span></div>
+                  )}
+                  {virtual2SalesTotal > 0 && (
+                    <div className="flex justify-between gap-3 text-slate-600 dark:text-slate-300"><span>Carga virtual 2</span><span className="text-slate-800 dark:text-slate-100 text-right">{fmt(virtual2SalesTotal)} <span className="text-[12px] text-slate-500">({fmt(virtual2Base)} + {fmt(virtual2Surcharge)})</span></span></div>
+                  )}
+                  {consumption.map((e) => (
+                    <p key={e.name} className="text-slate-600 dark:text-slate-300 leading-snug">
+                      <span className="font-medium text-slate-800 dark:text-slate-100">Consumo de {e.name}:</span> {e.items.map((i) => `${qtyText(i.quantity)} ${i.name}`).join(', ')}
+                    </p>
+                  ))}
+                  {debtSales <= 0 && virtual1SalesTotal <= 0 && virtual2SalesTotal <= 0 && consumption.length === 0 && (
+                    <p className="text-slate-500 dark:text-slate-400">Nada en este turno.</p>
+                  )}
                 </div>
               </div>
-            </motion.div>
+            </div>
           )}
 
           {step === 5 && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="h-full flex flex-col items-center justify-center text-center p-6 sm:p-10">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-rose-50 dark:bg-rose-900/30 text-rose-500 dark:text-rose-400 flex items-center justify-center mb-6 sm:mb-8 shadow-inner">
-                <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12" />
+            <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10">
+              <div className="w-14 h-14 rounded-full bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 flex items-center justify-center mb-5">
+                <Lock className="w-6 h-6" />
               </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">¿Confirmar Cierre de Turno?</h3>
-              <p className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-widest max-w-sm leading-relaxed mb-6">
-                La sesión se cerrará de forma permanente.<br/>Asegúrate de haber arqueado todo correctamente.
-              </p>
-            </motion.div>
+              <h3 className="text-[22px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">¿Cerrar el turno?</h3>
+              <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">Se guarda el arqueo y el turno queda cerrado. Después no se puede modificar.</p>
+              <div className="mt-6 w-full max-w-md">
+                {diffSummary}
+              </div>
+            </div>
           )}
 
           {step === 6 && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="h-full p-6 sm:p-8 flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-6">
-                <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-green-600 dark:text-green-400" />
+            <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
+                <CheckCircle2 className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-slate-100 mb-2">Turno Finalizado</h3>
-              <p className="text-slate-600 dark:text-slate-400 mb-6 sm:mb-8 max-w-sm text-sm sm:text-base">
-                El arqueo se completó correctamente y el turno ha sido cerrado. Puedes imprimir el comprobante X si lo necesitas.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <button onClick={handlePrintZReport} className="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer">
-                  <Printer className="w-5 h-5" /> Imprimir Comprobante X (Opcional)
+              <h3 className="text-[22px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">Turno cerrado</h3>
+              <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">El arqueo quedó guardado. Si lo necesitás, imprimí el comprobante del cierre X.</p>
+              <div className="mt-6 w-full max-w-md">
+                {diffSummary}
+              </div>
+              <div className="mt-6 flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                <button onClick={handlePrintZReport} className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-[14px] font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                  <Printer className="w-4 h-4" /> Imprimir comprobante X
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     onClose();
                     if (!isFollowedByZ) {
                       useAuthStore.getState().logout();
                     }
-                  }} 
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all cursor-pointer"
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[14px] font-semibold transition-colors cursor-pointer"
                 >
-                  Finalizar y Salir
+                  Finalizar y salir
                 </button>
               </div>
-            </motion.div>
+            </div>
           )}
         </div>
 
@@ -1106,22 +1106,27 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
         )}
 
         {step < 6 && (
-          <div className="px-4 sm:px-8 py-3.5 sm:py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
-            <button onClick={() => step > 1 ? setStep(step - 1) : onClose()} disabled={isSubmitting} className="py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-800 transition-all cursor-pointer text-center disabled:opacity-50 border border-slate-200 dark:border-slate-800 sm:border-transparent">
+          <div className="px-4 sm:px-7 py-3 sm:py-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-white dark:bg-slate-900">
+            <button
+              onClick={() => step > 1 ? setStep(step - 1) : onClose()}
+              disabled={isSubmitting}
+              className="px-4 py-2.5 rounded-xl text-[14px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+            >
               {step === 1 ? 'Cancelar' : 'Volver'}
             </button>
-            
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              {step >= 4 && step < 6 && (
-                <button 
-                  onClick={handlePrintZReport} 
+
+            <div className="flex gap-2.5">
+              {step >= 4 && (
+                <button
+                  onClick={handlePrintZReport}
                   disabled={isSubmitting}
-                  className="py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm hover:bg-white dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                  title="Imprimir arqueo (F9)"
+                  className="shrink-0 px-3.5 sm:px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 text-[14px] font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <Printer className="w-4 h-4" /> Imprimir Reporte A4 <span className="hidden sm:inline text-[9px] opacity-75 ml-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400">[F9]</span>
+                  <Printer className="w-4 h-4" /> <span className="hidden sm:inline">Imprimir arqueo</span> <Kbd className="hidden sm:inline-flex">F9</Kbd>
                 </button>
               )}
-              <button 
+              <button
                 disabled={isSubmitting}
                 onClick={async () => {
                   if (step < 5) setStep(step + 1);
@@ -1142,12 +1147,12 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                     }
                   }
                 }}
-                className={`py-3 px-6 rounded-xl font-black text-white flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs sm:text-sm uppercase tracking-wider cursor-pointer shadow-md min-w-0 sm:min-w-[200px] ${step === 5 ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200 dark:shadow-rose-950/50' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-200 dark:shadow-rose-950/50'} disabled:opacity-50`}
+                className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[14px] font-semibold flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98] cursor-pointer disabled:opacity-50 sm:min-w-[200px] shadow-sm"
               >
-                {isSubmitting ? 'Procesando...' : (
+                {isSubmitting ? 'Cerrando el turno…' : (
                   <>
-                    {step === 1 ? 'Siguiente: Arqueo de Efectivo' : step === 2 ? 'Siguiente: Virtual y Posnets' : step === 3 ? 'Siguiente: Validar Cierre' : step === 4 ? 'Finalizar Turno' : 'Sí, Cerrar Caja Definitivamente'}
-                    <ChevronRight className="w-4 h-4 stroke-[3]" />
+                    {step === 1 ? 'Contar el efectivo' : step === 2 ? 'Seguir con tarjetas y QR' : step === 3 ? 'Revisar el arqueo' : step === 4 ? 'Cerrar el turno' : 'Sí, cerrar el turno'}
+                    <ChevronRight className="w-4 h-4" />
                   </>
                 )}
               </button>
@@ -1174,3 +1179,21 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   );
 }
 
+
+/** Monto en pesos de una terminal (cierre de lote) */
+function MoneyInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/25 transition-shadow">
+      <span className="pl-3 text-[14px] text-slate-400">$</span>
+      <input
+        type="number"
+        min={0}
+        value={value || ''}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-36 h-10 bg-transparent px-2 text-right text-[16px] font-bold text-slate-900 dark:text-slate-100 outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+        placeholder="0"
+      />
+    </div>
+  );
+}

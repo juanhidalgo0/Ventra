@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2, Clock, Loader2 } from 'lucide-react';
 import InvoiceModal, { nombreComprobante, numeroComprobante, qrImagen } from './InvoiceModal';
 import TicketReceipt from './TicketReceipt';
-import { canPrintSilently, getAutoPrintInvoice, printSilently } from '../../utils/ticketPrinter';
+import { canPrintSilently, getAutoPrintInvoice, printSilently, printFailMessage } from '../../utils/ticketPrinter';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useBusinessStore } from '../../stores/businessStore';
@@ -436,6 +436,20 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
    * cuándo se cerró (`afterprint`). Eso es lo que se informa, sin prometer de más.
    */
   const handlePrint = () => {
+    // App de escritorio: directo a la impresora de tickets, nunca el cuadro de Windows.
+    // Si falla se avisa qué pasó (el cajero vuelve a intentar con F9 o revisa la impresora).
+    if (canPrintSilently()) {
+      const aviso = toast.loading('Imprimiendo el ticket...');
+      printSilently('ticket')
+        .then(() => toast.success('Ticket impreso', { id: aviso, duration: 2500 }))
+        .catch((err) => toast.error(printFailMessage(err), { id: aviso, duration: 8000 }));
+      return;
+    }
+    printWithDialog();
+  };
+
+  /** El cuadro de impresión del navegador (en la web, o si la impresión directa falló) */
+  const printWithDialog = () => {
     const aviso = toast.loading('Enviando el ticket a la impresora...');
     let abrio = false;
 
@@ -511,18 +525,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   /**
    * El comprobante tiene que salir impreso: se manda a la impresora apenas llega el CAE.
-   * En la app de escritorio sale directo; si falla (o en el navegador) se abre el cuadro de impresión.
+   * En la app de escritorio sale directo por la impresora de tickets (con la impresión automática
+   * apagada se imprime con F9); en el navegador se abre el cuadro de impresión.
    */
   const printInvoice = () => {
     setTimeout(() => {
-      if (!canPrintSilently() || !getAutoPrintInvoice()) { handlePrint(); return; }
+      if (!canPrintSilently()) { printWithDialog(); return; }
+      if (!getAutoPrintInvoice()) return;
       const aviso = toast.loading('Imprimiendo la factura...');
-      printSilently()
+      printSilently('ticket')
         .then(() => toast.success('Factura impresa', { id: aviso, duration: 3000 }))
-        .catch((err) => {
-          toast.error(`${err?.message || err || 'No se pudo imprimir'}. Elegí la impresora en el cuadro.`, { id: aviso, duration: 6000 });
-          handlePrint();
-        });
+        .catch((err) => toast.error(printFailMessage(err), { id: aviso, duration: 8000 }));
     }, 400);
   };
 

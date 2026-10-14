@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Unlock, Lock, Laptop, Info } from 'lucide-react';
+import { X, Unlock, Lock, Laptop, Banknote } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useOpeningFloat } from '../../utils/openingFloat';
 
 interface AbrirCajaModalProps {
   onClose: () => void;
@@ -12,6 +13,8 @@ interface AbrirCajaModalProps {
 
 export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: AbrirCajaModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const openingFloat = useOpeningFloat();
+  const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -80,10 +83,24 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
             </div>
           </div>
 
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <Info className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
-            <p className="text-[13px] text-slate-700 dark:text-slate-300 leading-snug">
-              El fondo fijo que queda en el cajón no se registra: la caja cuenta solo lo que se vende y lo que sale en el turno.
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                <Banknote className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-medium text-slate-500 dark:text-slate-400">Fondo inicial del cajón</p>
+                {openingFloat != null ? (
+                  <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">{fmt(openingFloat)}</p>
+                ) : (
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-0.5">Sin definir</p>
+                )}
+              </div>
+            </div>
+            <p className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700 text-[12.5px] text-slate-600 dark:text-slate-300 leading-snug">
+              {openingFloat != null
+                ? 'Contá que haya este cambio antes de abrir. Queda siempre en el cajón: no se suma a las ventas ni se retira al cerrar.'
+                : 'El administrador todavía no lo definió (se carga en Configuración). Lo que quede en el cajón no se suma a las ventas.'}
             </p>
           </div>
         </div>

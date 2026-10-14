@@ -41,6 +41,7 @@ import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
 import MercadoPagoCard from './MercadoPagoCard';
 import { useAuthStore } from '../../stores/authStore';
+import { getOpeningFloat, saveOpeningFloat } from '../../utils/openingFloat';
 import { setStoreSetting } from '../../services/storeSettings';
 import { usePOSStore } from '../../stores/posStore';
 import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
@@ -108,6 +109,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     const saved = localStorage.getItem('performance_mode');
     return saved ? saved === 'true' : true;
   });
+  const [openingFloat, setOpeningFloatInput] = useState(() => { const v = getOpeningFloat(); return v == null ? '' : String(v); });
   const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => {
     const saved = localStorage.getItem('pos_disable_change_calculator');
     return saved ? saved === 'true' : false;
@@ -638,6 +640,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setStoreSetting('hourly_rate', String(hourlyRate));
     localStorage.setItem('performance_mode', String(performanceMode));
     setStoreSetting('pos_disable_change_calculator', String(disableChangeCalculator));
+    if (openingFloat.trim() !== '') saveOpeningFloat(Number(openingFloat));
     if ((window as any).__TAURI__) {
       try {
         const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
@@ -1065,6 +1068,19 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                         placeholder="1500"
                       />
                       <p className="text-[9px] text-slate-405">Se usará para calcular el monto a liquidar en los egresos de tipo "Cobrar Sueldo".</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Fondo inicial de la caja ($)</label>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={openingFloat} 
+                        onChange={(e) => setOpeningFloatInput(e.target.value.replace(/[^0-9]/g, ''))} 
+                        className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner" 
+                        placeholder="Ej: 20000"
+                      />
+                      <p className="text-[9px] text-slate-405">El cambio que tiene que haber en el cajón al abrir. Lo ven todos los cajeros y queda siempre en el cajón: no se suma a las ventas.</p>
                     </div>
                   </div>
 

@@ -34,6 +34,8 @@ const SHARED: Record<string, string> = {
   earnings_division_partners: 'earnings_division_partners',
   /** Los empleados pueden registrar su consumo (sin cargo, solo descuenta stock): '1' / '0' */
   employee_consumption: 'employee_consumption',
+  /** Fondo inicial de la caja en pesos: queda siempre en el cajón (lo carga el dueño) */
+  cash_opening_float: 'cash_opening_float',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;

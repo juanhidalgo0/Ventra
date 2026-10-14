@@ -15,7 +15,8 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
 const zlib = require("zlib");
-const { MercadoPagoConfig, PreApproval } = require("mercadopago");
+// El SDK de Mercado Pago pesa: se carga recién en las funciones de suscripción, no al arrancar todas
+const mpPreApproval = (accessToken) => { const { MercadoPagoConfig, PreApproval } = require("mercadopago"); return new PreApproval(new MercadoPagoConfig({ accessToken })); };
 const { GRACE_DAYS, nextPaidUntil } = require("./subscription-rules");
 const cloudSync = require("./sync");
 const syncArchive = require("./archive");
@@ -40,7 +41,9 @@ const RELEASE_PUSH_SECRET = defineSecret("RELEASE_PUSH_SECRET");
 const VENTRA_LICENSE_PRIVATE_KEY = defineSecret("VENTRA_LICENSE_PRIVATE_KEY");
 
 const VENTRA_PLANS = {
-  caja: { name: "Ventra Caja", amount: 14900 },
+  // Ya no se vende: la caja va con Full. Queda para las cuentas que lo tenían (legacy):
+  // nadie se suscribe ni se pasa a este plan.
+  caja: { name: "Ventra Caja", amount: 14900, legacy: true },
   full: { name: "Ventra Full", amount: 24900 },
   tienda: { name: "Ventra Tienda", amount: 9900 },
   // Solo turnos online (peluquerías, estética, consultorios): sin productos ni caja
@@ -117,6 +120,7 @@ exports.createVentraSubscription = onRequest(
 
     const { plan, payerEmail, rubro, utm } = req.body || {};
     const planInfo = VENTRA_PLANS[plan];
+    if (planInfo && planInfo.legacy) return res.status(400).json({ error: "Ventra Caja ya no está disponible: la caja viene con Ventra Full." });
     if (!planInfo || (planInfo.adminOnly && !isAdmin(user))) return res.status(400).json({ error: "Plan inválido" });
 
     // Mercado Pago ata la suscripción a un correo y después exige que quien paga
@@ -131,8 +135,7 @@ exports.createVentraSubscription = onRequest(
     const correoPagador = correoMp || user.email;
 
     try {
-      const client = new MercadoPagoConfig({ accessToken: String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim() });
-      const preapproval = new PreApproval(client);
+      const preapproval = mpPreApproval(String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim());
       const response = await preapproval.create({
         body: {
           reason: `Suscripción ${planInfo.name}`,
@@ -184,6 +187,7 @@ exports.changeVentraPlan = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP
   if (!user) return res.status(401).json({ error: "Iniciá sesión para cambiar de plan" });
   const { plan } = req.body || {};
   const planInfo = VENTRA_PLANS[plan];
+  if (planInfo && planInfo.legacy) return res.status(400).json({ error: "Ventra Caja ya no está disponible: la caja viene con Ventra Full." });
   if (!planInfo || planInfo.adminOnly) return res.status(400).json({ error: "Plan inválido" });
   const ref = db.collection("ventra_accounts").doc(user.uid);
   const acc = (await ref.get()).data() || {};
@@ -192,7 +196,7 @@ exports.changeVentraPlan = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP
     return res.status(409).json({ error: "Tu suscripción no está activa en Mercado Pago. Escribinos por WhatsApp y te cambiamos el plan." });
   }
   try {
-    const preapproval = new PreApproval(new MercadoPagoConfig({ accessToken: String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim() }));
+    const preapproval = mpPreApproval(String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim());
     await preapproval.update({
       id: acc.mpPreapprovalId,
       body: { reason: `Suscripción ${planInfo.name}`, auto_recurring: { transaction_amount: planInfo.amount, currency_id: "ARS" } },
@@ -230,7 +234,7 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
 
   try {
     if (type === "subscription_preapproval" && id) {
-      const preapproval = new PreApproval(new MercadoPagoConfig({ accessToken }));
+      const preapproval = mpPreApproval(accessToken);
       const sub = await preapproval.get({ id });
       const uid = sub.external_reference;
       if (uid) {
@@ -265,7 +269,7 @@ async function creditAuthorizedPayment(authorizedPaymentId, accessToken) {
     return;
   }
 
-  const preapproval = new PreApproval(new MercadoPagoConfig({ accessToken }));
+  const preapproval = mpPreApproval(accessToken);
   const sub = await preapproval.get({ id: ap.preapproval_id });
   const uid = sub.external_reference;
   if (!uid) return;
@@ -836,7 +840,7 @@ async function systemHealth(config) {
       return { openBoxes: d.cajas };
     }),
     check(async () => {
-      const [files] = await admin.storage().bucket().getFiles({ prefix: backup.PREFIX });
+      const [files] = await admin.storage().bucket().getFiles({ prefix: backup.PREFIX, autoPaginate: false, maxResults: 100, fields: "items(name,size,updated,timeCreated)" });
       const last = files.filter((f) => /.ndjson.gz$/.test(f.name)).sort((a, b) => a.name.localeCompare(b.name)).pop();
       if (!last) throw new Error("no hay copias");
       const at = last.metadata.updated || last.metadata.timeCreated;
@@ -846,44 +850,46 @@ async function systemHealth(config) {
     }),
     check(async () => { await db.collection("ventra_config").limit(1).get(); return {}; }),
   ]);
-  const renewals = Object.entries(config.renewals || {}).map(([key, r]) => ({
+  return { neon, cloudHost, backup: backupInfo, firestore };
+}
+
+function adminRenewals(config) {
+  return Object.entries(config.renewals || {}).map(([key, r]) => ({
     key, label: r.label || key, date: r.date || null,
     daysLeft: r.date ? Math.ceil((Date.parse(r.date) - Date.now()) / DAY) : null,
   })).sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9));
-  return { neon, cloudHost, backup: backupInfo, firestore, renewals };
 }
 
-async function buildAdminOverview() {
-  const now = Date.now();
-  const month = usage.monthKey();
-  await usage.flush(true);
-  const configSnap = await ADMIN_CONFIG().get();
-  const config = configSnap.exists ? configSnap.data() : {};
-  const soft = (p, what) => p.catch((err) => { logger.warn(`Ventra admin: sin ${what}`, err.message); return {}; });
-  const [system, usageByUid, storageByUid] = await Promise.all([
-    soft(systemHealth(config), "estado del sistema"),
-    soft(usage.monthUsage(month), "uso del mes"),
-    soft(usage.storageBytesByTenant(), "tamaño de fotos"),
+// Cuánto ocupa cada comercio en Neon y en fotos. Medirlo recorre toda la base y todas las fotos
+// (segundos, y crece con cada cliente), así que se calcula de noche en ventraSyncMaintenance
+// y el panel lee lo guardado. Solo se recalcula al abrir el panel si no hay medición reciente.
+const ADMIN_SIZES = () => db.collection("ventra_config").doc("adminSizes");
+const ADMIN_SIZES_MAX_AGE = 26 * 3600 * 1000;
+
+async function adminSizes({ force = false } = {}) {
+  const snap = await ADMIN_SIZES().get().catch(() => null);
+  const saved = snap && snap.exists ? snap.data() : {};
+  const fresh = saved.at && saved.at.toMillis && Date.now() - saved.at.toMillis() < ADMIN_SIZES_MAX_AGE;
+  if (fresh && !force) return { cloud: saved.cloud || {}, storage: saved.storage || {}, at: tsToIso(saved.at) };
+  const [summary, storage] = await Promise.all([
+    cloudSync.adminSummary(String(NEON_DATABASE_URL.value() || "").trim()).catch((err) => { logger.warn("Ventra admin: sin tamaños en la nube", err.message); return null; }),
+    usage.storageBytesByTenant().catch((err) => { logger.warn("Ventra admin: sin tamaño de fotos", err.message); return null; }),
   ]);
-  const [accountsSnap, devicesSnap, paymentsSnap, cloudByUid, storeByUid, authUsers] = await Promise.all([
+  const cloud = summary ? Object.fromEntries(Object.entries(summary).map(([uid, c]) => [uid, { rows: c.rows, bytes: c.bytes }])) : null;
+  // Si una parte falló se conserva la última medición buena de esa parte, y no se marca como al día
+  const update = { ...(cloud ? { cloud } : {}), ...(storage ? { storage } : {}) };
+  if (cloud && storage) update.at = admin.firestore.FieldValue.serverTimestamp();
+  if (Object.keys(update).length) await ADMIN_SIZES().set(update, { merge: true });
+  return { cloud: cloud || saved.cloud || {}, storage: storage || saved.storage || {}, at: cloud && storage ? new Date().toISOString() : tsToIso(saved.at) };
+}
+
+/** Cuentas, PCs y pagos: lo que el panel necesita para mostrarse (solo Firestore, rápido). */
+async function adminAccountsData() {
+  const [accountsSnap, devicesSnap, paymentsSnap] = await Promise.all([
     db.collection("ventra_accounts").get(),
     db.collection("ventra_devices").get(),
     db.collectionGroup("payments").get(),
-    // Datos replicados en Neon: si la base no responde, el panel igual carga
-    cloudSync.adminSummary(String(NEON_DATABASE_URL.value() || "").trim()).catch((err) => {
-      logger.warn("Ventra admin: sin resumen de la nube", err.message);
-      return {};
-    }),
-    adminStoresByOwner().catch((err) => {
-      logger.warn("Ventra admin: sin tiendas online", err.message);
-      return {};
-    }),
-    listAuthUsersWithEmail().catch((err) => {
-      logger.warn("Ventra admin: sin lista de usuarios", err.message);
-      return [];
-    }),
   ]);
-
   const devicesByUid = {};
   devicesSnap.forEach((d) => {
     const data = d.data();
@@ -895,6 +901,25 @@ async function buildAdminOverview() {
       lastSeenAt: tsToIso(data.lastSeenAt),
     });
   });
+  return { accountsSnap, devicesSnap, paymentsSnap, devicesByUid };
+}
+
+// El panel se arma en dos pedidos para que abra enseguida:
+//  1. buildAdminOverview: cuentas, cobros, tiendas, facturación y vencimientos (Firestore).
+//  2. buildAdminStats (?part=stats): lo que depende de Neon, fly.io y Storage — estado de los
+//     servicios, uso y costo por cliente, y los registrados sin plan. La página lo suma al llegar.
+async function buildAdminOverview() {
+  const now = Date.now();
+  const month = usage.monthKey();
+  const [configSnap, { accountsSnap, devicesSnap, paymentsSnap, devicesByUid }, storeByUid] = await Promise.all([
+    ADMIN_CONFIG().get(),
+    adminAccountsData(),
+    adminStoresByOwner().catch((err) => {
+      logger.warn("Ventra admin: sin tiendas online", err.message);
+      return {};
+    }),
+  ]);
+  const config = configSnap.exists ? configSnap.data() : {};
 
   const paymentsByUid = {};
   const monthly = {};
@@ -939,47 +964,27 @@ async function buildAdminOverview() {
       state,
       daysLeft,
       totalPaid: payments.reduce((s, p) => s + p.amount, 0),
+      monthPaid: payments.filter((p) => p.paidAt && p.paidAt.slice(0, 7) === month).reduce((s, p) => s + p.amount, 0),
       payments: payments.slice(0, 24),
       devices: devicesByUid[doc.id] || [],
-      cloud: cloudByUid[doc.id] || null,
       store: storeByUid[doc.id] || null,
       createdAt: tsToIso(a.createdAt) || tsToIso(a.updatedAt),
       notes: a.adminNotes || "",
     };
-  });
-
-  // Registrados (entraron con Google) que todavía no tienen cuenta: no eligieron plan
-  const withAccount = new Set(accountsSnap.docs.map((d) => d.id));
-  const registered = authUsers
-    .filter((u) => !withAccount.has(u.uid))
-    .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
-    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
-
-  // Costo estimado de cada cliente este mes (según su uso) contra lo que paga
-  const monthCosts = (config.costs && config.costs[month]) || {};
-  const alloc = usage.allocate(monthCosts, accounts.map((a) => ({
-    uid: a.uid,
-    active: a.state === "ACTIVE" || a.state === "GRACE",
-    cloudBytes: a.cloud ? a.cloud.bytes : 0,
-    storageBytes: storageByUid[a.uid] || 0,
-    hasCloudBox: a.devices.some((d) => d.kind === "cloud"),
-    usage: usageByUid[a.uid] || {},
-  })));
-  accounts.forEach((a) => {
-    a.usage = { ...(usageByUid[a.uid] || {}), storageBytes: storageByUid[a.uid] || 0 };
-    a.cost = alloc[a.uid];
-    a.monthPaid = a.payments.filter((p) => p.paidAt && p.paidAt.slice(0, 7) === month).reduce((s, p) => s + p.amount, 0);
   });
   const staleDevices = accounts.filter((a) => a.state === "ACTIVE").reduce((n, a) => n + a.devices.filter((d) => d.kind !== "cloud" && d.lastSeenAt && now - Date.parse(d.lastSeenAt) > 3 * DAY).length, 0);
 
   // Facturación: comercios que delegaron en ARCA y esperan que Ventra acepte la delegación
   let fiscal = null;
   try {
-    const snap = await db.collection("ventra_fiscal_cuits").where("delegationPendingSince", "!=", null).get();
+    const cuits = db.collection("ventra_fiscal_cuits");
     const emailOf = new Map(accounts.map((a) => [a.uid, a.email]));
-    const all = await db.collection("ventra_fiscal_cuits").count().get();
-    // CUIT que una cuenta quiere usar en producción: hay que confirmar que es del titular
-    const toApprove = await db.collection("ventra_fiscal_cuits").where("approved", "==", false).get();
+    const [snap, all, toApprove] = await Promise.all([
+      cuits.where("delegationPendingSince", "!=", null).get(),
+      cuits.count().get(),
+      // CUIT que una cuenta quiere usar en producción: hay que confirmar que es del titular
+      cuits.where("approved", "==", false).get(),
+    ]);
     fiscal = {
       cuits: all.data().count,
       pending: snap.docs.map((d) => ({
@@ -1002,10 +1007,11 @@ async function buildAdminOverview() {
   const stateOrder = { GRACE: 0, READ_ONLY: 1, UNPAID: 2, ACTIVE: 3 };
   accounts.sort((x, y) => (stateOrder[x.state] - stateOrder[y.state]) || String(x.email).localeCompare(String(y.email)));
 
+  const monthCosts = (config.costs && config.costs[month]) || {};
   return {
     generatedAt: new Date(now).toISOString(),
     graceDays: GRACE_DAYS,
-    plans: Object.fromEntries(Object.entries(VENTRA_PLANS).map(([k, v]) => [k, { name: v.name, amount: v.amount }])),
+    plans: Object.fromEntries(Object.entries(VENTRA_PLANS).map(([k, v]) => [k, { name: v.name, amount: v.amount, legacy: !!v.legacy }])),
     metrics: {
       mrr, totalRevenue, monthRevenue,
       accounts: accounts.length,
@@ -1014,10 +1020,65 @@ async function buildAdminOverview() {
       monthly: Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([month, amount]) => ({ month, amount })),
     },
     accounts,
-    registered,
-    system: { ...system, staleDevices, fiscal },
+    system: { staleDevices, fiscal, renewals: adminRenewals(config) },
     costs: { month, entered: monthCosts, all: config.costs || {}, renewals: config.renewals || {}, neonLimitMB: config.neonLimitMB || null },
   };
+}
+
+async function buildAdminStats() {
+  const now = Date.now();
+  const month = usage.monthKey();
+  await usage.flush(true);
+  const configSnap = await ADMIN_CONFIG().get();
+  const config = configSnap.exists ? configSnap.data() : {};
+  const soft = (p, what, empty = {}) => p.catch((err) => { logger.warn(`Ventra admin: sin ${what}`, err.message); return empty; });
+  const [system, usageByUid, sizes, syncTimes, { accountsSnap, devicesByUid }, storeByUid, authUsers] = await Promise.all([
+    soft(systemHealth(config), "estado del sistema"),
+    soft(usage.monthUsage(month), "uso del mes"),
+    soft(adminSizes(), "tamaños", { cloud: {}, storage: {}, at: null }),
+    // Solo la última sincronización de cada comercio: es una tabla chica, se lee al momento
+    soft(cloudSync.syncTimes(String(NEON_DATABASE_URL.value() || "").trim()), "últimas sincronizaciones"),
+    adminAccountsData(),
+    soft(adminStoresByOwner(), "tiendas online"),
+    soft(listAuthUsersWithEmail(), "lista de usuarios", []),
+  ]);
+
+  const accounts = accountsSnap.docs.map((doc) => {
+    const a = doc.data();
+    const { state } = accountState(a.paidUntil ? a.paidUntil.toDate() : null, now);
+    const size = sizes.cloud[doc.id], times = syncTimes[doc.id];
+    return {
+      uid: doc.id,
+      state,
+      devices: devicesByUid[doc.id] || [],
+      cloud: size || times ? { rows: size ? size.rows : 0, bytes: size ? size.bytes : 0, ...(times || {}) } : null,
+      storageBytes: sizes.storage[doc.id] || 0,
+    };
+  });
+
+  // Costo estimado de cada cliente este mes (según su uso) contra lo que paga
+  const monthCosts = (config.costs && config.costs[month]) || {};
+  const alloc = usage.allocate(monthCosts, accounts.map((a) => ({
+    uid: a.uid,
+    active: a.state === "ACTIVE" || a.state === "GRACE",
+    cloudBytes: a.cloud ? a.cloud.bytes : 0,
+    storageBytes: a.storageBytes,
+    hasCloudBox: a.devices.some((d) => d.kind === "cloud"),
+    usage: usageByUid[a.uid] || {},
+  })));
+  const byUid = {};
+  accounts.forEach((a) => {
+    byUid[a.uid] = { cloud: a.cloud, usage: { ...(usageByUid[a.uid] || {}), storageBytes: a.storageBytes }, cost: alloc[a.uid] };
+  });
+
+  // Registrados (entraron con Google) que todavía no tienen cuenta: no eligieron plan
+  const withAccount = new Set(accountsSnap.docs.map((d) => d.id));
+  const registered = authUsers
+    .filter((u) => !withAccount.has(u.uid))
+    .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
+    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+
+  return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered };
 }
 
 exports.ventraAdmin = onRequest(
@@ -1029,7 +1090,7 @@ exports.ventraAdmin = onRequest(
 
     if (req.method === "GET") {
       try {
-        return res.status(200).json(await buildAdminOverview());
+        return res.status(200).json(await (req.query.part === "stats" ? buildAdminStats() : buildAdminOverview()));
       } catch (err) {
         logger.error("Ventra admin: error armando el resumen", err);
         return res.status(500).json({ error: "No se pudo cargar el panel" });
@@ -1165,7 +1226,7 @@ exports.ventraAdmin = onRequest(
       if (action === "createAccount") {
         const mail = String(email || "").trim().toLowerCase();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) return res.status(400).json({ error: "Email inválido" });
-        if (!VENTRA_PLANS[plan]) return res.status(400).json({ error: "Elegí un plan" });
+        if (!VENTRA_PLANS[plan] || VENTRA_PLANS[plan].legacy) return res.status(400).json({ error: "Elegí un plan" });
         const n = Number(days);
         if (!Number.isFinite(n) || n < 0 || n > 3650) return res.status(400).json({ error: "Cantidad de días inválida" });
         let authUser;
@@ -1205,7 +1266,7 @@ exports.ventraAdmin = onRequest(
       } else if (action === "readOnly") {
         paidUntil = new Date(Date.now() - (GRACE_DAYS + 1) * DAY);
       } else if (action === "setPlan") {
-        if (!VENTRA_PLANS[plan]) return res.status(400).json({ error: "Plan inválido" });
+        if (!VENTRA_PLANS[plan] || (VENTRA_PLANS[plan].legacy && plan !== snap.data().plan)) return res.status(400).json({ error: "Plan inválido" });
         await ref.set({ plan, planName: VENTRA_PLANS[plan].name, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
         await log({ uid, plan });
         return res.status(200).json({ ok: true });
@@ -1228,7 +1289,7 @@ exports.ventraAdmin = onRequest(
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         const updates = { paidUntil: admin.firestore.Timestamp.fromDate(newUntil), updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-        if (VENTRA_PLANS[plan]) Object.assign(updates, { plan, planName: VENTRA_PLANS[plan].name });
+        if (VENTRA_PLANS[plan] && (!VENTRA_PLANS[plan].legacy || plan === snap.data().plan)) Object.assign(updates, { plan, planName: VENTRA_PLANS[plan].name });
         // Si nunca pasó por Mercado Pago, queda marcado como cliente manual
         if (!snap.data().mpPreapprovalId) updates.status = "manual";
         await ref.set(updates, { merge: true });
@@ -1471,6 +1532,8 @@ exports.ventraSyncMaintenance = onSchedule(
     // Archivo de la historia vieja fuera de Neon (apagado salvo VENTRA_SYNC_ARCHIVE=1, ver archive.js)
     const archived = syncArchive.ENABLED ? await syncArchive.archiveAll(sql, admin.storage().bucket()) : null;
     for (const r of archived || []) if (r.error) logger.error(`Ventra archivo: error (${r.tenantId})`, r.error);
+    // Con Neon ya despierta, se mide cuánto ocupa cada comercio para el panel de administración
+    await adminSizes({ force: true }).catch((err) => logger.warn("Ventra mantenimiento: sin tamaños para el panel", err.message));
     const [{ bytes }] = await cloudSync.run(sql, `SELECT pg_database_size(current_database())::bigint AS bytes`, []);
     for (const r of results) if (r.error) logger.error(`Ventra mantenimiento: error (${r.tenantId})`, r.error);
     logger.info("Ventra mantenimiento de la nube listo", { results, archived, bytes: Number(bytes), ms: Date.now() - started });
@@ -1871,5 +1934,50 @@ exports.ventraFiscal = onRequest({ secrets: [ARCA_CREDENTIALS], maxInstances: 20
     }
     logger.error(`Ventra fiscal: error inesperado (${uid})`, err);
     return res.status(500).json({ error: "Error del servidor de facturación de Ventra", code: "INTERNAL", retryable: true });
+  }
+});
+
+// ─── Instagram de Ventra atendido solo (ver instagram.js) ───
+// Mensajes directos por webhook, comentarios y publicaciones aprobadas desde la tarea programada.
+// La conexión (token de Instagram) se hace desde ventra.store/instagram; sin conectar, nada se manda.
+const instagram = require("./instagram");
+exports.ventraIgHook = onRequest({ maxInstances: 5, memory: "256MiB", secrets: [VENTRA_WA_APP_SECRET] }, (req, res) =>
+  instagram.hook(db, req, res, { appSecret: String(VENTRA_WA_APP_SECRET.value() || "").trim() })
+    .catch((err) => { logger.error("Instagram: error en el webhook", err); if (!res.headersSent) res.status(500).end(); }));
+
+exports.ventraIgInbox = onDocumentCreated({
+  document: "ventra_ig_inbox/{itemId}", secrets: [VENTRA_ANTHROPIC_KEY], memory: "256MiB", timeoutSeconds: 120, maxInstances: 5,
+}, async (event) => {
+  if (!event.data) return;
+  await instagram.processInbox(db, event.data, { apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() })
+    .catch((err) => logger.error("Instagram: error procesando", event.params.itemId, err));
+});
+
+exports.ventraIgTick = onSchedule({
+  schedule: "every 5 minutes", timeZone: "America/Argentina/Buenos_Aires", memory: "256MiB", timeoutSeconds: 300, maxInstances: 1,
+}, async () => {
+  const r = await instagram.tick(db);
+  if (!r.skipped) logger.info("Instagram: vuelta", r);
+});
+
+// 512 MiB trae el doble de procesador: el panel arranca en frío bastante más rápido
+exports.ventraInstagram = onRequest({ cors: VENTRA_ORIGINS, memory: "512MiB", maxInstances: 5, secrets: [VENTRA_ANTHROPIC_KEY] }, async (req, res) => {
+  const user = await verifyUser(req);
+  if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
+  try {
+    if (req.method === "GET") {
+      const key = String(VENTRA_ANTHROPIC_KEY.value() || "").trim();
+      return res.status(200).json(await instagram.overview(db, { aiReady: key.startsWith("sk-ant-") }));
+    }
+    if (req.method !== "POST") return res.status(405).end();
+    const out = await instagram.adminAction(db, req.body || {}, user);
+    await db.collection("ventra_admin_log").add({
+      admin: user.email, action: `instagram.${(req.body || {}).action}`, id: String((req.body || {}).id || ""), at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return res.status(200).json(out);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    logger.error("Instagram: error en el panel", err);
+    return res.status(500).json({ error: "No se pudo completar" });
   }
 });

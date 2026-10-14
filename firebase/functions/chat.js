@@ -12,12 +12,13 @@ const path = require("path");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
-const AnthropicSDK = require("@anthropic-ai/sdk");
-
-const Anthropic = AnthropicSDK.default || AnthropicSDK;
-const MODEL = "claude-opus-5-5";
-/** Precios de Claude Opus 5.5 por millón de tokens (USD): entrada, escritura de caché, lectura de caché, salida */
-const PRICE = { input: 4, cacheWrite: 5, cacheRead: 0.2, output: 20 };
+// El SDK se carga recién al llamar a la IA: así no demora el arranque de las funciones que no la usan
+const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); return new (SDK.default || SDK)(opts); };
+// Haiku 5.5: el modelo chico de Claude. Para responder dudas a partir de la base alcanza y cuesta
+// unas 40 veces menos que Opus (pedido del dueño, 2026-10-10: el asistente tiene que salir casi gratis).
+const MODEL = "claude-haiku-5-5";
+/** Precios de Claude Haiku 5.5 por millón de tokens (USD), con prompts de hasta 100K: entrada, escritura de caché, lectura de caché, salida */
+const PRICE = { input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 };
 /** Tope de gasto mensual del asistente, en USD */
 const MONTHLY_BUDGET_USD = 50;
 const LIMITS = { perHour: 20, perDay: 60, turns: 20, userChars: 1000, assistantChars: 4000 };
@@ -101,15 +102,14 @@ async function handle(db, req, res, { apiKey }) {
   res.flushHeaders();
   const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
-  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 90 * 1000 });
+  const client = anthropicClient({ apiKey, maxRetries: 1, timeout: 90 * 1000 });
   let reply = "";
   let stopReason = null;
   try {
-    const stream = client.beta.messages.stream({
+    // Haiku no tiene respaldo automático si se niega: en ese caso se ofrece el WhatsApp (más abajo)
+    const stream = client.messages.stream({
       model: MODEL,
       max_tokens: 2000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
       output_config: { effort: "low" },
       // La base de conocimiento no cambia entre visitantes: se cachea (las lecturas cuestan una fracción)
       system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],

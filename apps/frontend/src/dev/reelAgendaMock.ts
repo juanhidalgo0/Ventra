@@ -5,6 +5,32 @@ import { localNow, addDays, startAtMs, dayLabel, hhmm, clientKeyOf, aggregateCli
 export * from '../services/agendaCore';
 
 const today = localNow().dateKey;
+// ?rubro=pelu: un estudio de peluquería y barbería ("Estudio Norte") con los recordatorios automáticos funcionando
+export const PELU = new URLSearchParams(location.search).get('rubro') === 'pelu';
+const t = (id: string, day: number, hora: string, dur: number, staff: 'm' | 's', svc: [string, string, number], name: string, phone: string, extra: Partial<Booking> = {}): Booking => {
+  const [h, m] = hora.split(':').map(Number);
+  const startMin = h * 60 + m;
+  return { id, kind: 'booking', dateKey: addDays(today, day), startMin, endMin: startMin + dur, staffId: staff, staffName: staff === 'm' ? 'Diego' : 'Sofi',
+    serviceId: svc[0], serviceName: svc[1], price: svc[2], customerName: name, customerPhone: phone, status: 'CONFIRMED', source: 'online', code: id.toUpperCase().padEnd(4, 'X'), ...extra };
+};
+const CORTE: [string, string, number] = ['corte', 'Corte', 15000], COLOR: [string, string, number] = ['color', 'Color', 38000];
+const BARBA: [string, string, number] = ['barba', 'Corte y barba', 19000];
+const confirmo = { remindedAt: 1, remindedBy: 'auto' as const, reminder: { status: 'read' as const }, clientConfirmedAt: 1 };
+const PELU_LIST: Booking[] = [
+  t('p1', 0, '09:30', 45, 'm', CORTE, 'Nicolás Díaz', '221 555-0101', confirmo),
+  t('p2', 0, '10:30', 90, 's', COLOR, 'Flor Ríos', '221 555-0102', confirmo),
+  t('p3', 0, '11:00', 45, 'm', BARBA, 'Juan Paz', '221 555-0103', confirmo),
+  { id: 'pb', kind: 'block', dateKey: today, startMin: 780, endMin: 840, staffId: 'ALL', status: 'BLOCK', reason: 'Almuerzo' },
+  t('p4', 0, '14:00', 45, 'm', CORTE, 'Valentina Medina', '221 555-0104', confirmo),
+  t('p5', 0, '15:00', 45, 's', CORTE, 'Matías Gómez', '221 555-0105', { remindedAt: 1, remindedBy: 'auto', reminder: { status: 'read' } }),
+  t('p6', 0, '17:00', 45, 'm', BARBA, 'Lucas Torres', '221 555-0106', confirmo),
+  t('p7', 0, '18:00', 90, 's', COLOR, 'Caro Sosa', '221 555-0107', confirmo),
+  t('p8', 1, '10:00', 45, 'm', CORTE, 'Julián Herrera', '221 555-0108', { remindedAt: 1, remindedBy: 'auto', reminder: { status: 'delivered' } }),
+  t('p9', 1, '12:00', 90, 's', COLOR, 'Pau Acosta', '221 555-0109', confirmo),
+  t('h1', -7, '10:00', 45, 'm', CORTE, 'Nicolás Díaz', '221 555-0101', { status: 'DONE', payment: { method: 'Mercado Pago', amount: 15000 } }),
+  t('h2', -3, '16:00', 90, 's', COLOR, 'Caro Sosa', '221 555-0107', { status: 'DONE', payment: { method: 'Transferencia', amount: 38000 } }),
+  t('h3', -1, '11:00', 45, 'm', BARBA, 'Lucas Torres', '221 555-0106', { status: 'DONE', payment: { method: 'Efectivo', amount: 12000 } }),
+];
 let list: Booking[] = [
   { id: 'b1', kind: 'booking', dateKey: today, startMin: 600, endMin: 660, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Carla Gómez', customerPhone: '11 5555-0004', status: 'CONFIRMED', source: 'online', code: 'K7PZ', remindedAt: 1, remindedBy: 'auto', reminder: { status: 'read' }, clientConfirmedAt: 1 },
   { id: 'b2', kind: 'booking', dateKey: today, startMin: 690, endMin: 720, staffId: 'a', staffName: 'Mía', serviceId: 's2', serviceName: 'Arreglo de ruedo', price: 6000, customerName: 'Lucía Fernández', customerPhone: '11 4444-1234', status: 'PENDING', source: 'online', code: 'Q2M8', customerNote: 'Son dos jeans' },
@@ -15,6 +41,7 @@ let list: Booking[] = [
   { id: 'h3', kind: 'booking', dateKey: addDays(today, -1), startMin: 660, endMin: 720, staffId: 'a', staffName: 'Mía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Martina López', customerPhone: '11 7777-2020', status: 'NO_SHOW', source: 'online', code: 'H3H3' },
   { id: 'b5', kind: 'booking', dateKey: addDays(today, 1), startMin: 630, endMin: 690, staffId: 'b', staffName: 'Lucía', serviceId: 's1', serviceName: 'Asesoría de imagen', price: 25000, customerName: 'Valentina Paz', customerPhone: '11 2222-1111', status: 'CONFIRMED', source: 'online', code: 'ZX45' },
 ];
+if (PELU) list = PELU_LIST;
 const subs = new Set<() => void>();
 const notes: Record<string, string> = {};
 // Lo que en producción hace la función ventraBookingWritten: el resumen de cada cliente
@@ -64,3 +91,24 @@ export async function deleteBooking(_s: string, id: string) { list = list.filter
 export function whatsappToCustomer(b: Booking, businessName: string, kind: string) {
   return `https://wa.me/549${(b.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`${kind} ${businessName} ${dayLabel(b.dateKey)} ${hhmm(b.startMin)}`)}`;
 }
+
+// Lo que el servicio real tiene y esta vista no necesita simular de verdad
+export const REMINDER_PLAN_QUOTA: Record<string, number> = { agenda_pro: 200, full: 200, prueba: 200 };
+export const REMINDER_PACK = { qty: 100, price: 7500 };
+export interface ReminderQuota { included: number; used: number; extra: number; left: number }
+export function subscribeReminderQuota(plan: string | null, onChange: (q: ReminderQuota) => void) {
+  const included = (plan && REMINDER_PLAN_QUOTA[plan]) || 0;
+  setTimeout(() => onChange({ included, used: 37, extra: 0, left: Math.max(0, included - 37) }), 30);
+  return () => {};
+}
+export async function buyReminderPack(): Promise<string> { return 'https://www.mercadopago.com.ar'; }
+export function seriesDates(b: { dateKey: string }, everyWeeks: number, times: number) {
+  return { ok: Array.from({ length: times }, (_, i) => addDays(b.dateKey, i * 7 * everyWeeks)), taken: [] as string[] };
+}
+export async function createSeries(s: string, b: Parameters<typeof createManualBooking>[1], days: string[]) {
+  for (const dateKey of days) await createManualBooking(s, { ...b, dateKey });
+  return 's_reel';
+}
+export async function seriesUpcoming(): Promise<Booking[]> { return []; }
+export async function cancelBookings(_s: string, l: Booking[]) { const ids = new Set(l.map((x) => x.id)); list = list.map((b) => (ids.has(b.id) ? { ...b, status: 'CANCELLED' } : b)); emit(); }
+export async function fetchBooking(_s: string, id: string) { return list.find((b) => b.id === id) || null; }

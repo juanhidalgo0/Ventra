@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import api from '../../services/api';
-import { Calendar, Monitor, User, Clock, Banknote, Smartphone, CreditCard, X, ChevronRight, CheckCircle2, FileOutput, ArrowRightLeft, Landmark, ShieldCheck, Printer } from 'lucide-react';
+import { Calendar, Monitor, User, Clock, Banknote, Smartphone, CreditCard, X, ChevronRight, FileOutput, ArrowRightLeft, Landmark, ShieldCheck, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
-import { MangoIcon } from '../common/MangoLogo';
+import { useOpeningFloat } from '../../utils/openingFloat';
 
 interface CajaInfoModalProps {
   sessionId?: string;
@@ -23,6 +23,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
   const [isZAction, setIsZAction] = useState(false);
   const [latestZReport, setLatestZReport] = useState<any>(null);
   const [loadingLatestZ, setLoadingLatestZ] = useState(false);
+  const openingFloat = useOpeningFloat();
 
   const handlePrintLatestZ = async () => {
     setLoadingLatestZ(true);
@@ -115,246 +116,236 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
   const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
+  const cajero = session?.user?.fullName || session?.user?.username || 'Sin cajero';
+  const rol = session?.user?.role === 'ADMIN' ? 'Administrador' : session?.user?.role === 'CASHIER' ? 'Cajero' : (session?.user?.role || 'Empleado');
+  const openedAt = session?.openedAt ? new Date(session.openedAt) : null;
+  const opened = openedAt
+    ? `${openedAt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} · ${openedAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })} h`
+    : '';
+  const hhmm = (d: string) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // "PAGO PROVEEDOR | METODO: CASH" → descripción limpia + medio legible
+  const METHOD_LABEL: Record<string, string> = { CASH: 'Efectivo', CLOVER: 'Clover', MERCADOPAGO: 'Mercado Pago', TRANSFER: 'Transferencia' };
+  const splitDesc = (desc?: string) => {
+    const m = /\s*\|\s*METODO:\s*([A-Z_]+)\s*$/i.exec(desc || '');
+    return { text: (m ? (desc || '').slice(0, m.index) : desc) || 'Gasto general', method: m ? (METHOD_LABEL[m[1].toUpperCase()] || m[1]) : null };
+  };
+  const methodsTotal = cashPayments + cloverPayments + mpPayments;
+  const share = (v: number) => (methodsTotal > 0 ? Math.round((v / methodsTotal) * 100) : 0);
+  const methods = [
+    { key: 'cash', label: 'Efectivo', hint: 'Cobrado en el mostrador', amount: cashPayments, Icon: Banknote },
+    { key: 'clover', label: 'Clover', hint: 'Tarjetas, según comprobantes', amount: cloverPayments, Icon: CreditCard },
+    { key: 'mp', label: 'Mercado Pago', hint: 'QR y transferencias', amount: mpPayments, Icon: Smartphone },
+  ];
+  const movements: any[] = session?.cashMovements || [];
+
   return (
-    <MotionDiv 
+    <MotionDiv
       {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3"
+      className="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-0 sm:p-3"
       onClick={onClose}
     >
       <MotionDiv
-        {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })}
+        {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.98, opacity: 0 } })}
         onClick={(e: any) => e.stopPropagation()}
-        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl overflow-hidden shadow-xl flex flex-col max-h-[calc(100dvh-24px)] border border-slate-200 dark:border-slate-800 tabular-nums"
+        className="bg-white dark:bg-slate-900 sm:rounded-2xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[calc(100dvh-24px)] sm:border border-slate-200 dark:border-slate-800 tabular-nums"
       >
-        {/* Header */}
-        <div className="px-5 py-2.5 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
-          <div className="flex items-center gap-3">
-            <MangoIcon className="w-5 h-5" />
-            <div>
-              <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-none">Estado Actual de la Caja</h2>
-              <p className="text-[10px] text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-widest mt-0.5">Auditoría rápida del turno activo</p>
+        {/* Encabezado: quién, dónde y desde cuándo, en una sola línea */}
+        <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-4 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
+              <Landmark className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight leading-none">Estado de la caja</h2>
+                {session && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Abierta
+                  </span>
+                )}
+              </div>
+              {session && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-500 dark:text-slate-400">
+                  <span className="inline-flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5" />{session.terminalName || 'Terminal 1'}</span>
+                  <span className="inline-flex items-center gap-1.5"><User className="w-3.5 h-3.5" /><span className="font-semibold text-slate-700 dark:text-slate-200">{cajero}</span> · {rol}</span>
+                  <span className="inline-flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" />Abrió {opened}</span>
+                  <span className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{timeElapsed || '…'}</span>
+                </div>
+              )}
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} title="Cerrar (Esc)" className="p-2 -mr-2 -mt-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {isLoading ? (
-          <div className="p-12 flex flex-col items-center justify-center text-slate-600 gap-3">
-            <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-bold uppercase tracking-widest">Cargando datos de caja...</p>
+          <div className="p-12 flex flex-col items-center justify-center text-slate-500 gap-3">
+            <div className="w-7 h-7 border-[3px] border-rose-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium">Cargando la caja…</p>
           </div>
         ) : !session ? (
           <div className="p-12 text-center">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Calendar className="w-8 h-8" />
+            <div className="w-14 h-14 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Calendar className="w-7 h-7" />
             </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-1">Caja Cerrada</h3>
-            <p className="text-sm text-slate-600 max-w-[280px] mx-auto mb-6">No hay ninguna sesión de caja abierta actualmente en esta terminal.</p>
-            <button onClick={onClose} className="btn-primary px-6 py-2.5 rounded-xl">Entendido</button>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">La caja está cerrada</h3>
+            <p className="text-sm text-slate-500 max-w-[300px] mx-auto mb-6">No hay ningún turno abierto en esta terminal.</p>
+            <button onClick={onClose} className="btn-primary px-6 py-2.5 rounded-xl mx-auto">Entendido</button>
           </div>
         ) : (
           <>
-            {/* Side-by-Side Area */}
-            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 px-5 py-3 overflow-hidden">
-              {/* Left Side: General Stats & breakdown */}
-              <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
-                {/* General Info Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="px-3 py-2 rounded-xl bg-rose-50/40 dark:bg-rose-900/20 border border-rose-100/30 dark:border-rose-800/30">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      Apertura
-                    </div>
-                    <p className="text-sm font-extrabold text-rose-900 dark:text-rose-100 leading-tight">{fmtDateTime(session.openedAt).date}</p>
-                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300 mt-0.5">{fmtDateTime(session.openedAt).time}</p>
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
+              {/* Izquierda: totales y medios de pago */}
+              <div className="md:flex-1 min-w-0 px-4 sm:px-6 pt-4 pb-3 space-y-4 md:overflow-y-auto custom-scrollbar">
+                {/* Totales */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-rose-700 text-white px-4 py-3">
+                    <p className="text-[12.5px] font-medium text-white/80">Total esperado</p>
+                    <p className="text-[26px] font-extrabold tracking-tight leading-tight mt-0.5">{fmt(totalInDrawer)}</p>
+                    <p className="text-[12px] text-white/75 mt-1">Efectivo, Clover y Mercado Pago, ya descontados gastos y retiros</p>
                   </div>
-
-                  <div className="px-3 py-2 rounded-xl bg-emerald-50/40 dark:bg-emerald-900/20 border border-emerald-100/30 dark:border-emerald-800/30">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      Transcurrido
-                    </div>
-                    <p className="text-sm font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight leading-tight">{timeElapsed || 'Calculando...'}</p>
-                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-1 uppercase tracking-widest">EN CURSO</p>
-                  </div>
-
-                  <div className="px-3 py-2 rounded-xl bg-amber-50/40 dark:bg-amber-900/20 border border-amber-100/30 dark:border-amber-800/30">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1">
-                      <User className="w-3.5 h-3.5" />
-                      Cajero Activo
-                    </div>
-                    <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 truncate leading-tight mt-1">{session.user?.fullName || session.user?.username || 'Sin cajero'}</p>
-                    <p className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-widest mt-1">{session.user?.role || 'Empleado'}</p>
-                  </div>
-
-                  <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
-                      <Monitor className="w-3.5 h-3.5" />
-                      Terminal
-                    </div>
-                    <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate leading-tight mt-1">{session.terminalName || 'Terminal 1'}</p>
-                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase tracking-widest mt-1">ID: #{session.id.substring(0, 6).toUpperCase()}</p>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+                    <p className="text-[12.5px] font-medium text-slate-500 dark:text-slate-400">Ventas del turno</p>
+                    <p className="text-[26px] font-extrabold tracking-tight leading-tight mt-0.5 text-slate-900 dark:text-slate-100">{fmt(salesTotal)}</p>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{salesCount} {salesCount === 1 ? 'venta' : 'ventas'}{salesCount > 0 ? ` · ticket promedio ${fmt(Math.round(salesTotal / salesCount))}` : ''}</p>
                   </div>
                 </div>
 
-                {/* Financial Overview (Grand Totals) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="px-3.5 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-0.5">Ventas en Efectivo</span>
-                      <p className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{fmt(cashPayments)}</p>
-                    </div>
-                    <div className="pt-2 border-t border-slate-300 dark:border-slate-600/50 mt-2 flex items-center justify-between text-xs text-slate-800 dark:text-slate-200 font-bold">
-                      <span>Gastos Registrados</span>
-                      <span className="text-red-600 dark:text-red-400 font-extrabold text-sm">-{fmt(expenses + withdrawals)}</span>
+                {/* Por medio de pago */}
+                <section>
+                  <h3 className="text-[13px] font-semibold text-slate-800 dark:text-slate-200 mb-2">Por medio de pago</h3>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                    {methods.map(({ key, label, hint, amount, Icon }) => (
+                      <div key={key} className="flex items-center gap-3 px-4 py-2">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{label}</span>
+                            <span className="text-[15px] font-bold text-slate-900 dark:text-slate-100">{fmt(amount)}</span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-[11.5px] text-slate-500 dark:text-slate-400 shrink-0 w-[170px] truncate">{hint}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div className="h-full rounded-full bg-rose-500" style={{ width: `${share(amount)}%` }} />
+                            </div>
+                            <span className="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 w-9 text-right">{share(amount)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Efectivo: de dónde sale lo que tiene que haber */}
+                <section>
+                  <h3 className="text-[13px] font-semibold text-slate-800 dark:text-slate-200 mb-2">Efectivo en el cajón</h3>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm space-y-1">
+                    <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Ventas en efectivo</span><span className="font-medium text-slate-800 dark:text-slate-100">{fmt(cashPayments)}</span></div>
+                    <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Gastos y pagos</span><span className="font-medium text-red-600 dark:text-red-400">{expenses ? `−${fmt(expenses)}` : fmt(0)}</span></div>
+                    <div className="flex justify-between text-slate-600 dark:text-slate-300"><span>Retiros</span><span className="font-medium text-red-600 dark:text-red-400">{withdrawals ? `−${fmt(withdrawals)}` : fmt(0)}</span></div>
+                    <div className="flex justify-between pt-2 mt-1 border-t border-slate-200 dark:border-slate-700">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">Efectivo esperado</span>
+                      <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">{fmt(expectedCash)}</span>
                     </div>
                   </div>
-
-                  <div className="px-3.5 py-3 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-md flex flex-col justify-between relative overflow-hidden">
-                    <div>
-                      <span className="text-[10px] font-bold text-white/85 uppercase tracking-widest block mb-0.5">Total Estimado en Caja</span>
-                      <p className="text-2xl font-black tracking-tight">{fmt(totalInDrawer)}</p>
-                    </div>
-                    <div className="pt-2 border-t border-white/25 mt-2 flex items-center justify-between text-xs text-white font-bold">
-                      <span>Total Ventas Turno ({salesCount})</span>
-                      <span className="font-extrabold text-sm">{fmt(salesTotal)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Payment Methods breakdown */}
-                <div className="space-y-1.5">
-                  <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-[0.2em] ml-1">Monto según medio de pago</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Cash */}
-                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                        <Banknote className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Efectivo</span>
-                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cashPayments)}</span>
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">En Caja: {fmt(expectedCash)}</span>
-                      </div>
-                    </div>
-
-                    {/* Clover */}
-                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
-                        <CreditCard className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">Clover POS</span>
-                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(cloverPayments)}</span>
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Tarjetas comprobante</span>
-                      </div>
-                    </div>
-
-                    {/* MP */}
-                    <div className="px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center justify-center shrink-0">
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">MercadoPago</span>
-                        <span className="block text-lg font-black text-slate-900 dark:text-slate-100 leading-tight">{fmt(mpPayments)}</span>
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-500 block mt-0.5">Pagos QR en vivo</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Audit warning / footer info */}
-                <div className="px-3 py-2 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 flex items-start gap-3">
-                  <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
-                  <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                    <span className="font-bold text-slate-900 dark:text-slate-100">Control de Caja:</span> Este informe es de carácter informativo. Para auditar diferencias concilia registros.
-                  </div>
-                </div>
+                  <p className="flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-slate-400 mt-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    {openingFloat != null
+                      ? `Aparte queda el fondo inicial de ${fmt(openingFloat)}, que siempre se deja en el cajón. Las diferencias se controlan en el arqueo.`
+                      : 'Sin contar el fondo inicial, que siempre queda en el cajón. Las diferencias se controlan en el arqueo.'}
+                  </p>
+                </section>
               </div>
 
-              {/* Desktop divider */}
-              <div className="hidden md:block w-px bg-slate-100 dark:bg-slate-800 shrink-0 self-stretch" />
-
-              {/* Right Side: Detailed Expenses list */}
-              <div className="w-full md:w-[300px] shrink-0 flex flex-col h-full overflow-hidden">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] ml-1 mb-2">Detalle de Gastos y Salidas</h4>
-                <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 rounded-xl p-2.5 overflow-y-auto custom-scrollbar space-y-2">
-                  {(!session.cashMovements || session.cashMovements.length === 0) ? (
-                    <p className="text-xs text-slate-600 dark:text-slate-400 font-medium text-center py-6">No hay gastos o egresos registrados en este turno.</p>
+              {/* Derecha: gastos y retiros */}
+              <div className="w-full md:w-[360px] shrink-0 flex flex-col min-h-0 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
+                <div className="px-5 pt-4 pb-2 flex items-baseline justify-between">
+                  <h3 className="text-[13px] font-semibold text-slate-800 dark:text-slate-200">Gastos y retiros</h3>
+                  <span className="text-[12px] text-slate-500 dark:text-slate-400">{movements.length} {movements.length === 1 ? 'movimiento' : 'movimientos'}</span>
+                </div>
+                <div className="md:flex-1 md:min-h-0 md:overflow-y-auto custom-scrollbar px-3 pb-3">
+                  {movements.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-10 px-4">No hubo gastos ni retiros en este turno.</p>
                   ) : (
-                    session.cashMovements.map((movement: any) => {
+                    movements.map((movement: any) => {
+                      const { text, method } = splitDesc(movement.description);
+                      const isExpense = movement.type === 'EXPENSE';
                       return (
-                        <div key={movement.id} onClick={() => setSelectedMovement(movement)} className="flex items-center justify-between bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 shadow-sm transition-all hover:border-rose-300 dark:hover:border-rose-555 cursor-pointer hover:shadow-md">
-                          <div className="min-w-0 flex-1 pr-2">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate leading-snug">
-                              {movement.description || 'Gasto general'}
-                            </p>
-                            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mt-1 uppercase">
-                              {fmtDateTime(movement.createdAt).time} - {movement.type === 'EXPENSE' ? 'GASTO / PAGO' : 'RETIRO'}
+                        <button
+                          type="button"
+                          key={movement.id}
+                          onClick={() => setSelectedMovement(movement)}
+                          className="w-full text-left flex items-center gap-3 px-2.5 py-2.5 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer group"
+                        >
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isExpense ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'}`}>
+                            {isExpense ? <FileOutput className="w-4 h-4" /> : <ArrowRightLeft className="w-4 h-4" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate leading-snug">{text}</p>
+                            <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {hhmm(movement.createdAt)} h · {isExpense ? 'Gasto' : 'Retiro'}{method ? ` · ${method}` : ''}
                             </p>
                           </div>
-                          <span className="text-sm font-extrabold text-red-600 dark:text-red-400 shrink-0">
-                            -{fmt(movement.amount)}
-                          </span>
-                        </div>
+                          <span className="text-[13.5px] font-bold text-red-600 dark:text-red-400 shrink-0">−{fmt(movement.amount)}</span>
+                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0 -ml-1" />
+                        </button>
                       );
                     })
                   )}
                 </div>
+                {movements.length > 0 && (
+                  <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex justify-between text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Total</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">−{fmt(expenses + withdrawals)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Action Buttons Footer */}
-            <div className="px-5 py-2.5 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                <button 
-                  type="button"
-                  onClick={handlePrintLatestZ}
-                  disabled={loadingLatestZ}
-                  className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  title="Imprimir copia del último reporte Z emitido"
-                >
-                  <Printer className="w-4 h-4 text-slate-600" />
-                  <span>{loadingLatestZ ? 'Cargando...' : 'Reimprimir Último Z'}</span>
-                </button>
-              </div>
+            {/* Acciones */}
+            <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={handlePrintLatestZ}
+                disabled={loadingLatestZ}
+                className="w-full md:w-auto px-3 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[13px] font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                title="Imprimir una copia del último reporte Z"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{loadingLatestZ ? 'Buscando…' : 'Reimprimir último Z'}</span>
+              </button>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
-                {/* Botón 1: Cambio de Turno (Cierre X) */}
-                <button 
+              <div className="grid grid-cols-2 sm:flex items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                <button
                   onClick={() => {
                     setIsZAction(false);
                     setShowConfirmClose(true);
                   }}
-                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border-2 border-slate-300 hover:border-sky-400 dark:border-slate-700 dark:hover:border-sky-600 bg-white hover:bg-sky-50/50 dark:bg-slate-800 dark:hover:bg-sky-950/30 text-left transition-all active:scale-95 cursor-pointer shadow-xs group"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-left transition-colors active:scale-[0.98] cursor-pointer"
                 >
-                  <div className="flex items-center gap-2">
-                    <ArrowRightLeft className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Cambio de Turno (Cierre X)</span>
-                  </div>
-                  <span className="block text-[10.5px] text-slate-600 dark:text-slate-400 font-semibold mt-0.5">
-                    Para cuando entra otro cajero en el mismo día
+                  <span className="flex items-center gap-2 text-[13.5px] font-bold text-slate-900 dark:text-slate-100">
+                    <ArrowRightLeft className="w-4 h-4 text-slate-500" />
+                    Cambio de turno <span className="hidden sm:inline font-medium text-slate-500">· Cierre X</span>
                   </span>
+                  <span className="hidden sm:block text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5">Entra otro cajero el mismo día</span>
                 </button>
 
-                {/* Botón 2: Cierre Final del Día (Cierre Z) */}
-                <button 
+                <button
                   onClick={() => {
                     setIsZAction(true);
                     setShowConfirmClose(true);
                   }}
-                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border-2 border-rose-600 bg-rose-600 hover:bg-rose-700 text-white text-left transition-all active:scale-95 cursor-pointer shadow-md shadow-rose-500/20 group"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-left transition-colors active:scale-[0.98] cursor-pointer shadow-sm"
                 >
-                  <div className="flex items-center gap-2">
-                    <FileOutput className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-black tracking-tight text-white">Cierre Final del Día (Cierre Z)</span>
-                  </div>
-                  <span className="block text-[10.5px] text-white/90 font-semibold mt-0.5">
-                    Para cuando el local cierra sus puertas
+                  <span className="flex items-center gap-2 text-[13.5px] font-bold">
+                    <FileOutput className="w-4 h-4" />
+                    Cierre del día <span className="hidden sm:inline font-medium text-white/80">· Cierre Z</span>
                   </span>
+                  <span className="hidden sm:block text-[11.5px] text-white/85 mt-0.5">El local cierra por hoy</span>
                 </button>
               </div>
             </div>
@@ -362,136 +353,77 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
         )}
       </MotionDiv>
 
-      {/* Detail Modal */}
-      <AnimatePresence>
-        {selectedMovement && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
-            onClick={() => setSelectedMovement(null)}
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800"
-            >
-              <div className="bg-slate-50 p-6 border-b border-slate-200 text-center">
-                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Banknote className="w-8 h-8" />
+      {/* Detalle de un gasto o retiro */}
+      {selectedMovement && (() => {
+        const { text, method } = splitDesc(selectedMovement.description);
+        const isExpense = selectedMovement.type === 'EXPENSE';
+        return (
+          <div onClick={(e) => { e.stopPropagation(); setSelectedMovement(null); }} className="fixed inset-0 z-[60] bg-slate-950/50 flex items-center justify-center p-4">
+            <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden tabular-nums">
+              <div className="px-5 pt-5 pb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12.5px] font-medium text-slate-500 dark:text-slate-400">{isExpense ? 'Gasto' : 'Retiro'} · {hhmm(selectedMovement.createdAt)} h</p>
+                  <p className="text-[28px] font-extrabold text-red-600 dark:text-red-400 tracking-tight leading-tight mt-0.5">−{fmt(selectedMovement.amount)}</p>
                 </div>
-                <h3 className="text-lg font-bold text-slate-800">Detalle de Movimiento</h3>
-                <p className="text-xs uppercase font-bold tracking-widest text-slate-600 mt-1">{fmtDateTime(selectedMovement.createdAt).date} - {fmtDateTime(selectedMovement.createdAt).time}</p>
+                <button onClick={() => setSelectedMovement(null)} className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"><X className="w-5 h-5" /></button>
               </div>
-              <div className="p-6 space-y-4">
+              <dl className="px-5 pb-5 space-y-3 text-[14px]">
                 <div>
-                  <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Monto del Movimiento</label>
-                  <p className="text-3xl font-black text-rose-600 tracking-tighter">-{fmt(selectedMovement.amount)}</p>
+                  <dt className="text-[12.5px] text-slate-500 dark:text-slate-400">Descripción</dt>
+                  <dd className="font-semibold text-slate-900 dark:text-slate-100 mt-0.5 break-words">{text}</dd>
                 </div>
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Descripción Registrada</label>
-                  <p className="text-sm font-bold text-slate-700 bg-slate-100 p-3 rounded-xl border border-slate-200 leading-snug break-words">
-                    {selectedMovement.description || 'Sin descripción detallada'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Tipo</label>
-                    <span className="inline-block px-2 py-1 bg-rose-50 text-rose-600 text-xs font-bold uppercase rounded border border-rose-100">
-                      {selectedMovement.type === 'EXPENSE' ? 'Gasto Operativo' : 'Retiro Manual'}
-                    </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <dt className="text-[12.5px] text-slate-500 dark:text-slate-400">Pagado con</dt>
+                    <dd className="font-medium text-slate-800 dark:text-slate-200 mt-0.5">{method || 'Efectivo'}</dd>
                   </div>
-                  <div className="flex-1">
-                    <label className="text-[11.5px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Cajero</label>
-                    <span className="text-xs font-bold text-slate-700 uppercase">{selectedMovement.user?.fullName || session.user?.fullName || 'Desconocido'}</span>
+                  <div>
+                    <dt className="text-[12.5px] text-slate-500 dark:text-slate-400">Registró</dt>
+                    <dd className="font-medium text-slate-800 dark:text-slate-200 mt-0.5 truncate">{selectedMovement.user?.fullName || session?.user?.fullName || 'Sin dato'}</dd>
                   </div>
                 </div>
-              </div>
-              <div className="p-4 bg-slate-50 border-t border-slate-200">
-                <button onClick={() => setSelectedMovement(null)} className="btn-secondary w-full py-3 text-xs uppercase tracking-wider">
-                  Cerrar Detalle
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </dl>
+            </div>
+          </div>
+        );
+      })()}
 
-      {/* Modern Confirm Close Modal */}
-      <AnimatePresence>
-        {showConfirmClose && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 15 }}
-              className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800"
-            >
-              <div className={`p-6 border-b text-center ${
-                isZAction 
-                  ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/30' 
-                  : 'bg-sky-50 dark:bg-sky-950/30 border-sky-100 dark:border-sky-900/30'
-              }`}>
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner ${
-                  isZAction 
-                    ? 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400' 
-                    : 'bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400'
-                }`}>
-                  {isZAction ? <FileOutput className="w-7 h-7" /> : <ArrowRightLeft className="w-7 h-7" />}
-                </div>
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
-                  {isZAction ? 'Cierre Final del Día (Cierre Z)' : 'Cambio de Turno (Cierre X)'}
-                </h3>
-                <p className={`text-xs uppercase font-bold tracking-widest mt-1 ${
-                  isZAction ? 'text-rose-600 dark:text-rose-400' : 'text-sky-600 dark:text-sky-400'
-                }`}>
-                  {isZAction ? 'Fin de Jornada Comercial' : 'Relevo de Cajero'}
-                </p>
+      {/* Confirmación del cierre X o Z */}
+      {showConfirmClose && (
+        <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 z-[70] bg-slate-950/50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-6 pt-6 pb-5">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${isZAction ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>
+                {isZAction ? <FileOutput className="w-5 h-5" /> : <ArrowRightLeft className="w-5 h-5" />}
               </div>
-              <div className="p-6 text-center space-y-3">
-                <p className="text-base font-medium text-slate-800 dark:text-slate-100 leading-relaxed">
-                  {isZAction 
-                    ? '¿El local cierra sus puertas? Se liquidará la jornada completa y se emitirá el Reporte Z diario.' 
-                    : '¿Entra otro cajero a relevarte en este mismo día? Tu turno individual quedará arqueado y cerrado, y la jornada comercial continuará abierta para el nuevo cajero.'
-                  }
-                </p>
-                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-300 dark:border-amber-800/50">
-                  💡 Recordá verificar si ya te cobraste tu sueldo de hoy antes de confirmar.
-                </p>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 flex gap-3">
-                <button 
-                  onClick={() => {
-                    setShowConfirmClose(false);
-                    if (isZAction) {
-                      onTriggerCloseAndZ();
-                    } else {
-                      onTriggerClose();
-                    }
-                  }} 
-                  className={`flex-1 py-3.5 rounded-xl text-white font-extrabold text-sm uppercase tracking-wide transition-all active:scale-[0.98] shadow-md cursor-pointer ${
-                    isZAction 
-                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/20' 
-                      : 'bg-sky-600 hover:bg-sky-700 shadow-sky-500/20'
-                  }`}
-                >
-                  {isZAction ? 'Sí, Cierre Final del Día' : 'Sí, Confirmar Relevo'}
-                </button>
-                <button
-                  onClick={() => setShowConfirmClose(false)}
-                  className="btn-secondary px-5 py-3.5 text-sm uppercase tracking-wide"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <h3 className="text-[19px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                {isZAction ? 'Cierre del día (Cierre Z)' : 'Cambio de turno (Cierre X)'}
+              </h3>
+              <p className="text-[14px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+                {isZAction
+                  ? 'Se hace el arqueo de tu turno y después se cierra la jornada completa con el reporte Z del día.'
+                  : 'Se hace el arqueo de tu turno y se cierra. La jornada sigue abierta para el cajero que entra.'}
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2.5">
+              <button onClick={() => setShowConfirmClose(false)} className="px-4 py-2.5 rounded-xl text-[14px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                autoFocus
+                onClick={() => {
+                  setShowConfirmClose(false);
+                  if (isZAction) onTriggerCloseAndZ();
+                  else onTriggerClose();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[14px] font-semibold transition-colors cursor-pointer"
+              >
+                {isZAction ? 'Empezar el cierre del día' : 'Empezar el arqueo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* El Z va en portal, pero sus clics igual suben por el árbol de React: sin este corte
           llegan al fondo de este modal, que lo cierra y desmonta el Z antes de imprimir */}

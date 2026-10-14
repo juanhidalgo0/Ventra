@@ -15,7 +15,9 @@ import toast from 'react-hot-toast';
 // La grabación cierra los avisos antes de tocar botones que quedan debajo
 (window as any).__toast = toast;
 
-localStorage.setItem('user', JSON.stringify({ id: 'demo', username: 'mia', fullName: 'Mía', role: 'ADMIN' }));
+localStorage.setItem('user', JSON.stringify(new URLSearchParams(location.search).get('rubro') === 'pelu'
+  ? { id: 'demo', username: 'diego', fullName: 'Diego', role: 'ADMIN' }
+  : { id: 'demo', username: 'mia', fullName: 'Mía', role: 'ADMIN' }));
 
 const FOTO = (n: number) => `${location.origin}/src/dev/reel-fotos/p${n}.jpg`;
 const CATS = [{ id: 'c1', name: 'Abrigo' }, { id: 'c2', name: 'Tops y blusas' }, { id: 'c3', name: 'Básicos' }, { id: 'c4', name: 'Calzado y accesorios' }];
@@ -36,7 +38,7 @@ const products = RAW.map((r, i) => ({
   additionalBarcodes: [], salesCount: 100 - i, unlimitedStock: false, allowCustomPrice: false, isKit: false,
 }));
 
-// ?plan=agenda|full|caja (por defecto, tienda) · ?nueva: comercio recién creado (bienvenida)
+// ?plan=agenda|agenda_pro|full|caja (por defecto, tienda) · ?rubro=pelu: peluquería con recordatorios · ?nueva: comercio recién creado (bienvenida)
 const PLAN = new URLSearchParams(location.search).get('plan');
 const NUEVA = new URLSearchParams(location.search).has('nueva');
 if (NUEVA) ['onboarding_done', 'business_intents', 'business_profile', 'business_features', 'gd_store_name', 'getting_started_hidden', 'agenda_link_shared'].forEach((k) => localStorage.removeItem(k));
@@ -45,7 +47,9 @@ api.defaults.adapter = async (config: any) => {
   const url = String(config.url || '').split('?')[0];
   const m = (config.method || 'get').toLowerCase();
   let data: any = [];
-  if (url.startsWith('/subscription/status')) data = PLAN === 'agenda'
+  if (url.startsWith('/subscription/status')) data = PLAN === 'agenda_pro'
+    ? { state: 'ACTIVE', enforced: true, plan: 'agenda_pro', planName: 'Ventra Agenda Pro', features: { caja: false, tienda: false, agenda: true, reminders: true }, daysLeft: 30 }
+    : PLAN === 'agenda'
     ? { state: 'ACTIVE', enforced: true, plan: 'agenda', planName: 'Ventra Agenda', features: { caja: false, tienda: false, agenda: true }, daysLeft: 30 }
     : PLAN === 'full'
       ? { state: 'ACTIVE', enforced: true, plan: 'full', planName: 'Ventra Full', features: { caja: true, tienda: true, agenda: true }, daysLeft: 30 }

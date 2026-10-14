@@ -43,6 +43,8 @@ const SYNC_PROTOCOL = 3;
 const PULL_IDLE_MAX_MS = 60_000;
 /** Si la nube responde con error, no se reintenta cada 5 s para siempre: se espacia hasta 5 min. */
 const ERROR_RETRY_MAX_MS = 5 * 60_000;
+/** Lo que dura la pausa antes de instalar una actualización si el servidor no llega a cerrarse */
+const PAUSE_MAX_MS = 3 * 60_000;
 const OUTBOX_BATCH = 1000;
 const PAGE = 500;
 // Bajada completa: tandas grandes (la nube vieja las ignora y manda de a 1000)
@@ -121,8 +123,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    * tanda en curso (como mucho `maxMs`), así el cierre no corta nada a la mitad.
    */
   async pauseForShutdown(maxMs = 15000): Promise<{ paused: boolean }> {
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
-    this.retryAt = Number.MAX_SAFE_INTEGER;
+    // La pausa vence sola: si el servidor no se cierra (la instalación falló, o la pidió una
+    // terminal que actualiza su propia app), la sincronización no puede quedar parada para
+    // siempre (pasó en un kiosco: días sin subir nada).
+    this.retryAt = Date.now() + PAUSE_MAX_MS;
     const until = Date.now() + maxMs;
     while (this.running && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
     return { paused: !this.running };

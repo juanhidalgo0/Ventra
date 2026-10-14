@@ -37,6 +37,22 @@ const session = {
   id: 'sess_demo', openedAt: new Date(now - 3 * 3600e3).toISOString(), terminalName: 'Caja 1', openingAmount: 20000,
   status: 'OPEN', user: { fullName: 'Sofi', username: 'sofi', role: 'ADMIN' }, cashMovements: [], sales: [],
 };
+// ?turno: la caja con un turno ya trabajado (ventas, gastos y un retiro), para mostrar el estado de
+// la caja y el arqueo sobre la pantalla de cobro
+if (new URLSearchParams(location.search).has('turno')) {
+  const ago = (min: number) => new Date(now - min * 60e3).toISOString();
+  const sale = (total: number, method: string) => ({ total, totalAmount: total, items: [], payments: [{ method, amount: total }] });
+  session.sales = [
+    ...Array.from({ length: 38 }, (_, i) => sale(2800 + (i % 7) * 1350, 'CASH')),
+    ...Array.from({ length: 12 }, (_, i) => sale(5200 + i * 400, 'CLOVER')),
+    ...Array.from({ length: 9 }, (_, i) => sale(3100 + i * 650, 'MERCADOPAGO')),
+  ] as any;
+  session.cashMovements = [
+    { id: 'm1', type: 'EXPENSE', amount: 8500, description: 'LIMPIEZA Y ARTÍCULOS | METODO: CASH', createdAt: ago(150) },
+    { id: 'm2', type: 'EXPENSE', amount: 42000, description: 'PAGO PROVEEDOR COCA-COLA | METODO: CASH', createdAt: ago(100) },
+    { id: 'm3', type: 'WITHDRAWAL', amount: 50000, description: 'RETIRO A CAJA FUERTE', createdAt: ago(40) },
+  ] as any;
+}
 let saleNo = 18996;
 const seen = new Set<string>();
 
@@ -66,6 +82,7 @@ api.defaults.adapter = async (config: any) => {
   else if (url.startsWith('/categories')) data = CATS.map((c) => ({ ...c, _count: { products: products.filter((p) => p.categoryId === c.id).length } }));
   else if (url.startsWith('/cash/terminal-name')) data = { terminalName: 'Caja 1' };
   else if (url.startsWith('/cash/current')) data = session;
+  else if (url.startsWith('/cash/session/')) data = session;
   else if (url.startsWith('/cash/server-ip')) data = { ip: '192.168.0.10' };
   else if (url.startsWith('/fiscal/config')) data = { enabled: false };
   else if (url === '/sales' && m === 'post') {

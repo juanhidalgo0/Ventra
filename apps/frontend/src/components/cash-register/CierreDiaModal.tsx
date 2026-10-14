@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { holdLogout } from '../../utils/logoutHold';
+import { printReport } from '../../utils/ticketPrinter';
 
 /**
  * headless: solo arma la hoja para imprimir (oculta), sin la ventana de pantalla. La usa el
@@ -164,7 +165,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
   const handlePrint = (mode: 'z-only' | 'z-and-x') => {
     setPrintMode(mode);
     setTimeout(() => {
-      window.print();
+      printReport();
     }, 100);
   };
 
