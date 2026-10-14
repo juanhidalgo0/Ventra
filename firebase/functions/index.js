@@ -1371,6 +1371,7 @@ const notify = require("./notify");
 
 // ─── Cupones de la tienda online (ver coupons.js) ───
 const coupons = require("./coupons");
+const orderCheck = require("./order-check");
 /** La tienda valida un cupón que escribió el cliente. */
 exports.storeCouponCheck = onRequest({ cors: true, maxInstances: 10 }, (req, res) =>
   coupons.check(db, req, res).catch((err) => { logger.error("Cupón: error al validar", err); res.status(500).json({ error: "No se pudo validar el cupón" }); }));
@@ -1383,13 +1384,18 @@ exports.ventraOrderPush = onDocumentCreated("ventra_stores/{storeId}/orders/{ord
   // Cupón: se valida de nuevo y se cuenta el uso (si no corresponde, el pedido queda marcado)
   if (order.coupon) await coupons.redeem(db, event.data.ref, storeId, order).catch((err) => logger.warn("Cupón: no se pudo validar", { storeId, err: err.message }));
   const store = await db.collection("ventra_stores").doc(storeId).get();
+  // Precios: el pedido lo arma el navegador del cliente; si vino más barato que lo publicado, queda marcado
+  const priceProblem = store.exists
+    ? await orderCheck.priceProblem(store.ref, store.data(), order).catch((err) => { logger.warn("Pedido: no se pudieron revisar los precios", { storeId, err: err.message }); return null; })
+    : null;
+  if (priceProblem) await event.data.ref.update({ priceProblem }).catch((err) => logger.warn("Pedido: no se pudo marcar el precio", { storeId, err: err.message }));
   const uid = store.exists && store.data().ownerUid;
   if (!uid) return;
   const count = (order.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
   const how = order.delivery === "DELIVERY" || order.delivery === "GODELIVERY" ? "envío" : "retiro";
   await notify.sendToAccount(db, uid, "orders", {
     title: `Nuevo pedido${order.orderCode ? " #" + order.orderCode : ""}: ${notify.money(order.total)}`,
-    body: `${order.customerName || "Un cliente"} · ${count} ${count === 1 ? "producto" : "productos"} · ${how}`,
+    body: `${order.customerName || "Un cliente"} · ${count} ${count === 1 ? "producto" : "productos"} · ${how}${priceProblem ? " · revisá los precios" : ""}`,
     url: "/#/pedidos?pedido=" + encodeURIComponent(event.params.orderId), tag: "order-" + event.params.orderId,
   }, { storeId });
 });

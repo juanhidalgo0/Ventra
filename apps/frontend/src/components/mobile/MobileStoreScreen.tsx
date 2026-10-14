@@ -371,6 +371,9 @@ function OrdersSheet({ open, orders, onClose, store }: { open: boolean; orders: 
             <p className="text-slate-600">{selected.delivery === 'DELIVERY' ? `Envío a ${selected.address || '—'}` : selected.delivery === 'GODELIVERY' ? `GoDelivery a ${selected.address || '—'}` : 'Retira en el local'}{selected.paymentMethod ? ` · paga con ${selected.paymentMethod}` : ''}</p>
             {selected.customerNote && <p className="text-slate-600">{selected.customerNote}</p>}
           </div>
+          {selected.priceProblem && (
+            <p className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-[13px] text-red-800"><b>Revisá los precios antes de cobrar:</b> {selected.priceProblem}. Puede ser un cambio de precio reciente o un pedido alterado.</p>
+          )}
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
             {selected.items.map((i, k) => (
               <div key={k} className="flex justify-between px-3.5 py-2.5 text-[13.5px]">

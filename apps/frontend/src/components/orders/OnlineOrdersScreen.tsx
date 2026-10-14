@@ -225,13 +225,24 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
   const chargeInPos = async () => {
     const { products, addToCart, clearCart, cart } = usePOSStore.getState();
     if (cart.length && !window.confirm('La caja tiene productos cargados. ¿Reemplazarlos por este pedido?')) return;
+    // El precio del pedido lo manda el navegador del cliente: si alguno es más bajo que el de la
+    // caja, se avisa y decide el cajero (puede ser un cambio de precio reciente o un pedido alterado)
+    const cheaper = o.items
+      .map((it) => ({ it, p: products.find((x: any) => x.id === it.productId) }))
+      .filter(({ it, p }) => p && Number(it.price) < Number(p.salePrice) - 1);
+    const useSystemPrice = cheaper.length > 0 && window.confirm(
+      'Este pedido trae precios más bajos que los de la caja:\n\n'
+      + cheaper.slice(0, 8).map(({ it, p }) => `• ${it.name}: pedido ${money(Number(it.price))}, caja ${money(Number(p.salePrice))}`).join('\n')
+      + '\n\nAceptar: cobrar con los precios de la caja.\nCancelar: respetar los precios del pedido.',
+    );
     clearCart();
     const missing: string[] = [];
     for (const it of o.items) {
       const p = products.find((x: any) => x.id === it.productId);
       if (!p) { missing.push(it.name); continue; }
-      // Se respeta el precio que vio el cliente en la tienda
-      addToCart(p, Number(p.salePrice) === it.price ? undefined : it.price, it.qty);
+      // Se respeta el precio que vio el cliente en la tienda, salvo que el cajero elija el de la caja
+      const lower = Number(it.price) < Number(p.salePrice) - 1;
+      addToCart(p, Number(p.salePrice) === it.price || (lower && useSystemPrice) ? undefined : it.price, it.qty);
     }
     if (missing.length) toast.error(`No encontramos en el catálogo: ${missing.join(', ')}. Cargalos a mano.`, { duration: 7000 });
     if (stage === 'NEW') await updateOrderStage(storeId, o.id, 'PREPARING').catch(() => {});
@@ -293,6 +304,9 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
           </div>
           {o.couponProblem && (
             <p className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-[13px] text-red-800"><b>Revisá el cupón antes de cobrar:</b> {o.couponProblem}.</p>
+          )}
+          {o.priceProblem && (
+            <p className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-[13px] text-red-800"><b>Revisá los precios antes de cobrar:</b> {o.priceProblem}. Puede ser un cambio de precio reciente o un pedido alterado.</p>
           )}
 
           {o.customerPhone && (

@@ -532,6 +532,8 @@ export interface StoreOrder {
   coupon?: { code: string; discount: number; type?: CouponType; valid?: boolean };
   /** El cupón no correspondía (vencido, agotado, descuento distinto): revisar antes de cobrar */
   couponProblem?: string;
+  /** Algún renglón vino más barato que lo publicado (lo marca la nube, ver functions/order-check.js) */
+  priceProblem?: string;
   status: 'PENDING' | 'SYNCED';
   /** Seguimiento del pedido en el local (sin valor = recién llegado) */
   stage?: OrderStage;
