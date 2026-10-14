@@ -134,8 +134,31 @@ exports.createVentraSubscription = onRequest(
     }
     const correoPagador = correoMp || user.email;
 
+    const preapproval = mpPreApproval(String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim());
+    // Con una suscripción vigente, crear otra haría que Mercado Pago cobre las dos: el cambio de
+    // plan va por Mi cuenta (changeVentraPlan). Se confirma con Mercado Pago, porque el aviso de
+    // una baja puede no haber llegado: si la vieja ya no cobra, se sigue como siempre.
+    const accountRef = db.collection("ventra_accounts").doc(user.uid);
+    const prev = (await accountRef.get()).data() || {};
+    if (prev.mpPreapprovalId && prev.status === "active") {
+      let live;
+      try {
+        live = await preapproval.get({ id: prev.mpPreapprovalId });
+      } catch (err) {
+        logger.warn(`Ventra: no se pudo consultar la suscripción ${prev.mpPreapprovalId} de ${user.uid}`, err.message);
+        return res.status(503).json({ error: "No pudimos revisar tu suscripción actual. Probá de nuevo en un momento." });
+      }
+      // "paused" también: Mercado Pago la puede reactivar y volvería a cobrar
+      if (live.status === "authorized" || live.status === "paused") {
+        return res.status(409).json({
+          code: "ALREADY_SUBSCRIBED",
+          error: `Ya tenés ${prev.planName || "un plan de Ventra"} activo. Para cambiarlo entrá a Mi cuenta: así Mercado Pago no te cobra dos veces.`,
+        });
+      }
+      await accountRef.set({ status: live.status || "cancelled", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    }
+
     try {
-      const preapproval = mpPreApproval(String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim());
       const response = await preapproval.create({
         body: {
           reason: `Suscripción ${planInfo.name}`,

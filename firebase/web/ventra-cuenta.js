@@ -197,6 +197,12 @@
     })
       .then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
       .then(function(result){
+        // Ya tiene un plan activo: se cambia desde Mi cuenta (otra suscripción cobraría dos veces)
+        if (result.data && result.data.code === 'ALREADY_SUBSCRIBED') {
+          alert(result.data.error);
+          window.location.href = '/cuenta.html';
+          return;
+        }
         if (!result.ok || !result.data.initPoint) throw new Error(result.data.error || 'Error desconocido');
         window.location.href = result.data.initPoint;
       })
