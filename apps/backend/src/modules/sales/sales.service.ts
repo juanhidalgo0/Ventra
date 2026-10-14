@@ -101,6 +101,19 @@ export class SalesService {
     if (dto.items?.some((i) => !Number.isFinite(Number(i.quantity)))) {
       throw new BadRequestException('Hay un producto con una cantidad inválida');
     }
+    // Precios, descuentos y pagos: números de verdad (un texto o un NaN sumaba mal el total de la venta)
+    for (const i of dto.items || []) {
+      i.quantity = Number(i.quantity);
+      if (i.price === null) delete i.price;
+      if (i.price !== undefined && !Number.isFinite(Number(i.price))) throw new BadRequestException('Hay un producto con un precio inválido');
+      if (i.price !== undefined) i.price = Number(i.price);
+      if (i.discount != null && !Number.isFinite(Number(i.discount))) throw new BadRequestException('Hay un producto con un descuento inválido');
+      if (i.discount != null) i.discount = Number(i.discount);
+    }
+    if (!consumption && (!Array.isArray(dto.payments) || dto.payments.some((p) => !p || !Number.isFinite(Number(p.amount))))) {
+      throw new BadRequestException('Hay un pago con un monto inválido');
+    }
+    if (!consumption) dto.payments.forEach((p) => { p.amount = Number(p.amount); });
 
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
     // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
@@ -435,6 +448,11 @@ export class SalesService {
     const productsToSync: { barcode: string; newStock: number; salePrice: number }[] = [];
 
     const updatedSale = await this.prisma.$transaction(async (tx) => {
+      // 0. Se marca anulada primero y solo si sigue como estaba: dos anulaciones a la vez (doble
+      //    clic, dos cajas) devolvían el stock y revertían la cuenta corriente dos veces.
+      const claimed = await tx.sale.updateMany({ where: { id, status: sale.status }, data: { status: 'CANCELLED' } });
+      if (claimed.count !== 1) throw new BadRequestException('Esta venta ya fue anulada.');
+
       // 1. Devolver al stock exactamente lo que descontó la venta: un kit devuelve sus
       //    componentes (no el kit), un producto con stock ilimitado no se toca y uno borrado se saltea.
       const toRestore = new Map<string, number>();
@@ -462,9 +480,10 @@ export class SalesService {
         productsToSync.push({ barcode: restored.barcode || restored.id, newStock: restored.stock, salePrice: restored.salePrice });
       }
 
-      // 2. Reverse client credit account debt if it was checked out on credit
+      // 2. Revertir la cuenta corriente: lo que se fió (DEBT positivo) y también el saldo a favor
+      //    que dejó la venta (DEBT negativo, ej. una devolución acreditada), que antes quedaba.
       const debtAmount = sale.payments.filter(p => p.method === 'DEBT').reduce((sum, p) => sum + p.amount, 0);
-      if (debtAmount > 0 && sale.clientId) {
+      if (debtAmount !== 0 && sale.clientId) {
         const client = await tx.client.findUnique({ where: { id: sale.clientId } });
         if (client) {
           const balanceBefore = client.balance;
@@ -475,8 +494,9 @@ export class SalesService {
               clientId: sale.clientId,
               saleId: sale.id,
               userId,
-              type: 'PAYMENT', // PAYMENT acts as credit reversal of DEBT
-              amount: debtAmount,
+              // PAYMENT revierte una deuda; DEBT vuelve a cobrar un saldo a favor
+              type: debtAmount > 0 ? 'PAYMENT' : 'DEBT',
+              amount: Math.abs(debtAmount),
               balanceBefore,
               balanceAfter,
               description: `Cancelación Venta #${sale.saleNumber}`,

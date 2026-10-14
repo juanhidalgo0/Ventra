@@ -222,6 +222,48 @@ async function main() {
     assert.strictEqual(await stockDe(p.id), 7);
   });
 
+  await t('anular dos veces a la vez: el stock vuelve una sola vez', async () => {
+    const p = await nuevo('MANAOS', 10);
+    const s = await vender([{ productId: p.id, quantity: 4 }]);
+    const r = await Promise.allSettled([sales.cancel(s.id, admin.id), sales.cancel(s.id, admin.id)]);
+    assert.strictEqual(r.filter((x) => x.status === 'fulfilled').length, 1);
+    assert.strictEqual(await stockDe(p.id), 10);
+    assert.strictEqual(await prisma.inventoryMovement.count({ where: { productId: p.id, type: 'RETURN' } }), 1);
+  });
+
+  await t('anular una venta fiada devuelve la deuda; con saldo a favor, lo saca', async () => {
+    const p = await nuevo('YERBA', 10);
+    const cli = await prisma.client.create({ data: { name: 'Doña Rosa' } });
+    const fiada = await crear({ sessionId: session.id, clientId: cli.id, items: [{ productId: p.id, quantity: 1 }], payments: [{ method: 'DEBT', amount: 1000 }] }, cajero.id);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, 1000);
+    await sales.cancel(fiada.id, admin.id);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, 0);
+    const devolucion = await crear({ sessionId: session.id, clientId: cli.id, items: [{ productId: p.id, quantity: -1, price: 1000 }], payments: [{ method: 'DEBT', amount: -1000 }] }, cajero.id);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, -1000);
+    await sales.cancel(devolucion.id, admin.id);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, 0);
+    assert.strictEqual(await stockDe(p.id), 10);
+  });
+
+  await t('un precio, descuento o pago que no es número se rechaza sin tocar el stock', async () => {
+    const p = await nuevo('TURRON', 5);
+    await assert.rejects(() => crear({ sessionId: session.id, items: [{ productId: p.id, quantity: 1, price: 'abc' }], payments: [{ method: 'CASH', amount: 1000 }] }, cajero.id));
+    await assert.rejects(() => crear({ sessionId: session.id, items: [{ productId: p.id, quantity: 1, discount: 'x' }], payments: [{ method: 'CASH', amount: 1000 }] }, cajero.id));
+    await assert.rejects(() => crear({ sessionId: session.id, items: [{ productId: p.id, quantity: 1 }], payments: [{ method: 'CASH', amount: 'mil' }] }, cajero.id));
+    assert.strictEqual(await stockDe(p.id), 5);
+    // Números que llegan como texto siguen andando como antes
+    await crear({ sessionId: session.id, items: [{ productId: p.id, quantity: '1', price: '1000' }], payments: [{ method: 'CASH', amount: '1000' }] }, cajero.id);
+    assert.strictEqual(await stockDe(p.id), 4);
+  });
+
+  await t('movimientos de caja: el cajero agrega en su caja abierta; en una cerrada, solo el administrador', async () => {
+    await cash.addCashMovement(session.id, cajero.id, { type: 'EXPENSE', amount: 100, description: 'Hielo' }, 'CASHIER');
+    const cerrada = (await prisma.cashRegisterSession.findFirst({ where: { terminalName: 'Caja 2', status: 'CLOSED' } }))!;
+    await assert.rejects(() => cash.addCashMovement(cerrada.id, cajero.id, { type: 'EXPENSE', amount: 100, description: 'Tarde' }, 'CASHIER'));
+    await cash.addCashMovement(cerrada.id, admin.id, { type: 'EXPENSE', amount: 100, description: 'Corrección' }, 'ADMIN');
+    await assert.rejects(() => cash.addCashMovement(session.id, cajero.id, { type: 'EXPENSE', amount: NaN }, 'CASHIER'));
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

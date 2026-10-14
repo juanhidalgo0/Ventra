@@ -117,7 +117,7 @@ export class CashRegisterController {
 
   @Post(':sessionId/movement')
   addMovement(@Param('sessionId') sessionId: string, @Request() req, @Body() dto: { type: string; amount: number; description?: string }) {
-    return this.cashService.addCashMovement(sessionId, req.user.sub, dto);
+    return this.cashService.addCashMovement(sessionId, req.user.sub, dto, req.user.role);
   }
 }
 

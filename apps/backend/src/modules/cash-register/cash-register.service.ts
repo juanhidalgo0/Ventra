@@ -510,12 +510,16 @@ export class CashRegisterService {
     });
   }
 
-  async addCashMovement(sessionId: string, userId: string, data: { type: string; amount: number; description?: string }) {
+  async addCashMovement(sessionId: string, userId: string, data: { type: string; amount: number; description?: string }, role?: string) {
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: sessionId } });
     if (!session) {
       throw new BadRequestException('Sesión de caja no encontrada');
     }
-    const movement = await this.prisma.cashMovement.create({ data: { sessionId, userId, type: data.type, amount: data.amount, description: data.description } });
+    // Mismas reglas que editar o borrar: una caja cerrada (o que ya entró en un Cierre Z) solo la toca el administrador
+    this.assertCanEditMovements(session, userId, role);
+    const amount = Number(data?.amount);
+    if (!Number.isFinite(amount)) throw new BadRequestException('El monto no es válido');
+    const movement = await this.prisma.cashMovement.create({ data: { sessionId, userId, type: data.type, amount, description: data.description } });
     await this.recalculateSessionSummary(sessionId);
     return movement;
   }
