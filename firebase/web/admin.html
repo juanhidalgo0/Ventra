@@ -236,11 +236,18 @@
   .cost-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
   .cost-kpis .kpi{ padding:14px 16px; } .cost-kpis .kpi-value{ font-size:22px; }
   td.neg{ color:var(--red); font-weight:600; } td.pos{ color:var(--pine); font-weight:600; }
+  .cost-alert{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:12px; padding:10px 14px; background:var(--amber-bg); border:1px solid var(--amber-line); border-radius:var(--r-lg); color:var(--amber); font-size:13px; font-weight:600; }
+  .cost-alert .btns{ display:flex; gap:6px; flex-wrap:wrap; }
   .small{ font-size:12px; color:var(--ink-3); }
   .ren-row{ display:grid; grid-template-columns:1fr 150px 30px; gap:6px; margin-top:6px; }
-  .ren-row input{ height:34px; border:1px solid var(--line); border-radius:999px; padding:0 12px; background:#fff; min-width:0; }
+  .ren-row input, .fix-row input, .fix-row select{ height:34px; border:1px solid var(--line); border-radius:999px; padding:0 12px; background:#fff; min-width:0; font:inherit; font-size:13px; }
+  .fix-row{ display:grid; grid-template-columns:1fr 100px 74px 96px 30px; gap:6px; margin-top:6px; }
+  .src{ font-size:11.5px; color:var(--ink-3); line-height:1.35; }
+  .src.auto{ color:var(--pine); } .src.miss{ color:var(--amber); }
+  .help{ margin-top:8px; padding:10px 12px; background:var(--amber-bg); border:1px solid var(--amber-line); border-radius:var(--r); font-size:12.5px; color:var(--ink-2); }
+  .help ol{ margin:6px 0 0 18px; padding:0; } .help li{ margin-top:3px; }
   @media (max-width: 960px){ .cost-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
-  @media (max-width: 520px){ .ren-row{ grid-template-columns:1fr 30px; } .ren-row .rd{ grid-column:1; } }
+  @media (max-width: 520px){ .ren-row{ grid-template-columns:1fr 30px; } .ren-row .rd{ grid-column:1; } .fix-row{ grid-template-columns:minmax(0,1fr) 64px 86px 30px; } .fix-row .fl{ grid-column:1 / -1; } .fix-row select{ padding:0 8px; } }
   /* ── Tienda online ─────────────────────────────── */
   .store-tag{ display:inline-flex; align-items:center; gap:4px; height:18px; padding:0 7px; border-radius:999px; background:var(--mint-50); color:var(--pine); font-size:11px; font-weight:600; vertical-align:1px; }
   .store-tag.off{ background:var(--gray-bg); color:var(--ink-3); }
@@ -311,13 +318,14 @@
     <section class="ops">
       <div class="section-head"><div><h1 style="font-size:20px">Costos por cliente</h1><div class="sub" id="costSub"></div></div><button class="btn" id="costsBtn">Cargar costos del mes</button></div>
       <div class="cost-kpis" id="costKpis"></div>
+      <div class="cost-alert hidden" id="costAlert"></div>
       <div class="table-wrap" style="margin-top:12px">
         <table>
           <thead><tr><th>Cliente</th><th class="r hide-sm">Sincronizaciones</th><th class="r hide-sm">Datos en la nube</th><th class="r hide-sm">Fotos</th><th class="r hide-sm">Visitas tienda</th><th class="r">Costo estimado</th><th class="r">Pagó este mes</th><th class="r">Margen</th></tr></thead>
           <tbody id="costRows"></tbody>
         </table>
       </div>
-      <p class="warn">El costo de cada servicio se reparte según el uso medido de cada comercio: Neon por datos guardados y sincronizaciones, Firebase por llamadas y fotos, fly.io por uso de la caja en la nube, y “otros” parejo entre las cuentas activas. Son estimaciones.</p>
+      <p class="warn">El costo de cada servicio se reparte según el uso medido de cada comercio: Neon por datos guardados y sincronizaciones, Firebase por llamadas y fotos, fly.io por uso de la caja en la nube, y “otros” parejo entre las cuentas activas. WhatsApp no se reparte: cada comercio suma sus recordatorios automáticos entregados en el mes. Son estimaciones.</p>
     </section>
 
     <section class="clients">
@@ -366,14 +374,30 @@
   <div class="modal hidden" id="costsModal" role="dialog" aria-label="Costos del mes">
     <div class="modal-card" style="width:min(520px,100%);max-height:92vh;overflow-y:auto">
       <h3>Costos del mes</h3>
-      <p>Lo que te cobró cada servicio (en pesos). Sacalo de las facturas de Neon, Google Cloud (Firebase) y fly.io.</p>
+      <p>Neon, Firebase (Google Cloud) y WhatsApp se cargan solos cada noche, en pesos con el dólar tarjeta. Escribí un monto solo para corregir un valor; vacío vuelve al automático.</p>
       <div class="form-grid">
         <div class="field full"><label for="cMonth">Mes</label><input id="cMonth" type="month"></div>
-        <div class="field"><label for="cNeon">Neon</label><input id="cNeon" type="number" min="0" step="1"></div>
-        <div class="field"><label for="cFirebase">Firebase / Google Cloud</label><input id="cFirebase" type="number" min="0" step="1"></div>
-        <div class="field"><label for="cFly">fly.io</label><input id="cFly" type="number" min="0" step="1"></div>
-        <div class="field"><label for="cOther">Otros (dominio, ARCA, varios)</label><input id="cOther" type="number" min="0" step="1"></div>
+        <div class="field full hidden" id="cCopyWrap"><button class="btn sm" id="cCopy" type="button"></button></div>
+        <div class="field"><label for="cNeon">Neon</label><input id="cNeon" type="number" min="0" step="1"><div class="src" id="cNeonSrc"></div></div>
+        <div class="field"><label for="cFirebase">Firebase / Google Cloud</label><input id="cFirebase" type="number" min="0" step="1"><div class="src" id="cFirebaseSrc"></div></div>
+        <div class="field"><label for="cFly">fly.io</label><input id="cFly" type="number" min="0" step="1"><div class="src" id="cFlySrc"></div></div>
+        <div class="field"><label for="cOther">Otros (dominio, ARCA, varios)</label><input id="cOther" type="number" min="0" step="1"><div class="src" id="cOtherSrc"></div></div>
+        <div class="field full hidden" id="cBqHelp"><div class="help"><b>Firebase todavía no tiene dato automático.</b> Activá la exportación de la facturación a BigQuery (una sola vez):
+          <ol><li>En console.cloud.google.com → Facturación → <b>Exportación de facturación</b>.</li><li>En “Datos de costos de uso estándar” tocá <b>Editar configuración</b>, elegí el proyecto <b>ventra-9cba5</b> y creá un dataset (por ejemplo <b>facturacion</b>).</li><li>Google tarda hasta un día en llenar la tabla; esa noche ya aparece el costo del mes.</li></ol>
+          <div class="field" style="margin-top:8px"><label for="cBqTable">Tabla, solo si la exportación está en otro proyecto</label><input id="cBqTable" placeholder="proyecto.dataset.gcp_billing_export_v1_…"></div></div></div>
         <div class="field full"><label for="cNeonLimit">Límite de tu plan de Neon (MB)</label><input id="cNeonLimit" type="number" min="0" step="1" placeholder="512 (plan gratis)"></div>
+      </div>
+      <h3 style="margin-top:18px;font-size:14px">Costos fijos que se repiten</h3>
+      <p style="margin-bottom:4px">fly.io no informa lo que cobra, y el dominio o el certificado de ARCA son fijos: cargá cuánto sale por mes. Se repite todos los meses desde el elegido arriba hasta que lo cambies.</p>
+      <div id="fixList"></div>
+      <button class="btn sm" id="fixAdd" style="margin-top:8px">+ Agregar costo fijo</button>
+      <h3 style="margin-top:18px;font-size:14px">Dólar y recordatorios por WhatsApp</h3>
+      <p style="margin-bottom:4px" id="cFxHelp">Los mensajes de cada cliente se cuentan solos. El dólar se usa para todo lo que se paga en dólares; vale para todos los meses.</p>
+      <div class="form-grid">
+        <div class="field"><label for="cWaUsd">Precio por mensaje (US$)</label><input id="cWaUsd" type="number" min="0" step="0.001"></div>
+        <div class="field"><label for="cWaFx">Dólar a mano (pesos por US$)</label><input id="cWaFx" type="number" min="0" step="1"></div>
+        <div class="field"><label for="cWaTax" id="cWaTaxLabel">Impuestos de la tarjeta (%)</label><input id="cWaTax" type="number" min="0" step="1"></div>
+        <div class="field"><label>Cada mensaje te sale</label><div class="kpi-value num" id="cWaEach" style="font-size:18px;margin-top:6px"></div></div>
       </div>
       <h3 style="margin-top:18px;font-size:14px">Vencimientos a vigilar</h3>
       <p style="margin-bottom:4px">Aparecen en “Estado del sistema” y se marcan cuando falta menos de un mes.</p>
@@ -545,28 +569,60 @@
       $('healthSum').textContent = bad ? bad + ' con problemas' + (warn ? ' · ' + warn + ' para revisar' : '') : warn ? warn + ' para revisar' : stats ? 'Todo en orden' : 'Revisando…';
     }
 
+    var sumCosts = function(e){ e = e || {}; return (Number(e.neon) || 0) + (Number(e.firebase) || 0) + (Number(e.fly) || 0) + (Number(e.other) || 0); };
+    var monthLabel = function(m){ return m ? new Date(m + '-15').toLocaleDateString('es-AR', { month:'long', year:'numeric' }) : ''; };
+    var prevMonth = function(m){ var d = new Date(m + '-15'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); };
+    var waPrice = function(n){ return '$ ' + (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits:2, maximumFractionDigits:2 }); };
+
+    // Costos de los servicios del mes con su origen: automático (de noche), a mano o fijo recurrente
+    var SVC_NAME = { neon:'Neon', firebase:'Firebase', fly:'fly', other:'otros' };
+    var effCosts = function(){ return (data.costs && data.costs.effective) || { services:{}, total:0 }; };
+    var srcMark = function(s){ return !s || !s.source ? ' <span class="small">sin dato</span>' : s.source === 'manual' ? ' <span class="small">a mano</span>' : s.source === 'fijo' ? ' <span class="small">fijo</span>' : ''; };
+    // Lo que falta para que el mes esté completo, en palabras
+    function missingCosts(ef){
+      var sv = ef.services || {}, out = [];
+      if (!ef.autoAt) out.push('los costos automáticos todavía no corrieron (se cargan cada noche)');
+      else {
+        if (!sv.firebase || !sv.firebase.source) out.push(sv.firebase && sv.firebase.error === 'sin-exportacion' ? 'Firebase: falta activar la exportación de la facturación a BigQuery' : 'Firebase: ' + ((sv.firebase && sv.firebase.error) || 'sin dato'));
+        if (!sv.neon || !sv.neon.source) out.push('Neon: ' + ((sv.neon && sv.neon.error) || 'sin dato'));
+      }
+      if (!sv.fly || !sv.fly.source) out.push('fly.io: cargalo como costo fijo');
+      return out;
+    }
+
     function renderCosts(){
-      var c = data.costs || { entered:{} }, e = c.entered || {};
-      var total = (Number(e.neon) || 0) + (Number(e.firebase) || 0) + (Number(e.fly) || 0) + (Number(e.other) || 0);
-      var monthName = c.month ? new Date(c.month + '-15').toLocaleDateString('es-AR', { month:'long', year:'numeric' }) : '';
-      $('costSub').textContent = 'Uso medido en ' + monthName + (total ? '' : ' · todavía no cargaste los costos de este mes') + (stats ? (stats.sizesAt ? ' · tamaños medidos ' + ago(stats.sizesAt) : '') : ' · calculando el uso…');
+      var c = data.costs || { entered:{} }, ef = effCosts(), sv = ef.services || {};
+      var fixed = ef.total || 0, wa = (stats && stats.wa) || null, waCost = wa ? wa.cost || 0 : 0, total = fixed + waCost;
+      var monthName = monthLabel(c.month), prev = c.month ? prevMonth(c.month) : '', prevCosts = sumCosts(c.all && c.all[prev]) ? c.all[prev] : null;
+      $('costSub').textContent = 'Uso medido en ' + monthName + (ef.autoAt ? ' · costos automáticos ' + ago(ef.autoAt) : '') + (stats ? (stats.sizesAt ? ' · tamaños medidos ' + ago(stats.sizesAt) : '') : ' · calculando el uso…');
       var paid = data.accounts.reduce(function(s, a){ return s + (a.monthPaid || 0); }, 0);
+      var meta = wa && wa.meta;
       $('costKpis').innerHTML =
-        '<div class="kpi"><div class="kpi-label">Costo total de servicios</div><div class="kpi-value num">' + money(total) + '</div><div class="kpi-foot">Neon ' + money(e.neon) + ' · Firebase ' + money(e.firebase) + '</div></div>' +
-        '<div class="kpi"><div class="kpi-label">fly.io + otros</div><div class="kpi-value num">' + money((Number(e.fly) || 0) + (Number(e.other) || 0)) + '</div><div class="kpi-foot">fly ' + money(e.fly) + ' · otros ' + money(e.other) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Servicios del mes</div><div class="kpi-value num">' + (fixed ? money(fixed) : 'Sin datos') + '</div><div class="kpi-foot">' + (fixed ? Object.keys(SVC_NAME).map(function(k){ return SVC_NAME[k] + ' ' + money(sv[k] && sv[k].value) + srcMark(sv[k]); }).join(' · ') : 'Neon, Firebase, fly.io y otros') + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">WhatsApp</div><div class="kpi-value num">' + (wa ? money(waCost) : '…') + '</div><div class="kpi-foot">' + (wa ? int(wa.messages) + ' recordatorios × ' + waPrice(wa.perMessage) : 'Contando los recordatorios…') +
+          // Meta cuenta todos los mensajes del número (también respuestas y pruebas): sirve para validar la estimación
+          (meta ? '<br>Meta informa ' + money(meta.ars) + ' · ' + int(meta.messages) + ' mensajes' : '') + '</div></div>' +
         '<div class="kpi"><div class="kpi-label">Cobrado este mes</div><div class="kpi-value num">' + money(paid) + '</div><div class="kpi-foot">Pagos acreditados</div></div>' +
-        '<div class="kpi' + (paid - total < 0 ? '' : ' hero') + '"><div class="kpi-label">Margen del mes</div><div class="kpi-value num">' + money(paid - total) + '</div><div class="kpi-foot">' + (paid ? Math.round(100 * (paid - total) / paid) + '% de lo cobrado' : 'Sin cobros todavía') + '</div></div>';
+        '<div class="kpi' + (!fixed || paid - total < 0 ? '' : ' hero') + '"><div class="kpi-label">Margen del mes</div><div class="kpi-value num">' + money(paid - total) + '</div><div class="kpi-foot">Costo total ' + money(total) + (fixed ? '' : ' (sin servicios)') + (paid ? ' · ' + Math.round(100 * (paid - total) / paid) + '% de lo cobrado' : ' · sin cobros todavía') + '</div></div>';
+      // Mes sin costos o con datos automáticos que faltan: se avisa qué falta y se ofrece cargarlos
+      var missing = missingCosts(ef), showAlert = !fixed || missing.length;
+      $('costAlert').classList.toggle('hidden', !showAlert);
+      $('costAlert').innerHTML = !showAlert ? '' : '<span>' + (fixed ? 'Faltan datos de ' + esc(monthName) + ': ' + esc(missing.join(' · ')) + '.' : 'Todavía no hay costos de ' + esc(monthName) + ': el costo de cada cliente por ahora es solo WhatsApp.' + (missing.length ? ' ' + esc(missing.join(' · ')) + '.' : '')) + '</span><span class="btns">' +
+        (!fixed && prevCosts ? '<button class="btn sm" data-cost-copy="' + esc(prev) + '">Copiar los de ' + esc(monthLabel(prev).split(' ')[0]) + ' (' + money(sumCosts(prevCosts)) + ')</button>' : '') +
+        '<button class="btn sm primary" data-cost-open>' + (fixed ? 'Completar' : 'Cargar costos') + '</button></span>';
       var rows = data.accounts.slice().sort(function(a, b){ return ((b.cost && b.cost.total) || 0) - ((a.cost && a.cost.total) || 0) || ((b.usage && b.usage.syncCalls) || 0) - ((a.usage && a.usage.syncCalls) || 0); });
       $('costRows').innerHTML = rows.length ? rows.map(function(a){
-        var u = a.usage || {}, cost = (a.cost && a.cost.total) || 0, margin = (a.monthPaid || 0) - cost;
+        var u = a.usage || {}, cc = a.cost || {}, cost = cc.total || 0, margin = (a.monthPaid || 0) - cost, has = fixed || cost > 0;
+        var costCell = !a.cost ? '—' : has ? money(cost) + (cc.whatsapp ? '<div class="small">' + (fixed ? 'WhatsApp ' + money(cc.whatsapp) : 'solo WhatsApp') + '</div>' : '') : '<span class="small">falta cargar</span>';
         return '<tr data-uid="' + esc(a.uid) + '"><td><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + '</div></td>' +
           '<td class="r hide-sm num">' + int(u.syncCalls) + '</td>' +
           '<td class="r hide-sm num">' + (a.cloud ? mb(a.cloud.bytes) : '—') + '</td>' +
           '<td class="r hide-sm num">' + (u.storageBytes ? mb(u.storageBytes) : '—') + '</td>' +
           '<td class="r hide-sm num">' + int(u.storeViews) + '</td>' +
-          '<td class="r num">' + (total ? money(cost) : '—') + '</td>' +
+          '<td class="r num">' + costCell + '</td>' +
           '<td class="r num">' + money(a.monthPaid) + '</td>' +
-          '<td class="r num ' + (!total ? '' : margin < 0 ? 'neg' : 'pos') + '">' + (total ? money(margin) : '—') + '</td></tr>';
+          // Sin los servicios cargados el margen queda incompleto: se muestra sin color de bien o mal
+          '<td class="r num ' + (!a.cost || !fixed ? '' : margin < 0 ? 'neg' : 'pos') + '">' + (a.cost && has ? money(margin) : '—') + '</td></tr>';
       }).join('') : '<tr><td colspan="8" class="empty">Todavía no hay clientes.</td></tr>';
     }
 
@@ -577,11 +633,74 @@
         '<input class="rd" type="date" value="' + esc(r.date || '') + '">' +
         '<button class="icon-btn rx" title="Quitar" style="width:30px;height:34px">✕</button></div>';
     }
-    function openCosts(month){
-      var c = data.costs || {}, m = month || c.month, e = (c.all && c.all[m]) || {};
-      $('cMonth').value = m; $('cNeon').value = e.neon || ''; $('cFirebase').value = e.firebase || ''; $('cFly').value = e.fly || ''; $('cOther').value = e.other || '';
+    // Lo cargado a mano de un mes (0 o vacío = usa el automático o el fijo)
+    var COST_IN = { neon:'cNeon', firebase:'cFirebase', fly:'cFly', other:'cOther' };
+    function fillCosts(e){ Object.keys(COST_IN).forEach(function(k){ $(COST_IN[k]).value = Number(e[k]) > 0 ? e[k] : ''; }); }
+    var monthEff = function(m){ return ((data.costs && data.costs.months) || {})[m] || null; };
+    // Debajo de cada servicio: de dónde sale el valor del mes
+    function showSources(m){
+      var ef = monthEff(m), sv = (ef && ef.services) || {};
+      Object.keys(COST_IN).forEach(function(k){
+        var s = sv[k] || {}, cls = '', txt, manual = s.source === 'manual' ? ' · ahora vale lo cargado a mano' : '';
+        if (s.auto != null){ txt = 'Automático: ' + money(s.auto) + ' · ' + ago(ef.autoAt) + manual; cls = 'auto'; }
+        else if (s.fixed){ txt = 'Fijo mensual: ' + money(s.fixed) + manual; }
+        else if (s.source === 'manual') txt = 'Cargado a mano';
+        else if (s.error){ txt = s.error === 'sin-exportacion' ? 'Sin dato automático: falta la exportación a BigQuery' : 'Sin dato automático: ' + s.error; cls = 'miss'; }
+        else txt = k === 'fly' || k === 'other' ? 'Cargalo abajo como costo fijo' : 'Sin dato automático todavía (se carga cada noche)';
+        $(COST_IN[k] + 'Src').className = 'src ' + cls; $(COST_IN[k] + 'Src').textContent = txt;
+        $(COST_IN[k]).placeholder = s.auto != null ? Math.round(s.auto) + ' (automático)' : s.fixed ? Math.round(s.fixed) + ' (fijo)' : '';
+      });
+      $('cBqHelp').classList.toggle('hidden', !(sv.firebase && sv.firebase.error === 'sin-exportacion' && sv.firebase.auto == null));
+    }
+    // Costos fijos recurrentes: vale el último monto cargado desde ese mes o antes (igual que en usage.recurringFor)
+    function recurringFor(rec, m){
+      return Object.keys(rec || {}).map(function(k){
+        var r = rec[k], h = (r.history || []).filter(function(e){ return e.from <= m; }).sort(function(a, b){ return a.from < b.from ? -1 : 1; }).pop();
+        return { key:k, label:r.label || k, service:r.service === 'fly' ? 'fly' : 'other', currency:r.currency === 'USD' ? 'USD' : 'ARS', amount:h ? Number(h.amount) || 0 : 0 };
+      }).filter(function(r){ return r.amount > 0; });
+    }
+    var DEFAULT_FIX = [ { key:'fly', label:'fly.io (caja en la nube y demo)', service:'fly', currency:'USD' }, { key:'dominio', label:'Dominio ventra.store', service:'other', currency:'ARS' }, { key:'arca', label:'Certificado de ARCA', service:'other', currency:'ARS' } ];
+    function fixRow(r){
+      return '<div class="fix-row" data-key="' + esc(r.key) + '"><input class="fl" value="' + esc(r.label || '') + '" placeholder="Qué es">' +
+        '<input class="fa" type="number" min="0" step="0.01" value="' + esc(r.amount || '') + '" placeholder="Por mes">' +
+        '<select class="fc" title="Moneda"><option value="ARS">$</option><option value="USD"' + (r.currency === 'USD' ? ' selected' : '') + '>US$</option></select>' +
+        '<select class="fs" title="Servicio"><option value="other">Otros</option><option value="fly"' + (r.service === 'fly' ? ' selected' : '') + '>fly.io</option></select>' +
+        '<button class="icon-btn rx" title="Quitar" style="width:30px;height:34px">✕</button></div>';
+    }
+    function fillFixed(m){
+      var rec = (data.costs && data.costs.recurring) || {}, list = recurringFor(rec, m);
+      $('fixList').innerHTML = (list.length || Object.keys(rec).length ? list : DEFAULT_FIX).map(fixRow).join('');
+    }
+    var WA_DEF = { priceUsd:0.026, fx:1460, taxPct:21 };
+    // Lo mismo que usage.waSettings: dólar a mano × (1 + impuestos), o dólar tarjeta + IVA sobre el oficial
+    function waEach(){
+      var af = (data.costs && data.costs.effective && data.costs.effective.autoFx) || null;
+      var usd = $('cWaUsd').value !== '' ? Number($('cWaUsd').value) : WA_DEF.priceUsd, tax = $('cWaTax').value !== '' ? Number($('cWaTax').value) || 0 : WA_DEF.taxPct;
+      var fxIn = Number($('cWaFx').value), auto = !(fxIn > 0) && af && af.tarjeta > 0;
+      var perUsd = auto ? af.tarjeta + (af.oficial || af.tarjeta / 1.3) * tax / 100 : (fxIn > 0 ? fxIn : WA_DEF.fx) * (1 + tax / 100);
+      $('cWaTaxLabel').textContent = auto ? 'IVA sobre el dólar oficial (%)' : 'Impuestos de la tarjeta (%)';
+      $('cWaFx').placeholder = af && af.tarjeta > 0 ? Math.round(af.tarjeta) + ' (dólar tarjeta)' : String(WA_DEF.fx);
+      $('cWaEach').textContent = usd > 0 ? waPrice(usd * perUsd) : '—';
+      $('cFxHelp').textContent = 'Los mensajes de cada cliente se cuentan solos. ' + (auto
+        ? 'Dólar tarjeta ' + money(af.tarjeta) + (af.date ? ' del ' + fdate(af.date) : '') + ' (dolarapi.com, ya trae el 30 % de percepción) más el IVA sobre el oficial: cada US$ te sale ' + waPrice(perUsd) + '. Escribí un dólar a mano solo para reemplazarlo.'
+        : fxIn > 0 ? 'Usás un dólar cargado a mano (cada US$ te sale ' + waPrice(perUsd) + ')' + (af && af.tarjeta > 0 ? '; borralo para volver al dólar tarjeta automático.' : '.')
+        : 'Todavía no hay dólar automático: se usa ' + money(WA_DEF.fx) + ' más impuestos hasta que corra la carga de la noche.');
+    }
+    // copyFrom: abre el mes con los costos de otro mes ya puestos (se guardan recién con Guardar)
+    function openCosts(month, copyFrom){
+      var c = data.costs || {}, m = month || c.month, all = c.all || {}, e = all[m] || {}, prev = prevMonth(m), ef = monthEff(m);
+      $('cMonth').value = m; fillCosts(copyFrom ? all[copyFrom] || {} : e);
+      showSources(m); fillFixed(m);
+      // Mes sin nada (ni automático ni fijo) y el anterior cargado a mano: se ofrece copiarlo
+      var canCopy = !copyFrom && !sumCosts(e) && !(ef && ef.total) && sumCosts(all[prev]);
+      $('cCopyWrap').classList.toggle('hidden', !canCopy);
+      if (canCopy){ $('cCopy').textContent = 'Copiar los del mes pasado (' + monthLabel(prev) + ': ' + money(sumCosts(all[prev])) + ')'; $('cCopy').setAttribute('data-from', prev); }
       if (!month){
+        var saved = (c.wa && c.wa.saved) || {};
+        $('cWaUsd').value = saved.priceUsd != null ? saved.priceUsd : ''; $('cWaFx').value = saved.fx != null ? saved.fx : ''; $('cWaTax').value = saved.taxPct != null ? saved.taxPct : '';
+        $('cWaUsd').placeholder = String(WA_DEF.priceUsd); $('cWaTax').placeholder = String(WA_DEF.taxPct); waEach();
         $('cNeonLimit').value = c.neonLimitMB || '';
+        $('cBqTable').value = c.billingTable || '';
         var ren = Object.keys(c.renewals || {}).length ? c.renewals : Object.keys(DEFAULT_REN).reduce(function(o, k){ o[k] = { label:DEFAULT_REN[k], date:'' }; return o; }, {});
         $('renList').innerHTML = Object.keys(ren).map(function(k){ return renRow(k, ren[k]); }).join('');
       }
@@ -590,9 +709,19 @@
     function closeCosts(){ $('costsModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
     $('costsBtn').onclick = function(){ openCosts(); };
     $('cMonth').onchange = function(){ if (this.value) openCosts(this.value); };
+    $('cCopy').onclick = function(){ fillCosts((data.costs.all || {})[this.getAttribute('data-from')] || {}); $('cCopyWrap').classList.add('hidden'); toast('Copiados: revisalos y guardá'); };
+    ['cWaUsd', 'cWaFx', 'cWaTax'].forEach(function(id){ $(id).oninput = waEach; });
+    $('costAlert').addEventListener('click', function(e){
+      var b = e.target.closest('button'); if (!b) return;
+      var from = b.getAttribute('data-cost-copy');
+      openCosts(null, from || null);
+      if (from) toast('Copiados de ' + monthLabel(from) + ': revisalos y guardá');
+    });
     $('cCancel').onclick = closeCosts;
     $('renAdd').onclick = function(){ $('renList').insertAdjacentHTML('beforeend', renRow('v' + Date.now().toString(36), {})); };
     $('renList').addEventListener('click', function(e){ var x = e.target.closest('.rx'); if (x) x.parentNode.remove(); });
+    $('fixAdd').onclick = function(){ $('fixList').insertAdjacentHTML('beforeend', fixRow({ key:'f' + Date.now().toString(36), currency:'ARS', service:'other' })); };
+    $('fixList').addEventListener('click', function(e){ var x = e.target.closest('.rx'); if (x) x.parentNode.remove(); });
     $('health').addEventListener('click', function(e){
       var b = e.target.closest('[data-cuit-act]'); if (!b) return;
       var action = b.getAttribute('data-cuit-act'), cuit = b.getAttribute('data-cuit');
@@ -607,8 +736,13 @@
         var label = r.querySelector('.rl').value.trim(); if (!label) return;
         renewals[r.getAttribute('data-key')] = { label:label, date:r.querySelector('.rd').value || null };
       });
+      var recurring = [];
+      Array.prototype.forEach.call(document.querySelectorAll('#fixList .fix-row'), function(r){
+        var label = r.querySelector('.fl').value.trim(), amount = Number(r.querySelector('.fa').value);
+        if (label && amount > 0) recurring.push({ key:r.getAttribute('data-key'), label:label, amount:amount, currency:r.querySelector('.fc').value, service:r.querySelector('.fs').value });
+      });
       var btn = this; btn.disabled = true;
-      api('POST', { action:'setCosts', month:$('cMonth').value, neon:$('cNeon').value, firebase:$('cFirebase').value, fly:$('cFly').value, other:$('cOther').value, neonLimitMB:$('cNeonLimit').value, renewals:renewals })
+      api('POST', { action:'setCosts', month:$('cMonth').value, neon:$('cNeon').value, firebase:$('cFirebase').value, fly:$('cFly').value, other:$('cOther').value, neonLimitMB:$('cNeonLimit').value, renewals:renewals, recurring:recurring, billingTable:$('cBqTable').value, wa:{ priceUsd:$('cWaUsd').value, fx:$('cWaFx').value, taxPct:$('cWaTax').value } })
         .then(function(){ closeCosts(); toast('Costos guardados'); return load(); })
         .catch(function(err){ toast(err.message || 'No se pudo guardar', true); })
         .then(function(){ btn.disabled = false; });
@@ -841,7 +975,7 @@
     }
 
     function usageSection(a){
-      var u = a.usage || {}, c = a.cost || {}, has = (c.total || 0) > 0;
+      var u = a.usage || {}, c = a.cost || {}, has = (c.total || 0) > 0, fixed = effCosts().total || 0;
       var fact = function(k, v){ return '<div class="fact"><dt>' + k + '</dt><dd class="num">' + v + '</dd></div>'; };
       return '<div class="section"><h4>Uso y costo este mes</h4><dl class="facts">' +
         fact('Sincronizaciones', int(u.syncCalls) + (u.cloudSyncCalls ? ' <span class="small">(' + int(u.cloudSyncCalls) + ' en la nube)</span>' : '')) +
@@ -851,9 +985,11 @@
         fact('Fotos transferidas', mb((u.imgUpBytes || 0) + (u.imgDownBytes || 0))) +
         fact('Visitas a la tienda', int(u.storeViews)) +
         fact('Consultas al panel', int(u.panelCalls)) +
+        fact('Recordatorios WhatsApp', int(c.waMessages) + (u.waFailed ? ' <span class="small">(' + int(u.waFailed) + ' no llegaron)</span>' : '')) +
         fact('Costo estimado', has ? money(c.total) : '—') +
         fact('Margen', has ? money((a.monthPaid || 0) - c.total) : '—') +
-        '</dl>' + (has ? '<p class="warn">Neon ' + money(c.neon) + ' · Firebase ' + money(c.firebase) + ' · fly.io ' + money(c.fly) + ' · otros ' + money(c.other) + '</p>' : '<p class="warn">Cargá los costos del mes para ver cuánto te cuesta este cliente.</p>') + '</div>';
+        '</dl>' + (fixed ? '<p class="warn">Neon ' + money(c.neon) + ' · Firebase ' + money(c.firebase) + ' · fly.io ' + money(c.fly) + ' · otros ' + money(c.other) + ' · WhatsApp ' + money(c.whatsapp) + '</p>'
+          : '<p class="warn">' + (c.whatsapp ? 'WhatsApp ' + money(c.whatsapp) + '. ' : '') + 'Todavía no hay costos de Neon, Firebase, fly.io y otros este mes.</p>') + '</div>';
     }
 
     function storeSection(a){
@@ -979,7 +1115,7 @@
     function demoApi(method, body, part){
       if (method === 'POST') return Promise.resolve({ ok:true });
       var day = 864e5, now = Date.now(), iso = function(ms){ return new Date(ms).toISOString(); };
-      var plans = { caja:{ name:'Ventra Caja', amount:14900, legacy:true }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
+      var plans = { caja:{ name:'Ventra Caja', amount:14900, legacy:true }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda_pro:{ name:'Ventra Agenda Pro', amount:19900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
       var mk = function(email, plan, paidInDays, state, daysLeft, nPay, pcs, mp){
         var payments = []; for (var i = 0; i < nPay; i++) payments.push({ id:'p' + i, amount:plans[plan].amount, paidAt:iso(now - (i * 30 + 3) * day) });
         var devices = []; for (var j = 0; j < pcs; j++) devices.push({ deviceId:email + j, name:['CAJA-1','MOSTRADOR','DEPOSITO'][j], linkedAt:iso(now - 80 * day), lastSeenAt:iso(now - (j + 1) * 37 * 60000) });
@@ -991,25 +1127,46 @@
         mk('nuevo.cliente@gmail.com', 'caja', null, 'UNPAID', null, 0, 0, 'pending_payment'),
         mk('ferreteria.central@gmail.com', 'full', 21, 'ACTIVE', 21, 8, 3),
         mk('maxikiosco.sol@hotmail.com', 'caja', 9, 'ACTIVE', 9, 6, 1),
-        mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1)
+        mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1),
+        mk('peluqueria.sofi@gmail.com', 'agenda_pro', 18, 'ACTIVE', 18, 3, 0)
       ];
-      var monthKey = new Date().toISOString().slice(0, 7), costsDemo = { neon:0, firebase:3800, fly:9500, other:2500 };
-      var weights = [0.26, 0.04, 0, 0.38, 0.14, 0.18];
+      // Costos automáticos de la noche (Neon y Firebase en dólares, con el dólar tarjeta) y fijos recurrentes.
+      // ?demo&sincostos: la carga corrió pero falta la exportación a BigQuery, el secreto de Neon y los
+      // fijos (para ver el aviso, la ayuda y "Copiar los del mes pasado")
+      var monthKey = new Date().toISOString().slice(0, 7), prevKey = (function(){ var d = new Date(monthKey + '-15'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+      var noCosts = /[?&]sincostos\b/.test(location.search), costsLast = { neon:0, firebase:3600, fly:9500, other:2500 };
+      var fxDemo = { tarjeta:1898, oficial:1460, date: iso(now - 9 * 3600000) }, perUsd = fxDemo.tarjeta + fxDemo.oficial * 0.21, autoAt = iso(now - 12 * 3600000);
+      var waDemo = { priceUsd:0.026, fx:fxDemo.tarjeta, taxPct:21, defaults:false, fxSource:'auto', tarjeta:fxDemo.tarjeta, oficial:fxDemo.oficial, perUsd:perUsd }; waDemo.perMessage = waDemo.priceUsd * perUsd;
+      var recurringDemo = noCosts ? {} : { fly:{ label:'fly.io (caja en la nube y demo)', service:'fly', currency:'USD', history:[{ from:prevKey, amount:7.5 }] }, dominio:{ label:'Dominio ventra.store', service:'other', currency:'ARS', history:[{ from:prevKey, amount:2500 }] } };
+      // Igual que usage.monthCosts: a mano > automático > fijo
+      var mkEff = function(m, neonUsd, fbUsd, manual, at){
+        var fly = recurringDemo.fly ? 7.5 * perUsd : 0, other = recurringDemo.dominio ? 2500 : 0;
+        var pick = function(k, autoV, fixedV, err){ var mv = Number(manual[k]) || 0; if (mv > 0) return { value:mv, source:'manual', auto:autoV, fixed:fixedV || 0 }; if (autoV != null) return { value:autoV, source:'auto', at:at, auto:autoV }; if (fixedV > 0) return { value:fixedV, source:'fijo', fixed:fixedV }; return { value:0, source:null, error:err || null }; };
+        var sv = { neon: pick('neon', neonUsd == null ? null : neonUsd * perUsd, 0, 'falta el secreto NEON_API_KEY'), firebase: pick('firebase', fbUsd == null ? null : fbUsd * perUsd, 0, 'sin-exportacion'), fly: pick('fly', null, fly), other: pick('other', null, other) };
+        var numbers = {}; Object.keys(sv).forEach(function(k){ numbers[k] = sv[k].value; });
+        return { month:m, services:sv, numbers:numbers, total:numbers.neon + numbers.firebase + numbers.fly + numbers.other, wa:waDemo, autoAt:at, autoFx:fxDemo, errors:{} };
+      };
+      var effDemo = noCosts ? mkEff(monthKey, null, null, {}, autoAt) : mkEff(monthKey, 1.84, 4.12, {}, autoAt);
+      effDemo.waMeta = noCosts ? null : { ars: 231 * 0.026 * perUsd, amount: 231 * 0.026, currency:'USD', messages:231 };
+      var monthsDemo = {}; monthsDemo[monthKey] = effDemo; monthsDemo[prevKey] = mkEff(prevKey, noCosts ? null : 1.71, noCosts ? null : 3.95, costsLast, iso(now - 15 * day));
+      var cd = function(k){ return effDemo.numbers[k] || 0; };
+      var weights = [0.26, 0.04, 0, 0.32, 0.14, 0.18, 0.06], waSent = [0, 0, 0, 38, 0, 0, 176];
       accounts.forEach(function(a, i){
         var w = weights[i];
-        a.usage = { syncCalls: Math.round(w * 52000), cloudSyncCalls: i === 3 ? 8400 : 0, pushRows: Math.round(w * 9100), pullRows: Math.round(w * 14200), storageBytes: Math.round(w * 90 * 1048576), imgUpBytes: Math.round(w * 6e6), imgDownBytes: Math.round(w * 2e7), storeViews: i === 3 ? 1840 : i === 5 ? 36 : 0, panelCalls: Math.round(w * 120) };
-        a.cost = { neon:0, firebase: costsDemo.firebase * w, fly: i === 3 ? costsDemo.fly : 0, other: a.state === 'ACTIVE' || a.state === 'GRACE' ? costsDemo.other / 4 : 0 };
-        a.cost.total = a.cost.neon + a.cost.firebase + a.cost.fly + a.cost.other;
-        a.monthPaid = i === 3 || i === 4 ? a.planAmount : 0;
+        a.usage = { syncCalls: Math.round(w * 52000), cloudSyncCalls: i === 3 ? 8400 : 0, pushRows: Math.round(w * 9100), pullRows: Math.round(w * 14200), storageBytes: Math.round(w * 90 * 1048576), imgUpBytes: Math.round(w * 6e6), imgDownBytes: Math.round(w * 2e7), storeViews: i === 3 ? 1840 : i === 5 ? 36 : 0, panelCalls: Math.round(w * 120), waReminders: waSent[i] + (i === 6 ? 3 : 0), waFailed: i === 6 ? 3 : 0 };
+        a.cost = { neon: cd('neon') * w, firebase: cd('firebase') * w, fly: i === 3 ? cd('fly') : 0, other: a.state === 'ACTIVE' || a.state === 'GRACE' ? cd('other') / 5 : 0, waMessages: waSent[i], whatsapp: waSent[i] * waDemo.perMessage };
+        a.cost.total = a.cost.neon + a.cost.firebase + a.cost.fly + a.cost.other + a.cost.whatsapp;
+        a.monthPaid = i === 3 || i === 4 || i === 6 ? a.planAmount : 0;
       });
+      waDemo.messages = waSent.reduce(function(s, n){ return s + n; }, 0); waDemo.cost = waDemo.messages * waDemo.perMessage;
       accounts[3].store = { id:'s1', name:'Ferretería Central', subdomain:'ferreteria-central', published:true, url:'https://tienda.ventra.store/ferreteria-central', logoUrl:null, primaryColor:'#C2410C', products:342, orders:57, updatedAt:iso(now - 2 * day) };
       accounts[5].store = { id:'s2', name:'Tienda Rosario', subdomain:'tienda-rosario', published:false, url:'https://tienda.ventra.store/tienda-rosario', logoUrl:null, primaryColor:'#DB2777', products:18, orders:0, updatedAt:iso(now - 5 * 3600000) };
       var monthly = [], nowD = new Date();
       for (var k = 11; k >= 0; k--){ var d = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth() - k, 1)); monthly.push({ month:d.toISOString().slice(0,7), amount: Math.max(0, Math.round((12 - k) * 11800 + (k % 3) * 4200 - 20000)) }); }
       var full = {
         generatedAt: iso(now), graceDays: 7, plans: plans,
-        metrics: { mrr: 14900 * 1 + 24900 * 2 + 9900, totalRevenue: accounts.reduce(function(s,a){ return s + a.totalPaid; }, 0), monthRevenue: 64600,
-          accounts: accounts.length, devices: 8, byState:{ ACTIVE:3, GRACE:1, READ_ONLY:1, UNPAID:1 }, byPlan:{ caja:3, full:2, tienda:1 }, monthly: monthly },
+        metrics: { mrr: 14900 * 1 + 24900 * 2 + 9900 + 19900, totalRevenue: accounts.reduce(function(s,a){ return s + a.totalPaid; }, 0), monthRevenue: 84500,
+          accounts: accounts.length, devices: 8, byState:{ ACTIVE:4, GRACE:1, READ_ONLY:1, UNPAID:1 }, byPlan:{ caja:3, full:2, tienda:1, agenda_pro:1 }, monthly: monthly },
         accounts: accounts,
         system: {
           neon: { ok:true, bytes: 318 * 1048576, limitBytes: 512 * 1048576 },
@@ -1019,7 +1176,7 @@
           staleDevices: 1,
           renewals: [ { key:'arca_cert', label:'Certificado de ARCA (facturación)', date: iso(now + 19 * day).slice(0, 10), daysLeft: 19 }, { key:'dominio', label:'Dominio ventra.store', date: iso(now + 210 * day).slice(0, 10), daysLeft: 210 } ]
         },
-        costs: { month: monthKey, entered: costsDemo, all: (function(){ var o = {}; o[monthKey] = costsDemo; return o; })(), renewals: { arca_cert:{ label:'Certificado de ARCA (facturación)', date: iso(now + 19 * day).slice(0, 10) }, dominio:{ label:'Dominio ventra.store', date: iso(now + 210 * day).slice(0, 10) } }, neonLimitMB: null },
+        costs: { month: monthKey, entered: {}, wa: Object.assign({ saved:{} }, waDemo), all: (function(){ var o = {}; o[prevKey] = costsLast; return o; })(), months: monthsDemo, effective: effDemo, recurring: recurringDemo, billingTable: null, renewals: { arca_cert:{ label:'Certificado de ARCA (facturación)', date: iso(now + 19 * day).slice(0, 10) }, dominio:{ label:'Dominio ventra.store', date: iso(now + 210 * day).slice(0, 10) } }, neonLimitMB: null },
         registered: [
           { uid:'r1', email:'boutique.luna@gmail.com', name:'Luna Pérez', photoUrl:null, createdAt:iso(now - 2 * day), lastSignInAt:iso(now - 3 * 3600000), store:null, devices:0 },
           { uid:'r2', email:'despensa.el.sol@gmail.com', name:'Carlos Sol', photoUrl:null, createdAt:iso(now - 9 * day), lastSignInAt:iso(now - 6 * day), store:null, devices:1 }
@@ -1030,7 +1187,7 @@
       accounts.forEach(function(a){ byUid[a.uid] = { cloud:a.cloud, usage:a.usage, cost:a.cost }; });
       var sy = full.system;
       return new Promise(function(r){ setTimeout(r, 900); }).then(function(){
-        return { generatedAt: iso(now), sizesAt: iso(now - 5 * 3600000), byUid: byUid, registered: full.registered, system: { neon:sy.neon, cloudHost:sy.cloudHost, backup:sy.backup, firestore:sy.firestore } };
+        return { generatedAt: iso(now), sizesAt: iso(now - 5 * 3600000), byUid: byUid, registered: full.registered, wa: Object.assign({ meta: effDemo.waMeta }, waDemo), system: { neon:sy.neon, cloudHost:sy.cloudHost, backup:sy.backup, firestore:sy.firestore } };
       });
     }
   })();
