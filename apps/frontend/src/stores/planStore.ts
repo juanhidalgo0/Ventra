@@ -93,6 +93,10 @@ export const usePlanStore = create<PlanState>((set) => ({
   },
 }));
 
+// "Actualizar estado" en Mi suscripción (o una vinculación nueva): el plan se vuelve a leer sin reiniciar la app.
+// Mismo nombre que SUBSCRIPTION_CHANGED en components/subscription/SubscriptionPanel.
+if (typeof window !== 'undefined') window.addEventListener('ventra-subscription-changed', () => { if (!usePlanStore.getState().isDemo) usePlanStore.getState().load(); });
+
 /** Secciones que solo incluye el plan Caja (sistema de ventas). */
 const CAJA_PATHS = ['/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard', '/fiscal', '/earnings-division', '/quotes', '/inicio', '/employee-consumption'];
 /** Secciones que solo incluye el plan Tienda (tienda online). */

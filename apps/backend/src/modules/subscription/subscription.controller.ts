@@ -10,7 +10,8 @@ export class SubscriptionController {
 
   @Get('status')
   status() {
-    return this.subscription.getStatus();
+    // Si está vencido pregunta a la nube antes de contestar: así los días o el plan que se cambian desde el admin se ven enseguida
+    return this.subscription.freshStatus();
   }
 
   // Vincular la PC a una cuenta le da a esa cuenta todos los datos del comercio: solo el administrador

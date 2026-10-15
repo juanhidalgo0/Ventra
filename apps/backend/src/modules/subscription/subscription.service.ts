@@ -290,6 +290,28 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     return data as { linked?: boolean; license?: string; signature?: string; error?: string };
   }
 
+  private lastFreshTry = 0;
+
+  /**
+   * Estado para la app. Lo que se cambia desde el admin (días, plan) llegaba recién con la sincronización de cada
+   * 6 horas: ahora, si está vencido o en gracia, primero se pregunta a la nube; y si la licencia tiene más de
+   * 30 minutos, se la actualiza en segundo plano. Como mucho una consulta por minuto.
+   */
+  async freshStatus(): Promise<SubscriptionStatus> {
+    const s = this.getStatus();
+    if (!this.stored.deviceId || s.state === 'EXEMPT' || Date.now() - this.lastFreshTry < 60_000) return s;
+    const age = s.lastSyncAt ? Date.now() - Date.parse(s.lastSyncAt) : Infinity;
+    if (s.state === 'READ_ONLY' || s.state === 'GRACE') {
+      this.lastFreshTry = Date.now();
+      return this.refresh().catch(() => s);
+    }
+    if (age > 30 * 60_000) {
+      this.lastFreshTry = Date.now();
+      this.refresh().catch(() => {});
+    }
+    return s;
+  }
+
   /** Sincroniza con el servidor: confirma una vinculación pendiente y actualiza el estado firmado. */
   async refresh(): Promise<SubscriptionStatus> {
     const pending = this.stored.pending;

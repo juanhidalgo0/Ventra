@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Lock } from 'lucide-react';
 import api from '../../services/api';
+import { usePlanStore } from '../../stores/planStore';
 import { openExternal, SUBSCRIPTION_CHANGED, type SubscriptionStatus } from './SubscriptionPanel';
 
 /** Franja superior cuando la suscripción está en gracia o en solo lectura. */
@@ -11,7 +12,13 @@ export default function SubscriptionBanner() {
 
   useEffect(() => {
     let alive = true;
-    const load = () => api.get('/subscription/status').then(({ data }) => alive && setStatus(data)).catch(() => {});
+    const load = () => api.get('/subscription/status').then(({ data }) => {
+      if (!alive) return;
+      setStatus(data);
+      // Le cambiaron el plan (desde el admin o al pagar otro): el menú se actualiza sin reiniciar la app
+      const ps = usePlanStore.getState();
+      if (ps.loaded && !ps.isDemo && data?.plan !== undefined && data.plan !== ps.plan) ps.load();
+    }).catch(() => {});
     load();
     const interval = window.setInterval(load, 5 * 60 * 1000);
     window.addEventListener(SUBSCRIPTION_CHANGED, load);
