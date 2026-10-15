@@ -7,8 +7,9 @@ import { usePlanStore } from '../stores/planStore';
 export const COMING_SOON = {
   /** Leer boletas desde fotos con IA (los PDF con texto y los Excel se leen igual, sin IA) */
   aiInvoiceScan: true,
-  /** Mercado Pago: conectar la cuenta, cobrar con Point y cuadrar la caja automáticamente */
-  mercadoPago: true,
+  /** Mercado Pago: conectar la cuenta, cobrar con Point y cuadrar la caja automáticamente. Habilitado para todos
+   *  el 2026-10-15 para probar la seña de la agenda con una cuenta real (todavía sin un pago real probado). */
+  mercadoPago: false,
   /** Facturación electrónica con ARCA */
   arcaInvoicing: true,
   /** Recordatorio de turnos por email (falta la clave de Resend y verificar el dominio ventra.store) */

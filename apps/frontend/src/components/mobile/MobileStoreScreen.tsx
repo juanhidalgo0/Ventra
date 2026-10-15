@@ -14,8 +14,8 @@ import {
 import api from '../../services/api';
 import { ScreenHeader, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
 import ExtrasEditor from '../store/ExtrasEditor';
+import { publicStoreUrl, storeHost } from '../../utils/storeLinks';
 
-const PUBLIC_BASE = 'https://tienda.ventra.store';
 const WEEK = [
   { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
   { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
@@ -63,7 +63,7 @@ export default function MobileStoreScreen() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   });
 
-  const url = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : '';
+  const url = publicStoreUrl(config?.subdomain);
   const newOrders = orders.filter((o) => !o.stage || o.stage === 'NEW').length;
 
   /** Guarda un cambio parcial y lo refleja en pantalla. */
@@ -438,7 +438,7 @@ function InfoSheet({ open, config, storeId, onClose, onSave }: { open: boolean; 
         </Field>
         <Field label="Dirección web" hint={slugState === 'checking' ? 'Verificando…' : slugState === 'ok' ? 'Disponible' : slugState === 'taken' ? 'Ya la usa otra tienda' : undefined}>
           <div className="flex items-center h-12 rounded-xl bg-slate-50 border border-slate-200 focus-within:border-rose-500 overflow-hidden">
-            <span className="pl-3.5 text-[13px] text-slate-400 shrink-0">tienda.ventra.store/</span>
+            <span className="pl-3.5 text-[13px] text-slate-400 shrink-0">{storeHost(config?.subdomain)}/</span>
             <input className="flex-1 min-w-0 h-full bg-transparent outline-none text-[15px] pr-3" value={f.subdomain} onChange={(e) => setF({ ...f, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} placeholder="mi-negocio" />
           </div>
         </Field>

@@ -16,6 +16,23 @@ const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 
 const SLUGS = "ventra_store_slugs";
+
+/**
+ * Link corto de cada comercio: ventra.store/<dirección> (el sitio de Ventra pasa a storePage lo que no es una
+ * página suya). Estas direcciones son del sitio y no se le dan a ningún comercio nuevo; un comercio viejo que ya
+ * tenga una sigue con tienda.ventra.store/<dirección>, que nunca deja de andar.
+ * Misma lista en firebase/tienda/index.html y apps/frontend/src/utils/storeLinks.ts.
+ */
+const RESERVED = new Set(["admin", "panel", "instagram", "peluquerias", "tienda-online", "sistema-de-ventas", "turnos", "cuenta",
+  "privacidad", "terminos", "index", "og", "tienda", "tiendas", "agenda", "app", "api", "ayuda", "blog", "precios", "planes", "login",
+  "registro", "soporte", "contacto", "ventra", "www", "turno", "reservas", "descargar"]);
+/** Link público del comercio. sub: 'turnos' abre directo la reserva; 'turno/<código>' es el link del turno de un cliente */
+function publicUrl(slug, sub = "") {
+  const s = String(slug || "");
+  if (!s) return "";
+  if (RESERVED.has(s)) return `https://tienda.ventra.store/${encodeURIComponent(s)}${sub === "turnos" ? "#turnos" : ""}`;
+  return `https://ventra.store/${encodeURIComponent(s)}${sub ? "/" + sub : ""}`;
+}
 const STORES = "ventra_stores";
 const SLUG_RE = /^[a-z0-9-]{2,60}$/;
 
@@ -105,4 +122,4 @@ async function findBySlug(db, slug) {
   return snap.size === 1 ? snap.docs[0] : null;
 }
 
-module.exports = { onStoreWritten, findBySlug, claim, slugOf, SLUGS, SLUG_RE };
+module.exports = { onStoreWritten, findBySlug, claim, slugOf, SLUGS, SLUG_RE, RESERVED, publicUrl };

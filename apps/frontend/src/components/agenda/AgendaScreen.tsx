@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
   ExternalLink, ClipboardList, Users, SlidersHorizontal, CalendarClock, Globe, Loader2, Banknote, Share2, HelpCircle, Eye, ShoppingCart, BellRing, Mail,
+  Wallet, BadgeCheck, Smartphone,
 } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, StoreOwnedElsewhereError, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
@@ -18,17 +19,19 @@ import { IS_DEMO_BUILD } from '../../demo/flag';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { addTurnoToCart } from '../pos/turnoCobro';
 import api from '../../services/api';
+import QRCode from 'qrcode';
 import {
   fullAgenda, subscribeBookings, freeStarts, canDo, occupies, localNow, addDays, weekday, dayLabel, hhmm, toMin, newId, STAFF_COLORS,
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
   rescheduleBooking, fetchBookingsRange, fetchBooking, markReminded, depositPaid, paidInFull, waRemindersAvailable, REMINDER_WHEN,
-  subscribeReminderQuota, buyReminderPack, REMINDER_PACK, seriesDates, createSeries, seriesUpcoming, cancelBookings, type ReminderQuota,
+  subscribeReminderQuota, buyReminderPack, REMINDER_PACK, seriesDates, createSeries, seriesUpcoming, cancelBookings, depositFor, subscribePending, type ReminderQuota,
   type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { openExternal } from '../subscription/SubscriptionPanel';
 import { ScreenHeader, money } from '../mobile/ui';
-import { Modal, STATUS, input, label, PUBLIC_BASE } from './agendaUi';
+import { Modal, STATUS, input, label } from './agendaUi';
+import { publicStoreUrl, storeHost } from '../../utils/storeLinks';
 import { useConfirm } from '../common/ConfirmDialog';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
 import { COMING_SOON, comingSoon } from '../../utils/comingSoon';
@@ -89,11 +92,12 @@ export default function AgendaScreen() {
     }
   };
 
-  const publicUrl = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : null;
+  // Link de los turnos: ventra.store/<dirección> si la página es solo de turnos; con tienda, /turnos abre directo la reserva
+  const publicUrl = config?.subdomain ? publicStoreUrl(config.subdomain, agendaOnly ? '' : 'turnos') : null;
   // Compartir el link es lo que trae los primeros turnos: en el celular abre el menú de compartir
   const shareLink = async () => {
     if (!publicUrl || demoShareInstead(storeId, 'turnos')) return;
-    const url = `${publicUrl}#turnos`;
+    const url = publicUrl;
     const text = `Reservá tu turno en ${config?.businessName || 'nuestro local'}:`;
     try {
       if (navigator.share) await navigator.share({ title: config?.businessName, text, url });
@@ -129,7 +133,7 @@ export default function AgendaScreen() {
   ) : tab === 'agenda' ? (
     <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => setTab('config')} />
   ) : (
-    <ConfigView agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl}
+    <ConfigView storeId={storeId} agenda={agenda} storeHours={config.hours} mobile={mobile} onSave={saveAgenda} publicUrl={publicUrl}
       page={agendaOnly ? <PageSetup mobile={mobile} agendaOnly storeId={storeId} initial={config} onSave={savePage} embedded /> : null}
       look={<PageLook storeId={storeId} config={config} mobile={mobile} sharedWithStore={!agendaOnly}
         kindLabel={AGENDA_TEMPLATES.find((t) => t.id === agenda.kind)?.title}
@@ -174,7 +178,7 @@ export default function AgendaScreen() {
           )}
           {/* La página real (en la demo no existe en internet) */}
           {!IS_DEMO_BUILD && publicUrl && agenda.enabled && (config?.isPublished || agendaOnly) && (
-            <button onClick={() => window.open(`${publicUrl}#turnos`, '_blank', 'noopener')} title={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} aria-label={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} className="ag-press w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center">
+            <button onClick={() => window.open(publicUrl, '_blank', 'noopener')} title={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} aria-label={agendaOnly ? 'Abrir mi página' : 'Abrir en la tienda'} className="ag-press w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center">
               <ExternalLink className="w-4 h-4" />
             </button>
           )}
@@ -258,9 +262,18 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   const visible = ofDay.filter((b) => b.status !== 'CANCELLED');
   const cancelled = ofDay.filter((b) => b.status === 'CANCELLED');
   const countFor = (k: string) => bookings.filter((b) => b.dateKey === k && b.kind === 'booking' && occupies(b)).length;
-  const pending = bookings.filter((b) => b.status === 'PENDING' && b.dateKey >= today).length;
+  // Por confirmar de hoy en adelante, aunque estén lejos del día que se mira (con la confirmación manual)
+  const [pendingList, setPendingList] = useState<Booking[]>([]);
+  useEffect(() => subscribePending(storeId, setPendingList), [storeId]);
+  const pending = pendingList.length;
+  // Turnos de mañana para los recordatorios, aunque se esté mirando otra semana
+  const tomorrow = addDays(today, 1);
+  const [tomorrowList, setTomorrowList] = useState<Booking[]>([]);
+  useEffect(() => subscribeBookings(storeId, tomorrow, tomorrow, setTomorrowList), [storeId, tomorrow]);
+  const autoReminders = usePlanStore((s) => !!s.features.reminders) && !!agenda.reminders?.enabled;
   const strip = Array.from({ length: 7 }, (_, i) => addDays(day, i - 3));
-  const dayIncome = visible.filter((b) => b.kind === 'booking').reduce((s, b) => s + (Number(b.price) || 0), 0);
+  // Lo que suman los turnos del día que siguen en pie (sin los que no vinieron ni los que todavía esperan el pago)
+  const dayIncome = visible.filter((b) => b.kind === 'booking' && b.status !== 'NO_SHOW' && b.status !== 'AWAITING_PAYMENT').reduce((s, b) => s + (Number(b.price) || 0), 0);
   // Sin caja, los turnos se cobran acá: se muestra cuánto entró del total del día
   const canCharge = usePlanStore((s) => !s.features.caja);
   const dayCharged = visible.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0);
@@ -291,13 +304,12 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
       )}
       {/* Recordatorios de mañana: un toque por cliente, quedan marcados */}
       {(() => {
-        const tomorrow = addDays(today, 1);
-        const list = bookings.filter((b) => b.dateKey === tomorrow && b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone);
+        const list = tomorrowList.filter((b) => b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone);
         const left = list.filter((b) => !b.remindedAt).length;
         if (!list.length || !left) return null;
-        // Con los automáticos prendidos solo se avisa de los que no llegaron (número mal cargado, etc.)
-        if (agenda.reminders?.enabled) {
-          const failed = list.filter((b) => !b.remindedAt && b.reminder?.status === 'failed').length;
+        // Con los automáticos (y el plan que los trae) solo se avisa de los que no salieron: número mal cargado o sin cupo
+        if (autoReminders) {
+          const failed = list.filter((b) => !b.remindedAt && (b.reminder?.status === 'failed' || b.reminder?.status === 'noquota')).length;
           if (!failed) return null;
           return (
             <button onClick={() => setReminding(true)} className="anim-rise ag-press w-full text-left bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
@@ -318,9 +330,11 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
         );
       })()}
       {pending > 0 && (
-        <div className="anim-rise bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-[13.5px] text-amber-900 font-medium">
-          {pending === 1 ? 'Hay 1 turno por confirmar' : `Hay ${pending} turnos por confirmar`}
-        </div>
+        <button onClick={() => { const first = pendingList[0]; setDay(first.dateKey); setOpen(first); }}
+          className="anim-rise ag-press w-full text-left bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-[13.5px] text-amber-900 font-medium flex items-center gap-3">
+          <span className="flex-1">{pending === 1 ? 'Hay 1 turno por confirmar' : `Hay ${pending} turnos por confirmar`} · el próximo, {dayLabel(pendingList[0].dateKey, true).toLowerCase()} {hhmm(pendingList[0].startMin)}</span>
+          <ChevronRight className="w-4 h-4 text-amber-700" />
+        </button>
       )}
 
       {/* Días */}
@@ -449,8 +463,8 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
       {view === 'day' && cancelled.length > 0 && <p className="text-[12.5px] text-slate-400 px-1">{cancelled.length} cancelado{cancelled.length === 1 ? '' : 's'} este día</p>}
 
       {open && <BookingDetail storeId={storeId} agenda={agenda} slug={slug} booking={bookings.find((b) => b.id === open.id) || open} businessName={businessName} onClose={() => setOpen(null)} onMoved={(b) => setDay(b.dateKey)} />}
-      {creating && <NewBooking storeId={storeId} agenda={agenda} bookings={bookings} initialDay={day} onClose={() => setCreating(false)} />}
-      {reminding && <RemindersSheet storeId={storeId} businessName={businessName} slug={slug} list={bookings.filter((b) => b.dateKey === addDays(today, 1) && b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone).sort((a, b) => a.startMin - b.startMin)} onClose={() => setReminding(false)} />}
+      {creating && <NewBooking storeId={storeId} agenda={agenda} initialDay={day} onClose={() => setCreating(false)} />}
+      {reminding && <RemindersSheet storeId={storeId} businessName={businessName} slug={slug} list={tomorrowList.filter((b) => b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone).sort((a, b) => a.startMin - b.startMin)} onClose={() => setReminding(false)} />}
       {blocking && <NewBlock storeId={storeId} agenda={agenda} initialDay={day} onClose={() => setBlocking(false)} />}
     </div>
   );
@@ -467,6 +481,19 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   const act = async (status: BookingStatus, msg: string) => {
     setBusy(true);
     try { await setBookingStatus(storeId, b.id, status, b); toast.success(msg); } catch { toast.error('No se pudo guardar'); } finally { setBusy(false); }
+  };
+  // Un cancelado o "no vino" que vuelve a estar en pie: se revisa que nadie haya tomado ese horario mientras tanto
+  const reactivate = async () => {
+    if (b.status === 'CANCELLED' || b.status === 'NO_SHOW') {
+      const day = await fetchBookingsRange(storeId, b.dateKey, b.dateKey).catch(() => [] as Booking[]);
+      const clash = day.find((x) => x.id !== b.id && occupies(x) && (x.staffId === b.staffId || x.staffId === 'ALL' || b.staffId === 'ALL') && x.startMin < b.endMin && b.startMin < x.endMin);
+      if (clash && !(await ask({
+        title: '¿Volver a darlo igual?',
+        message: `Ese horario ya está ocupado: ${clash.kind === 'block' ? `bloqueado${clash.reason ? ` (${clash.reason})` : ''}` : `${clash.customerName || 'otro turno'} a las ${hhmm(clash.startMin)}`}. Si lo confirmás, quedan dos turnos a la misma hora; también podés reprogramarlo.`,
+        confirmLabel: 'Confirmar igual', cancelLabel: 'Volver',
+      }))) return;
+    }
+    await act('CONFIRMED', 'Turno reactivado');
   };
   const uncharge = async () => {
     if (!(await ask({ title: '¿Quitar el cobro de este turno?', message: 'Sigue figurando como atendido.', confirmLabel: 'Quitar cobro', cancelLabel: 'Volver', danger: true }))) return;
@@ -547,7 +574,8 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
             ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">{paidInFull(b) ? 'Pagado online' : 'Seña pagada'} {money(depositPaid(b))} · Mercado Pago</span>
             : b.status === 'AWAITING_PAYMENT' ? <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">Pago online de {money(b.deposit.amount)} sin pagar todavía</span> : null)}
           {b.payAt === 'local' && !b.payment && <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800">Paga en el local</span>}
-          {b.deposit?.refundNeeded && <span className="text-[12px] font-semibold text-red-600">{b.status === 'CANCELLED' && b.cancelledBy === 'client' ? `Pagó ${money(depositPaid(b))} por Mercado Pago y canceló: devolvéselo desde tu cuenta de Mercado Pago` : 'Pagó tarde y el horario ya estaba ocupado: reprogramalo o devolvele el pago'}</span>}
+          {b.deposit?.refundNeeded && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-red-600">{b.cancelledBy === 'client' ? `Pagó ${money(depositPaid(b))} por Mercado Pago y canceló: devolvéselo desde tu cuenta de Mercado Pago` : b.cancelledBy === 'owner' || !b.cancelledBy ? `Pagó ${money(depositPaid(b))} por Mercado Pago y lo cancelaste: devolvéselo o dale otro turno` : 'Pagó tarde y el horario ya estaba ocupado: reprogramalo o devolvele el pago'}</span>}
+          {!b.deposit?.refundNeeded && b.status === 'CANCELLED' && b.cancelledBy === 'client' && depositPaid(b) > 0 && <span className="text-[12px] font-semibold text-emerald-700">Canceló: la seña de {money(depositPaid(b))} queda para vos</span>}
           {b.seriesId && <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-700">Turno fijo</span>}
           {b.movedFrom && <span className={`text-[12px] ${b.movedBy === 'client' ? 'font-semibold text-sky-700' : 'text-slate-400'}`}>{b.movedBy === 'client' ? 'El cliente lo cambió desde su link' : 'Reprogramado'} (antes {dayLabel(b.movedFrom.dateKey, true)} {hhmm(b.movedFrom.startMin)})</span>}
           {b.cancelledBy === 'unpaid' && b.status === 'CANCELLED' && <span className="text-[12px] font-semibold text-slate-500">No completó el pago</span>}
@@ -592,7 +620,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
                 offerWa('cancel', b);
               }} className="h-11 rounded-xl bg-red-50 text-red-700 text-[13.5px] font-semibold">Cancelar turno</button>
             )}
-            {!upcoming && <button disabled={busy} onClick={() => act('CONFIRMED', 'Turno reactivado')} className="h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold">Volver a confirmado</button>}
+            {!upcoming && <button disabled={busy} onClick={reactivate} className="h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold">Volver a confirmado</button>}
             {!b.payment && b.status !== 'DONE' && (
               <button disabled={busy} onClick={() => setMoving(true)} className="ag-press h-11 rounded-xl bg-slate-100 text-slate-700 text-[13.5px] font-semibold flex items-center justify-center gap-1.5"><CalendarClock className="w-4 h-4" /> Reprogramar</button>
             )}
@@ -864,7 +892,7 @@ function DayPicker({ value, onChange, days = 30 }: { value: string; onChange: (k
 }
 const i18nShort = (k: string) => (k === localNow().dateKey ? 'Hoy' : DAY_NAMES[weekday(k)].slice(0, 3));
 
-function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeId: string; agenda: AgendaConfig; bookings: Booking[]; initialDay: string; onClose: () => void }) {
+function NewBooking({ storeId, agenda, initialDay, onClose }: { storeId: string; agenda: AgendaConfig; initialDay: string; onClose: () => void }) {
   const services = agenda.services.filter((s) => s.active !== false);
   const staffAll = agenda.staff.filter((s) => s.active !== false);
   const [serviceId, setServiceId] = useState(services[0]?.id || '');
@@ -886,7 +914,15 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
 
   // Para cargar a mano no se exige anticipación; hoy, solo desde la hora actual
   const now = localNow();
-  const slots = service && staff ? freeStarts(agenda, staff, service, day, bookings, day === now.dateKey ? now.min : 0) : [];
+  // Los turnos del día elegido, leídos para ese día: puede estar lejos de lo que muestra la agenda
+  const [dayBookings, setDayBookings] = useState<Booking[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setDayBookings(null);
+    fetchBookingsRange(storeId, day, day).then((l) => alive && setDayBookings(l)).catch(() => alive && setDayBookings([]));
+    return () => { alive = false; };
+  }, [storeId, day]);
+  const slots = service && staff && dayBookings ? freeStarts(agenda, staff, service, day, dayBookings, day === now.dateKey ? now.min : 0) : [];
   useEffect(() => { setStart(null); }, [serviceId, staffId, day]);
 
   const save = async () => {
@@ -943,7 +979,9 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
         </div>
         <div>
           <span className={label}>Horario libre</span>
-          {slots.length ? (
+          {!dayBookings ? (
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">{Array.from({ length: 8 }, (_, i) => <span key={i} className="h-10 rounded-lg ag-skel" />)}</div>
+          ) : slots.length ? (
             <div key={`${serviceId}-${staff?.id}-${day}`} className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
               {slots.map((t, i) => (
                 <button key={t} style={{ '--i': i } as React.CSSProperties} onClick={() => { setStart(t); setCustom(''); }} className={`ag-item ag-press transition-colors h-10 rounded-lg text-[13.5px] font-semibold tabular-nums border ${start === t && !custom ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{hhmm(t)}</button>
@@ -984,6 +1022,7 @@ function NewBooking({ storeId, agenda, bookings, initialDay, onClose }: { storeI
 }
 
 function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; agenda: AgendaConfig; initialDay: string; onClose: () => void }) {
+  const [ask, askDialog] = useConfirm();
   const staff = agenda.staff.filter((s) => s.active !== false);
   const [staffId, setStaffId] = useState('ALL');
   const [day, setDay] = useState(initialDay < localNow().dateKey ? localNow().dateKey : initialDay);
@@ -996,6 +1035,14 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
     const s = allDay ? 0 : toMin(from), e = allDay ? 24 * 60 : toMin(to);
     if (e <= s) return toast.error('La hora de fin tiene que ser después del inicio');
     setBusy(true);
+    // Los turnos que ya están en ese horario no se cancelan solos: se avisa para que el dueño los resuelva
+    const inside = (await fetchBookingsRange(storeId, day, day).catch(() => [] as Booking[]))
+      .filter((x) => x.kind === 'booking' && occupies(x) && x.status !== 'DONE' && (staffId === 'ALL' || x.staffId === staffId) && x.startMin < e && s < x.endMin);
+    if (inside.length && !(await ask({
+      title: inside.length === 1 ? 'Hay 1 turno en ese horario' : `Hay ${inside.length} turnos en ese horario`,
+      message: `${inside.slice(0, 4).map((x) => `${hhmm(x.startMin)} ${x.customerName || ''}`.trim()).join(', ')}${inside.length > 4 ? '…' : ''}. El bloqueo no los cancela: reprogramalos o avisales.`,
+      confirmLabel: 'Bloquear igual', cancelLabel: 'Volver',
+    }))) { setBusy(false); return; }
     try {
       await createBlock(storeId, { dateKey: day, startMin: s, endMin: e, staffId, staffName: staff.find((x) => x.id === staffId)?.name, reason });
       toast.success('Horario bloqueado');
@@ -1024,6 +1071,7 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
         )}
         <div><span className={label}>Motivo (opcional)</span><input className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Almuerzo" /></div>
       </div>
+      {askDialog}
     </Modal>
   );
 }
@@ -1122,7 +1170,7 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
       <div>
         <label className={label}>Dirección de tu página</label>
         <div className={`flex items-center h-11 rounded-xl border border-slate-200 overflow-hidden ${fixedSlug ? 'bg-slate-100' : 'bg-slate-50 focus-within:border-rose-500 focus-within:bg-white'}`}>
-          <span className="pl-3 text-[13.5px] text-slate-400 shrink-0">tienda.ventra.store/</span>
+          <span className="pl-3 text-[13.5px] text-slate-400 shrink-0">{storeHost(slug)}/</span>
           <input className="flex-1 min-w-0 h-full pr-3 bg-transparent text-[14.5px] outline-none disabled:text-slate-500" value={slug} disabled={fixedSlug}
             onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)); }} placeholder="estudio-norte" />
         </div>
@@ -1169,7 +1217,7 @@ function PageSetup({ mobile, agendaOnly, storeId, initial, onSave, embedded }: {
   );
 }
 
-function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page, look }: { agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null; page?: React.ReactNode; look?: React.ReactNode }) {
+function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, page, look }: { storeId: string; agenda: AgendaConfig; storeHours?: DayHours[]; mobile: boolean; onSave: (a: AgendaConfig) => Promise<void>; publicUrl: string | null; page?: React.ReactNode; look?: React.ReactNode }) {
   const [a, setA] = useState<AgendaConfig>(agenda);
   const [saving, setSaving] = useState(false);
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
@@ -1204,6 +1252,22 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page, look 
     const staff = a.staff.filter((s) => s.name.trim());
     if (a.enabled && (!services.length || !staff.length)) return toast.error('Para tomar turnos online cargá al menos un servicio y un profesional');
     if (a.enabled && missingPrices && !(await ask({ title: '¿Guardar igual?', message: `${missingPrices === 1 ? 'Un servicio no tiene' : `${missingPrices} servicios no tienen`} precio: tus clientes lo van a ver sin precio.`, confirmLabel: 'Guardar igual', cancelLabel: 'Volver' }))) return;
+    const dep = a.deposit;
+    if (dep?.enabled && dep.mode === 'percent' && !(Number(dep.value) >= 1 && Number(dep.value) <= 100)) return toast.error('Elegí el porcentaje de la seña');
+    if (dep?.enabled && dep.mode === 'fixed' && !(Number(dep.value) >= 1)) return toast.error('Escribí el monto de la seña');
+    // Profesionales que dejan de atender (o se borran) con turnos por venir: esos turnos siguen en pie
+    const gone = agenda.staff.filter((p) => p.active !== false && !staff.some((x) => x.id === p.id && x.active !== false));
+    if (gone.length) {
+      const today = localNow().dateKey;
+      const ids = new Set(gone.map((p) => p.id));
+      const future = (await fetchBookingsRange(storeId, today, addDays(today, 180)).catch(() => [] as Booking[]))
+        .filter((x) => x.kind === 'booking' && ids.has(x.staffId) && (x.status === 'PENDING' || x.status === 'CONFIRMED' || x.status === 'AWAITING_PAYMENT'));
+      if (future.length && !(await ask({
+        title: `${gone.map((p) => p.name || 'Sin nombre').join(' y ')} tiene${gone.length > 1 ? 'n' : ''} ${future.length === 1 ? '1 turno' : `${future.length} turnos`} por venir`,
+        message: `El primero es ${dayLabel(future[0].dateKey, true).toLowerCase()} ${hhmm(future[0].startMin)} (${future[0].customerName || 'cliente'}). Esos turnos no se cancelan solos: reprogramalos con otra persona o avisales.`,
+        confirmLabel: 'Guardar igual', cancelLabel: 'Volver',
+      }))) return;
+    }
     setSaving(true);
     try {
       await onSave({ ...a, services: services.map((s) => ({ ...s, name: s.name.trim(), price: Number(s.price) || 0 })), staff: staff.map((s) => ({ ...s, name: s.name.trim() })) });
@@ -1338,7 +1402,10 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page, look 
           </div>
           <Toggle on={a.autoConfirm} onChange={(v) => setA({ ...a, autoConfirm: v })} />
         </div>
-        <DepositRules a={a} setA={setA} />
+      </Card>
+
+      <Card icon={Wallet} title="Cobro online con Mercado Pago" hint="Una seña o el turno completo al reservar: menos clientes que no vienen.">
+        <OnlinePayment a={a} setA={setA} mobile={mobile} />
       </Card>
 
       <Card icon={BellRing} title="Recordatorios por WhatsApp">
@@ -1377,54 +1444,193 @@ function ConfigView({ agenda, storeHours, mobile, onSave, publicUrl, page, look 
   );
 }
 
+type MpStatus = { connected: boolean; nickname?: string | null; email?: string | null; name?: string | null; needsReconnect?: boolean; connectedAt?: string | null };
+type PayMode = 'percent' | 'fixed' | 'full';
+const SENA_PERCENTS = [20, 30, 50];
+
 /**
- * Cobro online con Mercado Pago al reservar: el cliente paga el turno completo (precio del servicio).
- * Lo cobra la nube con la cuenta de MP conectada del comercio (Configuración → Integraciones);
- * sin cuenta conectada no se puede prender. Servicios sin precio se reservan sin pagar.
+ * Cobro online al reservar (agenda.deposit), con la conexión de Mercado Pago en el mismo lugar para que
+ * no haya que ir a Configuración → Integraciones: en el celular abre Mercado Pago ahí mismo, en la PC muestra un QR.
+ * Seña (% del precio o monto fijo): obligatoria para reservar online. Turno completo: el cliente puede elegir
+ * pagar en el local. Misma cuenta que depositFor (agendaCore.ts, functions/agenda.js y la tienda).
+ * Los tokens de Mercado Pago quedan en la nube (ventraMpConnect), nunca en el equipo.
  */
-function DepositRules({ a, setA }: { a: AgendaConfig; setA: (a: AgendaConfig) => void }) {
-  const [mp, setMp] = useState<null | { connected: boolean; nickname?: string | null; needsReconnect?: boolean }>(null);
+function OnlinePayment({ a, setA, mobile }: { a: AgendaConfig; setA: React.Dispatch<React.SetStateAction<AgendaConfig>>; mobile: boolean }) {
+  const soon = comingSoon('mercadoPago');
+  const [mp, setMp] = useState<MpStatus | null>(null);
+  const [link, setLink] = useState<null | { url: string; qr: string; expiresAt: number }>(null);
+  const [busy, setBusy] = useState(false);
+  const phone = mobile || !!window.matchMedia?.('(pointer: coarse)').matches;
+
+  const refresh = () => api.get('/mercadopago/status', { silent: true } as any)
+    .then(({ data }) => { setMp(data); return data as MpStatus; })
+    .catch(() => { setMp((m) => m || { connected: false }); return null; });
+  useEffect(() => { if (!soon) refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Esperando que autorice en Mercado Pago: pregunta cada 3 s y apenas vuelve a esta pantalla
   useEffect(() => {
-    // Mercado Pago todavía no está habilitado: el cobro online queda apagado
-    if (comingSoon('mercadoPago')) { setMp({ connected: false }); return; }
-    api.get('/mercadopago/status', { silent: true } as any).then(({ data }) => setMp(data)).catch(() => setMp({ connected: false }));
-  }, []);
-  const on = !!a.deposit?.enabled;
-  const can = !!mp?.connected && !mp.needsReconnect;
-  const noPrice = a.services.filter((s) => s.active !== false && s.name.trim() && !(Number(s.price) > 0)).length;
-  if (comingSoon('mercadoPago')) {
+    if (!link) return;
+    const before = mp?.connectedAt ?? null;
+    const check = async () => {
+      if (Date.now() > link.expiresAt) { setLink(null); toast.error('Pasó mucho tiempo. Tocá “Conectar” de nuevo.'); return; }
+      const d = await refresh();
+      if (d?.connected && !d.needsReconnect && d.connectedAt !== before) {
+        setLink(null);
+        // Recién conectado: queda prendido con una seña del 50% y solo falta guardar
+        setA((cur) => (cur.deposit?.enabled ? cur : { ...cur, deposit: { enabled: true, mode: 'percent', value: 50 } }));
+        toast.success('¡Listo! Tu Mercado Pago quedó conectado');
+      }
+    };
+    const t = window.setInterval(check, 3000);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
+  }, [link]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post('/mercadopago/connect');
+      const qr = phone ? '' : await QRCode.toDataURL(data.url, { margin: 1, width: 440, errorCorrectionLevel: 'M' });
+      setLink({ url: data.url, qr, expiresAt: Date.now() + (data.expiresInSeconds || 900) * 1000 });
+      if (phone) openExternal(data.url);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo abrir Mercado Pago. Probá de nuevo.');
+    } finally { setBusy(false); }
+  };
+
+  if (soon) {
     return (
-      <div className="mt-4 pt-4 border-t border-slate-100">
-        <p className="text-[14px] font-semibold text-slate-800">Cobrar el turno con Mercado Pago <ComingSoonBadge className="ml-1 align-middle" /></p>
-        <p className="text-[12.5px] text-slate-500">Muy pronto: el cliente paga el turno completo al reservar y la plata entra directo a tu cuenta de Mercado Pago.</p>
+      <div>
+        <p className="text-[14px] font-semibold text-slate-800">Cobrar al reservar <ComingSoonBadge className="ml-1 align-middle" /></p>
+        <p className="text-[12.5px] text-slate-500">Muy pronto: el cliente paga una seña o el turno completo al reservar y la plata entra directo a tu cuenta de Mercado Pago.</p>
       </div>
     );
   }
+  if (!mp) return <p className="text-[13px] text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Revisando tu cuenta de Mercado Pago…</p>;
+
+  const can = mp.connected && !mp.needsReconnect;
+  if (!can) {
+    return (
+      <div className="space-y-3">
+        {mp.needsReconnect && (
+          <p className="text-[12.5px] font-medium text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+            Tu Mercado Pago se desconectó{a.deposit?.enabled ? ': mientras tanto los turnos se reservan sin pagar' : ''}. Volvé a conectarlo.
+          </p>
+        )}
+        {!link ? (
+          <>
+            <ul className="space-y-1.5">
+              {['Tus clientes pagan una seña o el turno completo al reservar.', 'La plata entra directo a tu cuenta de Mercado Pago. Ventra no la toca.', 'Si no paga en 10 minutos, el horario se libera solo.'].map((t) => (
+                <li key={t} className="flex gap-2 text-[13px] text-slate-600"><Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />{t}</li>
+              ))}
+            </ul>
+            <button onClick={connect} disabled={busy} className="ag-press w-full sm:w-auto h-12 px-5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
+              {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5" />} {mp.needsReconnect ? 'Volver a conectar Mercado Pago' : 'Conectar mi Mercado Pago'}
+            </button>
+            <p className="text-[12px] text-slate-500">Entrás a tu cuenta de Mercado Pago y tocás “Autorizar”. Tarda un minuto.</p>
+          </>
+        ) : phone ? (
+          <div className="rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/50 p-4 space-y-2.5">
+            <p className="text-[14px] font-bold text-slate-900 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-sky-600" /> Esperando que autorices…</p>
+            <ol className="text-[13px] text-slate-600 space-y-1 list-decimal pl-5">
+              <li>Entrá con tu cuenta de Mercado Pago (donde querés recibir la plata).</li>
+              <li>Tocá <b>Autorizar</b>.</li>
+              <li>Volvé a Ventra: esta pantalla se actualiza sola.</li>
+            </ol>
+            <button onClick={() => openExternal(link.url)} className="ag-press w-full h-11 rounded-xl bg-sky-500 text-white text-[14px] font-semibold flex items-center justify-center gap-2">
+              Abrir Mercado Pago <ExternalLink className="w-4 h-4" />
+            </button>
+            <button onClick={() => setLink(null)} className="w-full h-9 text-[13px] font-semibold text-slate-500">Cancelar</button>
+          </div>
+        ) : (
+          <div className="rounded-2xl border-2 border-dashed border-slate-300 p-4 flex flex-col sm:flex-row items-center gap-5">
+            <img src={link.qr} alt="Código QR para conectar Mercado Pago" className="w-40 h-40 rounded-xl bg-white p-2 shrink-0" />
+            <div className="space-y-2">
+              <p className="text-[14px] font-bold text-slate-900 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Escaneá el código con tu celular</p>
+              <ol className="text-[13px] text-slate-600 space-y-1 list-decimal pl-5">
+                <li>Apuntá la cámara del celular al código.</li>
+                <li>Entrá con tu cuenta de Mercado Pago (donde querés recibir la plata).</li>
+                <li>Tocá <b>Autorizar</b>. Esta pantalla se actualiza sola.</li>
+              </ol>
+              <p className="text-[12px] text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Esperando la autorización…</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <button onClick={() => openExternal(link.url)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-sky-700 hover:underline">Prefiero hacerlo en esta computadora <ExternalLink className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setLink(null)} className="text-[13px] font-semibold text-slate-500 hover:underline">Cancelar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const d = a.deposit;
+  const on = !!d?.enabled;
+  const mode: PayMode = d?.mode === 'percent' || d?.mode === 'fixed' ? d.mode : 'full';
+  const setMode = (m: PayMode) => setA({ ...a, deposit: m === 'full' ? { enabled: true, mode: 'full' } : { enabled: true, mode: m, value: m === 'percent' ? 50 : undefined } });
+  const setValue = (v: number) => setA({ ...a, deposit: { enabled: true, mode, value: v || undefined } });
+  const who = mp.nickname || mp.email || mp.name;
+  const example = a.services.find((s) => s.active !== false && s.name.trim() && Number(s.price) > 0);
+  const exAmount = example ? depositFor(a, example) : 0;
+  const noPrice = mode !== 'fixed' ? a.services.filter((s) => s.active !== false && s.name.trim() && !(Number(s.price) > 0)).length : 0;
+  const pill = (active: boolean) => `ag-press transition-colors h-10 px-3.5 rounded-xl text-[13px] font-semibold border ${active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`;
+
   return (
-    <div className="mt-4 pt-4 border-t border-slate-100">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700"><BadgeCheck className="w-4 h-4" /> Mercado Pago conectado{who ? ` · ${who}` : ''}</span>
+        <a href="#/settings?tab=integraciones" className="text-[12px] font-semibold text-slate-400 hover:text-slate-600">Cambiar de cuenta</a>
+      </div>
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <p className="text-[14px] font-semibold text-slate-800">Cobrar el turno con Mercado Pago</p>
-          <p className="text-[12.5px] text-slate-500">
-            {on && can ? 'Al reservar online, el cliente elige: pagar el turno completo ahora con Mercado Pago, o en el local en efectivo. Si elige Mercado Pago, el turno se confirma solo apenas paga.'
-              : 'El cliente puede pagar el turno al reservar, y la plata entra directo a tu cuenta de Mercado Pago. También puede elegir pagar en el local.'}
-          </p>
+          <p className="text-[14px] font-semibold text-slate-800">Cobrar al reservar</p>
+          <p className="text-[12.5px] text-slate-500">{on ? 'Prendido: al reservar online, el cliente paga con Mercado Pago y el turno se confirma solo.' : 'Apagado: los turnos se reservan sin pagar.'}</p>
         </div>
-        <Toggle on={on && can} onChange={(v) => {
-          // Mientras se consulta la cuenta (la nube puede tardar unos segundos) no se acusa "sin conectar"
-          if (!mp) return toast('Un segundo: estamos revisando tu cuenta de Mercado Pago');
-          if (!can) return toast.error('Primero conectá tu cuenta de Mercado Pago');
-          setA({ ...a, deposit: { enabled: v, mode: 'full' } });
-        }} />
+        <Toggle on={on} onChange={(v) => setA({ ...a, deposit: v ? (d?.mode ? { ...d, enabled: true } : { enabled: true, mode: 'percent', value: 50 }) : { ...(d || { mode: 'full' }), enabled: false } })} />
       </div>
-      {!mp && <p className="mt-1 text-[12px] text-slate-400">Revisando tu cuenta de Mercado Pago…</p>}
-      {mp && !can && (
-        <a href="#/settings?tab=integraciones" className="mt-2 inline-flex text-[12.5px] font-semibold text-rose-700">
-          {mp.needsReconnect ? 'Tu Mercado Pago se desconectó: volvé a conectarlo →' : 'Conectá tu cuenta en Configuración → Integraciones →'}
-        </a>
+      {on && (
+        <div className="space-y-3 anim-rise">
+          <div>
+            <span className={label}>¿Cuánto paga al reservar?</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setMode('percent')} className={pill(mode === 'percent')}>Una seña en %</button>
+              <button onClick={() => setMode('fixed')} className={pill(mode === 'fixed')}>Una seña fija en $</button>
+              <button onClick={() => setMode('full')} className={pill(mode === 'full')}>El turno completo</button>
+            </div>
+          </div>
+          {mode === 'percent' && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {SENA_PERCENTS.map((p) => <button key={p} onClick={() => setValue(p)} className={`${pill(Number(d?.value) === p)} w-16`}>{p}%</button>)}
+              <div className="relative w-28">
+                <input className={`${input} pr-8`} inputMode="numeric" aria-label="Otro porcentaje" placeholder="Otro" value={d?.value && !SENA_PERCENTS.includes(Number(d.value)) ? d.value : ''}
+                  onChange={(e) => setValue(Math.min(100, Number(e.target.value.replace(/\D/g, '')) || 0))} />
+                <span className="absolute right-3 inset-y-0 flex items-center text-slate-400">%</span>
+              </div>
+            </div>
+          )}
+          {mode === 'fixed' && (
+            <div className="relative w-40"><span className="absolute left-3 inset-y-0 flex items-center text-slate-400">$</span>
+              <input className={`${input} pl-7`} inputMode="numeric" aria-label="Monto de la seña" placeholder="Ej: 5000" value={d?.value || ''}
+                onChange={(e) => setValue(Number(e.target.value.replace(/\D/g, '')) || 0)} /></div>
+          )}
+          {example && exAmount > 0 && (
+            <p className="text-[13px] text-slate-700 bg-slate-50 rounded-xl px-3 py-2.5">
+              Ejemplo: <b>{example.name}</b> ({money(Number(example.price))}) →{' '}
+              {exAmount >= Number(example.price)
+                ? <>paga <b>{money(exAmount)}</b> al reservar{mode === 'full' ? ', o elige pagar en el local' : ''}.</>
+                : <>paga <b>{money(exAmount)}</b> al reservar y <b>{money(Number(example.price) - exAmount)}</b> en el local.</>}
+            </p>
+          )}
+          <ul className="space-y-1 text-[12.5px] text-slate-500">
+            <li>{mode === 'full' ? 'El cliente elige: pagar ahora con Mercado Pago o en el local.' : 'La seña es obligatoria para reservar online.'} El horario se le guarda 10 minutos mientras paga; si no paga, se libera solo.</li>
+            <li>{mode === 'full'
+              ? 'Si un cliente cancela un turno que ya pagó, Ventra te avisa y la devolución la hacés vos desde Mercado Pago.'
+              : 'Si el cliente cancela, la seña no se devuelve: para eso es (se lo avisamos antes de pagar). Si cancelás vos, se la devolvés desde Mercado Pago.'}</li>
+          </ul>
+          {noPrice > 0 && <p className="text-[12px] text-amber-700">{noPrice === 1 ? 'Un servicio no tiene precio y se reserva' : `${noPrice} servicios no tienen precio y se reservan`} sin pagar.</p>}
+        </div>
       )}
-      {can && <p className="mt-1 text-[12px] text-emerald-700 font-medium">Mercado Pago conectado{mp?.nickname ? ` · ${mp.nickname}` : ''}</p>}
-      {on && can && noPrice > 0 && <p className="mt-1 text-[12px] text-amber-700">{noPrice === 1 ? 'Un servicio no tiene precio y se reserva' : `${noPrice} servicios no tienen precio y se reservan`} sin pagar.</p>}
     </div>
   );
 }
@@ -1532,6 +1738,13 @@ function hoursSummary(hours: DayHours[]) {
   return open.map((d) => `${DAY_NAMES[d].slice(0, 3)} ${dayRanges(hours[d]).map((r) => `${r.from}–${r.to}`).join(' y ')}`).join(' · ');
 }
 
+/** Otro turno del día, una hora después de que termina el último (sin pisarse con el que ya está) */
+function nextRange(ranges: { from: string; to: string }[]) {
+  const end = Math.max(0, ...ranges.map((r) => { const s = toMin(r.from), e = toMin(r.to); return e <= s ? 24 * 60 : e; }));
+  const from = Math.min(end + 60, 22 * 60), to = Math.min(from + 180, 24 * 60);
+  return { from: hhmm(from), to: to >= 24 * 60 ? '00:00' : hhmm(to) };
+}
+
 function HoursEditor({ hours, onChange }: { hours: DayHours[]; onChange: (h: DayHours[]) => void }) {
   const time = 'h-9 px-2 rounded-lg border border-slate-200 bg-white text-[13.5px] text-slate-800';
   const setDay = (idx: number, h: DayHours) => onChange(hours.map((x, i) => (i === idx ? h : x)));
@@ -1553,10 +1766,11 @@ function HoursEditor({ hours, onChange }: { hours: DayHours[]; onChange: (h: Day
                     a
                     <input type="time" className={time} value={r.to} onChange={(e) => setDay(idx, withRanges(h, ranges.map((x, j) => (j === i ? { ...x, to: e.target.value } : x))))} />
                     {ranges.length > 1 && <button onClick={() => setDay(idx, withRanges(h, ranges.filter((_, j) => j !== i)))} className="font-semibold text-slate-400 px-1">Quitar</button>}
+                    {r.from && r.to && toMin(r.to) <= toMin(r.from) && <span className="w-full text-[11.5px] text-slate-400">Hasta la medianoche (lo que pasa de las 00 no se reserva)</span>}
                   </div>
                 ))}
                 <div className="flex gap-3">
-                  {ranges.length < 3 && <button onClick={() => setDay(idx, withRanges(h, [...ranges, { from: '17:00', to: '20:00' }]))} className="text-[12.5px] font-semibold text-rose-700">+ Turno</button>}
+                  {ranges.length < 3 && <button onClick={() => setDay(idx, withRanges(h, [...ranges, nextRange(ranges)]))} className="text-[12.5px] font-semibold text-rose-700">+ Turno</button>}
                   {idx === 1 && <button onClick={() => onChange(hours.map((d, j) => (j === 0 ? d : { ...h, ranges: ranges.map((r) => ({ ...r })) })))} className="text-[12.5px] font-semibold text-slate-500">Copiar a lun–sáb</button>}
                 </div>
               </div>

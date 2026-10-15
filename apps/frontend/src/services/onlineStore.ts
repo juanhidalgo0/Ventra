@@ -22,6 +22,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
 import { resolveServerUrl } from './api';
 
+import { RESERVED_SLUGS } from '../utils/storeLinks';
 // Proyecto Firebase propio de Ventra (ver ventraFirebase.ts).
 const getDb = getVentraDb;
 
@@ -242,6 +243,8 @@ export async function saveStoreConfig(storeId: string, config: Partial<StoreConf
 // Verifica si un subdominio está disponible (o pertenece a esta misma tienda).
 export async function isSubdomainAvailable(subdomain: string, storeId: string): Promise<boolean> {
   if (!subdomain) return false;
+  // Las direcciones del sitio de Ventra (ventra.store/turnos, /admin…) no se le dan a ningún comercio
+  if (RESERVED_SLUGS.has(subdomain)) return false;
   const db = getDb();
   // Registro de direcciones (lo mantiene Ventra): si está registrada, es de esa tienda
   if (/^[a-z0-9-]{2,60}$/.test(subdomain)) {

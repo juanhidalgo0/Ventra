@@ -64,8 +64,8 @@ import {
   type StoreConfig,
   type StoreOrder,
 } from '../../services/onlineStore';
+import { publicStoreUrl, storeHost } from '../../utils/storeLinks';
 
-const PUBLIC_STORE_BASE_URL = 'https://tienda.ventra.store';
 
 const RUBROS = [
   { id: 'KIOSKO', label: 'Kiosco / Almacén', icon: Package },
@@ -345,8 +345,8 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
     }
   };
 
-  const publicUrl = config?.subdomain ? `${PUBLIC_STORE_BASE_URL}/${config.subdomain}` : '';
-  const savedUrl = saved?.subdomain ? `${PUBLIC_STORE_BASE_URL}/${saved.subdomain}` : '';
+  const publicUrl = publicStoreUrl(config?.subdomain);
+  const savedUrl = publicStoreUrl(saved?.subdomain);
   const pendingOrdersCount = useMemo(() => orders.filter((o) => !o.stage || o.stage === 'NEW').length, [orders]);
 
   if (isLoading || !config || !saved) return <FullLoader />;
@@ -452,7 +452,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                   </Field>
                   <Field label="Dirección web" hint="Es el link que vas a compartir.">
                     <div className="flex items-stretch h-11 rounded-xl overflow-hidden border border-slate-300 bg-white focus-within:border-rose-500 focus-within:ring-[3px] focus-within:ring-rose-500/15">
-                      <span className="bg-slate-50 px-3 flex items-center text-[13px] text-slate-500 border-r border-slate-200 select-none whitespace-nowrap">tienda.ventra.store/</span>
+                      <span className="bg-slate-50 px-3 flex items-center text-[13px] text-slate-500 border-r border-slate-200 select-none whitespace-nowrap">{storeHost(config?.subdomain)}/</span>
                       <input type="text" value={config.subdomain} onChange={(e) => update({ subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} className="flex-1 min-w-0 px-3 text-[14px] text-slate-900 outline-none" placeholder="mi-negocio" />
                     </div>
                     {config.subdomain && (
@@ -626,7 +626,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
 
           {tab === 'cupones' && (
             <Card title="Cupones de descuento" text="Códigos que tus clientes escriben al hacer el pedido: un % de descuento, un monto fijo o el envío gratis. Se guardan al instante y los usos se cuentan solos.">
-              <StoreCoupons storeId={storeId} storeUrl={config.subdomain ? `tienda.ventra.store/${config.subdomain}` : undefined} />
+              <StoreCoupons storeId={storeId} storeUrl={config.subdomain ? publicStoreUrl(config.subdomain).replace(/^https:\/\//, '') : undefined} />
             </Card>
           )}
         </main>

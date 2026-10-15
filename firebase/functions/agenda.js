@@ -12,12 +12,16 @@
  *    público, para que la tienda muestre los horarios libres sin exponer a nadie.
  *
  * Horario: Argentina (UTC-3, sin horario de verano). Las horas se guardan como minutos del día.
- * La lógica de horarios libres está repetida en firebase/tienda/index.html y
- * apps/frontend/src/services/agenda.ts: si se cambia acá, cambiarla allá.
+ * La lógica de horarios libres (dayRanges, freeStarts), depositFor y phoneKeyOf está repetida en
+ * firebase/tienda/index.html y apps/frontend/src/services/agendaCore.ts: si se cambia acá, cambiarla allá.
+ *
+ * Seña (agenda.deposit percent/fixed): no se devuelve nunca si el cliente cancela, para eso es.
+ * El turno completo pagado online sí queda para devolver (deposit.refundNeeded) si el cliente cancela.
  */
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const crypto = require("crypto");
+const storeSlugs = require("./store-slugs");
 
 const TZ_OFFSET_MIN = -180;
 /** Estados que ocupan el horario */
@@ -44,11 +48,39 @@ function addDays(dateKey, n) {
 const weekday = (dateKey) => new Date(`${dateKey}T12:00:00Z`).getUTCDay();
 const startAtMs = (dateKey, min) => Date.parse(`${dateKey}T00:00:00Z`) + (min - TZ_OFFSET_MIN) * 60000;
 
+/**
+ * Rangos de atención del día en minutos, ordenados y juntados si se pisan o se tocan (9 a 13 y 12 a 18 = 9 a 18).
+ * Un rango que termina a las 00:00 (o antes de empezar, ej. 18 a 2) va hasta la medianoche: el resto no se reserva.
+ */
 function dayRanges(h) {
   if (!h || !h.open) return [];
   const r = (h.ranges && h.ranges.length) ? h.ranges : [{ from: h.from, to: h.to }];
-  return r.filter((x) => x && x.from && x.to).map((x) => ({ s: toMin(x.from), e: toMin(x.to) })).filter((x) => x.e > x.s).sort((a, b) => a.s - b.s);
+  const list = r.filter((x) => x && x.from && x.to).map((x) => { const s = toMin(x.from), e = toMin(x.to); return { s, e: e <= s ? 24 * 60 : e }; })
+    .filter((x) => x.s < 24 * 60).sort((a, b) => a.s - b.s);
+  const out = [];
+  for (const x of list) {
+    const last = out[out.length - 1];
+    if (last && x.s <= last.e) last.e = Math.max(last.e, x.e);
+    else out.push({ ...x });
+  }
+  return out;
 }
+
+/**
+ * Número argentino sin país, sin 0 y sin 15 (10 dígitos: código de área + número). Los clientes lo escriben de mil
+ * maneras: "+54 9 11 2345-6789", "011 15 2345 6789", "0351 15 234 5678". Si no parece argentino, quedan los dígitos.
+ */
+function arNational(phone) {
+  let d = String(phone || "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.startsWith("54") && d.length >= 12) { d = d.slice(2); if (d.startsWith("9") && d.length === 11) d = d.slice(1); }
+  if (d.startsWith("0")) d = d.slice(1);
+  // Código de área de 2 a 4 dígitos y el 15 de los celulares en el medio
+  if (d.length === 12) for (const p of [2, 3, 4]) if (d.substr(p, 2) === "15") { d = d.slice(0, p) + d.slice(p + 2); break; }
+  return d;
+}
+/** Clave del teléfono del cliente (customerPhoneKey): los 10 dígitos del número argentino */
+const phoneKeyOf = (phone) => arNational(phone).slice(-10);
 
 const canDo = (staff, service) => !service.staffIds || !service.staffIds.length || service.staffIds.includes(staff.id);
 
@@ -89,8 +121,8 @@ const busyOf = (docs) => docs
 
 /**
  * Pago online del turno según la agenda: agenda.deposit = { enabled, mode: 'full' | 'percent' | 'fixed', value }.
- * 'full' (lo que ofrece la app): el turno completo, al precio del servicio; sin precio no se cobra.
- * 'percent' y 'fixed' son señas de configuraciones viejas. Nunca más que el precio. 0 = sin cobro.
+ * 'full' (o sin modo): el turno completo, al precio del servicio; sin precio no se cobra.
+ * 'percent' / 'fixed': seña (% del precio o monto fijo). Nunca más que el precio. 0 = sin cobro.
  */
 function depositFor(agenda, service) {
   const d = agenda && agenda.deposit;
@@ -102,15 +134,42 @@ function depositFor(agenda, service) {
   return amount >= 1 ? Math.round(amount) : 0;
 }
 
-function code() {
+/** La seña es obligatoria para reservar; con el turno completo el cliente puede elegir pagar en el local */
+const depositRequired = (agenda) => {
+  const d = agenda && agenda.deposit;
+  return !!(d && (d.mode === "percent" || d.mode === "fixed"));
+};
+
+function code(n = 4) {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s = ""; for (let i = 0; i < 4; i++) s += a[crypto.randomInt(a.length)];
+  let s = ""; for (let i = 0; i < n; i++) s += a[crypto.randomInt(a.length)];
   return s;
+}
+/** Código del link corto del turno (ventra.store/<comercio>/turno/<código>): 8 caracteres, imposible de adivinar */
+const shortCode = () => code(8);
+/** Link del turno para el cliente: el corto si el turno lo tiene; si no, el de siempre (#turno=<id>.<código>) */
+function manageLink(slug, id, b) {
+  if (b.shortCode && !storeSlugs.RESERVED.has(slug)) return storeSlugs.publicUrl(slug, "turno/" + b.shortCode);
+  return `https://tienda.ventra.store/${encodeURIComponent(slug || "")}#turno=${id}.${b.code}`;
 }
 
 const clean = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+
+/** Reservas online por hora que acepta un comercio (más que esto huele a turnos inventados) */
+const STORE_PER_HOUR = 40;
+
+/**
+ * IP del cliente. X-Forwarded-For la arma cada salto agregando al final: lo de la izquierda lo puede inventar
+ * el propio cliente, así que se toma la última que no sea de Google ni de una red interna.
+ */
+function clientIp(req) {
+  const hops = String(req.get("x-forwarded-for") || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const internal = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|35\.191\.|130\.211\.|::1$|f[cd][0-9a-f]{2}:)/i;
+  for (let i = hops.length - 1; i >= 0; i--) if (!internal.test(hops[i])) return hops[i];
+  return hops[hops.length - 1] || String(req.ip || "");
+}
 
 /**
  * POST { storeId, serviceId, staffId ('ANY' = cualquiera), date 'YYYY-MM-DD', time 'HH:MM', name, phone, email?, note,
@@ -149,23 +208,33 @@ async function book(db, req, res, { tokenFor } = {}) {
   const minStart = minStartFor(agenda, dateKey);
   if (startMin < minStart) return res.status(409).json({ error: "Ese horario ya no se puede reservar. Elegí otro." });
 
-  // Límites contra abusos: por IP (10 por hora) y por teléfono (3 turnos a futuro en el comercio)
-  const ip = String(req.get("x-forwarded-for") || req.ip || "").split(",")[0].trim();
+  // Límites contra abusos: por IP (10 por hora), por comercio (STORE_PER_HOUR reservas online por hora, para que
+  // nadie le llene la agenda con turnos inventados) y por teléfono (3 turnos a futuro en el comercio)
+  const ip = clientIp(req);
   const rateRef = db.collection("ventra_agenda_rate").doc(crypto.createHash("sha256").update(storeId + "|" + ip).digest("hex").slice(0, 40));
+  const storeRateRef = db.collection("ventra_agenda_rate").doc("store_" + crypto.createHash("sha256").update(storeId).digest("hex").slice(0, 34));
   const hourAgo = Date.now() - 3600000;
-  const recent = ((await rateRef.get()).data() || {}).at || [];
+  const [recentSnap, storeRecentSnap] = await Promise.all([rateRef.get(), storeRateRef.get()]);
+  const recent = (recentSnap.data() || {}).at || [];
+  const storeRecent = (storeRecentSnap.data() || {}).at || [];
   if (recent.filter((t) => t > hourAgo).length >= 10) return res.status(429).json({ error: "Demasiadas reservas seguidas. Probá de nuevo en un rato." });
-  const mine = await storeRef.collection("bookings").where("customerPhoneKey", "==", phoneDigits.slice(-10)).get();
+  if (storeRecent.filter((t) => t > hourAgo).length >= STORE_PER_HOUR) {
+    logger.warn("Agenda: tope de reservas online por hora del comercio", storeId);
+    return res.status(429).json({ error: "El comercio recibió muchas reservas en la última hora. Probá en un rato o escribiles por WhatsApp." });
+  }
+  const phoneKey = phoneKeyOf(phone);
+  const mine = await storeRef.collection("bookings").where("customerPhoneKey", "==", phoneKey).get();
   const upcoming = mine.docs.filter((d) => ACTIVE.has(d.data().status) && d.data().status !== "DONE" && (d.data().startAt && d.data().startAt.toMillis() > Date.now()));
   if (upcoming.length >= 3) return res.status(429).json({ error: "Ya tenés 3 turnos reservados en este comercio. Para otro, escribiles por WhatsApp." });
 
   const bookingRef = storeRef.collection("bookings").doc();
   const bookingCode = code();
+  const bookingLink = shortCode();
 
-  // Pago online con Mercado Pago (el turno completo): solo si el comercio lo pidió y tiene su cuenta de MP conectada
+  // Pago online con Mercado Pago (seña o turno completo): solo si el comercio lo pidió y tiene su cuenta de MP conectada
   let deposit = depositFor(agenda, service);
-  // El cliente eligió pagar en el local: se reserva como siempre, sin pago online
-  const payLocal = clean(b.pay, 10) === "local" && deposit > 0;
+  // El cliente eligió pagar en el local: se reserva como siempre, sin pago online (con seña no se puede)
+  const payLocal = clean(b.pay, 10) === "local" && deposit > 0 && !depositRequired(agenda);
   if (payLocal) deposit = 0;
   let mpToken = null;
   if (deposit && cfg.ownerUid && tokenFor) mpToken = await tokenFor(cfg.ownerUid).catch(() => null);
@@ -187,9 +256,9 @@ async function book(db, req, res, { tokenFor } = {}) {
         startAt: admin.firestore.Timestamp.fromMillis(startAtMs(dateKey, startMin)),
         staffId: s.id, staffName: s.name || "",
         serviceId: service.id, serviceName: service.name || "", durationMin: dur, price: Number(service.price) || 0,
-        customerName: name, customerPhone: phone, customerPhoneKey: phoneDigits.slice(-10), customerNote: note,
+        customerName: name, customerNameKey: nameKeyOf(name), customerPhone: phone, customerPhoneKey: phoneKey, customerNote: note,
         ...(email ? { customerEmail: email } : {}),
-        code: bookingCode,
+        code: bookingCode, shortCode: bookingLink,
         status: deposit ? "AWAITING_PAYMENT" : agenda.autoConfirm === false ? "PENDING" : "CONFIRMED",
         ...(deposit ? { holdUntil, deposit: { amount: deposit, status: "pending", full: deposit >= (Number(service.price) || 0) } } : {}),
         ...(payLocal ? { payAt: "local" } : {}),
@@ -203,7 +272,10 @@ async function book(db, req, res, { tokenFor } = {}) {
     return res.status(500).json({ error: "No se pudo reservar. Probá de nuevo." });
   }
   if (!chosen) return res.status(409).json({ error: "Ese horario se acaba de ocupar. Elegí otro." });
-  await rateRef.set({ at: recent.filter((t) => t > hourAgo).concat(Date.now()).slice(-20) }).catch(() => {});
+  await Promise.all([
+    rateRef.set({ at: recent.filter((t) => t > hourAgo).concat(Date.now()).slice(-20) }),
+    storeRateRef.set({ at: storeRecent.filter((t) => t > hourAgo).concat(Date.now()).slice(-STORE_PER_HOUR) }),
+  ]).catch(() => {});
 
   let status = agenda.autoConfirm === false ? "PENDING" : "CONFIRMED";
   let payUrl = null;
@@ -230,12 +302,19 @@ async function book(db, req, res, { tokenFor } = {}) {
       status = "AWAITING_PAYMENT";
       await bookingRef.update({ "deposit.payUrl": payUrl, "deposit.preferenceId": pref.id || null });
     } catch (err) {
+      // Con seña obligatoria no se reserva sin seña: se borra el turno (nadie lo vio todavía) y el cliente reintenta
+      if (depositRequired(agenda)) {
+        logger.warn("Agenda: no se pudo crear el link de pago de la seña, no se reserva", storeId, err.message);
+        await bookingRef.delete().catch(() => {});
+        return res.status(503).json({ error: "No se pudo abrir el pago de la seña. Probá de nuevo en un momento." });
+      }
       logger.warn("Agenda: no se pudo crear el link de pago, el turno queda sin cobro online", storeId, err.message);
-      await bookingRef.update({ status, holdUntil: admin.firestore.FieldValue.delete(), deposit: admin.firestore.FieldValue.delete() }).catch(() => {});
+      // payFallback: ventraBookingWritten avisa al dueño del turno nuevo (al crearse esperaba el pago y no avisó)
+      await bookingRef.update({ status, payFallback: true, holdUntil: admin.firestore.FieldValue.delete(), deposit: admin.firestore.FieldValue.delete() }).catch(() => {});
     }
   }
   return res.status(200).json({
-    ok: true, id: bookingRef.id, code: bookingCode,
+    ok: true, id: bookingRef.id, code: bookingCode, link: bookingLink, manageUrl: manageLink(cfg.subdomain, bookingRef.id, { code: bookingCode, shortCode: bookingLink }),
     staffName: chosen.name || "", serviceName: service.name || "",
     date: dateKey, time: hhmm(startMin), status,
     ...(payUrl ? { payUrl, deposit, holdMin: HOLD_MIN } : {}),
@@ -281,17 +360,18 @@ async function payHook(db, req, { tokenFor }) {
     const t = snap.data();
     if (t.deposit && t.deposit.status === "paid") return null; // ya acreditada
     const paid = { ...(t.deposit || {}), status: "paid", paymentId: String(p.id), paidAmount: Number(p.transaction_amount) || 0, paidAt: admin.firestore.Timestamp.now() };
-    const patch = { deposit: paid, holdUntil: admin.firestore.FieldValue.delete() };
-    let outcome = "confirmed";
-    if (t.status === "AWAITING_PAYMENT") {
+    const del = admin.firestore.FieldValue.delete();
+    const patch = { deposit: paid, holdUntil: del };
+    const outcome = await paidOutcome(tx, storeRef, bookingId, t);
+    if (outcome === "confirmed" || outcome === "late-ok") {
       // Pagado = confirmado, aunque el comercio confirme a mano los turnos sin pagar
       patch.status = "CONFIRMED";
-    } else if (t.status === "CANCELLED" && (t.cancelledBy === "expired" || t.cancelledBy === "unpaid")) {
-      // Pagó tarde (o volvió atrás justo mientras el pago se acreditaba): si el horario sigue libre se reactiva;
-      // si no, el comercio tiene que resolverlo
-      const day = await tx.get(storeRef.collection("bookings").where("dateKey", "==", t.dateKey));
-      const clash = busyOf(day.docs.filter((d) => d.id !== bookingId)).some((x) => (x.staffId === t.staffId || x.staffId === "ALL") && x.s < t.endMin && t.startMin < x.e);
-      if (clash) { paid.refundNeeded = true; outcome = "late-clash"; } else { patch.status = "CONFIRMED"; patch.cancelledBy = admin.firestore.FieldValue.delete(); outcome = "late-ok"; }
+      if (t.cancelledBy) { patch.cancelledBy = del; patch.cancelVia = del; }
+    } else if (outcome === "late-clash" || outcome === "paid-cancelled") {
+      // No fue culpa del cliente (el horario se ocupó o el comercio lo canceló): se le devuelve, sea seña o turno completo
+      paid.refundNeeded = true;
+      // Seguía esperando el pago con el plazo vencido: queda cancelado (expireHolds ya no toca los pagados)
+      if (t.status === "AWAITING_PAYMENT") { patch.status = "CANCELLED"; patch.cancelledBy = "expired"; }
     }
     patch.statusAt = admin.firestore.FieldValue.serverTimestamp();
     tx.update(ref, patch);
@@ -299,13 +379,42 @@ async function payHook(db, req, { tokenFor }) {
   });
 }
 
+/**
+ * Qué pasa con un turno cuando llega su pago (dentro de la transacción de payHook):
+ *  - confirmed: esperaba el pago a tiempo (o el comercio ya lo había confirmado) → queda confirmado.
+ *  - late-ok / late-clash: el plazo ya había vencido, o el cliente lo abandonó o lo canceló mientras el pago se acreditaba.
+ *    Si el horario sigue libre se reactiva; si se ocupó, queda para devolver.
+ *  - paid-cancelled: lo canceló el comercio → queda cancelado y para devolver.
+ *  - paid: otro estado (atendido, no vino): solo se registra el pago.
+ */
+async function paidOutcome(tx, storeRef, bookingId, t) {
+  const lateHold = t.status === "AWAITING_PAYMENT" && holdExpired(t);
+  if (t.status === "AWAITING_PAYMENT" && !lateHold) return "confirmed";
+  if (t.status === "PENDING" || t.status === "CONFIRMED") return "confirmed";
+  const byClient = t.status === "CANCELLED" && ["expired", "unpaid", "client"].includes(t.cancelledBy);
+  if (lateHold || byClient) {
+    const day = await tx.get(storeRef.collection("bookings").where("dateKey", "==", t.dateKey));
+    const clash = busyOf(day.docs.filter((d) => d.id !== bookingId)).some((x) => (x.staffId === t.staffId || x.staffId === "ALL") && x.s < t.endMin && t.startMin < x.e);
+    return clash ? "late-clash" : "late-ok";
+  }
+  return t.status === "CANCELLED" ? "paid-cancelled" : "paid";
+}
+
 /** Tarea programada: libera los horarios de los turnos que no se pagaron a tiempo. */
 async function expireHolds(db) {
   const snap = await db.collectionGroup("bookings").where("status", "==", "AWAITING_PAYMENT").get();
   const now = Date.now();
   const late = snap.docs.filter((d) => { const h = d.data().holdUntil; return !h || h.toMillis() < now; });
-  await Promise.all(late.map((d) => d.ref.update({ status: "CANCELLED", cancelledBy: "expired", statusAt: admin.firestore.FieldValue.serverTimestamp() })));
-  return late.length;
+  // Cada uno en su transacción: si justo se acreditó el pago (payHook), no se lo pisa
+  const done = await Promise.all(late.map((d) => db.runTransaction(async (tx) => {
+    const cur = await tx.get(d.ref);
+    const t = cur.exists ? cur.data() : null;
+    if (!t || t.status !== "AWAITING_PAYMENT" || (t.deposit && t.deposit.status === "paid")) return 0;
+    if (t.holdUntil && t.holdUntil.toMillis() >= Date.now()) return 0;
+    tx.update(d.ref, { status: "CANCELLED", cancelledBy: "expired", statusAt: admin.firestore.FieldValue.serverTimestamp() });
+    return 1;
+  }).catch((err) => { logger.warn("Agenda: no se pudo liberar un turno sin pagar", d.ref.path, err.message); return 0; })));
+  return done.reduce((s, n) => s + n, 0);
 }
 
 /** Recalcula lo ocupado del día (público, sin datos personales) */
@@ -322,8 +431,8 @@ async function refreshBusy(db, storeId, dateKey) {
 // Resumen por cliente (visitas, faltas, gastado, próximo turno) en agenda_clients, armado con
 // sus turnos. Misma lógica que clientKeyOf / aggregateClient en apps/frontend/src/services/agendaCore.ts:
 // mantener las dos iguales. La nota del cliente la escribe el dueño y acá no se toca.
-const phoneKeyOf = (phone) => String(phone || "").replace(/\D/g, "").slice(-10);
-const nameKeyOf = (name) => String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+// phoneKeyOf: arriba, junto a arNational
+const nameKeyOf =(name) => String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
 /** Clave del cliente de un turno: el teléfono si tiene, si no el nombre. null para bloqueos. */
@@ -341,36 +450,47 @@ function aggregateClient(bookings, todayKey) {
   const last = list[list.length - 1];
   const withPhone = list.filter((b) => b.customerPhone).pop();
   const done = list.filter((b) => b.status === "DONE" || b.payment);
-  const next = list.find((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && b.dateKey >= todayKey);
+  const coming = list.filter((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && b.dateKey >= todayKey)
+    .slice(0, 5).map((b) => ({ dateKey: b.dateKey, startMin: b.startMin, serviceName: b.serviceName || "" }));
   return {
     name: last.customerName || "",
     phone: withPhone ? withPhone.customerPhone : "",
     visits: done.length,
     noShows: list.filter((b) => b.status === "NO_SHOW").length,
     cancelled: list.filter((b) => b.status === "CANCELLED").length,
-    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0),
+    // Lo cobrado más lo pagado online por Mercado Pago que quedó para el comercio (una seña de un cancelado también)
+    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0) + depositKept(b), 0),
     firstDate: list[0].dateKey,
     lastVisit: done.length ? done[done.length - 1].dateKey : null,
     lastService: (done.length ? done[done.length - 1] : last).serviceName || "",
-    next: next ? { dateKey: next.dateKey, startMin: next.startMin, serviceName: next.serviceName || "" } : null,
+    next: coming[0] || null,
+    // Los próximos: cuando pasa el primero, la app muestra el siguiente sin esperar a que se recalcule
+    upcoming: coming,
   };
 }
+
+/** Lo pagado online que quedó para el comercio (sin lo que hay que devolver) */
+const depositKept = (b) => (b.deposit && b.deposit.status === "paid" && !b.deposit.refundNeeded ? Number(b.deposit.paidAmount != null ? b.deposit.paidAmount : b.deposit.amount) || 0 : 0);
 
 /** Recalcula el resumen de un cliente con todos sus turnos. */
 async function refreshClient(db, storeId, key, sample) {
   if (!key) return;
   const storeRef = db.collection("ventra_stores").doc(storeId);
   const col = storeRef.collection("bookings");
-  const snap = key.startsWith("p")
-    ? await col.where("customerPhoneKey", "==", key.slice(1)).get()
-    : await col.where("customerName", "==", (sample && sample.customerName) || "").get();
-  const mine = snap.docs.map((d) => d.data()).filter((b) => clientKeyOf(b) === key);
+  // Sin teléfono: por la clave del nombre ("Ana Pérez" y "ana perez" son la misma) y, para los turnos
+  // anteriores a customerNameKey, por el nombre tal cual
+  const snaps = key.startsWith("p")
+    ? [await col.where("customerPhoneKey", "==", key.slice(1)).get()]
+    : await Promise.all([col.where("customerNameKey", "==", key.slice(2)).get(), col.where("customerName", "==", (sample && sample.customerName) || "").get()]);
+  const byId = new Map();
+  for (const s of snaps) for (const d of s.docs) byId.set(d.id, d.data());
+  const mine = [...byId.values()].filter((b) => clientKeyOf(b) === key);
   const ref = storeRef.collection("agenda_clients").doc(key);
   const agg = aggregateClient(mine, localNow().dateKey);
   if (!agg) {
     // Sin turnos: se borra, salvo que el dueño le haya dejado una nota
     const cur = await ref.get();
-    if (cur.exists && cur.data().note) return ref.set({ visits: 0, noShows: 0, cancelled: 0, spent: 0, next: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    if (cur.exists && cur.data().note) return ref.set({ visits: 0, noShows: 0, cancelled: 0, spent: 0, next: null, upcoming: [], updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     return ref.delete().catch(() => {});
   }
   return ref.set({ ...agg, key, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -380,47 +500,82 @@ const DAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const fmtDay = (dateKey) => { const [, m, d] = dateKey.split("-"); return `${DAYS[weekday(dateKey)]} ${+d}/${+m}`; };
 
 /**
- * Link del turno para el cliente (tienda.ventra.store/<comercio>#turno=<id>.<código>): ver su
- * turno y cancelarlo él mismo. El id es aleatorio y largo, y el código tiene que coincidir.
+ * Link del turno para el cliente: ver su turno, cambiarlo o cancelarlo él mismo. El corto es
+ * ventra.store/<comercio>/turno/<shortCode> (8 caracteres al azar); el de siempre,
+ * tienda.ventra.store/<comercio>#turno=<id>.<código>, sigue andando (el id es largo y el código tiene que coincidir).
  * POST { storeId, id, code, action: 'get' | 'cancel' }
  */
 async function manage(db, req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
   const b = req.body || {};
-  const storeId = clean(b.storeId, 80), id = clean(b.id, 40), bookingCode = clean(b.code, 8).toUpperCase(), action = clean(b.action, 10);
-  if (!/^store_[a-z0-9]{8,64}$|^[A-Za-z0-9_-]{6,80}$/.test(storeId) || !/^[A-Za-z0-9]{10,40}$/.test(id) || !/^[A-Z0-9]{4}$/.test(bookingCode)) {
-    return res.status(400).json({ error: "El link del turno no es válido" });
-  }
-  const ref = db.collection("ventra_stores").doc(storeId).collection("bookings").doc(id);
+  const storeId = clean(b.storeId, 80), action = clean(b.action, 10);
+  // Link corto (ventra.store/<comercio>/turno/<código de 8>) o el de siempre (#turno=<id>.<código de 4>)
+  const link = clean(b.link, 12).toUpperCase();
+  let id = clean(b.id, 40), bookingCode = clean(b.code, 8).toUpperCase();
+  const bad = () => res.status(400).json({ error: "El link del turno no es válido" });
+  if (!/^store_[a-z0-9]{8,64}$|^[A-Za-z0-9_-]{6,80}$/.test(storeId)) return bad();
+  const notFound = () => res.status(404).json({ error: "No encontramos ese turno. Revisá el link o escribile al comercio." });
+  const bookings = db.collection("ventra_stores").doc(storeId).collection("bookings");
+  if (link) {
+    if (!/^[A-Z0-9]{8}$/.test(link)) return bad();
+    const found = await bookings.where("shortCode", "==", link).limit(1).get();
+    if (found.empty) return notFound();
+    id = found.docs[0].id; bookingCode = found.docs[0].data().code || "";
+  } else if (!/^[A-Za-z0-9]{10,40}$/.test(id) || !/^[A-Z0-9]{4}$/.test(bookingCode)) return bad();
+  const ref = bookings.doc(id);
   const snap = await ref.get();
   const t = snap.exists ? snap.data() : null;
-  if (!t || t.kind !== "booking" || t.code !== bookingCode) return res.status(404).json({ error: "No encontramos ese turno. Revisá el link o escribile al comercio." });
+  if (!t || t.kind !== "booking" || t.code !== bookingCode) return notFound();
   let awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t);
   const upcoming = (t.status === "PENDING" || t.status === "CONFIRMED" || awaiting) && t.startAt && t.startAt.toMillis() > Date.now();
   const view = () => ({
+    // Para que la tienda siga con el link de siempre (cancelar, cambiar) aunque haya entrado por el corto
+    id: ref.id, code: t.code, ...(t.shortCode ? { link: t.shortCode } : {}),
     serviceId: t.serviceId || "", serviceName: t.serviceName || "", staffId: t.staffId || "", staffName: t.staffName || "", date: t.dateKey, time: hhmm(t.startMin),
     durationMin: Math.max(5, (t.endMin - t.startMin) || Number(t.durationMin) || 30),
     status: holdExpired(t) ? "CANCELLED" : t.status, canCancel: upcoming,
     // Cambiar de horario desde el link: turnos confirmados o por confirmar (no mientras espera el pago)
     canMove: upcoming && (t.status === "PENDING" || t.status === "CONFIRMED"),
-    ...(t.deposit ? { deposit: { amount: t.deposit.amount, status: t.deposit.status }, ...(awaiting && t.deposit.payUrl ? { payUrl: t.deposit.payUrl, holdUntil: t.holdUntil.toMillis() } : {}) } : {}),
+    ...(t.deposit ? { deposit: { amount: t.deposit.amount, status: t.deposit.status, full: t.deposit.full !== false, refund: !!t.deposit.refundNeeded }, ...(awaiting && t.deposit.payUrl ? { payUrl: t.deposit.payUrl, holdUntil: t.holdUntil ? t.holdUntil.toMillis() : null } : {}) } : {}),
   });
   if (action === "get") return res.json(view());
   // Volvió de Mercado Pago sin pagar (o salió de la ventana de pago): el horario se libera ya, sin esperar el plazo.
   // Si justo se estaba acreditando, payHook lo reactiva (cancelledBy "unpaid"). No se avisa al dueño: nunca supo de este turno.
   if (action === "abandon") {
-    if (t.status !== "AWAITING_PAYMENT" || (t.deposit && t.deposit.status === "paid")) return res.json(view());
-    await ref.update({ status: "CANCELLED", cancelledBy: "unpaid", holdUntil: admin.firestore.FieldValue.delete(), statusAt: admin.firestore.FieldValue.serverTimestamp() });
+    // En una transacción: si payHook acreditó el pago en el medio, no se cancela un turno pagado
+    const gone = await db.runTransaction(async (tx) => {
+      const cur = await tx.get(ref);
+      const c = cur.exists ? cur.data() : null;
+      if (!c || c.status !== "AWAITING_PAYMENT" || (c.deposit && c.deposit.status === "paid")) return false;
+      tx.update(ref, { status: "CANCELLED", cancelledBy: "unpaid", holdUntil: admin.firestore.FieldValue.delete(), statusAt: admin.firestore.FieldValue.serverTimestamp() });
+      return true;
+    });
+    if (!gone) { const fresh = await ref.get(); Object.assign(t, fresh.data() || {}); awaiting = t.status === "AWAITING_PAYMENT" && !holdExpired(t); return res.json(view()); }
     t.status = "CANCELLED"; delete t.holdUntil; awaiting = false;
     return res.json({ ...view(), canCancel: false, abandoned: true });
   }
   if (action === "reschedule") return reschedule(db, res, storeId, ref, t, b, view);
   if (action !== "cancel") return res.status(400).json({ error: "Acción inválida" });
   if (!upcoming) return res.status(409).json({ error: "Este turno ya no se puede cancelar desde acá. Escribile al comercio." });
-  const paid = t.deposit && t.deposit.status === "paid";
-  await ref.update({ status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...(paid ? { "deposit.refundNeeded": true } : {}) });
-  t.status = "CANCELLED";
+  const result = await db.runTransaction(async (tx) => {
+    const cur = await tx.get(ref);
+    const c = cur.exists ? cur.data() : null;
+    if (!c || !(c.status === "PENDING" || c.status === "CONFIRMED" || (c.status === "AWAITING_PAYMENT" && !holdExpired(c)))) return null;
+    tx.update(ref, { status: "CANCELLED", cancelledBy: "client", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...cancelRefundPatch(c) });
+    return c;
+  });
+  if (!result) return res.status(409).json({ error: "El turno cambió mientras tanto. Volvé a abrir el link." });
+  Object.assign(t, result, { status: "CANCELLED" });
   return res.json({ ...view(), canCancel: false });
+}
+
+/**
+ * Cancela el cliente (link o WhatsApp): la seña no se devuelve, para eso es; el turno completo pagado online sí
+ * queda para devolver (deposit.refundNeeded) y el dueño lo hace desde su Mercado Pago.
+ */
+function cancelRefundPatch(t) {
+  const d = t.deposit;
+  return d && d.status === "paid" && d.full !== false ? { "deposit.refundNeeded": true } : {};
 }
 
 /**
@@ -468,4 +623,4 @@ async function reschedule(db, res, storeId, ref, t, b, view) {
   return res.json({ ...view(), moved: true });
 }
 
-module.exports = { book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, hhmm, fmtDay, freeStarts, minStartFor, dayRanges, localNow, addDays, weekday, startAtMs };
+module.exports = { manageLink, shortCode, book, manage, payHook, expireHolds, refreshBusy, refreshClient, clientKeyOf, aggregateClient, hhmm, fmtDay, freeStarts, minStartFor, dayRanges, localNow, addDays, weekday, startAtMs, arNational, phoneKeyOf, cancelRefundPatch, paidOutcome, clientIp, depositFor };

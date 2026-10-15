@@ -9,8 +9,8 @@ import { loadStoreConfig, type StoreConfig, type StoreOrder, type OrderStage } f
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
+import { publicStoreUrl, storeHost } from '../../utils/storeLinks';
 
-const PUBLIC_BASE = 'https://tienda.ventra.store';
 
 const STAGE: Record<OrderStage, { label: string; cls: string }> = {
   NEW: { label: 'Nuevo', cls: 'bg-rose-50 text-rose-700' },
@@ -59,7 +59,7 @@ export default function StoreHomeScreen() {
     };
   }, [orders]);
 
-  const publicUrl = config?.subdomain ? `${PUBLIC_BASE}/${config.subdomain}` : null;
+  const publicUrl = config?.subdomain ? publicStoreUrl(config.subdomain) : null;
   const share = async () => {
     if (!publicUrl || demoShareInstead(storeId, 'tienda')) return;
     try {

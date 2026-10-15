@@ -55,6 +55,10 @@
         {
           "source": "/turnos",
           "destination": "/turnos.html"
+        },
+        {
+          "source": "**",
+          "function": { "functionId": "storePage", "region": "us-central1" }
         }
       ],
       "redirects": [

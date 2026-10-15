@@ -17,6 +17,7 @@ const agenda = require("./agenda");
 const usage = require("./usage");
 const quota = require("./reminder-quota");
 const notify = require("./notify");
+const { publicUrl } = require("./store-slugs");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -34,7 +35,6 @@ const MIN_LEAD_MS = 30 * 60 * 1000;
 const MAX_TRIES = 3;
 /** Respuesta automática a mensajes de texto: una cada tantas horas por cliente */
 const AUTO_REPLY_EVERY_MS = 12 * 60 * 60 * 1000;
-const STORE_URL = "https://tienda.ventra.store";
 
 /** Cuándo recordar: el día anterior a cierta hora, o unas horas antes. */
 const WHEN = {
@@ -53,14 +53,14 @@ const param = (s, max = 60) => String(s == null ? "" : s).replace(/[\r\n\t]+/g, 
 
 /** Número para WhatsApp (solo dígitos, con 549 si es argentino sin código de país). null si no sirve. */
 function waNumber(phone) {
+  // Argentino en cualquier formato (0, 15, +54 9…): 549 + código de área + número (ver agenda.arNational)
+  const ar = agenda.arNational(phone);
+  if (ar.length === 10) return "549" + ar;
   let d = String(phone || "").replace(/\D/g, "");
   if (d.startsWith("00")) d = d.slice(2);
-  if (d.startsWith("0")) d = d.slice(1);
-  if (d.length === 10) d = "549" + d;
-  else if (d.length === 12 && d.startsWith("54") && !d.startsWith("549")) d = "549" + d.slice(2);
   return d.length >= 11 && d.length <= 15 ? d : null;
 }
-const samePhone = (a, b) => !!a && !!b && String(a).replace(/\D/g, "").slice(-10) === String(b).replace(/\D/g, "").slice(-10);
+const samePhone = (a, b) => !!a && !!b && agenda.phoneKeyOf(a) === agenda.phoneKeyOf(b);
 
 /** Momento en que toca recordar un turno (ms) según la configuración. */
 function reminderMoment(cfg, b) {
@@ -78,7 +78,8 @@ function dueReminders(cfg, bookings, nowMs = Date.now()) {
   const local = agenda.localNow(nowMs).min;
   if (local < QUIET_TO || local >= QUIET_FROM) return [];
   return bookings.filter((b) => {
-    if (b.kind !== "booking" || (b.status !== "PENDING" && b.status !== "CONFIRMED")) return false;
+    // Solo confirmados: uno "por confirmar" todavía no lo aceptó el comercio (no se le dice "te esperamos")
+    if (b.kind !== "booking" || b.status !== "CONFIRMED") return false;
     if (b.remindedAt || !waNumber(b.customerPhone)) return false;
     const r = b.reminder || {};
     if (r.status === "sent" || r.status === "delivered" || r.status === "read" || r.status === "failed") return false;
@@ -125,7 +126,7 @@ const sendText = (token, to, text) => graph(token, `${PHONE_ID}/messages`, {
 function storeLinks(store) {
   const slug = store && store.subdomain;
   const wa = waNumber(store && store.whatsappNumber);
-  return { book: slug ? `${STORE_URL}/${encodeURIComponent(slug)}#turnos` : "", chat: wa ? `https://wa.me/${wa}` : "" };
+  return { book: slug ? publicUrl(slug, "turnos") : "", chat: wa ? `https://wa.me/${wa}` : "" };
 }
 
 const configured = (token) => !!(PHONE_ID && token && token.length > 20);
@@ -268,7 +269,12 @@ async function onStatus(db, s) {
       tx.update(ref, { "reminder.status": s.status });
     }
   });
-  if (refundAfter && refundAfter.uid) await quota.refund(db, refundAfter.uid, refundAfter.source, refundAfter.month).catch(() => {});
+  if (refundAfter && refundAfter.uid) {
+    await quota.refund(db, refundAfter.uid, refundAfter.source, refundAfter.month).catch(() => {});
+    // Se había contado como mandado (waReminders): el admin descuenta los que no llegaron del costo
+    usage.track(refundAfter.uid, { waFailed: 1 });
+    await usage.flush(true);
+  }
 }
 
 async function onButton(db, token, from, payload) {
@@ -289,10 +295,14 @@ async function onButton(db, token, from, payload) {
     return sendText(token, from, `Ese turno ya no se puede cambiar desde acá.${links.chat ? ` Escribile a ${store.businessName || "el comercio"}: ${links.chat}` : ""}`);
   }
   if (action === "c") {
-    await ref.update({ status: "CONFIRMED", clientConfirmedAt: admin.firestore.FieldValue.serverTimestamp(), statusAt: admin.firestore.FieldValue.serverTimestamp() });
-    return sendText(token, from, `¡Gracias! Te esperamos ${when} en ${store.businessName || "el local"}.`);
+    // Confirma que va: el estado no cambia (un turno por confirmar lo confirma el comercio, no el cliente)
+    await ref.update({ clientConfirmedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return sendText(token, from, b.status === "PENDING"
+      ? `¡Gracias! Le avisamos a ${store.businessName || "el comercio"} que vas ${when}. Te confirman el turno por WhatsApp.`
+      : `¡Gracias! Te esperamos ${when} en ${store.businessName || "el local"}.`);
   }
-  await ref.update({ status: "CANCELLED", cancelledBy: "client", cancelVia: "whatsapp", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...(b.deposit && b.deposit.status === "paid" ? { "deposit.refundNeeded": true } : {}) });
+  // La seña no se devuelve; el turno completo pagado online sí (ver agenda.cancelRefundPatch)
+  await ref.update({ status: "CANCELLED", cancelledBy: "client", cancelVia: "whatsapp", statusAt: admin.firestore.FieldValue.serverTimestamp(), ...agenda.cancelRefundPatch(b) });
   return sendText(token, from, `Listo, cancelamos tu turno de ${when}.${links.book ? ` Para elegir otro horario: ${links.book}` : links.chat ? ` Para elegir otro horario, escribile a ${store.businessName || "el comercio"}: ${links.chat}` : ""}`);
 }
 

@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { Search, Users, Phone, MessageCircle, CalendarDays, AlertTriangle, StickyNote } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import {
-  subscribeClients, rebuildClients, fetchClientBookings, saveClientNote, localNow, dayLabel, hhmm,
+  subscribeClients, rebuildClients, fetchClientBookings, saveClientNote, localNow, dayLabel, hhmm, waPhone, nextOf,
   type AgendaClient, type Booking,
 } from '../../services/agenda';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
@@ -14,14 +14,10 @@ import { Modal, STATUS, label } from './agendaUi';
 type Filter = 'ALL' | 'NEXT' | 'NO_SHOW';
 
 const shortDay = (k: string) => { const [, m, d] = k.split('-'); return `${+d}/${+m}`; };
-const waLink = (phone: string, text: string) => {
-  let d = phone.replace(/\D/g, '');
-  if (d.startsWith('0')) d = d.slice(1);
-  if (d.length === 10) d = '549' + d;
-  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
-};
+// Números argentinos en cualquier formato (0, 15, +54 9…): ver waPhone en agendaCore
+const waLink = (phone: string, text: string) => `https://wa.me/${waPhone(phone)}?text=${encodeURIComponent(text)}`;
 /** Lo último que pasó con el cliente: para ordenar la lista. */
-const lastActivity = (c: AgendaClient) => [c.next?.dateKey, c.lastVisit, c.firstDate].filter(Boolean).sort().pop() || '';
+const lastActivity = (c: AgendaClient, today: string) => [nextOf(c, today)?.dateKey, c.lastVisit, c.firstDate].filter(Boolean).sort().pop() || '';
 
 /**
  * Clientes de la agenda: se arman solos con los turnos (por teléfono, o por nombre si no
@@ -58,12 +54,12 @@ export default function AgendaClientsScreen() {
     const digits = term.replace(/\D/g, '');
     return all
       .filter((c) => (c.visits || 0) + (c.noShows || 0) + (c.next ? 1 : 0) > 0 || c.note)
-      .filter((c) => filter === 'ALL' || (filter === 'NEXT' ? !!c.next && c.next.dateKey >= today : (c.noShows || 0) > 0))
+      .filter((c) => filter === 'ALL' || (filter === 'NEXT' ? !!nextOf(c, today) : (c.noShows || 0) > 0))
       .filter((c) => !term || c.name.toLowerCase().includes(term) || (digits.length >= 3 && c.phone.replace(/\D/g, '').includes(digits)))
-      .sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)) || a.name.localeCompare(b.name));
+      .sort((a, b) => lastActivity(b, today).localeCompare(lastActivity(a, today)) || a.name.localeCompare(b.name));
   }, [all, q, filter, today]);
   const fresh = all.filter((c) => c.firstDate?.startsWith(month)).length;
-  const withNext = all.filter((c) => c.next && c.next.dateKey >= today).length;
+  const withNext = all.filter((c) => !!nextOf(c, today)).length;
 
   const subtitle = clients === null ? 'Cargando…' : `${all.length} cliente${all.length === 1 ? '' : 's'}${fresh ? ` · ${fresh} nuevo${fresh === 1 ? '' : 's'} este mes` : ''}`;
 
@@ -98,8 +94,8 @@ export default function AgendaClientsScreen() {
                 {c.note && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
               </span>
               <span className="block text-[12.5px] text-slate-500 truncate">
-                {c.next && c.next.dateKey >= today
-                  ? <span className="text-emerald-700 font-medium">Próximo: {dayLabel(c.next.dateKey, true)} {hhmm(c.next.startMin)}</span>
+                {nextOf(c, today)
+                  ? <span className="text-emerald-700 font-medium">Próximo: {dayLabel(nextOf(c, today)!.dateKey, true)} {hhmm(nextOf(c, today)!.startMin)}</span>
                   : `${c.visits || 0} visita${c.visits === 1 ? '' : 's'}${c.lastVisit ? ` · última ${shortDay(c.lastVisit)}` : ''}`}
                 {(c.noShows || 0) > 0 && <span className="text-red-600"> · faltó {c.noShows}</span>}
               </span>

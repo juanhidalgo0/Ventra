@@ -806,7 +806,7 @@ async function adminStoresByOwner() {
       name: x.businessName || null,
       subdomain: x.subdomain || null,
       published: !!x.isPublished,
-      url: x.subdomain ? `https://tienda.ventra.store/${x.subdomain}` : null,
+      url: x.subdomain ? storeSlugs.publicUrl(x.subdomain) : null,
       logoUrl: x.logoUrl || null,
       primaryColor: x.primaryColor || null,
       products,
@@ -904,6 +904,22 @@ async function adminSizes({ force = false } = {}) {
   if (cloud && storage) update.at = admin.firestore.FieldValue.serverTimestamp();
   if (Object.keys(update).length) await ADMIN_SIZES().set(update, { merge: true });
   return { cloud: cloud || saved.cloud || {}, storage: storage || saved.storage || {}, at: cloud && storage ? new Date().toISOString() : tsToIso(saved.at) };
+}
+
+// Costos para el panel: los de cada mes con su origen (automático, a mano o fijo recurrente).
+// `months` trae el mes actual, el anterior y los que tienen algo cargado, para el modal.
+function adminCostsView(config, month) {
+  const keys = new Set([month, usage.prevMonthKey(month), ...Object.keys(config.costs || {}), ...Object.keys(config.autoCosts || {})]);
+  const months = {};
+  [...keys].filter((k) => /^\d{4}-\d{2}$/.test(k)).sort().slice(-13).forEach((m) => { months[m] = usage.monthCosts(config, m); });
+  const current = months[month] || usage.monthCosts(config, month);
+  return {
+    month, entered: (config.costs && config.costs[month]) || {}, all: config.costs || {}, months, effective: current,
+    recurring: config.recurring || {}, billingTable: config.billingTable || null,
+    renewals: config.renewals || {}, neonLimitMB: config.neonLimitMB || null,
+    // saved: lo cargado a mano (vacío = automático o por defecto), para llenar el formulario
+    wa: { ...current.wa, saved: config.wa || {} },
+  };
 }
 
 /** Cuentas, PCs y pagos: lo que el panel necesita para mostrarse (solo Firestore, rápido). */
@@ -1030,7 +1046,6 @@ async function buildAdminOverview() {
   const stateOrder = { GRACE: 0, READ_ONLY: 1, UNPAID: 2, ACTIVE: 3 };
   accounts.sort((x, y) => (stateOrder[x.state] - stateOrder[y.state]) || String(x.email).localeCompare(String(y.email)));
 
-  const monthCosts = (config.costs && config.costs[month]) || {};
   return {
     generatedAt: new Date(now).toISOString(),
     graceDays: GRACE_DAYS,
@@ -1044,7 +1059,7 @@ async function buildAdminOverview() {
     },
     accounts,
     system: { staleDevices, fiscal, renewals: adminRenewals(config) },
-    costs: { month, entered: monthCosts, all: config.costs || {}, renewals: config.renewals || {}, neonLimitMB: config.neonLimitMB || null },
+    costs: adminCostsView(config, month),
   };
 }
 
@@ -1055,7 +1070,7 @@ async function buildAdminStats() {
   const configSnap = await ADMIN_CONFIG().get();
   const config = configSnap.exists ? configSnap.data() : {};
   const soft = (p, what, empty = {}) => p.catch((err) => { logger.warn(`Ventra admin: sin ${what}`, err.message); return empty; });
-  const [system, usageByUid, sizes, syncTimes, { accountsSnap, devicesByUid }, storeByUid, authUsers] = await Promise.all([
+  const [system, usageByUid, sizes, syncTimes, { accountsSnap, devicesByUid }, storeByUid, authUsers, waQuota] = await Promise.all([
     soft(systemHealth(config), "estado del sistema"),
     soft(usage.monthUsage(month), "uso del mes"),
     soft(adminSizes(), "tamaños", { cloud: {}, storage: {}, at: null }),
@@ -1064,6 +1079,8 @@ async function buildAdminStats() {
     adminAccountsData(),
     soft(adminStoresByOwner(), "tiendas online"),
     soft(listAuthUsersWithEmail(), "lista de usuarios", []),
+    // Cupo de recordatorios por WhatsApp de cada cuenta (un documento por cuenta que los usó)
+    soft(db.collection("ventra_wa_quota").get().then((snap) => Object.fromEntries(snap.docs.map((d) => [d.id, d.data()]))), "cupos de WhatsApp"),
   ]);
 
   const accounts = accountsSnap.docs.map((doc) => {
@@ -1079,19 +1096,26 @@ async function buildAdminStats() {
     };
   });
 
-  // Costo estimado de cada cliente este mes (según su uso) contra lo que paga
-  const monthCosts = (config.costs && config.costs[month]) || {};
-  const alloc = usage.allocate(monthCosts, accounts.map((a) => ({
+  // Costo estimado de cada cliente este mes (según su uso) contra lo que paga.
+  // Los costos de los servicios se cargan solos de noche (ventraAutoCosts) y los recordatorios
+  // por WhatsApp se cuentan por comercio: lo cargado a mano solo corrige.
+  const mc = usage.monthCosts(config, month);
+  const wa = mc.wa;
+  const alloc = usage.allocate(mc.numbers, accounts.map((a) => ({
     uid: a.uid,
     active: a.state === "ACTIVE" || a.state === "GRACE",
     cloudBytes: a.cloud ? a.cloud.bytes : 0,
     storageBytes: a.storageBytes,
     hasCloudBox: a.devices.some((d) => d.kind === "cloud"),
     usage: usageByUid[a.uid] || {},
-  })));
+    waMessages: usage.waMessages(usageByUid[a.uid], waQuota[a.uid], month),
+  })), wa);
   const byUid = {};
+  let waTotal = 0, waCount = 0;
   accounts.forEach((a) => {
     byUid[a.uid] = { cloud: a.cloud, usage: { ...(usageByUid[a.uid] || {}), storageBytes: a.storageBytes }, cost: alloc[a.uid] };
+    waTotal += alloc[a.uid].whatsapp;
+    waCount += alloc[a.uid].waMessages;
   });
 
   // Registrados (entraron con Google) que todavía no tienen cuenta: no eligieron plan
@@ -1101,7 +1125,7 @@ async function buildAdminStats() {
     .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
     .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
 
-  return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered };
+  return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered, wa: { ...wa, messages: waCount, cost: waTotal, meta: mc.waMeta } };
 }
 
 exports.ventraAdmin = onRequest(
@@ -1161,7 +1185,7 @@ exports.ventraAdmin = onRequest(
         const owned = await stores.where("ownerUid", "==", String(uid)).get();
         if (owned.docs.some((d) => d.data().subdomain)) return res.status(409).json({ error: "Ya tiene una tienda con dirección web" });
         const taken = await stores.where("subdomain", "==", slug).limit(1).get();
-        if (!taken.empty) return res.status(409).json({ error: `La dirección tienda.ventra.store/${slug} ya está en uso` });
+        if (!taken.empty || storeSlugs.RESERVED.has(slug)) return res.status(409).json({ error: `La dirección ventra.store/${slug} ya está en uso` });
         // Si empezó a armarla (sin dirección) se completa esa; si no, una nueva
         const ref = owned.docs[0] ? owned.docs[0].ref : stores.doc(`store_${crypto.randomUUID().replace(/-/g, "")}`);
         const base = owned.docs[0] ? {} : {
@@ -1178,7 +1202,7 @@ exports.ventraAdmin = onRequest(
           ownerUid: String(uid), claimed: true, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         await log({ uid: String(uid), storeId: ref.id, subdomain: slug });
-        return res.status(200).json({ ok: true, storeId: ref.id, url: `https://tienda.ventra.store/${slug}` });
+        return res.status(200).json({ ok: true, storeId: ref.id, url: storeSlugs.publicUrl(slug) });
       }
 
       if (action === "setStorePublished") {
@@ -1194,13 +1218,15 @@ exports.ventraAdmin = onRequest(
         return res.status(200).json({ ok: true });
       }
 
-      // Costos del mes y vencimientos importantes, cargados a mano
+      // Correcciones a mano de los costos del mes (vacío = el automático o el fijo), costos
+      // fijos que se repiten y vencimientos importantes
       if (action === "setCosts") {
         const b = req.body || {};
         const m = String(b.month || "");
         if (!/^\d{4}-\d{2}$/.test(m)) return res.status(400).json({ error: "Mes inválido" });
         const num = (v) => Math.max(0, Math.min(1e9, Number(v) || 0));
-        const costs = { neon: num(b.neon), firebase: num(b.firebase), fly: num(b.fly), other: num(b.other) };
+        const opt = (v) => (v === "" || v == null || !(Number(v) > 0) ? null : num(v));
+        const costs = { neon: opt(b.neon), firebase: opt(b.firebase), fly: opt(b.fly), other: opt(b.other) };
         const renewals = {};
         for (const [k, r] of Object.entries(b.renewals || {}).slice(0, 20)) {
           if (!/^[a-z0-9_]{1,30}$/.test(k)) continue;
@@ -1209,8 +1235,30 @@ exports.ventraAdmin = onRequest(
         }
         const update = { [`costs.${m}`]: costs, renewals, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
         if (b.neonLimitMB !== undefined) update.neonLimitMB = num(b.neonLimitMB) || null;
+        // Lo que cuesta cada recordatorio por WhatsApp: vale para todos los meses
+        if (b.wa && typeof b.wa === "object") {
+          // Vacío o inválido: queda el valor por defecto (ver usage.WA_DEFAULTS). Impuestos puede ser 0
+          const range = (v, min, max) => (v === "" || v == null || !(Number(v) >= min) ? null : Math.min(max, Number(v)));
+          const wa = { priceUsd: range(b.wa.priceUsd, 0.001, 1), fx: range(b.wa.fx, 1, 1e6), taxPct: range(b.wa.taxPct, 0, 200) };
+          update.wa = Object.fromEntries(Object.entries(wa).filter(([, v]) => v !== null));
+        }
         const ref = ADMIN_CONFIG();
-        if (!(await ref.get()).exists) await ref.set({});
+        const current = await ref.get();
+        // Costos fijos: el monto vale desde este mes hasta que se cambie (los meses anteriores no se tocan)
+        if (Array.isArray(b.recurring)) {
+          const items = b.recurring.slice(0, 20).map((r) => ({
+            key: String((r && r.key) || ""), label: String((r && r.label) || "").trim().slice(0, 60),
+            service: r && r.service === "fly" ? "fly" : "other", currency: r && r.currency === "USD" ? "USD" : "ARS", amount: num(r && r.amount),
+          })).filter((r) => /^[a-z0-9_]{1,30}$/.test(r.key) && r.label && r.amount > 0);
+          update.recurring = usage.applyRecurring(current.exists ? current.data().recurring : {}, m, items);
+        }
+        // Tabla de la exportación de facturación, si no está en el proyecto de Ventra
+        if (b.billingTable !== undefined) {
+          const t = String(b.billingTable || "").trim();
+          if (t && !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(t)) return res.status(400).json({ error: "La tabla de BigQuery va como proyecto.dataset.tabla" });
+          update.billingTable = t || null;
+        }
+        if (!current.exists) await ref.set({});
         await ref.update(update);
         await log({ month: m, costs });
         return res.status(200).json({ ok: true });
@@ -1584,11 +1632,15 @@ exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT
     if (done) {
       const b = done.booking;
       const when = `${agenda.fmtDay(b.dateKey)} ${agenda.hhmm(b.startMin)}`;
+      const who = b.customerName || "El cliente";
+      const msg = {
+        "late-clash": [`Pago tarde: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvele el pago.`],
+        "paid-cancelled": [`Pagó un turno cancelado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount} un turno que ya estaba cancelado. Volvé a darle el turno o devolvele el pago.`],
+        paid: [`Turno pagado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount} por Mercado Pago.`],
+      }[done.outcome] || [`Turno pagado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`];
       await notify.sendToAccount(db, done.ownerUid, "bookings", {
-        title: done.outcome === "late-clash" ? `Pago tarde: ${b.serviceName || "turno"} · ${when}` : `Turno pagado: ${b.serviceName || "turno"} · ${when}`,
-        body: done.outcome === "late-clash"
-          ? `${b.customerName || "El cliente"} pagó $${done.amount} pero el horario ya se ocupó. Reprogramalo o devolvele el pago.`
-          : `${b.customerName || "Un cliente"} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`,
+        title: msg[0],
+        body: msg[1],
         url: "/#/agenda?turno=" + encodeURIComponent(b.id), tag: "booking-" + b.id,
       }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar el pago del turno", err.message));
     }
@@ -1612,6 +1664,44 @@ const whatsapp = require("./whatsapp");
 const VENTRA_WA_TOKEN = defineSecret("VENTRA_WA_TOKEN");
 const VENTRA_WA_APP_SECRET = defineSecret("VENTRA_WA_APP_SECRET");
 const VENTRA_WA_VERIFY_TOKEN = defineSecret("VENTRA_WA_VERIFY_TOKEN");
+
+// ─── Costos del mes automáticos (panel de administración) ───
+// Cada noche lee lo que gastó Ventra en Google Cloud (exportación a BigQuery), Neon (API de
+// consumo) y WhatsApp (Meta), más el dólar tarjeta, y lo guarda en ventra_config/admin.autoCosts.
+// Los primeros días del mes también cierra el anterior, porque las facturas llegan con demora.
+// Ver usage.collectAutoCosts. Va aparte del mantenimiento de Neon para que un secreto que falte
+// o una API caída no lo frene.
+const NEON_API_KEY = defineSecret("NEON_API_KEY");
+async function refreshAutoCosts() {
+  const ref = ADMIN_CONFIG();
+  const snap = await ref.get();
+  const config = snap.exists ? snap.data() : {};
+  const month = usage.monthKey();
+  const day = Number(new Date().toLocaleDateString("en-CA", { timeZone: notify.TZ }).slice(8, 10));
+  const months = day <= 5 ? [usage.prevMonthKey(month), month] : [month];
+  const projectId = admin.app().options.projectId || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || process.env.GCLOUD_PROJECT;
+  const update = {};
+  for (const m of months) {
+    update[`autoCosts.${m}`] = await usage.collectAutoCosts({
+      month: m, prev: (config.autoCosts || {})[m], waConfig: config.wa,
+      neonApiKey: String(NEON_API_KEY.value() || "").trim(), waToken: String(VENTRA_WA_TOKEN.value() || "").trim(),
+      projectId, billingTable: config.billingTable || null,
+    });
+  }
+  if (!snap.exists) await ref.set({});
+  await ref.update(update);
+  return update;
+}
+exports.ventraAutoCosts = onSchedule(
+  { schedule: "0 6 * * *", timeZone: notify.TZ, secrets: [NEON_API_KEY, VENTRA_WA_TOKEN], timeoutSeconds: 120 },
+  async () => {
+    const r = await refreshAutoCosts();
+    for (const [k, v] of Object.entries(r)) {
+      if (Object.keys(v.errors).length) logger.warn(`Ventra costos: datos que faltan (${k})`, v.errors);
+      logger.info(`Ventra costos: ${k}`, { firebase: v.firebase, neon: v.neon, waMeta: v.waMeta, fx: v.fx });
+    }
+  }
+);
 
 /** Cada 15 minutos: los recordatorios que tocan (el día anterior o unas horas antes, según el comercio). */
 exports.agendaWaReminders = onSchedule({ schedule: "every 15 minutes", timeZone: "America/Argentina/Buenos_Aires", secrets: [VENTRA_WA_TOKEN] }, async () => {
@@ -1741,6 +1831,13 @@ exports.agendaWaHook = onRequest({ maxInstances: 10, secrets: [VENTRA_WA_TOKEN, 
 /** Link del turno: el cliente ve su turno y lo puede cancelar (ver agenda.manage). */
 exports.agendaManage = onRequest({ cors: true, maxInstances: 10 }, (req, res) => agenda.manage(db, req, res));
 
+/** Lo pagado online de un turno que canceló el cliente: la seña queda para el comercio, el turno completo se devuelve */
+const paidNote = (d) => {
+  if (!d || d.status !== "paid") return "";
+  const amount = d.paidAmount || d.amount;
+  return d.refundNeeded ? ` Había pagado $${amount} por Mercado Pago: devolvéselo desde tu cuenta.` : ` La seña de $${amount} queda para vos.`;
+};
+
 /** Cada cambio de un turno: actualiza lo ocupado del día y avisa al dueño si es una reserva online nueva. */
 exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookings/{bookingId}", async (event) => {
   const before = event.data && event.data.before.exists ? event.data.before.data() : null;
@@ -1770,36 +1867,40 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     return;
   }
 
-  // El cliente canceló con el link de su turno: se avisa al dueño (el horario ya quedó libre)
-  if (before && after && after.cancelledBy === "client" && before.status !== "CANCELLED" && after.status === "CANCELLED") {
+  // El cliente canceló con el link de su turno: se avisa al dueño (el horario ya quedó libre).
+  // Si todavía esperaba el pago, el dueño nunca supo del turno: no se avisa.
+  if (before && after && after.cancelledBy === "client" && before.status !== "CANCELLED" && before.status !== "AWAITING_PAYMENT" && after.status === "CANCELLED") {
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (uid) {
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
-        body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.${after.deposit && after.deposit.status === "paid" ? ` Había pagado $${after.deposit.paidAmount || after.deposit.amount} por Mercado Pago: devolvéselo desde tu cuenta.` : ""}`,
+        body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.${paidNote(after.deposit)}`,
         url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
     return;
   }
 
-  // El cliente tocó "Confirmo" en el recordatorio de WhatsApp (ver whatsapp.js onButton)
-  if (before && after && !before.clientConfirmedAt && after.clientConfirmedAt && after.status === "CONFIRMED") {
+  // El cliente tocó "Confirmo" en el recordatorio de WhatsApp (ver whatsapp.js onButton). Si el turno estaba
+  // por confirmar, sigue así: confirmarlo es cosa del comercio
+  if (before && after && !before.clientConfirmedAt && after.clientConfirmedAt && (after.status === "CONFIRMED" || after.status === "PENDING")) {
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (uid) {
       await notify.sendToAccount(db, uid, "bookings", {
         title: `Turno confirmado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
-        body: `${after.customerName || "El cliente"}${after.staffName ? " con " + after.staffName : ""} confirmó desde el recordatorio de WhatsApp.`,
+        body: `${after.customerName || "El cliente"}${after.staffName ? " con " + after.staffName : ""} confirmó desde el recordatorio de WhatsApp.${after.status === "PENDING" ? " Todavía está por confirmar de tu lado." : ""}`,
         url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
       }, { storeId });
     }
     return;
   }
 
-  // Esperando seña no avisa todavía: avisa agendaPayHook cuando se paga
-  if (!before && after && after.kind === "booking" && after.source === "online" && after.status !== "AWAITING_PAYMENT") {
+  // Esperando seña no avisa todavía: avisa agendaPayHook cuando se paga. Si no se pudo crear el link de pago
+  // (payFallback), el turno quedó reservado sin pago y se avisa como uno nuevo.
+  const fallback = before && after && before.status === "AWAITING_PAYMENT" && after.payFallback && !before.payFallback;
+  if ((fallback || !before) && after && after.kind === "booking" && after.source === "online" && after.status !== "AWAITING_PAYMENT") {
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (!uid) return;
@@ -1840,6 +1941,8 @@ exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req
     if (/^https:\/\//.test(src)) return res.redirect(302, src);
     return res.status(404).send("Sin imagen");
   }
+  // Desde ventra.store llega todo lo que no es una página del sitio: un archivo que no existe no es una tienda
+  if (/\.[a-z0-9]{2,5}$/i.test(String(req.path || ""))) return res.status(404).send("No existe");
   if (Date.now() - tiendaHtml.at > 5 * 60 * 1000 || !tiendaHtml.html) {
     // index.html existe como archivo: el hosting lo sirve directo, sin volver a pasar por esta función
     const r = await fetch("https://ventra-9cba5-tienda.web.app/index.html");
@@ -1859,7 +1962,8 @@ exports.storePage = onRequest({ maxInstances: 20, memory: "256MiB" }, async (req
         const src = c.bannerUrl || c.logoUrl || "";
         // Las imágenes embebidas se sirven desde /_og/<tienda> (una vista previa necesita una dirección https)
         const img = !src ? "" : /^https:\/\//.test(src) ? src : `https://tienda.ventra.store/_og/${slug}`;
-        const url = `https://tienda.ventra.store/${slug}`;
+        // Una sola dirección para los buscadores y las vistas previas: el link corto (o el de siempre si está reservado)
+        const url = storeSlugs.publicUrl(slug);
         html = html
           .replace(/<title id="pageTitle">[^<]*<\/title>/, `<title id="pageTitle">${attr(title)}</title>`)
           .replace(/(<meta name="description" id="metaDesc" content=")[^"]*"/, `$1${attr(desc)}"`)

@@ -58,7 +58,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Modo práctica: una caja simulada con productos del rubro para aprender sin tocar datos reales.
 
 ## Tienda online
-- Link propio del tipo tienda.ventra.store/nombre-del-negocio, para la bio de Instagram, WhatsApp Business o Google Maps. Al compartirlo se ve con el nombre, el logo y la portada.
+- Link propio y corto del tipo ventra.store/nombre-del-negocio (los links viejos tienda.ventra.store/… siguen andando), para la bio de Instagram, WhatsApp Business o Google Maps. Al compartirlo se ve con el nombre, el logo y la portada.
 - Catálogo con fotos, categorías, buscador y promos; productos sin stock ocultos o marcados. Logo, portada y color propios.
 - Carrito y pedido ordenado: el cliente elige, aclara y confirma; al comercio le llega con número de pedido, total, forma de entrega y forma de pago, por WhatsApp y con aviso al celular. Todos los pedidos quedan en un panel; si un pedido queda sin atender, se avisa.
 - Entrega: retiro en el local y/o envío a domicilio, con costo de envío, envío gratis desde cierto monto, zona de entrega y pedido mínimo. También envíos con GoDelivery (servicio de envíos independiente que cobra su envío aparte).
@@ -68,10 +68,10 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Con Ventra Full, la caja del local y la tienda comparten stock y precios en vivo.
 
 ## Agenda de turnos
-- Página de turnos propia (link tienda.ventra.store/nombre), abierta las 24 horas. Los clientes no descargan nada: reservan desde el navegador del celular eligiendo servicio, profesional y horario libre.
+- Página de turnos propia (link ventra.store/nombre; si también tiene tienda, ventra.store/nombre/turnos abre directo la reserva), abierta las 24 horas. Los clientes no descargan nada: reservan desde el navegador del celular eligiendo servicio, profesional y horario libre.
 - Varios profesionales, cada uno con sus horarios y servicios. Vista del día y de la semana.
 - Servicios típicos del rubro ya cargados con su duración (peluquería, barbería, uñas, estética, salud/consultorio, clases, profesionales, mascotas, taller, canchas y deportes); el comercio pone sus precios.
-- Cobro online con Mercado Pago (PRÓXIMAMENTE, todavía no está disponible): el cliente va a pagar el turno completo al reservar, el turno queda confirmado cuando paga y la plata va directo a la cuenta de Mercado Pago del comercio. No hay seña parcial.
+- Cobro online con Mercado Pago (PRÓXIMAMENTE, todavía no está disponible): el comercio conecta su cuenta de Mercado Pago desde la configuración de la agenda (en el celular se abre Mercado Pago y se toca "Autorizar"; en la computadora, con un QR) y elige cuánto se paga al reservar: una seña en porcentaje (por ejemplo, 50%), una seña fija en pesos o el turno completo. La seña es obligatoria para reservar online; con el turno completo el cliente puede elegir pagar en el local. El horario se guarda 10 minutos mientras paga, el turno queda confirmado cuando paga y la plata va directo a la cuenta de Mercado Pago del comercio. Si el cliente cancela, la seña no se devuelve (para eso es); si había pagado el turno completo, la devolución la hace el comercio desde Mercado Pago. Si el que cancela es el comercio, le devuelve lo pagado.
 - El cliente recibe un link para ver o cancelar su turno; el horario cancelado vuelve a quedar libre.
 - Ficha de cada cliente: cuántas veces vino, última visita, ausencias, cuánto gastó y notas del dueño.
 - Cobros: se marca cada turno como cobrado y se ve cuánto entró por medio de pago y por profesional. Con Ventra Full, el turno se cobra en la caja junto con productos.

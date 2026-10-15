@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import { QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 
@@ -36,5 +37,9 @@ export function chargeTurnosOfSale(cart: any[], methodLabel: string) {
   if (!turnos.length) return;
   import('../../services/agenda').then(({ chargeBooking }) => Promise.all(turnos.map((i) =>
     chargeBooking(i.turno.storeId, i.turno.booking, { method: `${methodLabel} (caja)`, amount: Number(i.price) * Number(i.quantity || 1) }),
-  ))).catch((err) => console.warn('[Caja] No se pudo marcar el turno como cobrado', err));
+  ))).catch((err) => {
+    console.warn('[Caja] No se pudo marcar el turno como cobrado', err);
+    // La venta quedó registrada: que el cajero sepa que en la agenda el turno sigue sin cobrar (y no lo cobre dos veces)
+    toast.error('La venta quedó registrada, pero en la agenda el turno no figura cobrado (sin conexión con la nube). No lo cobres de nuevo.', { duration: 8000 });
+  });
 }

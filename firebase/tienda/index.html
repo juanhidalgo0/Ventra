@@ -10,7 +10,7 @@
 <meta property="og:title" id="ogTitle" content="Tienda online">
 <meta property="og:description" id="ogDesc" content="Hacé tu pedido online y envialo por WhatsApp.">
 <meta property="og:image" id="ogImage" content="">
-<link rel="icon" id="favicon" href="ventra-logo.png">
+<link rel="icon" id="favicon" href="/ventra-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -352,6 +352,12 @@
   .svc-desc{font-size:12.5px;color:var(--ink-3);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .svc .go{height:38px;padding:0 14px;border-radius:12px;background:var(--brand);color:#fff;font-weight:700;font-size:13.5px;display:flex;align-items:center;flex-shrink:0}
   .svc.on{border-color:var(--brand);background:var(--brand-soft)}
+  /* Con descripción: nombre, precio y "Reservar" arriba; la descripción abajo, a todo el ancho */
+  .svc.svc-col{flex-direction:column;align-items:stretch;gap:10px}
+  .svc-top{display:flex;gap:12px;align-items:center}
+  .svc-col .svc-ic{align-self:center}
+  .svc-col .svc-desc{margin-top:0;font-size:13px;line-height:1.45}
+  .svc-col .desc-more{align-self:flex-start;margin-top:-6px}
   .svc-ic{width:44px;height:44px;border-radius:14px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font:800 18px 'Plus Jakarta Sans',sans-serif;flex-shrink:0;align-self:flex-start}
   .svc-price{font:800 15px 'Plus Jakarta Sans',sans-serif;color:var(--ink);letter-spacing:-.01em}
   .section-sub{margin:-6px 0 14px;font-size:13.5px;color:var(--ink-2)}
@@ -392,6 +398,16 @@
   .bk-opt-main>b{font-size:15.5px;line-height:1.25;color:var(--ink)}
   .bk-opt-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-3)}
   .bk-opt-desc{font-size:12.5px;color:var(--ink-3);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  /* Descripción larga: "Ver más" la muestra completa sin elegir el servicio */
+  .bk-opt-desc.open,.svc-desc.open{display:block;-webkit-line-clamp:unset;overflow:visible}
+  .desc-more{display:inline-block;margin-top:3px;font-size:12.5px;font-weight:600;color:var(--brand);cursor:pointer;padding:2px 0}
+  /* Servicio a elegir: nombre, duración y precio arriba; la descripción abajo, a todo el ancho de la tarjeta */
+  .bk-opt.bk-svc{flex-direction:column;align-items:stretch;gap:10px}
+  .bk-svc-top{display:flex;align-items:center;gap:14px}
+  .bk-svc-top>svg.i{flex-shrink:0;color:var(--ink-3)}
+  .bk-price{font-size:14px;font-weight:800;color:var(--ink)}
+  .bk-svc .bk-opt-desc{font-size:13px;line-height:1.45}
+  .bk-svc .desc-more{align-self:flex-start;margin-top:-6px}
   .bk-opt-side{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:15px;font-weight:800;color:var(--ink)}
   .bk-chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;background:var(--line-2);color:var(--ink-2);font-size:12px;font-weight:600}
   .bk-chip svg.i{width:13px;height:13px}
@@ -540,6 +556,21 @@ var S = {
   cart:{}, q:'', cat:'ALL',
   step:'cart', delivery:null, payment:null, lastOrder:null, notes:{}, lines:{}, food:false, subs:{}, sub:'ALL', table:null
 };
+
+/* ───────── dirección ─────────
+   ventra.store/<comercio> (o tienda.ventra.store/<comercio>, el de siempre): la página del comercio.
+   /turnos abre directo la reserva, /tienda muestra la tienda, /turno/<código> es el link del turno de un cliente. */
+var PATH=location.pathname.split('/').filter(Boolean).map(function(x){ try{ return decodeURIComponent(x); }catch(e){ return x; } });
+function pathSlug(){ return window.__PREVIEW_SLUG||PATH[0]||''; }
+/* Direcciones del sitio de Ventra: un comercio que tenga una sigue con tienda.ventra.store (misma lista que
+   firebase/functions/store-slugs.js y apps/frontend/src/utils/storeLinks.ts) */
+var RESERVED_SLUGS={admin:1,panel:1,instagram:1,peluquerias:1,'tienda-online':1,'sistema-de-ventas':1,turnos:1,cuenta:1,privacidad:1,terminos:1,index:1,og:1,tienda:1,tiendas:1,agenda:1,app:1,api:1,ayuda:1,blog:1,precios:1,planes:1,login:1,registro:1,soporte:1,contacto:1,ventra:1,www:1,turno:1,reservas:1,descargar:1};
+/* Link público del comercio (sub: 'turnos' o 'turno/<código>') */
+function publicLink(sub){
+  var s=(S.cfg&&S.cfg.subdomain)||'', e=encodeURIComponent(s);
+  if(RESERVED_SLUGS[s]) return 'https://tienda.ventra.store/'+e+(sub==='turnos'?'#turnos':'');
+  return 'https://ventra.store/'+e+(sub?'/'+sub:'');
+}
 
 /* ───────── horarios ───────── */
 function toMin(hhmm){ var p=String(hhmm||'0:0').split(':'); return (+p[0])*60+(+p[1]||0); }
@@ -719,7 +750,7 @@ async function loadCatalog(ref, cfg){
   return ps.docs.map(function(d){ var x=d.data(); x.id=d.id; return x; });
 }
 async function init(){
-  var slug=decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g,''));
+  var slug=pathSlug();
   if(!slug){ hideSplash(); return notFound('Tiendas online de Ventra','Para ver una tienda, entrá con el enlace que te compartió el comercio.'); }
   try{
     // La dirección se resuelve por el registro (ventra_store_slugs), que solo escribe Ventra:
@@ -736,7 +767,11 @@ async function init(){
     }
     if(!doc){ hideSplash(); return notFound('No encontramos esta tienda','Revisá que el enlace esté bien escrito.'); }
     var cfg=doc.data();
-    if(!cfg.isPublished){ hideSplash(); return notFound('Tienda en preparación','El comercio todavía no la publicó. Volvé a entrar en un rato.'); }
+    // El link de un turno (#turno= o la vuelta de Mercado Pago) anda aunque la página esté sin publicar (ej. el comercio
+    // pausó los turnos online): el cliente tiene que poder ver, cambiar o cancelar el turno que ya sacó
+    var turnoLink=/(^#|[?&])turno=/.test(location.hash)||/[?&]turno=/.test(location.search)||!!window.__PREVIEW_TURNO;
+    if(!cfg.isPublished && !(turnoLink && cfg.agenda)){ hideSplash(); return notFound('Tienda en preparación','El comercio todavía no la publicó. Volvé a entrar en un rato.'); }
+    S.turnoOnly=!cfg.isPublished;
     S.storeId=doc.id; S.cfg=cfg;
     S.food = cfg.rubro==='GASTRONOMIA';
     splashBrand(cfg,slug);
@@ -744,7 +779,7 @@ async function init(){
     cfg.paymentMethods = (cfg.paymentMethods&&cfg.paymentMethods.length)?cfg.paymentMethods:['Efectivo','Transferencia'];
     applyBrand(cfg);
 
-    var list=await loadCatalog(doc.ref, cfg);
+    var list=S.turnoOnly?[]:await loadCatalog(doc.ref, cfg);
     // Opción de la tienda: vender todo aunque en el sistema figure sin stock. En gastronomía se cocina a pedido: el stock no cuenta
     if(cfg.alwaysInStock || S.food) list.forEach(function(p){ p.inStock=true; });
     // Pausados a mano ("hoy no hay"): se ven, pero no se pueden pedir
@@ -797,7 +832,7 @@ var SPLASH_T0=Date.now();
 function splashKey(slug){ return 'ventra_splash_'+slug; }
 (function(){
   // Vuelve a mostrar enseguida el logo y el color de la última visita
-  var slug=decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g,'')), c=null;
+  var slug=pathSlug(), c=null;
   try{ c=JSON.parse(localStorage.getItem(splashKey(slug))||'null'); }catch(e){}
   if(c&&c.color) document.documentElement.style.setProperty('--brand',c.color);
   $('#spLogo').innerHTML=c&&c.logo?'<img src="'+esc(c.logo)+'" alt="">':(c&&c.name?initial(c.name):ic('bag'));
@@ -955,7 +990,7 @@ function applyBrand(cfg){
 }
 
 function notFound(title,text){
-  $('#app').innerHTML='<div class="center"><img src="ventra-logo.png" alt="" style="width:64px;height:64px;border-radius:16px"><h2 class="display" style="margin:4px 0 0">'+esc(title)+'</h2><p style="color:var(--ink-2);max-width:360px;margin:0">'+esc(text)+'</p></div>';
+  $('#app').innerHTML='<div class="center"><img src="/ventra-logo.png" alt="" style="width:64px;height:64px;border-radius:16px"><h2 class="display" style="margin:4px 0 0">'+esc(title)+'</h2><p style="color:var(--ink-2);max-width:360px;margin:0">'+esc(text)+'</p></div>';
 }
 
 /* ───────── render principal ───────── */
@@ -1001,7 +1036,7 @@ function render(){
     +   (st?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
     +   '<span class="chip brand">'+ic('clock')+'Reservás online, las 24 h</span>'
     +   (AG().autoConfirm!==false?'<span class="chip">'+ic('check')+'Confirmación al instante</span>':'')
-    +   ((AG().deposit||{}).enabled?'<span class="chip">Pagás online o en el local</span>':'')
+    +   ((AG().deposit||{}).enabled?'<span class="chip">'+(depositRequired()?'Reservás con una seña online':'Pagás online o en el local')+'</span>':'')
     + '</div>'
     + '<div class="hero-actions">'
     +   '<button class="btn btn-brand btn-book" data-act="book-open">'+ic('clock')+'Reservar turno</button>'
@@ -1048,10 +1083,12 @@ function render(){
   renderList(); refreshCartBar();
   var q=$('#q');
   if(q) q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
-  if(location.hash==='#turnos' && agendaOn()) setTimeout(function(){ openBooking(null); },200);
+  if((location.hash==='#turnos'||PATH[1]==='turnos') && agendaOn()) setTimeout(function(){ openBooking(null); },200);
+  var linkTurno=PATH[1]==='turno'&&/^[A-Za-z0-9]{8}$/.test(PATH[2]||'')?String(PATH[2]).toUpperCase():null;
   // Link del turno. Los pagos de antes volvían de Mercado Pago con sus datos pegados atrás (#turno=…?collection_status=…)
   var tm=(window.__PREVIEW_TURNO||location.hash).match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})(?![A-Za-z0-9])/);
-  if(tm){
+  if(linkTurno) setTimeout(function(){ openManage(null,null,false,linkTurno); },200);
+  else if(tm){
     var hq=new URLSearchParams((location.hash.split('?')[1]||'')+'&'+location.search.slice(1)), hs=hq.get('collection_status')||hq.get('status');
     try{ sessionStorage.removeItem(PAYING_KEY); if(hs) history.replaceState(null,'',location.pathname+'#turno='+tm[1]+'.'+tm[2]); }catch(e){}
     if(hs && hs!=='approved' && hs!=='pending' && hs!=='in_process') setTimeout(function(){ abandonPay(tm[1],tm[2].toUpperCase()); },200);
@@ -1185,7 +1222,7 @@ function footerHtml(){
     +'</div>'
     +(function(){
       var turnos=!!AG().enabled, href=esc(ventraLink('badge'));
-      return '<div class="made"><a href="'+href+'" target="_blank" rel="noopener"><img src="ventra-logo.png" alt="">'+(turnos?'Turnos online con':'Tienda hecha con')+' <b>Ventra</b></a>'
+      return '<div class="made"><a href="'+href+'" target="_blank" rel="noopener"><img src="/ventra-logo.png" alt="">'+(turnos?'Turnos online con':'Tienda hecha con')+' <b>Ventra</b></a>'
         +'<a class="cta" href="'+href+'" target="_blank" rel="noopener">'+(turnos?'¿Das turnos? Armá tu agenda':'¿Tenés un negocio? Creá tu tienda')+'</a></div>';
     })()
     +'</div></footer>';
@@ -1430,7 +1467,9 @@ async function sendOrder(btn){
 }
 
 /* Pago online del turno (agenda.deposit): misma cuenta que depositFor en firebase/functions/agenda.js.
-   'full' (o sin modo): el turno completo; 'percent'/'fixed': señas de configuraciones viejas */
+   'full' (o sin modo): el turno completo, el cliente puede elegir pagar en el local;
+   'percent'/'fixed': seña obligatoria para reservar (depositRequired) */
+function depositRequired(){ var d=(S.cfg.agenda||{}).deposit; return !!(d&&d.enabled&&(d.mode==='percent'||d.mode==='fixed')); }
 function depositOf(sv){
   var d=(S.cfg.agenda||{}).deposit; if(!d||!d.enabled||!sv) return 0;
   var price=Number(sv.price)||0;
@@ -1448,12 +1487,14 @@ function addToCalendar(){
   var endMs=startMs+Math.max(5,Number(o.durationMin)||30)*60000;
   var f=function(ms){ return new Date(ms).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,''); };
   var title=o.serviceName+' · '+S.cfg.businessName;
-  var det='Turno #'+o.code+(o.staffName?' con '+o.staffName:'')+(o.id?'\nVer, cambiar o cancelar: '+manageUrl(o.id,o.code):'');
+  var det='Turno #'+o.code+(o.staffName?' con '+o.staffName:'')+(o.id?'\nVer, cambiar o cancelar: '+manageUrl(o.id,o.code,o.link):'');
   if(/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1)){
     var ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Ventra//Turnos//ES','BEGIN:VEVENT','UID:'+(o.id||o.code)+'@ventra.store','DTSTAMP:'+f(Date.now()),
       'DTSTART:'+f(startMs),'DTEND:'+f(endMs),'SUMMARY:'+icsEsc(title),'DESCRIPTION:'+icsEsc(det)].concat(S.cfg.address?['LOCATION:'+icsEsc(S.cfg.address)]:[])
       .concat(['BEGIN:VALARM','TRIGGER:-PT1H','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(title),'END:VALARM','END:VEVENT','END:VCALENDAR']).join('\r\n');
-    window.location.assign('data:text/calendar;charset=utf-8,'+encodeURIComponent(ics));
+    var url=URL.createObjectURL(new Blob([ics],{type:'text/calendar;charset=utf-8'})), a=document.createElement('a');
+    a.href=url; a.download='turno.ics'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); },15000);
     return;
   }
   window.open('https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+f(startMs)+'/'+f(endMs)
@@ -1464,8 +1505,8 @@ function bookedWa(o){
   var name=o.name; if(!name) try{ name=(JSON.parse(localStorage.getItem('ventra_customer')||'{}')||{}).name||''; }catch(e){}
   var L=['Hola! Reservé un turno en *'+S.cfg.businessName+'*','','*'+o.serviceName+'*'+(o.staffName?' con '+o.staffName:''),'*Día:* '+dayText(o.date)+', '+o.time+' hs','*Turno:* #'+o.code];
   if(name) L.push('*Nombre:* '+name);
-  if(o.paid) L.push('*Pagado con Mercado Pago:* '+money(o.paid));
-  if(o.id) L.push('','Ver, cambiar o cancelar mi turno: '+manageUrl(o.id,o.code));
+  if(o.paid) L.push('*'+(o.sena?'Seña pagada':'Pagado')+' con Mercado Pago:* '+money(o.paid));
+  if(o.id) L.push('','Ver, cambiar o cancelar mi turno: '+manageUrl(o.id,o.code,o.link));
   return S.cfg.whatsappNumber?'https://wa.me/'+String(S.cfg.whatsappNumber).replace(/\D/g,'')+'?text='+encodeURIComponent(L.join('\n')):'';
 }
 function calBtn(style){ return '<button class="btn btn-ghost btn-block" style="height:48px;'+(style||'')+'" data-act="cal-add">'+ic('clock')+'Agregar a mi calendario</button>'; }
@@ -1473,15 +1514,18 @@ function payBtn(url,amount){ return '<a class="btn btn-brand btn-block" style="h
 
 /* ───────── link del turno: ver y cancelar (función agendaManage) ───────── */
 var MANAGE_URL='https://us-central1-ventra-9cba5.cloudfunctions.net/agendaManage';
-function manageUrl(id,code){ return 'https://tienda.ventra.store/'+encodeURIComponent(S.cfg.subdomain||'')+'#turno='+id+'.'+code; }
+function manageUrl(id,code,link){
+  if(link&&!RESERVED_SLUGS[S.cfg.subdomain||'']) return publicLink('turno/'+link);
+  return 'https://tienda.ventra.store/'+encodeURIComponent(S.cfg.subdomain||'')+'#turno='+id+'.'+code;
+}
 function manageCall(body){
   return fetch(MANAGE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({storeId:S.storeId},body))})
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ if(!r.ok) throw new Error(d.error||'No se pudo cargar el turno'); return d; }); });
 }
-function openManage(id,code,paying){
-  var mg=S.mg={id:id,code:code,state:'loading',paying:!!paying}; renderManage(); openSheet('bookSheet');
-  manageCall({id:id,code:code,action:'get'})
-    .then(function(d){ mg.data=d; mg.state='show'; renderManage(); mgWatch(mg,0); })
+function openManage(id,code,paying,link){
+  var mg=S.mg={id:id,code:code,link:link||null,state:'loading',paying:!!paying}; renderManage(); openSheet('bookSheet');
+  manageCall(link?{link:link,action:'get'}:{id:id,code:code,action:'get'})
+    .then(function(d){ mg.data=d; if(d.id){ mg.id=d.id; mg.code=d.code; } if(d.link) mg.link=d.link; mg.state='show'; renderManage(); mgWatch(mg,0); })
     .catch(function(e){ mg.state='error'; mg.err=e.message; renderManage(); });
 }
 /* Volvió de Mercado Pago sin pagar (o salió de la ventana de pago): el turno se cancela y el horario se libera ya */
@@ -1501,21 +1545,25 @@ function payReturn(){
   var id=t?t[1]:flag&&flag.id, code=t?t[2].toUpperCase():flag&&flag.code;
   if(!id||!code) return;
   var mp=q.get('mp'), st=q.get('collection_status')||q.get('status');
-  var lost=!(mp==='ok'||st==='approved'||mp==='pending'||st==='in_process'||st==='pending'||(t&&!mp&&!st));
-  try{ history.replaceState(null,'',location.pathname+(lost?'':'#turno='+id+'.'+code)); }catch(e){}
-  if(mp==='ok'||st==='approved') return setTimeout(function(){ openManage(id,code,true); },200);
-  if(mp==='pending'||st==='in_process'||st==='pending'||(t&&!mp&&!st)) return setTimeout(function(){ openManage(id,code); },200);
-  setTimeout(function(){ abandonPay(id,code,flag&&flag.sv); },200);
+  // Solo se libera el horario si Mercado Pago dice que no se pagó. Sin datos (volvió con el botón atrás o desde la
+  // app de Mercado Pago) se muestra el turno esperando el pago: si pagó, se confirma solo; si no, paga o lo cancela
+  var failed=mp==='fail'||st==='rejected'||st==='cancelled'||st==='null';
+  try{ history.replaceState(null,'',location.pathname+(failed?'':'#turno='+id+'.'+code)); }catch(e){}
+  if(failed) return setTimeout(function(){ abandonPay(id,code,flag&&flag.sv); },200);
+  setTimeout(function(){ openManage(id,code,mp==='ok'||st==='approved'); },200);
 }
 /* Turno esperando el pago (volvió de Mercado Pago): se vuelve a consultar solo hasta que se acredita */
+/* Esperando el pago: con el link para pagar, o volvió pagado y todavía no se acreditó (aunque el plazo haya vencido) */
+function mgWaiting(mg,d){ return !!d && (!!d.payUrl || (!!mg.paying && !!d.deposit && d.deposit.status!=='paid' && (d.status==='AWAITING_PAYMENT'||d.status==='CANCELLED'))); }
 function mgWatch(mg,n){
-  if(!mg.data||!mg.data.payUrl||n>=40) return;
+  if(!mg.data||!mgWaiting(mg,mg.data)) return;
+  if(n>=40){ if(mg.paying){ mg.slow=true; renderManage(); } return; }
   setTimeout(function(){
     if(S.mg!==mg||!$('#bookSheet').classList.contains('show')) return;
     manageCall({id:mg.id,code:mg.code,action:'get'}).then(function(d){
       if(S.mg!==mg) return;
-      var was=mg.data.status; mg.data=d;
-      if(d.status!==was||!d.payUrl){ renderManage(); if(d.status==='CONFIRMED'||d.status==='PENDING') toast('¡Pago recibido! Turno confirmado'); }
+      var was=mg.data.status, wasPaid=mg.data.deposit&&mg.data.deposit.status==='paid'; mg.data=d;
+      if(d.status!==was||!mgWaiting(mg,d)){ renderManage(); if(!wasPaid&&d.deposit&&d.deposit.status==='paid'&&d.status==='CONFIRMED') toast('¡Pago recibido! Turno confirmado'); }
       mgWatch(mg,n+1);
     }).catch(function(){ mgWatch(mg,n+1); });
   },n<10?3000:6000);
@@ -1533,20 +1581,23 @@ function renderManage(){
     if(agendaOn()) foot='<div class="sheet-foot"><button class="btn btn-brand btn-block" style="height:52px;font-size:15.5px" data-act="mg-rebook" data-id="'+esc(m.serviceId||'')+'">Reservar de nuevo</button></div>';
   }
   else {
-    var d=m.data, off=d.status==='CANCELLED', confirming=m.paying&&d.status==='AWAITING_PAYMENT';
+    var d=m.data, confirming=!!m.paying&&mgWaiting(m,d), off=d.status==='CANCELLED'&&!confirming;
+    var dep=d.deposit, paidOnline=!!dep&&dep.status==='paid', sena=!!dep&&dep.full===false;
     body='<div class="done"><div class="done-ic"'+(off?' style="background:#fee2e2;color:#b91c1c"':'')+'>'+(confirming?'<span class="spin" style="width:40px;height:40px;border-width:4px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>':ic(off?'x':'check'))+'</div>'
       +'<h3 class="display">'+(off?'Turno cancelado':confirming?'Confirmando tu pago':d.status==='AWAITING_PAYMENT'?'Falta pagar el turno':d.status==='PENDING'?'Turno por confirmar':d.status==='DONE'?'Turno atendido':d.deposit&&d.deposit.status==='paid'&&m.paying?'¡Listo! Tu turno está confirmado':'Turno confirmado')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(d.serviceName)+'</b>'+(d.staffName?' con '+esc(d.staffName):'')+'<br>'+esc(capFirst(dayText(d.date)))+', '+esc(d.time)+' hs</p>'
       +'<span class="code">#'+esc(m.code)+'</span>'
-      +(off?'<p>El horario quedó libre. '+esc(S.cfg.businessName)+' ya fue avisado.'+(d.deposit&&d.deposit.status==='paid'?' Por la devolución de lo que pagaste, escribile al comercio.':'')+'</p>':'')
-      +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">Pagado con Mercado Pago: <b>'+money(d.deposit.amount)+'</b>'+(m.paying&&!off?'. Te esperamos.':'')+'</p>':'')
+      +(off?'<p>El horario quedó libre.'+(m.justCancelled?' '+esc(S.cfg.businessName)+' ya fue avisado.':'')
+        +(paidOnline?(dep.refund?' Por la devolución de lo que pagaste, escribile al comercio.':sena?' La seña no se devuelve.':' Por lo que pagaste, escribile al comercio.'):'')+'</p>':'')
+      +(confirming&&m.slow?'<p style="font-size:13px">Todavía no nos llegó la confirmación de Mercado Pago. Si pagaste, escribile a '+esc(S.cfg.businessName)+' con el comprobante.</p>':'')
+      +(d.deposit&&d.deposit.status==='paid'?'<p style="font-size:13px">'+(d.deposit.full===false?'Seña pagada':'Pagado')+' con Mercado Pago: <b>'+money(d.deposit.amount)+'</b>'+(m.paying&&!off?'. Te esperamos.':'')+'</p>':'')
       +(m.paying&&!off&&d.canCancel?'<p style="font-size:12.5px;color:var(--ink-3)">Mandale el aviso por WhatsApp al comercio: te queda el link de tu turno para verlo, cambiarlo o cancelarlo.</p>':'')
       +(d.payUrl?'<p style="font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin" style="width:16px;height:16px;border-width:2px"></span>Si ya pagaste, se confirma solo en unos segundos.</p>':'')+'</div>';
     if(confirming) foot='';
     else if(d.payUrl) foot='<div class="sheet-foot">'+payBtn(d.payUrl,d.deposit.amount)+'<button class="btn btn-soft btn-block" style="height:44px;margin-top:8px;color:#b91c1c" data-act="mg-cancel">Cancelar el turno</button></div>';
     else if(d.canCancel){
-      S.cal={serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,durationMin:d.durationMin,code:m.code,id:m.id};
-      var paidWa=m.paying&&d.deposit&&d.deposit.status==='paid'?bookedWa({serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,code:m.code,id:m.id,paid:d.deposit.amount}):'';
+      S.cal={serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,durationMin:d.durationMin,code:m.code,id:m.id,link:m.link};
+      var paidWa=m.paying&&d.deposit&&d.deposit.status==='paid'?bookedWa({serviceName:d.serviceName,staffName:d.staffName,date:d.date,time:d.time,code:m.code,id:m.id,link:m.link,paid:d.deposit.amount,sena:d.deposit.full===false}):'';
       foot='<div class="sheet-foot">'
         +(paidWa?'<a class="btn btn-wa btn-block" style="height:48px;margin-bottom:8px" href="'+esc(paidWa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
         +calBtn()
@@ -1559,10 +1610,12 @@ function renderManage(){
     +'<div class="sheet-body">'+body+'</div>'+foot;
 }
 function cancelMine(btn){
-  if(!confirm('¿Cancelar tu turno? El horario queda libre para otra persona.')) return;
+  var dep=S.mg.data&&S.mg.data.deposit, paid=dep&&dep.status==='paid';
+  var warn=paid?(dep.full===false?' La seña que pagaste no se devuelve.':' Por lo que pagaste, el comercio te contacta para devolvértelo.'):'';
+  if(!confirm('¿Cancelar tu turno?'+warn+' El horario queda libre para otra persona.')) return;
   btn.disabled=true;
   manageCall({id:S.mg.id,code:S.mg.code,action:'cancel'})
-    .then(function(d){ S.mg.data=d; renderManage(); toast('Turno cancelado'); })
+    .then(function(d){ S.mg.data=d; S.mg.justCancelled=true; renderManage(); toast('Turno cancelado'); })
     .catch(function(e){ btn.disabled=false; toast(e.message); });
 }
 
@@ -1577,7 +1630,7 @@ var TZ_OFFSET_MIN=-180;
 function AG(){ return (S.cfg && S.cfg.agenda) || {}; }
 function agServices(){ return (AG().services||[]).filter(function(x){ return x && x.active!==false && x.name; }); }
 function agStaff(){ return (AG().staff||[]).filter(function(x){ return x && x.active!==false && x.name; }); }
-function agendaOn(){ return !!AG().enabled && agServices().length>0 && agStaff().length>0; }
+function agendaOn(){ return !S.turnoOnly && !!AG().enabled && agServices().length>0 && agStaff().length>0; }
 function pad2(n){ return String(n).padStart(2,'0'); }
 function hhmm(m){ return pad2(Math.floor(m/60))+':'+pad2(m%60); }
 function localNow(ms){ var d=new Date((ms||Date.now())+TZ_OFFSET_MIN*60000); return {dateKey:d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate()),min:d.getUTCHours()*60+d.getUTCMinutes()}; }
@@ -1585,7 +1638,30 @@ function addDays(k,n){ var d=new Date(k+'T12:00:00Z'); d.setUTCDate(d.getUTCDate
 function wday(k){ return new Date(k+'T12:00:00Z').getUTCDay(); }
 function durLabel(m){ return m<60?m+' min':Math.floor(m/60)+' h'+(m%60?' '+(m%60)+' min':''); }
 function canDo(st,sv){ return !sv.staffIds||!sv.staffIds.length||sv.staffIds.indexOf(st.id)>=0; }
-function staffRanges(h){ return dayRanges(h).map(function(r){ return {s:toMin(r.from),e:toMin(r.to)}; }).filter(function(r){ return r.e>r.s; }); }
+/* Igual que dayRanges en firebase/functions/agenda.js: hasta las 00:00 (o antes de empezar) = hasta la medianoche,
+   y los rangos que se pisan o se tocan se juntan */
+function staffRanges(h){
+  if(!h||!h.open) return [];
+  var r=(h.ranges&&h.ranges.length)?h.ranges:[{from:h.from,to:h.to}], out=[];
+  r.filter(function(x){ return x&&x.from&&x.to; }).map(function(x){ var s=toMin(x.from), e=toMin(x.to); return {s:s,e:e<=s?1440:e}; })
+    .filter(function(x){ return x.s<1440; }).sort(function(a,b){ return a.s-b.s; })
+    .forEach(function(x){ var l=out[out.length-1]; if(l&&x.s<=l.e) l.e=Math.max(l.e,x.e); else out.push({s:x.s,e:x.e}); });
+  return out;
+}
+/* Número argentino sin país, sin 0 y sin 15 (misma cuenta que arNational en firebase/functions/agenda.js) */
+function arNational(phone){
+  var d=String(phone||'').replace(/\D/g,'');
+  if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('54')===0&&d.length>=12){ d=d.slice(2); if(d.charAt(0)==='9'&&d.length===11) d=d.slice(1); }
+  if(d.charAt(0)==='0') d=d.slice(1);
+  if(d.length===12) for(var p=2;p<=4;p++) if(d.substr(p,2)==='15'){ d=d.slice(0,p)+d.slice(p+2); break; }
+  return d;
+}
+/* WhatsApp que sirve: argentino con código de área (10 dígitos, sin 15 adelante) o de otro país con + */
+function phoneOk(phone){
+  if(/^\s*(\+|00)(?!\s*5\s*4)/.test(phone)) return String(phone).replace(/\D/g,'').length>=8;
+  var n=arNational(phone); return n.length===10 && n.indexOf('15')!==0;
+}
 function minStartFor(k){
   var a=AG(), now=localNow(), maxDays=Math.max(1,Math.min(180,Number(a.maxDaysAhead)||30));
   if(k<now.dateKey || k>addDays(now.dateKey,maxDays-1)) return Infinity;
@@ -1609,15 +1685,24 @@ var MONTHS=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','s
 function capFirst(t){ return t.charAt(0).toUpperCase()+t.slice(1); }
 function dayText(k){ var t=localNow().dateKey, d=+k.slice(8), m=+k.slice(5,7); return (k===t?'hoy':k===addDays(t,1)?'mañana':DAYS_LONG[wday(k)])+' '+d+' de '+MONTHS[m-1]; }
 
+/* "Ver más" para las descripciones que no entran en dos renglones: nace oculto y se muestra solo si el texto se corta */
+function descMore(t){
+  if(!t) return '';
+  clearTimeout(descMore._t); descMore._t=setTimeout(fitDescs,0);
+  return '<span class="desc-more" data-act="desc-more" role="button" tabindex="0" hidden>Ver más</span>';
+}
+function fitDescs(){
+  document.querySelectorAll('.desc-more[hidden]').forEach(function(m){ var d=m.previousElementSibling; if(d&&d.scrollHeight>d.clientHeight+1) m.hidden=false; });
+}
 function servicesHtml(){
   var list=agServices(), bo=bookOnly();
   // Solo turnos: la lista es el contenido de la página (con la inicial de cada servicio, como en la reserva)
   return '<section class="section" id="turnos"><h2 class="display">'+(bo?'Servicios <small>'+list.length+'</small>':'Reservá tu turno')+'</h2>'
     +(bo?'<p class="section-sub">Elegí uno y reservá día y horario en un minuto.</p>':'')+'<div class="svc-list">'
     +list.map(function(v){
-      return '<button class="svc" data-act="book-svc" data-id="'+esc(v.id)+'">'+(bo?'<span class="svc-ic">'+initial(v.name)+'</span>':'')+'<div class="svc-info"><div class="svc-name">'+esc(v.name)+'</div>'
+      return '<button class="svc svc-col" data-act="book-svc" data-id="'+esc(v.id)+'"><span class="svc-top">'+(bo?'<span class="svc-ic">'+initial(v.name)+'</span>':'')+'<div class="svc-info"><div class="svc-name">'+esc(v.name)+'</div>'
         +'<div class="svc-meta">'+ic('clock')+durLabel(Number(v.durationMin)||30)+(v.price>0?' · <span class="svc-price">'+money(v.price)+'</span>':'')+'</div>'
-        +(v.description?'<div class="svc-desc">'+esc(v.description)+'</div>':'')+'</div><span class="go">Reservar</span></button>';
+        +'</div><span class="go">Reservar</span></span>'+(v.description?'<div class="svc-desc">'+esc(v.description)+'</div>'+descMore(v.description):'')+'</button>';
     }).join('')+'</div></section>';
 }
 
@@ -1639,16 +1724,25 @@ function loadBusy(k){
 }
 /* Horarios libres del día: con "cualquiera", la unión de los profesionales que hacen el servicio */
 function slotsFor(k){
-  var sv=bkService(), busy=S.bkBusy[k]||[], min=minStartFor(k), set={};
+  var sv=bkSvc(), busy=bkBusyFor(k), min=minStartFor(k), set={};
   if(min===Infinity) return [];
   bkStaffFor(sv).filter(function(st){ return !S.bk.staffId||S.bk.staffId==='ANY'||st.id===S.bk.staffId; }).forEach(function(st){
     freeStarts(st,sv,k,busy,min).forEach(function(t){ set[t]=1; });
   });
   return Object.keys(set).map(Number).sort(function(a,b){return a-b;});
 }
+/* Al cambiar el turno desde su link: el turno mismo no cuenta como ocupado (se puede correr media hora) */
+function bkBusyFor(k){
+  var busy=S.bkBusy[k]||[], mv=S.bk.move&&S.bk.move.from;
+  if(!mv||k!==mv.date) return busy;
+  var s=toMin(mv.time), e=s+(Number(mv.durationMin)||30), gone=false;
+  return busy.filter(function(x){ if(!gone&&x.staffId===mv.staffId&&x.s===s&&x.e===e){ gone=true; return false; } return true; });
+}
+/* El servicio a reservar; al cambiar un turno, con la duración que tiene ese turno (aunque el servicio haya cambiado) */
+function bkSvc(){ var sv=bkService(), mv=S.bk.move&&S.bk.move.from; return sv&&mv&&mv.durationMin?Object.assign({},sv,{durationMin:Number(mv.durationMin)}):sv; }
 /* Días con algún horario de atención (sin mirar lo ocupado todavía) */
 function workDays(){
-  var sv=bkService(), out=[], now=localNow().dateKey, n=Math.max(1,Math.min(60,Number(AG().maxDaysAhead)||30));
+  var sv=bkService(), out=[], now=localNow().dateKey, n=Math.max(1,Math.min(180,Number(AG().maxDaysAhead)||30));
   var staff=bkStaffFor(sv).filter(function(st){ return !S.bk.staffId||S.bk.staffId==='ANY'||st.id===S.bk.staffId; });
   for(var i=0;i<n;i++){
     var k=addDays(now,i);
@@ -1688,12 +1782,12 @@ function renderBooking(){
 function renderBookingStep(){
   var el=$('#bookSheet'), b=S.bk, sv=bkService();
   if(b.step==='service'){
-    el.innerHTML=bkHead('¿Qué te querés hacer?',false)+'<div class="sheet-body"><div class="bk-list">'
+    el.innerHTML=bkHead('¿Qué querés reservar?',false)+'<div class="sheet-body"><div class="bk-list">'
       +agServices().map(function(v){
-        return '<button class="bk-opt" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><span class="bk-opt-ic">'+initial(v.name)+'</span>'
-          +'<span class="bk-opt-main"><b>'+esc(v.name)+'</b><span class="bk-opt-meta"><span class="bk-chip">'+ic('clock')+durLabel(Number(v.durationMin)||30)+'</span></span>'
-          +(v.description?'<span class="bk-opt-desc">'+esc(v.description)+'</span>':'')+'</span>'
-          +'<span class="bk-opt-side">'+(v.price>0?money(v.price):'')+ic('back','fwd')+'</span></button>';
+        return '<button class="bk-opt bk-svc" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><span class="bk-svc-top"><span class="bk-opt-ic">'+initial(v.name)+'</span>'
+          +'<span class="bk-opt-main"><b>'+esc(v.name)+'</b><span class="bk-opt-meta"><span class="bk-chip">'+ic('clock')+durLabel(Number(v.durationMin)||30)+'</span>'
+          +(v.price>0?'<span class="bk-price">'+money(v.price)+'</span>':'')+'</span></span>'+ic('back','fwd')+'</span>'
+          +(v.description?'<span class="bk-opt-desc">'+esc(v.description)+'</span>'+descMore(v.description):'')+'</button>';
       }).join('')
       +'</div></div>';
     return;
@@ -1743,10 +1837,12 @@ function renderBookingStep(){
       +'<div class="bk-card-when">'+ic('clock')+'<span><b>'+esc(capFirst(dayText(b.day)))+'</b> · '+hhmm(b.time)+' hs</span><button class="bk-link" data-act="bk-back">Cambiar</button></div></div>'
       +'<p class="bk-sub">Para confirmarte el turno</p>'
       +'<div class="field" id="b-name"><label for="bName">Nombre y apellido</label><input id="bName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
-      +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área.</div></div>'
+      +'<div class="field" id="b-phone"><label for="bPhone">WhatsApp</label><input id="bPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí tu WhatsApp con código de área, sin 0 ni 15 (ej. 11 2345 6789).</div></div>'
       +(EMAIL_REMINDERS_SOON||(AG().emailReminders&&AG().emailReminders.enabled===false)?'':'<div class="field" id="b-email"><label for="bEmail">Email (opcional, para recordarte el turno)</label><input id="bEmail" type="email" inputmode="email" autocomplete="email" value="'+esc(saved.email||'')+'" placeholder="juana@gmail.com"><div class="err">Revisá tu email.</div></div>')
       +'<div class="field"><label for="bNote">Algo que quieras aclarar (opcional)</label><textarea id="bNote" placeholder="Ej: es para mi hija de 8 años"></textarea></div>'
-      +(depositOf(sv)?'<p class="bk-sub" style="margin-top:6px">¿Cómo querés pagar?</p><div class="bk-pay">'
+      +(depositOf(sv)&&depositRequired()?'<p class="bk-sub" style="margin-top:6px">Seña para reservar</p><div class="bk-pay"><div class="bk-opt on"><span class="bk-opt-main"><b>'+money(depositOf(sv))+' con Mercado Pago</b><span>'
+        +(sv.price>depositOf(sv)?'El resto ('+money(sv.price-depositOf(sv))+') lo pagás en el local. ':'')+'El turno queda confirmado al pagar la seña. Si después cancelás, la seña no se devuelve.</span></span></div></div>'
+      :depositOf(sv)?'<p class="bk-sub" style="margin-top:6px">¿Cómo querés pagar?</p><div class="bk-pay">'
         +'<button type="button" class="bk-opt'+(b.pay!=='local'?' on':'')+'" data-act="bk-pay" data-v="mp" aria-pressed="'+(b.pay!=='local')+'"><span class="bk-radio"></span><span class="bk-opt-main"><b>Ahora, con Mercado Pago</b><span>'+money(depositOf(sv))+(sv.price>depositOf(sv)?' de seña (el resto en el local)':'')+'. El turno queda confirmado al pagar.</span></span></button>'
         +'<button type="button" class="bk-opt'+(b.pay==='local'?' on':'')+'" data-act="bk-pay" data-v="local" aria-pressed="'+(b.pay==='local')+'"><span class="bk-radio"></span><span class="bk-opt-main"><b>En el local, en efectivo</b><span>Pagás '+(sv.price>0?money(sv.price)+' ':'')+'cuando vayas.</span></span></button>'
         +'</div>':'')
@@ -1759,7 +1855,7 @@ function renderBookingStep(){
     el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic"><span class="spin" style="width:40px;height:40px;border-width:4px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span></div>'
       +'<h3 class="display">Te llevamos a Mercado Pago</h3>'
       +'<p><b style="color:var(--ink)">'+esc(rp.serviceName)+'</b>'+(rp.staffName?' con '+esc(rp.staffName):'')+'<br>'+esc(capFirst(dayText(rp.date)))+', '+esc(rp.time)+' hs</p>'
-      +'<p>Pagás <b>'+money(rp.deposit)+'</b> y el turno queda confirmado solo.</p>'
+      +'<p>Pagás '+(sv&&sv.price>rp.deposit?'la seña de ':'')+'<b>'+money(rp.deposit)+'</b> y el turno queda confirmado solo.</p>'
       +'<span class="code">#'+esc(rp.code)+'</span></div></div>'
       +'<div class="sheet-foot">'+payBtn(rp.payUrl,rp.deposit)
       +'<p style="text-align:center;font-size:12.5px;color:var(--ink-3);margin:8px 0 0">Si no se abrió solo, tocá el botón.</p></div>';
@@ -1767,15 +1863,15 @@ function renderBookingStep(){
   }
   if(b.step==='done'){
     var r=b.result, pending=r.status==='PENDING';
-    S.cal={serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,durationMin:Number(sv.durationMin)||30,code:r.code,id:r.id};
-    var wa=bookedWa({name:b.name,serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,code:r.code,id:r.id});
+    S.cal={serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,durationMin:Number(sv.durationMin)||30,code:r.code,id:r.id,link:r.link};
+    var wa=bookedWa({name:b.name,serviceName:r.serviceName,staffName:r.staffName,date:r.date,time:r.time,code:r.code,id:r.id,link:r.link});
     el.innerHTML=bkHead('',false)+'<div class="sheet-body"><div class="done"><div class="done-ic">'+ic('check')+'</div>'
       +'<h3 class="display">'+(pending?'¡Turno pedido!':'¡Turno reservado!')+'</h3>'
       +'<p><b style="color:var(--ink)">'+esc(r.serviceName)+'</b>'+(r.staffName?' con '+esc(r.staffName):'')+'<br>'+esc(capFirst(dayText(r.date)))+', '+esc(r.time)+' hs</p>'
       +(pending?'<p>'+esc(S.cfg.businessName)+' te lo va a confirmar por WhatsApp.</p>':'')
       +'<span class="code">#'+esc(r.code)+'</span>'
       +(S.cfg.address?'<p style="font-size:13px">'+esc(S.cfg.address)+'</p>':'')
-      +(r.id?'<p style="font-size:13px">Si no podés ir, cancelalo desde <a href="'+esc(manageUrl(r.id,r.code))+'" style="color:var(--brand);font-weight:600">el link de tu turno</a>'+(wa?' (también va en el mensaje de WhatsApp).':'.')+'</p>':'')+'</div></div>'
+      +(r.id?'<p style="font-size:13px">Si no podés ir, cancelalo desde <a href="'+esc(manageUrl(r.id,r.code,r.link))+'" style="color:var(--brand);font-weight:600">el link de tu turno</a>'+(wa?' (también va en el mensaje de WhatsApp).':'.')+'</p>':'')+'</div></div>'
       +'<div class="sheet-foot">'
       +(wa?'<a class="btn btn-wa btn-block" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+'Avisar por WhatsApp</a>':'')
       +calBtn('margin-top:8px')
@@ -1882,6 +1978,7 @@ async function confirmMove(btn){
 
 /* Texto del botón de reservar según cómo paga */
 function bkConfirmLabel(sv){
+  if(depositOf(sv)&&depositRequired()) return (sv.price>depositOf(sv)?'Reservar y pagar la seña · ':'Reservar y pagar · ')+money(depositOf(sv));
   return depositOf(sv)&&S.bk.pay!=='local'?'Reservar y pagar · '+money(depositOf(sv)):'Confirmar turno'+(sv&&sv.price>0?' · '+money(sv.price):'');
 }
 /* Elige cómo paga sin volver a dibujar el paso (no se pierde lo que ya escribió) */
@@ -1904,7 +2001,8 @@ async function confirmBooking(btn){
   var b=S.bk, name=$('#bName').value.trim(), phone=$('#bPhone').value.trim(), note=$('#bNote').value.trim(), ok=true;
   $('#b-name').classList.toggle('invalid',name.length<2); if(name.length<2) ok=false;
   var digits=phone.replace(/\D/g,'');
-  $('#b-phone').classList.toggle('invalid',digits.length<8); if(digits.length<8) ok=false;
+  var badPhone=!phoneOk(phone);
+  $('#b-phone').classList.toggle('invalid',badPhone); if(badPhone) ok=false;
   var email=$('#bEmail')?$('#bEmail').value.trim():'';
   var badEmail=!!email&&!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email);
   if($('#b-email')) $('#b-email').classList.toggle('invalid',badEmail); if(badEmail) ok=false;
@@ -1913,7 +2011,7 @@ async function confirmBooking(btn){
   var label=btn.innerHTML;
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
   try{
-    var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,email:email,note:note,pay:b.pay==='local'?'local':'mp'})});
+    var res=await fetch(BOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({storeId:S.storeId,serviceId:b.serviceId,staffId:b.staffId||'ANY',date:b.day,time:hhmm(b.time),name:name,phone:phone,email:email,note:note,pay:b.pay==='local'&&!depositRequired()?'local':'mp'})});
     var data=await res.json().catch(function(){ return {}; });
     if(!res.ok){
       toast(data.error||'No se pudo reservar');
@@ -1985,6 +2083,7 @@ document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]'); if(!t) return;
   var act=t.getAttribute('data-act'), id=t.getAttribute('data-id');
   switch(act){
+    case 'desc-more': e.preventDefault(); var dd=t.previousElementSibling, op=dd&&dd.classList.toggle('open'); t.textContent=op?'Ver menos':'Ver más'; break;
     case 'add': if(S.byId[id]&&(S.byId[id].isGroup||hasExtras(S.byId[id]))) break; setQty(id,1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'inc': setQty(id,(S.cart[id]||0)+1); break;
     case 'dec': setQty(id,(S.cart[id]||0)-1); break;
@@ -2061,8 +2160,8 @@ document.addEventListener('click',function(e){
     case 'mg-book': closeSheets(); setTimeout(function(){ openBooking(null); },250); break;
     case 'mg-rebook': var rs=agServices().filter(function(x){ return x.id===id; })[0]; closeSheets(); setTimeout(function(){ openBooking(rs?rs.id:null); },250); break;
     case 'share':
-      if(navigator.share){ navigator.share({title:S.cfg.businessName,text:S.cfg.description||'Mirá mi tienda online',url:location.href}).catch(function(){}); }
-      else if(navigator.clipboard){ navigator.clipboard.writeText(location.href); toast('Enlace copiado'); }
+      if(navigator.share){ navigator.share({title:S.cfg.businessName,text:S.cfg.description||'Mirá mi tienda online',url:publicLink(PATH[1]==='turnos'?'turnos':'')}).catch(function(){}); }
+      else if(navigator.clipboard){ navigator.clipboard.writeText(publicLink(PATH[1]==='turnos'?'turnos':'')); toast('Enlace copiado'); }
       break;
   }
 });

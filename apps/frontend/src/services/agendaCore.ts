@@ -89,7 +89,8 @@ export interface Booking {
   customerName?: string;
   /** 'client': lo canceló el cliente con el link de su turno */
   /** expired: no pagó a tiempo; unpaid: volvió de Mercado Pago sin pagar */
-  cancelledBy?: 'client' | 'expired' | 'unpaid';
+  /** owner: lo canceló el comercio desde la app */
+  cancelledBy?: 'client' | 'expired' | 'unpaid' | 'owner';
   /** Cuándo se le mandó el recordatorio por WhatsApp */
   remindedAt?: any;
   /** 'auto': lo mandó Ventra solo (ver reminder) */
@@ -103,7 +104,7 @@ export interface Booking {
   /** Con el cobro online prendido, el cliente eligió pagar en el local (en efectivo) */
   payAt?: 'local';
   /** Pago online pedido al reservar (el turno completo; en turnos viejos, una seña) */
-  deposit?: { amount: number; status: 'pending' | 'paid'; full?: boolean; paidAmount?: number; paymentId?: string; refundNeeded?: boolean };
+  deposit?: { amount: number; status: 'pending' | 'paid'; full?: boolean; paidAmount?: number; paymentId?: string; refundNeeded?: boolean; paidAt?: any };
   /** Día y hora anteriores, si se reprogramó */
   movedFrom?: { dateKey: string; startMin: number };
   /** Quién lo cambió de horario: el cliente desde su link o el comercio */
@@ -115,7 +116,11 @@ export interface Booking {
   customerEmail?: string;
   customerNote?: string;
   customerPhoneKey?: string;
+  /** Clave del nombre (nameKeyOf): agrupa los clientes sin teléfono aunque escriban el nombre distinto */
+  customerNameKey?: string;
   code?: string;
+  /** Código del link corto del turno: ventra.store/<comercio>/turno/<shortCode> */
+  shortCode?: string;
   status: BookingStatus;
   /** Cobro del turno (planes sin caja): queda como atendido */
   payment?: BookingPayment;
@@ -142,12 +147,36 @@ export interface AgendaClient {
   lastVisit: string | null;
   lastService?: string;
   next: { dateKey: string; startMin: number; serviceName: string } | null;
+  /** Los próximos turnos (hasta 5), para mostrar el siguiente cuando pasa el primero */
+  upcoming?: { dateKey: string; startMin: number; serviceName: string }[];
   note?: string;
 }
 
-// Misma lógica que clientKeyOf / aggregateClient de firebase/functions/agenda.js: mantener iguales.
-const phoneKeyOf = (phone?: string) => String(phone || '').replace(/\D/g, '').slice(-10);
-const nameKeyOf = (name?: string) => String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+// Misma lógica que clientKeyOf / aggregateClient / arNational de firebase/functions/agenda.js: mantener iguales.
+
+/**
+ * Número argentino sin país, sin 0 y sin 15 (10 dígitos: código de área + número). Los clientes lo escriben de mil
+ * maneras: "+54 9 11 2345-6789", "011 15 2345 6789", "0351 15 234 5678". Si no parece argentino, quedan los dígitos.
+ */
+export function arNational(phone?: string) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('54') && d.length >= 12) { d = d.slice(2); if (d.startsWith('9') && d.length === 11) d = d.slice(1); }
+  if (d.startsWith('0')) d = d.slice(1);
+  // Código de área de 2 a 4 dígitos y el 15 de los celulares en el medio
+  if (d.length === 12) for (const p of [2, 3, 4]) if (d.substr(p, 2) === '15') { d = d.slice(0, p) + d.slice(p + 2); break; }
+  return d;
+}
+/** Clave del teléfono del cliente (customerPhoneKey) */
+export const phoneKeyOf = (phone?: string) => arNational(phone).slice(-10);
+/** Número para wa.me: 549 + código de área + número si es argentino; si no, los dígitos con su país */
+export function waPhone(phone?: string) {
+  const ar = arNational(phone);
+  if (ar.length === 10) return '549' + ar;
+  const d = String(phone || '').replace(/\D/g, '');
+  return d.startsWith('00') ? d.slice(2) : d;
+}
+export const nameKeyOf = (name?: string) => String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 /** Clave del cliente de un turno: el teléfono si tiene, si no el nombre. null para bloqueos. */
@@ -165,20 +194,29 @@ export function aggregateClient(bookings: Booking[], todayKey: string): Omit<Age
   const last = list[list.length - 1];
   const withPhone = list.filter((b) => b.customerPhone).pop();
   const done = list.filter((b) => b.status === 'DONE' || b.payment);
-  const next = list.find((b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.dateKey >= todayKey);
+  const coming = list.filter((b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.dateKey >= todayKey)
+    .slice(0, 5).map((b) => ({ dateKey: b.dateKey, startMin: b.startMin, serviceName: b.serviceName || '' }));
   return {
     name: last.customerName || '',
     phone: withPhone ? withPhone.customerPhone || '' : '',
     visits: done.length,
     noShows: list.filter((b) => b.status === 'NO_SHOW').length,
     cancelled: list.filter((b) => b.status === 'CANCELLED').length,
-    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0),
+    // Lo cobrado más lo pagado online que quedó para el comercio (una seña de un cancelado también)
+    spent: list.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0) + depositKept(b), 0),
     firstDate: list[0].dateKey,
     lastVisit: done.length ? done[done.length - 1].dateKey : null,
     lastService: (done.length ? done[done.length - 1] : last).serviceName || '',
-    next: next ? { dateKey: next.dateKey, startMin: next.startMin, serviceName: next.serviceName || '' } : null,
+    next: coming[0] || null,
+    upcoming: coming,
   };
 }
+
+/** Lo pagado online por Mercado Pago que quedó para el comercio (sin lo que hay que devolver) */
+export const depositKept = (b: Partial<Booking>) => (b.deposit?.status === 'paid' && !b.deposit.refundNeeded ? Number(b.deposit.paidAmount ?? b.deposit.amount) || 0 : 0);
+
+/** El próximo turno del cliente desde hoy (el resumen se arma al escribir: si ya pasó el primero, el siguiente) */
+export const nextOf = (c: AgendaClient, todayKey: string) => (c.upcoming || (c.next ? [c.next] : [])).find((x) => x.dateKey >= todayKey) || null;
 
 export const STAFF_COLORS = ['#DB2777', '#2563EB', '#059669', '#D97706', '#7C3AED', '#0891B2', '#DC2626', '#4B5563'];
 
@@ -226,22 +264,35 @@ export function dayLabel(dateKey: string, short = false) {
   return short ? `${w.slice(0, 3)} ${d}/${m}` : `${w} ${d} de ${MONTHS[m - 1]}`;
 }
 
-function staffRanges(h?: DayHours) {
+/**
+ * Rangos de atención del día en minutos (igual que dayRanges en firebase/functions/agenda.js): un rango que termina a
+ * las 00:00 (o antes de empezar) va hasta la medianoche, y los que se pisan o se tocan se juntan.
+ */
+export function staffRanges(h?: DayHours) {
   if (!h || !h.open) return [] as { s: number; e: number }[];
   const r = h.ranges && h.ranges.length ? h.ranges : [{ from: h.from, to: h.to }];
-  return r.filter((x) => x && x.from && x.to).map((x) => ({ s: toMin(x.from), e: toMin(x.to) })).filter((x) => x.e > x.s).sort((a, b) => a.s - b.s);
+  const list = r.filter((x) => x && x.from && x.to).map((x) => { const s = toMin(x.from), e = toMin(x.to); return { s, e: e <= s ? 24 * 60 : e }; })
+    .filter((x) => x.s < 24 * 60).sort((a, b) => a.s - b.s);
+  const out: { s: number; e: number }[] = [];
+  for (const x of list) {
+    const last = out[out.length - 1];
+    if (last && x.s <= last.e) last.e = Math.max(last.e, x.e);
+    else out.push({ ...x });
+  }
+  return out;
 }
 
 export const canDo = (staff: AgendaStaff, service: AgendaService) => !service.staffIds?.length || service.staffIds.includes(staff.id);
 const OCCUPIES = new Set<BookingStatus>(['PENDING', 'CONFIRMED', 'DONE', 'BLOCK', 'AWAITING_PAYMENT']);
-const holdMs = (b: Booking) => (b.holdUntil?.toMillis ? b.holdUntil.toMillis() : 0);
-/** Ocupa el horario. Esperando el pago ocupa solo mientras no venza el plazo para pagar. */
-export const occupies = (b: Booking) => OCCUPIES.has(b.status) && (b.status !== 'AWAITING_PAYMENT' || holdMs(b) > Date.now());
+const holdMs = (b: Booking) => (b.holdUntil?.toMillis ? b.holdUntil.toMillis() : null);
+/** Ocupa el horario. Esperando el pago ocupa solo mientras no venza el plazo para pagar (sin plazo, ocupa: igual que la nube). */
+export const occupies = (b: Booking) => { const h = holdMs(b); return OCCUPIES.has(b.status) && (b.status !== 'AWAITING_PAYMENT' || h == null || h > Date.now()); };
 /** Lo que ya pagó online por Mercado Pago (0 si no pagó) */
 export const depositPaid = (b: Partial<Booking>) => (b.deposit?.status === 'paid' ? Number(b.deposit.paidAmount ?? b.deposit.amount) || 0 : 0);
 /** Pagó el turno completo online: no queda nada por cobrar */
 export const paidInFull = (b: Partial<Booking>) => depositPaid(b) > 0 && depositPaid(b) >= (Number(b.price) || 0);
-/** Pago online de un servicio según la agenda (misma cuenta que depositFor en firebase/functions/agenda.js) */
+/** Pago online de un servicio según la agenda: seña ('percent' | 'fixed', obligatoria) o turno completo ('full').
+ *  Misma cuenta que depositFor en firebase/functions/agenda.js y depositOf en la tienda. */
 export function depositFor(agenda: AgendaConfig, service: { price?: number }) {
   const d = agenda.deposit;
   if (!d?.enabled) return 0;

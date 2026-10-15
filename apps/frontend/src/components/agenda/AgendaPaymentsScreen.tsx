@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Banknote, Clock } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
-import { subscribeBookings, localNow, addDays, weekday, dayLabel, hhmm, PAY_METHODS, type Booking } from '../../services/agenda';
+import { subscribeBookings, subscribePaidBetween, localNow, addDays, weekday, dayLabel, hhmm, startAtMs, PAY_METHODS, type Booking } from '../../services/agenda';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
 import { depositPaid, paidInFull } from '../../services/agendaCore';
 
 const DEPOSIT_METHOD = 'Mercado Pago (online)';
-const amountOf = (b: { payment?: { amount: number } }) => (Number(b.payment?.amount) || 0) + depositPaid(b as any);
+const msOf = (t: any) => (t?.toMillis ? t.toMillis() : 0);
 
 type Period = 'day' | 'week' | 'month';
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -54,7 +54,11 @@ export default function AgendaPaymentsScreen() {
   const [period, setPeriod] = useState<Period>('day');
   const [anchor, setAnchor] = useState(today);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [paidList, setPaidList] = useState<Booking[] | null>(null);
   const [from, to] = rangeOf(period, anchor);
+  // La plata cuenta el día que entró (cobro o pago online), no el día del turno: así cuadra con la caja y con Mercado Pago
+  const fromMs = startAtMs(from, 0), toMs = startAtMs(to, 24 * 60);
+  const inPeriod = (t: any) => { const m = msOf(t); return m >= fromMs && m < toMs; };
 
   useEffect(() => { startOnlineOrdersSync(); }, []);
   useEffect(() => {
@@ -62,28 +66,42 @@ export default function AgendaPaymentsScreen() {
     setBookings(null);
     return subscribeBookings(storeId, from, to, setBookings, () => setBookings([]));
   }, [storeId, from, to]);
+  useEffect(() => {
+    if (!storeId) return;
+    setPaidList(null);
+    return subscribePaidBetween(storeId, fromMs, toMs, setPaidList, () => setPaidList([]));
+  }, [storeId, fromMs, toMs]);
 
   const data = useMemo(() => {
-    const list = (bookings || []).filter((b) => b.kind === 'booking');
-    // Lo cobrado de cada turno: el cobro y, si pagó online por Mercado Pago, también ese pago
-    const paid = list.filter((b) => b.payment || depositPaid(b));
-    const total = paid.reduce((s, b) => s + amountOf(b), 0);
+    // Lo que entró en el período de cada turno: el cobro y lo pagado online por Mercado Pago. Lo pagado online que hay
+    // que devolver (el comercio canceló, o el turno completo que canceló el cliente) va aparte: no es plata del comercio.
+    const rows = (paidList || []).filter((b) => b.kind === 'booking').map((b) => {
+      const pay = b.payment && inPeriod(b.payment.at) ? Number(b.payment.amount) || 0 : null;
+      const online = depositPaid(b) && inPeriod(b.deposit?.paidAt) ? depositPaid(b) : 0;
+      const refund = online && b.deposit?.refundNeeded ? online : 0;
+      return { b, pay, online: refund ? 0 : online, refund, amount: (pay || 0) + (refund ? 0 : online) };
+    });
+    const paid = rows.filter((r) => r.pay !== null || r.online > 0).sort((x, y) => x.b.dateKey.localeCompare(y.b.dateKey) || x.b.startMin - y.b.startMin);
+    const refunds = rows.filter((r) => r.refund > 0);
+    const total = paid.reduce((s, r) => s + r.amount, 0);
     const byMethod = new Map<string, number>();
     const byStaff = new Map<string, number>();
-    for (const b of paid) {
-      if (b.payment) byMethod.set(b.payment.method, (byMethod.get(b.payment.method) || 0) + (Number(b.payment.amount) || 0));
-      if (depositPaid(b)) byMethod.set(DEPOSIT_METHOD, (byMethod.get(DEPOSIT_METHOD) || 0) + depositPaid(b));
-      const who = b.staffName || 'Sin asignar';
-      byStaff.set(who, (byStaff.get(who) || 0) + amountOf(b));
+    for (const r of paid) {
+      if (r.pay !== null && r.b.payment) byMethod.set(r.b.payment.method, (byMethod.get(r.b.payment.method) || 0) + r.pay);
+      if (r.online) byMethod.set(DEPOSIT_METHOD, (byMethod.get(DEPOSIT_METHOD) || 0) + r.online);
+      const who = r.b.staffName || 'Sin asignar';
+      byStaff.set(who, (byStaff.get(who) || 0) + r.amount);
     }
-    // Atendidos sin cobrar, y turnos ya pasados que siguen confirmados (¿vinieron?)
-    const unpaid = list.filter((b) => !b.payment && !paidInFull(b) && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
+    // Atendidos sin cobrar, y turnos ya pasados que siguen confirmados (¿vinieron?), con lo que les falta pagar
+    const unpaid = (bookings || []).filter((b) => b.kind === 'booking' && !b.payment && !paidInFull(b) && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
     const methods = [...PAY_METHODS, ...[...byMethod.keys()].filter((m) => !PAY_METHODS.includes(m))]
       .map((m) => [m, byMethod.get(m) || 0] as const).filter(([, v]) => v > 0);
-    return { paid, total, methods, staff: [...byStaff].sort((a, b) => b[1] - a[1]), unpaid };
-  }, [bookings, today]);
+    return { paid, refunds, total, methods, staff: [...byStaff].sort((a, b) => b[1] - a[1]), unpaid };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, paidList, today, fromMs, toMs]);
+  const loading = bookings === null || paidList === null;
 
-  const subtitle = bookings === null ? 'Cargando…' : `${money(data.total)} cobrado · ${data.paid.length} turno${data.paid.length === 1 ? '' : 's'}`;
+  const subtitle = loading ? 'Cargando…' : `${money(data.total)} cobrado · ${data.paid.length} turno${data.paid.length === 1 ? '' : 's'}`;
   const isCurrent = from <= today && today <= to;
 
   const body = !storeId ? (
@@ -107,7 +125,7 @@ export default function AgendaPaymentsScreen() {
 
       <section className="rounded-2xl bg-rose-600 text-white p-5">
         <p className="text-[13px] font-medium text-white/80">Cobrado</p>
-        <p className="text-[34px] font-bold tracking-tight tabular-nums leading-tight">{bookings === null ? '…' : money(data.total)}</p>
+        <p className="text-[34px] font-bold tracking-tight tabular-nums leading-tight">{loading ? '…' : money(data.total)}</p>
         <p className="text-[13px] text-white/80">{data.paid.length} turno{data.paid.length === 1 ? '' : 's'} cobrado{data.paid.length === 1 ? '' : 's'}{data.paid.length ? ` · promedio ${money(Math.round(data.total / data.paid.length))}` : ''}</p>
       </section>
 
@@ -147,7 +165,23 @@ export default function AgendaPaymentsScreen() {
               <div key={b.id} className="flex items-center gap-3 py-2 text-[13.5px]">
                 <span className="w-24 shrink-0 text-amber-800 tabular-nums">{period === 'day' ? hhmm(b.startMin) : `${dayLabel(b.dateKey, true)}`}</span>
                 <span className="flex-1 min-w-0 truncate text-amber-950 font-medium">{b.customerName} · {b.serviceName}</span>
-                {b.price ? <span className="shrink-0 tabular-nums text-amber-900">{money(b.price)}</span> : null}
+                {b.price ? <span className="shrink-0 tabular-nums text-amber-900">{money(Math.max(0, b.price - depositPaid(b)))}</span> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data.refunds.length > 0 && (
+        <section className="bg-red-50 border border-red-200 rounded-2xl p-4">
+          <p className="text-[14px] font-bold text-red-900">Para devolver ({data.refunds.length})</p>
+          <p className="text-[12.5px] text-red-800 mt-0.5 mb-2">Pagaron online un turno que se canceló o que no se pudo dar. No suma en lo cobrado: devolvelo desde tu cuenta de Mercado Pago.</p>
+          <div className="divide-y divide-red-200/70">
+            {data.refunds.map(({ b, refund }) => (
+              <div key={b.id} className="flex items-center gap-3 py-2 text-[13.5px]">
+                <span className="w-24 shrink-0 text-red-800 tabular-nums">{dayLabel(b.dateKey, true)}</span>
+                <span className="flex-1 min-w-0 truncate text-red-950 font-medium">{b.customerName} · {b.serviceName}</span>
+                <span className="shrink-0 tabular-nums text-red-900">{money(refund)}</span>
               </div>
             ))}
           </div>
@@ -156,11 +190,11 @@ export default function AgendaPaymentsScreen() {
 
       <section className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
         <p className="px-4 pt-4 pb-2 text-[14px] font-bold text-slate-900">Cobros</p>
-        {bookings === null ? <p className="px-4 pb-6 text-[13px] text-slate-400">Cargando…</p>
+        {loading ? <p className="px-4 pb-6 text-[13px] text-slate-400">Cargando…</p>
           : data.paid.length === 0 ? <p className="px-4 pb-6 text-[13px] text-slate-400">Cuando cobres un turno desde la agenda, aparece acá.</p>
           : (
             <div className="divide-y divide-slate-100">
-              {[...data.paid].reverse().map((b) => (
+              {[...data.paid].reverse().map(({ b, pay, online, amount }) => (
                 <div key={b.id} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0"><Banknote className="w-4 h-4" /></span>
                   <span className="flex-1 min-w-0">
@@ -168,8 +202,8 @@ export default function AgendaPaymentsScreen() {
                     <span className="block text-[12.5px] text-slate-500 truncate">{period === 'day' ? hhmm(b.startMin) : dayLabel(b.dateKey, true)} · {b.serviceName}{b.staffName ? ` · ${b.staffName}` : ''}</span>
                   </span>
                   <span className="text-right shrink-0">
-                    <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(amountOf(b))}</span>
-                    <span className="block text-[11.5px] text-slate-500">{[b.payment?.method, depositPaid(b) ? `Mercado Pago online ${money(depositPaid(b))}` : ''].filter(Boolean).join(' + ')}</span>
+                    <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(amount)}</span>
+                    <span className="block text-[11.5px] text-slate-500">{[pay !== null ? b.payment?.method : '', online ? `${b.deposit?.full === false ? 'Seña' : 'Mercado Pago'} online ${money(online)}` : ''].filter(Boolean).join(' + ')}</span>
                   </span>
                 </div>
               ))}

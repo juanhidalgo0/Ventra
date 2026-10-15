@@ -183,7 +183,7 @@ export function buildPreviewHtml(raw: string, section: PreviewSection): string |
   try {
     swap(/<script src="https:\/\/www\.gstatic\.com\/firebasejs\/[^"]+\/firebase-app-compat\.js"><\/script>\s*<script src="https:\/\/www\.gstatic\.com\/firebasejs\/[^"]+\/firebase-firestore-compat\.js"><\/script>/,
       `<script>${PREVIEW_SHIM}</script><script>window.__PREVIEW_HASH=${JSON.stringify(section === 'turnos' ? '#turnos' : '')};</script>`);
-    html = html.split("decodeURIComponent(location.pathname.replace(/^\\/+|\\/+$/g,''))").join('window.__PREVIEW_SLUG');
+    // La dirección del comercio la toma la página de window.__PREVIEW_SLUG (lo pone PREVIEW_SHIM): ver pathSlug()
     swap("location.hash==='#turnos'", "window.__PREVIEW_HASH==='#turnos'");
     swap('if(!viaApp) window.location.href=url;', 'if(!viaApp) window.__previewWhatsApp(url);');
     // Imágenes propias de la página (logo de Ventra) desde el sitio real

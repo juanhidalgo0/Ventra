@@ -57,6 +57,25 @@ export function subscribeBookings(_storeId: string, fromKey: string, toKey: stri
   subs.add(f); setTimeout(f, 50);
   return () => { subs.delete(f); };
 }
+export function subscribePending(_storeId: string, onChange: (l: Booking[]) => void) {
+  const f = () => onChange(list.filter((b) => b.status === 'PENDING' && b.dateKey >= today).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
+  subs.add(f); setTimeout(f, 50);
+  return () => { subs.delete(f); };
+}
+/** Cobros por el momento en que entró la plata: los de prueba sin fecha cuentan al terminar el turno (y la seña, el día antes) */
+export function subscribePaidBetween(_storeId: string, fromMs: number, toMs: number, onChange: (l: Booking[]) => void) {
+  const ts = (ms: number) => ({ toMillis: () => ms });
+  const f = () => onChange(list.filter((b) => b.kind === 'booking' && (b.payment || b.deposit?.status === 'paid')).map((b) => ({
+    ...b,
+    ...(b.payment ? { payment: { ...b.payment, at: b.payment.at || ts(startAtMs(b.dateKey, b.endMin)) } } : {}),
+    ...(b.deposit ? { deposit: { ...b.deposit, paidAt: b.deposit.paidAt || ts(startAtMs(b.dateKey, b.startMin) - 86400000) } } : {}),
+  } as Booking)).filter((b) => {
+    const p = b.payment?.at?.toMillis(), d = b.deposit?.status === 'paid' ? b.deposit.paidAt?.toMillis() : undefined;
+    return (p != null && p >= fromMs && p < toMs) || (d != null && d >= fromMs && d < toMs);
+  }));
+  subs.add(f); setTimeout(f, 50);
+  return () => { subs.delete(f); };
+}
 export async function createManualBooking(_s: string, b: { dateKey: string; startMin: number; service: AgendaService; staff: AgendaStaff; customerName: string; customerPhone?: string; customerNote?: string }) {
   list = [...list, { id: 'm' + Date.now(), kind: 'booking', dateKey: b.dateKey, startMin: b.startMin, endMin: b.startMin + b.service.durationMin, staffId: b.staff.id, staffName: b.staff.name, serviceId: b.service.id, serviceName: b.service.name, price: b.service.price, customerName: b.customerName, customerPhone: b.customerPhone, customerNote: b.customerNote, status: 'CONFIRMED', source: 'manual', code: 'NEW1' }];
   emit(); void startAtMs;
@@ -65,7 +84,7 @@ export async function createBlock(_s: string, b: { dateKey: string; startMin: nu
   list = [...list, { id: 'k' + Date.now(), kind: 'block', status: 'BLOCK', ...b }]; emit();
 }
 export async function setBookingStatus(_s: string, id: string, status: BookingStatus) { list = list.map((b) => (b.id === id ? { ...b, status } : b)); emit(); }
-export async function chargeBooking(_s: string, b: Booking, payment: { method: string; amount: number }) { list = list.map((x) => (x.id === b.id ? { ...x, status: 'DONE', payment } : x)); emit(); }
+export async function chargeBooking(_s: string, b: Booking, payment: { method: string; amount: number }) { const at = { toMillis: () => Date.now() }; list = list.map((x) => (x.id === b.id ? { ...x, status: 'DONE', payment: { ...payment, at } } : x)); emit(); }
 export async function unchargeBooking(_s: string, b: Booking) { list = list.map((x) => (x.id === b.id ? { ...x, payment: undefined } : x)); emit(); }
 export function subscribeClients(_s: string, onChange: (l: AgendaClient[]) => void) {
   const f = () => onChange(clientsNow());

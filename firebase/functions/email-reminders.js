@@ -14,9 +14,9 @@ const logger = require("firebase-functions/logger");
 const agenda = require("./agenda");
 const usage = require("./usage");
 const { reminderMoment, waNumber } = require("./whatsapp");
+const { publicUrl } = require("./store-slugs");
 
 const FROM_ADDRESS = "turnos@ventra.store";
-const STORE_URL = "https://tienda.ventra.store";
 const QUIET_FROM = 22 * 60, QUIET_TO = 8 * 60;
 const MIN_LEAD_MS = 30 * 60 * 1000;
 const MAX_TRIES = 3;
@@ -35,7 +35,8 @@ function dueEmails(cfg, bookings, nowMs = Date.now()) {
   const local = agenda.localNow(nowMs).min;
   if (local < QUIET_TO || local >= QUIET_FROM) return [];
   return bookings.filter((b) => {
-    if (b.kind !== "booking" || (b.status !== "PENDING" && b.status !== "CONFIRMED")) return false;
+    // Solo confirmados: uno "por confirmar" todavía no lo aceptó el comercio (el email dice "te esperamos")
+    if (b.kind !== "booking" || b.status !== "CONFIRMED") return false;
     if (b.emailRemindedAt || !EMAIL_RE.test(String(b.customerEmail || ""))) return false;
     const r = b.emailReminder || {};
     if (r.status === "sent" || r.status === "failed") return false;
@@ -85,8 +86,7 @@ function emailFor(b, store, nowMs = Date.now()) {
   const biz = store.businessName || "tu turno";
   const when = `${longDay(b.dateKey, nowMs)} a las ${agenda.hhmm(b.startMin)} hs`;
   const what = `${b.serviceName || "Turno"}${b.staffName ? ` con ${b.staffName}` : ""}`;
-  const slug = encodeURIComponent(store.subdomain || "");
-  const manage = b.code ? `${STORE_URL}/${slug}#turno=${b.id}.${b.code}` : `${STORE_URL}/${slug}`;
+  const manage = b.code ? agenda.manageLink(store.subdomain, b.id, b) : publicUrl(store.subdomain);
   const wa = waNumber(store.whatsappNumber);
   const first = String(b.customerName || "").split(" ")[0];
   const brand = /^#[0-9a-f]{6}$/i.test(store.brandColor || "") ? store.brandColor : "#167160";

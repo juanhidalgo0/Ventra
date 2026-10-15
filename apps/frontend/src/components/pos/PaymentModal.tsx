@@ -499,6 +499,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
    * Configuración (store_settings.employee_consumption).
    */
   const consumptionEnabled = !isDebtPayment && !practice && localStorage.getItem('employee_consumption') === '1';
+  /** Medio de pago con el que queda cobrado un turno de la agenda que iba en el ticket */
+  const turnoMethodLabel = () => (paymentType === 'CASH' ? 'Efectivo' : paymentType === 'MIXED' ? 'Mixto' : paymentType === 'DEBT' ? 'Cuenta corriente'
+    : posnets.find((p) => p.id === paymentType)?.name || String(paymentType || 'Caja'));
   const registerConsumption = async () => {
     if (processingRef.current) return;
     setAskConsumption(false);
@@ -671,8 +674,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         });
         if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
         // Turnos de la agenda que iban en el ticket: quedan cobrados con este medio
-        chargeTurnosOfSale(cart, paymentType === 'CASH' ? 'Efectivo' : paymentType === 'MIXED' ? 'Mixto' : paymentType === 'DEBT' ? 'Cuenta corriente'
-          : posnets.find((p) => p.id === paymentType)?.name || String(paymentType || 'Caja'));
+        chargeTurnosOfSale(cart, turnoMethodLabel());
         saleData = response.data;
         setCreatedSale(saleData);
       }
@@ -705,6 +707,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales_queue') || '[]');
         offlineQueue.push(offlinePayload);
         localStorage.setItem('pos_offline_sales_queue', JSON.stringify(offlineQueue));
+        // Turnos de la agenda que iban en el ticket: quedan cobrados igual (la venta se manda cuando vuelve la conexión)
+        chargeTurnosOfSale(cart, turnoMethodLabel());
 
         const dummySale = {
           id: 'offline_' + Date.now(),

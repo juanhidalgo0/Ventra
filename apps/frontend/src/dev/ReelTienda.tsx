@@ -43,11 +43,22 @@ const PLAN = new URLSearchParams(location.search).get('plan');
 const NUEVA = new URLSearchParams(location.search).has('nueva');
 if (NUEVA) ['onboarding_done', 'business_intents', 'business_profile', 'business_features', 'gd_store_name', 'getting_started_hidden', 'agenda_link_shared'].forEach((k) => localStorage.removeItem(k));
 
+// ?mp=off: Mercado Pago habilitado sin cuenta conectada (se conecta sola a los 6 s de tocar Conectar) · ?mp=on: ya conectada
+const MP = new URLSearchParams(location.search).get('mp');
+let mpConnectedAt: string | null = MP === 'on' ? '2026-10-01T12:00:00Z' : null;
+
 api.defaults.adapter = async (config: any) => {
   const url = String(config.url || '').split('?')[0];
   const m = (config.method || 'get').toLowerCase();
   let data: any = [];
-  if (url.startsWith('/subscription/status')) data = PLAN === 'agenda_pro'
+  if (MP && url.startsWith('/mercadopago/status')) {
+    return { data: mpConnectedAt ? { connected: true, nickname: 'PELUQUERIA.SOL', connectedAt: mpConnectedAt } : { connected: false }, status: 200, statusText: 'OK', headers: {}, config };
+  }
+  if (MP && url.startsWith('/mercadopago/connect')) {
+    setTimeout(() => { mpConnectedAt = new Date().toISOString(); }, 6000);
+    return { data: { url: 'https://auth.mercadopago.com.ar/authorization?reel=1', expiresInSeconds: 900 }, status: 200, statusText: 'OK', headers: {}, config };
+  }
+  if (url.startsWith('/subscription/status')) data = { ...(MP ? { email: 'juanhidalgobass@gmail.com' } : {}), ...(PLAN === 'agenda_pro'
     ? { state: 'ACTIVE', enforced: true, plan: 'agenda_pro', planName: 'Ventra Agenda Pro', features: { caja: false, tienda: false, agenda: true, reminders: true }, daysLeft: 30 }
     : PLAN === 'agenda'
     ? { state: 'ACTIVE', enforced: true, plan: 'agenda', planName: 'Ventra Agenda', features: { caja: false, tienda: false, agenda: true }, daysLeft: 30 }
@@ -55,7 +66,7 @@ api.defaults.adapter = async (config: any) => {
       ? { state: 'ACTIVE', enforced: true, plan: 'full', planName: 'Ventra Full', features: { caja: true, tienda: true, agenda: true }, daysLeft: 30 }
       : PLAN === 'caja'
         ? { state: 'ACTIVE', enforced: true, plan: 'caja', planName: 'Ventra Caja', features: { caja: true, tienda: false, agenda: false }, daysLeft: 30 }
-        : { state: 'ACTIVE', enforced: true, plan: 'tienda', planName: 'Ventra Tienda', features: { caja: false, tienda: true, agenda: true }, daysLeft: 30 };
+        : { state: 'ACTIVE', enforced: true, plan: 'tienda', planName: 'Ventra Tienda', features: { caja: false, tienda: true, agenda: true }, daysLeft: 30 }) };
   else if (url.startsWith('/settings/activation')) data = { products: NUEVA ? 0 : products.length, users: 1, hasSales: !NUEVA };
   else if (url === '/settings' && m === 'get') data = {};
   else if (url.startsWith('/auth/license/status')) data = { isActive: true, status: 'ACTIVE', plan: 'PRO', expiresAt: '2099-01-01T00:00:00Z', daysRemaining: 9999 };

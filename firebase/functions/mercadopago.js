@@ -395,8 +395,8 @@ async function oauth(req, res, { clientId, clientSecret }) {
   // Link del QR: lleva a la pantalla de autorización de Mercado Pago
   if (q.s && !q.code && !q.error) {
     const snap = await attempts().doc(String(q.s)).get();
-    if (!snap.exists || snap.data().usedAt) return page(res, 400, "Este código ya no sirve", "Generá uno nuevo desde Ventra: Configuración → Integraciones → Mercado Pago.");
-    if (snap.data().expiresAt.toMillis() < Date.now()) return page(res, 400, "El código venció", "Generá uno nuevo desde Ventra: Configuración → Integraciones → Mercado Pago.");
+    if (!snap.exists || snap.data().usedAt) return page(res, 400, "Este código ya no sirve", "Volvé a tocar “Conectar Mercado Pago” en Ventra.");
+    if (snap.data().expiresAt.toMillis() < Date.now()) return page(res, 400, "El código venció", "Volvé a tocar “Conectar Mercado Pago” en Ventra.");
     const url = `${AUTH_URL}?${new URLSearchParams({
       client_id: clientId,
       response_type: "code",
@@ -408,12 +408,12 @@ async function oauth(req, res, { clientId, clientSecret }) {
   }
 
   const state = String(q.state || "");
-  if (!state) return page(res, 400, "Link incompleto", "Volvé a escanear el código desde Ventra.");
+  if (!state) return page(res, 400, "Link incompleto", "Volvé a intentarlo desde Ventra.");
   const ref = attempts().doc(state);
 
   if (q.error || !q.code) {
     await ref.set({ usedAt: admin.firestore.FieldValue.serverTimestamp(), result: "denied" }, { merge: true }).catch(() => {});
-    return page(res, 200, "No se conectó", "No autorizaste el acceso. Si fue sin querer, generá un código nuevo desde Ventra y volvé a intentar.");
+    return page(res, 200, "No se conectó", "No autorizaste el acceso. Si fue sin querer, volvé a tocar “Conectar” en Ventra.");
   }
 
   // El intento se marca usado en una transacción: un mismo código no se canjea dos veces
@@ -456,7 +456,7 @@ async function oauth(req, res, { clientId, clientSecret }) {
     await ref.update({ result: "ok" });
     logger.info(`Ventra MP: cuenta ${attempt.uid} conectó Mercado Pago (usuario MP ${token.user_id})`);
     const who = me.nickname || me.email || "tu cuenta";
-    return page(res, 200, "¡Mercado Pago conectado!", `Ventra quedó conectado a <b>${escapeHtml(who)}</b>. Ya podés cerrar esta página y volver a la PC.`, true);
+    return page(res, 200, "¡Mercado Pago conectado!", `Ventra quedó conectado a <b>${escapeHtml(who)}</b>. Ya podés cerrar esta página y volver a Ventra.`, true);
   } catch (err) {
     logger.error(`Ventra MP: no se pudo canjear el código (${attempt.uid})`, err.message, err.mp || "");
     await ref.update({ result: "error", error: String(err.message).slice(0, 300) }).catch(() => {});

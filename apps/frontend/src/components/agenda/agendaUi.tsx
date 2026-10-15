@@ -4,7 +4,6 @@ import type { BookingStatus } from '../../services/agenda';
 
 /** Piezas compartidas por las pantallas de la agenda (turnos, clientes y cobros). */
 
-export const PUBLIC_BASE = 'https://tienda.ventra.store';
 
 export const STATUS: Record<BookingStatus, { label: string; cls: string }> = {
   PENDING: { label: 'Por confirmar', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },

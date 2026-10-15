@@ -1,8 +1,9 @@
 import { collection, doc, query, where, orderBy, limit, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch, deleteField, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { getVentraDb, ensureVentraSession } from './ventraFirebase';
 import { IS_DEMO_BUILD } from '../demo/flag';
+import { publicStoreUrl, RESERVED_SLUGS } from '../utils/storeLinks';
 import { claimStore } from './onlineStore';
-import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, addDays, occupies, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
+import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, addDays, occupies, phoneKeyOf, nameKeyOf, waPhone, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
 
 export * from './agendaCore';
 
@@ -87,9 +88,10 @@ export function subscribeBookings(storeId: string, fromKey: string, toKey: strin
   return () => { cancelled = true; unsub?.(); };
 }
 
-function code() {
+function code(n = 4) {
   const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = ''; for (let i = 0; i < 4; i++) s += a[Math.floor(Math.random() * a.length)];
+  const r = crypto.getRandomValues(new Uint32Array(n));
+  let s = ''; for (let i = 0; i < n; i++) s += a[r[i] % a.length];
   return s;
 }
 
@@ -109,8 +111,8 @@ export async function createManualBooking(storeId: string, b: {
     startAt: Timestamp.fromMillis(startAtMs(b.dateKey, b.startMin)),
     staffId: b.staff.id, staffName: b.staff.name,
     serviceId: b.service.id, serviceName: b.service.name, durationMin: dur, price: Number(b.service.price) || 0,
-    customerName: b.customerName.trim(), customerPhone: phone, customerPhoneKey: phone.replace(/\D/g, '').slice(-10), customerNote: (b.customerNote || '').trim(),
-    code: code(), status: 'CONFIRMED' as const, source: 'manual' as const,
+    customerName: b.customerName.trim(), customerNameKey: nameKeyOf(b.customerName), customerPhone: phone, customerPhoneKey: phoneKeyOf(phone), customerNote: (b.customerNote || '').trim(),
+    code: code(), shortCode: code(8), status: 'CONFIRMED' as const, source: 'manual' as const,
     ...(b.seriesId ? { seriesId: b.seriesId } : {}),
   };
   const ref = await addDoc(bookingsCol(storeId), { ...data, createdAt: serverTimestamp() });
@@ -151,7 +153,7 @@ export async function seriesUpcoming(storeId: string, seriesId: string, fromKey:
 export async function cancelBookings(storeId: string, list: Booking[]) {
   await ensureVentraSession();
   const batch = writeBatch(getVentraDb());
-  list.forEach((x) => batch.update(doc(bookingsCol(storeId), x.id), { status: 'CANCELLED', statusAt: serverTimestamp() }));
+  list.forEach((x) => batch.update(doc(bookingsCol(storeId), x.id), { status: 'CANCELLED', cancelledBy: 'owner', statusAt: serverTimestamp() }));
   await batch.commit();
   if (list[0]) refreshClientOf(storeId, { ...list[0], status: 'CANCELLED' });
 }
@@ -168,10 +170,30 @@ export async function createBlock(storeId: string, b: { dateKey: string; startMi
   });
 }
 
+/**
+ * Cambia el estado de un turno desde la app. Cancelarlo lo marca como cancelado por el comercio (no por el cliente) y,
+ * si pagó online, queda para devolver: lo canceló el comercio, así que la seña también se devuelve.
+ * Volver a dar un turno cancelado borra quién lo canceló y lo que había que devolver.
+ */
 export async function setBookingStatus(storeId: string, id: string, status: BookingStatus, booking?: Booking) {
   await ensureVentraSession();
-  await updateDoc(doc(bookingsCol(storeId), id), { status, statusAt: serverTimestamp() });
+  const del = deleteField();
+  const patch: Record<string, any> = { status, statusAt: serverTimestamp() };
+  if (status === 'CANCELLED') {
+    patch.cancelledBy = 'owner';
+    patch.cancelVia = del;
+    if (booking?.deposit?.status === 'paid') patch['deposit.refundNeeded'] = true;
+  } else if (booking && (booking.status === 'CANCELLED' || booking.cancelledBy)) {
+    Object.assign(patch, revivePatch(booking));
+  }
+  await updateDoc(doc(bookingsCol(storeId), id), patch);
   if (booking) refreshClientOf(storeId, { ...booking, status });
+}
+
+/** Un turno cancelado que vuelve a estar en pie: ya no lo canceló nadie ni hay nada que devolver */
+function revivePatch(b: Booking): Record<string, any> {
+  const del = deleteField();
+  return { cancelledBy: del, cancelVia: del, ...(b.deposit ? { 'deposit.refundNeeded': del } : {}) };
 }
 
 /**
@@ -182,6 +204,7 @@ export async function rescheduleBooking(storeId: string, b: Booking, to: { dateK
   await ensureVentraSession();
   const dur = Math.max(5, (b.endMin - b.startMin) || Number(b.durationMin) || 30);
   const status = b.status === 'PENDING' ? 'PENDING' : 'CONFIRMED';
+  const revived = b.status === 'CANCELLED' || b.status === 'NO_SHOW' || !!b.cancelledBy ? revivePatch(b) : {};
   const patch = {
     dateKey: to.dateKey, startMin: to.startMin, endMin: to.startMin + dur,
     startAt: Timestamp.fromMillis(startAtMs(to.dateKey, to.startMin)),
@@ -190,7 +213,7 @@ export async function rescheduleBooking(storeId: string, b: Booking, to: { dateK
   };
   // El recordatorio automático (WhatsApp y email) vuelve a salir para el horario nuevo
   const del = deleteField();
-  await updateDoc(doc(bookingsCol(storeId), b.id), { ...patch, remindedAt: del, reminder: del, emailRemindedAt: del, emailReminder: del, clientConfirmedAt: del });
+  await updateDoc(doc(bookingsCol(storeId), b.id), { ...patch, ...revived, remindedAt: del, reminder: del, emailRemindedAt: del, emailReminder: del, clientConfirmedAt: del });
   refreshClientOf(storeId, { ...b, ...patch } as any);
   return { ...b, ...patch } as Booking;
 }
@@ -217,10 +240,14 @@ export async function unchargeBooking(storeId: string, b: Booking) {
 
 /** Turnos de un cliente (todos, de cualquier fecha). */
 export async function fetchClientBookings(storeId: string, key: string, sampleName?: string): Promise<Booking[]> {
-  const q = key.startsWith('p')
-    ? query(bookingsCol(storeId), where('customerPhoneKey', '==', key.slice(1)))
-    : query(bookingsCol(storeId), where('customerName', '==', sampleName || ''));
-  const list = docsOf(await getDocs(q)).filter((b) => clientKeyOf(b) === key);
+  // Sin teléfono: por la clave del nombre ("Ana Pérez" y "ana perez" son la misma) y, para los turnos de antes
+  // de customerNameKey, por el nombre tal cual
+  const qs = key.startsWith('p')
+    ? [query(bookingsCol(storeId), where('customerPhoneKey', '==', key.slice(1)))]
+    : [query(bookingsCol(storeId), where('customerNameKey', '==', key.slice(2))), query(bookingsCol(storeId), where('customerName', '==', sampleName || ''))];
+  const byId = new Map<string, Booking>();
+  for (const snap of await Promise.all(qs.map((q) => getDocs(q)))) for (const b of docsOf(snap)) byId.set(b.id, b);
+  const list = [...byId.values()].filter((b) => clientKeyOf(b) === key);
   return list.sort((a, b) => b.dateKey.localeCompare(a.dateKey) || b.startMin - a.startMin);
 }
 
@@ -292,6 +319,46 @@ export async function fetchBooking(storeId: string, id: string): Promise<Booking
   return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as Booking) : null;
 }
 
+/** Turnos por confirmar de hoy en adelante, en vivo (para el aviso de la agenda, aunque estén lejos del día que se mira). */
+export function subscribePending(storeId: string, onChange: (list: Booking[]) => void) {
+  let unsub: (() => void) | null = null;
+  let cancelled = false;
+  claimStore(storeId).then(() => {
+    if (cancelled) return;
+    unsub = onSnapshot(query(bookingsCol(storeId), where('status', '==', 'PENDING')), (snap) => {
+      const today = localNow().dateKey;
+      onChange(docsOf(snap).filter((b) => b.dateKey >= today).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
+    }, (err) => console.warn('[Agenda] Error escuchando los turnos por confirmar:', err.message));
+  }).catch(() => {});
+  return () => { cancelled = true; unsub?.(); };
+}
+
+/**
+ * Turnos con plata que entró entre dos momentos (ms), en vivo: cobrados (payment.at) o pagados online (deposit.paidAt).
+ * Para los cobros del período: cuentan el día que entró la plata, no el día del turno (así cuadra con Mercado Pago).
+ */
+export function subscribePaidBetween(storeId: string, fromMs: number, toMs: number, onChange: (list: Booking[]) => void, onError?: (e: Error) => void) {
+  const unsubs: (() => void)[] = [];
+  let cancelled = false;
+  const parts: Record<string, Booking[] | null> = { payment: null, deposit: null };
+  const emit = () => {
+    if (parts.payment === null || parts.deposit === null) return;
+    const byId = new Map<string, Booking>();
+    for (const b of [...parts.payment, ...parts.deposit]) byId.set(b.id, b);
+    onChange([...byId.values()]);
+  };
+  claimStore(storeId).then(() => {
+    if (cancelled) return;
+    const from = Timestamp.fromMillis(fromMs), to = Timestamp.fromMillis(toMs);
+    for (const [k, field] of [['payment', 'payment.at'], ['deposit', 'deposit.paidAt']] as const) {
+      unsubs.push(onSnapshot(query(bookingsCol(storeId), where(field, '>=', from), where(field, '<', to)),
+        (snap) => { parts[k] = docsOf(snap); emit(); },
+        (err) => { console.warn('[Agenda] Error escuchando cobros:', err.message); onError?.(err); }));
+    }
+  }).catch((err) => onError?.(err));
+  return () => { cancelled = true; unsubs.forEach((u) => u()); };
+}
+
 /** Turnos entre dos días (inclusive), una sola lectura: para los cobros del período. */
 export async function fetchBookingsRange(storeId: string, fromKey: string, toKey: string): Promise<Booking[]> {
   await claimStore(storeId);
@@ -304,13 +371,8 @@ export async function deleteBooking(storeId: string, id: string) {
   await deleteDoc(doc(bookingsCol(storeId), id));
 }
 
-const waDigits = (phone: string) => {
-  let d = phone.replace(/\D/g, '');
-  if (d.startsWith('0')) d = d.slice(1);
-  // Números argentinos cargados sin código de país
-  if (d.length === 10) d = '549' + d;
-  return d;
-};
+// Números argentinos en cualquier formato (0, 15, +54 9…): ver waPhone en agendaCore
+const waDigits = (phone: string) => waPhone(phone);
 
 /** Marca que ya se le mandó el recordatorio por WhatsApp (para la lista de recordatorios de mañana). */
 export async function markReminded(storeId: string, id: string) {
@@ -320,7 +382,10 @@ export async function markReminded(storeId: string, id: string) {
 
 /** Link del turno para el cliente: lo ve y lo puede cancelar (función agendaManage). */
 export const bookingManageUrl = (b: Booking, slug?: string | null) =>
-  slug && b.id && b.code ? `https://tienda.ventra.store/${encodeURIComponent(slug)}#turno=${b.id}.${b.code}` : '';
+  !slug || !b.id || !b.code ? ''
+    // El corto (ventra.store/<comercio>/turno/<código>) si el turno lo tiene; los viejos, con el link de siempre
+    : b.shortCode && !RESERVED_SLUGS.has(slug) ? publicStoreUrl(slug, `turno/${b.shortCode}`)
+      : `https://tienda.ventra.store/${encodeURIComponent(slug)}#turno=${b.id}.${b.code}`;
 
 /** Link de WhatsApp al cliente con el mensaje ya escrito (con el link del turno, si la página tiene dirección). */
 export function whatsappToCustomer(b: Booking, businessName: string, kind: 'confirm' | 'remind' | 'cancel' | 'moved', slug?: string | null) {
