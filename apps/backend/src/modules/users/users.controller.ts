@@ -41,10 +41,10 @@ export class UsersController {
   findById(@Param('id') id: string) { return this.usersService.findById(id); }
 
   @Post() @Roles('ADMIN')
-  create(@Body() dto: CreateUserDto) { return this.usersService.create(dto); }
+  create(@Request() req, @Body() dto: CreateUserDto) { return this.usersService.create(dto, req.user?.sub ?? null); }
 
   @Patch(':id') @Roles('ADMIN')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) { return this.usersService.update(id, dto); }
+  update(@Request() req, @Param('id') id: string, @Body() dto: UpdateUserDto) { return this.usersService.update(id, dto, req.user?.sub ?? null); }
 
   @Delete(':id') @Roles('ADMIN')
   delete(@Param('id') id: string) { return this.usersService.delete(id); }

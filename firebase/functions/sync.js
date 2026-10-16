@@ -191,11 +191,22 @@ async function push(sql, tenantId, deviceId, rows, gen) {
   const datas = rows.map((r) => (r.d ? JSON.stringify(r.d) : null));
   const deleted = rows.map((r) => !!r.x);
   const tss = rows.map((r) => String(Math.max(0, Math.floor(Number(r.ts) || 0))));
+  // Usuarios: la fila más nueva gana, pero la clave gana la cambiada último (password_changed_at).
+  // Si no, una caja que todavía tenía la clave vieja la volvía a poner en todas al editar al usuario.
+  // La fila combinada queda a nombre de "nube" para que la baje también la caja que mandó la vieja.
+  const changedAt = (c) => `COALESCE(CASE WHEN jsonb_typeof(${c}->'password_changed_at') = 'number' THEN (${c}->>'password_changed_at')::numeric END, 0)`;
+  const olderPassword = `(cur.tbl = 'users' AND NOT EXCLUDED.deleted AND jsonb_typeof(EXCLUDED.data) = 'object' AND jsonb_typeof(cur.data) = 'object'
+      AND cur.data->'password_hash' IS DISTINCT FROM EXCLUDED.data->'password_hash'
+      AND ${changedAt("cur.data")} > ${changedAt("EXCLUDED.data")})`;
   const applied = await run(sql, `INSERT INTO sync_rows AS cur (tenant_id, tbl, id, data, deleted, device_id, ts, seq, updated_at)
     SELECT $1, t.tbl, t.id, t.data::jsonb, t.deleted, $2, t.ts, nextval('sync_seq'), now()
     FROM unnest($3::text[], $4::text[], $5::text[], $6::boolean[], $7::bigint[]) AS t(tbl, id, data, deleted, ts)
     ON CONFLICT (tenant_id, tbl, id) DO UPDATE SET
-      data = EXCLUDED.data, deleted = EXCLUDED.deleted, device_id = EXCLUDED.device_id,
+      data = CASE WHEN ${olderPassword}
+        THEN EXCLUDED.data || jsonb_build_object('password_hash', cur.data->'password_hash', 'password_changed_at', cur.data->'password_changed_at')
+        ELSE EXCLUDED.data END,
+      deleted = EXCLUDED.deleted,
+      device_id = CASE WHEN ${olderPassword} THEN 'nube' ELSE EXCLUDED.device_id END,
       ts = EXCLUDED.ts, seq = EXCLUDED.seq, updated_at = now()
     WHERE cur.tbl <> '_delta'
       AND (EXCLUDED.ts, EXCLUDED.device_id) > (cur.ts, COALESCE(cur.device_id, ''))

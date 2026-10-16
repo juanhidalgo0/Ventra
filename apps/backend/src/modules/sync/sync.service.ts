@@ -351,7 +351,15 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     };
     for (t of tables) {
       await create(`${TRIGGER_PREFIX}ins_${t}`, `AFTER INSERT ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
-      await create(`${TRIGGER_PREFIX}upd_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
+      if (t === 'users' && (await this.columns(t)).includes('last_login')) {
+        // Entrar solo anota last_login: no se sube. Antes cada entrada subía la fila entera con
+        // hora nueva, y una caja que todavía tenía la clave vieja (sin internet, o la de la nube
+        // recién despertada) la volvía a poner en todas las cajas.
+        if (have.has(`${TRIGGER_PREFIX}upd_${t}`)) await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${TRIGGER_PREFIX}upd_${t}"`);
+        await create(`${TRIGGER_PREFIX}updl_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} AND NEW.last_login IS OLD.last_login BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
+      } else {
+        await create(`${TRIGGER_PREFIX}upd_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
+      }
       await create(`${TRIGGER_PREFIX}del_${t}`, `AFTER DELETE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', OLD.id, 'D', ${NOW_MS}); END`);
       for (const c of await this.counterCols(t)) {
         const ins = `INSERT INTO sync_deltas (id, tbl, row_id, col, delta, ts) VALUES (lower(hex(randomblob(16))), '${t}', NEW.id, '${c}'`;
@@ -1182,6 +1190,30 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     if (!n) await tx.$executeRawUnsafe(`INSERT OR IGNORE INTO sync_stash (id, tbl, row_id, col, delta) VALUES (?, ?, ?, ?, ?)`, deltaId, d.t, String(d.id), d.c, Number(d.v || 0));
   }
 
+  /**
+   * Usuarios: gana la fila más reciente, salvo la clave, que gana la cambiada último
+   * (password_changed_at). Si llega una fila con una clave más vieja que la local (de una caja que
+   * no se había enterado del cambio), se conserva la local y se vuelve a subir para corregir la nube.
+   */
+  private async keepNewerPassword(tx: Tx, datas: any[]) {
+    if (!(await this.columns('users')).includes('password_changed_at')) return;
+    const withHash = datas.filter((d) => d && d.id != null && Object.prototype.hasOwnProperty.call(d, 'password_hash'));
+    if (!withHash.length) return;
+    const local: any[] = await tx.$queryRawUnsafe(
+      `SELECT id, password_hash, CAST(password_changed_at AS REAL) AS changed FROM users
+       WHERE id IN (SELECT value FROM json_each(?)) AND password_changed_at IS NOT NULL`,
+      JSON.stringify(withHash.map((d) => String(d.id))));
+    const byId = new Map(local.map((l) => [String(l.id), l]));
+    for (const d of withHash) {
+      const l = byId.get(String(d.id));
+      if (!l || l.password_hash === d.password_hash || Number(l.changed) <= (Number(d.password_changed_at) || 0)) continue;
+      d.password_hash = l.password_hash;
+      d.password_changed_at = Number(l.changed);
+      await tx.$executeRawUnsafe(`INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('users', ?, 'U', ${NOW_MS})`, String(d.id));
+      console.warn(`[Sync] Llegó una clave vieja de ${d.username}: se conserva la más nueva`);
+    }
+  }
+
   /** Aplica una fila de otra caja. Gana el cambio más reciente; los contadores no se pisan. */
   /**
    * Lo mismo que applyRow(full = true) para una tanda entera, de a una consulta por tabla en vez
@@ -1206,6 +1238,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
 
       // Fotos: la fila trae una referencia; se conserva la foto local si es la misma, si no se descarga
       const datas = fresh.map((r) => ({ ...r.d }));
+      if (t === 'users') await this.keepNewerPassword(tx, datas);
       if (t === 'products') {
         const refs = datas.filter((d) => typeof d.image_url === 'string' && d.image_url.startsWith(IMG_PREFIX));
         const local: any[] = refs.length
@@ -1267,6 +1300,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     const cols = await this.columns(r.t);
     const counters = await this.counterCols(r.t);
     const data = { ...r.d };
+    if (r.t === 'users') await this.keepNewerPassword(tx, [data]);
     // Fotos: la fila trae una referencia; se conserva la foto local si es la misma, si no se descarga
     if (r.t === 'products' && typeof data.image_url === 'string' && data.image_url.startsWith(IMG_PREFIX)) {
       const hash = data.image_url.slice(IMG_PREFIX.length);

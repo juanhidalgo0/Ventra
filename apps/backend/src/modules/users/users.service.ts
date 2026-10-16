@@ -2,6 +2,7 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { assertValidPassword } from '../auth/password-policy';
+import { logPasswordChange } from '../auth/password-audit';
 
 @Injectable()
 export class UsersService {
@@ -31,7 +32,7 @@ export class UsersService {
     return this.prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { username: true } });
   }
 
-  async create(data: { username: string; password: string; fullName: string; role: string }) {
+  async create(data: { username: string; password: string; fullName: string; role: string }, actorId: string | null = null) {
     const normUsername = data.username.toUpperCase();
     assertValidPassword(data.password);
     if (data.role === 'ADMIN') {
@@ -41,13 +42,15 @@ export class UsersService {
     const exists = await this.prisma.user.findUnique({ where: { username: normUsername } });
     if (exists) throw new ConflictException('El usuario ya existe');
     const passwordHash = await bcrypt.hash(data.password, 10);
-    return this.prisma.user.create({
-      data: { username: normUsername, passwordHash, fullName: normUsername, role: data.role },
+    const created = await this.prisma.user.create({
+      data: { username: normUsername, passwordHash, passwordChangedAt: new Date(), fullName: normUsername, role: data.role },
       select: { id: true, username: true, fullName: true, role: true, isActive: true, createdAt: true },
     });
+    await logPasswordChange(this.prisma, created, actorId, 'ALTA');
+    return created;
   }
 
-  async update(id: string, data: { username?: string; fullName?: string; role?: string; isActive?: boolean; password?: string }) {
+  async update(id: string, data: { username?: string; fullName?: string; role?: string; isActive?: boolean; password?: string }, actorId: string | null = null) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     if (data.role === 'ADMIN' && user.role !== 'ADMIN') {
@@ -76,11 +79,14 @@ export class UsersService {
     if (data.password) {
       assertValidPassword(data.password);
       updateData.passwordHash = await bcrypt.hash(data.password, 10);
+      updateData.passwordChangedAt = new Date();
     }
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id }, data: updateData,
       select: { id: true, username: true, fullName: true, role: true, isActive: true, createdAt: true },
     });
+    if (data.password) await logPasswordChange(this.prisma, updated, actorId, 'USUARIOS');
+    return updated;
   }
 
   async delete(id: string) {

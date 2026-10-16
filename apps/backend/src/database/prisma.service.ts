@@ -369,6 +369,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           console.error('[PrismaService] Failed to auto-migrate products table:', err);
         }
 
+        // 2.0 Usuarios: hora del último cambio de clave (la usa el sync para no volver a una clave vieja)
+        try {
+          const userColumns: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(users);`);
+          if (userColumns.length && !userColumns.some(c => c.name === 'password_changed_at')) {
+            console.log('[PrismaService] Auto-migrating users table: adding password_changed_at...');
+            await this.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN password_changed_at DATETIME DEFAULT NULL;`);
+          }
+        } catch (err) {
+          console.error('[PrismaService] Failed to auto-migrate users table:', err);
+        }
+
         // 2.1 Auto-migrate sales table if it exists
         try {
           const tableCheck: any[] = await this.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type='table' AND name='sales';`);

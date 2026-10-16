@@ -7,6 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { assertValidPassword } from './password-policy';
 import { LoginThrottle } from './login-throttle';
+import { logPasswordChange } from './password-audit';
 
 @Injectable()
 export class AuthService {
@@ -147,8 +148,9 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { passwordHash, passwordChangedAt: new Date() },
     });
+    await logPasswordChange(this.prisma, user, user.id, 'PROPIA');
 
     return { success: true };
   }
@@ -170,10 +172,12 @@ export class AuthService {
       data: {
         username: normUsername,
         passwordHash,
+        passwordChangedAt: new Date(),
         fullName: fullName || normUsername,
         role: 'ADMIN',
       },
     });
+    await logPasswordChange(this.prisma, user, user.id, 'PRIMER_ADMIN');
     return {
       id: user.id,
       username: user.username,

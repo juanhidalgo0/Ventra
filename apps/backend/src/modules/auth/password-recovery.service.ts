@@ -7,6 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { AuthService } from './auth.service';
 import { assertValidPassword } from './password-policy';
+import { logPasswordChange } from './password-audit';
 
 /** Proyecto de Firebase de Ventra: el mismo de las cuentas (ventra.store, web.ventra.store). */
 const FIREBASE_PROJECT = 'ventra-9cba5';
@@ -134,7 +135,8 @@ export class PasswordRecoveryService {
     assertValidPassword(newPassword);
     const user = await this.prisma.user.findUnique({ where: { username: String(username || '').toUpperCase() } });
     if (!user || user.role !== 'ADMIN' || !user.isActive) throw new BadRequestException('Elegí un administrador activo');
-    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10) } });
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10), passwordChangedAt: new Date() } });
+    await logPasswordChange(this.prisma, user, user.id, 'RECUPERACION');
     this.open.delete(id);
     console.log(`[Auth] Contraseña de ${user.username} restablecida con la cuenta de Google ${r.verifiedEmail}`);
     return this.auth.issueSession(user, false, 'PASSWORD_RECOVERY');

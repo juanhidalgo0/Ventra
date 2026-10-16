@@ -4,7 +4,8 @@
   "description": "Simulaciones locales de la sincronización (nube falsa en memoria + cajas SQLite). No se conectan a ningún servicio.",
   "scripts": {
     "escenarios": "cd ../../apps/backend && npx tsx ../../tools/sync-sim/escenarios.ts",
-    "carga-real": "cd ../../apps/backend && npx tsx ../../tools/sync-sim/carga-real.ts"
+    "carga-real": "cd ../../apps/backend && npx tsx ../../tools/sync-sim/carga-real.ts",
+    "clave": "cd ../../apps/backend && npx tsx ../../tools/sync-sim/clave.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17"
