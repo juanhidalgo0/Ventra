@@ -55,12 +55,15 @@ export type BusinessFeature =
   | 'fractional'     // Unidades MT/KG/L, tamaño de pieza, ubicación, precio mayorista
   | 'hardwareImages' // Buscador de fotos por medida (las medidas comparten foto)
   | 'variants'       // Variantes: talles y colores, o tamaños (gastronomía)
-  | 'expiry';        // Vencimientos por lote y avisos
+  | 'expiry'         // Vencimientos por lote y avisos
+  | 'bulk'           // Venta por bulto (cajas, packs, fardos) además de por unidad
+  | 'delivery'       // Nota de venta y remito en hoja A4, localidad de los clientes
+  | 'preorders';     // Preventa: los vendedores toman pedidos en el celular
 
-export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO';
+export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -72,6 +75,9 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   hardwareImages: { title: 'Fotos por medida', description: 'Buscador de fotos donde todas las medidas de un artículo comparten imagen.' },
   variants:       { title: 'Variantes (talles, colores, tamaños)', description: 'Un producto con varias opciones, cada una con su precio, su stock y su código.' },
   expiry:         { title: 'Vencimientos', description: 'Cargar fechas de vencimiento por lote y recibir avisos antes de que venzan.' },
+  bulk:           { title: 'Venta por bulto', description: 'Vender por caja, pack o fardo con su propio precio, o suelto por unidad.' },
+  delivery:       { title: 'Nota de venta y remito', description: 'Imprimir nota de venta y remito en hoja A4 para el reparto, con la localidad del cliente.' },
+  preorders:      { title: 'Preventa y reparto', description: 'Los vendedores toman pedidos en el celular (también sin señal), se arman los repartos con hoja de carga y de ruta, y en la caja se cobran.' },
 };
 
 export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
@@ -80,6 +86,7 @@ export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   INDUMENTARIA: ['variants'],
   GASTRONOMIA: ['variants', 'expiry'],
   MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants', 'expiry'],
+  DISTRIBUIDORA: ['bulk', 'delivery', 'preorders', 'expiry'],
 };
 
 export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: string; description: string }> = {
@@ -107,6 +114,11 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     emoji: '🏪',
     title: 'Multirubro / Bazar',
     description: 'Vende de todo: ropa con talles, bazar por unidad y artículos por medida conviviendo en el mismo mostrador.',
+  },
+  DISTRIBUIDORA: {
+    emoji: '🚚',
+    title: 'Distribuidora / Mayorista',
+    description: 'Venta por bulto o por unidad a comercios, con nota de venta y remito en A4 para el reparto.',
   },
 };
 

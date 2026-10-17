@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TourId } from './tours';
+import { TOUR_COVERS, type TourId } from './tours';
 import { useAuthStore } from '../../../stores/authStore';
 
 // Tours are tracked per user: someone logging in for the first time sees them
@@ -65,7 +65,11 @@ export const useTourStore = create<TourState>((set, get) => ({
   },
   finish: () => {
     const id = get().activeTour;
-    if (id) writeSeen({ ...readSeen(), [id]: true });
+    if (id) {
+      const seen = { ...readSeen(), [id]: true };
+      for (const c of TOUR_COVERS[id] || []) seen[c] = true;
+      writeSeen(seen);
+    }
     set({ activeTour: null });
   },
   cancel: (id) => {

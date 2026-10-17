@@ -51,6 +51,10 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
   const excluded: any[] = fiscal?.excludedLines || [];
   const total = fiscal ? fiscal.total : createdSale.total;
   const neto = (l: any) => (l.rate ? l.total / (1 + l.rate / 100) : l.total);
+  // Arriba va el nombre del comercio; en la factura, la razón social de ARCA debajo si es otra
+  const comercio = storeName && storeName.toUpperCase() !== 'VENTRA POS' ? storeName : '';
+  const titulo = comercio || emisor?.razonSocial || storeName;
+  const razonAparte = !!(emisor?.razonSocial && comercio && emisor.razonSocial.trim().toUpperCase() !== comercio.trim().toUpperCase());
 
   const row = { display: 'flex', justifyContent: 'space-between', gap: '6px' } as const;
   const dashed = { borderBottom: '1px dashed #000', paddingBottom: '6px' } as const;
@@ -61,10 +65,11 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
       {/* Emisor: sale de la configuración fiscal, nunca inventado */}
       <div style={{ ...dashed, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1px' }}>
         <h4 style={{ margin: 0, fontSize: '10.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-          {emisor?.razonSocial || storeName}
+          {titulo}
         </h4>
         {emisor && (
           <>
+            {razonAparte && <p style={{ margin: 0, fontWeight: 'bold' }}>{emisor.razonSocial}</p>}
             {emisor.domicilio && <p style={{ margin: 0 }}>{emisor.domicilio}</p>}
             <p style={{ margin: 0, fontWeight: 'bold' }}>C.U.I.T.: {cuitAr(emisor.cuit)}</p>
             {emisor.iibb && <p style={{ margin: 0 }}>Ing. Brutos: {emisor.iibb}</p>}
@@ -164,6 +169,11 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
               <span style={{ width: '28%', textAlign: 'right' }}>{formatPrice(esA ? neto(item) : item.total)}</span>
             </div>
             {esA && item.rate ? <div style={{ fontSize: '6.5pt', color: '#444' }}>IVA {String(item.rate).replace('.', ',')}%</div> : null}
+            {Number(item.packSize) > 1 && (
+              <div style={{ fontSize: '7pt' }}>
+                {(Number(item.quantity) / Number(item.packSize)).toLocaleString('es-AR', { maximumFractionDigits: 2 })} bulto(s) x{item.packSize}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -188,6 +198,13 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
           <span>TOTAL:</span>
           <span>{formatPrice(total)}</span>
         </div>
+
+        {/* Factura A a un monotributista (RG 5003): el IVA solo le sirve para su régimen */}
+        {esA && fiscal?.receptor?.ivaCondition === 'MONOTRIBUTO' && (
+          <div style={{ border: '1px solid #000', padding: '3px 4px', marginTop: '3px', fontSize: '6.5pt', fontWeight: 'normal' }}>
+            El crédito fiscal discriminado en el presente comprobante sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley N° 27.618.
+          </div>
+        )}
 
         {/* Ley 27.743: el IVA que el consumidor paga dentro del precio */}
         {esB && (
@@ -244,6 +261,8 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
           <div style={{ textAlign: 'center', fontSize: '6.5pt', color: '#555' }}>Firma y Aclaración de Quien Retira</div>
         </div>
       )}
+
+      <p style={{ margin: 0, fontSize: '6.5pt', textAlign: 'center', color: '#444' }}>Sistema Ventra · ventra.store</p>
     </div>
   );
 }

@@ -21,7 +21,9 @@ model User {
   // caja suba una versión vieja de la fila con hora posterior (ver keepNewerPassword)
   passwordChangedAt DateTime? @map("password_changed_at")
   fullName     String   @map("full_name")
-  role         String   @default("CASHIER") // ADMIN | SUPERVISOR | CASHIER
+    role         String   @default("CASHIER") // ADMIN | SUPERVISOR | CASHIER
+  // Qué hace en la distribuidora: VENDEDOR (preventa) | CHOFER (reparto) | MOSTRADOR. Sin valor: todo
+  workRole     String?  @map("work_role")
   isActive     Boolean  @default(true) @map("is_active")
   avatarUrl    String?  @map("avatar_url")
   lastLogin    DateTime? @map("last_login")
@@ -39,6 +41,7 @@ model User {
   supplierPayments   SupplierPayment[]
   zReports           DailyZReport[]
   quotes             Quote[]
+  preOrders          PreOrder[]
 
   @@map("users")
 }
@@ -192,6 +195,7 @@ model SaleItem {
   discount    Float  @default(0)
   total       Float
   deliveredQuantity Float @default(0) @map("delivered_quantity")
+  packSize    Int?   @map("pack_size") // Vendido por bulto: unidades por bulto (quantity sigue en unidades)
 
   sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
@@ -246,6 +250,7 @@ model Product {
   variantAttrs     String? @map("variant_attrs") // JSON con los atributos de la variante, ej. {"talle":"M","color":"Negro"}
   trackExpiry      Boolean @default(false) @map("track_expiry") // Controla vencimientos por lote
   expiryAlertDays  Int     @default(7) @map("expiry_alert_days") // Avisar estos días antes de vencer
+  packPrice        Float?  @map("pack_price") // Distribuidora: precio del bulto entero de unitsPerPack unidades
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
   listPrice        Float?  @map("list_price") // Precio de lista del proveedor, sin IVA
@@ -474,6 +479,7 @@ model Client {
   ivaCondition String @default("CONSUMIDOR_FINAL") @map("iva_condition") // RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL | NO_CATEGORIZADO
   phone     String?
   address   String?
+  locality  String? // Localidad (reparto y nota de venta)
   email     String?
   balance   Float    @default(0) // Positive means they owe us
   creditLimit Float? @map("credit_limit")
@@ -487,6 +493,7 @@ model Client {
   sales     Sale[]
   movements AccountMovement[]
   deliveryReceipts DeliveryReceipt[]
+  preOrders PreOrder[]
 
   @@map("clients")
 }
@@ -707,6 +714,89 @@ model QuoteItem {
 
   @@index([quoteId])
   @@map("quote_items")
+}
+
+// ---- Preventa (distribuidora) ----
+// El pedido que toma el vendedor en la calle. No mueve stock ni caja: al cobrarlo en la caja
+// queda como venta (status BILLED + saleId). El id lo genera el celular: si el envío se
+// repite por falta de señal, es el mismo pedido y no se duplica.
+model PreOrder {
+  id           String    @id @default(uuid())
+  orderNumber  Int       @map("order_number")
+  clientId     String?   @map("client_id")
+  userId       String    @map("user_id") // quién tomó el pedido
+  status       String    @default("PENDING") // PENDING | BILLED | CANCELLED
+  notes        String?
+  deliveryDate DateTime? @map("delivery_date")
+  total        Float     @default(0)
+  saleId       String?   @map("sale_id")
+  runId        String?   @map("run_id") // reparto en el que sale
+  stopOrder    Int?      @map("stop_order") // orden de la parada en la hoja de ruta
+  // Entrega (lo carga el chofer en la ruta; se vuelve venta en la rendición)
+  deliveryStatus String?   @map("delivery_status") // DELIVERED | PARTIAL | NOT_DELIVERED
+  deliveryReason String?   @map("delivery_reason") // por qué no se entregó o qué rechazó
+  deliveredItems String?   @map("delivered_items") // JSON { itemId: unidades entregadas } si hubo cambios
+  paidCash       Float?    @map("paid_cash")
+    paidTransfer   Float?    @map("paid_transfer")
+  // Lo que pagó en la entrega de lo que ya debía de antes (deuda vieja de la cuenta corriente)
+  prevCash       Float?    @map("prev_cash")
+  prevTransfer   Float?    @map("prev_transfer")
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  client Client?        @relation(fields: [clientId], references: [id])
+  user   User           @relation(fields: [userId], references: [id])
+  run    DeliveryRun?   @relation(fields: [runId], references: [id])
+  items  PreOrderItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([clientId])
+  @@index([runId])
+  @@map("pre_orders")
+}
+
+// Un reparto: un camión o chofer que sale un día con varios pedidos (hoja de carga y de ruta).
+model DeliveryRun {
+  id         String     @id @default(uuid())
+  runNumber  Int        @map("run_number")
+  date       DateTime
+    driverName String?    @map("driver_name")
+  // Usuario chofer (si lo es): su celular le muestra sus repartos. driverName queda como nombre impreso
+  driverUserId String?  @map("driver_user_id")
+  vehicle    String?
+  status     String     @default("ARMANDO") // ARMANDO | EN_REPARTO | CERRADO
+  notes      String?
+  // Rendición del chofer
+  settledAt    DateTime? @map("settled_at")
+  expectedCash Float?    @map("expected_cash")
+  cashReceived Float?    @map("cash_received")
+  settledBy    String?   @map("settled_by")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  orders PreOrder[]
+
+  @@index([date])
+  @@index([status])
+  @@map("delivery_runs")
+}
+
+model PreOrderItem {
+  id          String  @id @default(uuid())
+  orderId     String  @map("order_id")
+  productId   String  @map("product_id")
+  productName String  @map("product_name")
+  quantity    Float   // en unidades, como en las ventas
+  packSize    Int?    @map("pack_size") // pedido por bulto
+  unitPrice   Float   @map("unit_price")
+  total       Float
+
+  order PreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("pre_order_items")
 }
 
 // ---- Kits & Composites ----

@@ -23,6 +23,39 @@ import { toast } from 'react-hot-toast';
 import PaymentModal from '../pos/PaymentModal';
 import { hasFeature } from '../../stores/businessStore';
 
+const IVA_OPTIONS: [string, string][] = [
+  ['CONSUMIDOR_FINAL', 'Consumidor final'],
+  ['RESPONSABLE_INSCRIPTO', 'Responsable inscripto'],
+  ['MONOTRIBUTO', 'Monotributo'],
+  ['EXENTO', 'Exento'],
+];
+
+/** Distribuidora: localidad para el reparto, y CUIT + IVA para la nota de venta y la factura */
+function DeliveryFields({ value, onChange, localities }: { value: any; onChange: (patch: any) => void; localities: string[] }) {
+  const cls = 'w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700';
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Localidad</label>
+          <input type="text" list="client-localities" value={value.locality || ''} onChange={(e) => onChange({ locality: e.target.value })} placeholder="Ej. Verónica" className={cls} />
+          <datalist id="client-localities">{localities.map((l) => <option key={l} value={l} />)}</datalist>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">CUIT</label>
+          <input type="text" inputMode="numeric" value={value.cuit || ''} onChange={(e) => onChange({ cuit: e.target.value })} placeholder="Sin guiones" className={cls} />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Condición frente al IVA</label>
+        <select value={value.ivaCondition || 'CONSUMIDOR_FINAL'} onChange={(e) => onChange({ ivaCondition: e.target.value })} className={cls}>
+          {IVA_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </div>
+    </>
+  );
+}
+
 export default function CuentasCorrientesScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,8 +110,13 @@ export default function CuentasCorrientesScreen() {
     authorizedPickups: '',
     balance: 0,
     priceList: 'RETAIL',
-    tradeDiscountPercentage: ''
+    tradeDiscountPercentage: '',
+    locality: '',
+    cuit: '',
+    ivaCondition: 'CONSUMIDOR_FINAL'
   });
+  const usesDelivery = hasFeature('delivery');
+  const localities = Array.from(new Set(clients.map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[];
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -119,11 +157,16 @@ export default function CuentasCorrientesScreen() {
         authorizedPickups: newClient.authorizedPickups?.trim() || null,
         balance: Number(newClient.balance) || 0,
         priceList: newClient.priceList || 'RETAIL',
-        tradeDiscountPercentage: newClient.tradeDiscountPercentage !== '' && !isNaN(Number(newClient.tradeDiscountPercentage)) ? Number(newClient.tradeDiscountPercentage) : null
+        tradeDiscountPercentage: newClient.tradeDiscountPercentage !== '' && !isNaN(Number(newClient.tradeDiscountPercentage)) ? Number(newClient.tradeDiscountPercentage) : null,
+        ...(usesDelivery ? {
+          locality: newClient.locality.trim() || null,
+          cuit: newClient.cuit.replace(/\D/g, '') || null,
+          ivaCondition: newClient.ivaCondition || 'CONSUMIDOR_FINAL',
+        } : {}),
       };
       await api.post('/clients', payload);
       setShowAddModal(false);
-      setNewClient({ name: '', dni: '', phone: '', address: '', email: '', creditLimit: '', authorizedPickups: '', balance: 0, priceList: 'RETAIL', tradeDiscountPercentage: '' });
+      setNewClient({ name: '', dni: '', phone: '', address: '', email: '', creditLimit: '', authorizedPickups: '', balance: 0, priceList: 'RETAIL', tradeDiscountPercentage: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL' });
       loadClients();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al registrar el cliente. Verifique que el DNI no esté duplicado.');
@@ -150,7 +193,12 @@ export default function CuentasCorrientesScreen() {
         authorizedPickups: editingClient.authorizedPickups?.trim() || null,
         balance: Number(editingClient.balance) || 0,
         priceList: editingClient.priceList || 'RETAIL',
-        tradeDiscountPercentage: editingClient.tradeDiscountPercentage !== '' && editingClient.tradeDiscountPercentage !== null && !isNaN(Number(editingClient.tradeDiscountPercentage)) ? Number(editingClient.tradeDiscountPercentage) : null
+        tradeDiscountPercentage: editingClient.tradeDiscountPercentage !== '' && editingClient.tradeDiscountPercentage !== null && !isNaN(Number(editingClient.tradeDiscountPercentage)) ? Number(editingClient.tradeDiscountPercentage) : null,
+        ...(usesDelivery ? {
+          locality: editingClient.locality?.trim() || null,
+          cuit: String(editingClient.cuit || '').replace(/\D/g, '') || null,
+          ivaCondition: editingClient.ivaCondition || 'CONSUMIDOR_FINAL',
+        } : {}),
       };
       await api.patch(`/clients/${editingClient.id}`, payload);
       setShowEditModal(false);
@@ -246,7 +294,8 @@ export default function CuentasCorrientesScreen() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={loadClients} className="p-3 rounded-2xl bg-slate-50 text-slate-600 hover:bg-slate-100 transition-all"><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /></button>
-            <button 
+                        <button
+              data-tour="clients-new"
               onClick={() => setShowAddModal(true)}
               className="h-12 px-6 rounded-2xl bg-[#10b981] text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 w-full sm:w-auto justify-center cursor-pointer"
             >
@@ -410,7 +459,7 @@ export default function CuentasCorrientesScreen() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">DNI / CUIT</label>
+                    <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">{usesDelivery ? 'DNI' : 'DNI / CUIT'}</label>
                     <input 
                       type="text"
                       value={newClient.dni}
@@ -437,10 +486,11 @@ export default function CuentasCorrientesScreen() {
                     type="text"
                     value={newClient.address}
                     onChange={(e) => setNewClient({...newClient, address: e.target.value})}
-                    placeholder="Calle, número, localidad"
+                    placeholder={usesDelivery ? 'Calle y número' : 'Calle, número, localidad'}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700"
                   />
                 </div>
+                {usesDelivery && <DeliveryFields value={newClient} onChange={(patch) => setNewClient({ ...newClient, ...patch })} localities={localities} />}
 
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Email</label>
@@ -589,7 +639,7 @@ export default function CuentasCorrientesScreen() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">DNI / CUIT</label>
+                    <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">{usesDelivery ? 'DNI' : 'DNI / CUIT'}</label>
                     <input 
                       type="text"
                       value={editingClient.dni || ''}
@@ -616,10 +666,11 @@ export default function CuentasCorrientesScreen() {
                     type="text"
                     value={editingClient.address || ''}
                     onChange={(e) => setEditingClient({...editingClient, address: e.target.value})}
-                    placeholder="Calle, número, localidad"
+                    placeholder={usesDelivery ? 'Calle y número' : 'Calle, número, localidad'}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700"
                   />
                 </div>
+                {usesDelivery && <DeliveryFields value={editingClient} onChange={(patch) => setEditingClient({ ...editingClient, ...patch })} localities={localities} />}
 
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Email</label>

@@ -141,7 +141,7 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
   };
 
   const toggle = (i: BusinessIntent) => setChosen((c) => (c.includes(i) ? c.filter((x) => x !== i) : [...c, i]));
-  const canNext = step === 'intent' ? chosen.length > 0 : step === 'rubro' ? !!profile : true;
+  const canNext = step === 'intent' ? chosen.length > 0 : step === 'rubro' ? !!profile : name.trim().length >= 2;
 
   return (
     <div className="fixed inset-0 z-[90] bg-slate-900/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
@@ -216,9 +216,9 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
           {step === 'name' && (
             <>
               <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">¿Cómo se llama tu comercio?</h2>
-              <p className="mt-1.5 text-[14px] text-slate-500">Sale en tus tickets, en los cierres de caja y en la app del celular.</p>
+              <p className="mt-1.5 text-[14px] text-slate-500">Sale en tus tickets, notas de venta, remitos y facturas, en los cierres de caja y en la app del celular.</p>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
-                onKeyDown={(e) => { if (e.key === 'Enter') finish(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && name.trim().length >= 2) finish(); }}
                 placeholder="Ej.: Almacén Don Pepe"
                 className="mt-5 w-full h-14 px-4 rounded-2xl bg-slate-50 border-2 border-slate-200 text-[17px] font-semibold text-slate-900 outline-none focus:border-rose-500 focus:bg-white" />
             </>

@@ -26,18 +26,43 @@ export interface CartItem {
   note?: string;
   /** Gastronomía: pizza mitad y mitad (cada mitad, con el precio entero de su pizza) */
   half?: { a: string; b: string; pa: number; pb: number };
+  /**
+   * Distribuidora: renglón vendido por bulto. `quantity` sigue en UNIDADES (así el stock, el
+   * cobro y la factura no cambian) y `price` es el precio del bulto repartido por unidad.
+   */
+  packSize?: number;
+  packPrice?: number;
+}
+
+/**
+ * Bulto del producto, si el comercio vende por bulto (función `bulk`) y el producto tiene más de
+ * una unidad por bulto. Sin precio de bulto cargado, el bulto vale lo mismo que sus unidades sueltas.
+ */
+export function packOf(product: any, bulkEnabled: boolean): { size: number; price: number } | null {
+  const size = Math.round(Number(product?.unitsPerPack) || 1);
+  if (!bulkEnabled || size <= 1) return null;
+  const price = Number(product?.packPrice) > 0 ? Number(product.packPrice) : Number(product?.salePrice || 0) * size;
+  return { size, price: Math.round(price * 100) / 100 };
 }
 
 /** Presupuesto cargado al carrito: al cobrar esa venta, el presupuesto queda aceptado */
 export interface ActiveQuote { id: string; quoteNumber: string; clientName: string }
+/** Pedido de preventa cargado al carrito: al cobrarlo queda como venta */
+export interface ActiveOrder { id: string; number: number; clientName: string }
 
 interface POSState {
   cart: CartItem[];
   activeQuote: ActiveQuote | null;
   setActiveQuote: (quote: ActiveQuote | null) => void;
+  activeOrder: ActiveOrder | null;
+  setActiveOrder: (order: ActiveOrder | null) => void;
   promotions: any[];
   setPromotions: (promos: any[]) => void;
   addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean) => void;
+  /** Distribuidora: suma `packs` bultos del producto (ver packOf) */
+  addPackToCart: (product: any, pack: { size: number; price: number }, packs?: number) => void;
+  /** Distribuidora: pasa un renglón de bultos a unidades sueltas o al revés, con la misma cantidad */
+  switchPackMode: (cartKey: string, pack: { size: number; price: number } | null) => void;
   addPromoToCart: (promo: any, productsList?: any[], customSelectedMetadata?: { productId: string; name: string; price: number; quantity: number }[]) => void;
   applySuggestedPromo: (promo: any, productsList?: any[]) => void;
   removeFromCart: (productId: string) => void;
@@ -47,7 +72,7 @@ interface POSState {
   getDiscounts: () => number;
   getAppliedPromotions: () => { name: string; discount: number }[];
   getCartItemsWithDiscounts: () => { discountsMap: { [productId: string]: number }; appliedPromosInfo: { id: string; quantitySold: number }[] };
-  getCheckoutPayload: () => { productId: string; quantity: number; discount: number; price?: number; categoryId?: string }[];
+  getCheckoutPayload: () => { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number }[];
   getFinalTotal: () => number;
   getItemCount: () => number;
 
@@ -63,7 +88,7 @@ interface POSState {
   setClients: (clients: any[]) => void;
   setIsWarmed: (isWarmed: boolean) => void;
 
-  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string; quote?: ActiveQuote | null }[];
+  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string; quote?: ActiveQuote | null; order?: ActiveOrder | null }[];
   holdCart: (clientName?: string) => void;
   resumeCart: (id: string) => void;
   deleteHeldCart: (id: string) => void;
@@ -214,6 +239,8 @@ export const usePOSStore = create<POSState>()(
       cart: [],
       activeQuote: null,
       setActiveQuote: (activeQuote) => set({ activeQuote }),
+      activeOrder: null,
+      setActiveOrder: (activeOrder) => set({ activeOrder }),
       promotions: [],
       products: [],
       categories: [],
@@ -230,14 +257,16 @@ export const usePOSStore = create<POSState>()(
           cart: currentCart,
           createdAt: new Date().toISOString(),
           clientName: clientName || `Cliente ${get().heldCarts.length + 1}`,
-          // El presupuesto viaja con su ticket en espera y vuelve al retomarlo
+          // El presupuesto (o el pedido) viaja con su ticket en espera y vuelve al retomarlo
           quote: get().activeQuote,
+          order: get().activeOrder,
         };
-        
+
         set({
           heldCarts: [newHeldCart, ...get().heldCarts],
           cart: [],
           activeQuote: null,
+          activeOrder: null,
         });
       },
 
@@ -255,6 +284,7 @@ export const usePOSStore = create<POSState>()(
             createdAt: new Date().toISOString(),
             clientName: `Sesión Anterior (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
             quote: get().activeQuote,
+            order: get().activeOrder,
           };
           newHeldCarts = [autoHeld, ...newHeldCarts];
         }
@@ -263,6 +293,7 @@ export const usePOSStore = create<POSState>()(
           cart: target.cart,
           heldCarts: newHeldCarts,
           activeQuote: target.quote || null,
+          activeOrder: target.order || null,
         });
       },
 
@@ -290,7 +321,8 @@ export const usePOSStore = create<POSState>()(
           const tradeDiscount = Number(client?.tradeDiscountPercentage) || 0;
 
           const updatedCart = state.cart.map((item) => {
-            if (item.isCustomPrice || item.isPromo || item.isReturn) return item;
+            // El bulto tiene su propio precio: la lista del cliente no lo toca
+            if (item.isCustomPrice || item.isPromo || item.isReturn || item.packSize) return item;
 
             const basePrice = item.originalSalePrice ?? item.regularPrice ?? item.price;
             let effectiveRegularPrice = basePrice;
@@ -392,6 +424,47 @@ export const usePOSStore = create<POSState>()(
       const combinedCart = autoCombineCombos(updatedCart, state.promotions, [product]);
       return { cart: combinedCart };
     });
+  },
+
+  addPackToCart: (product, pack, packs = 1) => {
+    set((state) => {
+      const cartKey = `${product.id}_pack`;
+      const unitPrice = pack.price / pack.size; // sin redondear: el bulto suma justo pack.price
+      const addUnits = pack.size * packs;
+      const existing = state.cart.find((i) => i.cartKey === cartKey);
+      const cart = existing
+        ? state.cart.map((i) => (i.cartKey === cartKey ? { ...i, quantity: i.quantity + addUnits } : i))
+        : [...state.cart, {
+            cartKey,
+            productId: product.id,
+            name: product.name,
+            price: unitPrice,
+            regularPrice: unitPrice,
+            originalSalePrice: Number(product.salePrice),
+            quantity: addUnits,
+            barcode: product.barcode,
+            maxStock: product.unlimitedStock ? 999999 : (product.stock ?? 999999),
+            categoryId: product.categoryId,
+            imageUrl: product.imageUrl,
+            packSize: pack.size,
+            packPrice: pack.price,
+          }];
+      return { cart: autoCombineCombos(cart, state.promotions, [product]) };
+    });
+  },
+
+  switchPackMode: (cartKey, pack) => {
+    const { cart, products, removeFromCart, addToCart, addPackToCart } = get();
+    const item = cart.find((i) => i.cartKey === cartKey);
+    const product = item && products.find((p: any) => p.id === item.productId);
+    if (!item || !product) return;
+    if (item.packSize) {
+      removeFromCart(cartKey);
+      addToCart(product, undefined, Math.round(item.quantity / item.packSize));
+    } else if (pack) {
+      removeFromCart(cartKey);
+      addPackToCart(product, pack, Math.max(1, Math.round(item.quantity)));
+    }
   },
 
   addPromoToCart: (promo, productsList = [], customSelectedMetadata) => {
@@ -630,7 +703,7 @@ export const usePOSStore = create<POSState>()(
   }),
 
   // Vaciar el ticket también lo desvincula del presupuesto
-  clearCart: () => set({ cart: [], activeQuote: null }),
+  clearCart: () => set({ cart: [], activeQuote: null, activeOrder: null }),
   
   getTotal: () => {
     const total = get().cart.reduce((sum, item) => {
@@ -880,15 +953,15 @@ export const usePOSStore = create<POSState>()(
   getCheckoutPayload: () => {
     const { cart, getCartItemsWithDiscounts } = get();
     const { discountsMap } = getCartItemsWithDiscounts();
-    const exploded: { productId: string; quantity: number; discount: number; price?: number; categoryId?: string }[] = [];
+    const exploded: { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number }[] = [];
 
-    const addExplodedItem = (productId: string, qty: number, disc: number, price?: number, categoryId?: string) => {
-      const existing = exploded.find(item => item.productId === productId && item.price === price);
+    const addExplodedItem = (productId: string, qty: number, disc: number, price?: number, categoryId?: string, packSize?: number) => {
+      const existing = exploded.find(item => item.productId === productId && item.price === price && item.packSize === packSize);
       if (existing) {
         existing.quantity += qty;
         existing.discount += disc;
       } else {
-        exploded.push({ productId, quantity: qty, discount: disc, price, categoryId });
+        exploded.push({ productId, quantity: qty, discount: disc, price, categoryId, ...(packSize ? { packSize } : {}) });
       }
     };
 
@@ -910,7 +983,7 @@ export const usePOSStore = create<POSState>()(
         addExplodedItem(item.half.a, item.quantity * 0.5, 0, item.half.pa, item.categoryId);
         addExplodedItem(item.half.b, item.quantity * 0.5, 0, item.half.pb, item.categoryId);
       } else {
-        addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId);
+        addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId, item.packSize);
       }
     });
 

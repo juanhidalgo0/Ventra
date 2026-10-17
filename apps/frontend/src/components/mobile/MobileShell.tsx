@@ -30,6 +30,8 @@ const SCREEN_TITLES: Record<string, string> = {
   '/fiscal': 'Facturación',
   '/online-store': 'Tienda online',
   '/pedidos': 'Pedidos online',
+  '/preventa': 'Preventa',
+  '/reparto': 'Reparto',
   '/agenda': 'Agenda',
   '/agenda/clientes': 'Clientes',
   '/agenda/cobros': 'Cobros',

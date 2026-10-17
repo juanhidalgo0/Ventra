@@ -327,6 +327,11 @@ export class ProductsService {
         allowCustomPrice: true,
         unit: true,
         unitsPerPack: true,
+        packPrice: true,
+        // Precio mayorista (desde cierta cantidad) y de gremio: sin esto la caja cobraba siempre el común
+        wholesalePrice: true,
+        wholesaleMinQty: true,
+        tradePrice: true,
         pieceSize: true,
         baseName: true,
         variantGroupId: true,
@@ -372,6 +377,10 @@ export class ProductsService {
       allowCustomPrice: p.allowCustomPrice,
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,
+      packPrice: p.packPrice,
+      wholesalePrice: p.wholesalePrice,
+      wholesaleMinQty: p.wholesaleMinQty,
+      tradePrice: p.tradePrice,
       pieceSize: p.pieceSize,
       baseName: p.baseName,
       variantGroupId: p.variantGroupId,
@@ -674,7 +683,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice'
     ];
     
     const productData: any = {};
@@ -791,7 +800,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice'
     ];
     
     const updateData: any = {};
@@ -1744,6 +1753,7 @@ export class ProductsService {
       }
       if (target === 'COST_AND_SALE' || target === 'SALE_ONLY') {
         updateData.salePrice = Math.round((p.salePrice * factor) * 100) / 100;
+        if (p.packPrice) updateData.packPrice = Math.round((p.packPrice * factor) * 100) / 100;
       }
       return this.prisma.product.update({
         where: { id: p.id },

@@ -3,7 +3,7 @@ import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
-import { numberRange, saleNumberFloor } from '../sync/numbering';
+import { nextDocNumber } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { FiscalService } from '../fiscal/fiscal.service';
@@ -11,7 +11,7 @@ import { consumeLotsFefo, restoreLots } from '../products/lots.util';
 
 interface CreateSaleDto {
   sessionId: string;
-  items: { productId: string; quantity: number; discount?: number; price?: number }[];
+  items: { productId: string; quantity: number; discount?: number; price?: number; packSize?: number }[];
   payments: { method: string; amount: number; reference?: string }[];
   notes?: string;
   clientId?: string;
@@ -86,6 +86,15 @@ export class SalesService {
   }
 
   async create(userId: string, dto: CreateSaleDto) {
+    // Venta hecha sin conexión: trae su id desde la caja. Si llega dos veces (reintento, o la
+    // respuesta se perdió), se devuelve la que ya está en vez de registrar otra.
+    const clientSaleId = typeof (dto as any).clientSaleId === 'string' && /^[\w-]{8,64}$/.test((dto as any).clientSaleId) ? (dto as any).clientSaleId as string : null;
+    const findExisting = () => clientSaleId
+      ? this.prisma.sale.findUnique({ where: { id: clientSaleId }, include: { items: true, payments: true, client: true, user: { select: { fullName: true, username: true } } } })
+      : Promise.resolve(null);
+    const already = await findExisting();
+    if (already) return already;
+
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: dto.sessionId } });
     if (!session || session.status !== 'OPEN') throw new BadRequestException('No hay una caja abierta para esta sesión');
 
@@ -119,7 +128,9 @@ export class SalesService {
     // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
     const sold = new Map<string, number>();
 
-    const sale = await this.prisma.$transaction(async (tx) => {
+    let sale: any;
+    try {
+    sale = await this.prisma.$transaction(async (tx) => {
       let subtotal = 0;
       const saleItems: any[] = [];
 
@@ -173,7 +184,9 @@ export class SalesService {
         const itemSubtotal = unitPrice * item.quantity;
         const itemDiscount = consumption ? 0 : item.discount || 0;
         const itemTotal = itemSubtotal - itemDiscount;
-        saleItems.push({ productId: product.id, productName: (item as any).productName || product.name, unitPrice, quantity: item.quantity, subtotal: itemSubtotal, discount: itemDiscount, total: itemTotal });
+        // Vendido por bulto: quantity sigue en unidades (el stock no cambia); packSize es para mostrarlo
+        const packSize = Number(item.packSize) > 1 ? Math.round(Number(item.packSize)) : null;
+        saleItems.push({ productId: product.id, productName: (item as any).productName || product.name, unitPrice, quantity: item.quantity, subtotal: itemSubtotal, discount: itemDiscount, total: itemTotal, packSize });
         subtotal += itemTotal;
 
         // Deduct stock for product (or kit components if product.isKit)
@@ -252,14 +265,21 @@ export class SalesService {
       if (Math.abs(totalPayments - subtotal) > 0.01) throw new BadRequestException(`El total de pagos (${totalPayments}) no coincide con el total de la venta (${subtotal})`);
 
       const paymentMethodSummary = payments.length === 1 ? payments[0].method : 'MIXED';
-      // Cada caja numera en su propio rango (ver sync/numbering)
-      const range = await numberRange(tx);
-      const lastSale = await tx.sale.findFirst({ where: { saleNumber: { gte: range.from, lt: range.to } }, orderBy: { saleNumber: 'desc' } });
-      const floor = await saleNumberFloor(tx);
-      const saleNumber = Math.max(lastSale ? lastSale.saleNumber : range.from, floor >= range.from && floor < range.to ? floor : 0) + 1;
+      // Cada caja numera en su propio rango (ver sync/numbering). La venta de un pedido de
+      // preventa lleva el número del pedido: pedido, remito y venta son el mismo N°.
+      let saleNumber = 0;
+      const fromOrder = typeof (dto as any).orderId === 'string' && (dto as any).orderId
+        ? await (tx as any).preOrder.findUnique({ where: { id: (dto as any).orderId }, select: { orderNumber: true } })
+        : null;
+      if (fromOrder?.orderNumber && !(await tx.sale.findUnique({ where: { saleNumber: fromOrder.orderNumber }, select: { id: true } }))) {
+        saleNumber = fromOrder.orderNumber;
+      } else {
+        saleNumber = await nextDocNumber(tx);
+      }
 
       const newSale = await tx.sale.create({
         data: {
+          ...(clientSaleId ? { id: clientSaleId } : {}),
           saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary,
           notes: consumption ? 'Consumo de empleado (sin cargo)' : dto.notes,
           ...(consumption ? { status: 'INTERNAL' } : {}),
@@ -269,7 +289,7 @@ export class SalesService {
           items: { create: saleItems },
           payments: { create: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })) },
         },
-        include: { items: true, payments: true, user: { select: { fullName: true, username: true } } },
+        include: { items: true, payments: true, client: true, user: { select: { fullName: true, username: true } } },
       });
 
       // Handle Credit Account (DEBT)
@@ -319,6 +339,13 @@ export class SalesService {
         }
       }
 
+      // Pedido de preventa cobrado en la caja: queda como venta (una sola vez)
+      const orderId = (dto as any).orderId;
+      if (typeof orderId === 'string' && orderId) {
+        // Si su número ya estaba usado, el pedido toma el de la venta: siempre un solo número
+        await (tx as any).preOrder.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'BILLED', saleId: newSale.id, orderNumber: newSale.saleNumber } });
+      }
+
       // Venta de un presupuesto cargado al carrito: queda aceptado (si seguía pendiente o vencido)
       const quoteId = (dto as any).quoteId;
       if (typeof quoteId === 'string' && quoteId) {
@@ -332,6 +359,14 @@ export class SalesService {
 
       return newSale;
     });
+    } catch (err: any) {
+      // Dos envíos de la misma venta a la vez: el segundo choca con el id y no descuenta nada
+      if (clientSaleId && err?.code === 'P2002') {
+        const existing = await findExisting();
+        if (existing) return existing;
+      }
+      throw err;
+    }
 
     // Sync to Firestore outside transaction to avoid blocking SQLite writer lock
     for (const p of productsToSync) {
@@ -364,8 +399,11 @@ export class SalesService {
     return sale;
   }
 
-  async findAll(params?: { sessionId?: string; userId?: string; from?: string; to?: string; paymentMethod?: string; limit?: number; search?: string; withCost?: string | boolean }) {
+  async findAll(params?: { sessionId?: string; userId?: string; from?: string; to?: string; paymentMethod?: string; limit?: number; search?: string; withCost?: string | boolean; clientId?: string; locality?: string }) {
     const where: any = {};
+    // Historial: las ventas de un cliente, o de los clientes de una localidad (reparto)
+    if (params?.clientId) where.clientId = params.clientId;
+    else if (params?.locality) where.client = { locality: params.locality };
     if (params?.sessionId) where.sessionId = params.sessionId;
     if (params?.userId) where.userId = params.userId;
     if (params?.paymentMethod) where.paymentMethodSummary = params.paymentMethod;
@@ -403,7 +441,8 @@ export class SalesService {
             }
           } : true,
           payments: true,
-          user: { select: { fullName: true, username: true } }
+          user: { select: { fullName: true, username: true } },
+          client: { select: { id: true, name: true, dni: true, cuit: true, ivaCondition: true, phone: true, address: true, locality: true } },
         },
         orderBy: { createdAt: 'desc' },
       };

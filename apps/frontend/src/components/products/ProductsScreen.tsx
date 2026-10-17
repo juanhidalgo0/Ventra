@@ -878,7 +878,8 @@ export default function ProductsScreen() {
                 className="hidden" 
                 accept=".xlsx,.xls,.csv,.dbf"
               />
-              <button 
+                            <button
+                data-tour="products-new"
                 onClick={() => { setSelectedProduct(null); setShowModal(true); }}
                 className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 active:scale-[0.97] transition-all cursor-pointer shadow-sm"
               >

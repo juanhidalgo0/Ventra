@@ -26,6 +26,8 @@ const { PrismaService } = require('../src/database/prisma.service');
 const { SalesService } = require('../src/modules/sales/sales.service');
 const { ProductsService } = require('../src/modules/products/products.service');
 const { PurchasesService } = require('../src/modules/purchases/purchases.service');
+const { DeliveryRunsService } = require('../src/modules/preorders/delivery-runs.service');
+const { PreOrdersService } = require('../src/modules/preorders/preorders.service');
 const { CashRegisterService } = require('../src/modules/cash-register/cash-register.service');
 
 /** Pieza muda: cualquier método existe y no hace nada */
@@ -56,6 +58,7 @@ async function main() {
   const sales = new SalesService(prisma, events, firebase, notify, cash, mute());
   const products = new ProductsService(prisma, events, firebase, mute());
   const purchases = new PurchasesService(prisma, firebase);
+  const runs = new DeliveryRunsService(prisma, sales, mute());
 
   const crear = (dto: any, userId: string) => sales.create(userId, dto);
   const admin = await prisma.user.create({ data: { username: 'ADMIN', passwordHash: 'x', fullName: 'Dueño', role: 'ADMIN' } });
@@ -231,6 +234,104 @@ async function main() {
     assert.strictEqual(await prisma.inventoryMovement.count({ where: { productId: p.id, type: 'RETURN' } }), 1);
   });
 
+  await t('venta sin conexión mandada dos veces (y a la vez): se registra una sola', async () => {
+    const p = await nuevo('PEPSI', 10);
+    const dto = () => ({ clientSaleId: 'off-test-0001', sessionId: session.id, items: [{ productId: p.id, quantity: 2 }], payments: [{ method: 'CASH', amount: 2000 }] });
+    const r = await Promise.allSettled([crear(dto(), cajero.id), crear(dto(), cajero.id)]);
+    assert.ok(r.every((x) => x.status === 'fulfilled'), 'los dos envíos responden bien');
+    const again = await crear(dto(), cajero.id);
+    assert.strictEqual(again.id, 'off-test-0001');
+    assert.strictEqual(await prisma.sale.count({ where: { id: 'off-test-0001' } }), 1);
+    assert.strictEqual(await stockDe(p.id), 8);
+  });
+
+  await t('pedido de preventa cobrado en la caja: queda como venta', async () => {
+    const p = await nuevo('FERNET', 10);
+    const order = await (prisma as any).preOrder.create({ data: { id: 'po-test-0001', orderNumber: 1, userId: cajero.id, total: 2000, items: { create: [{ productId: p.id, productName: 'FERNET', quantity: 2, unitPrice: 1000, total: 2000 }] } } });
+    assert.strictEqual(await stockDe(p.id), 10, 'el pedido no mueve stock');
+    const s = await crear({ sessionId: session.id, orderId: order.id, items: [{ productId: p.id, quantity: 2, price: 1000 }], payments: [{ method: 'CASH', amount: 2000 }] }, cajero.id);
+    const after = await (prisma as any).preOrder.findUnique({ where: { id: order.id } });
+    assert.strictEqual(after.status, 'BILLED');
+    assert.strictEqual(after.saleId, s.id);
+    assert.strictEqual(await stockDe(p.id), 8);
+  });
+
+  await t('reparto: entran solo pedidos pendientes, en orden, y deshacerlo los libera', async () => {
+    const p = await nuevo('SPRITE', 10);
+    const mk = (id: string, n: number, status = 'PENDING') => (prisma as any).preOrder.create({ data: { id, orderNumber: 100 + n, userId: cajero.id, status, total: 1000, items: { create: [{ productId: p.id, productName: 'SPRITE', quantity: 1, unitPrice: 1000, total: 1000 }] } } });
+    await mk('po-run-a', 1); await mk('po-run-b', 2); await mk('po-run-c', 3, 'BILLED');
+    const run = await runs.create({ driverName: 'Chofer', orderIds: ['po-run-b', 'po-run-a', 'po-run-c'] });
+    assert.deepStrictEqual(run.orders.map((o: any) => o.id), ['po-run-b', 'po-run-a'], 'el cobrado no entra; el orden se respeta');
+    const again = await runs.setStops(run.id, ['po-run-a']);
+    assert.deepStrictEqual(again.orders.map((o: any) => o.id), ['po-run-a']);
+    assert.strictEqual((await (prisma as any).preOrder.findUnique({ where: { id: 'po-run-b' } })).runId, null);
+    await assert.rejects(() => runs.update(run.id, { status: 'EN_REPARTO' }), 'la salida es con "Salió a reparto"');
+    const failed = await runs.dispatch(run.id, {}, cajero.id);
+    assert.strictEqual(failed.errors.length, 1, 'un pedido sin cliente no puede salir a cuenta');
+    assert.strictEqual(failed.run.status, 'ARMANDO');
+    await runs.remove(run.id);
+    assert.strictEqual((await (prisma as any).preOrder.findUnique({ where: { id: 'po-run-a' } })).runId, null);
+    assert.strictEqual(await stockDe(p.id), 10, 'armar o deshacer no mueve stock');
+  });
+
+  await t('reparto: sale con venta a cuenta y el número del pedido; la rendición cobra, devuelve y reprograma', async () => {
+    const p = await nuevo('QUILMES', 100);
+    const cli = await prisma.client.create({ data: { name: 'Almacén Rendición' } });
+    const saldo = async () => (await prisma.client.findUnique({ where: { id: cli.id } }))!.balance;
+    const mk = (id: string, n: number, q: number) => (prisma as any).preOrder.create({ data: { id, orderNumber: 900200 + n, clientId: cli.id, userId: cajero.id, total: q * 100, items: { create: [{ id: id + '-i', productId: p.id, productName: 'QUILMES', quantity: q, packSize: 6, unitPrice: 100, total: q * 100 }] } } });
+    await mk('po-set-a', 1, 12); await mk('po-set-b', 2, 12); await mk('po-set-c', 3, 6);
+    const run = await runs.create({ orderIds: ['po-set-a', 'po-set-b', 'po-set-c'] });
+    await assert.rejects(() => runs.saveDelivery(run.id, 'po-set-a', { status: 'DELIVERED', cash: 1200 }), 'antes de salir no se registran entregas');
+
+    const out = await runs.dispatch(run.id, {}, cajero.id);
+    assert.deepStrictEqual(out.errors, []);
+    assert.strictEqual(out.created, 3);
+    assert.strictEqual(out.run.status, 'EN_REPARTO');
+    assert.strictEqual(await stockDe(p.id), 100 - 30, 'el stock sale con el camión');
+    assert.strictEqual(await saldo(), 3000, 'las ventas quedan a cuenta del cliente');
+    const saleA = await prisma.sale.findFirst({ where: { id: 'run-po-set-a-900201' } });
+    assert.strictEqual(saleA!.saleNumber, 900201, 'la venta lleva el número del pedido');
+    await assert.rejects(() => runs.dispatch(run.id, {}, cajero.id), 'no sale dos veces');
+
+    await runs.saveDelivery(run.id, 'po-set-a', { status: 'DELIVERED', cash: 1200 });
+    await assert.rejects(() => runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, cash: 700 }), 'no se puede cobrar más de lo entregado');
+    await runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, transfer: 400, reason: 'Rechazó un bulto' });
+    await runs.saveDelivery(run.id, 'po-set-c', { status: 'NOT_DELIVERED', reason: 'Cerrado' });
+
+    const r = await runs.settle(run.id, { cashReceived: 1200 }, cajero.id);
+    assert.deepStrictEqual(r.errors, []);
+    assert.strictEqual(r.expectedCash, 1200);
+    assert.strictEqual(await stockDe(p.id), 100 - 12 - 6, 'lo rechazado y lo no entregado vuelven');
+    assert.strictEqual(await saldo(), 200, 'debe solo lo que recibió y no pagó');
+    const cobroB = await prisma.sale.findUnique({ where: { id: 'cobro-po-set-b-900202' }, include: { payments: true } });
+    assert.deepStrictEqual(cobroB!.payments.map((x: any) => x.method), ['TRANSFERENCIA']);
+    assert.ok(await prisma.sale.findUnique({ where: { id: 'rech-po-set-b-900202' } }), 'el rechazo queda como devolución');
+    const c = await (prisma as any).preOrder.findUnique({ where: { id: 'po-set-c' } });
+    assert.strictEqual(c.status, 'PENDING'); assert.strictEqual(c.runId, null); assert.strictEqual(c.saleId, null);
+    assert.notStrictEqual(c.orderNumber, 900203, 'vuelve con número nuevo: el suyo ya es de la venta');
+    assert.strictEqual((await (prisma as any).deliveryRun.findUnique({ where: { id: run.id } })).status, 'CERRADO');
+    await assert.rejects(() => runs.settle(run.id, {}, cajero.id), 'no se rinde dos veces');
+
+    // Varias de una vez: entregadas completas, todas a cuenta
+    await mk('po-many-a', 4, 6); await mk('po-many-b', 5, 6);
+    const run2 = await runs.create({ orderIds: ['po-many-a', 'po-many-b'] });
+    await runs.dispatch(run2.id, {}, cajero.id);
+    const after = await runs.saveManyDelivered(run2.id, ['po-many-a', 'po-many-b'], 'debt');
+    assert.ok(after.orders.every((o: any) => o.deliveryStatus === 'DELIVERED' && o.paidCash === 0 && o.paidTransfer === 0));
+    await runs.settle(run2.id, {}, cajero.id);
+    assert.strictEqual(await saldo(), 200 + 1200, 'las dos quedan a cuenta');
+  });
+
+  await t('pedidos y ventas comparten numeración: el pedido nuevo nunca pisa una venta', async () => {
+    const p = await nuevo('FANTA', 10);
+    const s = await vender([{ productId: p.id, quantity: 1 }]);
+    const preorders = new PreOrdersService(prisma);
+    const o = await preorders.save('po-num-0001', { items: [{ productId: p.id, productName: 'FANTA', quantity: 1, unitPrice: 100 }] }, cajero.id);
+    assert.ok(o.orderNumber > s.saleNumber, 'el pedido sigue la numeración de las ventas');
+    const s2 = await vender([{ productId: p.id, quantity: 1 }]);
+    assert.ok(s2.saleNumber > o.orderNumber, 'una venta de mostrador no usa el número de un pedido');
+  });
+
   await t('anular una venta fiada devuelve la deuda; con saldo a favor, lo saca', async () => {
     const p = await nuevo('YERBA', 10);
     const cli = await prisma.client.create({ data: { name: 'Doña Rosa' } });
@@ -262,6 +363,74 @@ async function main() {
     await assert.rejects(() => cash.addCashMovement(cerrada.id, cajero.id, { type: 'EXPENSE', amount: 100, description: 'Tarde' }, 'CASHIER'));
     await cash.addCashMovement(cerrada.id, admin.id, { type: 'EXPENSE', amount: 100, description: 'Corrección' }, 'ADMIN');
     await assert.rejects(() => cash.addCashMovement(session.id, cajero.id, { type: 'EXPENSE', amount: NaN }, 'CASHIER'));
+  });
+
+  await t('chofer usuario: el reparto queda a su nombre, ve los suyos y no rinde su camión', async () => {
+    const chofer = await prisma.user.create({ data: { username: 'TOTO', passwordHash: 'x', fullName: 'Toto', role: 'CASHIER', workRole: 'CHOFER' } as any });
+    const drivers = await runs.drivers();
+    assert.strictEqual(drivers[0].id, chofer.id, 'los choferes primero');
+    const cli = await prisma.client.create({ data: { name: 'Kiosco Toto', locality: 'Bavio' } });
+    const p = await nuevo('Agua chofer', 50);
+    await (prisma as any).preOrder.create({ data: { id: 'po-drv-a', orderNumber: 990001, clientId: cli.id, userId: cajero.id, total: 1000, items: { create: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 1000, total: 1000 }] } } });
+    const run = await runs.create({ driverUserId: chofer.id, orderIds: ['po-drv-a'] });
+    assert.strictEqual(run.driverName, 'Toto', 'toma el nombre del usuario');
+    const mios = await runs.list('ALL', chofer.id);
+    assert.deepStrictEqual(mios.map((r: any) => r.id), [run.id]);
+    // Escribir otro nombre a mano lo desata del usuario
+    const editado: any = await runs.update(run.id, { driverName: 'Otro' });
+    assert.strictEqual(editado.driverUserId, null);
+    await runs.update(run.id, { driverUserId: chofer.id });
+    await runs.dispatch(run.id, {}, cajero.id);
+    await assert.rejects(() => runs.settle(run.id, {}, chofer.id), /encargado/);
+    const r = await runs.settle(run.id, {}, admin.id);
+    assert.strictEqual(r.run.status, 'CERRADO');
+  });
+
+  await t('deuda anterior: se cobra en la parada, entra a la rendición y baja el saldo', async () => {
+    const cli = await prisma.client.create({ data: { name: 'Debe de antes', locality: 'Bavio', balance: 5000 } });
+    const p = await nuevo('Galletitas deuda', 50);
+    await (prisma as any).preOrder.create({ data: { id: 'po-prev-a', orderNumber: 990101, clientId: cli.id, userId: cajero.id, total: 1000, items: { create: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 1000, total: 1000 }] } } });
+    const run = await runs.create({ orderIds: ['po-prev-a'] });
+    assert.strictEqual(run.orders[0].prevDebt, 5000, 'antes de salir debe lo de antes');
+    await runs.dispatch(run.id, {}, cajero.id);
+    const salio = await runs.findOne(run.id);
+    assert.strictEqual(salio.orders[0].prevDebt, 5000, 'sin contar lo que se le está entregando');
+    await assert.rejects(() => runs.saveDelivery(run.id, 'po-prev-a', { status: 'DELIVERED', cash: 1000, prevCash: 6000 }), /debía/);
+    await runs.saveDelivery(run.id, 'po-prev-a', { status: 'DELIVERED', cash: 1000, prevCash: 2000, prevTransfer: 1000 });
+    // Marcar de nuevo sin decir nada de la deuda vieja no la borra
+    await runs.saveDelivery(run.id, 'po-prev-a', { status: 'DELIVERED', cash: 1000 });
+    const r = await runs.settle(run.id, { cashReceived: 3000 }, admin.id);
+    assert.strictEqual(r.expectedCash, 3000);
+    assert.strictEqual(r.run.expectedCash, 3000);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, 2000);
+    await assert.rejects(() => runs.settle(run.id, {}, admin.id));
+  });
+
+  await t('stock comprometido y faltantes para cargar el camión', async () => {
+    const pre = new PreOrdersService(prisma);
+    const cli = await prisma.client.create({ data: { name: 'Pide mucho', locality: 'Verónica' } });
+    const p = await nuevo('Lavandina faltante', 5);
+    await (prisma as any).preOrder.create({ data: { id: 'po-short-a', orderNumber: 990201, clientId: cli.id, userId: cajero.id, total: 12000, items: { create: [{ productId: p.id, productName: p.name, quantity: 12, unitPrice: 1000, total: 12000 }] } } });
+    assert.strictEqual((await pre.committed())[p.id], 12);
+    const run = await runs.create({ orderIds: ['po-short-a'] });
+    const falta = run.shortages.find((x: any) => x.productId === p.id);
+    assert.ok(falta, 'avisa el faltante');
+    assert.strictEqual(falta.needed, 12);
+    assert.strictEqual(falta.stock, 5);
+  });
+
+  await t('último pedido de cada cliente: el más nuevo, sin los cancelados', async () => {
+    const pre = new PreOrdersService(prisma);
+    const cli = await prisma.client.create({ data: { name: 'Repite siempre', locality: 'Bavio' } });
+    const p = await nuevo('Fideos repetir', 100);
+    const item = (q: number) => ({ create: [{ productId: p.id, productName: p.name, quantity: q, packSize: 20, unitPrice: 600, total: q * 600 }] });
+    await (prisma as any).preOrder.create({ data: { id: 'po-last-old', orderNumber: 990301, clientId: cli.id, userId: cajero.id, status: 'BILLED', total: 24000, createdAt: new Date(Date.now() - 7 * 86400000), items: item(40) } });
+    await (prisma as any).preOrder.create({ data: { id: 'po-last-new', orderNumber: 990302, clientId: cli.id, userId: cajero.id, status: 'PENDING', total: 36000, createdAt: new Date(Date.now() - 86400000), items: item(60) } });
+    await (prisma as any).preOrder.create({ data: { id: 'po-last-cancel', orderNumber: 990303, clientId: cli.id, userId: cajero.id, status: 'CANCELLED', total: 1, items: item(20) } });
+    const last = (await pre.lastByClient())[cli.id];
+    assert.strictEqual(last.id, 'po-last-new');
+    assert.strictEqual(last.items[0].quantity, 60);
+    assert.strictEqual(last.items[0].packSize, 20);
   });
 
   await prisma.$disconnect();

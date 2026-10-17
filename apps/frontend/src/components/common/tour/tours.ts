@@ -16,10 +16,21 @@ export interface TourStep {
   run?: string;
   /** Su objetivo aparece recién después de una acción (la ventana de cobro): no se descarta al empezar */
   lazy?: boolean;
+  /** Pantalla del paso (recorridos de varias pantallas): el recorrido navega ahí al entrar.
+   *  Si su objetivo no aparece en unos segundos (sin datos, otro plan), el paso se saltea. */
+  path?: string;
 }
 
 /** Recorridos de la caja que se hacen en modo práctica: caja abierta y productos de ejemplo (ver pos/posPractice.ts) */
 export const PRACTICE_TOURS = new Set(['pos', 'posCaja', 'posHerramientas', 'posFerreteria']);
+
+/** Recorridos que pasan por varias pantallas: no se cortan al cambiar de ruta */
+export const ROAMING_TOURS = new Set<string>(['distrib']);
+
+/** Al terminar un recorrido, también se dan por vistos los que ya contó (no se repiten solos) */
+export const TOUR_COVERS: Record<string, string[]> = {
+  distrib: ['distribPreventa', 'distribReparto'],
+};
 
 type Tour = TourStep[] | ((c: TourCtx) => (TourStep | false | null | undefined)[]);
 
@@ -155,6 +166,107 @@ export const TOURS = {
     { target: 'agenda-cfg-rules', title: 'Reglas de reserva', body: `Cada cuánto se ofrecen horarios, **cuánta anticipación** pedís y si los ${c.w.turnos} online se **confirman solos**.` },
     { target: 'agenda-cfg-online', title: 'Tomar turnos online', body: `Cuando esté todo, **prendé esto y guardá**: tu página empieza a recibir ${c.w.turnos}.` },
   ],
+  // ─── Distribuidora (preventa y reparto) ───
+  // El completo recorre todas las pantallas en el orden en que se trabaja: cliente y producto,
+  // pedido, reparto, entrega, rendición y mostrador. En el celular del dueño se queda en "Hoy".
+  distrib: (c) => {
+    const roam = !c.mobile;
+    const at = (path: string) => (roam ? path : undefined);
+    // En el celular del dueño no se pasa por todas las pantallas: sin numerar los pasos
+    const paso = (n: number, t: string) => (roam ? `Paso ${n} · ${t}` : t);
+    return [
+      { title: 'Tu distribuidora, de punta a punta', body: 'Te muestro cómo es un día de trabajo en Ventra: **el pedido**, **el reparto** y **la plata**. Son unos minutos. Si lo cerrás, lo volvés a ver cuando quieras desde **Ayuda**.' },
+      { path: at('/hoy'), target: 'hoy-actions', title: 'Todo arranca en "Hoy"', body: 'Es tu pantalla de inicio. Desde estos botones **tomás un pedido**, **armás un reparto**, vendés en el **mostrador** o cargás una compra.' },
+      { path: at('/hoy'), target: 'hoy-pedidos', title: 'Pedidos para repartir', body: 'Lo que tomaron los vendedores y todavía no salió, **agrupado por localidad**. Con **Armar** juntás en un reparto todos los pedidos de esa zona.' },
+      { path: at('/hoy'), target: 'hoy-repartos', title: 'Los repartos', body: 'Cada camión con su estado: **Armando**, **En reparto** (cuántas entregas lleva y cuánto cobró) y **Rendido** (si la plata cerró justa).' },
+      { path: at('/hoy'), target: 'hoy-plata', title: 'La plata de hoy', body: 'Lo **cobrado** en efectivo y transferencia, lo que está **por cobrar en reparto** y quién **te debe**. Se actualiza solo.' },
+      roam && { path: '/clients', target: 'clients-new', title: paso(1, 'Tus clientes'), body: 'Cargá cada comercio con su **localidad**: es la zona del reparto. Para facturar sumá **CUIT** y **condición de IVA**, y Ventra elige solo si va factura **A o B**.' },
+      roam && { path: '/products', target: 'products-new', title: paso(2, 'Productos por bulto'), body: 'En cada producto completá **unidades por bulto** y **precio del bulto**. El vendedor carga "2 bultos" y el stock se descuenta **en unidades**.' },
+      { path: at('/preventa'), target: 'preventa-new', title: paso(3, 'Tomar el pedido'), body: 'El vendedor elige el cliente y suma **bultos o unidades** desde el celular. **Funciona sin señal**: el pedido queda guardado en el teléfono y se manda solo cuando vuelve la conexión.' },
+      { path: at('/preventa'), target: 'preventa-filters', title: 'Seguir los pedidos', body: '**Pendientes** esperan salir en un reparto; **Vendidos** ya salieron o se cobraron en el mostrador. Filtrá por día y por localidad.' },
+      { path: at('/reparto'), target: 'reparto-new', title: paso(4, 'Armar el reparto'), body: 'Elegís **el día y el chofer** y tocás una localidad para sumar todos sus pedidos. Después ordenás las paradas como convenga el camino.' },
+      { path: at('/reparto'), title: 'Las hojas del camión', body: 'Cada reparto tiene su **hoja de carga** (qué subir, en bultos), su **hoja de ruta** (las paradas en orden y cuánto cobrar en cada una) y los **remitos** para que firme cada cliente. Las ves antes de imprimir y las podés mandar por **WhatsApp**.' },
+      { path: at('/reparto'), title: paso(5, 'Salió a reparto'), body: 'Cuando el camión sale, tocás **Salió a reparto**: cada pedido pasa a ser una **venta con el mismo número** del pedido y del remito, y la mercadería **sale del stock**. Si tenés la facturación prendida, la **factura** sale en ese momento.' },
+      { path: at('/reparto'), title: paso(6, 'En cada parada'), body: 'El chofer registra desde su celular: **Entregado todo**, **Con cambios** (lo que no quiso vuelve al stock solo) o **No se entregó**, y **cómo pagó**: efectivo, transferencia o a cuenta. Con **Marcar varias** registra muchas de una vez.' },
+      { path: at('/reparto'), title: paso(7, 'Volvió: rendir'), body: 'Ventra sabe **cuánto efectivo tiene que traer** el chofer. Anotás lo que entregó y te dice si **falta o sobra**. Lo cobrado entra a la caja del día y lo que no pagaron, a su **cuenta corriente**.' },
+      roam && { path: '/pos', target: 'pos-search', title: 'Venta de mostrador', body: 'Para el que viene a comprar al depósito: elegís el **cliente**, sumás bultos o unidades y cobrás. En el cobro, **Nota y remito** te da el comprobante para imprimir o mandar.' },
+      { path: at('/hoy'), title: 'Cuando sumes empleados', body: 'Mientras lo hagan ustedes, no hace falta nada: vos entrás a **Hoy** y ves todo. Cuando sumes gente, en **Configuración → Personal** le decís a cada uno qué hace (**vendedor**, **chofer** o **mostrador**) y entra directo a lo suyo, en cualquier celular.' },
+      { title: '¡Listo para arrancar!', body: 'La primera vez que uses cada pantalla te explico **paso a paso** lo que hay ahí. Y en **Ayuda** tenés cada recorrido para verlo de nuevo.' },
+    ];
+  },
+
+  distribPreventa: [
+    { target: 'preventa-new', title: 'Nuevo pedido', body: 'Tocá acá para tomarle un pedido a un cliente. Si dejaste uno **a medio armar**, seguís desde donde quedó.' },
+    { target: 'preventa-filters', title: 'Tus pedidos', body: '**Pendientes**: esperan salir en un reparto. **Vendidos**: ya salieron o se cobraron. Mirá los de hoy, los de la semana o todos, y filtrá por **localidad**.' },
+    { target: 'preventa-list', title: 'Cada pedido', body: 'Tocalo para ver el detalle. Mientras esté pendiente lo podés **editar**, **cancelar** o **cobrar en el mostrador** si el cliente lo viene a buscar.' },
+    { title: 'Sin señal también', body: 'Si te quedás sin conexión en la ruta, **seguí tomando pedidos**: quedan guardados en el celular y se mandan solos cuando vuelve la señal. Arriba te avisa cuántos esperan.' },
+  ],
+
+  distribPedidoCliente: [
+    { target: 'pedido-steps', title: 'Dos pasos', body: 'Primero **el cliente** y después **los productos**. Tocá cualquiera de los dos para volver.' },
+    { target: 'pedido-client-search', title: 'Buscá el cliente', body: 'Por **nombre** o por **dirección**.' },
+    { target: 'pedido-zones', title: 'Por zona', body: 'Si estás recorriendo una localidad, tocala y ves **solo sus clientes**.' },
+    { title: 'No se pierde nada', body: 'Si salís a mitad de camino, el pedido queda como **borrador** en este equipo y lo retomás después.' },
+  ],
+
+  distribPedidoProductos: [
+    { target: 'pedido-client', title: 'El cliente', body: 'A quién le estás tomando el pedido. Tocá **Cambiar** si te equivocaste.' },
+        { target: 'pedido-repeat', title: 'Repetir el último pedido', body: 'Si el cliente pide casi lo mismo cada semana, tocá **Repetir**: se carga su último pedido con los **precios de hoy** y solo ajustás lo que cambia.' },
+    { target: 'pedido-search', title: 'Buscá los productos', body: 'Por nombre o código. Sin buscar, te mostramos **los más vendidos**.' },
+    { target: 'pedido-product', title: 'Bulto o unidad', body: 'Cada toque suma **un bulto** o **una unidad**. Debajo ves cuánto **queda sin pedir** (el stock menos lo que ya está en otros pedidos) y, cuando ya está en el pedido, **cuánto llevás**.' },
+    { target: 'pedido-items', title: 'Tu pedido', body: 'Lo que llevás cargado. Con **+ y −** cambiás cantidades; si bajás a cero, se saca.' },
+    { target: 'pedido-limit', title: 'Límite de crédito', body: 'Te avisa si con este pedido el cliente **pasa su límite**. Se puede guardar igual, pero conviene cobrarle algo en la entrega.' },
+    { target: 'pedido-notes', title: 'Aclaración para el reparto', body: 'Lo que tiene que saber el chofer: **horario**, cómo paga, dónde descargar.' },
+    { target: 'pedido-save', title: 'Guardar pedido', body: 'Queda **pendiente** para el próximo reparto, con su número. Ese mismo número van a tener el **remito** y la **venta**.' },
+  ],
+
+  distribReparto: [
+    { target: 'reparto-new', title: 'Armar reparto', body: 'Juntá los pedidos que salen en un mismo camión: el **día**, el **chofer** y los pedidos de cada **localidad**.' },
+    { target: 'reparto-filters', title: 'Los estados', body: '**Armando**: todavía se puede cambiar. **En reparto**: el camión salió y se registran las entregas. **Cerrados**: ya volvieron y se rindió la plata.' },
+    { target: 'reparto-list', title: 'Cada reparto', body: 'Tocalo para ver sus paradas, sacar las **hojas de carga y de ruta** y los **remitos**, y registrar las entregas.' },
+  ],
+
+  distribArmar: [
+    { target: 'armar-when', title: 'Cuándo y quién', body: 'El **día** que sale y **quién lo lleva**. Si es uno de tus usuarios (o vos), tocalo: el reparto le aparece en su celular. El vehículo es opcional.' },
+    { target: 'armar-orders', title: 'Qué pedidos salen', body: 'Tocá una **localidad** para sumar todos sus pedidos de una vez, o elegilos de a uno.' },
+    { target: 'armar-create', title: 'Armar', body: 'Acá ves cuántas **paradas** y **bultos** lleva y cuánto hay **para cobrar**. Después ordenás las paradas e imprimís las hojas.' },
+  ],
+
+  distribRuta: [
+    { target: 'ruta-driver', title: 'Chofer y vehículo', body: 'Tocá cualquiera de los dos para cambiarlo.' },
+    { target: 'ruta-docs', title: 'Las hojas', body: '**Hoja de carga**: qué subir al camión, en bultos. **Hoja de ruta**: las paradas en orden con lo que hay que cobrar. **Remitos**: uno por cliente, para que firme. Los ves antes de imprimir y los podés mandar por **WhatsApp**.' },
+    { target: 'ruta-tabs', title: 'Qué se carga', body: 'Todo el reparto **sumado por producto**, para preparar el camión de una.' },
+    { target: 'ruta-stops', title: 'El orden de las paradas', body: 'Con las **flechas** ordenás el recorrido y con la **X** sacás un pedido (vuelve a pendientes). Abajo podés **agregar más pedidos**.' },
+    { target: 'ruta-dispatch', title: 'Salió a reparto', body: 'Cuando el camión sale: cada pedido pasa a ser **venta con el mismo número** y la mercadería **sale del stock**. Desde ahí ya no se cambian las paradas.' },
+  ],
+
+  distribEntregas: [
+    { title: 'El camión salió', body: 'Ahora se anota **qué pasó en cada parada**. Lo hace el chofer desde su celular, o vos cuando vuelve con los remitos.' },
+    { target: 'ruta-deliver', title: 'Registrar entrega', body: 'Si se entregó todo, con cambios o nada, y **cómo pagó**. Si te equivocás, el botón pasa a decir **Corregir**.' },
+    { target: 'ruta-contact', title: 'Mapa y llamar', body: 'Abre la dirección en el **mapa** del celular o **llama** al cliente.' },
+    { target: 'ruta-many', title: 'Marcar varias', body: 'Si varias se entregaron sin problemas, elegilas y marcalas **todas juntas** con el mismo medio de pago.' },
+    { target: 'ruta-settle', title: 'Volvió: rendir', body: 'Cuando el camión vuelve, se cuenta la plata: Ventra te dice **cuánto efectivo tiene que traer** y si falta o sobra.' },
+  ],
+
+  distribEntrega: [
+    { target: 'entrega-status', title: '¿Qué pasó?', body: '**Entregado todo**; **Con cambios** si dejó menos (lo que vuelve se descuenta solo y, si había factura, sale la **nota de crédito**); o **No se entregó**.' },
+    { target: 'entrega-pay', title: '¿Cómo pagó?', body: 'Efectivo, transferencia, **a cuenta** (queda en su cuenta corriente) o **una parte** de cada cosa.' },
+    { target: 'entrega-prev', title: 'Lo que debía de antes', body: 'Si el cliente tenía deuda vieja, acá la ves y anotás si **pagó algo de eso**. Entra en la rendición y le baja la cuenta corriente.' },
+    { target: 'entrega-save', title: 'Guardar', body: 'Queda anotado en la parada. Hasta que se rinde el reparto, **lo podés corregir**.' },
+  ],
+
+  distribRendir: [
+    { target: 'rendir-summary', title: 'Lo que tiene que traer', body: 'Ventra suma lo anotado en cada parada: el **efectivo**, las transferencias y lo que quedó **a cuenta**.' },
+    { target: 'rendir-cash', title: 'Contá la plata', body: 'Anotá el efectivo que **entregó el chofer** y ves al instante si **cierra justo**, falta o sobra.' },
+    { target: 'rendir-undelivered', title: 'Lo que no se entregó', body: 'Elegí si esos pedidos **vuelven a pendientes** para otro reparto (con número nuevo) o **se cancelan**.' },
+    { target: 'rendir-close', title: 'Cerrar el reparto', body: 'Lo cobrado entra a la **caja del día** (se abre sola si no había), lo que volvió va al **stock** y lo fiado a cada **cuenta corriente**.' },
+  ],
+
+  distribMostrador: [
+    { target: 'pos-cliente', title: 'Siempre a nombre de un cliente', body: 'En la distribuidora cada venta va a un cliente: así sale en su **nota de venta**, su **remito** y su **cuenta corriente**.' },
+    { target: 'pos-products', title: 'Bultos o unidades', body: 'Los productos con bulto se suman **de a bulto**. En el ticket lo podés **pasar a unidades** si lleva sueltas.' },
+    { target: 'pos-confirm', title: 'Cobrar y dar el comprobante', body: 'En la ventana de cobro, **Nota y remito** (o **F8**) te muestra la nota de venta y el remito para **imprimir** o mandar por **WhatsApp**.' },
+  ],
 } satisfies Record<string, Tour>;
 
 export type TourId = keyof typeof TOURS;
@@ -173,6 +285,8 @@ export function tourSteps(id: TourId, c: TourCtx): TourStep[] {
   return (typeof t === 'function' ? t(c) : t).filter(Boolean) as TourStep[];
 }
 
+const distribOn = (c: TourCtx) => !!c.biz.preorders;
+
 /** Recorridos que ofrece el botón de ayuda en cada pantalla. */
 export const ROUTE_HELP: Record<string, HelpEntry[]> = {
   '/pos': [
@@ -180,6 +294,24 @@ export const ROUTE_HELP: Record<string, HelpEntry[]> = {
     { tour: 'posCaja', label: 'Caja y dinero', description: 'Cuentas corrientes, gastos, proveedores e historial' },
     { tour: 'posHerramientas', label: 'Herramientas del mostrador', description: 'Tickets en espera, devoluciones, celular y más' },
     { tour: 'posFerreteria', label: 'Ferretería', description: 'Clientes y gremios, presupuestos y acopios', when: (c) => !!(c.biz.quotes || c.biz.acopio || c.biz.tradePricing) },
+    { tour: 'distribMostrador', label: 'Venta de mostrador', description: 'Cliente, bultos y nota con remito', when: distribOn },
+    { tour: 'distrib', label: 'La distribuidora completa', description: 'Del pedido al reparto y la rendición', when: distribOn },
+  ],
+  '/hoy': [
+    { tour: 'distrib', label: 'La distribuidora completa', description: 'Del pedido al reparto y la rendición, pantalla por pantalla' },
+  ],
+  '/preventa': [
+    { tour: 'distribPreventa', label: 'Preventa', description: 'Los pedidos y cómo seguirlos' },
+    { tour: 'distribPedidoCliente', label: 'Tomar un pedido: el cliente', description: 'Buscar el cliente y elegir la zona' },
+    { tour: 'distribPedidoProductos', label: 'Tomar un pedido: los productos', description: 'Bultos, unidades y guardar' },
+    { tour: 'distrib', label: 'La distribuidora completa', description: 'Del pedido al reparto y la rendición' },
+  ],
+  '/reparto': [
+    { tour: 'distribReparto', label: 'Repartos', description: 'Armar y seguir cada camión' },
+    { tour: 'distribArmar', label: 'Armar un reparto', description: 'Día, chofer y pedidos por localidad' },
+    { tour: 'distribRuta', label: 'Antes de salir', description: 'Hojas de carga y de ruta, remitos y paradas' },
+    { tour: 'distribEntregas', label: 'En la ruta', description: 'Registrar entregas, cobros y rendir' },
+    { tour: 'distrib', label: 'La distribuidora completa', description: 'Del pedido al reparto y la rendición' },
   ],
   '/settings': [{ tour: 'settings', label: 'Centro de ajustes', description: 'Qué se configura en cada sección' }],
   '/online-store': [{ tour: 'onlineStore', label: 'Tienda online', description: 'Cómo dejar lista tu tienda' }],

@@ -3,6 +3,8 @@ import TicketPrinterCard from './TicketPrinterCard';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
 import api from '../../services/api';
+import { WORK_ROLES, workRoleLabel } from '../../services/workRole';
+import { hasFeature } from '../../stores/businessStore';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -91,6 +93,11 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   // System parameters
   // Nombre del comercio: sale en tickets, cierres y en la app del celular, en todos los equipos
   const [storeName, setStoreName] = useState(() => localStorage.getItem('gd_store_name') || '');
+  // Resto de los datos del comercio: salen en la nota de venta y el remito
+  const [storeAddress, setStoreAddress] = useState(() => localStorage.getItem('gd_store_address') || '');
+  const [storePhone, setStorePhone] = useState(() => localStorage.getItem('gd_store_phone') || '');
+  const [storeCuit, setStoreCuit] = useState(() => localStorage.getItem('gd_store_cuit') || '');
+  const [storeIva, setStoreIva] = useState(() => localStorage.getItem('gd_store_iva') || '');
   const [allowNegativeStock, setAllowNegativeStock] = useState(() => {
     const saved = localStorage.getItem('allow_negative_stock');
     return saved ? saved === 'true' : true;
@@ -241,6 +248,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const [newPassword, setNewPassword] = useState('');
   const [newFullName, setNewFullName] = useState('');
   const [newRole, setNewRole] = useState('CASHIER');
+  const [newWorkRole, setNewWorkRole] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
@@ -251,6 +259,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState('CASHIER');
+  const [editWorkRole, setEditWorkRole] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -355,6 +364,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setEditUsername(u.username);
     setEditPassword('');
     setEditRole(u.role);
+    setEditWorkRole(u.workRole || '');
     setEditIsActive(u.isActive !== false);
     setShowEditModal(true);
   };
@@ -370,6 +380,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
       const payload: any = {
         username: editUsername.toUpperCase().replace(/\s+/g, ''),
         role: editRole,
+        workRole: editRole === 'ADMIN' ? '' : editWorkRole,
         isActive: editIsActive
       };
       if (editPassword) {
@@ -401,12 +412,13 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     }
     setIsCreatingUser(true);
     try {
-      await api.post('/users', { username: newUsername, password: newPassword, fullName: newUsername, role: newRole });
+      await api.post('/users', { username: newUsername, password: newPassword, fullName: newUsername, role: newRole, workRole: newRole === 'ADMIN' ? '' : newWorkRole });
       toast.success('✅ Cajero/Usuario creado correctamente');
       setNewUsername('');
       setNewPassword('');
       setNewFullName('');
       setNewRole('CASHIER');
+      setNewWorkRole('');
       setShowCreateModal(false);
       loadUsers();
     } catch (err: any) {
@@ -629,7 +641,11 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     if (name.length < 2) { toast.error('Poné el nombre de tu comercio'); return; }
     setStoreSetting('store_name', name);
     setStoreName(name);
-    toast.success('✅ Nombre del comercio guardado');
+    setStoreSetting('store_address', storeAddress.trim());
+    setStoreSetting('store_phone', storePhone.trim());
+    setStoreSetting('store_cuit', storeCuit.replace(/\D/g, ''));
+    setStoreSetting('store_iva', storeIva);
+    toast.success('✅ Datos del comercio guardados');
   };
 
   const handleSaveSystemConfig = () => {
@@ -848,25 +864,47 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
                     <Store className="w-4.5 h-4.5 text-rose-500" /> Tu comercio
                   </h3>
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nombre del comercio</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={storeName}
-                        onChange={(e) => setStoreName(e.target.value)}
-                        maxLength={60}
-                        className="flex-1 min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
-                        placeholder="Ej: Almacén Don Pepe"
-                      />
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nombre del comercio <span className="text-rose-600">*</span></label>
+                      <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} maxLength={60}
+                        className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: Distribuidora Don Pepe" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Dirección</label>
+                        <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} maxLength={120}
+                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: Calle 9 N° 1234, Magdalena" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Teléfono</label>
+                        <input type="text" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} maxLength={40}
+                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: 221 555 1234" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">CUIT</label>
+                        <input type="text" inputMode="numeric" value={storeCuit} onChange={(e) => setStoreCuit(e.target.value)} maxLength={13}
+                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Sin guiones" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Condición frente al IVA</label>
+                        <select value={storeIva} onChange={(e) => setStoreIva(e.target.value)} className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner">
+                          <option value="">Sin indicar</option>
+                          <option value="RESPONSABLE_INSCRIPTO">Responsable inscripto</option>
+                          <option value="MONOTRIBUTO">Monotributo</option>
+                          <option value="EXENTO">Exento</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[9px] text-slate-405 leading-relaxed">Salen en los tickets, las notas de venta, los remitos y las facturas. Se guardan para todas las cajas del comercio. Solo el nombre es obligatorio.</p>
                       <button
                         onClick={handleSaveStoreName}
-                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
                       >
                         <Save className="w-4 h-4" /> Guardar
                       </button>
                     </div>
-                    <p className="text-[9px] text-slate-405 leading-relaxed">Sale en los tickets, los cierres de caja y la app del celular. Se guarda para todas las cajas del comercio.</p>
                   </div>
                   <div className="space-y-1.5 pt-2">
                     <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Qué hacés con Ventra</label>
@@ -1404,6 +1442,9 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                                 }`}>
                                   {u.role === 'ADMIN' ? 'Administrador' : u.role === 'SUPERVISOR' ? 'Supervisor' : 'Cajero'}
                                 </span>
+                                {u.role !== 'ADMIN' && workRoleLabel(u.workRole) && (
+                                  <span className="ml-1.5 text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider bg-sky-50 text-sky-700 border-sky-200">{workRoleLabel(u.workRole)}</span>
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <span className={`text-[8.5px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider ${
@@ -2014,6 +2055,22 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   </select>
                 </div>
 
+                {hasFeature('preorders') && newRole !== 'ADMIN' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en la distribuidora?</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[{ key: '', label: 'De todo', text: 'Elige en cada equipo' }, ...WORK_ROLES].map((w) => (
+                        <button key={w.key || 'todo'} type="button" onClick={() => setNewWorkRole(w.key)}
+                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${newWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
+                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 mt-1">Entra directo a lo suyo en cualquier celular o PC, y ve solo eso.</p>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="submit" 
@@ -2095,6 +2152,22 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                     <option value="ADMIN">Administrador (Acceso Completo)</option>
                   </select>
                 </div>
+
+                {hasFeature('preorders') && editRole !== 'ADMIN' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en la distribuidora?</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[{ key: '', label: 'De todo', text: 'Elige en cada equipo' }, ...WORK_ROLES].map((w) => (
+                        <button key={w.key || 'todo'} type="button" onClick={() => setEditWorkRole(w.key)}
+                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${editWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
+                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 mt-1">Entra directo a lo suyo en cualquier celular o PC, y ve solo eso.</p>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-400 rounded-xl shadow-inner">
                   <span className="text-[10px] font-bold text-slate-700 uppercase">Usuario Activo</span>

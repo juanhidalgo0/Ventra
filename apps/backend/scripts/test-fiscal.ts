@@ -51,6 +51,14 @@ t('tipo de comprobante y su nota de crédito', () => {
   assert.strictEqual(tipoDesdeCodigo(1).requiresCuit, true);
 });
 
+t('responsable inscripto: A al inscripto y al monotributista, B al resto', () => {
+  assert.strictEqual(decideCbteTipo('RESPONSABLE_INSCRIPTO', 'MONOTRIBUTO').invoiceType, 'FACTURA_A');
+  assert.strictEqual(decideCbteTipo('RESPONSABLE_INSCRIPTO', 'MONOTRIBUTO').requiresCuit, true);
+  assert.strictEqual(decideCbteTipo('RESPONSABLE_INSCRIPTO', 'EXENTO').invoiceType, 'FACTURA_B');
+  assert.strictEqual(decideCbteTipo('RESPONSABLE_INSCRIPTO', 'NO_CATEGORIZADO').invoiceType, 'FACTURA_B');
+  assert.strictEqual(decideCbteTipo('MONOTRIBUTO', 'MONOTRIBUTO').invoiceType, 'FACTURA_C');
+});
+
 t('CUIT con dígito verificador', () => {
   assert.ok(cuitValida('20431856108'));
   assert.ok(cuitValida('20-43185610-8'));

@@ -22,12 +22,14 @@ export interface ComprobanteTipo {
 /**
  * Qué factura corresponde. La letra la define el emisor; la A o B, la condición del
  * receptor. El monotributista emite siempre C, le venda a quien le venda.
+ * El responsable inscripto le hace A al inscripto y también al monotributista (RG 5003,
+ * desde 2021, con una leyenda propia); B al consumidor final, al exento y al no categorizado.
  */
 export function decideCbteTipo(emisor: EmisorCondition, receptor: IvaCondition): ComprobanteTipo {
   if (emisor === 'MONOTRIBUTO') {
     return { cbteTipo: CBTE_TIPO.FACTURA_C, invoiceType: 'FACTURA_C', requiresCuit: false, discriminatesIva: false };
   }
-  if (receptor === 'RESPONSABLE_INSCRIPTO') {
+  if (receptor === 'RESPONSABLE_INSCRIPTO' || receptor === 'MONOTRIBUTO') {
     return { cbteTipo: CBTE_TIPO.FACTURA_A, invoiceType: 'FACTURA_A', requiresCuit: true, discriminatesIva: true };
   }
   return { cbteTipo: CBTE_TIPO.FACTURA_B, invoiceType: 'FACTURA_B', requiresCuit: false, discriminatesIva: true };

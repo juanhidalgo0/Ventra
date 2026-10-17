@@ -347,6 +347,8 @@ export class VentraImportService {
     data.salePrice = d.precio_venta;
     set('precio_mayorista', 'wholesalePrice', d.precio_mayorista);
     set('cantidad_mayorista', 'wholesaleMinQty', d.cantidad_mayorista);
+    set('unidades_bulto', 'unitsPerPack', d.unidades_bulto ?? 1);
+    if (has('unidades_bulto') || has('precio_bulto')) data.packPrice = d.precio_bulto;
     set('precio_gremio', 'tradePrice', d.precio_gremio);
     set('stock_minimo', 'minStock', d.stock_minimo);
     set('ubicacion', 'location', d.ubicacion);

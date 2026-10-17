@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-10-02c';
+const SCHEMA_VERSION = '2026-10-17c';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -329,6 +329,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!productColumns.some(c => c.name === 'expiry_alert_days')) {
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN expiry_alert_days INTEGER NOT NULL DEFAULT 7;`);
             }
+            // Distribuidora: precio del bulto entero (las unidades por bulto son units_per_pack)
+            if (!productColumns.some(c => c.name === 'pack_price')) {
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN pack_price REAL DEFAULT NULL;`);
+            }
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,
@@ -354,6 +358,70 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               "read_at" DATETIME
             );`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "app_notifications_created_at_idx" ON "app_notifications"("created_at");`);
+            // Preventa: pedidos que toman los vendedores (ver PreOrder)
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "pre_orders" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "order_number" INTEGER NOT NULL,
+              "client_id" TEXT,
+              "user_id" TEXT NOT NULL,
+              "status" TEXT NOT NULL DEFAULT 'PENDING',
+              "notes" TEXT,
+              "delivery_date" DATETIME,
+              "total" REAL NOT NULL DEFAULT 0,
+              "sale_id" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "pre_orders_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+              CONSTRAINT "pre_orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_orders_status_idx" ON "pre_orders"("status");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_orders_created_at_idx" ON "pre_orders"("created_at");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_orders_client_id_idx" ON "pre_orders"("client_id");`);
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "pre_order_items" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "order_id" TEXT NOT NULL,
+              "product_id" TEXT NOT NULL,
+              "product_name" TEXT NOT NULL,
+              "quantity" REAL NOT NULL,
+              "pack_size" INTEGER,
+              "unit_price" REAL NOT NULL,
+              "total" REAL NOT NULL,
+              CONSTRAINT "pre_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "pre_orders" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_order_items_order_id_idx" ON "pre_order_items"("order_id");`);
+            // Reparto: hoja de carga y de ruta (ver DeliveryRun)
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "delivery_runs" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "run_number" INTEGER NOT NULL,
+              "date" DATETIME NOT NULL,
+              "driver_name" TEXT,
+              "vehicle" TEXT,
+              "status" TEXT NOT NULL DEFAULT 'ARMANDO',
+              "notes" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "delivery_runs_date_idx" ON "delivery_runs"("date");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "delivery_runs_status_idx" ON "delivery_runs"("status");`);
+            const preOrderCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(pre_orders);`);
+            if (!preOrderCols.some(c => c.name === 'run_id')) {
+              await this.$executeRawUnsafe(`ALTER TABLE pre_orders ADD COLUMN run_id TEXT DEFAULT NULL;`);
+            }
+            if (!preOrderCols.some(c => c.name === 'stop_order')) {
+              await this.$executeRawUnsafe(`ALTER TABLE pre_orders ADD COLUMN stop_order INTEGER DEFAULT NULL;`);
+            }
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_orders_run_id_idx" ON "pre_orders"("run_id");`);
+            // Entrega y rendición del reparto
+                        for (const [col, type] of [['delivery_status', 'TEXT'], ['delivery_reason', 'TEXT'], ['delivered_items', 'TEXT'], ['paid_cash', 'REAL'], ['paid_transfer', 'REAL'], ['delivered_at', 'DATETIME'], ['prev_cash', 'REAL'], ['prev_transfer', 'REAL']]) {
+              if (!preOrderCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE pre_orders ADD COLUMN ${col} ${type} DEFAULT NULL;`);
+            }
+            const runCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(delivery_runs);`);
+                        for (const [col, type] of [['settled_at', 'DATETIME'], ['expected_cash', 'REAL'], ['cash_received', 'REAL'], ['settled_by', 'TEXT'], ['driver_user_id', 'TEXT']]) {
+              if (!runCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE delivery_runs ADD COLUMN ${col} ${type} DEFAULT NULL;`);
+            }
+                        // Qué hace cada usuario en la distribuidora (vendedor, chofer, mostrador)
+            const workCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(users);`);
+            if (!workCols.some(c => c.name === 'work_role')) await this.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN work_role TEXT DEFAULT NULL;`);
             // Configuración del comercio compartida entre equipos (ver StoreSetting)
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "store_settings" (
               "id" TEXT NOT NULL PRIMARY KEY,
@@ -535,6 +603,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               console.log('[PrismaService] Auto-migrating sale_items table: adding delivered_quantity...');
               await this.$executeRawUnsafe(`ALTER TABLE sale_items ADD COLUMN delivered_quantity REAL NOT NULL DEFAULT 0;`);
             }
+            // Distribuidora: el renglón se vendió por bulto (unidades por bulto de ese momento)
+            if (!saleItemColumns.some(c => c.name === 'pack_size')) {
+              await this.$executeRawUnsafe(`ALTER TABLE sale_items ADD COLUMN pack_size INTEGER DEFAULT NULL;`);
+            }
           }
         } catch (err) {
           console.error('[PrismaService] Failed to auto-migrate sale_items table:', err);
@@ -573,6 +645,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!hasTradeDiscountPercentage) {
               console.log('[PrismaService] Auto-migrating clients table: adding trade_discount_percentage...');
               await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN trade_discount_percentage REAL DEFAULT NULL;`);
+            }
+            // Distribuidora: localidad del cliente, para el reparto y la nota de venta
+            if (!clientColumns.some(c => c.name === 'locality')) {
+              await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN locality TEXT DEFAULT NULL;`);
             }
           }
         } catch (err) {

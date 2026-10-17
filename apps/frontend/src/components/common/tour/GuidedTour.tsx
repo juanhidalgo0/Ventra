@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { TOURS, tourSteps, PRACTICE_TOURS, type TourStep } from './tours';
+import { TOURS, tourSteps, PRACTICE_TOURS, ROAMING_TOURS, type TourStep } from './tours';
 import { getTourCtx } from './tourContext';
 import { useTourStore, setTourKeyHandler, runTourAction, hasTourAction } from './tourStore';
 import { useAuthStore } from '../../../stores/authStore';
@@ -11,6 +12,9 @@ const GAP = 14;
 const MARGIN = 12;
 
 type Rect = { top: number; left: number; width: number; height: number };
+const pathOf = (p: string) => p.split('?')[0];
+/** Cuánto se espera el objetivo de un paso de otra pantalla (carga de la ruta y de sus datos) */
+const ROAM_WAIT = 3000;
 type Side = 'bottom' | 'top' | 'right' | 'left' | 'center';
 
 function findTarget(step: TourStep): HTMLElement | null {
@@ -66,6 +70,13 @@ function place(target: Rect | null, pop: { width: number; height: number }): { t
 export default function GuidedTour() {
   const activeTour = useTourStore((s) => s.activeTour);
   const finish = useTourStore((s) => s.finish);
+  // Recorridos que pasan por varias pantallas: cada paso con `path` lleva a la suya
+  const navigate = useNavigate();
+  const location = useLocation();
+  const here = useRef(location.pathname);
+  here.current = location.pathname;
+  /** Hacia dónde se iba: un paso cuyo objetivo no aparece se saltea en ese sentido */
+  const dir = useRef<1 | -1>(1);
 
   // Los pasos que existen en pantalla. Los recorridos con modo práctica primero arman la caja
   // de práctica (caja abierta, productos de ejemplo) y recién después se fija qué pasos hay.
@@ -76,7 +87,8 @@ export default function GuidedTour() {
     if (!activeTour) return;
     const practice = PRACTICE_TOURS.has(activeTour) && hasTourAction('practice:start');
     if (practice) runTourAction('practice:start');
-    const resolve = () => setSteps(tourSteps(activeTour, getTourCtx()).filter((s) => !s.target || s.lazy || findTarget(s)));
+    // Los pasos de otra pantalla (path) se quedan: su objetivo se busca al llegar
+    const resolve = () => setSteps(tourSteps(activeTour, getTourCtx()).filter((s) => !s.target || s.lazy || s.path || findTarget(s)));
     const t = setTimeout(resolve, practice ? 450 : 0);
     return () => {
       clearTimeout(t);
@@ -95,12 +107,13 @@ export default function GuidedTour() {
   const step = steps[index];
   const isLast = index === steps.length - 1;
 
-  const next = useCallback(() => (isLast ? finish() : setIndex((i) => i + 1)), [isLast, finish]);
-  const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  const next = useCallback(() => { dir.current = 1; if (isLast) finish(); else setIndex((i) => i + 1); }, [isLast, finish]);
+  const back = useCallback(() => { dir.current = -1; setIndex((i) => Math.max(0, i - 1)); }, []);
 
   // Enter a step: run its screen action, optionally click the target, then bring it into view.
   useEffect(() => {
     if (!step) return;
+    if (step.path && pathOf(step.path) !== here.current) navigate(step.path);
     if (step.run) runTourAction(step.run);
     const el = findTarget(step);
     if (!el) { setRect(null); return; }
@@ -118,18 +131,32 @@ export default function GuidedTour() {
     if (!step) return;
     let raf = 0;
     let missingSince = 0;
+    let scrolled = false;
+    // Paso de otra pantalla cuyo objetivo no llegó (no hay datos, otro plan): se saltea
+    const skip = () => {
+      const n = index + dir.current;
+      if (n >= steps.length) finish();
+      else if (n < 0) { dir.current = 1; setIndex(index + 1); }
+      else setIndex(n);
+    };
     const measure = () => {
       raf = 0;
       const el = findTarget(step);
       if (!el) {
         if (step.target) {
           if (!missingSince) missingSince = Date.now();
-          else if (Date.now() - missingSince > 1000) { finish(); return; }
+          else if (Date.now() - missingSince > (step.path ? ROAM_WAIT : 1000)) { if (step.path) skip(); else finish(); return; }
         }
         setRect((prev) => (prev ? null : prev));
         return;
       }
       missingSince = 0;
+      // Recién llegado a la pantalla: traerlo a la vista (al entrar al paso todavía no estaba)
+      if (step.path && !scrolled) {
+        scrolled = true;
+        const r = el.getBoundingClientRect();
+        if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'center' });
+      }
       const r = el.getBoundingClientRect();
       setRect((prev) =>
         prev && Math.abs(prev.top - r.top) < 1 && Math.abs(prev.left - r.left) < 1 &&
@@ -148,7 +175,7 @@ export default function GuidedTour() {
       window.removeEventListener('resize', schedule);
       window.removeEventListener('scroll', schedule, true);
     };
-  }, [step, finish]);
+  }, [step, finish, index, steps.length]);
 
   useLayoutEffect(() => {
     if (!popRef.current) return;
@@ -181,6 +208,8 @@ export default function GuidedTour() {
     height: rect.height + SPOT_PAD * 2,
   };
   const pos = place(spot, popSize);
+  // Esperando que cargue la otra pantalla: la tarjeta no se muestra en el medio a la nada
+  const waiting = !!(step.path && step.target && !rect);
 
   // El foco y la tarjeta se deslizan de un paso al siguiente (solo transform/opacity y la
   // geometría del recorte: livianos también en PCs viejas). Sin objetivo, el recorte se
@@ -215,7 +244,7 @@ export default function GuidedTour() {
       <div
         ref={popRef}
         className="keep-style keep-animated absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
-        style={{ top: pos.top, left: pos.left, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+        style={{ top: pos.top, left: pos.left, opacity: waiting ? 0 : 1, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out' }}
       >
         <button
           onClick={finish}
@@ -281,5 +310,6 @@ export function useAutoTour(id: keyof typeof TOURS, ready = true) {
   }, [id, ready, startIfUnseen, userId, paused]);
   // El recorrido es de esta pantalla: si se va (otra ruta, o en la demo otro plan), se corta.
   // Si no, seguía abierto en la pantalla nueva solo con sus pasos sin objetivo, fuera de contexto.
-  useEffect(() => () => useTourStore.getState().cancel(id), [id]);
+  // Los que recorren varias pantallas (ROAMING_TOURS) siguen: el cambio de pantalla es parte del recorrido.
+  useEffect(() => () => { if (!ROAMING_TOURS.has(id)) useTourStore.getState().cancel(id); }, [id]);
 }

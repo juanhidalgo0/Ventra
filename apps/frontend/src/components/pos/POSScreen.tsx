@@ -2,8 +2,9 @@ import { useState, useEffect, useLayoutEffect, useRef, useTransition, useMemo } 
 import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
+import { useWorkRole } from '../../services/workRole';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { usePOSStore } from '../../stores/posStore';
+import { usePOSStore, packOf } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
@@ -29,7 +30,7 @@ import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
-import { useFeature } from '../../stores/businessStore';
+import { useFeature, hasFeature } from '../../stores/businessStore';
 import { collapseVariantGroups, variantsOfGroup, parseVariantAttrs, variantLabel } from '../../utils/variants';
 import VariantPickerModal from './VariantPickerModal';
 import HistorialModal from './HistorialModal';
@@ -104,7 +105,7 @@ export default function POSScreen() {
   const ordersVisible = useOrdersVisible();
   const [showOnlineOrders, setShowOnlineOrders] = useState(false);
   const newOnlineOrders = useOnlineOrders((st) => st.orders.filter(isNewOrder).length);
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale, activeQuote, setActiveQuote } = usePOSStore();
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale, activeQuote, setActiveQuote, activeOrder } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
@@ -266,6 +267,26 @@ export default function POSScreen() {
   const canSubstitute = useFeature('substitutes');
   const isHardwareStore = useFeature('fractional');
   const useVariants = useFeature('variants');
+  // Distribuidora: lo que tiene bulto entra al ticket por bulto (en el renglón se pasa a unidades)
+  const sellsByPack = useFeature('bulk');
+  // Distribuidora: la venta va a nombre del cliente (sale en la nota de venta y el remito)
+  const usesDelivery = useFeature('delivery');
+    const usesPreorders = useFeature('preorders');
+  const workRole = useWorkRole();
+  /** Abre el cobro. En la distribuidora toda venta va a nombre de un cliente (nota, remito, cuenta) */
+  const openPayment = () => {
+    if (hasFeature('delivery') && !usePOSStore.getState().selectedClient) {
+      toast.error('Elegí el cliente antes de cobrar');
+      setShowClientSelector(true);
+      return;
+    }
+    setShowPayment(true);
+  };
+  const addItem = (product: any, qty = 1) => {
+    const pack = product?.allowCustomPrice ? null : packOf(product, hasFeature('bulk'));
+    if (pack) usePOSStore.getState().addPackToCart(product, pack, qty);
+    else addToCart(product, undefined, qty);
+  };
   // Gastronomía: carta con pestañas grandes, tarjetas sin código ni stock y tipo de pedido (ver gastro.tsx)
   const gastro = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
   const catCls = gastro
@@ -650,7 +671,7 @@ export default function POSScreen() {
       setPromptQtyValue('');
       setSearchQuery('');
     } else {
-      addToCart(product, undefined, qty);
+      addItem(product, qty);
       setSearchQuery('');
       playBeep();
       setSelectedProductIndex(-1);
@@ -662,40 +683,43 @@ export default function POSScreen() {
     }
   };
 
-  // Offline sales background synchronizer
+  // Ventas hechas sin conexión: se mandan solas cuando vuelve el servidor.
+  // Un solo envío a la vez (al abrir, cada 20 s y al volver internet podían coincidir y mandar
+  // la misma venta dos veces) y cada venta sale de la cola apenas se registra, así una venta
+  // nueva que entra a la cola mientras tanto no se pisa. El servidor reconoce el id de cada una.
   useEffect(() => {
+    const QUEUE = 'pos_offline_sales_queue';
+    const readQueue = (): any[] => { try { const q = JSON.parse(localStorage.getItem(QUEUE) || '[]'); return Array.isArray(q) ? q : []; } catch { return []; } };
+    const dropFromQueue = (item: any) => {
+      const rest = readQueue().filter((q) => (item.clientSaleId ? q.clientSaleId !== item.clientSaleId : q.queuedAt !== item.queuedAt));
+      if (rest.length) localStorage.setItem(QUEUE, JSON.stringify(rest));
+      else localStorage.removeItem(QUEUE);
+    };
     const syncOfflineSales = async () => {
-      const rawQueue = localStorage.getItem('pos_offline_sales_queue');
-      if (!rawQueue) return;
+      if ((window as any).__ventraOfflineSync) return;
+      const queue = readQueue();
+      if (!queue.length) return;
+      (window as any).__ventraOfflineSync = true;
+      let syncedCount = 0;
       try {
-        const queue = JSON.parse(rawQueue);
-        if (!Array.isArray(queue) || queue.length === 0) return;
-
-        const remaining: any[] = [];
-        let syncedCount = 0;
-
         for (const item of queue) {
           try {
             await api.post('/sales', item);
             syncedCount++;
+            dropFromQueue(item);
           } catch (e: any) {
-            if (!e.response) {
-              // Still offline, keep in queue
-              remaining.push(item);
-            }
+            // Sin servidor, o arrancando (502/503/504): se reintenta después, sin perder la venta
+            if (!e.response || [502, 503, 504].includes(e.response.status)) break;
+            dropFromQueue(item);
+            toast.error(`Una venta hecha sin conexión no se pudo registrar: ${e.response?.data?.message || 'el servidor la rechazó'}`, { duration: 8000 });
           }
         }
-
-        if (remaining.length > 0) {
-          localStorage.setItem('pos_offline_sales_queue', JSON.stringify(remaining));
-        } else {
-          localStorage.removeItem('pos_offline_sales_queue');
-        }
-
-        if (syncedCount > 0) {
-          toast.success(`✅ ${syncedCount} venta(s) offline sincronizada(s) con el servidor`);
-        }
-      } catch {}
+      } finally {
+        (window as any).__ventraOfflineSync = false;
+      }
+      if (syncedCount > 0) {
+        toast.success(`✅ ${syncedCount} venta(s) offline sincronizada(s) con el servidor`);
+      }
     };
 
     window.addEventListener('online', syncOfflineSales);
@@ -834,12 +858,13 @@ export default function POSScreen() {
       // '+' or '-' keys to modify quantity of the last added item when not typing in an input
       if (!isInput && cart.length > 0) {
         const lastItem = cart[cart.length - 1];
+        const step = lastItem.packSize || 1;
         if (e.key === '+' || e.code === 'NumpadAdd') {
           e.preventDefault();
-          updateQuantity(lastItem.cartKey, lastItem.quantity + 1);
+          updateQuantity(lastItem.cartKey, lastItem.quantity + step);
         } else if (e.key === '-' || e.code === 'NumpadSubtract') {
           e.preventDefault();
-          updateQuantity(lastItem.cartKey, lastItem.quantity - 1);
+          updateQuantity(lastItem.cartKey, lastItem.quantity - step);
         }
       }
 
@@ -1106,7 +1131,10 @@ export default function POSScreen() {
       'pos:addSample': () => {
         const st = usePOSStore.getState();
         if (!inPractice() || st.cart.length) return;
-        for (const { product, qty } of practiceTicket(useBusinessStore.getState().profile, st.products)) st.addToCart(product, undefined, qty);
+        for (const { product, qty } of practiceTicket(useBusinessStore.getState().profile, st.products)) {
+          const pack = packOf(product, hasFeature('bulk'));
+          if (pack) st.addPackToCart(product, pack, qty); else st.addToCart(product, undefined, qty);
+        }
       },
       'pos:openPayment': () => { if (inPractice() && usePOSStore.getState().cart.length) setShowPayment(true); },
       'pos:closePayment': () => setShowPayment(false),
@@ -1463,9 +1491,7 @@ export default function POSScreen() {
       
       if (!codeClean) {
         // If search is empty and cart has items, open payment modal
-        if (cart.length > 0) {
-          setShowPayment(true);
-        }
+        if (cart.length > 0) openPayment();
         return;
       }
 
@@ -1537,7 +1563,7 @@ export default function POSScreen() {
           setPromptQtyValue('');
           setSearchQuery('');
         } else {
-          addToCart(matchedProduct, undefined, multiplier);
+          addItem(matchedProduct, multiplier);
           setSearchQuery('');
           playBeep();
           focusSearch();
@@ -1576,7 +1602,7 @@ export default function POSScreen() {
           setPromptQtyValue('');
           setSearchQuery('');
         } else {
-          addToCart(finalData, undefined, multiplier);
+          addItem(finalData, multiplier);
           setSearchQuery('');
           playBeep();
           focusSearch();
@@ -1873,6 +1899,15 @@ export default function POSScreen() {
             {headerMode !== 0 && <span className={hdrTip}>Proveedores [F9]</span>}
             {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F9</span>}
           </button>
+
+          {/* Distribuidora: los pedidos que toman los vendedores */}
+                    {usesPreorders && workRole !== 'CHOFER' && (
+            <button onClick={() => navigate('/preventa')} className={`${hdrBtn} bg-sky-600 hover:bg-sky-700`}>
+              <ClipboardList strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              {hdrLabel('Preventa', 'Preventa')}
+              {headerMode !== 0 && <span className={hdrTip}>Pedidos de preventa</span>}
+            </button>
+          )}
 
           {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
           {ordersVisible && (
@@ -2551,8 +2586,8 @@ export default function POSScreen() {
               </div>
             </div>
 
-            {/* Cliente / Lista Gremio Selector (Solo Ferretería) */}
-            {canTradePrice && (
+            {/* Cliente / Lista Gremio Selector (Ferretería; en la distribuidora, el cliente de la nota de venta) */}
+            {(canTradePrice || usesDelivery) && (
               <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
                 {selectedClient ? (
                   <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
@@ -2564,6 +2599,8 @@ export default function POSScreen() {
                           <span className="text-[9.5px] font-extrabold text-amber-600 dark:text-amber-400">
                             🔧 Tarifa Gremio {selectedClient.tradeDiscountPercentage ? `(-${selectedClient.tradeDiscountPercentage}%)` : ''}
                           </span>
+                        ) : usesDelivery ? (
+                          <span className="text-[9.5px] text-slate-500 truncate block">{[selectedClient.address, selectedClient.locality].filter(Boolean).join(', ') || 'Sin dirección cargada'}</span>
                         ) : (
                           <span className="text-[9.5px] text-slate-500">Tarifa Mostrador</span>
                         )}
@@ -2589,7 +2626,7 @@ export default function POSScreen() {
                         <User className="w-3.5 h-3.5 text-slate-400" />
                         <span>Cliente Mostrador</span>
                       </span>
-                      <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">+ Asignar Gremio / Cliente</span>
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">{canTradePrice ? '+ Asignar Gremio / Cliente' : '+ Elegir cliente'}</span>
                     </button>
 
                     {showClientSelector && (
@@ -2607,7 +2644,7 @@ export default function POSScreen() {
                         </div>
                         <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
                           {posClients
-                            .filter(c => c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()))
+                            .filter(c => `${c.name} ${c.locality || ''}`.toLowerCase().includes(clientSearchQuery.toLowerCase()))
                             .map(c => (
                               <button
                                 key={c.id}
@@ -2620,6 +2657,9 @@ export default function POSScreen() {
                                 className="w-full p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs flex items-center justify-between cursor-pointer"
                               >
                                 <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{c.name}</span>
+                                {usesDelivery && c.locality && c.priceList !== 'TRADE' && (
+                                  <span className="text-[10px] text-slate-500 shrink-0 ml-2">{c.locality}</span>
+                                )}
                                 {c.priceList === 'TRADE' && (
                                   <span className="text-[9px] font-extrabold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                                     🔧 Gremio {c.tradeDiscountPercentage ? `(-${c.tradeDiscountPercentage}%)` : ''}
@@ -2627,7 +2667,7 @@ export default function POSScreen() {
                                 )}
                               </button>
                             ))}
-                          {posClients.filter(c => c.name.toLowerCase().includes(clientSearchQuery.toLowerCase())).length === 0 && (
+                          {posClients.filter(c => `${c.name} ${c.locality || ''}`.toLowerCase().includes(clientSearchQuery.toLowerCase())).length === 0 && (
                             <p className="text-center py-3 text-xs text-slate-400">No se encontraron clientes</p>
                           )}
                         </div>
@@ -2677,6 +2717,23 @@ export default function POSScreen() {
                 </button>
               </div>
             </div>
+
+            {/* Pedido de preventa: al cobrarlo queda como venta */}
+            {activeOrder && cart.length > 0 && (
+              <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200">
+                <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                <span className="min-w-0 truncate">
+                  Pedido <strong>N° {activeOrder.number}</strong>{activeOrder.clientName ? ` · ${activeOrder.clientName}` : ''}
+                </span>
+                <button
+                  onClick={() => usePOSStore.getState().setActiveOrder(null)}
+                  className="ml-auto p-0.5 rounded hover:bg-sky-100 dark:hover:bg-sky-900/40 cursor-pointer shrink-0"
+                  title="Desvincular: al cobrar, el pedido sigue pendiente"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Ticket armado desde un presupuesto: al cobrarlo, el presupuesto queda aceptado */}
             {activeQuote && cart.length > 0 && (
@@ -2779,13 +2836,34 @@ export default function POSScreen() {
                               {item.productsMetadata.map(pm => `${pm.quantity}x ${pm.name}`).join(' + ')}
                             </p>
                           )}
-                          {item.quantity > 1 && (
-                            <div className="mt-1 flex items-center">
-                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-none inline-block">
-                                {formatPrice(item.price)} c/u
+                          {item.packSize ? (
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-none">
+                                Bulto x{item.packSize} · {formatPrice(item.packPrice ?? item.price * item.packSize)}
                               </span>
+                              <button onClick={() => { usePOSStore.getState().switchPackMode(item.cartKey, null); focusSearch(); }} className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:underline leading-none cursor-pointer">
+                                Pasar a unidades
+                              </button>
                             </div>
-                          )}
+                          ) : (() => {
+                            const pack = sellsByPack && !item.isPromo && !item.isReturn && !item.isCustomPrice
+                              ? packOf(cachedProducts.find((p: any) => p.id === item.productId), true) : null;
+                            if (!pack && item.quantity <= 1) return null;
+                            return (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                {item.quantity > 1 && (
+                                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-none inline-block">
+                                    {formatPrice(item.price)} c/u
+                                  </span>
+                                )}
+                                {pack && (
+                                  <button onClick={() => { usePOSStore.getState().switchPackMode(item.cartKey, pack); focusSearch(); }} className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:underline leading-none cursor-pointer">
+                                    Pasar a bultos (x{pack.size})
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Quantity Selector - Compact Horizontal */}
@@ -2797,9 +2875,16 @@ export default function POSScreen() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                            <button onClick={() => { updateQuantity(item.cartKey, item.quantity - 1); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
-                            <span className="w-8 text-center text-sm font-bold text-slate-900 dark:text-white">{item.quantity}</span>
-                            <button onClick={() => { updateQuantity(item.cartKey, item.quantity + 1); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Plus className="w-3 h-3 stroke-[3]" /></button>
+                            <button onClick={() => { updateQuantity(item.cartKey, item.quantity - (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
+                            {item.packSize ? (
+                              <span className="min-w-8 px-0.5 text-center leading-none" title={`${item.quantity} unidades`}>
+                                <span className="block text-sm font-bold text-slate-900 dark:text-white">{Math.round((item.quantity / item.packSize) * 100) / 100}</span>
+                                <span className="block text-[9px] font-semibold uppercase text-slate-500 dark:text-slate-400">{item.quantity / item.packSize === 1 ? 'bulto' : 'bultos'}</span>
+                              </span>
+                            ) : (
+                              <span className="w-8 text-center text-sm font-bold text-slate-900 dark:text-white">{item.quantity}</span>
+                            )}
+                            <button onClick={() => { updateQuantity(item.cartKey, item.quantity + (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Plus className="w-3 h-3 stroke-[3]" /></button>
                           </div>
                         )}
 
@@ -2874,7 +2959,7 @@ export default function POSScreen() {
                 <button
                   data-tour="pos-confirm"
                   ref={confirmSaleRef}
-                  onClick={() => { if (cart.length > 0 && currentSession && !isCartBusy) setShowPayment(true); }}
+                  onClick={() => { if (cart.length > 0 && currentSession && !isCartBusy) openPayment(); }}
                   disabled={cart.length === 0 || !currentSession || isCartBusy}
                   className={`flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white h-16 text-lg font-bold rounded-2xl shadow-lg shadow-emerald-600/20 disabled:opacity-30 disabled:grayscale disabled:shadow-none flex items-center justify-center cursor-pointer transition-[background-color,transform,opacity] duration-fast border border-emerald-500/60 active:scale-[0.99] ${isCartBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
                   id="pos-confirm-sale"
@@ -4218,6 +4303,21 @@ export default function POSScreen() {
                 <button onClick={() => { setShowMobileMenu(false); if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-750 font-bold text-sm transition-all text-left">
                   <DollarSign className="w-4 h-4 text-emerald-500" /> Cuentas Corrientes
                 </button>
+                                {usesPreorders && workRole !== 'CHOFER' && (
+                  <button onClick={() => { setShowMobileMenu(false); navigate('/preventa'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-bold text-sm transition-all text-left">
+                    <ClipboardList className="w-4 h-4 text-sky-600" /> Preventa: tomar pedidos
+                  </button>
+                )}
+                                {usesPreorders && workRole !== 'VENDEDOR' && (
+                  <button onClick={() => { setShowMobileMenu(false); navigate('/reparto'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-bold text-sm transition-all text-left">
+                    <Truck className="w-4 h-4 text-sky-600" /> Reparto: entregas y rendición
+                  </button>
+                )}
+                                {usesPreorders && !workRole && (
+                  <button onClick={() => { setShowMobileMenu(false); navigate('/empezar'); }} className="w-full py-2 text-[12.5px] font-semibold text-slate-500 text-center">
+                    Cambiar lo que hago en este equipo
+                  </button>
+                )}
                 <button onClick={() => { setShowMobileMenu(false); setShowProveedores(true); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-750 font-bold text-sm transition-all text-left">
                   <Truck className="w-4 h-4 text-slate-550" /> Proveedores
                 </button>

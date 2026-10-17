@@ -157,6 +157,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
     wholesalePrice: product?.wholesalePrice || '',
     wholesaleMinQty: product?.wholesaleMinQty || '',
     tradePrice: product?.tradePrice || '',
+    packPrice: product?.packPrice || '',
     isKit: product?.isKit || false,
     equivalents: product?.equivalents || '',
     margin: 0,
@@ -210,6 +211,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const costInputRef = useRef<HTMLInputElement>(null);
   const unitSalePriceInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  // Distribuidora: unidades por bulto y precio del bulto entero
+  const sellsByPack = useFeature('bulk');
   const isHardwareStore = hasFeature('fractional') || (product?.unit && product.unit !== 'UNIT') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
 
   // ---- Variantes (talle / color) ----
@@ -784,6 +787,9 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         taxRate: parseFloat(formData.taxRate as any) || 0,
         expiryAlertDays: Math.max(0, Math.round(parseFloat(formData.expiryAlertDays as any) || 0)),
         unitsPerPack: uPerPack,
+        packPrice: uPerPack > 1 && formData.packPrice !== '' && formData.packPrice !== null && parseFloat(formData.packPrice as any) > 0
+          ? Math.round(parseFloat(formData.packPrice as any) * 100) / 100
+          : null,
         pieceSize: ['MT', 'KG', 'L'].includes(formData.unit) && formData.pieceSize !== '' && formData.pieceSize !== null && !isNaN(parseFloat(formData.pieceSize as any)) && parseFloat(formData.pieceSize as any) > 0
           ? parseFloat(formData.pieceSize as any)
           : null
@@ -1388,6 +1394,60 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 Permitir cambiar el precio al vender en el POS
               </label>
             </div>
+
+            {sellsByPack && (() => {
+              const units = Math.max(1, parseInt(formData.unitsPerPack as any) || 1);
+              const unitSale = (parseFloat(formData.salePrice as any) || 0) / (formData.presentationType === 'PACK' ? units : 1);
+              const packPrice = parseFloat(formData.packPrice as any) || 0;
+              const loose = unitSale * units;
+              return (
+                <Collapsible
+                  icon={Boxes}
+                  title="Venta por bulto"
+                  hint="Caja, pack o fardo con su propio precio"
+                  defaultOpen
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Unidades por bulto</label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        placeholder="Ej: 12"
+                        value={formData.unitsPerPack || ''}
+                        onChange={e => { const v = parseInt(e.target.value); setFormData({ ...formData, unitsPerPack: isNaN(v) ? '' as any : v }); }}
+                        onFocus={e => e.target.select()}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio del bulto</label>
+                      <div className="relative">
+                        <span className={moneyPrefix}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder={units > 1 && loose > 0 ? String(Math.round(loose)) : 'Ej: 15600'}
+                          value={formData.packPrice}
+                          disabled={units <= 1}
+                          onChange={e => setFormData({ ...formData, packPrice: e.target.value })}
+                          onFocus={e => e.target.select()}
+                          className={inputCls + ' pl-7 disabled:bg-slate-50 disabled:text-slate-400'}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11.5px] text-slate-500 mt-2 leading-snug">
+                    {units <= 1
+                      ? 'Poné cuántas unidades trae el bulto para poder venderlo entero.'
+                      : packPrice > 0
+                        ? `Cada unidad dentro del bulto sale $${(packPrice / units).toLocaleString('es-AR', { maximumFractionDigits: 2 })}${loose > packPrice ? ` (suelta: $${unitSale.toLocaleString('es-AR', { maximumFractionDigits: 2 })})` : ''}. En la caja entra por bulto y se puede pasar a unidades.`
+                        : `Sin precio de bulto, vale lo mismo que ${units} unidades sueltas${loose > 0 ? ` ($${Math.round(loose).toLocaleString('es-AR')})` : ''}.`}
+                  </p>
+                </Collapsible>
+              );
+            })()}
 
             {isHardwareStore && (
               <>

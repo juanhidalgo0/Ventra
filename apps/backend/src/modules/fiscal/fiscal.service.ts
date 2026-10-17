@@ -365,7 +365,18 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
    * termina de emitir en segundo plano: el cajero nunca queda esperando.
    */
   async invoiceSale(saleId: string, receptorInput?: ReceptorInput, userId?: string) {
-    const docId = await this.exclusive(async () => {
+    return this.emitInteractive(await this.prepareInvoice(saleId, receptorInput, userId));
+  }
+
+  /** Reparto: la factura de cada venta queda en cola y sale sola (salir a repartir no espera a ARCA) */
+  async queueInvoice(saleId: string, userId?: string) {
+    const id = await this.prepareInvoice(saleId, undefined, userId);
+    this.kick();
+    return id;
+  }
+
+  private async prepareInvoice(saleId: string, receptorInput?: ReceptorInput, userId?: string): Promise<string> {
+    return this.exclusive(async () => {
       const config = await this.loadConfig();
       if (!config.enabled) throw new BadRequestException('La facturación electrónica no está activada');
       if (!cuitValida(config.cuit)) throw new BadRequestException('Falta cargar la CUIT del comercio');
@@ -419,8 +430,51 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       });
       return id;
     });
+  }
 
-    return this.emitInteractive(docId);
+  /** ¿La facturación está prendida? (el reparto factura solo si lo está) */
+  async isEnabled() {
+    const config = await this.loadConfig();
+    return Boolean(config.enabled && cuitValida(config.cuit));
+  }
+
+  /**
+   * Nota de crédito por lo que el cliente rechazó en la entrega: los importes salen de la
+   * devolución (`returnSaleId`) y se asocia a la factura de la venta original. Si la venta no
+   * tenía factura no hace falta; si la factura todavía está en cola, la cola la hace después
+   * (queda anotada como pendiente). Devuelve el id de la nota, o null si no corresponde.
+   */
+  async partialCreditNote(originalSaleId: string, returnSaleId: string, reason: string, userId?: string): Promise<string | null> {
+    const id = `${returnSaleId}:NC`;
+    const docId = await this.exclusive(async () => {
+      if (await this.prisma.fiscalDocument.findUnique({ where: { id } })) return id;
+      const config = await this.loadConfig();
+      const facturas = await this.prisma.fiscalDocument.findMany({ where: { saleId: originalSaleId, kind: 'FACTURA', status: { in: ['AUTHORIZED', 'PENDING'] } } });
+      const factura = facturas.find((f) => f.status === 'AUTHORIZED') || null;
+      if (!factura) {
+        if (facturas.length) throw new BadRequestException('La factura de esta venta todavía no salió: la nota de crédito se hace cuando ARCA la autorice');
+        return null; // sin factura no hay nota de crédito
+      }
+      const ret = await this.saleForInvoice(returnSaleId);
+      const items = ret.items.filter((i: any) => esFacturable(i.productId)).map((i: any) => ({ total: Math.abs(i.total), taxRate: i.product?.taxRate ?? 0 }));
+      if (!items.length) return null;
+      const tipo = notaCreditoDe(tipoDesdeCodigo(factura.cbteTipo!));
+      const imp = buildImportes(items, 0, tipo, config.defaultIvaRate);
+      const node = await nodeIndex(this.prisma);
+      await this.prisma.fiscalDocument.create({
+        data: {
+          id, saleId: returnSaleId, kind: 'NOTA_CREDITO', status: 'PENDING',
+          environment: factura.environment, emisorCuit: factura.emisorCuit, pointOfSale: factura.pointOfSale,
+          total: imp.ImpTotal, neto: imp.ImpNeto, iva: imp.ImpIVA, ivaDetail: imp.Iva ? JSON.stringify(imp.Iva) : null,
+          receptorDocTipo: factura.receptorDocTipo, receptorDocNro: factura.receptorDocNro,
+          receptorName: factura.receptorName, receptorIvaCondition: factura.receptorIvaCondition,
+          assocDocumentId: factura.id, reason, ownerNode: node, createdById: userId || null,
+        },
+      });
+      return id;
+    });
+    if (docId) this.kick();
+    return docId;
   }
 
   /** Nota de crédito que anula una factura (devolución total o factura con datos mal). */
@@ -899,12 +953,13 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       throw new ComprobanteError('La factura que anula esta nota de crédito no está autorizada');
     }
     const tipo = notaCreditoDe(tipoDesdeCodigo(factura.cbteTipo));
-    const iva: IvaLine[] | undefined = factura.ivaDetail ? JSON.parse(factura.ivaDetail) : undefined;
+    const src = doc.total != null ? doc : factura;
+    const iva: IvaLine[] | undefined = src.ivaDetail ? JSON.parse(src.ivaDetail) : undefined;
     return {
       tipo,
       receptor: this.receptorFromDoc(factura),
       importes: {
-        ImpTotal: round2(factura.total), ImpNeto: round2(factura.neto), ImpIVA: round2(factura.iva),
+        ImpTotal: round2(src.total), ImpNeto: round2(src.neto), ImpIVA: round2(src.iva),
         ImpTotConc: 0, ImpOpEx: 0, ImpTrib: 0, ...(tipo.discriminatesIva && iva?.length ? { Iva: iva } : {}),
       },
       environment: factura.environment as ArcaEnvironment,
@@ -934,7 +989,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
   private async creditedIds(facturaIds: string[]): Promise<Set<string>> {
     if (!facturaIds.length) return new Set();
     const notas = await this.prisma.fiscalDocument.findMany({
-      where: { kind: 'NOTA_CREDITO', status: 'AUTHORIZED', assocDocumentId: { in: facturaIds } },
+      where: { kind: 'NOTA_CREDITO', status: 'AUTHORIZED', id: { in: facturaIds.map((f) => `${f}:NC`) } },
       select: { assocDocumentId: true },
     });
     return new Set(notas.map((n) => n.assocDocumentId!));

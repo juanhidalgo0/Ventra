@@ -21,6 +21,11 @@ const SHARED: Record<string, string> = {
   /** Ya compartió el link de reservas alguna vez (paso de "Primeros pasos") */
   agenda_link_shared: 'agenda_link_shared',
   store_name: 'gd_store_name',
+  /** Datos del comercio para la nota de venta y el remito (si no, los de facturación) */
+  store_address: 'gd_store_address',
+  store_phone: 'gd_store_phone',
+  store_cuit: 'gd_store_cuit',
+  store_iva: 'gd_store_iva',
   allow_negative_stock: 'allow_negative_stock',
   low_stock_alerts: 'low_stock_alerts',
   hourly_rate: 'hourly_rate',

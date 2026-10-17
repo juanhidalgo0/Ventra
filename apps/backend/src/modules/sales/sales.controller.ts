@@ -18,9 +18,11 @@ export class SalesController {
     @Query('to') to?: string, 
     @Query('paymentMethod') paymentMethod?: string, 
     @Query('limit') limit?: string,
-    @Query('search') search?: string
+    @Query('search') search?: string,
+    @Query('clientId') clientId?: string,
+    @Query('locality') locality?: string,
   ) {
-    return this.salesService.findAll({ sessionId, from, to, paymentMethod, limit: limit ? parseInt(limit) : undefined, search });
+    return this.salesService.findAll({ sessionId, from, to, paymentMethod, limit: limit ? parseInt(limit) : undefined, search, clientId, locality });
   }
 
   @Get('virtual-metrics')

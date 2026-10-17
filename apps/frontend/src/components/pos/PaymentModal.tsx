@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2, Clock, Loader2 } from 'lucide-react';
 import InvoiceModal, { nombreComprobante, numeroComprobante, qrImagen } from './InvoiceModal';
 import TicketReceipt from './TicketReceipt';
+import SalesNotePreview from './SalesNotePreview';
 import { canPrintSilently, getAutoPrintInvoice, printSilently, printFailMessage } from '../../utils/ticketPrinter';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
@@ -116,7 +117,10 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   const [isProcessing, setIsProcessing] = useState(false);
   
   const [clients, setClients] = useState<any[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  // Distribuidora: el cliente elegido en la caja ya viene puesto para la cuenta corriente
+  const [selectedClientId, setSelectedClientId] = useState<string>(() => (hasFeature('delivery') ? usePOSStore.getState().selectedClient?.id || '' : ''));
+  /** Distribuidora: la venta queda a nombre del cliente elegido en la caja (nota de venta, remito, factura) */
+  const saleClientId = () => (hasFeature('delivery') ? usePOSStore.getState().selectedClient?.id || undefined : undefined);
   const [clientSearch, setClientSearch] = useState('');
   const [pickedUpBy, setPickedUpBy] = useState('');
   const [isAcopio, setIsAcopio] = useState(false);
@@ -134,6 +138,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
    const [autoInvoiceError, setAutoInvoiceError] = useState<string | null>(null);
    const [showPreview, setShowPreview] = useState(false);
   const [bigPreview, setBigPreview] = useState(false);
+  // Distribuidora: vista previa de la nota de venta y el remito
+  const [showSalesNote, setShowSalesNote] = useState(false);
    const [createdSale, setCreatedSale] = useState<any>(null);
 
   const [surcharges, setSurcharges] = useState<any[]>([]);
@@ -409,6 +415,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   useEffect(() => {
     if (!showSuccess) return;
     const handleSuccessKeys = (e: KeyboardEvent) => {
+      if (showSalesNote) return; // la vista previa de la nota maneja sus teclas
       if (bigPreview) {
         if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); setBigPreview(false); }
         return;
@@ -416,6 +423,9 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       if (e.key === 'F9') {
         e.preventDefault();
         handlePrint();
+      } else if (e.key === 'F8' && salesNoteEnabled) {
+        e.preventDefault();
+        handlePrintSalesNote();
       } else if (e.key === 'Enter') {
         e.preventDefault();
         handleNewSale();
@@ -426,7 +436,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     };
     window.addEventListener('keydown', handleSuccessKeys);
     return () => window.removeEventListener('keydown', handleSuccessKeys);
-  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice, bigPreview, autoInvoice]);
+  }, [showSuccess, createdSale, fiscalEnabled, showInvoice, invoice, bigPreview, autoInvoice, showSalesNote]);
 
   /**
    * Manda el ticket a la impresora y avisa qué pasó.
@@ -491,6 +501,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   const handleNewSale = () => {
     onSuccess();
+  };
+
+  /** Distribuidora: nota de venta + remito en A4, primero en pantalla (ver SalesNotePreview) */
+  const salesNoteEnabled = hasFeature('delivery') && !isDebtPayment;
+  const handlePrintSalesNote = () => {
+    if (createdSale) setShowSalesNote(true);
   };
 
   /**
@@ -663,12 +679,14 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           sessionId, 
           items: adjustedItems, 
           payments,
-          clientId: (paymentType === 'DEBT' || isAcopio) ? selectedClientId : undefined,
+          clientId: (paymentType === 'DEBT' || isAcopio) ? selectedClientId : saleClientId(),
           pickedUpBy: (paymentType === 'DEBT' || isAcopio) && pickedUpBy ? pickedUpBy.trim() : undefined,
           isAcopio: isAcopio ? true : undefined,
           appliedPromotions: appliedPromosInfo,
           // Ticket armado desde un presupuesto: el servidor lo marca aceptado
           quoteId: usePOSStore.getState().activeQuote?.id,
+          // Pedido de preventa: queda cobrado (una sola vez)
+          orderId: usePOSStore.getState().activeOrder?.id,
           // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
           notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : undefined,
         });
@@ -695,13 +713,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         const payments = buildPayments(mpReference);
 
         const offlinePayload = {
+          // Id de la venta desde la caja: si se manda dos veces, el servidor la registra una sola
+          clientSaleId: (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : `off-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
           sessionId,
           items: adjustedItems,
           payments,
-          clientId: paymentType === 'DEBT' ? selectedClientId : undefined,
+          clientId: paymentType === 'DEBT' ? selectedClientId : saleClientId(),
           pickedUpBy: paymentType === 'DEBT' && pickedUpBy ? pickedUpBy.trim() : undefined,
           appliedPromotions: appliedPromosInfo,
           quoteId: usePOSStore.getState().activeQuote?.id,
+          orderId: usePOSStore.getState().activeOrder?.id,
           queuedAt: new Date().toISOString()
         };
         const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales_queue') || '[]');
@@ -860,7 +881,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           )}
 
           {/* Action buttons */}
-          <div className={`grid ${fiscalEnabled ? 'grid-cols-3 max-w-lg' : 'grid-cols-2 max-w-sm'} gap-3 mx-auto`}>
+          <div className={`grid ${(fiscalEnabled ? 1 : 0) + (salesNoteEnabled ? 1 : 0) === 2 ? 'grid-cols-4 max-w-2xl' : fiscalEnabled || salesNoteEnabled ? 'grid-cols-3 max-w-lg' : 'grid-cols-2 max-w-sm'} gap-3 mx-auto`}>
             {fiscalEnabled && (
               invoice ? (
                 // Ya facturada: el comprobante es uno solo, así que se muestra en vez de ofrecer otro
@@ -896,6 +917,13 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
                   <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-teal-800 bg-white border border-teal-300 dark:bg-teal-950 dark:text-teal-200">F</kbd>
                 </button>
               )
+            )}
+            {salesNoteEnabled && (
+              <button onClick={handlePrintSalesNote} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm">
+                <FileText className="w-6 h-6 stroke-[2.5]" />
+                <span className="text-[10px] uppercase tracking-widest font-bold text-center leading-tight">Nota y remito</span>
+                <kbd className="min-w-[34px] text-center font-mono text-[12px] font-bold tracking-wide px-2 py-0.5 rounded-md mt-1 border-b-2 text-slate-700 bg-white border border-slate-300 dark:bg-slate-900 dark:text-slate-200">F8</kbd>
+              </button>
             )}
             <button onClick={handlePrint} className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-rose-600 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all font-bold hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm">
               <Printer className="w-6 h-6 stroke-[2.5]" />
@@ -951,8 +979,16 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
               <div className="origin-top" style={{ zoom: 1.45 }}>
                 <TicketReceipt createdSale={createdSale} storeName={storeName} invoice={invoice} invoiceQr={invoiceQr} pickedUpBy={pickedUpBy} formatPrice={formatPrice} />
               </div>
+              <button onClick={() => { setBigPreview(false); handlePrint(); }}
+                className="sticky bottom-0 mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[14px] font-bold cursor-pointer shadow-lg">
+                <Printer className="w-4 h-4" /> Imprimir ticket
+              </button>
             </div>
           </div>
+        )}
+
+        {showSalesNote && createdSale && (
+          <SalesNotePreview sale={createdSale} paymentLabel={turnoMethodLabel()} onClose={() => setShowSalesNote(false)} />
         )}
 
         {showInvoice && createdSale && (

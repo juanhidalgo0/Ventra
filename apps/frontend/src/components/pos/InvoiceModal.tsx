@@ -40,6 +40,22 @@ export default function InvoiceModal({ saleId, saleNumber, total, cliente, onClo
   const [nombre, setNombre] = useState(cliente?.name || '');
   const [ivaCondition, setIvaCondition] = useState(cliente?.ivaCondition || (cliente?.cuit ? 'RESPONSABLE_INSCRIPTO' : 'CONSUMIDOR_FINAL'));
   const [emitiendo, setEmitiendo] = useState(false);
+  // Condición del comercio: el monotributista hace siempre C; el inscripto, A o B según el cliente
+  const [emisorIva, setEmisorIva] = useState<string | null>(null);
+  useEffect(() => {
+    api.get('/fiscal/config').then((r) => setEmisorIva(r.data?.ivaCondition || null)).catch(() => {});
+  }, []);
+  const emisorMono = emisorIva === 'MONOTRIBUTO';
+  const letra = emisorMono ? 'C' : tipoDoc === 'CUIT' && (ivaCondition === 'RESPONSABLE_INSCRIPTO' || ivaCondition === 'MONOTRIBUTO') ? 'A' : 'B';
+  const elegirLetra = (l: 'A' | 'B') => {
+    if (l === 'A') {
+      setTipoDoc('CUIT');
+      if (ivaCondition !== 'RESPONSABLE_INSCRIPTO' && ivaCondition !== 'MONOTRIBUTO') setIvaCondition('RESPONSABLE_INSCRIPTO');
+    } else if (ivaCondition === 'RESPONSABLE_INSCRIPTO' || ivaCondition === 'MONOTRIBUTO') {
+      setIvaCondition('CONSUMIDOR_FINAL');
+      if (tipoDoc === 'CUIT') setTipoDoc('CF');
+    }
+  };
   const [resultado, setResultado] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const qrRef = useRef<HTMLCanvasElement>(null);
@@ -168,6 +184,33 @@ export default function InvoiceModal({ saleId, saleNumber, total, cliente, onClo
             </div>
           ) : (
             <>
+              {emisorIva && (
+                <div>
+                  <label className={labelCls}>Comprobante</label>
+                  {emisorMono ? (
+                    <p className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-[12px] text-slate-600 dark:text-slate-400 leading-snug">
+                      <strong className="text-slate-900 dark:text-slate-100">Factura C.</strong> Como el comercio es monotributista, todas sus facturas son C, a cualquier cliente.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['A', 'B'] as const).map((l) => (
+                          <button key={l} onClick={() => elegirLetra(l)}
+                            className={`px-2 py-2.5 rounded-xl border-2 text-[12px] font-bold transition-all cursor-pointer text-left ${
+                              letra === l
+                                ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                                : 'border-slate-250 dark:border-slate-750 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+                            }`}>
+                            <span className="block text-[14px]">Factura {l}</span>
+                            <span className="block text-[10.5px] font-semibold opacity-80">{l === 'A' ? 'Inscripto o monotributista (con CUIT)' : 'Consumidor final o exento'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className={labelCls}>¿A nombre de quién?</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -180,7 +223,7 @@ export default function InvoiceModal({ saleId, saleNumber, total, cliente, onClo
                       key={o.k}
                       onClick={() => {
                         setTipoDoc(o.k);
-                        if (o.k === 'DNI' && ivaCondition === 'RESPONSABLE_INSCRIPTO') setIvaCondition('CONSUMIDOR_FINAL');
+                        if (o.k === 'DNI' && (ivaCondition === 'RESPONSABLE_INSCRIPTO' || ivaCondition === 'MONOTRIBUTO')) setIvaCondition('CONSUMIDOR_FINAL');
                       }}
                       className={`px-2 py-2.5 rounded-xl border-2 text-[11.5px] font-bold transition-all cursor-pointer ${
                         tipoDoc === o.k
@@ -219,12 +262,12 @@ export default function InvoiceModal({ saleId, saleNumber, total, cliente, onClo
                     <select value={ivaCondition} onChange={(e) => setIvaCondition(e.target.value)} className={inputCls}>
                       <option value="CONSUMIDOR_FINAL">Consumidor final</option>
                       {tipoDoc === 'CUIT' && <option value="RESPONSABLE_INSCRIPTO">Responsable inscripto</option>}
-                      <option value="MONOTRIBUTO">Monotributo</option>
+                      {tipoDoc === 'CUIT' && <option value="MONOTRIBUTO">Monotributo</option>}
                       <option value="EXENTO">Exento</option>
                       <option value="NO_CATEGORIZADO">No categorizado</option>
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                      Define si corresponde factura A o B. Va impresa en el comprobante.
+                      {emisorMono ? 'Va impresa en el comprobante.' : `Con esta condición sale factura ${letra}. Va impresa en el comprobante.`}
                     </p>
                   </div>
                 </>

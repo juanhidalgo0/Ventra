@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
  * (modpresup, DBF, etc.) se convierte primero a este formato.
  */
 export const VENTRA_FORMAT_NAME = 'VENTRA_PRODUCTOS';
-export const VENTRA_FORMAT_VERSION = 2;
+export const VENTRA_FORMAT_VERSION = 3;
 export const PRODUCTS_SHEET = 'Productos';
 export const INFO_SHEET = 'Info';
 
@@ -44,6 +44,8 @@ export const VENTRA_COLUMNS: VentraColumn[] = [
   { key: 'precio_venta', type: 'number', width: 12, help: 'Precio de venta final (con IVA). Obligatorio.' },
   { key: 'precio_mayorista', type: 'number', width: 12, help: 'Precio mayorista (opcional).' },
   { key: 'cantidad_mayorista', type: 'number', width: 10, help: 'Cantidad mínima para precio mayorista.' },
+  { key: 'unidades_bulto', type: 'number', width: 9, help: 'Distribuidora: unidades que trae el bulto (caja, pack, fardo). Vacío o 1 si no se vende por bulto.' },
+  { key: 'precio_bulto', type: 'number', width: 12, help: 'Distribuidora: precio del bulto entero (con IVA). Vacío = lo mismo que sus unidades sueltas.' },
   { key: 'precio_gremio', type: 'number', width: 12, help: 'Precio para gremio (opcional).' },
   { key: 'stock', type: 'number', width: 9, help: 'Stock actual.' },
   { key: 'stock_minimo', type: 'number', width: 9, help: 'Stock mínimo para alertas.' },
@@ -81,6 +83,8 @@ export interface ExportableProduct {
   salePrice: number;
   wholesalePrice: number | null;
   wholesaleMinQty: number | null;
+  unitsPerPack?: number | null;
+  packPrice?: number | null;
   tradePrice: number | null;
   stock: number;
   minStock: number;
@@ -127,6 +131,8 @@ export function productToRow(p: ExportableProduct): Record<string, string | numb
     precio_venta: round2(p.salePrice || 0),
     precio_mayorista: p.wholesalePrice ?? '',
     cantidad_mayorista: p.wholesaleMinQty ?? '',
+    unidades_bulto: (p.unitsPerPack || 1) > 1 ? p.unitsPerPack! : '',
+    precio_bulto: (p.unitsPerPack || 1) > 1 ? p.packPrice ?? '' : '',
     precio_gremio: p.tradePrice ?? '',
     stock: p.stock ?? 0,
     stock_minimo: p.minStock ?? 0,
@@ -197,6 +203,8 @@ export interface ParsedProduct {
   precio_venta: number;
   precio_mayorista: number | null;
   cantidad_mayorista: number | null;
+  unidades_bulto: number | null;
+  precio_bulto: number | null;
   precio_gremio: number | null;
   stock: number;
   stock_minimo: number;
@@ -364,6 +372,10 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
     if (precio_venta === 0 && errors.length === 0) warnings.push('Precio de venta en 0');
     if (costo !== null && costo > 0 && precio_venta > 0 && precio_venta < costo) warnings.push('El precio de venta es menor al costo');
 
+    const bultoRaw = num('unidades_bulto', 'Unidades por bulto', { min: 1 });
+    const unidadesBulto = bultoRaw === null ? null : Math.max(1, Math.round(bultoRaw));
+    if (bultoRaw !== null && bultoRaw !== unidadesBulto) warnings.push(`Unidades por bulto ${bultoRaw} redondeado a ${unidadesBulto}`);
+
     const stock = num('stock', 'Stock') ?? 0;
     if (stock < 0) warnings.push('Stock negativo');
     if (stock > 1000 && !Number.isInteger(stock)) warnings.push(`Stock ${stock} parece un error de carga`);
@@ -399,6 +411,8 @@ export function parseVentraWorkbook(buffer: Buffer): ParseResult {
         precio_venta: round2(precio_venta),
         precio_mayorista: num('precio_mayorista', 'Precio mayorista', { min: 0 }),
         cantidad_mayorista: num('cantidad_mayorista', 'Cantidad mayorista', { min: 0 }),
+        unidades_bulto: unidadesBulto,
+        precio_bulto: unidadesBulto && unidadesBulto > 1 ? num('precio_bulto', 'Precio del bulto', { min: 0 }) || null : null,
         precio_gremio: num('precio_gremio', 'Precio gremio', { min: 0 }),
         stock,
         stock_minimo: num('stock_minimo', 'Stock mínimo', { min: 0 }) ?? 0,

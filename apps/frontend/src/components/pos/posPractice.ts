@@ -80,6 +80,15 @@ function sampleCatalog(profile: BusinessProfile) {
         prod('Cinta bebé (metro)', 600, c[2], { unit: 'MT' }), prod('Hilo de algodón (metro)', 250, c[2], { unit: 'MT' }),
       ] };
     }
+    case 'DISTRIBUIDORA': {
+      const c = [cat('pc_d1', 'Bebidas', '#0ea5e9', 3), cat('pc_d2', 'Golosinas', '#f59e0b', 3), cat('pc_d3', 'Almacén y limpieza', '#10b981', 3)];
+      const bulto = (units: number, packPrice: number) => ({ unitsPerPack: units, packPrice, stock: units * 40 });
+      return { categories: c, products: [
+        prod('Gaseosa cola 2,25L', 2900, c[0], bulto(6, 15600)), prod('Agua mineral 2L', 1500, c[0], bulto(6, 7800)), prod('Cerveza lata 473ml', 2100, c[0], bulto(24, 45600)),
+        prod('Alfajor triple', 1100, c[1], bulto(24, 22800)), prod('Caramelos masticables x100', 2600, c[1], bulto(12, 28800)), prod('Chicles x20', 3900, c[1], bulto(18, 63000)),
+        prod('Yerba 1kg', 5200, c[2], bulto(10, 47000)), prod('Fideos guiseros 500g', 1300, c[2], bulto(20, 23000)), prod('Lavandina 1L', 1100, c[2], bulto(12, 11400)),
+      ] };
+    }
     default: {
       const c = [cat('pc_k1', 'Bebidas', '#0ea5e9', 3), cat('pc_k2', 'Golosinas', '#f59e0b', 4), cat('pc_k3', 'Almacén', '#10b981', 3)];
       return { categories: c, products: [
@@ -99,6 +108,7 @@ export function practiceTicket(profile: BusinessProfile, products: any[]): { pro
     : profile === 'INDUMENTARIA' ? [[by((p) => /Remera.*M Negro/.test(p.name)), 1], [by((p) => /Gorra/.test(p.name)), 1]]
     : profile === 'GASTRONOMIA' ? [[by((p) => /muzzarella Grande/.test(p.name)), 1], [by((p) => /carne/.test(p.name)), 6], [by((p) => /Gaseosa/.test(p.name)), 1]]
     : profile === 'MULTIRUBRO' ? [[by((p) => /Taza/.test(p.name)), 2], [by((p) => p.unit === 'MT'), 3]]
+    : profile === 'DISTRIBUIDORA' ? [[by((p) => /Gaseosa/.test(p.name)), 2], [by((p) => /Alfajor/.test(p.name)), 1]]
     : [[by((p) => /Gaseosa/.test(p.name)), 2], [by((p) => /Alfajor/.test(p.name)), 3]];
   return picks.filter(([p]) => !!p).map(([product, qty]) => ({ product, qty }));
 }

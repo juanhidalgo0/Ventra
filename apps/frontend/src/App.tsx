@@ -5,6 +5,7 @@ import { usePOSStore } from './stores/posStore';
 import LoginPage from './components/auth/LoginPage';
 import ConnectionScreen from './components/auth/ConnectionScreen';
 import MainLayout from './components/layout/MainLayout';
+import { useBusinessStore } from './stores/businessStore';
 import POSScreen from './components/pos/POSScreen';
 import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import api, { resolveServerUrl } from './services/api';
@@ -14,6 +15,7 @@ import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
 import { APP_VERSION } from './appVersion';
+import { saveWarmData, loadWarmData, isUnreachable, isLocalServer, markOfflineStart, offlineStartedWith } from './services/offlineStart';
 
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { MangoLogo } from './components/common/MangoLogo';
@@ -30,6 +32,10 @@ const ProductsScreen = lazy(() => import('./components/products/ProductsScreen')
 const CashRegisterScreen = lazy(() => import('./components/cash-register/CashRegisterScreen'));
 const CashControlScreen = lazy(() => import('./components/cash-register/CashControlScreen'));
 const HistorialScreen = lazy(() => import('./components/pos/HistorialScreen'));
+const PreventaScreen = lazy(() => import('./components/preorders/PreventaScreen'));
+const RepartoScreen = lazy(() => import('./components/reparto/RepartoScreen'));
+const HoyScreen = lazy(() => import('./components/distribuidora/HoyScreen'));
+const StartChooser = lazy(() => import('./components/distribuidora/StartChooser'));
 const GastosScreen = lazy(() => import('./components/cash-register/GastosScreen'));
 const CuentasCorrientesScreen = lazy(() => import('./components/clients/CuentasCorrientesScreen'));
 const PromosScreen = lazy(() => import('./components/products/PromosScreen'));
@@ -72,6 +78,51 @@ const AgendaPaymentsScreen = lazy(() => import('./components/agenda/AgendaPaymen
 const MobileSettingsScreen = lazy(() => import('./components/mobile/MobileSettingsScreen'));
 const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSettingsScreen').then((m) => ({ default: m.MobileSettingsSection })));
 
+/** Guarda en el equipo lo que se bajó al abrir: con eso se arranca la próxima vez si no hay señal */
+function rememberWarmData() {
+  const st = usePOSStore.getState();
+  saveWarmData({ categories: st.categories, products: st.products, promotions: st.promotions, clients: st.clients });
+}
+
+/**
+ * Arrancó sin señal: prueba de fondo (cada 30 s y cuando el celular avisa que volvió la
+ * conexión) y, apenas el servidor contesta, refresca catálogo y clientes sin cortar lo que se
+ * está haciendo. Los pedidos y ventas guardados en el equipo se mandan con sus propias colas.
+ */
+let reconnecting = false;
+function reconnectInBackground() {
+  if (reconnecting) return;
+  reconnecting = true;
+  let timer = 0;
+  const attempt = async () => {
+    try {
+      const [categoriesRes, catalogRes, clientsRes, promotionsRes] = await Promise.all([
+        api.get('/categories', { silent: true } as any),
+        api.get('/products/pos-catalog', { silent: true } as any),
+        api.get('/clients', { silent: true } as any),
+        api.get('/promotions', { silent: true } as any).catch(() => ({ data: usePOSStore.getState().promotions })),
+      ]);
+      const raw = catalogRes.data?.products || (Array.isArray(catalogRes.data) ? catalogRes.data : []);
+      const products = raw.map((p: any) => {
+        const barcodeList = [p.barcode, ...(p.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
+        return { ...p, imageUrl: resolveServerUrl(p.imageUrl), _searchToken: `${p.name.toLowerCase()} ${p.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim() };
+      }).sort((a: any, b: any) => (b.salesCount ?? 0) - (a.salesCount ?? 0) || (a.name || '').localeCompare(b.name || ''));
+      const st = usePOSStore.getState();
+      st.setCategories(categoriesRes.data || []);
+      st.setProducts(products);
+      st.setClients(clientsRes.data || []);
+      st.setPromotions(promotionsRes.data || []);
+      rememberWarmData();
+      markOfflineStart(null);
+      window.clearInterval(timer);
+      window.removeEventListener('online', attempt);
+      reconnecting = false;
+    } catch { /* sigue sin señal: se vuelve a probar */ }
+  };
+  timer = window.setInterval(attempt, 30000);
+  window.addEventListener('online', attempt);
+}
+
 /** En la app del dueño en el celular, algunas pestañas tienen su propia pantalla. */
 function OwnerMobileOr({ mobile, children }: { mobile: React.ReactNode; children: React.ReactNode }) {
   return <>{useOwnerMobile().active ? mobile : children}</>;
@@ -91,6 +142,12 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
   const isAdminUnlocked = sessionStorage.getItem('admin_unlocked') === 'true';
   return isAuthenticated && (user?.role === 'ADMIN' || isAdminUnlocked) ? <>{children}</> : <Navigate to="/pos" replace />;
+}
+
+/** Distribuidora (preventa y reparto): el inicio del dueño en el celular es "Hoy" */
+function DistribuidoraOr({ hoy, children }: { hoy: any; children: any }) {
+  const preorders = useBusinessStore((s) => s.features.preorders);
+  return preorders ? hoy : children;
 }
 
 export default function App() {
@@ -349,7 +406,10 @@ export default function App() {
 
         setWarmingProgress(35);
         setWarmingStatus('Cargando categorías de productos...');
-        const categoriesRes = await api.get('/categories');
+        // Es la primera consulta y es chica: si no contesta en unos segundos (señal débil o nula)
+        // se la da por caída, en vez de quedar esperando para siempre
+        // (silent: sin los reintentos propios de api.ts; los reintentos los maneja este arranque)
+        const categoriesRes = await api.get('/categories', { timeout: 7000, silent: true } as any);
         setCategories(categoriesRes.data);
 
         setWarmingProgress(60);
@@ -399,13 +459,30 @@ export default function App() {
           setClients([]);
         }
 
-        setWarmingProgress(100);
+                setWarmingProgress(100);
         setWarmingStatus('¡Sistema listo!');
         setWarmingError(null);
+        rememberWarmData();
+        if (offlineStartedWith()) markOfflineStart(null);
         await new Promise(r => setTimeout(r, 150));
         setIsWarmed(true);
       } catch (err: any) {
         retryCount++;
+        // Sin señal: arrancar con lo último que bajó este equipo y seguir probando de fondo.
+        // Con el servidor en esta misma PC se lo espera unos segundos más (está arrancando).
+        if (isUnreachable(err) && retryCount >= (isLocalServer() && navigator.onLine ? 7 : 1)) {
+          const saved = await loadWarmData();
+          if (saved) {
+            setCategories(saved.categories || []);
+            setProducts(saved.products || []);
+            setPromotions(saved.promotions || []);
+            setClients(saved.clients || []);
+            markOfflineStart(saved.savedAt);
+            reconnectInBackground();
+            setIsWarmed(true);
+            return;
+          }
+        }
         // During the first 7 attempts (~14-16s) while the backend finishes booting up,
         // do not display an alarming red error box. Keep a clean, polite status.
         if (retryCount <= 7) {
@@ -536,6 +613,10 @@ export default function App() {
                     <Route path="/products" element={<OwnerMobileOr mobile={<MobileProductsScreen />}><ProductsScreen /></OwnerMobileOr>} />
                     <Route path="/clients" element={<OwnerMobileOr mobile={<MobileClientsScreen />}><CuentasCorrientesScreen /></OwnerMobileOr>} />
                     <Route path="/cash" element={<CashRegisterScreen />} />
+                    <Route path="/preventa" element={<PreventaScreen />} />
+                    <Route path="/reparto" element={<RepartoScreen />} />
+                    <Route path="/hoy" element={<HoyScreen />} />
+                    <Route path="/empezar" element={<StartChooser />} />
                     <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />
                     <Route path="/gastos" element={<OwnerMobileOr mobile={<MobileExpensesScreen />}><GastosScreen /></OwnerMobileOr>} />
                     <Route path="/reports" element={<OwnerMobileOr mobile={<MobileReportsScreen />}><ReportsScreen /></OwnerMobileOr>} />
@@ -569,7 +650,7 @@ export default function App() {
                     <Route path="/remote-access" element={<RemoteAccessScreen />} />
 
                     {/* App móvil del dueño (MainLayout decide cuándo se muestran) */}
-                    <Route path="/inicio" element={<AdminRoute><MobileHomeScreen /></AdminRoute>} />
+                    <Route path="/inicio" element={<AdminRoute><DistribuidoraOr hoy={<HoyScreen />}><MobileHomeScreen /></DistribuidoraOr></AdminRoute>} />
                     <Route path="/mas" element={<MobileMoreScreen />} />
 
                     {/* Fallback for other routes */}

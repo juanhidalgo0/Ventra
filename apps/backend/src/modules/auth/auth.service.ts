@@ -68,7 +68,7 @@ export class AuthService {
   }
 
   async issueSession(
-    user: { id: string; username: string; fullName: string; role: string; avatarUrl: string | null },
+    user: { id: string; username: string; fullName: string; role: string; workRole?: string | null; avatarUrl: string | null },
     longSession: boolean,
     action: string,
   ) {
@@ -93,6 +93,7 @@ export class AuthService {
         username: user.username,
         fullName: user.fullName,
         role: user.role,
+        workRole: user.workRole ?? null,
         avatarUrl: user.avatarUrl,
       },
     };
@@ -131,7 +132,7 @@ export class AuthService {
   async validateUser(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado o inactivo');
-    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, avatarUrl: user.avatarUrl };
+    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, workRole: user.workRole ?? null, avatarUrl: user.avatarUrl };
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {

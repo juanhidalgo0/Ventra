@@ -9,6 +9,62 @@ const PAGE_W_MM = 210;
 const PAGE_H_MM = 297;
 const MARGIN_MM = 4; // igual que @page { margin: 4mm } de las hojas
 
+/** Fotografía una hoja de impresión con el ancho de una A4 (ver downloadPrintableAsPdf) */
+export async function printableToCanvas(source: HTMLElement, opts: { remove?: string[] } = {}): Promise<HTMLCanvasElement> {
+  const { default: html2canvas } = await import('html2canvas');
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${A4_WIDTH_PX}px;background:#ffffff;color:#000000;pointer-events:none;`;
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.removeAttribute('id');
+  clone.className = '';
+  clone.style.display = 'block';
+  // La hoja de la vista previa lleva sombra de papel: en el archivo no
+  clone.style.boxShadow = 'none';
+  for (const sel of opts.remove || []) clone.querySelectorAll(sel).forEach((el) => el.remove());
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  try {
+    return await html2canvas(host, {
+      scale: 2, backgroundColor: '#ffffff', windowWidth: A4_WIDTH_PX, logging: false,
+      onclone: (doc) => {
+        const st = doc.createElement('style');
+        st.textContent = 'td, th { position: relative; top: -2px; }';
+        doc.head.appendChild(st);
+      },
+    });
+  } finally {
+    host.remove();
+  }
+}
+
+/**
+ * PDF A4 con una o más hojas: cada una empieza en una página nueva (si es más larga que una
+ * página, sigue en la próxima).
+ */
+export async function sheetsToPdfBlob(sheets: HTMLElement[]): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  let first = true;
+  for (const sheet of sheets) {
+    const canvas = await printableToCanvas(sheet);
+    const imgW = PAGE_W_MM - MARGIN_MM * 2;
+    const pxPerMm = canvas.width / imgW;
+    const pagePx = Math.floor((PAGE_H_MM - MARGIN_MM * 2) * pxPerMm);
+    for (let y = 0; y < canvas.height; y += pagePx) {
+      const h = Math.min(pagePx, canvas.height - y);
+      if (h < 4) break;
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = h;
+      slice.getContext('2d')!.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+      if (!first) pdf.addPage();
+      first = false;
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', MARGIN_MM, MARGIN_MM, imgW, h / pxPerMm);
+    }
+  }
+  return pdf.output('blob');
+}
+
 export async function downloadPrintableAsPdf(source: HTMLElement, filename: string, opts: { remove?: string[] } = {}) {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
 

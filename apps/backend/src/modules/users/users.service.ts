@@ -10,7 +10,7 @@ export class UsersService {
 
   async findAll() {
     return this.prisma.user.findMany({
-      select: { id: true, username: true, fullName: true, role: true, isActive: true, avatarUrl: true, lastLogin: true, createdAt: true },
+      select: { id: true, username: true, fullName: true, role: true, workRole: true, isActive: true, avatarUrl: true, lastLogin: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -18,7 +18,7 @@ export class UsersService {
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, username: true, fullName: true, role: true, isActive: true, avatarUrl: true, lastLogin: true, createdAt: true },
+      select: { id: true, username: true, fullName: true, role: true, workRole: true, isActive: true, avatarUrl: true, lastLogin: true, createdAt: true },
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     return user;
@@ -32,7 +32,7 @@ export class UsersService {
     return this.prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { username: true } });
   }
 
-  async create(data: { username: string; password: string; fullName: string; role: string }, actorId: string | null = null) {
+  async create(data: { username: string; password: string; fullName: string; role: string; workRole?: string | null }, actorId: string | null = null) {
     const normUsername = data.username.toUpperCase();
     assertValidPassword(data.password);
     if (data.role === 'ADMIN') {
@@ -43,14 +43,14 @@ export class UsersService {
     if (exists) throw new ConflictException('El usuario ya existe');
     const passwordHash = await bcrypt.hash(data.password, 10);
     const created = await this.prisma.user.create({
-      data: { username: normUsername, passwordHash, passwordChangedAt: new Date(), fullName: normUsername, role: data.role },
-      select: { id: true, username: true, fullName: true, role: true, isActive: true, createdAt: true },
+      data: { username: normUsername, passwordHash, passwordChangedAt: new Date(), fullName: normUsername, role: data.role, workRole: data.workRole || null },
+      select: { id: true, username: true, fullName: true, role: true, workRole: true, isActive: true, createdAt: true },
     });
     await logPasswordChange(this.prisma, created, actorId, 'ALTA');
     return created;
   }
 
-  async update(id: string, data: { username?: string; fullName?: string; role?: string; isActive?: boolean; password?: string }, actorId: string | null = null) {
+  async update(id: string, data: { username?: string; fullName?: string; role?: string; workRole?: string | null; isActive?: boolean; password?: string }, actorId: string | null = null) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     if (data.role === 'ADMIN' && user.role !== 'ADMIN') {
@@ -75,6 +75,7 @@ export class UsersService {
     }
     if (data.fullName && !data.username) updateData.fullName = data.fullName;
     if (data.role) updateData.role = data.role;
+    if (data.workRole !== undefined) updateData.workRole = data.workRole || null;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.password) {
       assertValidPassword(data.password);
@@ -83,7 +84,7 @@ export class UsersService {
     }
     const updated = await this.prisma.user.update({
       where: { id }, data: updateData,
-      select: { id: true, username: true, fullName: true, role: true, isActive: true, createdAt: true },
+      select: { id: true, username: true, fullName: true, role: true, workRole: true, isActive: true, createdAt: true },
     });
     if (data.password) await logPasswordChange(this.prisma, updated, actorId, 'USUARIOS');
     return updated;

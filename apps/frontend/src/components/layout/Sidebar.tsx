@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -108,8 +108,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const intents = useBusinessStore((s) => s.intents);
   const agendaOnly = isAgendaOnly(planFeatures);
   // Botón principal y subtítulo según lo que hace el comercio con Ventra
+  // Distribuidora: la caja es la venta de mostrador; el inicio es "Hoy"
+  const distrib = hasFeature('preorders');
   const home = planFeatures.caja
-    ? { path: '/pos', label: 'Punto de Venta', icon: ShoppingBag, subtitle: 'Sistema de ventas' }
+    ? { path: '/pos', label: distrib ? 'Venta de mostrador' : 'Punto de Venta', icon: ShoppingBag, subtitle: distrib ? 'Distribuidora' : 'Sistema de ventas' }
     : agendaOnly
       ? { path: '/agenda', label: 'Mi agenda', icon: CalendarDays, subtitle: 'Turnos online' }
       : { path: '/tienda', label: 'Mi tienda', icon: Globe, subtitle: 'Tienda online' };
@@ -118,8 +120,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
     {
       title: 'General',
       items: [
-        { 
-          label: 'Productos', 
+        ...(distrib ? [{ label: 'Hoy', icon: Sun, path: '/hoy' }] : []),
+        {
+          label: 'Productos',  
           icon: Box, 
           path: '/products', 
           collapsible: true,
@@ -170,6 +173,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'División de Ganancias', icon: Calculator, path: '/earnings-division' },
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
+        ] : []),
+        ...(hasFeature('preorders') ? [
+          { label: 'Preventa', icon: ClipboardList, path: '/preventa' },
+          { label: 'Reparto', icon: Truck, path: '/reparto' }
         ] : []),
         ...(user?.role === 'ADMIN' && !agendaOnly ? [
           { label: 'Acceso Remoto', icon: Smartphone, path: '/remote-access' }

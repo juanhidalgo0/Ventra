@@ -14,6 +14,9 @@ import { getClientId } from '../../utils/clientId';
 import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
+import OfflineStartBanner from '../common/OfflineStartBanner';
+import { offlineStartedWith } from '../../services/offlineStart';
+import { useTourStore } from '../common/tour/tourStore';
 import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
@@ -25,6 +28,10 @@ import PlanGate from '../subscription/PlanGate';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
 import WelcomeSetup from '../onboarding/WelcomeSetup';
+import StoreNameRequired from '../onboarding/StoreNameRequired';
+import { hasFeature } from '../../stores/businessStore';
+import { deviceStart, START_PATH } from '../distribuidora/StartChooser';
+import { myWorkRole, WORK_PATH, type WorkRole } from '../../services/workRole';
 import DemoPlanSwitcher from '../subscription/DemoPlanSwitcher';
 import { GettingStartedPill } from '../onboarding/GettingStarted';
 
@@ -108,6 +115,15 @@ export default function MainLayout({ children }: Props) {
     let isMounted = true;
 
     const checkConnection = async (isFirstCheck = false) => {
+      // Arrancó sin señal con lo guardado en el equipo: se trabaja igual, sin la pantalla de
+      // "sin conexión"; los chequeos de fondo avisan cuando vuelve
+      if (isFirstCheck && offlineStartedWith()) {
+        setIsOnline(false);
+        setIsConnecting(false);
+        setConnectionFailed(false);
+        wasOffline = true;
+        return;
+      }
       if (isFirstCheck) {
         let connected = false;
         const maxAttempts = 15; // 15 attempts * 1.5s = ~22.5s maximum wait time
@@ -202,6 +218,30 @@ export default function MainLayout({ children }: Props) {
     sessionStorage.setItem('owner_mobile_started', '1');
     if (location.pathname === '/pos' || location.pathname === '/') navigate('/inicio', { replace: true });
   }, [ownerMobile.active]);
+  // Distribuidora: al entrar, cada uno a lo suyo. El dueño a "Hoy"; los demás, a lo que eligió
+  // este equipo (tomar pedidos, reparto o mostrador). Una vez por sesión, desde la caja.
+  useEffect(() => {
+    if (ownerMobile.active || !hasFeature('preorders') || sessionStorage.getItem('distrib_started')) return;
+    // El recorrido completo pasa por la caja: no es "recién entró"
+    if (useTourStore.getState().activeTour) return;
+    if (location.pathname !== '/pos' && location.pathname !== '/') return;
+        sessionStorage.setItem('distrib_started', '1');
+    if (isAdminUser) { navigate('/hoy', { replace: true }); return; }
+    // Lo que hace el usuario (lo eligió el dueño en Usuarios) manda; si no tiene, lo que eligió este equipo.
+    // Se pregunta al servidor por si el dueño se lo cambió después de que entró en este equipo.
+    const go = (wr: WorkRole | null) => {
+      const start = deviceStart();
+      const target = wr ? WORK_PATH[wr] : start ? START_PATH[start] : '/empezar';
+      if (target !== '/pos') navigate(target, { replace: true });
+    };
+    api.get('/auth/me', { silent: true } as any)
+      .then(({ data }) => {
+        const current = useAuthStore.getState().user;
+        if (data?.id && current?.id === data.id) useAuthStore.getState().setUser({ ...current, ...data });
+        go(myWorkRole());
+      })
+      .catch(() => go(myWorkRole()));
+  }, [ownerMobile.active, location.pathname, isAdminUser]);
   const isMobileOnlyPath = location.pathname === '/inicio' || location.pathname === '/mas';
   useEffect(() => {
     // Las pantallas de la app móvil no existen en la versión completa
@@ -274,7 +314,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><OfflineStartBanner /><ClientPreview /></MobileShell>;
   }
 
   return (
@@ -393,6 +433,7 @@ export default function MainLayout({ children }: Props) {
       {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
       <HelpMenu pathname={location.pathname} side={isPOS ? 'left' : 'right'} />
       <GuidedTour />
+      <OfflineStartBanner />
       <ClientPreview />
 
       {/* La calculadora (F3) vive acá para que funcione en cualquier sección y también en modo admin */}
@@ -403,6 +444,8 @@ export default function MainLayout({ children }: Props) {
 
       {/* Bienvenida del primer uso (solo el dueño, una vez por comercio) */}
       <WelcomeSetup mobile={false} />
+      {/* El nombre del comercio es obligatorio (sale en tickets, notas, remitos y facturas) */}
+      <StoreNameRequired mobile={false} />
 
       {/* Demo pública: qué plan se está probando y cómo cambiarlo */}
       <DemoPlanSwitcher mobile={false} />

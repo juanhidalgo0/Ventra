@@ -9,12 +9,14 @@ class CreateUserDto {
   @IsString() @IsNotEmpty() password: string;
   @IsString() @IsNotEmpty() fullName: string;
   @IsString() @IsIn(['ADMIN', 'SUPERVISOR', 'CASHIER']) role: string;
+  @IsOptional() @IsIn(['VENDEDOR', 'CHOFER', 'MOSTRADOR', '']) workRole?: string | null;
 }
 
 class UpdateUserDto {
   @IsOptional() @IsString() username?: string;
   @IsOptional() @IsString() fullName?: string;
   @IsOptional() @IsString() @IsIn(['ADMIN', 'SUPERVISOR', 'CASHIER']) role?: string;
+  @IsOptional() @IsIn(['VENDEDOR', 'CHOFER', 'MOSTRADOR', '']) workRole?: string | null;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsString() password?: string;
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
-  Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote,
+  Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote, ClipboardList,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -11,7 +11,7 @@ import InstallAppCard from './InstallAppCard';
 import PushCard from './PushCard';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
-import { useBusinessStore, menuAllows } from '../../stores/businessStore';
+import { useBusinessStore, menuAllows, hasFeature } from '../../stores/businessStore';
 
 /** noCaja: solo sin sistema de ventas (con caja, los turnos se cobran en el POS). */
 interface Tile { path: string; label: string; hint: string; icon: any; tint: string; noCaja?: boolean }
@@ -29,6 +29,8 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
   {
     title: 'Mercadería',
     items: [
+      { path: '/preventa', label: 'Preventa', hint: 'Pedidos de vendedores', icon: ClipboardList, tint: 'bg-sky-50 text-sky-700' },
+      { path: '/reparto', label: 'Reparto', hint: 'Carga y hoja de ruta', icon: Truck, tint: 'bg-violet-50 text-violet-700' },
       { path: '/stock-control', label: 'Stock', hint: 'Lo que falta', icon: ClipboardCheck, tint: 'bg-orange-100 text-orange-800' },
       { path: '/purchases', label: 'Compras', hint: 'Facturas', icon: ShoppingBag, tint: 'bg-rose-50 text-rose-700' },
       { path: '/suppliers', label: 'Proveedores', hint: 'Deudas y pagos', icon: Truck, tint: 'bg-violet-50 text-violet-700' },
@@ -59,6 +61,7 @@ export default function MobileMoreScreen() {
   // Solo las secciones que incluye el plan (Caja / Tienda / Full)
   const sections = SECTIONS
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
+      && ((i.path !== '/preventa' && i.path !== '/reparto') || hasFeature('preorders'))
       && !(i.noCaja && planFeatures.caja)
       // Solo turnos: agenda, clientes y cobros ya son pestañas
       && !(isAgendaOnly(planFeatures) && i.path.startsWith('/agenda'))) }))

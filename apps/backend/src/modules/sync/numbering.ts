@@ -26,6 +26,21 @@ export async function numberRange(db: RawDb): Promise<{ from: number; to: number
 }
 
 /**
+ * Próximo número de venta o pedido de esta caja. Pedidos de preventa y ventas comparten la
+ * numeración: así el pedido N° 1234 sale con el remito N° 1234 y queda como venta N° 1234.
+ */
+export async function nextDocNumber(tx: any): Promise<number> {
+  const range = await numberRange(tx);
+  const inRange = { gte: range.from, lt: range.to };
+  const lastSale = await tx.sale.findFirst({ where: { saleNumber: inRange }, orderBy: { saleNumber: 'desc' }, select: { saleNumber: true } });
+  const lastOrder = tx.preOrder
+    ? await tx.preOrder.findFirst({ where: { orderNumber: inRange }, orderBy: { orderNumber: 'desc' }, select: { orderNumber: true } }).catch(() => null)
+    : null;
+  const floor = await saleNumberFloor(tx);
+  return Math.max(range.from, lastSale?.saleNumber || 0, lastOrder?.orderNumber || 0, floor >= range.from && floor < range.to ? floor : 0) + 1;
+}
+
+/**
  * Último número de venta de esta caja según la nube al terminar la carga total. Las ventas
  * viejas bajan después (historia en segundo plano): sin esto, una caja que no vendió en el
  * último mes repetiría números.

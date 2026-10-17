@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { hasFeature } from '../../stores/businessStore';
+import SalesNotePreview from './SalesNotePreview';
 import { escapeHtml } from '../../utils/escapeHtml';
 
 const SALES_LIST_LIMIT = 1000;
@@ -36,6 +37,14 @@ export default function HistorialScreen() {
   const [summary, setSummary] = useState<any | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // Ventas de un cliente o de una localidad (los filtra el servidor: la lista viene recortada)
+  const [clientFilter, setClientFilter] = useState('');
+  const [localityFilter, setLocalityFilter] = useState('');
+  const [clients, setClients] = useState<any[]>([]);
+  const usesDelivery = hasFeature('delivery');
+  const localities = Array.from(new Set(clients.map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[];
+  /** Distribuidora: venta cuya nota de venta / remito se está viendo */
+  const [noteSale, setNoteSale] = useState<any | null>(null);
   
   // Date Filters
   const [filterMode, setFilterMode] = useState<'month' | 'day' | 'range'>('month');
@@ -273,7 +282,11 @@ export default function HistorialScreen() {
 
   useEffect(() => {
     loadSales();
-  }, [filterMode, selectedMonth, selectedYear, selectedDay, startDate, endDate]);
+  }, [filterMode, selectedMonth, selectedYear, selectedDay, startDate, endDate, clientFilter, localityFilter]);
+
+  useEffect(() => {
+    api.get('/clients').then((r) => setClients(r.data || [])).catch(() => {});
+  }, []);
 
   const loadSales = async () => {
     setIsLoading(true);
@@ -282,6 +295,8 @@ export default function HistorialScreen() {
       const params: any = { limit: SALES_LIST_LIMIT };
       if (from) params.from = from;
       if (to) params.to = to;
+      if (clientFilter) params.clientId = clientFilter;
+      else if (localityFilter) params.locality = localityFilter;
 
       // La lista viene recortada; los totales salen del resumen del período completo.
       const [{ data }, summaryRes] = await Promise.all([
@@ -377,8 +392,14 @@ export default function HistorialScreen() {
     const cashierUsername = sale.user?.username?.toLowerCase() || '';
     const query = searchQuery.toLowerCase();
     
-    return saleNumStr.includes(query) || cashierName.includes(query) || cashierUsername.includes(query);
+    const clientName = sale.client?.name?.toLowerCase() || '';
+    return saleNumStr.includes(query) || cashierName.includes(query) || cashierUsername.includes(query) || clientName.includes(query);
   });
+  const filtering = !!(clientFilter || localityFilter);
+  const filteredTotal = filteredSales.filter((s) => s.status === 'COMPLETED').reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+  const paymentLabelOf = (sale: any) => (sale.payments || [])
+    .map((p: any) => (p.method === 'CASH' ? 'Efectivo' : p.method === 'DEBT' ? 'Cuenta corriente' : p.method === 'CLOVER' ? 'Tarjeta' : p.method === 'MERCADOPAGO' ? 'Mercado Pago' : p.method))
+    .join(' + ');
 
   const methodBadge = (m: string, clientName?: string) => {
     const styles: any = { 
@@ -550,15 +571,31 @@ export default function HistorialScreen() {
         </div>
 
         {activeTab === 'SALES' && (
-          <div className="relative w-full md:w-72 flex items-center">
-            <Search className="absolute left-4 w-4 h-4 text-slate-600 pointer-events-none" />
-            <input 
-              type="text" 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              placeholder="Buscar por ticket o cajero..." 
-              className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-600"
-            />
+          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            {clients.length > 0 && (
+              <select value={clientFilter} onChange={(e) => { setClientFilter(e.target.value); if (e.target.value) setLocalityFilter(''); }}
+                className="bg-slate-50 border border-slate-300 rounded-2xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 max-w-[200px]" aria-label="Filtrar por cliente">
+                <option value="">Todos los clientes</option>
+                {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}{c.locality ? ` · ${c.locality}` : ''}</option>)}
+              </select>
+            )}
+            {usesDelivery && localities.length > 0 && (
+              <select value={localityFilter} onChange={(e) => { setLocalityFilter(e.target.value); if (e.target.value) setClientFilter(''); }}
+                className="bg-slate-50 border border-slate-300 rounded-2xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500" aria-label="Filtrar por localidad">
+                <option value="">Todas las localidades</option>
+                {localities.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+            <div className="relative w-full md:w-60 flex items-center">
+              <Search className="absolute left-4 w-4 h-4 text-slate-600 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar por ticket, cliente o cajero..."
+                className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-11 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 transition-all placeholder:text-slate-600"
+              />
+            </div>
           </div>
         )}
       </div>
@@ -685,7 +722,17 @@ export default function HistorialScreen() {
                 exit={{ opacity: 0 }}
                 className="h-full card p-6 flex flex-col overflow-hidden"
               >
-                {isListTruncated && (
+                {filtering ? (
+                  <div className="flex items-center justify-between gap-3 mb-3 shrink-0 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <p className="text-[12px] font-semibold text-slate-700">
+                      {clientFilter ? (clients.find((c: any) => c.id === clientFilter)?.name || 'Cliente') : localityFilter}: {filteredSales.filter((s) => s.status === 'COMPLETED').length} ventas en el período
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] font-bold text-slate-900">{fmt(filteredTotal)}</span>
+                      <button onClick={() => { setClientFilter(''); setLocalityFilter(''); }} className="text-[11px] font-bold text-rose-600 hover:underline">Quitar filtro</button>
+                    </div>
+                  </div>
+                ) : isListTruncated && (
                   <p className="text-[11px] font-semibold text-slate-600 mb-3 shrink-0">
                     Se muestran las últimas {sales.length} de {totalCount} ventas. Los totales del Resumen incluyen todas.
                   </p>
@@ -709,6 +756,9 @@ export default function HistorialScreen() {
                               <span className="text-xs text-slate-600 font-medium">{fmtDate(sale.createdAt)}</span>
                               <span className="text-xs text-slate-600 font-semibold flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {sale.user?.username}</span>
                               {methodBadge(sale.paymentMethodSummary, sale.client?.name)}
+                              {sale.client && sale.paymentMethodSummary !== 'DEBT' && (
+                                <span className="text-xs text-slate-700 font-semibold">{sale.client.name}{sale.client.locality ? <span className="text-slate-500 font-medium"> · {sale.client.locality}</span> : null}</span>
+                              )}
                               {sale.status === 'CANCELLED' && (
                                 <span className="text-[9px] px-2.5 py-0.5 rounded-xl bg-rose-50 text-rose-500 font-bold border border-rose-100 uppercase tracking-tight">Cancelada</span>
                               )}
@@ -735,7 +785,7 @@ export default function HistorialScreen() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100/50">
                                       {sale.items?.map((item: any) => (
-                                        <tr key={item.id} className="text-slate-600"><td className="py-2.5 font-bold text-slate-700">{item.productName}</td><td className="text-right text-slate-700">{item.quantity}</td><td className="text-right text-slate-700">{fmt(item.unitPrice)}</td><td className="text-right font-bold text-slate-700">{fmt(item.total)}</td></tr>
+                                        <tr key={item.id} className="text-slate-600"><td className="py-2.5 font-bold text-slate-700">{item.productName}</td><td className="text-right text-slate-700">{Number(item.packSize) > 1 ? `${Math.round((item.quantity / item.packSize) * 100) / 100} bulto(s) x${item.packSize}` : item.quantity}</td><td className="text-right text-slate-700">{fmt(item.unitPrice)}</td><td className="text-right font-bold text-slate-700">{fmt(item.total)}</td></tr>
                                       ))}
                                     </tbody>
                                   </table>
@@ -751,7 +801,15 @@ export default function HistorialScreen() {
 
                                   {/* Cancel action */}
                                   {sale.status === 'COMPLETED' && (
-                                    <div className="flex justify-end pt-3 border-t border-slate-300/40">
+                                    <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-300/40">
+                                      {usesDelivery && (
+                                        <button
+                                          onClick={() => setNoteSale(sale)}
+                                          className="flex items-center gap-1.5 py-2 px-4 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 text-[10px] font-bold uppercase tracking-tight transition-all active:scale-[0.98]"
+                                        >
+                                          <FileText className="w-3.5 h-3.5" /> Nota y remito
+                                        </button>
+                                      )}
                                       <button 
                                         onClick={() => handleCancelSale(sale.id)}
                                         className="flex items-center gap-1.5 py-2 px-4 rounded-xl border border-rose-100 text-rose-600 bg-rose-50/20 hover:bg-rose-50 text-[10px] font-bold uppercase tracking-tight transition-all active:scale-[0.98]"
@@ -856,6 +914,7 @@ export default function HistorialScreen() {
           </AnimatePresence>
         )}
       </div>
+    {noteSale && <SalesNotePreview sale={noteSale} paymentLabel={paymentLabelOf(noteSale)} onClose={() => setNoteSale(null)} />}
     </div>
   );
 }
