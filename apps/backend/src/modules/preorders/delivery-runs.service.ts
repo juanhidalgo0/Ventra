@@ -335,8 +335,14 @@ export class DeliveryRunsService {
     const run = await this.findOne(runId);
     if (run.status === 'CERRADO') throw new BadRequestException('El reparto ya se rindió');
     if (run.status !== 'EN_REPARTO') throw new BadRequestException('El reparto todavía no salió');
-    const sessionId = data?.sessionId || await this.dayCash(userId);
+        const sessionId = data?.sessionId || await this.dayCash(userId);
     const undelivered = data?.undelivered === 'CANCEL' ? 'CANCEL' : 'REPROGRAM';
+    // Gastos que el chofer pagó con lo cobrado: salen de la caja y bajan lo que tiene que traer
+    const expenses = (Array.isArray(data?.expenses) ? data.expenses : [])
+      .map((e: any) => ({ concept: String(e?.concept || 'Gasto').trim().slice(0, 60) || 'Gasto', amount: round2(Number(e?.amount) || 0) }))
+      .filter((e: any) => e.amount > 0)
+      .slice(0, 20);
+    const expensesTotal = round2(expenses.reduce((s: number, e: any) => s + e.amount, 0));
     const invoicing = await this.fiscal.isEnabled();
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -407,15 +413,26 @@ export class DeliveryRunsService {
     }
 
     // Con algún error el reparto queda abierto: se corrige y se vuelve a rendir (lo hecho no se repite)
-    if (!errors.length) {
+        if (!errors.length) {
       const cashReceived = Number.isFinite(Number(data?.cashReceived)) ? round2(Number(data.cashReceived)) : null;
-            const allCash = round2(run.orders.reduce((s: number, o: any) => s + (o.status === 'BILLED' ? (o.paidCash || 0) + (o.prevCash || 0) : 0), 0));
-      await this.db.deliveryRun.update({
-        where: { id: runId },
-        data: { status: 'CERRADO', settledAt: new Date(), expectedCash: allCash, cashReceived, settledBy: userId || null },
+      const allCash = round2(run.orders.reduce((s: number, o: any) => s + (o.status === 'BILLED' ? (o.paidCash || 0) + (o.prevCash || 0) : 0), 0));
+      await this.prisma.$transaction(async (tx: any) => {
+        // Cada gasto, como salida de la caja del día (el efectivo cobrado ya entró entero)
+        for (let i = 0; i < expenses.length; i++) {
+          await tx.cashMovement.create({
+            data: { sessionId, userId, type: 'EXPENSE', amount: expenses[i].amount, description: `Gasto del reparto N° ${run.runNumber}: ${expenses[i].concept} [gasto-${runId}-${i}]` },
+          });
+        }
+        await tx.deliveryRun.update({
+          where: { id: runId },
+          data: {
+            status: 'CERRADO', settledAt: new Date(), expectedCash: round2(allCash - expensesTotal), cashReceived, settledBy: userId || null,
+            expenses: expenses.length ? JSON.stringify(expenses) : null, expensesTotal: expenses.length ? expensesTotal : null,
+          },
+        });
       });
     }
-    return { errors, warnings, expectedCash: round2(expectedCash), run: await this.findOne(runId) };
+    return { errors, warnings, expectedCash: round2(expectedCash - (errors.length ? 0 : expensesTotal)), run: await this.findOne(runId) };
   }
 
     /**

@@ -3,12 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Minus, Search, X, ClipboardList, WifiOff, ShoppingCart, Trash2, Loader2, ChevronDown, ChevronUp,
-  MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw,
+    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore, packOf } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import { myWorkRole } from '../../services/workRole';
+import { readRouteDays, saveRouteDays, zonesFor, dayName, WEEK, ROUTE_DAYS_EVENT, type RouteDays } from '../../services/routeDays';
+import { STORE_SETTINGS_EVENT } from '../../services/storeSettings';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
@@ -134,16 +136,17 @@ export default function PreventaScreen() {
       onNew={() => (draft ? open(draft) : startNew())}
       onResume={() => draft && open(draft)}
       onDiscard={() => { clearDraft(); setDraft(null); }}
-      onEdit={(o) => open(fromOrder(o))}
+            onEdit={(o) => open(fromOrder(o))}
+      onNewFor={(c) => open({ id: newPreOrderId(), client: c, items: [], notes: '' })}
     />
   );
 }
 
 // ─── Lista ────────────────────────────────────────────────────────
 
-function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit }: {
+function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, onNewFor }: {
   clients: any[]; queue: any[]; draft: Draft | null;
-  onNew: () => void; onResume: () => void; onDiscard: () => void; onEdit: (o: any) => void;
+    onNew: () => void; onResume: () => void; onDiscard: () => void; onEdit: (o: any) => void; onNewFor: (client: any) => void;
 }) {
   const navigate = useNavigate();
     const inShell = useOwnerMobile().active;
@@ -158,7 +161,31 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit }
   const [range, setRange] = useState<'today' | 'week' | 'all'>('week');
   const [locality, setLocality] = useState('');
   const [open, setOpen] = useState<string | null>(null);
-  const localities = useMemo(() => Array.from(new Set(clients.map((c) => (c.locality || '').trim()).filter(Boolean))).sort(), [clients]);
+    const localities = useMemo(() => Array.from(new Set(clients.map((c) => (c.locality || '').trim()).filter(Boolean))).sort(), [clients]);
+
+  // Recorrido fijo: las localidades de hoy y sus clientes que todavía no pidieron
+  const routeDays = useRouteDays();
+  const todayZones = zonesFor(routeDays);
+  const [todayOrders, setTodayOrders] = useState<any[]>([]);
+  useEffect(() => {
+    if (!todayZones.length) return;
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    // Ya pidió: un pedido de hoy, o uno anterior que todavía no salió (pendiente)
+    Promise.all([
+      api.get('/preorders', { params: { status: 'ALL', from: from.toISOString() }, silent: true } as any),
+      api.get('/preorders', { params: { status: 'PENDING' }, silent: true } as any),
+    ]).then(([hoy, pend]) => setTodayOrders([...(hoy.data || []), ...(pend.data || [])])).catch(() => {});
+  }, [todayZones.join('|'), queue.length]);
+  const orderedToday = new Set([
+    ...todayOrders.filter((o) => o.status !== 'CANCELLED').map((o) => o.clientId),
+    ...queue.map((q: any) => q.clientId),
+  ]);
+  const todayClients = clients.filter((c) => todayZones.includes((c.locality || '').trim()));
+  const toVisit = todayClients.filter((c) => !orderedToday.has(c.id)).sort((a, b) => (a.locality || '').localeCompare(b.locality || '', 'es') || a.name.localeCompare(b.name, 'es'));
+  const [showAllVisit, setShowAllVisit] = useState(false);
+  const [editingRoute, setEditingRoute] = useState(false);
+  const isAdmin = useAuthStore.getState().user?.role === 'ADMIN';
 
   const load = () => {
     setLoading(true);
@@ -237,6 +264,51 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit }
             <button onClick={onResume} className="h-9 px-3.5 rounded-xl bg-rose-600 text-white text-[13px] font-bold cursor-pointer">Seguir</button>
           </div>
         )}
+
+                {todayZones.length > 0 ? (
+          <section data-tour="preventa-today" className="rounded-2xl bg-white border border-slate-200 overflow-hidden">
+            <div className="px-4 pt-3.5 pb-2 flex items-start gap-3">
+              <CalendarDays className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[14.5px] font-bold text-slate-900 leading-tight">Hoy {dayName(new Date().getDay())} te toca: {todayZones.join(', ')}</p>
+                <p className="text-[12.5px] text-slate-500 mt-0.5">
+                  {todayClients.length === 0 ? 'Todavía no hay clientes cargados en esas localidades.'
+                    : toVisit.length === 0 ? (todayClients.length === 1 ? 'Ya pidió el cliente de hoy.' : `Ya pidieron los ${todayClients.length} clientes de hoy.`)
+                    : `${plural(todayClients.length - toVisit.length, 'cliente ya pidió', 'clientes ya pidieron')} · ${plural(toVisit.length, 'falta', 'faltan')}`}
+                </p>
+              </div>
+              {isAdmin && <button onClick={() => setEditingRoute(true)} className="text-[12.5px] font-bold text-rose-700 cursor-pointer shrink-0">Días</button>}
+            </div>
+            {toVisit.length > 0 && (
+              <div className="divide-y divide-slate-100 border-t border-slate-100">
+                {(showAllVisit ? toVisit : toVisit.slice(0, 5)).map((c) => (
+                  <button key={c.id} onClick={() => onNewFor(c)} className="w-full text-left px-4 py-2.5 flex items-center gap-3 cursor-pointer hover:bg-slate-50">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[14px] font-semibold text-slate-900 truncate">{c.name}</span>
+                      <span className="block text-[12px] text-slate-500 truncate">{[c.address, c.locality].filter(Boolean).join(', ') || 'Sin dirección'}</span>
+                    </span>
+                    <span className="text-[12.5px] font-bold text-rose-700 shrink-0 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Pedido</span>
+                  </button>
+                ))}
+                {toVisit.length > 5 && (
+                  <button onClick={() => setShowAllVisit((v) => !v)} className="w-full py-2.5 text-[12.5px] font-bold text-slate-600 cursor-pointer hover:bg-slate-50">
+                    {showAllVisit ? 'Ver menos' : `Ver los ${toVisit.length} que faltan`}
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        ) : isAdmin && localities.length > 0 && Object.keys(routeDays).length === 0 ? (
+          <button data-tour="preventa-today" onClick={() => setEditingRoute(true)} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-2xl bg-white border border-dashed border-slate-300 cursor-pointer hover:border-slate-400">
+            <CalendarDays className="w-5 h-5 text-slate-500 shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14px] font-bold text-slate-800">Armá el recorrido de la semana</span>
+              <span className="block text-[12.5px] text-slate-500">Qué días vas a cada localidad. Cada día te muestra a quién visitar y quién falta pedir.</span>
+            </span>
+          </button>
+        ) : null}
+
+        {editingRoute && <RouteDaysSheet localities={localities} initial={routeDays} onClose={() => setEditingRoute(false)} />}
 
         {queue.length > 0 && (
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900">
@@ -373,7 +445,9 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
   useAutoTour('distribPedidoCliente', step === 'client');
   useAutoTour('distribPedidoProductos', step === 'products' && products.length > 0);
   const [clientQuery, setClientQuery] = useState('');
-  const [zone, setZone] = useState('');
+    const todayZones = zonesFor(readRouteDays());
+  const TODAY = '__hoy__';
+  const [zone, setZone] = useState(todayZones.length ? TODAY : '');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<PreOrderItem[]>(initial.items);
   const [notes, setNotes] = useState(initial.notes || '');
@@ -394,7 +468,7 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
   const foundClients = useMemo(() => {
     const q = norm(clientQuery);
     return clients
-      .filter((c) => (!zone || (c.locality || '').trim() === zone) && (!q || norm(`${c.name} ${c.locality || ''} ${c.address || ''}`).includes(q)))
+            .filter((c) => (!zone || (zone === TODAY ? todayZones.includes((c.locality || '').trim()) : (c.locality || '').trim() === zone)) && (!q || norm(`${c.name} ${c.locality || ''} ${c.address || ''}`).includes(q)))
       .sort((a, b) => (a.locality || '~').localeCompare(b.locality || '~', 'es') || a.name.localeCompare(b.name, 'es'))
       .slice(0, 80);
   }, [clients, clientQuery, zone]);
@@ -542,12 +616,12 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
                 className="w-full h-12 pl-10 pr-10 rounded-xl bg-white border border-slate-300 text-[15px] outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/15" />
               {clientQuery && <button onClick={() => setClientQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer" aria-label="Borrar búsqueda"><X className="w-4 h-4 text-slate-400" /></button>}
             </div>
-                        {zones.length > 1 && (
+                                    {(zones.length > 1 || todayZones.length > 0) && (
               <div data-tour="pedido-zones" className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
-                {['', ...zones].map((z) => (
+                {[...(todayZones.length ? [TODAY] : []), '', ...zones].map((z) => (
                   <button key={z || 'todas'} onClick={() => setZone(z)}
                     className={`shrink-0 h-9 px-3.5 rounded-full text-[13px] font-semibold border cursor-pointer ${zone === z ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}>
-                    {z || 'Todas las zonas'}
+                    {z === TODAY ? `Hoy: ${todayZones.join(', ')}` : z || 'Todas las zonas'}
                   </button>
                 ))}
               </div>
@@ -751,6 +825,67 @@ function Stepper({ value, unit, onMinus, onPlus, removes }: { value: number; uni
       <button onClick={onPlus} className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95" aria-label="Uno más">
         <Plus className="w-4 h-4 text-slate-700" />
       </button>
+    </div>
+  );
+}
+
+/** El recorrido de la semana, que se actualiza si se cambia acá o llega de otro equipo */
+function useRouteDays() {
+  const [map, setMap] = useState<RouteDays>(readRouteDays);
+  useEffect(() => {
+    const refresh = () => setMap(readRouteDays());
+    window.addEventListener(ROUTE_DAYS_EVENT, refresh);
+    window.addEventListener(STORE_SETTINGS_EVENT, refresh);
+    return () => { window.removeEventListener(ROUTE_DAYS_EVENT, refresh); window.removeEventListener(STORE_SETTINGS_EVENT, refresh); };
+  }, []);
+  return map;
+}
+
+/** Qué días se visita cada localidad. Lo arma el dueño; lo ven todos los vendedores. */
+function RouteDaysSheet({ localities, initial, onClose }: { localities: string[]; initial: RouteDays; onClose: () => void }) {
+  const [map, setMap] = useState<RouteDays>(() => ({ ...initial }));
+  const toggle = (zone: string, day: number) => setMap((m) => {
+    const days = m[zone] || [];
+    return { ...m, [zone]: days.includes(day) ? days.filter((d) => d !== day) : [...days, day] };
+  });
+  const save = () => {
+    saveRouteDays(map);
+    toast.success('Recorrido guardado');
+    onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-[200] bg-slate-900/50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Recorrido de la semana" className="w-full sm:max-w-lg bg-slate-50 rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-3 flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[18px] font-bold text-slate-900">Recorrido de la semana</h2>
+            <p className="text-[13px] text-slate-500 mt-0.5">Tocá los días que se visita cada localidad. Cada día, Preventa muestra a quién visitar y quién falta pedir.</p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-slate-200/60 flex items-center justify-center cursor-pointer shrink-0" aria-label="Cerrar"><X className="w-5 h-5 text-slate-500" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-2">
+          {localities.length === 0 && <p className="py-8 text-center text-[13px] text-slate-500">Cargá la localidad de tus clientes para armar el recorrido.</p>}
+          {localities.map((zone) => (
+            <div key={zone} className="rounded-2xl bg-white border border-slate-200 px-3.5 py-3">
+              <p className="text-[14.5px] font-bold text-slate-900 flex items-center gap-1.5"><MapPin className="w-4 h-4 text-slate-400" /> {zone}</p>
+              <div className="mt-2 grid grid-cols-6 gap-1.5">
+                {WEEK.map((w) => {
+                  const on = (map[zone] || []).includes(w.day);
+                  return (
+                    <button key={w.day} onClick={() => toggle(zone, w.day)} aria-pressed={on} aria-label={`${zone}: ${w.name}`}
+                      className={`h-10 rounded-xl text-[13.5px] font-bold border cursor-pointer transition-colors ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                      {w.short}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+16px)] border-t border-slate-200 bg-white rounded-b-3xl">
+          <button onClick={save} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[15px] font-bold cursor-pointer">Guardar recorrido</button>
+        </div>
+      </div>
     </div>
   );
 }

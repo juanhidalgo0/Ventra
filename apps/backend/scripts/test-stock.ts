@@ -433,6 +433,24 @@ async function main() {
     assert.strictEqual(last.items[0].packSize, 20);
   });
 
+  await t('gastos del reparto: salen de la caja y bajan lo que tiene que traer', async () => {
+    const cli = await prisma.client.create({ data: { name: 'Con gastos', locality: 'Bavio' } });
+    const p = await nuevo('Gaseosa gastos', 50);
+    await (prisma as any).preOrder.create({ data: { id: 'po-gas-a', orderNumber: 990401, clientId: cli.id, userId: cajero.id, total: 1000, items: { create: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 1000, total: 1000 }] } } });
+    const run = await runs.create({ orderIds: ['po-gas-a'] });
+    await runs.dispatch(run.id, {}, admin.id);
+    await runs.saveDelivery(run.id, 'po-gas-a', { status: 'DELIVERED', cash: 1000 });
+    const r = await runs.settle(run.id, { cashReceived: 700, expenses: [{ concept: 'Nafta', amount: 250 }, { concept: 'Peaje', amount: 50 }, { concept: 'Nada', amount: 0 }] }, admin.id);
+    assert.strictEqual(r.run.status, 'CERRADO');
+    assert.strictEqual(r.run.expectedCash, 700, 'lo cobrado menos los gastos');
+    assert.strictEqual(r.run.expensesTotal, 300);
+    assert.strictEqual(JSON.parse(r.run.expenses).length, 2, 'los de $0 no cuentan');
+    const movs = await prisma.cashMovement.findMany({ where: { description: { contains: `[gasto-${run.id}-` } } });
+    assert.strictEqual(movs.length, 2);
+    assert.ok(movs.every((m: any) => m.type === 'EXPENSE'));
+    assert.strictEqual(movs.reduce((s: number, m: any) => s + m.amount, 0), 300);
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

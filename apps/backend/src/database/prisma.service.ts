@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-10-17c';
+const SCHEMA_VERSION = '2026-10-18';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -416,7 +416,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               if (!preOrderCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE pre_orders ADD COLUMN ${col} ${type} DEFAULT NULL;`);
             }
             const runCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(delivery_runs);`);
-                        for (const [col, type] of [['settled_at', 'DATETIME'], ['expected_cash', 'REAL'], ['cash_received', 'REAL'], ['settled_by', 'TEXT'], ['driver_user_id', 'TEXT']]) {
+                        for (const [col, type] of [['settled_at', 'DATETIME'], ['expected_cash', 'REAL'], ['cash_received', 'REAL'], ['settled_by', 'TEXT'], ['driver_user_id', 'TEXT'], ['expenses', 'TEXT'], ['expenses_total', 'REAL']]) {
               if (!runCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE delivery_runs ADD COLUMN ${col} ${type} DEFAULT NULL;`);
             }
                         // Qué hace cada usuario en la distribuidora (vendedor, chofer, mostrador)

@@ -197,6 +197,7 @@ export const TOURS = {
 
   distribPreventa: [
     { target: 'preventa-new', title: 'Nuevo pedido', body: 'Tocá acá para tomarle un pedido a un cliente. Si dejaste uno **a medio armar**, seguís desde donde quedó.' },
+        { target: 'preventa-today', title: 'El recorrido de hoy', body: 'Según el día, ves **qué localidades tocan** y qué clientes **todavía no pidieron**. Tocás uno y arrancás su pedido. Los días de cada zona los arma el dueño.' },
     { target: 'preventa-filters', title: 'Tus pedidos', body: '**Pendientes**: esperan salir en un reparto. **Vendidos**: ya salieron o se cobraron. Mirá los de hoy, los de la semana o todos, y filtrá por **localidad**.' },
     { target: 'preventa-list', title: 'Cada pedido', body: 'Tocalo para ver el detalle. Mientras esté pendiente lo podés **editar**, **cancelar** o **cobrar en el mostrador** si el cliente lo viene a buscar.' },
     { title: 'Sin señal también', body: 'Si te quedás sin conexión en la ruta, **seguí tomando pedidos**: quedan guardados en el celular y se mandan solos cuando vuelve la señal. Arriba te avisa cuántos esperan.' },
@@ -257,6 +258,7 @@ export const TOURS = {
 
   distribRendir: [
     { target: 'rendir-summary', title: 'Lo que tiene que traer', body: 'Ventra suma lo anotado en cada parada: el **efectivo**, las transferencias y lo que quedó **a cuenta**.' },
+        { target: 'rendir-expenses', title: 'Gastos del camino', body: 'Si el chofer pagó **nafta, peaje o comida** con lo cobrado, anotalo acá: se descuenta de lo que tiene que traer y queda como **gasto en la caja**.' },
     { target: 'rendir-cash', title: 'Contá la plata', body: 'Anotá el efectivo que **entregó el chofer** y ves al instante si **cierra justo**, falta o sobra.' },
     { target: 'rendir-undelivered', title: 'Lo que no se entregó', body: 'Elegí si esos pedidos **vuelven a pendientes** para otro reparto (con número nuevo) o **se cancelan**.' },
     { target: 'rendir-close', title: 'Cerrar el reparto', body: 'Lo cobrado entra a la **caja del día** (se abre sola si no había), lo que volvió va al **stock** y lo fiado a cada **cuenta corriente**.' },

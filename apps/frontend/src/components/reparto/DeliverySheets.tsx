@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useAutoTour } from '../common/tour/GuidedTour';
-import { X, Check, PackageX, Truck, Minus, Plus, Loader2, Banknote, Landmark, BookUser, AlertTriangle } from 'lucide-react';
+import { X, Check, PackageX, Truck, Minus, Plus, Loader2, Banknote, Landmark, BookUser, AlertTriangle, Fuel } from 'lucide-react';
 import api from '../../services/api';
 import { COMING_SOON } from '../../utils/comingSoon';
 
@@ -406,15 +406,25 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
     return Array.from(map.values());
   }, [run]);
 
-    const [received, setReceived] = useState(String(cashTotal));
+      // Gastos que pagó con lo cobrado (nafta, peaje...): se descuentan de lo que tiene que traer
+  const [expenses, setExpenses] = useState<{ concept: string; amount: string }[]>([]);
+  const expTotal = round2(expenses.reduce((s, e) => s + num(e.amount), 0));
+  const netCash = round2(cashTotal - expTotal);
+  const [received, setReceived] = useState(String(cashTotal));
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { if (!touched) setReceived(String(netCash)); }, [netCash, touched]);
+  const addExpense = (concept: string) => setExpenses((list) => [...list, { concept: concept === 'Otro' ? '' : concept, amount: '' }]);
   const [undelivered, setUndelivered] = useState<'REPROGRAM' | 'CANCEL'>('REPROGRAM');
   const [saving, setSaving] = useState(false);
-    const diff = round2(num(received) - cashTotal);
+      const diff = round2(num(received) - netCash);
 
   const settle = async () => {
     setSaving(true);
     try {
-      const { data } = await api.post(`/delivery-runs/${run.id}/settle`, { cashReceived: num(received), undelivered });
+      const { data } = await api.post(`/delivery-runs/${run.id}/settle`, {
+        cashReceived: num(received), undelivered,
+        expenses: expenses.filter((e) => num(e.amount) > 0).map((e) => ({ concept: e.concept.trim() || 'Gasto', amount: num(e.amount) })),
+      });
       (data.warnings || []).forEach((w: string) => toast(w, { icon: '🧾', duration: 9000 }));
       if (data.errors?.length) {
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
@@ -458,15 +468,37 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
 
             <section data-tour="rendir-summary" className="rounded-2xl bg-white border border-slate-200 divide-y divide-slate-100">
         {row(<Check className="w-4 h-4 text-emerald-600" />, 'Entregas', `${delivered.length} de ${orders.length}`)}
-                {row(<Banknote className="w-4 h-4 text-slate-600" />, 'Efectivo que tiene que traer', money(cashTotal), true)}
+                        {row(<Banknote className="w-4 h-4 text-slate-600" />, 'Efectivo que tiene que traer', money(netCash), true)}
+        {expTotal > 0 && row(<Fuel className="w-4 h-4 text-amber-600" />, 'Ya descontados los gastos', `− ${money(expTotal)}`)}
         {row(<Landmark className="w-4 h-4 text-slate-600" />, 'Transferencias', money(round2(transfer + prevTransfer)))}
         {prevCash + prevTransfer > 0.009 && row(<BookUser className="w-4 h-4 text-emerald-600" />, 'Incluye cobros de deudas anteriores', money(round2(prevCash + prevTransfer)))}
         {row(<BookUser className="w-4 h-4 text-slate-600" />, 'Quedó en cuenta corriente', money(debt > 0 ? debt : 0))}
       </section>
 
-            <section data-tour="rendir-cash" className="space-y-2">
+                  <section data-tour="rendir-expenses" className="space-y-2">
+        <p className="text-[13px] font-bold text-slate-700">¿Gastó algo de lo cobrado? <span className="font-normal text-slate-400">(opcional)</span></p>
+        <div className="flex flex-wrap gap-2">
+          {['Nafta', 'Peaje', 'Comida', 'Otro'].map((c) => (
+            <button key={c} onClick={() => addExpense(c)} className="h-9 px-3.5 rounded-full text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 cursor-pointer hover:border-slate-300 flex items-center gap-1">
+              <Plus className="w-3.5 h-3.5" /> {c}
+            </button>
+          ))}
+        </div>
+        {expenses.map((e, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input value={e.concept} onChange={(ev) => setExpenses((list) => list.map((x, k) => (k === i ? { ...x, concept: ev.target.value } : x)))} placeholder="En qué" maxLength={60}
+              className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-white border border-slate-300 text-[14px] outline-none focus:border-rose-500" />
+            <input inputMode="decimal" value={e.amount} onChange={(ev) => setExpenses((list) => list.map((x, k) => (k === i ? { ...x, amount: ev.target.value } : x)))} placeholder="$" aria-label={`Monto de ${e.concept || 'gasto'}`}
+              className="w-28 h-11 px-3 rounded-xl bg-white border border-slate-300 text-[15px] font-semibold outline-none focus:border-rose-500" />
+            <button onClick={() => setExpenses((list) => list.filter((_, k) => k !== i))} className="w-9 h-9 rounded-lg hover:bg-slate-200/60 flex items-center justify-center cursor-pointer shrink-0" aria-label="Quitar gasto"><X className="w-4 h-4 text-slate-500" /></button>
+          </div>
+        ))}
+        {expTotal > 0 && <p className="text-[12px] text-slate-500">Se descuentan {money(expTotal)} de lo que tiene que traer y quedan como gasto en la caja del día.</p>}
+      </section>
+
+      <section data-tour="rendir-cash" className="space-y-2">
         <label className="block text-[13px] font-bold text-slate-700">¿Cuánto efectivo entregó el chofer?</label>
-        <input inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} className="w-full h-12 px-4 rounded-xl bg-white border border-slate-300 text-[18px] font-bold outline-none focus:border-rose-500" />
+                <input inputMode="decimal" value={received} onChange={(e) => { setTouched(true); setReceived(e.target.value); }} className="w-full h-12 px-4 rounded-xl bg-white border border-slate-300 text-[18px] font-bold outline-none focus:border-rose-500" />
         <p className={`text-[13px] font-semibold px-3.5 py-2.5 rounded-xl ${Math.abs(diff) < 0.01 ? 'bg-emerald-50 text-emerald-800' : diff < 0 ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}`}>
           {Math.abs(diff) < 0.01 ? 'La plata cierra justa.' : diff < 0 ? `Faltan ${money(-diff)}.` : `Sobran ${money(diff)}.`}
         </p>

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { readRouteDays, zonesFor } from '../../services/routeDays';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 
@@ -59,7 +60,8 @@ export default function HoyScreen() {
   const inShell = useOwnerMobile().active;
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-    const storeName = (localStorage.getItem('gd_store_name') || '').trim();
+      const storeName = (localStorage.getItem('gd_store_name') || '').trim();
+  const todayZones = zonesFor(readRouteDays());
   // El recorrido completo de la distribuidora arranca acá la primera vez (en el celular del dueño, sin pasar por la PC)
   setTourScreen({ mobile: inShell });
   useAutoTour('distrib', !!data);
@@ -93,7 +95,8 @@ export default function HoyScreen() {
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[13px] font-semibold text-slate-500">{today}</p>
-            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight leading-tight truncate">{storeName ? `Hoy en ${storeName}` : 'Hoy'}</h1>
+                        <h1 className="text-[26px] font-bold text-slate-900 tracking-tight leading-tight truncate">{storeName ? `Hoy en ${storeName}` : 'Hoy'}</h1>
+            {todayZones.length > 0 && <p className="text-[13px] text-slate-600 mt-0.5 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-rose-600" /> Hoy se visita {todayZones.join(', ')}</p>}
           </div>
           <button onClick={() => { setLoading(true); load(); }} className="shrink-0 w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center cursor-pointer hover:bg-slate-50" aria-label="Actualizar">
             <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />

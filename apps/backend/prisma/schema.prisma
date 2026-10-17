@@ -772,7 +772,10 @@ model DeliveryRun {
   settledAt    DateTime? @map("settled_at")
   expectedCash Float?    @map("expected_cash")
   cashReceived Float?    @map("cash_received")
-  settledBy    String?   @map("settled_by")
+    settledBy    String?   @map("settled_by")
+  // Gastos del reparto pagados con lo cobrado (nafta, peaje...): JSON [{concept, amount}]
+  expenses      String?
+  expensesTotal Float?   @map("expenses_total")
   createdAt  DateTime   @default(now()) @map("created_at")
   updatedAt  DateTime   @updatedAt @map("updated_at")
 

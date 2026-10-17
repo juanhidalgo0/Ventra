@@ -510,7 +510,13 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
             ))}
           </div>
 
-                              {run.status === 'ARMANDO' && <ShortagesBanner shortages={run.shortages} />}
+                                        {run.status === 'ARMANDO' && <ShortagesBanner shortages={run.shortages} />}
+          {run.status === 'CERRADO' && run.expensesTotal > 0 && (
+            <div className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-[13px] text-slate-700">
+              <span className="font-bold text-slate-900">Gastos del reparto: {money(run.expensesTotal)}</span>
+              {(() => { try { return ` · ${JSON.parse(run.expenses || '[]').map((e: any) => `${e.concept} ${money(e.amount)}`).join(' · ')}`; } catch { return ''; } })()}
+            </div>
+          )}
 
           <div data-tour="ruta-docs" className="flex flex-wrap gap-2">
             <button onClick={() => openDoc('carga')} className={actionBtn}><Package className="w-4 h-4 text-rose-600" /> Hoja de carga</button>

@@ -40,7 +40,9 @@ const SHARED: Record<string, string> = {
   /** Los empleados pueden registrar su consumo (sin cargo, solo descuenta stock): '1' / '0' */
   employee_consumption: 'employee_consumption',
   /** Fondo inicial de la caja en pesos: queda siempre en el cajón (lo carga el dueño) */
-  cash_opening_float: 'cash_opening_float',
+    cash_opening_float: 'cash_opening_float',
+  /** Distribuidora: qué días se visita cada localidad (JSON, ver services/routeDays) */
+  route_days: 'ventra_route_days',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;
