@@ -21,6 +21,8 @@ import {
   round2,
   tipoDesdeCodigo,
 } from '../src/modules/fiscal/comprobante';
+import * as forge from 'node-forge';
+import { buildCertificateRequest, certificateToPem, certificateMatchesKey } from '../src/modules/fiscal/own-certificate';
 
 let fallas = 0;
 let ok = 0;
@@ -124,6 +126,33 @@ t('pagos de cuenta corriente y cargas virtuales no se facturan', () => {
   assert.ok(!esFacturable('PAGO_CTA_CTE'));
   assert.ok(!esFacturable('VIRTUAL_LOAD_1'));
   assert.ok(esFacturable('VENTA_RAPIDA'));
+});
+
+t('certificado propio: el pedido lleva la CUIT y el certificado de ARCA se junta con su clave', () => {
+  const { keyPem, csrPem } = buildCertificateRequest('20431856108', 'Distribuidora Peña & Cía');
+  const csr = forge.pki.certificationRequestFromPem(csrPem);
+  assert.ok(csr.verify(), 'el pedido está firmado con su clave');
+  const attr = (type: string) => (csr.subject.attributes.find((a: any) => a.type === type || a.name === type) || {} as any).value;
+  assert.strictEqual(attr('2.5.4.5'), 'CUIT 20431856108');
+  assert.strictEqual(attr('commonName'), 'ventra');
+  assert.strictEqual(attr('organizationName'), 'Distribuidora Pena & Cia', 'sin acentos');
+  // Lo que haría ARCA: firmar un certificado con la clave pública del pedido
+  const ca = forge.pki.rsa.generateKeyPair(1024);
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = csr.publicKey as any;
+  cert.serialNumber = '01';
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date(Date.now() + 365 * 86400000);
+  cert.setSubject(csr.subject.attributes);
+  cert.setIssuer([{ name: 'commonName', value: 'Computadores Test' }]);
+  cert.sign(ca.privateKey, forge.md.sha256.create());
+  const pem = forge.pki.certificateToPem(cert);
+  assert.ok(certificateMatchesKey(pem, keyPem));
+  assert.ok(!certificateMatchesKey(pem, buildCertificateRequest('20431856108', 'Otro').keyPem), 'con otra clave no');
+  // El archivo binario (DER) también se acepta
+  const der = forge.util.encode64(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes());
+  assert.ok(certificateMatchesKey(certificateToPem({ certDerBase64: der }), keyPem));
+  assert.throws(() => certificateToPem({ certPem: 'hola' }));
 });
 
 console.log(`${ok} pruebas OK${fallas ? `, ${fallas} con fallas` : ''}`);

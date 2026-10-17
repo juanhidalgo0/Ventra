@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-10-18';
+const SCHEMA_VERSION = '2026-10-18b';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -541,7 +541,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             ['domicilio', "TEXT NOT NULL DEFAULT ''"],
             ['iibb', "TEXT NOT NULL DEFAULT ''"],
             ['inicio_actividades', 'DATETIME DEFAULT NULL'],
-            ['default_iva_rate', 'REAL NOT NULL DEFAULT 21'],
+                        ['default_iva_rate', 'REAL NOT NULL DEFAULT 21'],
+            // Certificado propio: pedido en curso
+            ['pending_key_pem', 'TEXT DEFAULT NULL'],
+            ['pending_csr', 'TEXT DEFAULT NULL'],
+            ['pending_at', 'DATETIME DEFAULT NULL'],
           ];
           for (const [col, tipo] of fiscalConfigNew) {
             if (!fiscalConfigColumns.some(c => c.name === col)) {

@@ -8,6 +8,7 @@ import { WsaaService } from './wsaa.service';
 import { WsfeContext, WsfeService, RespuestaCae, CbteAsociado } from './wsfe.service';
 import { ArcaTransport, DirectTransport, GatewayTransport } from './arca-transport';
 import { ArcaError } from './arca-error';
+import { buildCertificateRequest, certificateToPem, certificateMatchesKey, OWN_CERT_ALIAS } from './own-certificate';
 import { ArcaEnvironment, IvaCondition } from './arca-endpoints';
 import {
   buildImportes,
@@ -121,13 +122,17 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
 
   /** La clave privada nunca sale del servidor, ni siquiera hacia la pantalla de configuración. */
   private async publicConfig(config: any) {
-    const { keyPem, certPem, ...rest } = config;
+        const { keyPem, certPem, pendingKeyPem, ...rest } = config;
     const info = await this.ventraInfo();
     const env = info?.environments?.[config.environment];
     const direct = this.wsaa.getDelegatedCredentials();
     return {
       ...rest,
-      hasOwnCertificate: Boolean(certPem && keyPem),
+            hasOwnCertificate: Boolean(certPem && keyPem),
+      // A nombre de qué CUIT está el certificado propio (para avisar si no es la del comercio)
+      certCuit: certPem ? (() => { try { return this.wsaa.describeCertificate(certPem).cuit; } catch { return null; } })() : null,
+      hasPendingRequest: Boolean(pendingKeyPem && config.pendingCsr),
+      certAlias: OWN_CERT_ALIAS,
       // Con qué se firma en esta caja y la CUIT que el comercio tiene que autorizar en ARCA
       transport: config.certSource === 'OWN' ? 'own' : direct ? 'direct' : 'gateway',
       ventraCuit: direct ? this.wsaa.getDelegatedCuit() : env?.cuit || null,
@@ -238,6 +243,56 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
 
     const saved = await this.prisma.fiscalConfig.update({ where: { id: 'fiscal_config' }, data: update });
     if (saved.enabled) this.kick();
+    return this.publicConfig(saved);
+  }
+
+    // ─── Certificado propio ───────────────────────────────────────────
+
+  /**
+   * Paso 1: arma la clave privada y el pedido de certificado (CSR) a nombre de la CUIT del
+   * comercio. La clave queda guardada acá esperando el certificado; el pedido se descarga y se
+   * sube a ARCA. Repetirlo arma un pedido nuevo (el anterior ya no sirve).
+   */
+  async createCertificateRequest() {
+    const config = await this.loadConfig();
+    if (!cuitValida(config.cuit)) throw new BadRequestException('Primero cargá y guardá la CUIT del comercio.');
+    if (!config.razonSocial) throw new BadRequestException('Primero cargá y guardá la razón social del comercio.');
+    const { keyPem, csrPem } = buildCertificateRequest(config.cuit, config.razonSocial);
+    const saved = await this.prisma.fiscalConfig.update({
+      where: { id: 'fiscal_config' },
+      data: { pendingKeyPem: keyPem, pendingCsr: csrPem, pendingAt: new Date() } as any,
+    });
+    return { csr: csrPem, fileName: `ventra-${config.cuit}.csr`, config: await this.publicConfig(saved) };
+  }
+
+  /**
+   * Paso 3: el certificado que dio ARCA. Se junta con la clave del pedido (o con la actual, si
+   * se vuelve a cargar el mismo) y desde ahí la caja firma con él.
+   */
+  async installCertificate(data: { certPem?: string; certDerBase64?: string }) {
+    const config: any = await this.loadConfig();
+    let certPem: string;
+    try {
+      certPem = certificateToPem(data);
+    } catch {
+      throw new BadRequestException('Ese archivo no es un certificado. Subí el que descargaste de ARCA (termina en .crt o .pem).');
+    }
+    const keyPem = certificateMatchesKey(certPem, config.pendingKeyPem) ? config.pendingKeyPem
+      : certificateMatchesKey(certPem, config.keyPem) ? config.keyPem : null;
+    if (!keyPem) {
+      throw new BadRequestException('Este certificado no corresponde al último pedido que generó Ventra. Generá el pedido de nuevo, subilo a ARCA y cargá el certificado que te dé.');
+    }
+    const desc = this.wsaa.describeCertificate(certPem);
+    if (desc.cuit && cuitValida(config.cuit) && desc.cuit !== config.cuit) {
+      throw new BadRequestException(`El certificado es de la CUIT ${desc.cuit} y el comercio factura con la ${config.cuit}.`);
+    }
+    if (desc.expiresAt.getTime() < Date.now()) throw new BadRequestException('Ese certificado ya venció. Generá un pedido nuevo.');
+    try { this.wsaa.signTra('<prueba/>', { certPem, keyPem }); }
+    catch { throw new BadRequestException('No se pudo firmar con ese certificado.'); }
+    const saved = await this.prisma.fiscalConfig.update({
+      where: { id: 'fiscal_config' },
+      data: { certPem, keyPem, certExpiresAt: desc.expiresAt, certSource: 'OWN', pendingKeyPem: null, pendingCsr: null, pendingAt: null } as any,
+    });
     return this.publicConfig(saved);
   }
 

@@ -538,7 +538,12 @@ model FiscalConfig {
   certSource    String   @default("DELEGATED") @map("cert_source")
   certPem       String?  @map("cert_pem")
   keyPem        String?  @map("key_pem")
-  certExpiresAt DateTime? @map("cert_expires_at")
+    certExpiresAt DateTime? @map("cert_expires_at")
+  // Pedido de certificado propio en curso: la clave nueva espera el certificado que da ARCA
+  // (la actual sigue firmando hasta que se carga el nuevo)
+  pendingKeyPem String?   @map("pending_key_pem")
+  pendingCsr    String?   @map("pending_csr")
+  pendingAt     DateTime? @map("pending_at")
   // Factura automática en cada venta, o sólo cuando el cliente la pide
   autoInvoice   Boolean  @default(false) @map("auto_invoice")
   // Desde cuándo rige la factura automática: prenderla no factura las ventas de antes

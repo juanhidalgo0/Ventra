@@ -86,7 +86,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Cupo: 200 recordatorios automáticos por mes en Agenda Pro y Full; se renuevan el 1° de cada mes y no se acumulan. Paquetes extra de 100 por $7.500, que se compran desde la app o Mi cuenta y se acreditan solos; los de paquete no vencen. Si se terminan, la agenda sigue funcionando y los recordatorios se mandan con un toque. Se avisa cuando quedan pocos.
 
 ## Lo que Ventra todavía NO hace (no prometerlo)
-- Factura electrónica ante ARCA (AFIP): está en desarrollo, todavía no se puede facturar desde Ventra. Hoy registra cada venta con su ticket, separa los montos por medio de pago y arma el resumen del período para el contador.
+- Factura electrónica ante ARCA (AFIP): está en desarrollo, todavía no se puede facturar desde Ventra. Cuando esté disponible, cada comercio va a poder conectarse con su propio certificado de ARCA (Ventra lo guía paso a paso: genera el pedido, el comercio lo sube a ARCA con su clave fiscal y carga el certificado; no autoriza a nadie) o autorizando a Ventra. Hoy registra cada venta con su ticket, separa los montos por medio de pago y arma el resumen del período para el contador.
 - Cobro online con tarjeta dentro de la tienda.
 - Pago anual de la suscripción.
 - Comanda a cocina impresa aparte y mesas abiertas para restaurantes.

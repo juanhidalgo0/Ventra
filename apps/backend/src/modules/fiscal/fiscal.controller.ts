@@ -20,6 +20,22 @@ export class FiscalController {
     return this.fiscal.updateConfig(data);
   }
 
+    /** Certificado propio, paso 1: arma la clave y el pedido (CSR) para subir a ARCA */
+  @Post('certificate/request')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  requestCertificate() {
+    return this.fiscal.createCertificateRequest();
+  }
+
+  /** Certificado propio, paso 3: el certificado que dio ARCA (PEM o el archivo binario en base64) */
+  @Post('certificate')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  installCertificate(@Body() data: any) {
+    return this.fiscal.installCertificate(data || {});
+  }
+
   /** Revisa conexión, autorización en ARCA y punto de venta. No emite ningún comprobante. */
   @Post('test')
   @UseGuards(RolesGuard)

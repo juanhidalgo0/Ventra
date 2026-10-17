@@ -25,6 +25,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../stores/authStore';
 import InvoiceModal, { nombreComprobante, numeroComprobante } from '../pos/InvoiceModal';
 import FiscalDocModal, { formatPrice } from '../fiscal/FiscalDocModal';
+import OwnCertificateGuide from './OwnCertificateGuide';
 
 /**
  * Facturación electrónica con ARCA.
@@ -129,6 +130,8 @@ export default function FiscalScreen() {
   const [verDoc, setVerDoc] = useState<string | null>(null);
   const [facturar, setFacturar] = useState<{ saleId: string; saleNumber: number; total: number; cliente?: any } | null>(null);
   const [guiaAbierta, setGuiaAbierta] = useState(false);
+  // Cómo se conecta con ARCA: certificado propio (no autoriza a nadie) o autorizando a Ventra
+  const [modo, setModo] = useState<'OWN' | 'DELEGATED' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const cargarConfig = useCallback(async () => {
@@ -289,6 +292,7 @@ export default function FiscalScreen() {
   const enProduccion = form.environment === 'PRODUCCION';
   const esRI = form.ivaCondition === 'RESPONSABLE_INSCRIPTO';
   const ventraCuit = config?.ventraCuit;
+  const modoActual = modo ?? (config?.certSource === 'OWN' || !config?.ventraAvailable ? 'OWN' : 'DELEGATED');
   const inputCls = 'w-full h-9 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-3 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 transition-all';
   const dateCls = 'h-9 w-[150px] bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-2 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500';
   const labelCls = 'block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1';
@@ -473,8 +477,37 @@ export default function FiscalScreen() {
             </p>
           </div>
 
+          {(() => {
+            const actual = modoActual;
+            const elegir = async (m: 'OWN' | 'DELEGATED') => {
+              setModo(m);
+              // Volver a la autorización con un certificado propio cargado: deja de firmar con él
+              if (m === 'DELEGATED' && config?.certSource === 'OWN') {
+                if (!window.confirm('¿Dejar de usar tu certificado y facturar autorizando a Ventra? El certificado queda guardado por si volvés.')) { setModo('OWN'); return; }
+                try { setConfig((await api.patch('/fiscal/config', { certSource: 'DELEGATED' })).data); }
+                catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo cambiar'); }
+              }
+            };
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['OWN', 'Con mi propio certificado', 'No autorizás a nadie. Se hace una vez en ARCA (15 minutos).'], ['DELEGATED', 'Autorizando a Ventra', 'Más rápido: autorizás la CUIT de Ventra.']] as const).map(([k, t, d]) => (
+                    <button key={k} onClick={() => isAdmin && elegir(k)} disabled={!isAdmin}
+                      className={`text-left p-2.5 rounded-xl border-2 cursor-pointer transition-colors ${actual === k ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30' : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'}`}>
+                      <span className="block text-[12.5px] font-bold text-slate-800 dark:text-slate-100">{t}</span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{d}</span>
+                    </button>
+                  ))}
+                </div>
+                {actual === 'OWN' && config && isAdmin && (
+                  <OwnCertificateGuide config={config} onConfig={(c) => setConfig(c)} onTest={probar} testing={probando} />
+                )}
+              </>
+            );
+          })()}
+
           {/* Guía de la delegación */}
-          {config?.transport !== 'own' && (
+          {modoActual === 'DELEGATED' && (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
               <button onClick={() => setGuiaAbierta((v) => !v)} className="w-full px-3 py-2.5 flex items-center justify-between text-left bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer">
                 <span className="text-[12.5px] font-bold text-slate-800 dark:text-slate-200">Cómo autorizar a Ventra en ARCA (una sola vez)</span>
@@ -506,7 +539,7 @@ export default function FiscalScreen() {
             </div>
           )}
 
-          {isAdmin && (
+          {isAdmin && modoActual === 'DELEGATED' && (
             <button onClick={probar} disabled={probando}
               className="w-full h-10 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 disabled:opacity-50 text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer flex items-center justify-center gap-2">
               {probando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
