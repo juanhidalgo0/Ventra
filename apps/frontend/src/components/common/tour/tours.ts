@@ -269,6 +269,17 @@ export const TOURS = {
     { target: 'pos-products', title: 'Bultos o unidades', body: 'Los productos con bulto se suman **de a bulto**. En el ticket lo podés **pasar a unidades** si lleva sueltas.' },
     { target: 'pos-confirm', title: 'Cobrar y dar el comprobante', body: 'En la ventana de cobro, **Nota y remito** (o **F8**) te muestra la nota de venta y el remito para **imprimir** o mandar por **WhatsApp**.' },
   ],
+  // ─── Facturación electrónica ───
+  fiscal: [
+    { title: 'Facturar con ARCA desde Ventra', body: 'Se configura **una sola vez**, en 3 pasos. Después cada factura sale sola, con su **CAE**, sin entrar a la página de ARCA.' },
+    { target: 'fiscal-estado', title: 'Qué te falta', body: 'Acá siempre te decimos **en qué paso estás** y qué hacer ahora.' },
+    { target: 'fiscal-datos', title: 'Paso 1 · Tus datos', body: 'CUIT, razón social, si sos **monotributista** (factura C) o **responsable inscripto** (A y B) y los datos que van impresos. Están en tu **constancia de inscripción**.' },
+    { target: 'fiscal-conexion', title: 'Paso 2 · Conectar con ARCA', body: 'Elegí cómo: con **tu propio certificado** (no autorizás a nadie, te guiamos paso a paso) o **autorizando a Ventra**. Al final tocá **Probar conexión**: revisa todo sin emitir nada.' },
+    { target: 'fiscal-activar', title: 'Paso 3 · Activar', body: 'Empezá en **modo prueba** (las facturas no valen) y, cuando veas que todo sale bien, pasá a **modo real**. Elegí si cada venta se factura **sola** o solo cuando el cliente la pide.' },
+    { target: 'fiscal-comprobantes', title: 'Tus comprobantes', body: 'Todas las facturas y notas de crédito, las **ventas sin facturar** y lo que espera a ARCA. Con **Exportar** le pasás el libro del mes al contador.' },
+    { title: 'Si ARCA no responde', body: 'La venta **sigue igual**: la factura queda en espera y sale sola cuando ARCA vuelve. Nunca se pierde ni sale dos veces.' },
+  ],
+
 } satisfies Record<string, Tour>;
 
 export type TourId = keyof typeof TOURS;
@@ -316,6 +327,7 @@ export const ROUTE_HELP: Record<string, HelpEntry[]> = {
     { tour: 'distrib', label: 'La distribuidora completa', description: 'Del pedido al reparto y la rendición' },
   ],
   '/settings': [{ tour: 'settings', label: 'Centro de ajustes', description: 'Qué se configura en cada sección' }],
+  '/fiscal': [{ tour: 'fiscal', label: 'Facturación electrónica', description: 'Cómo dejarla lista en 3 pasos' }],
   '/online-store': [{ tour: 'onlineStore', label: 'Tienda online', description: 'Cómo dejar lista tu tienda' }],
   '/agenda': [
     { tour: 'agenda', label: 'Tu agenda', description: 'Ver, cargar, bloquear y avisar turnos' },

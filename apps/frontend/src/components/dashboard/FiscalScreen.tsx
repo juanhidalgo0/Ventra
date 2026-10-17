@@ -26,6 +26,7 @@ import { useAuthStore } from '../../stores/authStore';
 import InvoiceModal, { nombreComprobante, numeroComprobante } from '../pos/InvoiceModal';
 import FiscalDocModal, { formatPrice } from '../fiscal/FiscalDocModal';
 import OwnCertificateGuide from './OwnCertificateGuide';
+import { useAutoTour } from '../common/tour/GuidedTour';
 
 /**
  * Facturación electrónica con ARCA.
@@ -54,6 +55,11 @@ interface FiscalConfig {
   linked: boolean;
   node: number;
   lastError: string | null;
+  // Certificado propio
+  hasOwnCertificate?: boolean;
+  hasPendingRequest?: boolean;
+  certCuit?: string | null;
+  certExpiresAt?: string | null;
 }
 
 interface Doc {
@@ -133,6 +139,7 @@ export default function FiscalScreen() {
   // Cómo se conecta con ARCA: certificado propio (no autoriza a nadie) o autorizando a Ventra
   const [modo, setModo] = useState<'OWN' | 'DELEGATED' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  useAutoTour('fiscal', !cargando);
 
   const cargarConfig = useCallback(async () => {
     try {
@@ -292,304 +299,286 @@ export default function FiscalScreen() {
   const enProduccion = form.environment === 'PRODUCCION';
   const esRI = form.ivaCondition === 'RESPONSABLE_INSCRIPTO';
   const ventraCuit = config?.ventraCuit;
-  const modoActual = modo ?? (config?.certSource === 'OWN' || !config?.ventraAvailable ? 'OWN' : 'DELEGATED');
+  // Arranca en el certificado propio (no autoriza a nadie); la autorización a Ventra solo si ya factura así
+  const modoActual = modo ?? (config?.certSource === 'DELEGATED' && config?.enabled ? 'DELEGATED' : 'OWN');
   const inputCls = 'w-full h-9 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-3 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 transition-all';
   const dateCls = 'h-9 w-[150px] bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-2 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500';
   const labelCls = 'block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1';
   const cardCls = 'card p-5 space-y-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl';
   const titleCls = 'text-[13px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800';
 
+  const elegirModo = async (m: 'OWN' | 'DELEGATED') => {
+    setModo(m);
+    // Volver a la autorización con un certificado propio cargado: deja de firmar con él
+    if (m === 'DELEGATED' && config?.certSource === 'OWN') {
+      if (!window.confirm('¿Dejar de usar tu certificado y facturar autorizando a Ventra? El certificado queda guardado por si volvés.')) { setModo('OWN'); return; }
+      try { setConfig((await api.patch('/fiscal/config', { certSource: 'DELEGATED' })).data); }
+      catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo cambiar'); }
+    }
+  };
+
+  // Qué falta para facturar, en el orden en que se hace
+  const datosOk = /^\d{11}$/.test(String(config?.cuit || '')) && !!config?.razonSocial && (config?.environment !== 'PRODUCCION' || (!!config?.domicilio && !!config?.inicioActividades));
+  const conexionOk = (modoActual === 'OWN' && !!config?.hasOwnCertificate && config?.certSource === 'OWN') || !!prueba?.ok;
+  const estado = !datosOk
+    ? { tone: 'slate', title: 'Paso 1 de 3: cargá tus datos fiscales', text: 'Son los que van impresos en cada factura. Los encontrás en tu constancia de inscripción de ARCA.' }
+    : !conexionOk && !config?.enabled
+      ? { tone: 'slate', title: 'Paso 2 de 3: conectá Ventra con ARCA', text: 'Una sola vez, con tu clave fiscal. Abajo te guiamos paso a paso.' }
+      : !config?.enabled
+        ? { tone: 'slate', title: 'Paso 3 de 3: activá la facturación', text: 'Elegí si empezás en modo prueba o en modo real y prendé la facturación.' }
+        : config?.environment !== 'PRODUCCION'
+          ? { tone: 'amber', title: 'Facturando en modo prueba', text: 'Las facturas de prueba no tienen validez. Cuando veas que todo sale bien, pasá a modo real en el paso 3.' }
+          : { tone: 'emerald', title: 'Todo listo: estás facturando', text: 'Cada factura sale con su CAE de ARCA. Abajo ves todos los comprobantes.' };
+  const toneCls: Record<string, string> = {
+    slate: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800',
+    amber: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900',
+    emerald: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900',
+  };
+
+  const field = 'w-full h-11 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 text-[15px] text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 transition-all';
+  const lab = 'block text-[13px] font-semibold text-slate-700 dark:text-slate-200 mb-1';
+  const hint = 'block text-[12px] text-slate-500 dark:text-slate-400 mt-1 leading-snug';
+  const choice = (on: boolean) => `text-left p-3 rounded-xl border-2 cursor-pointer transition-colors ${on ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30' : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'}`;
+  const stepHead = (n: number, done: boolean, title: string, sub: string) => (
+    <div className="flex items-start gap-3">
+      <span className={`w-8 h-8 rounded-full text-[14px] font-black flex items-center justify-center shrink-0 ${done ? 'bg-emerald-600 text-white' : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'}`}>
+        {done ? <CheckCircle2 className="w-4.5 h-4.5" /> : n}
+      </span>
+      <div className="min-w-0">
+        <h3 className="text-[17px] font-bold text-slate-900 dark:text-slate-100 leading-tight">{title}</h3>
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">{sub}</p>
+      </div>
+    </div>
+  );
+  const card = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4';
+  const saveBtn = (label: string) => isAdmin ? (
+    <button onClick={guardar} disabled={guardando}
+      className="h-11 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[14px] font-bold transition-colors cursor-pointer inline-flex items-center gap-2">
+      {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} {label}
+    </button>
+  ) : <p className="text-[12.5px] text-slate-500">Solo el administrador puede cambiar esto.</p>;
+
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5 w-full h-full overflow-y-auto custom-scrollbar">
-      <div className="flex items-center gap-3 flex-wrap">
-        <FileText className="w-7 h-7 text-emerald-600" />
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Facturación Electrónica</h2>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider mt-0.5">Comprobantes con CAE de ARCA</p>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5 w-full h-full overflow-y-auto custom-scrollbar">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-[24px] font-bold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">Facturación electrónica</h2>
+          <p className="text-[13.5px] text-slate-500 dark:text-slate-400">Facturas con CAE de ARCA, sin entrar a la página de ARCA.</p>
         </div>
-        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${config?.enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-          {config?.enabled ? 'ACTIVADA' : 'DESACTIVADA'}
-        </span>
-        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${config?.environment === 'PRODUCCION' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-amber-50 text-amber-700 border-amber-300'}`}>
-          {config?.environment === 'PRODUCCION' ? 'PRODUCCIÓN' : 'PRUEBAS (HOMOLOGACIÓN)'}
-        </span>
+        <div className="flex gap-2">
+          <span className={`text-[12px] font-bold px-3 py-1 rounded-full border ${config?.enabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+            {config?.enabled ? 'Activada' : 'Apagada'}
+          </span>
+          <span className={`text-[12px] font-bold px-3 py-1 rounded-full border ${config?.environment === 'PRODUCCION' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+            {config?.environment === 'PRODUCCION' ? 'Modo real' : 'Modo prueba'}
+          </span>
+        </div>
       </div>
 
-      {config?.environment !== 'PRODUCCION' && (
-        <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 flex items-start gap-2.5">
-          <AlertCircle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-[12.5px] text-amber-900 dark:text-amber-200 leading-snug">
-            Estás en el entorno de pruebas de ARCA. Los comprobantes que se emitan acá <strong>no tienen validez fiscal</strong>:
-            sirven para verificar que todo funcione antes de pasar a producción.
-          </p>
+      {/* Qué hacer ahora */}
+      <div data-tour="fiscal-estado" className={`p-4 rounded-2xl border flex items-start gap-3 ${toneCls[estado.tone]}`}>
+        {estado.tone === 'emerald' ? <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" /> : estado.tone === 'amber' ? <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" /> : <FileText className="w-6 h-6 text-slate-500 shrink-0" />}
+        <div className="min-w-0">
+          <p className="text-[15.5px] font-bold text-slate-900 dark:text-slate-100">{estado.title}</p>
+          <p className="text-[13.5px] text-slate-600 dark:text-slate-300 leading-snug">{estado.text}</p>
         </div>
-      )}
+      </div>
 
       {config?.enabled && trabadas > 0 && (
-        <div className="p-3.5 rounded-xl border border-red-300 bg-red-50 dark:bg-red-950/30 flex items-start gap-3">
+        <div className="p-4 rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div className="flex-1 space-y-1">
-            <p className="text-[13px] font-bold text-red-900 dark:text-red-200">
-              {trabadas === 1 ? 'Hay 1 comprobante esperando' : `Hay ${trabadas} comprobantes esperando`} que se corrija algo de la configuración
+            <p className="text-[14px] font-bold text-red-900 dark:text-red-200">
+              {trabadas === 1 ? 'Hay 1 factura esperando' : `Hay ${trabadas} facturas esperando`} que se corrija algo de la configuración
             </p>
-            {errorTrabado && <p className="text-[12px] text-red-800 dark:text-red-300 leading-snug">{errorTrabado}</p>}
-            <p className="text-[11.5px] text-red-700 dark:text-red-400">Las ventas siguen normalmente. Cuando lo resuelvas, los comprobantes salen solos.</p>
+            {errorTrabado && <p className="text-[13px] text-red-800 dark:text-red-300 leading-snug">{errorTrabado}</p>}
+            <p className="text-[12.5px] text-red-700 dark:text-red-400">Las ventas siguen normalmente. Cuando lo corrijas, las facturas salen solas.</p>
           </div>
           {isAdmin && (
-            <button onClick={probar} disabled={probando} className="shrink-0 px-3 h-9 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[12px] font-bold cursor-pointer disabled:opacity-50">
+            <button onClick={probar} disabled={probando} className="shrink-0 px-3.5 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[13px] font-bold cursor-pointer disabled:opacity-50">
               Probar conexión
             </button>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* ── Datos del comercio ── */}
-        <div className={cardCls}>
-          <h3 className={titleCls}><Settings className="w-4 h-4 text-emerald-500" /> Datos del comercio</h3>
-
-          <label className="flex items-center justify-between cursor-pointer gap-3">
-            <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-200">
-              Facturación activada
-              <span className="block text-[11.5px] font-medium text-slate-500 leading-snug">Con esto apagado, el POS sigue vendiendo con ticket común.</span>
-            </span>
-            <input type="checkbox" disabled={!isAdmin} checked={Boolean(form.enabled)} onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-              className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer shrink-0" />
+      {/* ── Paso 1: datos ── */}
+      <section data-tour="fiscal-datos" className={card}>
+        {stepHead(1, datosOk, 'Tus datos fiscales', 'Van impresos en cada factura. Copialos de tu constancia de inscripción.')}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className={lab}>CUIT</span>
+            <input value={form.cuit || ''} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="20-12345678-9" className={field} inputMode="numeric" />
           </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>CUIT</label>
-              <input value={form.cuit || ''} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="20-12345678-9" className={inputCls} inputMode="numeric" />
-            </div>
-            <div>
-              <label className={labelCls}>Punto de venta</label>
-              <input type="number" min={1} value={form.pointOfSale ?? 1} onChange={(e) => setForm({ ...form, pointOfSale: Number(e.target.value) })} className={inputCls} />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Razón social</label>
-            <input value={form.razonSocial || ''} onChange={(e) => setForm({ ...form, razonSocial: e.target.value })} placeholder="Tal como figura en ARCA" className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>Domicilio comercial</label>
-            <input value={form.domicilio || ''} onChange={(e) => setForm({ ...form, domicilio: e.target.value })} placeholder="Calle 123, Localidad" className={inputCls} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Ingresos brutos</label>
-              <input value={form.iibb || ''} onChange={(e) => setForm({ ...form, iibb: e.target.value })} placeholder="N° o “Exento”" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Inicio de actividades</label>
-              <input type="date" value={(form.inicioActividades as any) || ''} onChange={(e) => setForm({ ...form, inicioActividades: e.target.value })} className={inputCls} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Condición frente al IVA</label>
-              <select value={form.ivaCondition || 'MONOTRIBUTO'} onChange={(e) => setForm({ ...form, ivaCondition: e.target.value as any })} className={inputCls}>
-                <option value="MONOTRIBUTO">Monotributo (Factura C)</option>
-                <option value="RESPONSABLE_INSCRIPTO">Responsable Inscripto (A y B)</option>
-              </select>
-            </div>
-            {esRI ? (
-              <div>
-                <label className={labelCls}>IVA de los productos</label>
-                <select value={form.defaultIvaRate ?? 21} onChange={(e) => setForm({ ...form, defaultIvaRate: Number(e.target.value) })} className={inputCls}>
-                  <option value={21}>21% (general)</option>
-                  <option value={10.5}>10,5%</option>
-                  <option value={27}>27%</option>
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className={labelCls}>Entorno</label>
-                <select value={form.environment || 'HOMOLOGACION'} onChange={(e) => setForm({ ...form, environment: e.target.value as any })} className={inputCls}>
-                  <option value="HOMOLOGACION">Pruebas (homologación)</option>
-                  <option value="PRODUCCION">Producción</option>
-                </select>
-              </div>
-            )}
-          </div>
-          {esRI && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Entorno</label>
-                <select value={form.environment || 'HOMOLOGACION'} onChange={(e) => setForm({ ...form, environment: e.target.value as any })} className={inputCls}>
-                  <option value="HOMOLOGACION">Pruebas (homologación)</option>
-                  <option value="PRODUCCION">Producción</option>
-                </select>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-snug self-end pb-1">
-                Los productos con alícuota propia (en su ficha) usan esa; el resto, la que elijas acá.
-              </p>
-            </div>
-          )}
-
-          <label className="flex items-center justify-between cursor-pointer gap-3">
-            <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-200">
-              Facturar cada venta automáticamente
-              <span className="block text-[11.5px] font-medium text-slate-500 leading-snug">
-                Cada venta sale con su factura (a consumidor final, o a nombre del cliente si tiene CUIT o DNI). Apagado, se factura solo cuando el cliente la pide.
-              </span>
-            </span>
-            <input type="checkbox" checked={Boolean(form.autoInvoice)} onChange={(e) => setForm({ ...form, autoInvoice: e.target.checked })}
-              className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer shrink-0" />
+          <label className="block">
+            <span className={lab}>Razón social</span>
+            <input value={form.razonSocial || ''} onChange={(e) => setForm({ ...form, razonSocial: e.target.value })} placeholder="Tal como figura en ARCA" className={field} />
           </label>
-
-          {enProduccion && config?.environment !== 'PRODUCCION' && (
-            <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-snug">
-              Al pasar a producción los comprobantes tienen validez fiscal. Antes, completá la autorización en ARCA y probá la conexión.
-            </p>
-          )}
-
-          {isAdmin ? (
-            <button onClick={guardar} disabled={guardando}
-              className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[13px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2">
-              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Guardar configuración
-            </button>
-          ) : (
-            <p className="text-[11.5px] text-slate-500 text-center">Solo un administrador puede cambiar la configuración.</p>
-          )}
         </div>
-
-        {/* ── Conexión ── */}
-        <div className={cardCls}>
-          <h3 className={titleCls}><Server className="w-4 h-4 text-emerald-500" /> Conexión con ARCA</h3>
-
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className={`w-4 h-4 ${config?.ventraAvailable ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span className="text-[12.5px] font-bold text-slate-800 dark:text-slate-200">
-                {config?.transport === 'own' ? 'Certificado propio del comercio' : 'Ventra factura por vos (delegación)'}
-              </span>
-            </div>
-            <p className="text-[11.5px] text-slate-600 dark:text-slate-400 leading-snug">
-              {config?.transport === 'own'
-                ? 'Esta caja firma con el certificado que cargó el comercio.'
-                : !config?.linked
-                  ? 'Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Suscripción y nube para poder facturar.'
-                  : 'No hace falta generar certificados: autorizás a Ventra una sola vez en ARCA y Ventra pide los CAE en tu nombre. Las claves nunca quedan en esta PC.'}
-            </p>
-          </div>
-
-          {(() => {
-            const actual = modoActual;
-            const elegir = async (m: 'OWN' | 'DELEGATED') => {
-              setModo(m);
-              // Volver a la autorización con un certificado propio cargado: deja de firmar con él
-              if (m === 'DELEGATED' && config?.certSource === 'OWN') {
-                if (!window.confirm('¿Dejar de usar tu certificado y facturar autorizando a Ventra? El certificado queda guardado por si volvés.')) { setModo('OWN'); return; }
-                try { setConfig((await api.patch('/fiscal/config', { certSource: 'DELEGATED' })).data); }
-                catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo cambiar'); }
-              }
-            };
-            return (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  {([['OWN', 'Con mi propio certificado', 'No autorizás a nadie. Se hace una vez en ARCA (15 minutos).'], ['DELEGATED', 'Autorizando a Ventra', 'Más rápido: autorizás la CUIT de Ventra.']] as const).map(([k, t, d]) => (
-                    <button key={k} onClick={() => isAdmin && elegir(k)} disabled={!isAdmin}
-                      className={`text-left p-2.5 rounded-xl border-2 cursor-pointer transition-colors ${actual === k ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30' : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'}`}>
-                      <span className="block text-[12.5px] font-bold text-slate-800 dark:text-slate-100">{t}</span>
-                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{d}</span>
-                    </button>
-                  ))}
-                </div>
-                {actual === 'OWN' && config && isAdmin && (
-                  <OwnCertificateGuide config={config} onConfig={(c) => setConfig(c)} onTest={probar} testing={probando} />
-                )}
-              </>
-            );
-          })()}
-
-          {/* Guía de la delegación */}
-          {modoActual === 'DELEGATED' && (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-              <button onClick={() => setGuiaAbierta((v) => !v)} className="w-full px-3 py-2.5 flex items-center justify-between text-left bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer">
-                <span className="text-[12.5px] font-bold text-slate-800 dark:text-slate-200">Cómo autorizar a Ventra en ARCA (una sola vez)</span>
-                <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${guiaAbierta ? 'rotate-180' : ''}`} />
+        <div>
+          <span className={lab}>¿Qué sos frente al IVA?</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {([['MONOTRIBUTO', 'Monotributista', 'Hacés factura C.'], ['RESPONSABLE_INSCRIPTO', 'Responsable inscripto', 'Hacés factura A y B (Ventra elige cuál según el cliente).']] as const).map(([k, t, d]) => (
+              <button key={k} type="button" onClick={() => setForm({ ...form, ivaCondition: k })} className={choice(form.ivaCondition === k || (!form.ivaCondition && k === 'MONOTRIBUTO'))}>
+                <span className="block text-[14px] font-bold text-slate-900 dark:text-slate-100">{t}</span>
+                <span className="block text-[12.5px] text-slate-500 dark:text-slate-400">{d}</span>
               </button>
-              {guiaAbierta && (
-                <ol className="px-4 pb-3 pt-1 space-y-2 text-[12px] text-slate-700 dark:text-slate-300 leading-snug list-decimal list-inside bg-white dark:bg-slate-900">
-                  <li>Entrá a <strong>arca.gob.ar</strong> con tu CUIT y clave fiscal (nivel 3).</li>
-                  <li>Abrí <strong>Administrador de Relaciones de Clave Fiscal</strong> → <strong>Nueva relación</strong>.</li>
-                  <li>En <em>Servicio</em> tocá Buscar → <strong>ARCA</strong> → <strong>WebServices</strong> → <strong>Facturación Electrónica</strong>.</li>
-                  <li>
-                    En <em>Representante</em> cargá la CUIT de Ventra{' '}
-                    {ventraCuit ? (
-                      <button onClick={() => copiar(ventraCuit)} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 font-mono font-bold text-emerald-800 cursor-pointer" title="Copiar">
-                        {ventraCuit} <Copy className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <span className="text-slate-500">(aparece acá al conectar con Ventra)</span>
-                    )}{' '}
-                    y confirmá. Del otro lado, Ventra acepta la autorización (suele quedar lista en el día).
-                  </li>
-                  <li>
-                    Creá el punto de venta en <strong>Administración de puntos de venta y domicilios</strong> → Agregar, con el sistema{' '}
-                    <strong>{esRI ? 'RECE para aplicativo y web services' : 'Factura Electrónica - Monotributo - Web Services'}</strong>. Ese número va arriba, en “Punto de venta”.
-                  </li>
-                  <li>Volvé acá y tocá <strong>Probar conexión</strong>.</li>
-                </ol>
-              )}
-            </div>
-          )}
-
-          {isAdmin && modoActual === 'DELEGATED' && (
-            <button onClick={probar} disabled={probando}
-              className="w-full h-10 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 disabled:opacity-50 text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer flex items-center justify-center gap-2">
-              {probando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Probar conexión (no emite nada)
-            </button>
-          )}
-
-          {prueba && (
-            <ul className="space-y-1.5">
-              {prueba.checks.map((c) => (
-                <li key={c.key} className={`p-2.5 rounded-xl border text-[12px] leading-snug flex items-start gap-2 ${
-                  c.level === 'ok' ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 text-emerald-900 dark:text-emerald-200'
-                  : c.level === 'warn' ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 text-amber-900 dark:text-amber-200'
-                  : 'bg-red-50 dark:bg-red-950/30 border-red-200 text-red-900 dark:text-red-200'}`}>
-                  {c.level === 'ok' ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" /> : c.level === 'warn' ? <AlertTriangle className="w-4 h-4 shrink-0 mt-px" /> : <XCircle className="w-4 h-4 shrink-0 mt-px" />}
-                  <span><strong>{c.label}:</strong> {c.detail}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            {[
-              { label: 'En cola', valor: summary.PENDING || 0, color: 'text-amber-600' },
-              { label: 'Autorizados', valor: summary.AUTHORIZED || 0, color: 'text-emerald-600' },
-              { label: 'Rechazados', valor: summary.REJECTED || 0, color: 'text-red-600' },
-            ].map((c) => (
-              <div key={c.label} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-center">
-                <p className={`text-xl font-black ${c.color}`}>{c.valor}</p>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{c.label}</p>
-              </div>
             ))}
           </div>
-
-          {(summary.PENDING_MINE || 0) > 0 && (
-            <button onClick={procesarCola} disabled={procesando}
-              className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[13px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2">
-              {procesando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
-              Reintentar ahora {summary.PENDING_MINE === 1 ? 'el comprobante en cola' : `los ${summary.PENDING_MINE} en cola`}
-            </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className={lab}>Domicilio comercial</span>
+            <input value={form.domicilio || ''} onChange={(e) => setForm({ ...form, domicilio: e.target.value })} placeholder="Calle 123, Localidad" className={field} />
+          </label>
+          <label className="block">
+            <span className={lab}>Punto de venta</span>
+            <input type="number" min={1} value={form.pointOfSale ?? 1} onChange={(e) => setForm({ ...form, pointOfSale: Number(e.target.value) })} className={field} />
+            <span className={hint}>El número que creás en ARCA para facturar con un sistema (paso 2 te explica cómo).</span>
+          </label>
+          <label className="block">
+            <span className={lab}>Ingresos brutos</span>
+            <input value={form.iibb || ''} onChange={(e) => setForm({ ...form, iibb: e.target.value })} placeholder="Número, o “Exento”" className={field} />
+          </label>
+          <label className="block">
+            <span className={lab}>Inicio de actividades</span>
+            <input type="date" value={(form.inicioActividades as any) || ''} onChange={(e) => setForm({ ...form, inicioActividades: e.target.value })} className={field} />
+          </label>
+          {esRI && (
+            <label className="block">
+              <span className={lab}>IVA de los productos</span>
+              <select value={form.defaultIvaRate ?? 21} onChange={(e) => setForm({ ...form, defaultIvaRate: Number(e.target.value) })} className={field}>
+                <option value={21}>21% (el general)</option>
+                <option value={10.5}>10,5%</option>
+                <option value={27}>27%</option>
+              </select>
+              <span className={hint}>Los productos con otra alícuota en su ficha usan la suya.</span>
+            </label>
           )}
         </div>
+        {saveBtn('Guardar mis datos')}
+      </section>
+
+      {/* ── Paso 2: conexión ── */}
+      <section data-tour="fiscal-conexion" className={card}>
+        {stepHead(2, conexionOk, 'Conectá Ventra con ARCA', 'Se hace una sola vez, con tu clave fiscal.')}
+        {!datosOk && <p className="text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">Primero guardá tu CUIT y razón social en el paso 1.</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {([['OWN', 'Con mi propio certificado (recomendado)', 'No autorizás a nadie. Te lleva unos 15 minutos en ARCA.'], ['DELEGATED', 'Autorizando a Ventra', 'Más rápido: le das permiso a la CUIT de Ventra para facturar por vos.']] as const).map(([k, t, d]) => (
+            <button key={k} onClick={() => isAdmin && elegirModo(k)} disabled={!isAdmin} className={choice(modoActual === k)}>
+              <span className="block text-[14px] font-bold text-slate-900 dark:text-slate-100">{t}</span>
+              <span className="block text-[12.5px] text-slate-500 dark:text-slate-400 leading-snug">{d}</span>
+            </button>
+          ))}
+        </div>
+
+        {modoActual === 'OWN' && config && isAdmin && (
+          <OwnCertificateGuide config={config} onConfig={(c) => setConfig(c)} onTest={probar} testing={probando} />
+        )}
+
+        {modoActual === 'DELEGATED' && (
+          <ol className="space-y-2 text-[13.5px] text-slate-700 dark:text-slate-300 leading-snug list-decimal list-inside">
+            {!config?.linked && <li className="text-amber-800">Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Suscripción y nube.</li>}
+            <li>Entrá a <strong>arca.gob.ar</strong> con tu CUIT y clave fiscal (nivel 3).</li>
+            <li>Abrí <strong>Administrador de Relaciones de Clave Fiscal</strong> y tocá <strong>Nueva relación</strong>.</li>
+            <li>En <em>Servicio</em> tocá Buscar → <strong>ARCA</strong> → <strong>WebServices</strong> → <strong>Facturación Electrónica</strong>.</li>
+            <li>
+              En <em>Representante</em> poné la CUIT de Ventra{' '}
+              {ventraCuit ? (
+                <button onClick={() => copiar(ventraCuit)} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 font-mono font-bold text-emerald-800 cursor-pointer" title="Copiar">
+                  {ventraCuit} <Copy className="w-3 h-3" />
+                </button>
+              ) : <span className="text-slate-500">(aparece acá cuando Ventra la tenga habilitada)</span>}{' '}
+              y confirmá. Ventra acepta la autorización (suele quedar lista en el día).
+            </li>
+            <li>Creá el punto de venta en <strong>Administración de puntos de venta y domicilios</strong> → Agregar, con el sistema <strong>{esRI ? 'RECE para aplicativo y web services' : 'Factura Electrónica - Monotributo - Web Services'}</strong>. Ese número va en el paso 1.</li>
+            <li>Tocá <strong>Probar conexión</strong>.</li>
+          </ol>
+        )}
+
+        {isAdmin && modoActual === 'DELEGATED' && (
+          <button onClick={probar} disabled={probando}
+            className="h-11 px-5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 disabled:opacity-50 text-[14px] font-bold text-slate-800 dark:text-slate-200 cursor-pointer inline-flex items-center gap-2">
+            {probando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Probar conexión (no emite nada)
+          </button>
+        )}
+
+        {prueba && (
+          <ul className="space-y-1.5">
+            {prueba.checks.map((c) => (
+              <li key={c.key} className={`p-3 rounded-xl border text-[13px] leading-snug flex items-start gap-2 ${
+                c.level === 'ok' ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 text-emerald-900 dark:text-emerald-200'
+                : c.level === 'warn' ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 text-amber-900 dark:text-amber-200'
+                : 'bg-red-50 dark:bg-red-950/30 border-red-200 text-red-900 dark:text-red-200'}`}>
+                {c.level === 'ok' ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" /> : c.level === 'warn' ? <AlertTriangle className="w-4 h-4 shrink-0 mt-px" /> : <XCircle className="w-4 h-4 shrink-0 mt-px" />}
+                <span><strong>{c.label}:</strong> {c.detail}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ── Paso 3: activar ── */}
+      <section data-tour="fiscal-activar" className={card}>
+        {stepHead(3, !!config?.enabled, 'Activá la facturación', 'Elegí el modo, cómo se factura y prendela.')}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {([['HOMOLOGACION', 'Modo prueba', 'Las facturas no tienen validez. Para probar sin riesgo.'], ['PRODUCCION', 'Modo real', 'Las facturas valen ante ARCA.']] as const).map(([k, t, d]) => (
+            <button key={k} type="button" onClick={() => setForm({ ...form, environment: k })} className={choice((form.environment || 'HOMOLOGACION') === k)}>
+              <span className="block text-[14px] font-bold text-slate-900 dark:text-slate-100">{t}</span>
+              <span className="block text-[12.5px] text-slate-500 dark:text-slate-400">{d}</span>
+            </button>
+          ))}
+        </div>
+        {enProduccion && config?.environment !== 'PRODUCCION' && (
+          <p className="text-[13px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 leading-snug">
+            En modo real cada factura vale ante ARCA. Antes, probá la conexión del paso 2 y fijate que salga todo bien.
+          </p>
+        )}
+        <div className="space-y-2">
+          {([
+            ['autoInvoice', 'Facturar cada venta sola', 'Cada venta sale con su factura (a consumidor final, o a nombre del cliente si tiene CUIT o DNI). Apagado, facturás solo cuando el cliente la pide.'],
+            ['enabled', 'Facturación activada', 'Apagada, Ventra sigue vendiendo con ticket común.'],
+          ] as const).map(([k, t, d]) => (
+            <label key={k} className="flex items-start justify-between gap-4 p-3 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer">
+              <span>
+                <span className="block text-[14px] font-bold text-slate-900 dark:text-slate-100">{t}</span>
+                <span className="block text-[12.5px] text-slate-500 dark:text-slate-400 leading-snug">{d}</span>
+              </span>
+              <input type="checkbox" disabled={!isAdmin} checked={Boolean((form as any)[k])} onChange={(e) => setForm({ ...form, [k]: e.target.checked })}
+                className="mt-1 rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-5 w-5 cursor-pointer shrink-0" />
+            </label>
+          ))}
+        </div>
+        {saveBtn('Guardar')}
+      </section>
+
+      {/* Cola */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Esperando a ARCA', valor: summary.PENDING || 0, color: 'text-amber-600' },
+          { label: 'Autorizadas', valor: summary.AUTHORIZED || 0, color: 'text-emerald-600' },
+          { label: 'Rechazadas', valor: summary.REJECTED || 0, color: 'text-red-600' },
+        ].map((c) => (
+          <div key={c.label} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
+            <p className={`text-[24px] font-bold ${c.color}`}>{c.valor}</p>
+            <p className="text-[12px] font-semibold text-slate-500">{c.label}</p>
+          </div>
+        ))}
       </div>
+      {(summary.PENDING_MINE || 0) > 0 && (
+        <button onClick={procesarCola} disabled={procesando}
+          className="w-full h-11 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[14px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2">
+          {procesando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+          Reintentar ahora {summary.PENDING_MINE === 1 ? 'la factura en espera' : `las ${summary.PENDING_MINE} en espera`}
+        </button>
+      )}
 
       {/* ── Comprobantes ── */}
-      <div className="card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+      <div data-tour="fiscal-comprobantes" className="card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-[13px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 mr-2">
-              <QrCode className="w-4 h-4 text-emerald-500" /> Comprobantes
+            <h3 className="text-[16px] font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 mr-2">
+              <QrCode className="w-4 h-4 text-emerald-600" /> Tus comprobantes
             </h3>
             {TABS.map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)}
