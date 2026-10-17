@@ -497,6 +497,24 @@ async function main() {
     assert.ok(String(fila.pendingKeyPem).startsWith('enc:v1:') && String(fila.keyPem).startsWith('enc:v1:'));
   });
 
+  await t('auditoría: pedido cobrado en el mostrador sale del reparto; el vendedor no pone precios', async () => {
+    const pre = new PreOrdersService(prisma);
+    const cli = await prisma.client.create({ data: { name: 'Mostrador y reparto', locality: 'Bavio' } });
+    const p = await nuevo('Arroz auditoria', 100, { unitsPerPack: 10, packPrice: 9000 });
+    // Precio inventado desde el celular: se toma el del catálogo (bulto 9000 → 900 la unidad)
+    const o: any = await pre.save('po-aud-a', { clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 20, packSize: 10, unitPrice: 1 }] }, cajero.id, false);
+    assert.strictEqual(o.items[0].unitPrice, 900);
+    assert.strictEqual(o.total, 18000);
+    // El dueño sí puede poner un precio especial
+    const o2: any = await pre.save('po-aud-b', { clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 500 }] }, admin.id, true);
+    assert.strictEqual(o2.items[0].unitPrice, 500);
+    const run = await runs.create({ orderIds: ['po-aud-a', 'po-aud-b'] });
+    // Cobrado en la caja mientras el reparto se arma
+    await crear({ sessionId: session.id, clientId: cli.id, orderId: 'po-aud-a', items: [{ productId: p.id, quantity: 20, price: 900 }], payments: [{ method: 'CASH', amount: 18000 }] }, cajero.id);
+    const after = await runs.findOne(run.id);
+    assert.deepStrictEqual(after.orders.map((x: any) => x.id), ['po-aud-b'], 'el cobrado en la caja ya no está en el reparto');
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

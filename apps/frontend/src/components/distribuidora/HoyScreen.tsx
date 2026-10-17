@@ -7,6 +7,8 @@ import {
 import api from '../../services/api';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { readRouteDays, zonesFor } from '../../services/routeDays';
+import { Navigate } from 'react-router-dom';
+import { useWorkRole, WORK_PATH } from '../../services/workRole';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 
@@ -62,6 +64,8 @@ export default function HoyScreen() {
   const [loading, setLoading] = useState(true);
       const storeName = (localStorage.getItem('gd_store_name') || '').trim();
   const todayZones = zonesFor(readRouteDays());
+  // Vendedores y choferes van a lo suyo: la plata del día es del encargado
+  const workRole = useWorkRole();
   // El recorrido completo de la distribuidora arranca acá la primera vez (en el celular del dueño, sin pasar por la PC)
   setTourScreen({ mobile: inShell });
   useAutoTour('distrib', !!data);
@@ -89,6 +93,7 @@ export default function HoyScreen() {
   const todayRaw = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
 
+  if (workRole === 'VENDEDOR' || workRole === 'CHOFER') return <Navigate to={WORK_PATH[workRole]} replace />;
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className={`max-w-6xl mx-auto space-y-5 pb-16 ${inShell ? 'px-1 py-2' : 'px-4 sm:px-6 py-6'}`}>

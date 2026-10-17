@@ -42,7 +42,7 @@ export class PreOrdersController {
   /** Crea o corrige un pedido. El id lo pone el celular: repetir el envío no lo duplica. */
   @Put(':id')
   save(@Param('id') id: string, @Body() data: any, @Request() req: any) {
-    return this.preOrders.save(id, data, req.user?.sub);
+        return this.preOrders.save(id, data, req.user?.sub, req.user?.role === 'ADMIN');
   }
 
   @Post(':id/cancel')

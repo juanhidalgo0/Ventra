@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { FileText, RefreshCw, Settings2, CheckCircle2, Clock, XCircle, MinusCircle, ShieldCheck, AlertTriangle, Copy } from 'lucide-react';
 import api from '../../services/api';
+import { comingSoon } from '../../utils/comingSoon';
 import { ScreenHeader, Chips, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
 
 type Tab = 'ALL' | 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'UNINVOICED';
@@ -313,6 +314,19 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
         <Toggle title="Facturar cada venta sola" text="Apagado, se factura solo cuando el cliente la pide." on={!!form.autoInvoice} onChange={(v) => set({ autoInvoice: v })} />
 
         <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 space-y-3">
+          {comingSoon('arcaDelegation') ? (
+            <>
+              <p className="text-[13.5px] font-semibold text-slate-800 flex items-center gap-2">
+                <ShieldCheck className={`w-4 h-4 ${config?.hasOwnCertificate ? 'text-emerald-600' : 'text-slate-400'}`} /> Tu certificado de ARCA
+              </p>
+              <p className="text-[12.5px] text-slate-600 leading-snug">
+                {config?.hasOwnCertificate
+                  ? <>Cargado{config?.certExpiresAt ? `, vence el ${new Date(config.certExpiresAt).toLocaleDateString('es-AR')}` : ''}.</>
+                  : <>Se carga una sola vez desde la PC, en <b>Facturación → paso 2</b>: Ventra te guía paso a paso.</>}
+              </p>
+            </>
+          ) : (
+            <>
           <p className="text-[13.5px] font-semibold text-slate-800 flex items-center gap-2">
             <ShieldCheck className={`w-4 h-4 ${config?.ventraAvailable ? 'text-emerald-600' : 'text-slate-400'}`} /> Autorizar a Ventra en ARCA
           </p>
@@ -325,6 +339,8 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
             ) : ' la CUIT de Ventra'}.
             Después creá un punto de venta para web services y probá la conexión.
           </p>
+            </>
+          )}
           <button onClick={runTest} disabled={testing} className="w-full h-11 rounded-xl border border-slate-300 bg-white text-[14px] font-semibold text-slate-700 flex items-center justify-center gap-2 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${testing ? 'animate-spin' : ''}`} /> Probar conexión (no emite nada)
           </button>

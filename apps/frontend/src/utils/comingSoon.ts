@@ -12,6 +12,8 @@ export const COMING_SOON = {
   mercadoPago: false,
   /** Facturación electrónica con ARCA */
   arcaInvoicing: true,
+  /** Facturar autorizando a la CUIT de Ventra (delegación). Por ahora cada comercio usa su propio certificado */
+  arcaDelegation: true,
   /** Recordatorio de turnos por email (falta la clave de Resend y verificar el dominio ventra.store) */
   emailReminders: true,
 } as const;

@@ -24,11 +24,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // bajaron el rol pierde el acceso enseguida, no cuando vence el token
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, username: true, role: true, isActive: true },
+            select: { id: true, username: true, role: true, isActive: true, workRole: true },
     });
     if (!user) throw new UnauthorizedException('Sesión inválida o base de datos restaurada');
     if (!user.isActive) throw new UnauthorizedException('Usuario desactivado');
 
-    return { sub: user.id, username: user.username, role: user.role };
+        return { sub: user.id, username: user.username, role: user.role, workRole: user.role === 'ADMIN' ? null : user.workRole || null };
   }
 }

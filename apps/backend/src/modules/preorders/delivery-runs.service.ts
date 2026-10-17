@@ -298,6 +298,8 @@ export class DeliveryRunsService {
             sessionId,
             clientId: order.clientId,
             orderId: order.id,
+            // Sale en este reparto: no se lo saca (cobrado en el mostrador, sí)
+            fromRun: true,
             notes: `Reparto N° ${run.runNumber}${order.notes ? ` · ${order.notes}` : ''}`,
             items: (order.items || []).map((it: any) => ({ productId: it.productId, productName: it.productName, quantity: it.quantity, price: it.unitPrice, packSize: packOf(it) })),
             payments: [{ method: 'DEBT', amount: total }],

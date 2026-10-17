@@ -141,7 +141,7 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
           <div className="py-14 text-center">
             <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 mx-auto mb-3 flex items-center justify-center"><Truck className="w-7 h-7 text-slate-300" /></div>
             <p className="text-[15px] font-bold text-slate-700">No hay repartos acá</p>
-            <p className="text-[13px] text-slate-500 mt-1">Tocá "Armar reparto" para juntar los pedidos de una o varias zonas.</p>
+            <p className="text-[13px] text-slate-500 mt-1">{isDriver ? 'Cuando el encargado te arme un reparto, aparece acá.' : 'Tocá "Armar reparto" para juntar los pedidos de una o varias zonas.'}</p>
           </div>
         ) : (
                     <div data-tour="reparto-list" className="space-y-2.5">
@@ -403,6 +403,8 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   const orders = liveOrders(run);
   const editable = run.status === 'ARMANDO';
+  // El chofer no arma: no ordena, saca ni agrega paradas (eso lo hace el encargado)
+  const arms = editable && !isDriver;
   const st = STATUS[run.status] || STATUS.ARMANDO;
   const total = orders.reduce((s: number, o: any) => s + (o.total || 0), 0);
   const bultos = orders.reduce((s: number, o: any) => s + bultosOf(o), 0);
@@ -491,11 +493,11 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-4 space-y-4 pb-28">
                     <div data-tour="ruta-driver" className="grid grid-cols-2 gap-2">
-            <button onClick={() => editField('driverName', 'Nombre del chofer')} className="text-left px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
+            <button onClick={() => !isDriver && editField('driverName', 'Nombre del chofer')} className="text-left px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Chofer</p>
               <p className="text-[14.5px] font-bold text-slate-900 truncate">{run.driverName || <span className="text-slate-400 font-medium">Sin asignar</span>}</p>
             </button>
-            <button onClick={() => editField('vehicle', 'Vehículo')} className="text-left px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
+            <button onClick={() => !isDriver && editField('vehicle', 'Vehículo')} className="text-left px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Vehículo</p>
               <p className="text-[14.5px] font-bold text-slate-900 truncate">{run.vehicle || <span className="text-slate-400 font-medium">Sin indicar</span>}</p>
             </button>
@@ -596,7 +598,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
                       )}
                     </div>
                   </div>
-                  {editable && (
+                  {arms && (
                     <div className="flex flex-col gap-1 shrink-0">
                       <button onClick={() => move(i, -1)} disabled={busy || i === 0} className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer" aria-label="Subir parada"><ChevronUp className="w-4 h-4" /></button>
                       <button onClick={() => move(i, 1)} disabled={busy || i === orders.length - 1} className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer" aria-label="Bajar parada"><ChevronDown className="w-4 h-4" /></button>
@@ -605,7 +607,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   )}
                 </div>
               ))}
-              {editable && (
+              {arms && (
                 <button onClick={openAdd} className="w-full h-12 rounded-2xl border-2 border-dashed border-slate-300 text-slate-600 text-[14px] font-bold hover:border-slate-400 cursor-pointer flex items-center justify-center gap-2">
                   <Plus className="w-4 h-4" /> Agregar pedidos
                 </button>
@@ -633,7 +635,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <div className="max-w-3xl mx-auto flex items-center gap-2">
           {editable ? (
             <>
-              <button onClick={undo} className="h-12 px-4 rounded-xl text-slate-600 text-[13.5px] font-bold hover:bg-slate-100 cursor-pointer flex items-center gap-1.5"><Undo2 className="w-4 h-4" /> Deshacer</button>
+              {arms && <button onClick={undo} className="h-12 px-4 rounded-xl text-slate-600 text-[13.5px] font-bold hover:bg-slate-100 cursor-pointer flex items-center gap-1.5"><Undo2 className="w-4 h-4" /> Deshacer</button>}
               <span className="flex-1" />
                             <button data-tour="ruta-dispatch" onClick={() => setDispatching(true)} disabled={busy || !orders.length} className="h-12 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white text-[15px] font-bold cursor-pointer flex items-center gap-2">
                 <Truck className="w-4 h-4" /> Salió a reparto

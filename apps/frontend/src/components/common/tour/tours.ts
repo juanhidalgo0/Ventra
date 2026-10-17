@@ -274,7 +274,7 @@ export const TOURS = {
     { title: 'Facturar con ARCA desde Ventra', body: 'Se configura **una sola vez**, en 3 pasos. Después cada factura sale sola, con su **CAE**, sin entrar a la página de ARCA.' },
     { target: 'fiscal-estado', title: 'Qué te falta', body: 'Acá siempre te decimos **en qué paso estás** y qué hacer ahora.' },
     { target: 'fiscal-datos', title: 'Paso 1 · Tus datos', body: 'CUIT, razón social, si sos **monotributista** (factura C) o **responsable inscripto** (A y B) y los datos que van impresos. Están en tu **constancia de inscripción**.' },
-    { target: 'fiscal-conexion', title: 'Paso 2 · Conectar con ARCA', body: 'Elegí cómo: con **tu propio certificado** (no autorizás a nadie, te guiamos paso a paso) o **autorizando a Ventra**. Al final tocá **Probar conexión**: revisa todo sin emitir nada.' },
+    { target: 'fiscal-conexion', title: 'Paso 2 · Conectar con ARCA', body: 'Con **tu propio certificado** de ARCA: Ventra arma el pedido, vos lo subís a ARCA con tu clave fiscal y cargás el certificado. Te guiamos paso a paso. Al final, **Probar conexión** revisa todo sin emitir nada.' },
     { target: 'fiscal-activar', title: 'Paso 3 · Activar', body: 'Empezá en **modo prueba** (las facturas no valen) y, cuando veas que todo sale bien, pasá a **modo real**. Elegí si cada venta se factura **sola** o solo cuando el cliente la pide.' },
     { target: 'fiscal-comprobantes', title: 'Tus comprobantes', body: 'Todas las facturas y notas de crédito, las **ventas sin facturar** y lo que espera a ARCA. Con **Exportar** le pasás el libro del mes al contador.' },
     { title: 'Si ARCA no responde', body: 'La venta **sigue igual**: la factura queda en espera y sale sola cuando ARCA vuelve. Nunca se pierde ni sale dos veces.' },

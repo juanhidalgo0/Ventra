@@ -59,7 +59,7 @@ export class PreOrdersService {
     return order;
   }
 
-  async save(id: string, data: any, userId: string) {
+    async save(id: string, data: any, userId: string, canSetPrices = false) {
     if (!/^[\w-]{8,64}$/.test(id || '')) throw new BadRequestException('Pedido inválido');
     const items = (Array.isArray(data?.items) ? data.items : [])
       .map((i: any) => {
@@ -74,7 +74,27 @@ export class PreOrdersService {
         };
       })
       .filter((i: any) => i.productId && Number.isFinite(i.quantity) && i.quantity > 0 && Number.isFinite(i.unitPrice) && i.unitPrice >= 0);
-    if (!items.length) throw new BadRequestException('El pedido no tiene productos');
+        if (!items.length) throw new BadRequestException('El pedido no tiene productos');
+    // Precios del catálogo: el del bulto si va por bulto, si no el de la unidad. Así un pedido
+    // tomado en el celular no puede salir con un precio inventado (el dueño sí puede cambiarlo).
+    if (!canSetPrices) {
+      const products = await (this.prisma as any).product.findMany({
+        where: { id: { in: [...new Set(items.map((i: any) => i.productId))] } },
+        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true },
+      });
+      const byId = new Map(products.map((p: any) => [p.id, p]));
+      for (const it of items) {
+        const p: any = byId.get(it.productId);
+        if (!p) throw new BadRequestException(`El producto "${it.productName}" ya no está en el catálogo`);
+        const byPack = it.packSize && Number(p.unitsPerPack) === it.packSize;
+        const unit = byPack
+          ? (Number(p.packPrice) > 0 ? Number(p.packPrice) : Number(p.salePrice) * it.packSize) / it.packSize
+          : Number(p.salePrice) || 0;
+        if (!byPack) it.packSize = null;
+        it.unitPrice = unit;
+        it.total = round2(it.quantity * unit);
+      }
+    }
     const total = round2(items.reduce((s: number, i: any) => s + i.total, 0));
     const clientId = data?.clientId ? String(data.clientId) : null;
     const notes = data?.notes ? String(data.notes).slice(0, 500) : null;

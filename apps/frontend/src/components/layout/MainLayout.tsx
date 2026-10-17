@@ -228,19 +228,23 @@ export default function MainLayout({ children }: Props) {
         sessionStorage.setItem('distrib_started', '1');
     if (isAdminUser) { navigate('/hoy', { replace: true }); return; }
     // Lo que hace el usuario (lo eligió el dueño en Usuarios) manda; si no tiene, lo que eligió este equipo.
-    // Se pregunta al servidor por si el dueño se lo cambió después de que entró en este equipo.
+    // Se decide ya, con lo que sabe el equipo (esperar al servidor perdía la redirección si la
+    // pantalla se volvía a armar), y de fondo se pregunta por si el dueño se lo cambió.
     const go = (wr: WorkRole | null) => {
       const start = deviceStart();
       const target = wr ? WORK_PATH[wr] : start ? START_PATH[start] : '/empezar';
       if (target !== '/pos') navigate(target, { replace: true });
     };
+    const before = myWorkRole();
+    go(before);
     api.get('/auth/me', { silent: true } as any)
       .then(({ data }) => {
         const current = useAuthStore.getState().user;
         if (data?.id && current?.id === data.id) useAuthStore.getState().setUser({ ...current, ...data });
-        go(myWorkRole());
+        const now = myWorkRole();
+        if (now && now !== before && window.location.hash.replace(/^#/, '').split('?')[0] === '/pos') navigate(WORK_PATH[now], { replace: true });
       })
-      .catch(() => go(myWorkRole()));
+      .catch(() => {});
   }, [ownerMobile.active, location.pathname, isAdminUser]);
   const isMobileOnlyPath = location.pathname === '/inicio' || location.pathname === '/mas';
   useEffect(() => {

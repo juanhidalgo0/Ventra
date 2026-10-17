@@ -340,10 +340,11 @@ export class SalesService {
       }
 
       // Pedido de preventa cobrado en la caja: queda como venta (una sola vez)
+      // Si estaba en un reparto que se arma, sale de ahí: ya se cobró en el mostrador
       const orderId = (dto as any).orderId;
       if (typeof orderId === 'string' && orderId) {
         // Si su número ya estaba usado, el pedido toma el de la venta: siempre un solo número
-        await (tx as any).preOrder.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'BILLED', saleId: newSale.id, orderNumber: newSale.saleNumber } });
+        await (tx as any).preOrder.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'BILLED', saleId: newSale.id, orderNumber: newSale.saleNumber, ...((dto as any).fromRun ? {} : { runId: null, stopOrder: null }) } });
       }
 
       // Venta de un presupuesto cargado al carrito: queda aceptado (si seguía pendiente o vencido)

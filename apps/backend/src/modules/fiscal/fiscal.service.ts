@@ -354,6 +354,10 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const direct = this.wsaa.getDelegatedCredentials();
     const directCuit = this.wsaa.getDelegatedCuit();
     if (direct && directCuit) return new DirectTransport(this.wsaa, direct, directCuit);
+    // La autorización a Ventra está apagada por ahora: cada comercio factura con su certificado
+    if (process.env.VENTRA_ARCA_DELEGATION !== 'true') {
+      throw new ArcaError('CONFIG', 'Falta cargar tu certificado de ARCA: hacelo en Facturación, paso 2.', 'NO_CERT');
+    }
     return new GatewayTransport(() => this.subscription.getDeviceCredentials());
   }
 

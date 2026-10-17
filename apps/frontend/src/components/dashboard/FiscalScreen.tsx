@@ -27,6 +27,7 @@ import InvoiceModal, { nombreComprobante, numeroComprobante } from '../pos/Invoi
 import FiscalDocModal, { formatPrice } from '../fiscal/FiscalDocModal';
 import OwnCertificateGuide from './OwnCertificateGuide';
 import { useAutoTour } from '../common/tour/GuidedTour';
+import { comingSoon } from '../../utils/comingSoon';
 
 /**
  * Facturación electrónica con ARCA.
@@ -300,7 +301,9 @@ export default function FiscalScreen() {
   const esRI = form.ivaCondition === 'RESPONSABLE_INSCRIPTO';
   const ventraCuit = config?.ventraCuit;
   // Arranca en el certificado propio (no autoriza a nadie); la autorización a Ventra solo si ya factura así
-  const modoActual = modo ?? (config?.certSource === 'DELEGATED' && config?.enabled ? 'DELEGATED' : 'OWN');
+  // La autorización a Ventra está apagada por ahora: cada comercio usa su propio certificado
+  const delegacion = !comingSoon('arcaDelegation');
+  const modoActual = !delegacion ? 'OWN' : modo ?? (config?.certSource === 'DELEGATED' && config?.enabled ? 'DELEGATED' : 'OWN');
   const inputCls = 'w-full h-9 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-3 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 transition-all';
   const dateCls = 'h-9 w-[150px] bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg px-2 text-sm font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500';
   const labelCls = 'block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1';
@@ -461,16 +464,16 @@ export default function FiscalScreen() {
 
       {/* ── Paso 2: conexión ── */}
       <section data-tour="fiscal-conexion" className={card}>
-        {stepHead(2, conexionOk, 'Conectá Ventra con ARCA', 'Se hace una sola vez, con tu clave fiscal.')}
+        {stepHead(2, conexionOk, 'Conectá Ventra con ARCA', 'Con tu propio certificado de ARCA. Se hace una sola vez, con tu clave fiscal.')}
         {!datosOk && <p className="text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">Primero guardá tu CUIT y razón social en el paso 1.</p>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {delegacion && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {([['OWN', 'Con mi propio certificado (recomendado)', 'No autorizás a nadie. Te lleva unos 15 minutos en ARCA.'], ['DELEGATED', 'Autorizando a Ventra', 'Más rápido: le das permiso a la CUIT de Ventra para facturar por vos.']] as const).map(([k, t, d]) => (
             <button key={k} onClick={() => isAdmin && elegirModo(k)} disabled={!isAdmin} className={choice(modoActual === k)}>
               <span className="block text-[14px] font-bold text-slate-900 dark:text-slate-100">{t}</span>
               <span className="block text-[12.5px] text-slate-500 dark:text-slate-400 leading-snug">{d}</span>
             </button>
           ))}
-        </div>
+        </div>}
 
         {modoActual === 'OWN' && config && isAdmin && (
           <OwnCertificateGuide config={config} onConfig={(c) => setConfig(c)} onTest={probar} testing={probando} />
