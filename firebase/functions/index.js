@@ -539,7 +539,22 @@ exports.ventraSync = onRequest(
     if (!uid) return res.status(401).json({ error: "Equipo no vinculado" });
     usage.track(uid, { syncCalls: 1, cloudSyncCalls: deviceKind.get(String(deviceId)) === "cloud" ? 1 : 0 });
 
-    try {
+        try {
+      // Llave del comercio para cifrar la clave de su certificado de ARCA. Vive en Firestore, no en
+      // Neon: la copia de la nube guarda la clave cifrada y sin esto no se puede abrir.
+      if (action === "fiscalKey") {
+        const ref = admin.firestore().collection("ventra_fiscal_keys").doc(uid);
+        const key = await admin.firestore().runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (snap.exists && snap.get("key")) return snap.get("key");
+          const fresh = require("crypto").randomBytes(32).toString("base64");
+          tx.set(ref, { key: fresh, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+          return fresh;
+        });
+        await usage.flush();
+        return res.status(200).json({ ok: true, key });
+      }
+
       if (action === "putImage" || action === "getImage") {
         const { productId, dataUrl } = req.body;
         if (!productId) return res.status(400).json({ error: "Falta el producto" });

@@ -246,6 +246,34 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+    /**
+   * Llave del comercio para la clave del certificado de ARCA (ver fiscal/key-vault). Se pide a
+   * Ventra una vez y queda en este equipo, fuera de la base (no viaja con la sincronización).
+   * null: equipo sin vincular (no sincroniza nada) o sin conexión la primera vez.
+   */
+  private fiscalKeyCache: Buffer | null = null;
+  private readonly fiscalKeyFile = path.join(process.cwd(), 'ventra-fiscal-key.json');
+  async fiscalKey(): Promise<Buffer | null> {
+    if (process.env.VENTRA_FISCAL_KEY) return Buffer.from(process.env.VENTRA_FISCAL_KEY, 'base64');
+    const creds = this.getDeviceCredentials();
+    if (!creds) return null;
+    if (this.fiscalKeyCache) return this.fiscalKeyCache;
+    try {
+      const saved = JSON.parse(fs.readFileSync(this.fiscalKeyFile, 'utf8'));
+      // De esta misma vinculación (si la PC se vinculó a otra cuenta, la llave es otra)
+      if (saved?.deviceId === creds.deviceId && saved?.key) return (this.fiscalKeyCache = Buffer.from(saved.key, 'base64'));
+    } catch { /* todavía no se pidió */ }
+    try {
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraSync`, { ...creds, action: 'fiscalKey' }, { timeout: 15000 });
+      const key = Buffer.from(String(data?.key || ''), 'base64');
+      if (key.length !== 32) return null;
+      try { fs.writeFileSync(this.fiscalKeyFile, JSON.stringify({ deviceId: creds.deviceId, key: key.toString('base64') }), { mode: 0o600 }); } catch { /* queda en memoria */ }
+      return (this.fiscalKeyCache = key);
+    } catch {
+      return null;
+    }
+  }
+
   /** Credenciales de la PC vinculada, para servicios que hablan con la nube (sincronización). */
   getDeviceCredentials(): { deviceId: string; deviceSecret: string } | null {
     if (this.exempt || !this.stored.deviceId || !this.stored.deviceSecret) return null;

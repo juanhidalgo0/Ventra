@@ -23,6 +23,8 @@ import {
 } from '../src/modules/fiscal/comprobante';
 import * as forge from 'node-forge';
 import { buildCertificateRequest, certificateToPem, certificateMatchesKey } from '../src/modules/fiscal/own-certificate';
+import { isSealed, sealSecret, openSecret } from '../src/modules/fiscal/key-vault';
+import { randomBytes } from 'crypto';
 
 let fallas = 0;
 let ok = 0;
@@ -153,6 +155,20 @@ t('certificado propio: el pedido lleva la CUIT y el certificado de ARCA se junta
   const der = forge.util.encode64(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes());
   assert.ok(certificateMatchesKey(certificateToPem({ certDerBase64: der }), keyPem));
   assert.throws(() => certificateToPem({ certPem: 'hola' }));
+});
+
+t('clave del certificado cifrada: se abre con la llave del comercio y con otra no', () => {
+  const key = randomBytes(32);
+  const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEow...', '-----END RSA PRIVATE KEY-----'].join(String.fromCharCode(10));
+  const sealed = sealSecret(pem, key);
+  assert.ok(isSealed(sealed));
+  assert.ok(!sealed.includes('PRIVATE KEY'), 'no se lee');
+  assert.notStrictEqual(sealSecret(pem, key), sealed, 'cada vez distinto');
+  assert.strictEqual(openSecret(sealed, key), pem);
+  assert.throws(() => openSecret(sealed, randomBytes(32)), 'con otra llave no abre');
+  const tampered = sealed.slice(0, -4) + (sealed.endsWith('A') ? 'B' : 'A') + sealed.slice(-3);
+  assert.throws(() => openSecret(tampered, key), 'si la tocan, no abre');
+  assert.ok(!isSealed(pem));
 });
 
 console.log(`${ok} pruebas OK${fallas ? `, ${fallas} con fallas` : ''}`);

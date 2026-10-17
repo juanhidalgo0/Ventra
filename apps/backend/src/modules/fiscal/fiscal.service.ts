@@ -9,6 +9,7 @@ import { WsfeContext, WsfeService, RespuestaCae, CbteAsociado } from './wsfe.ser
 import { ArcaTransport, DirectTransport, GatewayTransport } from './arca-transport';
 import { ArcaError } from './arca-error';
 import { buildCertificateRequest, certificateToPem, certificateMatchesKey, OWN_CERT_ALIAS } from './own-certificate';
+import { isSealed, sealSecret, openSecret } from './key-vault';
 import { ArcaEnvironment, IvaCondition } from './arca-endpoints';
 import {
   buildImportes,
@@ -93,6 +94,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     this.timer.unref?.();
     setTimeout(() => {
       this.migrateLegacy().catch((err) => this.logger.warn(`No se pudieron pasar los comprobantes viejos: ${err.message}`));
+      this.sealStoredKeys().catch(() => {});
       this.tick();
     }, 8000).unref?.();
   }
@@ -117,6 +119,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getConfig() {
+    // Una clave guardada antes de cifrarlas se cifra apenas esta caja tiene la llave
+    this.sealStoredKeys().catch(() => {});
     return this.publicConfig(await this.loadConfig());
   }
 
@@ -224,8 +228,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
           throw new BadRequestException('El certificado o la clave no son válidos, o no se corresponden entre sí');
         }
       }
-      update.certPem = certPem || null;
-      update.keyPem = keyPem || null;
+            update.certPem = certPem || null;
+      update.keyPem = await this.sealKey(keyPem || null);
     }
 
     const next = { ...current, ...update };
@@ -246,7 +250,48 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     return this.publicConfig(saved);
   }
 
-    // ─── Certificado propio ───────────────────────────────────────────
+      // ─── Clave del certificado, cifrada ───────────────────────────────
+
+  /**
+   * La clave privada se guarda cifrada con la llave del comercio (ver key-vault): así viaja a la
+   * nube y a las otras cajas sin poder leerse. En una PC sin vincular no se sincroniza nada y
+   * queda tal cual. Vinculada y sin poder pedir la llave, no se guarda (iría legible a la nube).
+   */
+  private async sealKey(pem: string | null): Promise<string | null> {
+    if (!pem) return null;
+    const key = await this.subscription.fiscalKey();
+    if (key) return sealSecret(pem, key);
+    if (this.subscription.getDeviceCredentials()) {
+      throw new BadRequestException('Para guardar la clave del certificado hace falta conexión con Ventra (se guarda cifrada). Probá de nuevo en un momento.');
+    }
+    return pem;
+  }
+
+  /** La clave lista para firmar. Una caja que nunca habló con Ventra todavía no la puede abrir. */
+  private async openKey(value: string | null | undefined): Promise<string | null> {
+    if (!value) return null;
+    if (!isSealed(value)) return value;
+    const key = await this.subscription.fiscalKey();
+    if (!key) throw new ArcaError('CONFIG', 'Esta caja todavía no puede abrir la clave del certificado: necesita conexión con Ventra una vez.', 'NO_KEY');
+    try { return openSecret(value, key); }
+    catch { throw new ArcaError('CONFIG', 'La clave del certificado no se pudo abrir en esta caja. Cargá el certificado de nuevo.', 'BAD_KEY'); }
+  }
+
+  /** Las claves guardadas antes de cifrarlas: se cifran apenas hay llave (la nube recibe la versión cifrada) */
+  private async sealStoredKeys() {
+    const config: any = await this.prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    if (!config || (!config.keyPem && !config.pendingKeyPem)) return;
+    if ((!config.keyPem || isSealed(config.keyPem)) && (!config.pendingKeyPem || isSealed(config.pendingKeyPem))) return;
+    const key = await this.subscription.fiscalKey();
+    if (!key) return;
+    const data: any = {};
+    if (config.keyPem && !isSealed(config.keyPem)) data.keyPem = sealSecret(config.keyPem, key);
+    if (config.pendingKeyPem && !isSealed(config.pendingKeyPem)) data.pendingKeyPem = sealSecret(config.pendingKeyPem, key);
+    await this.prisma.fiscalConfig.update({ where: { id: 'fiscal_config' }, data });
+    this.logger.log('Clave del certificado cifrada');
+  }
+
+  // ─── Certificado propio ───────────────────────────────────────────
 
   /**
    * Paso 1: arma la clave privada y el pedido de certificado (CSR) a nombre de la CUIT del
@@ -260,7 +305,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const { keyPem, csrPem } = buildCertificateRequest(config.cuit, config.razonSocial);
     const saved = await this.prisma.fiscalConfig.update({
       where: { id: 'fiscal_config' },
-      data: { pendingKeyPem: keyPem, pendingCsr: csrPem, pendingAt: new Date() } as any,
+            data: { pendingKeyPem: await this.sealKey(keyPem), pendingCsr: csrPem, pendingAt: new Date() } as any,
     });
     return { csr: csrPem, fileName: `ventra-${config.cuit}.csr`, config: await this.publicConfig(saved) };
   }
@@ -277,8 +322,10 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     } catch {
       throw new BadRequestException('Ese archivo no es un certificado. Subí el que descargaste de ARCA (termina en .crt o .pem).');
     }
-    const keyPem = certificateMatchesKey(certPem, config.pendingKeyPem) ? config.pendingKeyPem
-      : certificateMatchesKey(certPem, config.keyPem) ? config.keyPem : null;
+        const pendingPlain = await this.openKey(config.pendingKeyPem).catch(() => null);
+    const currentPlain = await this.openKey(config.keyPem).catch(() => null);
+    const keyPem = certificateMatchesKey(certPem, pendingPlain) ? pendingPlain
+      : certificateMatchesKey(certPem, currentPlain) ? currentPlain : null;
     if (!keyPem) {
       throw new BadRequestException('Este certificado no corresponde al último pedido que generó Ventra. Generá el pedido de nuevo, subilo a ARCA y cargá el certificado que te dé.');
     }
@@ -291,17 +338,17 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     catch { throw new BadRequestException('No se pudo firmar con ese certificado.'); }
     const saved = await this.prisma.fiscalConfig.update({
       where: { id: 'fiscal_config' },
-      data: { certPem, keyPem, certExpiresAt: desc.expiresAt, certSource: 'OWN', pendingKeyPem: null, pendingCsr: null, pendingAt: null } as any,
+            data: { certPem, keyPem: await this.sealKey(keyPem), certExpiresAt: desc.expiresAt, certSource: 'OWN', pendingKeyPem: null, pendingCsr: null, pendingAt: null } as any,
     });
     return this.publicConfig(saved);
   }
 
   /** Con qué se habla con ARCA desde esta caja. */
-  private transportFor(config: any): ArcaTransport {
+    private async transportFor(config: any): Promise<ArcaTransport> {
     if (config.certSource === 'OWN') {
       if (!config.certPem || !config.keyPem) throw new ArcaError('CONFIG', 'Falta cargar el certificado del comercio', 'NO_CERT');
       const desc = this.wsaa.describeCertificate(config.certPem);
-      return new DirectTransport(this.wsaa, { certPem: config.certPem, keyPem: config.keyPem }, desc.cuit || config.cuit);
+      return new DirectTransport(this.wsaa, { certPem: config.certPem, keyPem: (await this.openKey(config.keyPem))! }, desc.cuit || config.cuit);
     }
     // Desarrollo o servidor propio con el certificado de Ventra en sus variables de entorno
     const direct = this.wsaa.getDelegatedCredentials();
@@ -335,7 +382,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     // 2. Conexión con Ventra / certificado
     let transport: ArcaTransport | null = null;
     try {
-      transport = this.transportFor(config);
+            transport = await this.transportFor(config);
       if (transport.kind === 'gateway') {
         const info = await (transport as GatewayTransport).info();
         this.gatewayInfo = { at: Date.now(), data: info };
@@ -816,7 +863,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.fiscalDocument.update({ where: { id }, data: { attempts: { increment: 1 }, lastAttemptAt: new Date() } });
 
     try {
-      const transport = this.transportFor(config);
+            const transport = await this.transportFor(config);
 
       // 1. Un pedido anterior quedó sin respuesta: ¿ARCA lo emitió?
       if (doc.reservedNumber != null && doc.cbteTipo) {
@@ -939,7 +986,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     if (resp.replayed && doc.cbteTipo) {
       try {
         const config = await this.loadConfig();
-        const found = await this.wsfe.consultar({ transport: this.transportFor(config), environment: doc.environment as ArcaEnvironment, cuit: doc.emisorCuit }, doc.cbteTipo, doc.pointOfSale, resp.numero);
+        const found = await this.wsfe.consultar({ transport: await this.transportFor(config), environment: doc.environment as ArcaEnvironment, cuit: doc.emisorCuit }, doc.cbteTipo, doc.pointOfSale, resp.numero);
         if (found) {
           data.total = found.impTotal;
           data.receptorDocTipo = found.docTipo;

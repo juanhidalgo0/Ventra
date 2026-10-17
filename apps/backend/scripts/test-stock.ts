@@ -451,6 +451,52 @@ async function main() {
     assert.strictEqual(movs.reduce((s: number, m: any) => s + m.amount, 0), 300);
   });
 
+  await t('certificado propio: la clave se guarda cifrada y se abre para firmar', async () => {
+    const forge = require('node-forge');
+    const { FiscalService } = require('../src/modules/fiscal/fiscal.service');
+    const { WsaaService } = require('../src/modules/fiscal/wsaa.service');
+    const { WsfeService } = require('../src/modules/fiscal/wsfe.service');
+    const llave = require('crypto').randomBytes(32);
+    const vinculada: any = { fiscalKey: async () => llave, getDeviceCredentials: () => ({ deviceId: 'd', deviceSecret: 's' }) };
+    const fiscal = new FiscalService(prisma, new WsaaService(prisma), new WsfeService(), mute(), vinculada);
+    await fiscal.updateConfig({ cuit: '20431856108', razonSocial: 'Prueba Cifrado' });
+    const pedido = await fiscal.createCertificateRequest();
+    let fila: any = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    assert.ok(String(fila.pendingKeyPem).startsWith('enc:v1:'), 'el pedido guarda la clave cifrada');
+    // Lo que haría ARCA con el pedido
+    const csr = forge.pki.certificationRequestFromPem(pedido.csr);
+    const ca = forge.pki.rsa.generateKeyPair(1024);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = csr.publicKey; cert.serialNumber = '02';
+    cert.validity.notBefore = new Date(); cert.validity.notAfter = new Date(Date.now() + 365 * 86400000);
+    cert.setSubject(csr.subject.attributes); cert.setIssuer([{ name: 'commonName', value: 'Computadores Test' }]);
+    cert.sign(ca.privateKey, forge.md.sha256.create());
+    const cfg = await fiscal.installCertificate({ certPem: forge.pki.certificateToPem(cert) });
+    assert.strictEqual(cfg.hasOwnCertificate, true);
+    assert.ok(!('keyPem' in cfg), 'la clave no sale del servidor');
+    fila = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    assert.ok(String(fila.keyPem).startsWith('enc:v1:') && !String(fila.keyPem).includes('PRIVATE'), 'queda cifrada en la base (así viaja a la nube)');
+    const transporte = await (fiscal as any).transportFor(fila);
+    assert.strictEqual(transporte.kind, 'direct');
+    // Otra caja sin la llave no la puede abrir
+    const sinLlave: any = { fiscalKey: async () => null, getDeviceCredentials: () => ({ deviceId: 'x', deviceSecret: 'y' }) };
+    const otra = new FiscalService(prisma, new WsaaService(prisma), new WsfeService(), mute(), sinLlave);
+    await assert.rejects(() => (otra as any).transportFor(fila), /necesita conexión/);
+    // Vinculada y sin poder pedir la llave: no se guarda una clave legible
+    await assert.rejects(() => otra.createCertificateRequest(), /hace falta conexión/);
+    // PC sin vincular: no sincroniza nada, la guarda tal cual
+    const suelta: any = { fiscalKey: async () => null, getDeviceCredentials: () => null };
+    const local = new FiscalService(prisma, new WsaaService(prisma), new WsfeService(), mute(), suelta);
+    await local.createCertificateRequest();
+    fila = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    assert.ok(String(fila.pendingKeyPem).includes('PRIVATE KEY'));
+    // Y apenas tiene la llave, la cifra
+    await fiscal.getConfig();
+    await new Promise((r) => setTimeout(r, 200));
+    fila = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    assert.ok(String(fila.pendingKeyPem).startsWith('enc:v1:') && String(fila.keyPem).startsWith('enc:v1:'));
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);
