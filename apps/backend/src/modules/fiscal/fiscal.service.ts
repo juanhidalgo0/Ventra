@@ -46,6 +46,8 @@ const CONFIG_RETRY_MS = [5 * 60_000, 15 * 60_000, 60 * 60_000];
 /** La factura automática revisa las ventas de los últimos días por si alguna quedó sin comprobante. */
 const AUTO_LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;
 const ALICUOTAS = [2.5, 5, 10.5, 21, 27];
+/** Facturar autorizando a la CUIT de Ventra. Apagado: cada comercio factura con su propio certificado. */
+const delegationEnabled = () => process.env.VENTRA_ARCA_DELEGATION === 'true';
 /** La alícuota con la que se declara un producto: la suya, o la general del comercio. */
 const lineRate = (propia: any, general: any) => (ALICUOTAS.includes(Number(propia)) ? Number(propia) : ALICUOTAS.includes(Number(general)) ? Number(general) : 21);
 const SALE_ITEMS = { items: { include: { product: { select: { taxRate: true } } } } } as const;
@@ -127,9 +129,9 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
   /** La clave privada nunca sale del servidor, ni siquiera hacia la pantalla de configuración. */
   private async publicConfig(config: any) {
         const { keyPem, certPem, pendingKeyPem, ...rest } = config;
-    const info = await this.ventraInfo();
+    const info = delegationEnabled() ? await this.ventraInfo() : null;
     const env = info?.environments?.[config.environment];
-    const direct = this.wsaa.getDelegatedCredentials();
+    const direct = delegationEnabled() ? this.wsaa.getDelegatedCredentials() : null;
     return {
       ...rest,
             hasOwnCertificate: Boolean(certPem && keyPem),
@@ -214,6 +216,9 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     }
     if (data.certSource !== undefined) {
       if (!['DELEGATED', 'OWN'].includes(data.certSource)) throw new BadRequestException('Origen del certificado inválido');
+      if (data.certSource === 'DELEGATED' && !delegationEnabled()) {
+        throw new BadRequestException('Por ahora cada comercio factura con su propio certificado de ARCA.');
+      }
       update.certSource = data.certSource;
     }
     if (data.certPem !== undefined || data.keyPem !== undefined) {
@@ -222,10 +227,12 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       if (certPem || keyPem) {
         try {
           const desc = this.wsaa.describeCertificate(certPem);
+          const cuit = update.cuit ?? current.cuit;
+          if (!desc.cuit || desc.cuit !== cuit) throw new Error('otra CUIT');
           this.wsaa.signTra('<prueba/>', { certPem, keyPem });
           update.certExpiresAt = desc.expiresAt;
         } catch {
-          throw new BadRequestException('El certificado o la clave no son válidos, o no se corresponden entre sí');
+          throw new BadRequestException('El certificado o la clave no son válidos, no se corresponden entre sí o no son de la CUIT del comercio');
         }
       }
             update.certPem = certPem || null;
@@ -237,6 +244,14 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       const faltan: string[] = [];
       if (!cuitValida(next.cuit)) faltan.push('la CUIT');
       if (!next.razonSocial) faltan.push('la razón social');
+      if (!delegationEnabled()) {
+        const own = next.certSource === 'OWN' && next.certPem && next.keyPem;
+        const certCuit = own ? (() => { try { return this.wsaa.describeCertificate(next.certPem).cuit; } catch { return null; } })() : null;
+        if (!own) faltan.push('tu certificado de ARCA (paso 2)');
+        else if (certCuit !== next.cuit) {
+          throw new BadRequestException(`El certificado cargado es de la CUIT ${certCuit || 'desconocida'} y el comercio factura con la ${next.cuit}. Generá un pedido nuevo con tu CUIT.`);
+        }
+      }
       // El comprobante impreso los tiene que llevar: en producción no se factura sin ellos
       if (next.environment === 'PRODUCCION') {
         if (!next.domicilio) faltan.push('el domicilio comercial');
@@ -330,8 +345,9 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Este certificado no corresponde al último pedido que generó Ventra. Generá el pedido de nuevo, subilo a ARCA y cargá el certificado que te dé.');
     }
     const desc = this.wsaa.describeCertificate(certPem);
-    if (desc.cuit && cuitValida(config.cuit) && desc.cuit !== config.cuit) {
-      throw new BadRequestException(`El certificado es de la CUIT ${desc.cuit} y el comercio factura con la ${config.cuit}.`);
+    if (!cuitValida(config.cuit)) throw new BadRequestException('Primero cargá y guardá la CUIT del comercio.');
+    if (desc.cuit !== config.cuit) {
+      throw new BadRequestException(`El certificado es de la CUIT ${desc.cuit || 'desconocida'} y el comercio factura con la ${config.cuit}.`);
     }
     if (desc.expiresAt.getTime() < Date.now()) throw new BadRequestException('Ese certificado ya venció. Generá un pedido nuevo.');
     try { this.wsaa.signTra('<prueba/>', { certPem, keyPem }); }
@@ -348,16 +364,17 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     if (config.certSource === 'OWN') {
       if (!config.certPem || !config.keyPem) throw new ArcaError('CONFIG', 'Falta cargar el certificado del comercio', 'NO_CERT');
       const desc = this.wsaa.describeCertificate(config.certPem);
-      return new DirectTransport(this.wsaa, { certPem: config.certPem, keyPem: (await this.openKey(config.keyPem))! }, desc.cuit || config.cuit);
+      if (desc.cuit !== config.cuit) throw new ArcaError('CONFIG', `El certificado es de la CUIT ${desc.cuit || 'desconocida'} y el comercio factura con la ${config.cuit}.`, 'NO_CERT');
+      return new DirectTransport(this.wsaa, { certPem: config.certPem, keyPem: (await this.openKey(config.keyPem))! }, desc.cuit);
+    }
+    // La autorización a Ventra está apagada por ahora: cada comercio factura con su certificado
+    if (!delegationEnabled()) {
+      throw new ArcaError('CONFIG', 'Falta cargar tu certificado de ARCA: hacelo en Facturación, paso 2.', 'NO_CERT');
     }
     // Desarrollo o servidor propio con el certificado de Ventra en sus variables de entorno
     const direct = this.wsaa.getDelegatedCredentials();
     const directCuit = this.wsaa.getDelegatedCuit();
     if (direct && directCuit) return new DirectTransport(this.wsaa, direct, directCuit);
-    // La autorización a Ventra está apagada por ahora: cada comercio factura con su certificado
-    if (process.env.VENTRA_ARCA_DELEGATION !== 'true') {
-      throw new ArcaError('CONFIG', 'Falta cargar tu certificado de ARCA: hacelo en Facturación, paso 2.', 'NO_CERT');
-    }
     return new GatewayTransport(() => this.subscription.getDeviceCredentials());
   }
 
@@ -403,7 +420,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
         add('ventra', 'Certificado', 'ok', config.certSource === 'OWN' ? 'Certificado propio del comercio.' : 'Certificado de Ventra en este servidor.');
       }
     } catch (err: any) {
-      add('ventra', 'Servidor de facturación de Ventra', 'error', this.friendly(err, config));
+      add('ventra', delegationEnabled() ? 'Servidor de facturación de Ventra' : 'Certificado de ARCA', 'error', this.friendly(err, config));
       transport = null;
     }
 

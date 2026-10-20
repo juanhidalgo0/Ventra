@@ -459,7 +459,7 @@ async function main() {
     const llave = require('crypto').randomBytes(32);
     const vinculada: any = { fiscalKey: async () => llave, getDeviceCredentials: () => ({ deviceId: 'd', deviceSecret: 's' }) };
     const fiscal = new FiscalService(prisma, new WsaaService(prisma), new WsfeService(), mute(), vinculada);
-    await fiscal.updateConfig({ cuit: '20431856108', razonSocial: 'Prueba Cifrado' });
+    await fiscal.updateConfig({ cuit: '20000000001', razonSocial: 'Prueba Cifrado' });
     const pedido = await fiscal.createCertificateRequest();
     let fila: any = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
     assert.ok(String(fila.pendingKeyPem).startsWith('enc:v1:'), 'el pedido guarda la clave cifrada');
@@ -495,6 +495,15 @@ async function main() {
     await new Promise((r) => setTimeout(r, 200));
     fila = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
     assert.ok(String(fila.pendingKeyPem).startsWith('enc:v1:') && String(fila.keyPem).startsWith('enc:v1:'));
+    // Solo con su propio certificado: ni la autorización a Ventra ni un certificado de otra CUIT
+    await assert.rejects(() => fiscal.updateConfig({ certSource: 'DELEGATED' }), /propio certificado/);
+    await fiscal.updateConfig({ cuit: '20111111112' });
+    await assert.rejects(() => fiscal.updateConfig({ enabled: true }), /es de la CUIT 20000000001/);
+    fila = await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } });
+    await assert.rejects(() => (fiscal as any).transportFor(fila), /es de la CUIT 20000000001/);
+    await fiscal.updateConfig({ cuit: '20000000001' });
+    await prisma.fiscalConfig.update({ where: { id: 'fiscal_config' }, data: { certSource: 'DELEGATED' } });
+    await assert.rejects(() => fiscal.updateConfig({ enabled: true }), /tu certificado de ARCA/);
   });
 
   await t('auditoría: pedido cobrado en el mostrador sale del reparto; el vendedor no pone precios', async () => {

@@ -64,8 +64,8 @@ t('responsable inscripto: A al inscripto y al monotributista, B al resto', () =>
 });
 
 t('CUIT con dígito verificador', () => {
-  assert.ok(cuitValida('20431856108'));
-  assert.ok(cuitValida('20-43185610-8'));
+  assert.ok(cuitValida('20000000001'));
+  assert.ok(cuitValida('20-00000000-1'));
   assert.ok(!cuitValida('20431856109'));
   assert.ok(!cuitValida('2043185610'));
 });
@@ -103,7 +103,7 @@ t('receptor', () => {
   assert.strictEqual(resolveReceptor(null).docTipo, 99);
   assert.strictEqual(resolveReceptor({ dni: '35.123.456' }).docTipo, 96);
   assert.strictEqual(resolveReceptor({ dni: '35123456', ivaCondition: 'RESPONSABLE_INSCRIPTO' }).ivaCondition, 'CONSUMIDOR_FINAL');
-  const ri = resolveReceptor({ cuit: '20-43185610-8', ivaCondition: 'RESPONSABLE_INSCRIPTO' });
+  const ri = resolveReceptor({ cuit: '20-00000000-1', ivaCondition: 'RESPONSABLE_INSCRIPTO' });
   assert.deepStrictEqual([ri.docTipo, ri.condicionIvaId], [80, 1]);
 });
 
@@ -116,10 +116,10 @@ t('fechas en hora argentina (el servidor en UTC no puede pasar la venta al día 
 });
 
 t('QR de ARCA (RG 4892)', () => {
-  const url = qrUrl({ issueDate: '20261002', cuit: '20431856108', pointOfSale: 1, cbteTipo: 11, number: 10, total: 1234.5, docTipo: 99, docNro: '0', cae: '86380921655822' });
+  const url = qrUrl({ issueDate: '20261002', cuit: '20000000001', pointOfSale: 1, cbteTipo: 11, number: 10, total: 1234.5, docTipo: 99, docNro: '0', cae: '86380921655822' });
   const json = JSON.parse(Buffer.from(url.split('?p=')[1], 'base64').toString('utf8'));
   assert.deepStrictEqual(json, {
-    ver: 1, fecha: '2026-10-02', cuit: 20431856108, ptoVta: 1, tipoCmp: 11, nroCmp: 10, importe: 1234.5,
+    ver: 1, fecha: '2026-10-02', cuit: 20000000001, ptoVta: 1, tipoCmp: 11, nroCmp: 10, importe: 1234.5,
     moneda: 'PES', ctz: 1, tipoDocRec: 99, nroDocRec: 0, tipoCodAut: 'E', codAut: 86380921655822,
   });
 });
@@ -131,11 +131,11 @@ t('pagos de cuenta corriente y cargas virtuales no se facturan', () => {
 });
 
 t('certificado propio: el pedido lleva la CUIT y el certificado de ARCA se junta con su clave', () => {
-  const { keyPem, csrPem } = buildCertificateRequest('20431856108', 'Distribuidora Peña & Cía');
+  const { keyPem, csrPem } = buildCertificateRequest('20000000001', 'Distribuidora Peña & Cía');
   const csr = forge.pki.certificationRequestFromPem(csrPem);
   assert.ok(csr.verify(), 'el pedido está firmado con su clave');
   const attr = (type: string) => (csr.subject.attributes.find((a: any) => a.type === type || a.name === type) || {} as any).value;
-  assert.strictEqual(attr('2.5.4.5'), 'CUIT 20431856108');
+  assert.strictEqual(attr('2.5.4.5'), 'CUIT 20000000001');
   assert.strictEqual(attr('commonName'), 'ventra');
   assert.strictEqual(attr('organizationName'), 'Distribuidora Pena & Cia', 'sin acentos');
   // Lo que haría ARCA: firmar un certificado con la clave pública del pedido
@@ -150,7 +150,7 @@ t('certificado propio: el pedido lleva la CUIT y el certificado de ARCA se junta
   cert.sign(ca.privateKey, forge.md.sha256.create());
   const pem = forge.pki.certificateToPem(cert);
   assert.ok(certificateMatchesKey(pem, keyPem));
-  assert.ok(!certificateMatchesKey(pem, buildCertificateRequest('20431856108', 'Otro').keyPem), 'con otra clave no');
+  assert.ok(!certificateMatchesKey(pem, buildCertificateRequest('20000000001', 'Otro').keyPem), 'con otra clave no');
   // El archivo binario (DER) también se acepta
   const der = forge.util.encode64(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes());
   assert.ok(certificateMatchesKey(certificateToPem({ certDerBase64: der }), keyPem));

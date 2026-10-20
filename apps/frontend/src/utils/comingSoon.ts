@@ -11,7 +11,7 @@ export const COMING_SOON = {
    *  el 2026-10-15 para probar la seña de la agenda con una cuenta real (todavía sin un pago real probado). */
   mercadoPago: false,
   /** Facturación electrónica con ARCA */
-  arcaInvoicing: true,
+  arcaInvoicing: false,
   /** Facturar autorizando a la CUIT de Ventra (delegación). Por ahora cada comercio usa su propio certificado */
   arcaDelegation: true,
   /** Recordatorio de turnos por email (falta la clave de Resend y verificar el dominio ventra.store) */

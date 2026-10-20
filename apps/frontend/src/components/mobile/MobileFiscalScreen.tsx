@@ -286,7 +286,7 @@ function FiscalConfigSheet({ open, config, onClose, onSaved }: { open: boolean; 
         <Toggle title="Facturación activada" text="Apagada, el POS sigue vendiendo con ticket común." on={!!form.enabled} onChange={(v) => set({ enabled: v })} />
 
         <div className="grid grid-cols-[1.6fr,1fr] gap-2">
-          <Field label="CUIT"><input className={input} inputMode="numeric" value={form.cuit || ''} onChange={(e) => set({ cuit: e.target.value.replace(/\D/g, '') })} placeholder="20123456789" /></Field>
+          <Field label="CUIT"><input className={input} inputMode="numeric" value={form.cuit || ''} onChange={(e) => set({ cuit: e.target.value.replace(/\D/g, '') })} placeholder="11 números, sin guiones" /></Field>
           <Field label="Punto de venta"><input className={input} inputMode="numeric" value={form.pointOfSale ?? ''} onChange={(e) => set({ pointOfSale: Number(e.target.value.replace(/\D/g, '')) || 0 })} /></Field>
         </div>
         <Field label="Razón social"><input className={input} value={form.razonSocial || ''} onChange={(e) => set({ razonSocial: e.target.value })} placeholder="Como figura en ARCA" /></Field>

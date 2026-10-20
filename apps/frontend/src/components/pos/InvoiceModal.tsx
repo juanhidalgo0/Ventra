@@ -246,7 +246,7 @@ export default function InvoiceModal({ saleId, saleNumber, total, cliente, onClo
                       inputMode="numeric"
                       value={documento}
                       onChange={(e) => setDocumento(e.target.value)}
-                      placeholder={tipoDoc === 'CUIT' ? '30-71234567-1' : '35123456'}
+                      placeholder={tipoDoc === 'CUIT' ? '11 números' : 'Número de documento'}
                       className={inputCls}
                     />
                     {documento && !docValido && (

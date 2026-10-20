@@ -411,7 +411,7 @@ export default function FiscalScreen() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
             <span className={lab}>CUIT</span>
-            <input value={form.cuit || ''} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="20-12345678-9" className={field} inputMode="numeric" />
+            <input value={form.cuit || ''} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="11 números, sin guiones" className={field} inputMode="numeric" />
           </label>
           <label className="block">
             <span className={lab}>Razón social</span>
