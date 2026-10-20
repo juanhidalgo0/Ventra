@@ -77,22 +77,57 @@ export class PreOrdersService {
         if (!items.length) throw new BadRequestException('El pedido no tiene productos');
     // Precios del catálogo: el del bulto si va por bulto, si no el de la unidad. Así un pedido
     // tomado en el celular no puede salir con un precio inventado (el dueño sí puede cambiarlo).
+    //
+    // Vale el precio del momento en que se tomó el pedido: el de un renglón que ya estaba en el
+    // pedido no cambia al editarlo, y uno tomado sin señal antes de un aumento entra con el precio
+    // de antes (si el celular manda ese, y solo si es el que tenía el producto: no se inventa).
     if (!canSetPrices) {
+      const ids = [...new Set(items.map((i: any) => i.productId))] as string[];
       const products = await (this.prisma as any).product.findMany({
-        where: { id: { in: [...new Set(items.map((i: any) => i.productId))] } },
-        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true },
+        where: { id: { in: ids } },
+        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true },
       });
+      const prev: any[] = ids.length ? await this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT id, CAST(prev_sale_price AS REAL) AS ps, CAST(prev_pack_price AS REAL) AS pp, CAST(price_changed_at AS REAL) AS at FROM products WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids,
+      ).catch(() => []) : [];
+      const prevById = new Map(prev.map((r: any) => [r.id, r]));
       const byId = new Map(products.map((p: any) => [p.id, p]));
+      const existingItems: any[] = await (this.prisma as any).preOrderItem.findMany({ where: { orderId: id }, select: { productId: true, packSize: true, unitPrice: true } });
+      const kept = new Map(existingItems.map((e) => [`${e.productId}|${e.packSize || ''}`, Number(e.unitPrice)]));
+      const takenRaw = data?.takenAt ? new Date(data.takenAt).getTime() : NaN;
+      const takenAt = Number.isFinite(takenRaw) ? Math.min(Date.now(), Math.max(Date.now() - 7 * 86400000, takenRaw)) : Date.now();
+      const unitOf = (salePrice: number, packPrice: number, packSize: number | null) => packSize
+        ? (packPrice > 0 ? packPrice : salePrice * packSize) / packSize
+        : salePrice || 0;
       for (const it of items) {
         const p: any = byId.get(it.productId);
         if (!p) throw new BadRequestException(`El producto "${it.productName}" ya no está en el catálogo`);
         const byPack = it.packSize && Number(p.unitsPerPack) === it.packSize;
-        const unit = byPack
-          ? (Number(p.packPrice) > 0 ? Number(p.packPrice) : Number(p.salePrice) * it.packSize) / it.packSize
-          : Number(p.salePrice) || 0;
         if (!byPack) it.packSize = null;
+        const asked = it.unitPrice;
+        let unit = unitOf(Number(p.salePrice), Number(p.packPrice), it.packSize);
+        const before = kept.get(`${it.productId}|${it.packSize || ''}`);
+        const pr: any = prevById.get(it.productId);
+        if (before !== undefined) unit = before;
+        else if (pr && Number(pr.at) > takenAt && pr.ps !== null) {
+          const old = unitOf(Number(pr.ps), Number(pr.pp) || 0, it.packSize);
+          if (Math.abs(asked - old) < 0.01) unit = old;
+        }
         it.unitPrice = unit;
         it.total = round2(it.quantity * unit);
+      }
+      // Oferta por cantidad (precio mayorista): llevando el mínimo del producto entre todos sus
+      // renglones, la unidad sale al precio de la oferta si es más barato
+      const units = new Map<string, number>();
+      for (const it of items) units.set(it.productId, (units.get(it.productId) || 0) + it.quantity);
+      for (const it of items) {
+        const p: any = byId.get(it.productId);
+        const price = Number(p?.wholesalePrice) || 0;
+        const min = Number(p?.wholesaleMinQty) || 0;
+        if (price > 0 && min > 0 && (units.get(it.productId) || 0) >= min - 1e-9 && price < it.unitPrice - 1e-9) {
+          it.unitPrice = price;
+          it.total = round2(it.quantity * price);
+        }
       }
     }
     const total = round2(items.reduce((s: number, i: any) => s + i.total, 0));

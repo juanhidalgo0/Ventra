@@ -291,6 +291,8 @@ async function main() {
     assert.strictEqual(await saldo(), 3000, 'las ventas quedan a cuenta del cliente');
     const saleA = await prisma.sale.findFirst({ where: { id: 'run-po-set-a-900201' } });
     assert.strictEqual(saleA!.saleNumber, 900201, 'la venta lleva el número del pedido');
+    assert.strictEqual(saleA!.sessionId, 'reparto-cash', 'va a la cuenta fija del reparto, no a una caja');
+    const abiertas = await prisma.cashRegisterSession.count({ where: { status: 'OPEN' } });
     await assert.rejects(() => runs.dispatch(run.id, {}, cajero.id), 'no sale dos veces');
 
     await runs.saveDelivery(run.id, 'po-set-a', { status: 'DELIVERED', cash: 1200 });
@@ -301,6 +303,8 @@ async function main() {
     const r = await runs.settle(run.id, { cashReceived: 1200 }, cajero.id);
     assert.deepStrictEqual(r.errors, []);
     assert.strictEqual(r.expectedCash, 1200);
+    assert.strictEqual(await prisma.cashRegisterSession.count({ where: { status: 'OPEN' } }), abiertas, 'rendir no abre ninguna caja');
+    assert.strictEqual((await prisma.cashRegisterSession.findUnique({ where: { id: 'reparto-cash' } }))!.status, 'REPARTO');
     assert.strictEqual(await stockDe(p.id), 100 - 12 - 6, 'lo rechazado y lo no entregado vuelven');
     assert.strictEqual(await saldo(), 200, 'debe solo lo que recibió y no pagó');
     const cobroB = await prisma.sale.findUnique({ where: { id: 'cobro-po-set-b-900202' }, include: { payments: true } });
@@ -417,6 +421,10 @@ async function main() {
     assert.ok(falta, 'avisa el faltante');
     assert.strictEqual(falta.needed, 12);
     assert.strictEqual(falta.stock, 5);
+    await assert.rejects(() => runs.dispatch(run.id, {}, cajero.id), /No alcanza el stock/, 'sin confirmar no sale');
+    const out = await runs.dispatch(run.id, { allowShortages: true }, cajero.id);
+    assert.deepStrictEqual(out.errors, []);
+    assert.strictEqual(await stockDe(p.id), -7, 'con "Salir igual" sale y el stock queda en negativo');
   });
 
   await t('último pedido de cada cliente: el más nuevo, sin los cancelados', async () => {
@@ -522,6 +530,82 @@ async function main() {
     await crear({ sessionId: session.id, clientId: cli.id, orderId: 'po-aud-a', items: [{ productId: p.id, quantity: 20, price: 900 }], payments: [{ method: 'CASH', amount: 18000 }] }, cajero.id);
     const after = await runs.findOne(run.id);
     assert.deepStrictEqual(after.orders.map((x: any) => x.id), ['po-aud-b'], 'el cobrado en la caja ya no está en el reparto');
+  });
+
+  await t('preventa: vale el precio del momento en que se armó el pedido', async () => {
+    const pre = new PreOrdersService(prisma);
+    const cli = await prisma.client.create({ data: { name: 'Precio viejo', locality: 'Verónica' } });
+    const p = await nuevo('Fideos precio', 100, { salePrice: 100, unitsPerPack: 10, packPrice: 900 });
+    const antes = new Date(Date.now() - 60_000).toISOString();
+    await new Promise((r) => setTimeout(r, 20));
+    // Aumento mientras el vendedor estaba sin señal
+    await prisma.product.update({ where: { id: p.id }, data: { salePrice: 120, packPrice: 1100 } });
+    const sin: any = await pre.save('po-precio-a', { takenAt: antes, clientId: cli.id, items: [
+      { productId: p.id, productName: p.name, quantity: 10, packSize: 10, unitPrice: 90 },
+      { productId: p.id, productName: p.name, quantity: 2, unitPrice: 100 },
+    ] }, cajero.id, false);
+    assert.deepStrictEqual(sin.items.map((i: any) => i.unitPrice).sort(), [100, 90], 'entra con los precios de antes del aumento');
+    // Un precio que el producto nunca tuvo no pasa: va el actual
+    const inventado: any = await pre.save('po-precio-b', { takenAt: antes, clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 50 }] }, cajero.id, false);
+    assert.strictEqual(inventado.items[0].unitPrice, 120);
+    // Armado después del aumento: precio nuevo
+    const nuevoPedido: any = await pre.save('po-precio-c', { takenAt: new Date().toISOString(), clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 100 }] }, cajero.id, false);
+    assert.strictEqual(nuevoPedido.items[0].unitPrice, 120);
+    // Editar un pedido no le cambia el precio a lo que ya tenía, aunque haya otro aumento
+    await prisma.product.update({ where: { id: p.id }, data: { salePrice: 150 } });
+    const editado: any = await pre.save('po-precio-c', { clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 3, unitPrice: 150 }] }, cajero.id, false);
+    assert.strictEqual(editado.items[0].unitPrice, 120);
+    assert.strictEqual(editado.total, 360);
+  });
+
+  await t('preventa: oferta por cantidad', async () => {
+    const pre = new PreOrdersService(prisma);
+    const p = await nuevo('Cerveza oferta', 500, { salePrice: 1000, unitsPerPack: 6, packPrice: 5400, wholesalePrice: 850, wholesaleMinQty: 60 });
+    const poco: any = await pre.save('po-oferta-a', { items: [{ productId: p.id, productName: p.name, quantity: 12, packSize: 6, unitPrice: 900 }] }, cajero.id, false);
+    assert.strictEqual(poco.items[0].unitPrice, 900, 'menos de 60 unidades: precio del bulto');
+    const mucho: any = await pre.save('po-oferta-b', { items: [
+      { productId: p.id, productName: p.name, quantity: 54, packSize: 6, unitPrice: 900 },
+      { productId: p.id, productName: p.name, quantity: 6, unitPrice: 1000 },
+    ] }, cajero.id, false);
+    assert.deepStrictEqual(mucho.items.map((i: any) => i.unitPrice), [850, 850], 'llegando a 60 entre bultos y sueltas, todo a 850');
+  });
+
+  await t('reparto: recuerda el orden de visita de cada cliente', async () => {
+    const p = await nuevo('Agua visita', 100);
+    const cs = [];
+    for (const n of ['Visita A', 'Visita B', 'Visita C']) cs.push(await prisma.client.create({ data: { name: n, locality: 'Bavio' } }));
+    let k = 0;
+    const pedido = async (c: any) => {
+      const id = `po-visita-${++k}`;
+      await (prisma as any).preOrder.create({ data: { id, orderNumber: 990400 + k, clientId: c.id, userId: cajero.id, total: 1000, items: { create: [{ productId: p.id, productName: p.name, quantity: 1, unitPrice: 1000, total: 1000 }] } } });
+      return id;
+    };
+    const [a, b, c] = [await pedido(cs[0]), await pedido(cs[1]), await pedido(cs[2])];
+    const run = await runs.create({ orderIds: [a, b, c] });
+    await runs.setStops(run.id, [c, a, b]);
+    await runs.remove(run.id);
+    const [a2, b2, c2] = [await pedido(cs[0]), await pedido(cs[1]), await pedido(cs[2])];
+    const otra = await runs.create({ orderIds: [a2, b2, c2] });
+    assert.deepStrictEqual(otra.orders.map((o: any) => o.client.name), ['Visita C', 'Visita A', 'Visita B'], 'sale en el orden que dejó el dueño');
+  });
+
+  await t('informes de la distribuidora y sugerencia de compra', async () => {
+    const { DistribReportsService } = require('../src/modules/preorders/distrib-reports.service');
+    const rep = new DistribReportsService(prisma);
+    const r = await rep.report({ from: new Date(Date.now() - 86400000).toISOString() });
+    assert.ok(r.totals.orders > 0);
+    assert.ok(r.sellers.length > 0 && r.sellers.every((x: any) => typeof x.delivered === 'number'));
+    const set = r.sellers.reduce((s: number, x: any) => s + x.ordered, 0);
+    assert.ok(Math.abs(set - r.totals.ordered) < 0.01, 'los vendedores suman el total');
+    assert.ok(r.reasons.some((x: any) => x.reason === 'Rechazó un bulto'), 'cuenta los rechazos por motivo');
+    assert.ok(r.zones.some((z: any) => z.zone === 'Bavio'));
+    const p = await nuevo('Gaseosa a comprar', 2, { unitsPerPack: 6, minStock: 6 });
+    await (prisma as any).preOrder.create({ data: { id: 'po-compra-1', orderNumber: 990601, userId: cajero.id, total: 0, items: { create: [{ productId: p.id, productName: p.name, quantity: 10, unitPrice: 0, total: 0 }] } } });
+    const sug = await rep.purchaseSuggestion();
+    const it = sug.flatMap((x: any) => x.items).find((x: any) => x.productId === p.id);
+    assert.ok(it, 'sugiere comprarlo');
+    assert.strictEqual(it.units, 18, 'faltan 14 (10 pedidos + 6 mínimo - 2): se redondea a 3 bultos de 6');
+    assert.strictEqual(it.bultos, 3);
   });
 
   await t('clientes: un empleado no cambia el saldo editando; el dueño sí', async () => {

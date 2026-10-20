@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Truck, ShoppingCart, PackagePlus, Users, MapPin, ChevronRight, Loader2, Banknote, Landmark,
-  Wallet, AlertTriangle, RefreshCw, CheckCircle2,
+  Wallet, AlertTriangle, RefreshCw, CheckCircle2, BarChart3,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -91,6 +91,7 @@ export default function HoyScreen() {
     { label: 'Venta de mostrador', icon: ShoppingCart, to: '/pos' },
     { label: 'Cargar compra', icon: PackagePlus, to: '/purchases' },
     { label: 'Clientes', icon: Users, to: '/clients' },
+    { label: 'Informes', icon: BarChart3, to: '/informes' },
   ];
   const todayRaw = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);

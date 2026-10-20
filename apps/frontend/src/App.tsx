@@ -34,6 +34,7 @@ const CashControlScreen = lazy(() => import('./components/cash-register/CashCont
 const HistorialScreen = lazy(() => import('./components/pos/HistorialScreen'));
 const PreventaScreen = lazy(() => import('./components/preorders/PreventaScreen'));
 const RepartoScreen = lazy(() => import('./components/reparto/RepartoScreen'));
+const DistribReportsScreen = lazy(() => import('./components/distribuidora/DistribReportsScreen'));
 const HoyScreen = lazy(() => import('./components/distribuidora/HoyScreen'));
 const StartChooser = lazy(() => import('./components/distribuidora/StartChooser'));
 const GastosScreen = lazy(() => import('./components/cash-register/GastosScreen'));
@@ -677,6 +678,7 @@ export default function App() {
                     <Route path="/cash" element={<CashRegisterScreen />} />
                     <Route path="/preventa" element={<PreventaScreen />} />
                     <Route path="/reparto" element={<RepartoScreen />} />
+                    <Route path="/informes" element={<DistribReportsScreen />} />
                     <Route path="/hoy" element={<HoyScreen />} />
                     <Route path="/empezar" element={<StartChooser />} />
                     <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />

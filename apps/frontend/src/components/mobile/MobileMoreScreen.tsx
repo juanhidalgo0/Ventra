@@ -31,6 +31,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
     items: [
       { path: '/preventa', label: 'Preventa', hint: 'Pedidos de vendedores', icon: ClipboardList, tint: 'bg-sky-50 text-sky-700' },
       { path: '/reparto', label: 'Reparto', hint: 'Carga y hoja de ruta', icon: Truck, tint: 'bg-violet-50 text-violet-700' },
+      { path: '/informes', label: 'Informes', hint: 'Vendedores, zonas, qué comprar', icon: BarChart3, tint: 'bg-emerald-50 text-emerald-700' },
       { path: '/stock-control', label: 'Stock', hint: 'Lo que falta', icon: ClipboardCheck, tint: 'bg-orange-100 text-orange-800' },
       { path: '/purchases', label: 'Compras', hint: 'Facturas', icon: ShoppingBag, tint: 'bg-rose-50 text-rose-700' },
       { path: '/suppliers', label: 'Proveedores', hint: 'Deudas y pagos', icon: Truck, tint: 'bg-violet-50 text-violet-700' },
@@ -61,7 +62,7 @@ export default function MobileMoreScreen() {
   // Solo las secciones que incluye el plan (Caja / Tienda / Full)
   const sections = SECTIONS
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
-      && ((i.path !== '/preventa' && i.path !== '/reparto') || hasFeature('preorders'))
+      && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && !(i.noCaja && planFeatures.caja)
       // Solo turnos: agenda, clientes y cobros ya son pestañas
       && !(isAgendaOnly(planFeatures) && i.path.startsWith('/agenda'))) }))

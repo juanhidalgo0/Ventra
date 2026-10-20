@@ -115,7 +115,7 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {<h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Reparto</h1>}
-            <p className="text-[13.5px] text-slate-500 leading-snug">Juntá los pedidos que salen en cada camión y sacá la hoja de carga, la de ruta y los remitos.</p>
+            <p className="text-[13.5px] text-slate-500 leading-snug">{isDriver ? 'Tus repartos: tocá uno para ver las paradas y anotar cada entrega.' : 'Juntá los pedidos que salen en cada camión y sacá la hoja de carga, la de ruta y los remitos.'}</p>
             {useAuthStore.getState().user?.role !== 'ADMIN' && !myWorkRole() && (
               <button onClick={() => navigate('/empezar')} className="mt-1 text-[12px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">Cambiar lo que hago en este equipo</button>
             )}

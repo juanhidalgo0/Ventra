@@ -175,7 +175,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         ] : []),
         ...(hasFeature('preorders') ? [
           { label: 'Preventa', icon: ClipboardList, path: '/preventa' },
-          { label: 'Reparto', icon: Truck, path: '/reparto' }
+          { label: 'Reparto', icon: Truck, path: '/reparto' },
+          ...(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR' ? [{ label: 'Informes de reparto', icon: BarChart3, path: '/informes' }] : [])
         ] : []),
         ...(user?.role === 'ADMIN' && !agendaOnly ? [
           { label: 'Acceso Remoto', icon: Smartphone, path: '/remote-access' }

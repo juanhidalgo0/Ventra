@@ -315,6 +315,8 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
   const [canInvoice, setCanInvoice] = useState(false);
   const [invoice, setInvoice] = useState(true);
   const [saving, setSaving] = useState(false);
+  const short = (run.shortages || []).length > 0;
+  const [salirIgual, setSalirIgual] = useState(false);
   useEffect(() => {
     if (COMING_SOON.arcaInvoicing) return;
     api.get('/fiscal/config', { silent: true } as any).then(({ data }) => setCanInvoice(Boolean(data?.enabled))).catch(() => {});
@@ -323,7 +325,7 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
   const go = async () => {
     setSaving(true);
     try {
-      const { data } = await api.post(`/delivery-runs/${run.id}/dispatch`, { invoice: canInvoice && invoice ? 'all' : 'none' });
+      const { data } = await api.post(`/delivery-runs/${run.id}/dispatch`, { invoice: canInvoice && invoice ? 'all' : 'none', allowShortages: salirIgual });
       (data.warnings || []).forEach((w: string) => toast(w, { icon: '🧾', duration: 9000 }));
       if (data.errors?.length) {
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
@@ -345,7 +347,7 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
       subtitle={`Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`}
       onClose={onClose}
       footer={
-        <button onClick={go} disabled={saving} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[15px] font-bold cursor-pointer flex items-center justify-center gap-2">
+        <button onClick={go} disabled={saving || (short && !salirIgual)} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[15px] font-bold cursor-pointer flex items-center justify-center gap-2">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />} Confirmar la salida
         </button>
       }
@@ -354,7 +356,16 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
         <div className="px-4 py-3 flex justify-between"><span className="text-slate-600">Pedidos</span><strong className="text-slate-900">{orders.length}</strong></div>
         <div className="px-4 py-3 flex justify-between"><span className="text-slate-600">Total</span><strong className="text-slate-900">{money(total)}</strong></div>
       </section>
-            <ShortagesBanner shortages={run.shortages} />
+      <ShortagesBanner shortages={run.shortages} />
+      {short && (
+        <button onClick={() => setSalirIgual((v) => !v)} className={`w-full text-left px-4 py-3 rounded-2xl border-2 cursor-pointer flex items-start gap-3 ${salirIgual ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+          <span className={`w-5 h-5 mt-0.5 rounded-md border-2 flex items-center justify-center shrink-0 ${salirIgual ? 'bg-amber-500 border-amber-500' : 'border-slate-300'}`}>{salirIgual && <Check className="w-3.5 h-3.5 text-white" />}</span>
+          <span>
+            <span className="block text-[14px] font-bold text-slate-900">Salir igual</span>
+            <span className="block text-[12.5px] text-slate-500">Si la mercadería está pero no se cargó la compra. El stock queda en negativo hasta que la cargues.</span>
+          </span>
+        </button>
+      )}
       <section className="space-y-2 text-[13.5px] text-slate-700 leading-snug">
         <p className="font-bold text-slate-900">Al confirmar:</p>
         <p className="flex gap-2"><Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> Cada pedido queda como venta con su mismo número, a la cuenta corriente del cliente hasta que pague.</p>
@@ -430,7 +441,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
         toast('El reparto quedó abierto: corregí lo de arriba y volvé a rendir. Lo que ya se registró no se repite.', { icon: '⚠️', duration: 9000 });
       } else {
-        toast.success('Reparto rendido: los cobros entraron a la caja y lo que volvió, al stock');
+        toast.success('Reparto rendido: los cobros quedaron registrados y lo que volvió, en el stock');
       }
       onDone(data.run);
     } catch (err: any) {
@@ -493,7 +504,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
             <button onClick={() => setExpenses((list) => list.filter((_, k) => k !== i))} className="w-9 h-9 rounded-lg hover:bg-slate-200/60 flex items-center justify-center cursor-pointer shrink-0" aria-label="Quitar gasto"><X className="w-4 h-4 text-slate-500" /></button>
           </div>
         ))}
-        {expTotal > 0 && <p className="text-[12px] text-slate-500">Se descuentan {money(expTotal)} de lo que tiene que traer y quedan como gasto en la caja del día.</p>}
+        {expTotal > 0 && <p className="text-[12px] text-slate-500">Se descuentan {money(expTotal)} de lo que tiene que traer y quedan como gasto del reparto.</p>}
       </section>
 
       <section data-tour="rendir-cash" className="space-y-2">
@@ -534,7 +545,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
       )}
 
       <p className="text-[12px] text-slate-500 leading-snug">
-        Lo cobrado entra a la caja del día (si no hay una abierta, se abre sola) y le baja la deuda a cada cliente. Lo que no pagó queda en su cuenta corriente.
+        Lo cobrado queda registrado en el reparto (no hace falta abrir ninguna caja) y le baja la deuda a cada cliente. Lo que no pagó queda en su cuenta corriente.
       </p>
     </Sheet>
   );

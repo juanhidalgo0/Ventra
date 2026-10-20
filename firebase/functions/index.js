@@ -1554,6 +1554,34 @@ exports.ventraOrderIdle = onSchedule({ schedule: "every 5 minutes", timeZone: no
   }
 });
 
+/**
+ * Distribuidora: pedidos tomados hoy, repartos rendidos y rechazos, para sumar al resumen del día.
+ * null si el comercio no usa preventa (no tomó pedidos ni rindió repartos hoy).
+ */
+async function distribDay(sql, tenantId, today) {
+  const from = Date.parse(`${today}T00:00:00-03:00`);
+  const to = from + 86400000;
+  const rows = await cloudSync.run(sql, `SELECT tbl, data FROM sync_rows WHERE tenant_id = $1 AND NOT deleted AND tbl IN ('pre_orders', 'delivery_runs')
+      AND ((tbl = 'pre_orders' AND (data->>'created_at') ~ '^[0-9]+$' AND (data->>'created_at')::bigint >= $2 AND (data->>'created_at')::bigint < $3)
+        OR (tbl = 'pre_orders' AND (data->>'delivered_at') ~ '^[0-9]+$' AND (data->>'delivered_at')::bigint >= $2 AND (data->>'delivered_at')::bigint < $3)
+        OR (tbl = 'delivery_runs' AND (data->>'settled_at') ~ '^[0-9]+$' AND (data->>'settled_at')::bigint >= $2 AND (data->>'settled_at')::bigint < $3))`, [tenantId, from, to]);
+  let orders = 0, ordered = 0, rejected = 0, runs = 0;
+  for (const r of rows) {
+    const d = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+    if (r.tbl === "delivery_runs") { runs++; continue; }
+    const created = Number(d.created_at);
+    if (created >= from && created < to && d.status !== "CANCELLED") { orders++; ordered += Number(d.total) || 0; }
+    const delivered = Number(d.delivered_at);
+    if (delivered >= from && delivered < to && (d.delivery_status === "NOT_DELIVERED" || d.delivery_status === "PARTIAL")) rejected++;
+  }
+  if (!orders && !runs) return null;
+  return [
+    orders && `${orders} ${orders === 1 ? "pedido" : "pedidos"} por ${notify.money(ordered)}`,
+    runs && `${runs} ${runs === 1 ? "reparto rendido" : "repartos rendidos"}`,
+    rejected && `${rejected} con rechazos`,
+  ].filter(Boolean).join(" · ");
+}
+
 /** Resumen del día, a la hora que eligió cada dueño */
 exports.ventraDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL] }, async () => {
   // Primero, los avisos que esperaban el fin del horario de silencio
@@ -1578,9 +1606,10 @@ exports.ventraDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notif
       const before = Number(prev.summary.total) || 0;
       const pct = before > 0 ? Math.round(((total - before) / before) * 100) : null;
       const weekday = new Intl.DateTimeFormat("es-AR", { weekday: "long", timeZone: notify.TZ }).format(new Date());
+      const dist = await distribDay(sql, doc.id, today).catch(() => null);
       await notify.sendToAccount(db, doc.id, "dailySummary", {
         title: `Hoy vendiste ${notify.money(total)}`,
-        body: `${count} ${count === 1 ? "venta" : "ventas"}` + (pct === null ? "" : ` · ${pct >= 0 ? "+" : ""}${pct}% vs. el ${weekday} pasado`),
+        body: (dist ? dist + " · " : "") + `${count} ${count === 1 ? "venta" : "ventas"}` + (pct === null ? "" : ` · ${pct >= 0 ? "+" : ""}${pct}% vs. el ${weekday} pasado`),
         url: "/#/inicio", tag: "daily-summary",
       }, { ignoreQuiet: true });
     } catch (err) {

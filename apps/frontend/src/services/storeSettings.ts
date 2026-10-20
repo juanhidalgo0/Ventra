@@ -43,6 +43,8 @@ const SHARED: Record<string, string> = {
     cash_opening_float: 'cash_opening_float',
   /** Distribuidora: qué días se visita cada localidad (JSON, ver services/routeDays) */
   route_days: 'ventra_route_days',
+  /** Distribuidora: comisión de los vendedores, en % de lo entregado (Informes) */
+  seller_commission_pct: 'seller_commission_pct',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;

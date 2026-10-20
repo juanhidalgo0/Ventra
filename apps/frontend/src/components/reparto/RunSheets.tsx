@@ -46,10 +46,10 @@ const Footer = () => <div style={{ marginTop: '14px', textAlign: 'center', fontS
 
 /** Todo lo que sube al camión: cada producto sumado, en bultos y unidades sueltas */
 export function consolidate(run: any, codeOf: (id: string) => string) {
-  const map = new Map<string, { name: string; code: string; packs: Map<number, number>; loose: number; units: number }>();
+  const map = new Map<string, { productId: string; name: string; code: string; packs: Map<number, number>; loose: number; units: number }>();
   for (const o of liveOrders(run)) {
     for (const it of o.items || []) {
-      const row = map.get(it.productId) || { name: it.productName, code: codeOf(it.productId), packs: new Map<number, number>(), loose: 0, units: 0 };
+      const row = map.get(it.productId) || { productId: it.productId, name: it.productName, code: codeOf(it.productId), packs: new Map<number, number>(), loose: 0, units: 0 };
       const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
       if (size) row.packs.set(size, (row.packs.get(size) || 0) + it.quantity / size);
       else row.loose += Number(it.quantity);
@@ -65,6 +65,12 @@ export function LoadSheet({ run, emisor, codeOf, paper }: { run: any; emisor: Em
   const orders = liveOrders(run);
   const totalBultos = orders.reduce((s: number, o: any) => s + bultosOf(o), 0);
   const totalLoose = orders.reduce((s: number, o: any) => s + looseOf(o), 0);
+  // Lo que no alcanza en el depósito: se marca para que el que carga no lo busque de más
+  const short = new Map<string, any>((run.shortages || []).map((s: any) => [s.productId, s]));
+  const faltan = (s: any) => {
+    const n = Math.max(0, s.needed - s.stock);
+    return s.packSize ? `${qty(Math.ceil(n / s.packSize))} bulto(s)` : `${qty(n)} u.`;
+  };
   return (
     <section data-sheet="carga" style={{ ...page, ...(paper ? paperStyle : {}) }}>
       <RunHeader emisor={emisor} title="HOJA DE CARGA" run={run} extra={`${orders.length} pedido(s)`} />
@@ -82,7 +88,10 @@ export function LoadSheet({ run, emisor, codeOf, paper }: { run: any; emisor: Em
         <tbody>
           {rows.map((r) => (
             <tr key={r.name + r.code} style={{ breakInside: 'avoid' }}>
-              <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+              <td style={{ ...td, fontWeight: 600 }}>
+                {r.name}
+                {short.has(r.productId) && <div style={{ fontSize: '8.5pt', fontWeight: 700 }}>FALTAN {faltan(short.get(r.productId))} en el depósito</div>}
+              </td>
               <td style={{ ...td, fontSize: '8.5pt' }}>{r.code}</td>
               <td style={{ ...td, ...right, fontWeight: 700 }}>
                 {r.packs.size ? Array.from(r.packs.entries()).map(([size, n]) => `${qty(n)} (de ${size})`).join(' + ') : '—'}

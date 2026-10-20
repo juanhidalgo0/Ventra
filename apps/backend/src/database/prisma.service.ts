@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
 // ANTES de tocar el esquema (queda en backups/ como "backup_preupdate_*.db").
-const SCHEMA_VERSION = '2026-10-18b';
+const SCHEMA_VERSION = '2026-10-20';
 
 /** Cada cuánto se vuelca el WAL al archivo principal. */
 const CHECKPOINT_MS = 3 * 60 * 1000;
@@ -333,6 +333,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!productColumns.some(c => c.name === 'pack_price')) {
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN pack_price REAL DEFAULT NULL;`);
             }
+            // Preventa: el precio que tenía el producto antes del último cambio. Un pedido tomado sin
+            // señal entra con el precio del momento en que se hizo (ver preorders.service). Lo anota
+            // un trigger, así lo cubre cualquier camino: la ficha, el aumento masivo, la planilla o
+            // un cambio que llega de otra caja.
+            for (const [col, type] of [['prev_sale_price', 'REAL'], ['prev_pack_price', 'REAL'], ['price_changed_at', 'INTEGER']]) {
+              if (!productColumns.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN ${col} ${type} DEFAULT NULL;`);
+            }
+            await this.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "ventra_price_prev" AFTER UPDATE OF sale_price, pack_price ON products
+              WHEN OLD.sale_price IS NOT NEW.sale_price OR OLD.pack_price IS NOT NEW.pack_price
+              BEGIN UPDATE products SET prev_sale_price = OLD.sale_price, prev_pack_price = OLD.pack_price,
+                price_changed_at = CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER) WHERE id = NEW.id; END`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,
@@ -653,6 +664,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             // Distribuidora: localidad del cliente, para el reparto y la nota de venta
             if (!clientColumns.some(c => c.name === 'locality')) {
               await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN locality TEXT DEFAULT NULL;`);
+            }
+            // Distribuidora: en qué orden se lo visita dentro de su localidad (lo recuerda el reparto)
+            if (!clientColumns.some(c => c.name === 'visit_order')) {
+              await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN visit_order REAL DEFAULT NULL;`);
             }
           }
         } catch (err) {

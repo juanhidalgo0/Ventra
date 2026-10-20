@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Minus, Search, X, ClipboardList, WifiOff, ShoppingCart, Trash2, Loader2, ChevronDown, ChevronUp,
-    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays,
+    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays, UserPlus,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore, packOf } from '../../stores/posStore';
@@ -16,7 +16,7 @@ import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 import {
-  newPreOrderId, savePreOrder, flushPreOrderQueue, readQueue, loadPreOrderIntoCart, priceFor,
+  newPreOrderId, savePreOrder, flushPreOrderQueue, readQueue, loadPreOrderIntoCart, priceFor, withOffers,
   PREORDER_QUEUE_EVENT, type PreOrderItem,
 } from '../../services/preorders';
 
@@ -48,7 +48,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 const readJson = (k: string, fallback: any) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v ?? fallback; } catch { return fallback; } };
 const writeJson = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin espacio: se sigue con lo que hay */ } };
 
-interface Draft { id: string; orderNumber?: number; client: any | null; items: PreOrderItem[]; notes: string; savedAt?: string }
+interface Draft { id: string; takenAt?: string; orderNumber?: number; client: any | null; items: PreOrderItem[]; notes: string; savedAt?: string }
 const readDraft = (): Draft | null => {
   const d = readJson(DRAFT_KEY, null);
   return d && (d.client || d.items?.length) ? d : null;
@@ -108,13 +108,13 @@ export default function PreventaScreen() {
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft | null>(readDraft);
   // ?nuevo=1 (desde "Hoy"): abre el pedido nuevo, o el borrador si había uno a medio armar
-  const [editing, setEditing] = useState<Draft | null>(() => (params.get('nuevo') ? readDraft() || { id: newPreOrderId(), client: null, items: [], notes: '' } : null));
+  const [editing, setEditing] = useState<Draft | null>(() => (params.get('nuevo') ? readDraft() || { id: newPreOrderId(), takenAt: new Date().toISOString(), client: null, items: [], notes: '' } : null));
   useEffect(() => { if (params.toString()) setParams({}, { replace: true }); }, []);
   const catalog = useCatalog();
   const queue = useQueue();
 
   const open = (d: Draft) => setEditing(d);
-  const startNew = () => open({ id: newPreOrderId(), client: null, items: [], notes: '' });
+  const startNew = () => open({ id: newPreOrderId(), takenAt: new Date().toISOString(), client: null, items: [], notes: '' });
   const fromOrder = (o: any): Draft => ({
     id: o.id, orderNumber: o.orderNumber, client: o.client || null, notes: o.notes || '',
     items: (o.items || []).map((i: any) => ({ productId: i.productId, productName: i.productName, quantity: Number(i.quantity), packSize: i.packSize || null, unitPrice: Number(i.unitPrice) })),
@@ -138,7 +138,7 @@ export default function PreventaScreen() {
       onResume={() => draft && open(draft)}
       onDiscard={() => { clearDraft(); setDraft(null); }}
             onEdit={(o) => open(fromOrder(o))}
-      onNewFor={(c) => open({ id: newPreOrderId(), client: c, items: [], notes: '' })}
+      onNewFor={(c) => open({ id: newPreOrderId(), takenAt: new Date().toISOString(), client: c, items: [], notes: '' })}
     />
   );
 }
@@ -438,8 +438,68 @@ function Stat({ label, value, strong }: { label: string; value: string; strong?:
 
 // ─── Tomar / corregir un pedido ───────────────────────────────────
 
-function OrderEditor({ initial, products, clients, committed, lastOrders, onExit }: { initial: Draft; products: any[]; clients: any[]; committed: Record<string, number>; lastOrders: Record<string, any>; onExit: (keptDraft: boolean) => void }) {
+const IVA_OPTIONS: [string, string][] = [
+  ['CONSUMIDOR_FINAL', 'Consumidor final'],
+  ['MONOTRIBUTO', 'Monotributo'],
+  ['RESPONSABLE_INSCRIPTO', 'Responsable inscripto'],
+  ['EXENTO', 'Exento'],
+];
+
+/** Alta de un cliente en la calle, sin salir del pedido: lo mínimo para entregarle y facturarle. */
+function NewClientCard({ zones, defaultZone, defaultName, onCancel, onCreated }: { zones: string[]; defaultZone: string; defaultName: string; onCancel: () => void; onCreated: (c: any) => void }) {
+  const [f, setF] = useState({ name: defaultName, address: '', locality: defaultZone, phone: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL' });
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const input = 'w-full h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white';
+  const save = async () => {
+    if (!f.name.trim()) { toast.error('Poné el nombre del comercio'); return; }
+    if (!f.locality.trim()) { toast.error('Poné la localidad: con eso sale en el reparto de su zona'); return; }
+    setBusy(true);
+    try {
+      const { data } = await api.post('/clients', {
+        name: f.name.trim(), address: f.address.trim() || undefined, locality: f.locality.trim(), phone: f.phone.trim() || undefined,
+        cuit: f.cuit.replace(/\D/g, '') || undefined, ivaCondition: f.ivaCondition,
+      });
+      toast.success(`${data.name} dado de alta`);
+      onCreated(data);
+    } catch (err: any) {
+      toast.error(err?.response ? (err.response.data?.message || 'No se pudo dar de alta') : 'Sin señal: el cliente nuevo se carga cuando vuelva la conexión. Mientras, anotalo en las notas de otro pedido.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2.5">
+      <p className="text-[15px] font-bold text-slate-900">Cliente nuevo</p>
+      <input className={input} placeholder="Nombre del comercio" value={f.name} onChange={set('name')} autoFocus />
+      <input className={input} placeholder="Dirección" value={f.address} onChange={set('address')} />
+      <div className="grid grid-cols-2 gap-2">
+        <input className={input} placeholder="Localidad" list="nuevo-cliente-zonas" value={f.locality} onChange={set('locality')} />
+        <input className={input} placeholder="Teléfono" inputMode="tel" value={f.phone} onChange={set('phone')} />
+      </div>
+      <datalist id="nuevo-cliente-zonas">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={input} placeholder="CUIT (si pide factura A)" inputMode="numeric" value={f.cuit} onChange={set('cuit')} />
+        <select className={input} value={f.ivaCondition} onChange={set('ivaCondition')}>
+          {IVA_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel} className="h-11 px-4 rounded-xl border border-slate-200 text-[14px] font-semibold text-slate-700 cursor-pointer">Cancelar</button>
+        <button onClick={save} disabled={busy} className="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[14.5px] font-bold cursor-pointer flex items-center justify-center gap-2">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Dar de alta y seguir
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OrderEditor({ initial, products, clients: baseClients, committed, lastOrders, onExit }: { initial: Draft; products: any[]; clients: any[]; committed: Record<string, number>; lastOrders: Record<string, any>; onExit: (keptDraft: boolean) => void }) {
   const user = useAuthStore((s) => s.user);
+  // Los que el vendedor da de alta en la calle se suman a la lista sin esperar a la próxima bajada
+  const [added, setAdded] = useState<any[]>([]);
+  const clients = useMemo(() => [...added, ...baseClients.filter((c) => !added.some((a) => a.id === c.id))], [added, baseClients]);
+  const [creating, setCreating] = useState(false);
   const [client, setClient] = useState<any | null>(initial.client);
     const [step, setStep] = useState<'client' | 'products'>(initial.client ? 'products' : 'client');
   useMobileFocus();
@@ -463,7 +523,9 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
     writeJson(DRAFT_KEY, { ...initial, client, items, notes, savedAt: new Date().toISOString() });
   }, [client, items, notes]);
 
-  const total = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  // Con la oferta por cantidad aplicada (los renglones guardan el precio de lista)
+  const priced = useMemo(() => withOffers(items, products), [items, products]);
+  const total = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const bultos = items.reduce((s, i) => s + (i.packSize ? i.quantity / i.packSize : 0), 0);
   const zones = useMemo(() => Array.from(new Set(clients.map((c) => (c.locality || '').trim()).filter(Boolean))).sort(), [clients]);
 
@@ -561,7 +623,7 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
     if (overBy > 0.009 && !window.confirm(`${cli?.name} pasa su límite de crédito por ${money(overBy)} (debe ${money(balance)} y su límite es ${money(limit)}). ¿Guardar el pedido igual?`)) return;
     setSaving(true);
     try {
-      const res = await savePreOrder({ id: initial.id, clientId: client.id, notes: notes.trim() || undefined, items, clientName: client.name, total });
+      const res = await savePreOrder({ id: initial.id, takenAt: initial.takenAt, clientId: client.id, notes: notes.trim() || undefined, items: priced.map(({ offer, ...it }) => it), clientName: client.name, total });
       clearDraft();
       if (res === 'saved') toast.success(`Pedido de ${client.name} guardado`);
       else toast('Sin señal: el pedido quedó guardado en el celular y se manda solo cuando vuelva la conexión.', { icon: '📶', duration: 7000 });
@@ -628,10 +690,30 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
                 ))}
               </div>
             )}
+            {creating ? (
+              <NewClientCard
+                zones={zones}
+                defaultZone={zone === TODAY ? todayZones[0] || '' : zone}
+                defaultName={clientQuery}
+                onCancel={() => setCreating(false)}
+                onCreated={(c) => {
+                  setAdded((a) => [c, ...a]);
+                  setCreating(false);
+                  setClientQuery('');
+                  setClient(c);
+                  setStep('products');
+                  setTimeout(() => searchRef.current?.focus(), 50);
+                }}
+              />
+            ) : (
+              <button onClick={() => setCreating(true)} className="w-full h-12 rounded-xl border border-dashed border-slate-300 bg-white text-[14.5px] font-semibold text-slate-700 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-50">
+                <UserPlus className="w-4 h-4" /> Cliente nuevo
+              </button>
+            )}
             {foundClients.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-[14px] font-semibold text-slate-700">{clients.length ? 'No hay clientes con esa búsqueda' : 'Todavía no hay clientes cargados'}</p>
-                <p className="text-[12.5px] text-slate-500 mt-1">{clients.length ? 'Probá con otra palabra o con otra zona.' : 'Se cargan desde la PC, en Clientes.'}</p>
+                <p className="text-[12.5px] text-slate-500 mt-1">{clients.length ? 'Probá con otra palabra, con otra zona, o dalo de alta con "Cliente nuevo".' : 'Dalo de alta con "Cliente nuevo".'}</p>
               </div>
             ) : (
               <div className="rounded-2xl bg-white border border-slate-200 divide-y divide-slate-100 overflow-hidden">
@@ -716,11 +798,11 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
               </button>
               {showItems && (
                 <div className="divide-y divide-slate-100 border-t border-slate-100">
-                  {items.map((it, idx) => (
+                  {priced.map((it, idx) => (
                     <div key={`${it.productId}-${it.packSize || 0}`} className="px-3 py-2.5 flex items-center gap-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="text-[14px] font-semibold text-slate-900 leading-tight">{it.productName}</p>
-                        <p className="text-[12px] text-slate-500 mt-0.5">{it.packSize ? `Bulto x${it.packSize} · ${money(it.unitPrice * it.packSize)}` : `Unidad · ${money(it.unitPrice)}`}</p>
+                        <p className="text-[12px] text-slate-500 mt-0.5">{it.packSize ? `Bulto x${it.packSize} · ${money(it.unitPrice * it.packSize)}` : `Unidad · ${money(it.unitPrice)}`}{it.offer && <span className="ml-1.5 font-bold text-emerald-700">Oferta por cantidad</span>}</p>
                       </div>
                       <Stepper
                         value={it.packSize ? it.quantity / it.packSize : it.quantity}

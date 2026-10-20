@@ -17,6 +17,9 @@ export function deliveredLines(order: any) {
     .map((it: any) => ({ ...it, quantity: order.deliveryStatus === 'PARTIAL' && changes[it.id] !== undefined ? Math.max(0, Math.min(Number(changes[it.id]) || 0, it.quantity)) : it.quantity }))
     .filter((it: any) => it.quantity > 0);
 }
+/** La cuenta fija del reparto (ver dayCash) */
+export const REPARTO_CASH_ID = 'reparto-cash';
+
 export const deliveredTotal = (order: any) => round2(deliveredLines(order).reduce((s: number, it: any) => s + it.quantity * it.unitPrice, 0));
 
 const ORDER_INCLUDE = {
@@ -152,7 +155,7 @@ export class DeliveryRunsService {
           ...driver,
         },
       });
-      await this.assign(tx, run.id, orderIds);
+      await this.assign(tx, run.id, await this.byVisitOrder(tx, orderIds));
       return run.id;
     });
     return this.findOne(id);
@@ -184,8 +187,54 @@ export class DeliveryRunsService {
       const ids = (Array.isArray(orderIds) ? orderIds : []).map(String);
       await tx.preOrder.updateMany({ where: { runId: id, id: { notIn: ids } }, data: { runId: null, stopOrder: null } });
       await this.assign(tx, id, ids);
+      await this.rememberVisitOrder(tx, ids);
     });
     return this.findOne(id);
+  }
+
+  /** Datos de orden de visita de los clientes de esos pedidos (columna sin modelo: ver prisma.service) */
+  private async visitInfo(tx: any, orderIds: string[]) {
+    if (!orderIds.length) return new Map<string, { clientId: string | null; locality: string; visit: number | null }>();
+    const rows: any[] = await tx.$queryRawUnsafe(
+      `SELECT o.id AS id, o.client_id AS clientId, COALESCE(c.locality, '') AS locality, CAST(c.visit_order AS REAL) AS visit
+         FROM pre_orders o LEFT JOIN clients c ON c.id = o.client_id WHERE o.id IN (${orderIds.map(() => '?').join(',')})`, ...orderIds,
+    ).catch(() => []);
+    return new Map(rows.map((r) => [r.id, { clientId: r.clientId, locality: String(r.locality || '').trim(), visit: r.visit === null || r.visit === undefined ? null : Number(r.visit) }]));
+  }
+
+  /**
+   * Al armar, las paradas salen en el orden de visita que el dueño dejó la última vez: las
+   * localidades en el orden en que se eligieron y, dentro de cada una, el orden recordado (los
+   * clientes que todavía no tienen orden van al final, como se eligieron).
+   */
+  private async byVisitOrder(tx: any, orderIds: string[]) {
+    const info = await this.visitInfo(tx, orderIds);
+    const zones: string[] = [];
+    for (const id of orderIds) { const z = info.get(id)?.locality || ''; if (!zones.includes(z)) zones.push(z); }
+    const pos = new Map(orderIds.map((id, i) => [id, i]));
+    return [...orderIds].sort((a, b) => {
+      const A = info.get(a), B = info.get(b);
+      const za = zones.indexOf(A?.locality || ''), zb = zones.indexOf(B?.locality || '');
+      if (za !== zb) return za - zb;
+      const va = A?.visit ?? Infinity, vb = B?.visit ?? Infinity;
+      if (va !== vb) return va - vb;
+      return pos.get(a)! - pos.get(b)!;
+    });
+  }
+
+  /** Lo que el dueño acomodó a mano queda como orden de visita de cada cliente, dentro de su localidad */
+  private async rememberVisitOrder(tx: any, orderIds: string[]) {
+    const info = await this.visitInfo(tx, orderIds);
+    const n = new Map<string, number>();
+    const seen = new Set<string>();
+    for (const id of orderIds) {
+      const it = info.get(id);
+      if (!it?.clientId || seen.has(it.clientId)) continue;
+      seen.add(it.clientId);
+      const i = (n.get(it.locality) || 0) + 1;
+      n.set(it.locality, i);
+      await tx.$executeRawUnsafe(`UPDATE clients SET visit_order = ? WHERE id = ?`, i, it.clientId).catch(() => {});
+    }
   }
 
   /** Deshace el reparto: los pedidos vuelven a estar sueltos para armar otro */
@@ -280,6 +329,11 @@ export class DeliveryRunsService {
     if (run.status !== 'ARMANDO') throw new BadRequestException('El reparto ya salió');
     const live = run.orders.filter((o: any) => o.status !== 'CANCELLED');
     if (!live.length) throw new BadRequestException('El reparto no tiene pedidos');
+    // Sin stock para cargar todo no sale, salvo que el dueño diga que la mercadería está (la compra
+    // sin cargar): ahí sale y el stock queda en negativo hasta que la cargue.
+    if (run.shortages?.length && !data?.allowShortages) {
+      throw new BadRequestException(`No alcanza el stock de ${run.shortages.map((s: any) => s.name).join(', ')}. Cargá la compra, sacalo de algún pedido o confirmá "Salir igual".`);
+    }
     const sessionId = await this.dayCash(userId);
     const invoice = data?.invoice !== 'none' && await this.fiscal.isEnabled();
     const errors: string[] = [];
@@ -470,18 +524,25 @@ export class DeliveryRunsService {
   }
 
   /**
-   * Caja donde entra lo que trae el chofer: la que el usuario tenga abierta o, si no tiene, se
-   * abre sola la "caja del día". En una distribuidora nadie abre una caja para rendir un reparto,
-   * y un arqueo viejo sin hacer no puede frenar la rendición.
+   * Donde quedan las ventas, los cobros y los gastos del reparto: una cuenta fija ("Reparto"), no
+   * una caja. Nadie la abre ni la cierra y no se mezcla con la caja del mostrador (el efectivo del
+   * chofer no está en ese cajón). Tiene estado REPARTO, así que no aparece como caja abierta ni
+   * entra en los arqueos. El id es fijo: la de la PC y la de la nube son la misma fila.
    */
   private async dayCash(userId: string): Promise<string> {
-    const open = await this.prisma.cashRegisterSession.findFirst({ where: { userId, status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
-    if (open) return open.id;
-    const session = await this.prisma.cashRegisterSession.create({
-      data: { userId, terminalName: 'Caja del día', openingAmount: 0, openingNotes: 'Abierta sola para la rendición del reparto' },
+    const id = REPARTO_CASH_ID;
+    const found = await this.prisma.cashRegisterSession.findUnique({ where: { id } });
+    if (found) {
+      if (found.status !== 'REPARTO') await this.prisma.cashRegisterSession.update({ where: { id }, data: { status: 'REPARTO' } });
+      return id;
+    }
+    await this.prisma.cashRegisterSession.create({
+      data: { id, userId, terminalName: 'Reparto', openingAmount: 0, status: 'REPARTO', openingNotes: 'Cuenta fija del reparto: no se abre ni se cierra' },
+    }).catch(async (err: any) => {
+      // Otra rendición la creó al mismo tiempo
+      if (!(await this.prisma.cashRegisterSession.findUnique({ where: { id } }))) throw err;
     });
-    await this.prisma.auditLog.create({ data: { userId, entityType: 'CASH_REGISTER', entityId: session.id, action: 'OPEN', newValues: JSON.stringify({ terminalName: 'Caja del día', auto: 'rendición de reparto' }) } });
-    return session.id;
+    return id;
   }
 
   /** Pone los pedidos en el reparto, en ese orden. Un pedido de otro reparto que todavía se arma se pasa a este. */

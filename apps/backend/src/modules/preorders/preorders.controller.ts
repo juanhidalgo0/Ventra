@@ -1,12 +1,31 @@
-import { Controller, Get, Put, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param, Query, UseGuards, Request, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PreOrdersService } from './preorders.service';
+import { DistribReportsService } from './distrib-reports.service';
 
 /** Pedidos de preventa (distribuidora). Ver PreOrdersService. */
 @Controller('preorders')
 @UseGuards(AuthGuard('jwt'))
 export class PreOrdersController {
-  constructor(private preOrders: PreOrdersService) {}
+  constructor(private preOrders: PreOrdersService, private reports: DistribReportsService) {}
+
+  private manager(req: any) {
+    if (req?.user?.role !== 'ADMIN' && req?.user?.role !== 'SUPERVISOR') throw new ForbiddenException('Los informes son del dueño o el encargado');
+  }
+
+  /** Informes de la distribuidora: vendedores, zonas, productos, rechazos, clientes perdidos, deuda */
+  @Get('report')
+  report(@Query('from') from: string, @Query('to') to: string, @Query('lostDays') lostDays: string, @Request() req: any) {
+    this.manager(req);
+    return this.reports.report({ from, to, lostDays: Number(lostDays) || undefined });
+  }
+
+  /** Qué comprar para cubrir los pedidos pendientes y el stock mínimo, por proveedor */
+  @Get('purchase-suggestion')
+  purchaseSuggestion(@Request() req: any) {
+    this.manager(req);
+    return this.reports.purchaseSuggestion();
+  }
 
   @Get()
   list(

@@ -19,6 +19,8 @@ export interface PreOrderItem {
 
 export interface PreOrderDraft {
   id: string;
+  /** Cuándo se empezó a tomar: vale el precio de ese momento (ver preorders.service) */
+  takenAt?: string;
   clientId: string | null;
   notes?: string;
   deliveryDate?: string | null;
@@ -114,6 +116,24 @@ export function loadPreOrderIntoCart(order: any): string[] {
   }
   st.setActiveOrder({ id: order.id, number: order.orderNumber, clientName: order.client?.name || '' });
   return missing;
+}
+
+/**
+ * Oferta por cantidad (precio mayorista del producto): llevando la cantidad mínima del producto
+ * entre todos sus renglones, cada unidad sale al precio de la oferta si es más barato. El
+ * servidor hace la misma cuenta al guardar.
+ */
+export function withOffers(items: PreOrderItem[], products: any[]): (PreOrderItem & { offer?: boolean })[] {
+  const byId = new Map(products.map((p: any) => [p.id, p]));
+  const units = new Map<string, number>();
+  for (const it of items) units.set(it.productId, (units.get(it.productId) || 0) + it.quantity);
+  return items.map((it) => {
+    const p: any = byId.get(it.productId);
+    const price = Number(p?.wholesalePrice) || 0;
+    const min = Number(p?.wholesaleMinQty) || 0;
+    if (price > 0 && min > 0 && (units.get(it.productId) || 0) >= min - 1e-9 && price < it.unitPrice - 1e-9) return { ...it, unitPrice: price, offer: true };
+    return it;
+  });
 }
 
 /** Precio con el que entra al pedido: el del bulto o el de la unidad suelta */

@@ -75,9 +75,10 @@ export default function MainLayout({ children }: Props) {
     return () => wsService.off('auth:force-logout', onForceLogout);
   }, []);
 
-  // Destraba la pantalla si queda una capa invisible tapando todo (ver overlayWatchdog)
+  // Destraba la pantalla si queda una capa invisible tapando todo (ver overlayWatchdog). Sin
+  // aviso: al cajero le alcanza con que la pantalla responda, y el cartel confundía.
   useEffect(() => startOverlayWatchdog(count => {
-    toast.success(count === 1 ? 'Se destrabó la pantalla' : `Se destrabaron ${count} capas trabadas`, { id: 'overlay-watchdog' });
+    console.info(`[overlay-watchdog] ${count} capa(s) destrabada(s)`);
   }), []);
 
   // F3 abre la calculadora desde cualquier pantalla (se captura antes que otros atajos)
@@ -112,6 +113,9 @@ export default function MainLayout({ children }: Props) {
 
   useEffect(() => {
     let wasOffline = false;
+    // Arrancó con lo guardado en el equipo: la franja de arriba ya avisa "Sin señal" y "Datos al
+    // día", así que la vuelta de la conexión no lleva otro cartel
+    let quiet = false;
     let isMounted = true;
 
     const checkConnection = async (isFirstCheck = false) => {
@@ -122,6 +126,7 @@ export default function MainLayout({ children }: Props) {
         setIsConnecting(false);
         setConnectionFailed(false);
         wasOffline = true;
+        quiet = true;
         return;
       }
       if (isFirstCheck) {
@@ -159,13 +164,15 @@ export default function MainLayout({ children }: Props) {
           if (!isMounted) return;
           setIsOnline(true);
           if (wasOffline) {
-            toast.success('Conexión restablecida con el servidor principal');
+            if (!quiet) toast.success('Conexión restablecida con el servidor principal');
             wasOffline = false;
+            quiet = false;
           }
         } catch (e) {
           if (!isMounted) return;
           setIsOnline(false);
           if (!wasOffline) {
+            quiet = false;
             toast.error('Conexión perdida con el servidor. Operando en modo local.');
             wasOffline = true;
           }

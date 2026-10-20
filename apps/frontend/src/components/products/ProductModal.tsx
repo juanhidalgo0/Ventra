@@ -1449,17 +1449,17 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
               );
             })()}
 
-            {isHardwareStore && (
+            {(isHardwareStore || hasFeature('bulk')) && (
               <>
                 <Collapsible
                   icon={Layers}
-                  title="Precio mayorista"
-                  hint="Precio automático a partir de cierta cantidad"
+                  title={hasFeature('bulk') ? 'Oferta por cantidad' : 'Precio mayorista'}
+                  hint={hasFeature('bulk') ? 'Llevando mucho, sale más barato (también en los pedidos)' : 'Precio automático a partir de cierta cantidad'}
                   defaultOpen={!!formData.wholesaleMinQty || !!formData.wholesalePrice}
                 >
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">A partir de (cantidad)</label>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">{hasFeature('bulk') ? 'A partir de (unidades)' : 'A partir de (cantidad)'}</label>
                       <input
                         type="number"
                         step="any"
@@ -1487,9 +1487,12 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       </div>
                     </div>
                   </div>
+                  {hasFeature('bulk') && Number(formData.unitsPerPack) > 1 && Number(formData.wholesaleMinQty) > 0 && (
+                    <p className="text-[11.5px] text-slate-500 mt-1.5">= {Math.round((Number(formData.wholesaleMinQty) / Number(formData.unitsPerPack)) * 100) / 100} bulto(s) de {formData.unitsPerPack}</p>
+                  )}
                 </Collapsible>
 
-                <Collapsible
+                {isHardwareStore && <Collapsible
                   icon={Wrench}
                   title="Precio gremio / oficio"
                   hint="Para instaladores y profesionales"
@@ -1507,7 +1510,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       className={inputCls + ' pl-7'}
                     />
                   </div>
-                </Collapsible>
+                </Collapsible>}
               </>
             )}
           </FormSection>

@@ -96,7 +96,8 @@ export class SalesService {
     if (already) return already;
 
     const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: dto.sessionId } });
-    if (!session || session.status !== 'OPEN') throw new BadRequestException('No hay una caja abierta para esta sesión');
+    // REPARTO: la cuenta fija del reparto (delivery-runs), que no se abre ni se cierra
+    if (!session || (session.status !== 'OPEN' && session.status !== 'REPARTO')) throw new BadRequestException('No hay una caja abierta para esta sesión');
 
     const consumption = !!dto.employeeConsumption;
     // Valor al costo de lo consumido (para el aviso al dueño)
