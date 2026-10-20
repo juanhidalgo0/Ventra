@@ -58,12 +58,13 @@ export type BusinessFeature =
   | 'expiry'         // Vencimientos por lote y avisos
   | 'bulk'           // Venta por bulto (cajas, packs, fardos) además de por unidad
   | 'delivery'       // Nota de venta y remito en hoja A4, localidad de los clientes
-  | 'preorders';     // Preventa: los vendedores toman pedidos en el celular
+  | 'preorders'      // Preventa: los vendedores toman pedidos en el celular
+  | 'workorders';    // Encargos: trabajos a pedido con seña, fecha de entrega y estados
 
-export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA';
+export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -77,6 +78,7 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   expiry:         { title: 'Vencimientos', description: 'Cargar fechas de vencimiento por lote y recibir avisos antes de que venzan.' },
   bulk:           { title: 'Venta por bulto', description: 'Vender por caja, pack o fardo con su propio precio, o suelto por unidad.' },
   delivery:       { title: 'Nota de venta y remito', description: 'Imprimir nota de venta y remito en hoja A4 para el reparto, con la localidad del cliente.' },
+  workorders:     { title: 'Encargos', description: 'Trabajos a pedido con seña, fecha de entrega y prioridad: pendiente, en proceso, listo y entregado, con comprobante para el cliente y aviso por WhatsApp.' },
   preorders:      { title: 'Preventa y reparto', description: 'Los vendedores toman pedidos en el celular (también sin señal), se arman los repartos con hoja de carga y de ruta, y en la caja se cobran.' },
 };
 
@@ -87,6 +89,7 @@ export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   GASTRONOMIA: ['variants', 'expiry'],
   MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants', 'expiry'],
   DISTRIBUIDORA: ['bulk', 'delivery', 'preorders', 'expiry'],
+  IMPRENTA: ['workorders', 'quotes'],
 };
 
 export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: string; description: string }> = {
@@ -114,6 +117,11 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     emoji: '🏪',
     title: 'Multirubro / Bazar',
     description: 'Vende de todo: ropa con talles, bazar por unidad y artículos por medida conviviendo en el mismo mostrador.',
+  },
+  IMPRENTA: {
+    emoji: '🖨️',
+    title: 'Imprenta / Trabajos a pedido',
+    description: 'Encargos con seña y fecha de entrega, prioridad y estados, comprobante para el cliente y aviso por WhatsApp cuando está listo.',
   },
   DISTRIBUIDORA: {
     emoji: '🚚',

@@ -12,6 +12,7 @@ import { myWorkRole } from '../../services/workRole';
 import { readRouteDays, saveRouteDays, zonesFor, dayName, WEEK, ROUTE_DAYS_EVENT, type RouteDays } from '../../services/routeDays';
 import { STORE_SETTINGS_EVENT } from '../../services/storeSettings';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { ScreenHeader, HeaderAction, Chips } from '../mobile/ui';
 import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
@@ -236,10 +237,25 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
 
   const chip = (on: boolean) => `shrink-0 px-3.5 h-9 rounded-full text-[13px] font-semibold border transition-colors cursor-pointer ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`;
 
+  const statusOptions = [['PENDING', 'Pendientes'], ['BILLED', 'Vendidos'], ['CANCELLED', 'Cancelados'], ['ALL', 'Todos']] as const;
+  const live = orders.filter((o) => o.status !== 'CANCELLED').length;
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
+      {inShell && (
+        // En el celular, el encabezado verde de la app con los filtros de estado
+        <div className="sticky top-0 z-20">
+        <ScreenHeader title="Pedidos"
+          subtitle={loading ? 'Cargando…' : `${plural(live, 'pedido', 'pedidos')} · ${qtyFmt(totals.bultos)} bultos · ${money(totals.total)}`}
+          action={<span data-tour="preventa-new"><HeaderAction icon={Plus} label="Nuevo" onClick={onNew} /></span>}>
+          <Chips options={statusOptions.map(([id, label]) => ({ id, label }))} value={status as any} onChange={(v) => setStatus(v)} />
+        </ScreenHeader>
+        </div>
+      )}
       <div className={`max-w-3xl mx-auto space-y-4 pb-28 ${inShell ? 'px-4 pt-4' : 'px-4 py-6'}`}>
-        <div className="flex items-start justify-between gap-3">
+        {inShell && useAuthStore.getState().user?.role !== 'ADMIN' && !myWorkRole() && (
+          <button onClick={() => navigate('/empezar')} className="text-[12px] font-semibold text-slate-400 cursor-pointer">Cambiar lo que hago en este equipo</button>
+        )}
+        {!inShell && <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {<h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Preventa</h1>}
             <p className="text-[13.5px] text-slate-500 leading-snug">Los pedidos que toman los vendedores. Salen en un reparto o se cobran en el mostrador.</p>
@@ -250,7 +266,7 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
           <button data-tour="preventa-new" onClick={onNew} className="shrink-0 flex items-center gap-1.5 h-11 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[14px] font-bold cursor-pointer active:scale-[0.98] shadow-sm">
             <Plus className="w-4 h-4" /> Nuevo pedido
           </button>
-        </div>
+        </div>}
 
         {draft && (
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white border-2 border-rose-200">
@@ -328,7 +344,7 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
                         {isSeller && (
               <button onClick={() => setMine((v) => !v)} className={chip(mine)}>{mine ? 'Los míos' : 'De todos'}</button>
             )}
-            {[['PENDING', 'Pendientes'], ['BILLED', 'Vendidos'], ['CANCELLED', 'Cancelados'], ['ALL', 'Todos']].map(([k, l]) => (
+            {!inShell && statusOptions.map(([k, l]) => (
               <button key={k} onClick={() => setStatus(k)} className={chip(status === k)}>{l}</button>
             ))}
           </div>
@@ -346,7 +362,7 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
           </div>
         </div>
 
-        {!loading && orders.length > 0 && (
+        {!inShell && !loading && orders.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             <Stat label="Pedidos" value={String(orders.filter((o) => o.status !== 'CANCELLED').length)} />
             <Stat label="Bultos" value={qtyFmt(totals.bultos)} />
@@ -373,18 +389,19 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
               return (
                 <div key={o.id} className={`rounded-2xl bg-white border overflow-hidden transition-shadow ${isOpen ? 'border-slate-300 shadow-sm' : 'border-slate-200'}`}>
                   <button onClick={() => setOpen(isOpen ? null : o.id)} className="w-full text-left px-4 py-3.5 flex items-center gap-3 cursor-pointer">
+                    <span className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[15px] font-bold shrink-0">{(o.client?.name || '?').trim().charAt(0).toUpperCase()}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[15.5px] font-bold text-slate-900 truncate">{o.client?.name || 'Sin cliente'}</p>
-                        <span className={`shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
-                        {o.runId && o.status === 'PENDING' && <span className="shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 text-sky-800 border-sky-200">En reparto</span>}
-                      </div>
-                      <p className="text-[12.5px] text-slate-500 truncate mt-0.5">
+                      <p className="text-[15px] font-semibold text-slate-900 truncate">{o.client?.name || 'Sin cliente'}</p>
+                      <p className="text-[12.5px] text-slate-500 truncate">
                         N° {o.orderNumber}
                         {o.client?.locality ? ` · ${o.client.locality}` : ''}
-                        {' · '}{new Date(o.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                        {o.user ? ` · ${o.user.fullName || o.user.username}` : ''}
+                        {' · '}{new Date(o.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
                       </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {(status === 'ALL' || o.status !== status) && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>}
+                        {o.runId && o.status === 'PENDING' && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 text-sky-800 border-sky-200">En reparto</span>}
+                        {o.user && <span className="text-[11.5px] text-slate-400 truncate">{o.user.fullName || o.user.username}</span>}
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-[15.5px] font-bold text-slate-900">{money(o.total)}</p>

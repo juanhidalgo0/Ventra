@@ -4363,9 +4363,10 @@ export default function POSScreen() {
                 <button onClick={() => { setShowMobileMenu(false); if (isAdmin) navigate('/dashboard'); else setShowAdminPrompt(true); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-750 font-bold text-sm transition-all text-left">
                   <Settings className="w-4 h-4 text-slate-550" /> Configuración
                 </button>
-                <button onClick={() => { setShowMobileMenu(false); localStorage.removeItem('server_ip'); localStorage.removeItem('connection_mode'); logout(); navigate('/setup'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-sm transition-all text-left">
+                {/* Elegir el servidor solo en el programa de la PC: en el celular la caja es la de la dirección */}
+                {(window as any).__TAURI__ && <button onClick={() => { setShowMobileMenu(false); localStorage.removeItem('server_ip'); localStorage.removeItem('connection_mode'); logout(); navigate('/setup'); }} className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-sm transition-all text-left">
                   <Server className="w-4 h-4 text-slate-550" /> Seleccionar Servidor
-                </button>
+                </button>}
               </div>
               <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                 <button onClick={() => { setShowMobileMenu(false); logout(); }} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm transition-all">

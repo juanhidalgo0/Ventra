@@ -608,6 +608,51 @@ async function main() {
     assert.strictEqual(it.bultos, 3);
   });
 
+  await t('encargos: seña, entrega y recordatorio', async () => {
+    const { WorkOrdersService } = require('../src/modules/workorders/workorders.service');
+    const avisos: any[] = [];
+    const notifyStub: any = { enqueue: (type: string, data: any) => avisos.push({ type, data }) };
+    const wo = new WorkOrdersService(prisma, sales, notifyStub);
+    const papel = await nuevo('Resma A4', 50, { salePrice: 9000 });
+    const manana = new Date(Date.now() + 86400000);
+    // Cliente nuevo por nombre y teléfono; un trabajo a mano y un producto del catálogo
+    const o: any = await wo.save('wo-test-0001', {
+      clientName: 'Estudio Jurídico Pérez', clientPhone: '221 555-0199', priority: 'ALTA', dueAt: manana.toISOString(),
+      items: [
+        { description: 'Tarjetas personales', specs: '9x5 cm, ilustración 300 g, laminado mate', quantity: 500, unitPrice: 30 },
+        { productId: papel.id, description: 'Resma A4', quantity: 1, unitPrice: 9000 },
+      ],
+    }, cajero.id);
+    assert.strictEqual(o.total, 24000);
+    assert.ok(o.clientId && o.number > 0);
+    const otra: any = await wo.save('wo-test-0002', { clientName: 'Otro nombre', clientPhone: '2215550199', items: [{ description: 'Volantes', quantity: 1, unitPrice: 100 }] }, cajero.id);
+    assert.strictEqual(otra.clientId, o.clientId, 'mismo teléfono = mismo cliente');
+    // Seña: entra a la caja y le queda a favor
+    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, cajero.id);
+    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, cajero.id); // repetido: no cobra dos veces
+    let c: any = await prisma.client.findUnique({ where: { id: o.clientId } });
+    assert.strictEqual(c.balance, -10000, 'la seña queda a favor');
+    assert.strictEqual((await wo.findOne(o.id)).deposit, 10000);
+    await assert.rejects(() => wo.collect(o.id, { amount: 20000, method: 'CASH', sessionId: session.id, key: 'b' }, cajero.id), /mayor/);
+    // Recordatorio: vence mañana
+    const r = await wo.remind(new Date(new Date().setHours(10, 0, 0, 0)));
+    assert.ok(r.some((x: any) => x.number === o.number) && avisos[0]?.type === 'workOrderDue');
+    assert.strictEqual((await wo.remind(new Date(new Date().setHours(11, 0, 0, 0)))).length, 0, 'una vez por día');
+    // Estados y entrega
+    await wo.setStatus(o.id, 'LISTO');
+    await assert.rejects(() => wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 1000 }] }, cajero.id), /Falta cobrar/);
+    const stockAntes = await stockDe(papel.id);
+    const d: any = await wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 14000 }] }, cajero.id);
+    assert.strictEqual(d.status, 'ENTREGADO');
+    const venta: any = await prisma.sale.findUnique({ where: { id: d.saleId }, include: { payments: true, items: true } });
+    assert.strictEqual(venta.total, 24000);
+    assert.deepStrictEqual(venta.payments.map((p: any) => [p.method, p.amount]).sort(), [['CASH', 14000], ['DEBT', 10000]]);
+    assert.strictEqual(await stockDe(papel.id), stockAntes - 1, 'el producto del catálogo sale del stock');
+    c = await prisma.client.findUnique({ where: { id: o.clientId } });
+    assert.strictEqual(c.balance, 0, 'la seña se usó en la venta: no debe ni le deben');
+    await assert.rejects(() => wo.save(o.id, { clientId: o.clientId, items: [{ description: 'x', quantity: 1, unitPrice: 1 }] }, cajero.id), /ya se entregó/);
+  });
+
   await t('clientes: un empleado no cambia el saldo editando; el dueño sí', async () => {
     const { ClientsService } = require('../src/modules/clients/clients.service');
     const svc = new ClientsService(prisma);

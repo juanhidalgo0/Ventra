@@ -35,6 +35,7 @@ const HistorialScreen = lazy(() => import('./components/pos/HistorialScreen'));
 const PreventaScreen = lazy(() => import('./components/preorders/PreventaScreen'));
 const RepartoScreen = lazy(() => import('./components/reparto/RepartoScreen'));
 const DistribReportsScreen = lazy(() => import('./components/distribuidora/DistribReportsScreen'));
+const WorkOrdersScreen = lazy(() => import('./components/workorders/WorkOrdersScreen'));
 const HoyScreen = lazy(() => import('./components/distribuidora/HoyScreen'));
 const StartChooser = lazy(() => import('./components/distribuidora/StartChooser'));
 const GastosScreen = lazy(() => import('./components/cash-register/GastosScreen'));
@@ -167,6 +168,13 @@ function OwnerMobileOr({ mobile, children }: { mobile: React.ReactNode; children
 }
 
 function ConnectionGuard({ children }: { children: React.ReactNode }) {
+  // "Caja principal / caja adicional" solo tiene sentido en el programa de la PC. En el celular o
+  // en un navegador, la caja es la de la dirección que se abrió: se usa esa y se sigue de largo.
+  if (!localStorage.getItem('server_ip') && !(window as any).__TAURI__ && window.location.protocol.startsWith('http')) {
+    localStorage.setItem('server_ip', window.location.host);
+    localStorage.setItem('saved_client_ip', window.location.host);
+    localStorage.setItem('connection_mode', 'CLIENT');
+  }
   const hasConnection = !!localStorage.getItem('server_ip');
   return hasConnection ? <>{children}</> : <Navigate to="/setup" />;
 }
@@ -679,6 +687,7 @@ export default function App() {
                     <Route path="/preventa" element={<PreventaScreen />} />
                     <Route path="/reparto" element={<RepartoScreen />} />
                     <Route path="/informes" element={<DistribReportsScreen />} />
+                    <Route path="/encargos" element={<WorkOrdersScreen />} />
                     <Route path="/hoy" element={<HoyScreen />} />
                     <Route path="/empezar" element={<StartChooser />} />
                     <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />

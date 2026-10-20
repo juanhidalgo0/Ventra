@@ -7,7 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 
-type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption';
+type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue';
 interface QueuedEvent { type: EventType; data: any; at: number; tries: number }
 interface LowStockItem { id: string; name: string; stock: number; minStock: number }
 
@@ -246,6 +246,19 @@ export function localMessage(type: EventType, d: any): { title: string; body: st
           ? `Pago ${canal} a las ${hora}: la venta #${d.saleNumber} de ese monto se cargó como ${metodo}. Revisala.`
           : `Pago ${canal} a las ${hora} (N° ${d.paymentId}): no hay ninguna venta de ese monto cerca de esa hora.`,
         url: '/cash-control',
+      };
+    }
+    case 'workOrderDue': {
+      const items: any[] = Array.isArray(d.items) ? d.items : [];
+      if (!items.length) return null;
+      const late = items.filter((i) => i.late).length;
+      const first = items[0];
+      return {
+        title: items.length === 1
+          ? (first.late ? `Atrasado: encargo N° ${first.number} de ${first.client}` : `Para entregar: encargo N° ${first.number} de ${first.client}`)
+          : `${items.length} encargos para entregar${late ? ` (${late} atrasados)` : ''}`,
+        body: items.slice(0, 4).map((i) => `N° ${i.number} ${i.client}${i.when ? ` · ${i.when}` : ''}`).join(', ') + (items.length > 4 ? ` y ${items.length - 4} más` : ''),
+        url: '/encargos',
       };
     }
     case 'employeeConsumption': {

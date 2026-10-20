@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote, Truck } from 'lucide-react';
+import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote, Truck, Printer } from 'lucide-react';
 import { useBusinessStore } from '../../stores/businessStore';
 import { useWorkRole } from '../../services/workRole';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
@@ -52,6 +52,15 @@ const DISTRIB_TABS = [
   { path: '/mas', label: 'Más', icon: LayoutGrid },
 ];
 
+/** Imprenta y trabajos a pedido: los encargos son lo del día */
+const WORKORDER_TABS = [
+  { path: '/inicio', label: 'Inicio', icon: Home },
+  { path: '/encargos', label: 'Encargos', icon: Printer },
+  { path: '/pos', label: 'Vender', icon: ShoppingCart },
+  { path: '/products', label: 'Productos', icon: Package },
+  { path: '/mas', label: 'Más', icon: LayoutGrid },
+];
+
 /** Plan Tienda (sin sistema de ventas): la tienda y sus pedidos reemplazan a Inicio, Vender y Movimientos. */
 const TIENDA_TABS = [
   { path: '/tienda', label: 'Inicio', icon: Store },
@@ -84,7 +93,7 @@ export function useMobileFocus(active = true) {
 }
 const isTab = (tabs: Tab[], pathname: string) => tabs.some((t) => t.path === pathname);
 /** Pantallas de "Más" que ya tienen su versión móvil (traen su propio encabezado con "volver"). */
-export const NATIVE_MOBILE_PATHS = ['/preventa', '/reparto', '/informes', '/hoy', '/empezar', '/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
+export const NATIVE_MOBILE_PATHS = ['/preventa', '/reparto', '/informes', '/encargos', '/hoy', '/empezar', '/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
 /** Las pantallas que no son pestañas se abren desde "Más" y la marcan activa. */
 const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : '/mas');
 
@@ -150,7 +159,8 @@ export default function MobileShell({ children, tabs: staffTabs }: { children: R
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const distrib = useBusinessStore((s) => !!s.features.preorders);
-  const planTabs = usePlanStore((s) => (s.features.caja ? (distrib ? DISTRIB_TABS : TABS) : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
+  const workorders = useBusinessStore((s) => !!s.features.workorders);
+  const planTabs = usePlanStore((s) => (s.features.caja ? (distrib ? DISTRIB_TABS : workorders ? WORKORDER_TABS : TABS) : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
   const tabs: Tab[] = staffTabs || planTabs;
   const focus = useFocus((s) => s.n > 0);
   const active = tabFor(tabs, pathname);
@@ -230,7 +240,9 @@ export default function MobileShell({ children, tabs: staffTabs }: { children: R
 export function StaffMobileShell({ children }: { children: React.ReactNode }) {
   const role = useWorkRole();
   const distrib = useBusinessStore((s) => !!s.features.preorders);
+  const workorders = useBusinessStore((s) => !!s.features.workorders);
   const more = { path: '/mas', label: 'Más', icon: LayoutGrid };
+  const jobs = { path: '/encargos', label: 'Encargos', icon: Printer };
   const sell = { path: '/pos', label: 'Vender', icon: ShoppingCart };
   const orders = { path: '/preventa', label: 'Pedidos', icon: ClipboardList };
   const route = { path: '/reparto', label: 'Reparto', icon: Truck };
@@ -238,6 +250,7 @@ export function StaffMobileShell({ children }: { children: React.ReactNode }) {
     : role === 'VENDEDOR' ? [orders, more]
     : role === 'MOSTRADOR' ? [sell, orders, more]
     : distrib ? [sell, orders, route, more]
+    : workorders ? [jobs, sell, more]
     : [sell, more];
   return <MobileShell tabs={tabs}>{children}</MobileShell>;
 }

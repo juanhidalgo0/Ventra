@@ -24,6 +24,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { SurchargesModule } from './modules/surcharges/surcharges.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { PreOrdersModule } from './modules/preorders/preorders.module';
+import { WorkOrdersModule } from './modules/workorders/workorders.module';
 import { AcopioModule } from './modules/acopio/acopio.module';
 import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -55,6 +56,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     SurchargesModule,
     QuotesModule,
     PreOrdersModule,
+    WorkOrdersModule,
     AcopioModule,
     MercadoPagoModule,
     SettingsModule,

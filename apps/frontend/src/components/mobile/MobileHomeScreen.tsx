@@ -13,6 +13,7 @@ import PushCard from './PushCard';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
+import WorkOrdersHomeCard from '../workorders/WorkOrdersHomeCard';
 
 type Period = 'day' | 'week' | 'month';
 
@@ -225,6 +226,8 @@ export default function MobileHomeScreen() {
             ))}
           </div>
         )}
+
+        <WorkOrdersHomeCard />
 
         <PushCard />
 

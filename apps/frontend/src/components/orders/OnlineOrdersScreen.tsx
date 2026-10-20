@@ -3,13 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ShoppingBag, Clock, ChefHat, PackageCheck, CheckCircle2, XCircle, MessageCircle, Phone, MapPin,
-  Truck, Store as StoreIcon, CreditCard, ShoppingCart, X, Globe,
+  Truck, Store as StoreIcon, CreditCard, ShoppingCart, X, Globe, Printer,
 } from 'lucide-react';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { updateOrderStage, type OrderStage, type StoreOrder } from '../../services/onlineStore';
 import { usePOSStore } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePlanStore } from '../../stores/planStore';
+import { useFeature } from '../../stores/businessStore';
 import { ScreenHeader, Chips } from '../mobile/ui';
 
 type Tab = 'ACTIVE' | 'NEW' | 'PREPARING' | 'READY' | 'DONE';
@@ -254,6 +255,22 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
 
   // Con el plan Tienda no hay caja: el pedido se gestiona solo por etapas
   const hasCaja = usePlanStore((s) => s.features.caja);
+  // Imprenta: un trabajo encargado en la tienda pasa a la agenda de encargos con su detalle
+  const workorders = useFeature('workorders');
+  const toWorkOrder = async () => {
+    const draft = {
+      clientName: o.customerName, clientPhone: o.customerPhone, source: 'TIENDA', onlineOrderId: o.id,
+      notes: [o.orderCode ? `Pedido de la tienda #${o.orderCode}` : 'Pedido de la tienda online', o.customerNote].filter(Boolean).join('. '),
+      items: o.items.map((it) => {
+        const p = usePOSStore.getState().products.find((x: any) => x.id === it.productId);
+        return { productId: p ? p.id : null, description: it.name, specs: it.note || '', quantity: String(it.qty), unitPrice: String(it.price) };
+      }),
+    };
+    try { sessionStorage.setItem('ventra_workorder_from_online', JSON.stringify(draft)); } catch { /* sin espacio: se carga a mano */ }
+    if (stage === 'NEW') await updateOrderStage(storeId, o.id, 'PREPARING').catch(() => {});
+    onClose();
+    navigate('/encargos?nuevo=1');
+  };
 
   const next: { stage: OrderStage; label: string } | null =
     stage === 'NEW' ? { stage: 'PREPARING', label: 'Empezar a preparar' }
@@ -317,6 +334,11 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
         </div>
 
         <div className="px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] border-t border-slate-100 space-y-2">
+          {hasCaja && workorders && stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
+            <button onClick={toWorkOrder} className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
+              <Printer className="w-4 h-4" /> Pasar a encargo
+            </button>
+          )}
           {hasCaja && stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
             <button onClick={chargeInPos} className="w-full h-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
               <ShoppingCart className="w-4 h-4" /> Cobrar en la caja

@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingCart, ClipboardList, Sun } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -173,6 +173,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
+        ...(hasFeature('workorders') ? [{ label: 'Encargos', icon: Printer, path: '/encargos' }] : []),
         ...(hasFeature('preorders') ? [
           { label: 'Preventa', icon: ClipboardList, path: '/preventa' },
           { label: 'Reparto', icon: Truck, path: '/reparto' },

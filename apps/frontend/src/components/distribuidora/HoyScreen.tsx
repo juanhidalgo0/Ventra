@@ -88,7 +88,7 @@ export default function HoyScreen() {
   const actions = [
     { label: 'Nuevo pedido', icon: ClipboardList, to: '/preventa?nuevo=1', primary: true },
     { label: 'Armar reparto', icon: Truck, to: '/reparto?nuevo=1' },
-    { label: 'Venta de mostrador', icon: ShoppingCart, to: '/pos' },
+    { label: inShell ? 'Mostrador' : 'Venta de mostrador', icon: ShoppingCart, to: '/pos' },
     { label: 'Cargar compra', icon: PackagePlus, to: '/purchases' },
     { label: 'Clientes', icon: Users, to: '/clients' },
     { label: 'Informes', icon: BarChart3, to: '/informes' },
@@ -99,8 +99,25 @@ export default function HoyScreen() {
   if (!manager) return <Navigate to={workRole ? WORK_PATH[workRole] : '/pos'} replace />;
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-      <div className={`max-w-6xl mx-auto space-y-5 pb-16 ${inShell ? 'px-4 pt-4' : 'px-4 sm:px-6 py-6'}`}>
-        <div className="flex items-end justify-between gap-3">
+      {inShell && (
+        // En el celular, como el inicio de la app: encabezado verde con la plata del día
+        <header className="bg-rose-600 text-white px-5 pt-[calc(env(safe-area-inset-top)+1rem)] pb-14 rounded-b-[28px]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[12px] text-rose-100">{today}</p>
+              <h1 className="text-[19px] font-bold tracking-tight truncate">{storeName || 'Hoy'}</h1>
+            </div>
+            <button onClick={() => { setLoading(true); load(); }} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:scale-95 shrink-0" aria-label="Actualizar">
+              <RefreshCw className={`w-[18px] h-[18px] ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <p className="mt-4 text-[12px] text-rose-100">Cobrado hoy</p>
+          <p className="text-[32px] leading-tight font-bold tracking-tight tabular-nums">{data ? money(data.money.collected) : '—'}</p>
+          {todayZones.length > 0 && <p className="mt-1 text-[12.5px] text-orange-200 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Hoy se visita {todayZones.join(', ')}</p>}
+        </header>
+      )}
+      <div className={`max-w-6xl mx-auto space-y-5 pb-16 ${inShell ? 'px-4 -mt-9 relative' : 'px-4 sm:px-6 py-6'}`}>
+        {!inShell && <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[13px] font-semibold text-slate-500">{today}</p>
                         <h1 className="text-[26px] font-bold text-slate-900 tracking-tight leading-tight truncate">{storeName ? `Hoy en ${storeName}` : 'Hoy'}</h1>
@@ -109,10 +126,16 @@ export default function HoyScreen() {
           <button onClick={() => { setLoading(true); load(); }} className="shrink-0 w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center cursor-pointer hover:bg-slate-50" aria-label="Actualizar">
             <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
           </button>
-        </div>
+        </div>}
 
-        <div data-tour="hoy-actions" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          {actions.map((a) => (
+        <div data-tour="hoy-actions" className={inShell ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5'}>
+          {actions.map((a) => inShell ? (
+            <button key={a.label} onClick={() => navigate(a.to)}
+              className={`h-[92px] rounded-2xl px-2 flex flex-col items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.97] transition-transform shadow-sm ${a.primary ? 'bg-orange-200 text-orange-950' : 'bg-white border border-slate-200 text-slate-800'}`}>
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${a.primary ? 'bg-white/60' : 'bg-rose-50 text-rose-700'}`}><a.icon className="w-5 h-5" /></span>
+              <span className="text-[12.5px] font-bold leading-tight">{a.label}</span>
+            </button>
+          ) : (
             <button key={a.label} onClick={() => navigate(a.to)}
               className={`h-[74px] rounded-2xl px-4 flex items-center gap-3 text-left cursor-pointer transition-all active:scale-[0.98] ${a.primary ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm col-span-2 sm:col-span-1' : 'bg-white border border-slate-200 hover:border-slate-300 text-slate-800'}`}>
               <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${a.primary ? 'bg-white/15' : 'bg-slate-100 text-slate-700'}`}><a.icon className="w-5 h-5" /></span>

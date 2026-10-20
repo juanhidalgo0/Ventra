@@ -24,6 +24,7 @@ const DEFAULT_PREFS = {
   mpUnmatched: true,   // entró un pago a Mercado Pago y no hay venta de MP de ese monto
   saleCancel: false,   // venta anulada (solo importes grandes)
   employeeConsumption: true, // un empleado registró un consumo propio
+  workOrderDue: true,  // encargos para entregar mañana o atrasados
   dailySummary: false, // resumen del día
   summaryHour: 21,
   quietFrom: 23,       // horario de silencio (salvo pedidos)
@@ -165,6 +166,20 @@ function messageFor(ev) {
         title: `${d.terminal || "Una caja"} cerró con ${diff < 0 ? "faltante" : "sobrante"} de ${money(Math.abs(diff))}`,
         body: `${d.user || "Sin usuario"} · esperado ${money(d.expected)} · declarado ${money(d.counted)}`,
         url: "/#/cash-control", tag: "cash-" + (d.sessionId || Date.now()),
+      };
+    }
+    case "workOrderDue": {
+      const items = (Array.isArray(d.items) ? d.items : []).slice(0, 20);
+      if (!items.length) return null;
+      const late = items.filter((i) => i.late).length;
+      const first = items[0];
+      const label = (i) => `N° ${i.number} ${String(i.client || "").slice(0, 40)}${i.when ? ` · ${i.when}` : ""}`;
+      return {
+        title: items.length === 1
+          ? `${first.late ? "Atrasado" : "Para entregar"}: encargo N° ${first.number} de ${String(first.client || "un cliente").slice(0, 40)}`
+          : `${items.length} encargos para entregar${late ? ` (${late} atrasados)` : ""}`,
+        body: items.slice(0, 4).map(label).join(", ") + (items.length > 4 ? ` y ${items.length - 4} más` : ""),
+        url: "/#/encargos", tag: "encargos-" + new Date().toISOString().slice(0, 13),
       };
     }
     case "employeeConsumption": {

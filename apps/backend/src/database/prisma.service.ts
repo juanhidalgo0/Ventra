@@ -400,6 +400,46 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               CONSTRAINT "pre_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "pre_orders" ("id") ON DELETE CASCADE ON UPDATE CASCADE
             );`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_order_items_order_id_idx" ON "pre_order_items"("order_id");`);
+            // Encargos (imprenta, trabajos a pedido): ver WorkOrder
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "work_orders" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "number" INTEGER NOT NULL,
+              "client_id" TEXT,
+              "user_id" TEXT NOT NULL,
+              "status" TEXT NOT NULL DEFAULT 'PENDIENTE',
+              "priority" TEXT NOT NULL DEFAULT 'MEDIA',
+              "received_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "due_at" DATETIME,
+              "notes" TEXT,
+              "total" REAL NOT NULL DEFAULT 0,
+              "deposit" REAL NOT NULL DEFAULT 0,
+              "source" TEXT NOT NULL DEFAULT 'LOCAL',
+              "online_order_id" TEXT,
+              "sale_id" TEXT,
+              "ready_at" DATETIME,
+              "delivered_at" DATETIME,
+              "notified_at" DATETIME,
+              "reminded_at" DATETIME,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "work_orders_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+              CONSTRAINT "work_orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "work_orders_status_idx" ON "work_orders"("status");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "work_orders_due_at_idx" ON "work_orders"("due_at");`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "work_orders_client_id_idx" ON "work_orders"("client_id");`);
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "work_order_items" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "order_id" TEXT NOT NULL,
+              "product_id" TEXT,
+              "description" TEXT NOT NULL,
+              "specs" TEXT,
+              "quantity" REAL NOT NULL,
+              "unit_price" REAL NOT NULL,
+              "total" REAL NOT NULL,
+              CONSTRAINT "work_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "work_orders" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "work_order_items_order_id_idx" ON "work_order_items"("order_id");`);
             // Reparto: hoja de carga y de ruta (ver DeliveryRun)
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "delivery_runs" (
               "id" TEXT NOT NULL PRIMARY KEY,

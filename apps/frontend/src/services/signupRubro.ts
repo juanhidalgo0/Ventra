@@ -14,6 +14,7 @@ const CAJA_RUBROS: Record<string, BusinessProfile> = {
   gastronomia: 'GASTRONOMIA',
   multirubro: 'MULTIRUBRO',
   distribuidora: 'DISTRIBUIDORA',
+  imprenta: 'IMPRENTA',
 };
 
 /** Perfil de la caja que corresponde al rubro, si es un rubro de venta. */

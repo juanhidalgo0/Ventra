@@ -10,6 +10,7 @@ import {
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { ScreenHeader, HeaderAction, Chips } from '../mobile/ui';
 import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
@@ -41,6 +42,7 @@ const isoDay = (offset: number) => {
 };
 const mapsUrl = (c: any) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([c?.address, c?.locality, 'Buenos Aires, Argentina'].filter(Boolean).join(', '))}`;
 
+const REPARTO_FILTERS = [['ACTIVE', 'Activos'], ['ARMANDO', 'Armando'], ['EN_REPARTO', 'En reparto'], ['CERRADO', 'Cerrados']] as const;
 const STATUS: Record<string, { label: string; cls: string }> = {
   ARMANDO: { label: 'Armando', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
   EN_REPARTO: { label: 'En reparto', cls: 'bg-sky-50 text-sky-800 border-sky-200' },
@@ -111,8 +113,22 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
+      {inShell && (
+        // En el celular, el encabezado verde de la app con los filtros de estado
+        <div className="sticky top-0 z-20">
+        <ScreenHeader title="Reparto"
+          subtitle={isDriver ? 'Tus repartos: tocá uno para ver las paradas' : loading ? 'Cargando…' : `${plural(runs.length, 'reparto', 'repartos')}${pending ? ` · ${plural(pending, 'pedido sin reparto', 'pedidos sin reparto')}` : ''}`}
+          action={!isDriver ? <span data-tour="reparto-new"><HeaderAction icon={Plus} label="Armar" onClick={onNew} /></span> : undefined}>
+          <Chips options={[...(isDriver ? [{ id: 'MINE', label: mine ? 'Los míos' : 'De todos' }] : []), ...REPARTO_FILTERS.map(([id, label]) => ({ id, label }))]}
+            value={status as any} onChange={(v: string) => (v === 'MINE' ? setMine((m) => !m) : setStatus(v))} />
+        </ScreenHeader>
+        </div>
+      )}
       <div className={`max-w-3xl mx-auto space-y-4 pb-24 ${inShell ? 'px-4 pt-4' : 'px-4 py-6'}`}>
-        <div className="flex items-start justify-between gap-3">
+        {inShell && useAuthStore.getState().user?.role !== 'ADMIN' && !myWorkRole() && (
+          <button onClick={() => navigate('/empezar')} className="text-[12px] font-semibold text-slate-400 cursor-pointer">Cambiar lo que hago en este equipo</button>
+        )}
+        {!inShell && <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {<h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Reparto</h1>}
             <p className="text-[13.5px] text-slate-500 leading-snug">{isDriver ? 'Tus repartos: tocá uno para ver las paradas y anotar cada entrega.' : 'Juntá los pedidos que salen en cada camión y sacá la hoja de carga, la de ruta y los remitos.'}</p>
@@ -123,7 +139,7 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
                     {!isDriver && <button data-tour="reparto-new" onClick={onNew} className="shrink-0 flex items-center gap-1.5 h-11 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[14px] font-bold cursor-pointer active:scale-[0.98] shadow-sm">
                         <Plus className="w-4 h-4" /> Armar reparto
           </button>}
-        </div>
+        </div>}
 
                 {!isDriver && pending !== null && pending > 0 && (
           <button onClick={onNew} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-2xl bg-white border-2 border-rose-200 cursor-pointer hover:border-rose-300">
@@ -133,12 +149,12 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
           </button>
         )}
 
-                <div data-tour="reparto-filters" className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+                {!inShell && <div data-tour="reparto-filters" className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
                     {isDriver && <button onClick={() => setMine((v) => !v)} className={chip(mine)}>{mine ? 'Los míos' : 'De todos'}</button>}
-          {[['ACTIVE', 'Activos'], ['ARMANDO', 'Armando'], ['EN_REPARTO', 'En reparto'], ['CERRADO', 'Cerrados']].map(([k, l]) => (
+          {REPARTO_FILTERS.map(([k, l]) => (
             <button key={k} onClick={() => setStatus(k)} className={chip(status === k)}>{l}</button>
           ))}
-        </div>
+        </div>}
 
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 text-slate-400 animate-spin" /></div>
@@ -153,20 +169,19 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
             {runs.map((r) => {
               const st = STATUS[r.status] || STATUS.ARMANDO;
               return (
-                <button key={r.id} onClick={() => onOpen(r.id)} className="w-full text-left rounded-2xl bg-white border border-slate-200 hover:border-slate-300 px-4 py-3.5 cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[15.5px] font-bold text-slate-900">{dayLabel(r.date)}</p>
-                    <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
-                    <span className="ml-auto text-[15.5px] font-bold text-slate-900">{money(r.total)}</span>
-                  </div>
-                  <p className="text-[12.5px] text-slate-500 mt-0.5">
-                    Reparto N° {r.runNumber}{r.driverName ? ` · ${r.driverName}` : ''} · {plural(r.stops, 'parada', 'paradas')} · {plural(r.bultos, 'bulto', 'bultos')}
-                  </p>
-                  {r.zones?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {r.zones.map((z: string) => <span key={z} className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{z}</span>)}
+                <button key={r.id} onClick={() => onOpen(r.id)} className="w-full text-left rounded-2xl bg-white border border-slate-200 hover:border-slate-300 px-3.5 py-3 cursor-pointer active:scale-[0.995] transition-[border-color,transform]">
+                  <div className="flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-full bg-rose-50 text-rose-700 flex items-center justify-center shrink-0"><Truck className="w-[18px] h-[18px]" /></span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-semibold text-slate-900 truncate">{dayLabel(r.date)}</p>
+                      <p className="text-[12.5px] text-slate-500 truncate">N° {r.runNumber}{r.driverName ? ` · ${r.driverName}` : ''} · {plural(r.stops, 'parada', 'paradas')} · {plural(r.bultos, 'bulto', 'bultos')}</p>
                     </div>
-                  )}
+                    <span className="text-[15px] font-bold text-slate-900 tabular-nums shrink-0">{money(r.total)}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2 pl-[52px]">
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                    {(r.zones || []).map((z: string) => <span key={z} className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{z}</span>)}
+                  </div>
                 </button>
               );
             })}

@@ -42,6 +42,7 @@ model User {
   zReports           DailyZReport[]
   quotes             Quote[]
   preOrders          PreOrder[]
+  workOrders         WorkOrder[]
 
   @@map("users")
 }
@@ -494,6 +495,7 @@ model Client {
   movements AccountMovement[]
   deliveryReceipts DeliveryReceipt[]
   preOrders PreOrder[]
+  workOrders WorkOrder[]
 
   @@map("clients")
 }
@@ -922,4 +924,54 @@ model StoreSetting {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("store_settings")
+}
+
+/// Encargos (imprenta y trabajos a pedido): se toman con seña y se entregan en una fecha.
+/// Al entregarse se vuelven una venta; la seña queda a favor del cliente hasta ese momento.
+model WorkOrder {
+  id            String    @id @default(uuid())
+  number        Int
+  clientId      String?   @map("client_id")
+  userId        String    @map("user_id") // quién lo tomó
+  status        String    @default("PENDIENTE") // PENDIENTE | EN_PROCESO | LISTO | ENTREGADO | CANCELADO
+  priority      String    @default("MEDIA") // ALTA | MEDIA | BAJA
+  receivedAt    DateTime  @default(now()) @map("received_at") // fecha de entrada
+  dueAt         DateTime? @map("due_at") // fecha de entrega
+  notes         String?
+  total         Float     @default(0)
+  deposit       Float     @default(0) // seña cobrada
+  source        String    @default("LOCAL") // LOCAL | TIENDA
+  onlineOrderId String?   @map("online_order_id")
+  saleId        String?   @map("sale_id") // la venta al entregarlo
+  readyAt       DateTime? @map("ready_at")
+  deliveredAt   DateTime? @map("delivered_at")
+  notifiedAt    DateTime? @map("notified_at") // último aviso al cliente por WhatsApp
+  remindedAt    DateTime? @map("reminded_at") // último recordatorio al dueño
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  client Client?         @relation(fields: [clientId], references: [id])
+  user   User            @relation(fields: [userId], references: [id])
+  items  WorkOrderItem[]
+
+  @@index([status])
+  @@index([dueAt])
+  @@index([clientId])
+  @@map("work_orders")
+}
+
+model WorkOrderItem {
+  id          String  @id @default(uuid())
+  orderId     String  @map("order_id")
+  productId   String? @map("product_id") // del catálogo, o null si es un trabajo descripto a mano
+  description String
+  specs       String? // medidas, papel, terminación, archivo…
+  quantity    Float
+  unitPrice   Float   @map("unit_price")
+  total       Float
+
+  order WorkOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("work_order_items")
 }

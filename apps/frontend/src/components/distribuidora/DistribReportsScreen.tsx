@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, RefreshCw, Users, MapPin, Package, XCircle, UserX, Wallet, ShoppingBag, MessageCircle, Phone } from 'lucide-react';
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
-import { useOwnerMobile } from '../../utils/ownerMobile';
+import { ScreenHeader, Chips } from '../mobile/ui';
+import { useSmallScreen } from '../../utils/ownerMobile';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -34,7 +35,7 @@ const PERIODS: [string, string, () => { from: Date; to: Date }][] = [
  */
 export default function DistribReportsScreen() {
   const navigate = useNavigate();
-  const phone = useOwnerMobile();
+  const phone = useSmallScreen();
   const [tab, setTab] = useState<Tab>('sellers');
   const [period, setPeriod] = useState('30');
   const [data, setData] = useState<any | null>(null);
@@ -84,7 +85,13 @@ export default function DistribReportsScreen() {
               <span className="text-[14px] text-slate-600">% de lo entregado</span>
             </div>
           </div>
-          <Table head={['Vendedor', 'Pedidos', 'Clientes', 'Pedido', 'Entregado', 'Rechazado', 'Sin entregar', ...(pctNum ? ['Comisión'] : [])]} th={th} card={card}>
+          {phone ? (
+            <PhoneList items={data.sellers.map((x: any) => ({
+              key: x.userId, title: x.name, value: money(x.delivered), valueLabel: 'entregado',
+              sub: `${x.orders} pedidos · ${x.clients} clientes · rechazó ${money(x.rejected)}${x.pending ? ` · sin entregar ${money(x.pending)}` : ''}`,
+              extra: pctNum ? `Comisión ${money(x.delivered * pctNum / 100)}` : undefined,
+            }))} />
+          ) : <Table head={['Vendedor', 'Pedidos', 'Clientes', 'Pedido', 'Entregado', 'Rechazado', 'Sin entregar', ...(pctNum ? ['Comisión'] : [])]} th={th} card={card}>
             {data.sellers.map((s: any) => (
               <tr key={s.userId} className="border-t border-slate-100">
                 <td className={`${td} font-semibold`}>{s.name}</td>
@@ -97,10 +104,19 @@ export default function DistribReportsScreen() {
                 {pctNum ? <td className={`${td} ${num} font-bold text-emerald-700`}>{money(s.delivered * pctNum / 100)}</td> : null}
               </tr>
             ))}
-          </Table>
+          </Table>}
           <p className="text-[12.5px] text-slate-500">La comisión se calcula sobre lo entregado: lo rechazado y lo que todavía no salió no cuentan.</p>
         </div>
       );
+    }
+    if (tab === 'zones' && phone) {
+      return <PhoneList items={data.zones.map((z: any) => ({ key: z.zone, title: z.zone, value: money(z.delivered), valueLabel: 'entregado', sub: `${z.orders} pedidos · ${z.clients} clientes · pedido ${money(z.ordered)}${z.rejected ? ` · rechazó ${money(z.rejected)}` : ''}` }))} />;
+    }
+    if (tab === 'products' && phone) {
+      return <PhoneList items={data.products.map((x: any) => ({ key: x.productId, title: x.name, value: money(x.amount), sub: `${x.bultos ? `${qty(x.bultos)} bultos · ` : ''}${qty(x.units)} unidades` }))} />;
+    }
+    if (tab === 'reasons' && phone && data.reasons.length) {
+      return <PhoneList items={data.reasons.map((r: any) => ({ key: r.reason, title: r.reason, value: `${r.count} ${r.count === 1 ? 'vez' : 'veces'}`, sub: `Volvió ${money(r.amount)}` }))} />;
     }
     if (tab === 'zones') {
       return (
@@ -219,22 +235,31 @@ export default function DistribReportsScreen() {
         ))}
       </div>
     );
-  }, [data, buy, tab, commission]);
+  }, [data, buy, tab, commission, phone]);
 
   return (
     <div className={`h-full overflow-y-auto bg-slate-50 ${phone ? '' : 'p-6'}`}>
+      {phone && (
+        // En el celular, el encabezado verde fijo con los períodos
+        <div className="sticky top-0 z-20">
+          <ScreenHeader back title="Informes" subtitle={PERIODS.find((p) => p[0] === period)?.[1]}
+            action={<button onClick={load} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:scale-95" aria-label="Actualizar"><RefreshCw className={`w-[18px] h-[18px] ${loading ? 'animate-spin' : ''}`} /></button>}>
+            <Chips options={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />
+          </ScreenHeader>
+        </div>
+      )}
       <div className={`max-w-5xl mx-auto space-y-4 ${phone ? 'px-4 pt-4 pb-24' : ''}`}>
-        <div className="flex items-center gap-2">
+        {!phone && <div className="flex items-center gap-2">
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center cursor-pointer shrink-0" aria-label="Volver"><ArrowLeft className="w-5 h-5 text-slate-700" /></button>
           <h1 className="flex-1 text-[22px] font-bold text-slate-900">Informes</h1>
           <button onClick={load} className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center cursor-pointer" aria-label="Actualizar"><RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} /></button>
-        </div>
+        </div>}
 
-        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
+        {!phone && <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
           {PERIODS.map(([k, l]) => (
             <button key={k} onClick={() => setPeriod(k)} className={`shrink-0 h-9 px-3.5 rounded-full text-[13px] font-semibold border cursor-pointer ${period === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}>{l}</button>
           ))}
-        </div>
+        </div>}
 
         {data && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -259,6 +284,30 @@ export default function DistribReportsScreen() {
           <Empty text="No se pudieron traer los informes. Revisá la conexión y tocá actualizar." />
         ) : body}
       </div>
+    </div>
+  );
+}
+
+/** En el celular, una tarjeta por fila: el nombre, la cifra principal a la derecha y el detalle abajo */
+function PhoneList({ items }: { items: { key: string; title: string; value: string; valueLabel?: string; sub?: string; extra?: string }[] }) {
+  if (!items.length) return <Empty text="No hay datos en este período." />;
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 divide-y divide-slate-100">
+      {items.map((it) => (
+        <div key={it.key} className="px-4 py-3">
+          <div className="flex items-baseline gap-3">
+            <p className="flex-1 min-w-0 text-[15px] font-semibold text-slate-900 truncate">{it.title}</p>
+            <p className="shrink-0 text-[15px] font-bold text-slate-900 tabular-nums">{it.value}</p>
+          </div>
+          {(it.sub || it.valueLabel) && (
+            <div className="flex items-baseline gap-3">
+              <p className="flex-1 min-w-0 text-[12.5px] text-slate-500">{it.sub}</p>
+              {it.valueLabel && <p className="shrink-0 text-[11.5px] text-slate-400">{it.valueLabel}</p>}
+            </div>
+          )}
+          {it.extra && <p className="mt-1 text-[13px] font-bold text-emerald-700">{it.extra}</p>}
+        </div>
+      ))}
     </div>
   );
 }
