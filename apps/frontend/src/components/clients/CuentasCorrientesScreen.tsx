@@ -850,7 +850,9 @@ export default function CuentasCorrientesScreen() {
                         return true;
                       })
                       .map((mov) => {
-                        const isPayment = mov.type === 'PAYMENT';
+                        // Una devolución del reparto es un DEBT negativo: baja la deuda como un pago
+                        const isReturn = mov.type === 'DEBT' && Number(mov.amount) < 0;
+                        const isPayment = mov.type === 'PAYMENT' || isReturn;
                         const formattedDate = new Date(mov.createdAt).toLocaleString('es-AR', {
                           day: '2-digit',
                           month: '2-digit',
@@ -866,7 +868,7 @@ export default function CuentasCorrientesScreen() {
                           >
                             <div className="space-y-1 text-left flex-1">
                               <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${isPayment ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                {isPayment ? 'Abono / Pago' : 'Crédito / Compra'}
+                                {isReturn ? 'Devolución' : isPayment ? 'Abono / Pago' : 'Crédito / Compra'}
                               </span>
                               <p className="text-xs font-bold text-slate-800 pt-1">
                                 {mov.description || (isPayment ? 'Pago Registrado' : 'Venta Registrada')}
@@ -892,7 +894,7 @@ export default function CuentasCorrientesScreen() {
                             </div>
                             <div className="text-right space-y-1 flex flex-row md:flex-col justify-between md:justify-start items-center md:items-end border-t md:border-t-0 border-slate-100 pt-2 md:pt-0 shrink-0">
                               <p className={`text-sm font-black ${isPayment ? 'text-emerald-600' : 'text-rose-650'}`}>
-                                {isPayment ? '-' : '+'} {fmt(mov.amount)}
+                                {isPayment ? '-' : '+'} {fmt(Math.abs(mov.amount))}
                               </p>
                               <p className="text-[9px] text-slate-450 font-bold">
                                 Saldo: {fmt(mov.balanceAfter)}

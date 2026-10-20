@@ -165,7 +165,9 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
             ) : (
               <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
                 {client.movements.map((m: any) => {
-                  const isDebt = m.type === 'DEBT';
+                  // Una devolución del reparto es un DEBT negativo: baja la deuda como un pago
+                  const isReturn = m.type === 'DEBT' && Number(m.amount) < 0;
+                  const isDebt = m.type === 'DEBT' && !isReturn;
                   const items = m.sale?.items?.map((i: any) => i.productName).filter((n: string) => !n.startsWith('PAGO CUENTA')).join(', ');
                   return (
                     <div key={m.id} className="flex items-center gap-3 px-3.5 py-2.5">
@@ -173,10 +175,10 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
                         {isDebt ? <ArrowUpRight className="w-4 h-4 text-red-600" /> : <ArrowDownRight className="w-4 h-4 text-emerald-700" />}
                       </span>
                       <span className="flex-1 min-w-0">
-                        <span className="block text-[13.5px] text-slate-800 truncate">{isDebt ? (items || m.description || 'Compra a cuenta') : 'Pago'}</span>
+                        <span className="block text-[13.5px] text-slate-800 truncate">{isDebt ? (items || m.description || 'Compra a cuenta') : isReturn ? `Devolución${items ? `: ${items}` : ''}` : 'Pago'}</span>
                         <span className="block text-[11.5px] text-slate-500">{new Date(m.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} · saldo {money(m.balanceAfter)}</span>
                       </span>
-                      <span className={`text-[14px] font-semibold tabular-nums ${isDebt ? 'text-red-600' : 'text-emerald-700'}`}>{isDebt ? '+' : '−'}{money(m.amount)}</span>
+                      <span className={`text-[14px] font-semibold tabular-nums ${isDebt ? 'text-red-600' : 'text-emerald-700'}`}>{isDebt ? '+' : '−'}{money(Math.abs(m.amount))}</span>
                     </div>
                   );
                 })}
