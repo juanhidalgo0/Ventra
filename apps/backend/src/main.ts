@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { applyPendingRestore } from './modules/system/pending-restore';
 import { SyncService } from './modules/sync/sync.service';
 import { isAllowedOrigin } from './common/allowed-origin';
+import { isDemoMode, demoVisitorMiddleware } from './modules/system/demo-visitors';
 
 /**
  * Secretos de las sesiones propios de cada instalación (y de cada caja en la nube): se
@@ -65,6 +66,16 @@ async function bootstrap() {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
+
+  // Demo pública: cada pedido va a la base de su visitante. El cuerpo se lee antes (con las
+  // mismas opciones que usa Nest, que al verlo ya registrado no lo repite): leerlo después
+  // pierde el contexto asíncrono del pedido y la consulta iría a la base molde.
+  if (isDemoMode()) {
+    const bodyParser = require('body-parser');
+    app.use(bodyParser.json());
+    app.use(bodyParser.urlencoded({ extended: true }));
+    app.use(demoVisitorMiddleware);
+  }
 
   app.useGlobalPipes(
     new ValidationPipe({

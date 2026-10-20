@@ -12,7 +12,7 @@ import { SyncImageService } from '../products/sync-image.service';
 // here — resetAndSeed() runs the app's own barcode-to-image sync afterwards,
 // which pulls professional white/clean-background catalog photos from
 // Carrefour/Jumbo/Dia/ChangoMas instead of crowdsourced Open Food Facts photos.
-const DEMO_PRODUCTS: Array<{
+export const DEMO_PRODUCTS: Array<{
   name: string; barcode: string; salePrice: number; stock: number; category: string;
 }> = [
   { name: 'COCA-COLA', barcode: '7790895000997', salePrice: 3200, stock: 40, category: 'Bebidas' },
@@ -33,6 +33,11 @@ const DEMO_PRODUCTS: Array<{
   { name: 'LAVANDINA AYUDÍN 1L', barcode: '7790132098459', salePrice: 1200, stock: 24, category: 'Limpieza' },
   { name: 'JAMÓN COCIDO FETEADO', barcode: '7798105711701', salePrice: 3600, stock: 9, category: 'Fiambrería' },
 ];
+
+export const DEMO_CATEGORY_COLORS: Record<string, string> = {
+  Bebidas: '#3b82f6', Snacks: '#f59e0b', Lácteos: '#10b981', Panadería: '#f97316',
+  Limpieza: '#06b6d4', Golosinas: '#ec4899', Fiambrería: '#ef4444', Almacén: '#8b5cf6',
+};
 
 @Injectable()
 export class DemoResetService implements OnModuleInit {
@@ -62,6 +67,15 @@ export class DemoResetService implements OnModuleInit {
   async resetAndSeed() {
     if (!this.isDemo) return;
     const wipeSteps: Array<[string, () => Promise<unknown>]> = [
+      // Cada visitante usa su propia copia (demo-visitors.ts): esta base es el molde y no
+      // debería tener nada de esto, pero la de antes era compartida y puede haberlo guardado
+      ['workOrderItem', () => this.prisma.workOrderItem.deleteMany()],
+      ['workOrder', () => this.prisma.workOrder.deleteMany()],
+      ['preOrderItem', () => this.prisma.preOrderItem.deleteMany()],
+      ['preOrder', () => this.prisma.preOrder.deleteMany()],
+      ['deliveryRun', () => this.prisma.deliveryRun.deleteMany()],
+      ['productLot', () => this.prisma.productLot.deleteMany()],
+      ['appNotification', () => this.prisma.appNotification.deleteMany()],
       ['deliveryReceiptItem', () => this.prisma.deliveryReceiptItem.deleteMany()],
       ['deliveryReceipt', () => this.prisma.deliveryReceipt.deleteMany()],
       ['quoteItem', () => this.prisma.quoteItem.deleteMany()],
@@ -91,9 +105,9 @@ export class DemoResetService implements OnModuleInit {
       ['brand', () => this.prisma.brand.deleteMany()],
       ['surcharge', () => this.prisma.surcharge.deleteMany()],
       ['category', () => this.prisma.category.deleteMany()],
-      // La demo la comparten todos los visitantes: rubro, nombre o "qué hacés con Ventra" que
-      // elija uno no pueden quedarle al siguiente (ver store_settings)
+      // El molde arranca sin rubro, nombre ni "qué hacés con Ventra": lo elige cada visitante
       ['storeSettings', () => this.prisma.$executeRawUnsafe('DELETE FROM store_settings')],
+      ['otherUsers', () => this.prisma.user.deleteMany({ where: { username: { not: 'ADMIN' } } })],
     ];
     for (const [name, run] of wipeSteps) {
       try {
@@ -103,12 +117,8 @@ export class DemoResetService implements OnModuleInit {
       }
     }
 
-    const categoryColors: Record<string, string> = {
-      Bebidas: '#3b82f6', Snacks: '#f59e0b', Lácteos: '#10b981', Panadería: '#f97316',
-      Limpieza: '#06b6d4', Golosinas: '#ec4899', Fiambrería: '#ef4444', Almacén: '#8b5cf6',
-    };
     const categoryMap = new Map<string, string>();
-    for (const [name, color] of Object.entries(categoryColors)) {
+    for (const [name, color] of Object.entries(DEMO_CATEGORY_COLORS)) {
       const cat = await this.prisma.category.create({ data: { name, color, icon: 'Package' } });
       categoryMap.set(name, cat.id);
     }

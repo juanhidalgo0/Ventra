@@ -4,6 +4,8 @@ import { Wallet, Lock, AlertTriangle, ChevronRight, CheckCircle2, History, FileT
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import { cashClosingResult } from '../../utils/cashDifference';
+import { useAuthStore } from '../../stores/authStore';
+import { getPaymentMethods } from './checkout';
 import { downloadPrintableAsPdf, afterPaint } from '../../utils/printToPdf';
 import XReportPrint from '../cash-register/XReportPrint';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
@@ -425,25 +427,46 @@ function SessionSheet({ session: s, onClose, onCloseCash }: { session: any | nul
 }
 
 function CloseSheet({ data, onClose, onDone }: { data: { session: any; mode: 'close' | 'arqueo' } | null; onClose: () => void; onDone: () => void }) {
+  const user = useAuthStore((st) => st.user);
   const [counted, setCounted] = useState('');
+  const [posnetInput, setPosnetInput] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setCounted(''); setNotes(''); }, [data]);
+  useEffect(() => { setCounted(''); setPosnetInput({}); setNotes(''); }, [data]);
 
   const s = data?.session;
   const expected = s ? (s.expectedAmount ?? s.closingAmountExpected ?? 0) : 0;
   const value = parseAmount(counted);
   const diff = counted === '' ? null : value - expected;
 
+  // Igual que el cierre de la PC: lo que marca cada posnet se declara aparte del efectivo.
+  // Se muestran los posnets configurados y cualquier otro que haya cobrado en el turno.
+  const breakdown: Record<string, number> = s ? (s.paymentsBreakdown || parseJson(s.closingSummary)?.paymentBreakdown || {}) : {};
+  const configured = getPaymentMethods().filter((m) => m.id !== 'CASH' && m.id !== 'DEBT');
+  const posnets = [
+    ...configured,
+    ...Object.keys(breakdown)
+      .filter((k) => !['CASH', 'DEBT', 'TRANSFER'].includes(k) && (Number(breakdown[k]) || 0) > 0 && !configured.some((m) => m.id === k))
+      .map((k) => ({ id: k, name: METHOD_LABELS[k] || k })),
+  ];
+  // Solo se declara lo que se tipeó: un posnet en blanco no genera diferencia
+  const posnetDeclarations: Record<string, number> = {};
+  for (const p of posnets) if ((posnetInput[p.id] ?? '') !== '') posnetDeclarations[p.id] = parseAmount(posnetInput[p.id]);
+  const hasDeclarations = Object.keys(posnetDeclarations).length > 0;
+
   const confirm = async () => {
     if (!s) return;
     setBusy(true);
     try {
+      // Mismo formato que la PC: lo declarado viaja en las notas después de [METADATA]
+      const closingNotes = hasDeclarations
+        ? `${notes} [METADATA]${JSON.stringify({ bills: {}, posnetDeclarations, closedBy: user?.fullName || user?.username || 'Administrador' })}`
+        : notes;
       if (data!.mode === 'close') {
-        await api.post(`/cash/${s.id}/close`, { clientId: getClientId(), closingAmountCounted: value, closingNotes: notes });
+        await api.post(`/cash/${s.id}/close`, { clientId: getClientId(), closingAmountCounted: value, closingNotes });
         toast.success(`Caja ${s.terminalName} cerrada`);
       } else {
-        await api.post(`/cash/${s.id}/arqueo`, { closingAmountCounted: value, closingNotes: notes });
+        await api.post(`/cash/${s.id}/arqueo`, { closingAmountCounted: value, closingNotes, ...(hasDeclarations ? { posnetDeclarations } : {}) });
         toast.success('Arqueo completado');
       }
       onDone();
@@ -477,6 +500,44 @@ function CloseSheet({ data, onClose, onDone }: { data: { session: any; mode: 'cl
             <div className={`rounded-2xl px-4 py-3 flex items-center justify-between ${Math.abs(diff) < 1 ? 'bg-emerald-50 text-emerald-800' : diff > 0 ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
               <span className="text-[14px] font-medium">{Math.abs(diff) < 1 ? 'Coincide' : diff > 0 ? 'Sobra' : 'Falta'}</span>
               <span className="text-[18px] font-bold tabular-nums">{money(Math.abs(diff))}</span>
+            </div>
+          )}
+          {posnets.length > 0 && (
+            <div>
+              <p className="text-[12.5px] font-medium text-slate-500">¿Cuánto marca cada posnet?</p>
+              <p className="mb-2 text-[11.5px] text-slate-400">Opcional. Lo que dejes en blanco no se controla.</p>
+              <div className="space-y-2">
+                {posnets.map((p) => {
+                  const exp = Number(breakdown[p.id]) || 0;
+                  const raw = posnetInput[p.id] ?? '';
+                  const d = raw === '' ? null : parseAmount(raw) - exp;
+                  return (
+                    <div key={p.id} className="rounded-2xl border border-slate-200 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block text-[14px] font-medium text-slate-800 truncate">{p.name}</span>
+                          <span className="block text-[11.5px] text-slate-500 tabular-nums">Ventas: {money(exp)}</span>
+                        </span>
+                        <div className="flex items-center gap-1 w-36 shrink-0 h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 focus-within:border-rose-500 focus-within:bg-white">
+                          <span className="text-[16px] font-semibold text-slate-400">$</span>
+                          <input
+                            inputMode="decimal"
+                            value={raw}
+                            placeholder="0"
+                            onChange={(e) => setPosnetInput((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^\d.,]/g, '') }))}
+                            className="flex-1 min-w-0 bg-transparent outline-none text-right text-[17px] font-bold text-slate-900 tabular-nums placeholder:text-slate-300"
+                          />
+                        </div>
+                      </div>
+                      {d !== null && (
+                        <p className={`mt-1.5 text-right text-[12px] font-medium tabular-nums ${Math.abs(d) < 1 ? 'text-emerald-600' : d > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {Math.abs(d) < 1 ? 'Coincide' : `${d > 0 ? 'Sobran' : 'Faltan'} ${money(Math.abs(d))}`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           <textarea

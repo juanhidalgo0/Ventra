@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { isAllowedOrigin } from '../common/allowed-origin';
+import { isDemoMode, demoContext, demoVisitors, readDemoCookie } from '../modules/system/demo-visitors';
 
 /**
  * Canal en tiempo real (ventas, caja, productos). Solo para sesiones iniciadas: antes
@@ -33,11 +34,28 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       try {
         if (!token) throw new Error('sin sesión');
         jwt.verify(token);
+        // Demo pública: cada navegador escucha solo lo de su propia demo (ver to())
+        if (isDemoMode()) {
+          const visitor = demoVisitors.get(readDemoCookie({ headers: socket.handshake.headers }));
+          if (!visitor) throw new Error('sin demo');
+          socket.join(`demo:${visitor.id}`);
+        }
         next();
       } catch {
         next(new Error('unauthorized'));
       }
     });
+  }
+
+  /**
+   * A quién va un aviso: a todos, o en la demo pública solo a la demo del pedido en curso
+   * (todos los visitantes tienen el mismo ADMIN: un cierre Z en una demo cerraba la sesión
+   * en todas). Sin demo en curso (tareas de fondo de la base molde) no se avisa a nadie.
+   */
+  private to() {
+    if (!this.server || !isDemoMode()) return this.server;
+    const visitor = demoContext.getStore();
+    return visitor ? this.server.to(`demo:${visitor.id}`) : null;
   }
 
   handleConnection(client: Socket) {
@@ -51,15 +69,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   emitSaleCreated(sale: any) {
-    this.server?.emit('sale:created', sale);
+    this.to()?.emit('sale:created', sale);
   }
 
   emitStockUpdated(updates: any[]) {
-    this.server?.emit('stock:updated', updates);
+    this.to()?.emit('stock:updated', updates);
   }
 
   emitCashUpdated(data: any) {
-    this.server?.emit('cash:updated', data);
+    this.to()?.emit('cash:updated', data);
   }
 
   /**
@@ -68,11 +86,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    * `clientId` identifica a la terminal que originó el cierre, que se maneja sola.
    */
   emitForceLogout(data: { userId: string; reason: string; sessionId?: string; clientId?: string }) {
-    this.server?.emit('auth:force-logout', data);
+    this.to()?.emit('auth:force-logout', data);
   }
 
   emitProductUpdated(product: any) {
-    this.server?.emit('product:updated', product);
+    this.to()?.emit('product:updated', product);
   }
 
   emitImportProgress(data: { 
@@ -86,7 +104,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       lastItem: string;
     }
   }) {
-    this.server?.emit('import:progress', data);
+    this.to()?.emit('import:progress', data);
   }
 
   emitSyncProgress(data: {
@@ -99,7 +117,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     omittedCount?: number;
     failedCount?: number;
   }) {
-    this.server?.emit('sync:progress', data);
+    this.to()?.emit('sync:progress', data);
   }
 
   emitImageSyncProgress(data: {
@@ -112,7 +130,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     successCount?: number;
     noMatchCount?: number;
   }) {
-    this.server?.emit('sync:images:progress', data);
+    this.to()?.emit('sync:images:progress', data);
   }
 
   getConnectedClientsCount(): number {

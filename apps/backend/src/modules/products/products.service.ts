@@ -326,6 +326,8 @@ export class ProductsService {
         // imageUrl NO: las fotos guardadas en la base (base64) pesan ~65 MB en total.
         // Se resuelven abajo como enlaces livianos que el navegador pide cuando las muestra.
         allowCustomPrice: true,
+        // Sin esto la caja mostraba "Sin stock" en servicios y comidas que no llevan stock
+        unlimitedStock: true,
         unit: true,
         unitsPerPack: true,
         packPrice: true,
@@ -376,6 +378,7 @@ export class ProductsService {
       category: p.category,
       imageUrl: imageById.get(p.id) ?? null,
       allowCustomPrice: p.allowCustomPrice,
+      unlimitedStock: p.unlimitedStock,
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,
       packPrice: p.packPrice,

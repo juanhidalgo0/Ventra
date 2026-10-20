@@ -8,6 +8,7 @@ import api from '../../services/api';
 import AuthLayout, { authCard, authInput, authLabel, authLead, authPrimaryButton, authTitle } from './AuthLayout';
 import AdminRecovery from './AdminRecovery';
 import { usePlanStore, PLANS, SOLD_PLANS, type PlanId } from '../../stores/planStore';
+import { startDemo } from '../../demo/session';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -159,10 +160,12 @@ export default function LoginPage() {
     detectPortAndCheckInit();
   }, []);
 
-  // Demo: el visitante elige qué plan probar; queda en su navegador (el servidor es compartido)
+  // Demo: el visitante elige qué plan probar; queda en su navegador. Los datos van en su
+  // propia demo en el servidor (cada visitante tiene la suya)
   const handleDemoLogin = async (plan: PlanId) => {
     setDemoLoading(plan);
     try {
+      await startDemo();
       usePlanStore.getState().setDemoPlan(plan);
       await login('ADMIN', '1234');
       navigate('/pos');
@@ -176,10 +179,11 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (isDemo) await startDemo();
       await login(username, password);
       navigate('/pos');
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.response?.data?.message || err.message);
     }
   };
 

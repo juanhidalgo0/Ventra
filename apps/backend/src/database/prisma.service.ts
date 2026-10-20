@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { isDemoMode, demoVisitors, routeToVisitor } from '../modules/system/demo-visitors';
 
 // Subir este valor cada vez que se agreguen tablas/columnas al esquema. Al arrancar con
 // una versión distinta a la última aplicada, se hace una copia completa de la base
@@ -26,6 +27,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       }
       return next(params);
     });
+
+    // Demo pública: cada visitante tiene su propia base (ver demo-visitors.ts)
+    if (isDemoMode()) {
+      demoVisitors.configure(PrismaService.resolveDbPath());
+      return routeToVisitor(this);
+    }
   }
 
   private checkpointTimer: NodeJS.Timeout | null = null;

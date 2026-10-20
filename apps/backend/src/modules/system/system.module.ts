@@ -4,6 +4,7 @@ import { SystemController } from './system.controller';
 import { BackupController } from './backup.controller';
 import { BackupService } from './backup.service';
 import { DemoResetService } from './demo-reset.service';
+import { DemoController } from './demo.controller';
 import { AuthModule } from '../auth/auth.module';
 import { ProductsModule } from '../products/products.module';
 import { SyncModule } from '../sync/sync.module';
@@ -15,7 +16,7 @@ import { SyncModule } from '../sync/sync.module';
     ProductsModule,
     SyncModule,
   ],
-  controllers: [SystemController, BackupController],
+  controllers: [SystemController, BackupController, DemoController],
   providers: [BackupService, DemoResetService],
   exports: [BackupService],
 })

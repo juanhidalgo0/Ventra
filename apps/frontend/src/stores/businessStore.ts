@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { setStoreSetting, STORE_SETTINGS_EVENT } from '../services/storeSettings';
 import { planAllows, type PlanFeatures } from './planStore';
+import { IS_DEMO_BUILD } from '../demo/flag';
 
 /**
  * Qué hace el comercio con Ventra. Lo elige el dueño en la bienvenida (y en Configuración).
@@ -200,6 +201,8 @@ export const useBusinessStore = create<BusinessState>((set, get) => ({
     const features = featuresOfProfile(profile);
     persist(profile, features);
     set({ profile, features });
+    // Demo pública: cada rubro se muestra con sus productos y ejemplos (encargos, pedidos…)
+    if (IS_DEMO_BUILD) import('../demo/session').then((m) => m.loadDemoRubro(profile));
   },
 
   setFeature: (feature, enabled) => {

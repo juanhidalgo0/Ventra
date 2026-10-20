@@ -67,6 +67,12 @@ const writePending = (keys: string[]) => {
 
 const localValue = (key: string) => localStorage.getItem(SHARED[key]);
 
+/** Demo pública: al arrancar una demo nueva, este navegador olvida lo que eligió en la anterior. */
+export function forgetStoreSettings() {
+  for (const lsKey of Object.values(SHARED)) localStorage.removeItem(lsKey);
+  localStorage.removeItem(PENDING_KEY);
+}
+
 /** Solo el dueño guarda la configuración en el servidor (PUT /settings pide ADMIN). */
 const isAdmin = () => {
   if (sessionStorage.getItem('admin_unlocked') === 'true') return true;

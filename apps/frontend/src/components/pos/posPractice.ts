@@ -89,6 +89,15 @@ function sampleCatalog(profile: BusinessProfile) {
         prod('Yerba 1kg', 5200, c[2], bulto(10, 47000)), prod('Fideos guiseros 500g', 1300, c[2], bulto(20, 23000)), prod('Lavandina 1L', 1100, c[2], bulto(12, 11400)),
       ] };
     }
+    case 'IMPRENTA': {
+      const c = [cat('pc_p1', 'Impresiones', '#3b82f6', 3), cat('pc_p2', 'Gráfica', '#8b5cf6', 2), cat('pc_p3', 'Sellos y regalos', '#ec4899', 2)];
+      const servicio = { unlimitedStock: true };
+      return { categories: c, products: [
+        prod('Fotocopia B/N A4', 150, c[0], servicio), prod('Impresión color A4', 600, c[0], servicio), prod('Anillado hasta 100 hojas', 2500, c[0], servicio),
+        prod('Tarjetas personales x100', 18000, c[1], servicio), prod('Volantes A5 x1000', 65000, c[1], servicio),
+        prod('Sello automático 38x14', 21000, c[2], servicio), prod('Taza sublimada', 9500, c[2]),
+      ] };
+    }
     default: {
       const c = [cat('pc_k1', 'Bebidas', '#0ea5e9', 3), cat('pc_k2', 'Golosinas', '#f59e0b', 4), cat('pc_k3', 'Almacén', '#10b981', 3)];
       return { categories: c, products: [
@@ -109,6 +118,7 @@ export function practiceTicket(profile: BusinessProfile, products: any[]): { pro
     : profile === 'GASTRONOMIA' ? [[by((p) => /muzzarella Grande/.test(p.name)), 1], [by((p) => /carne/.test(p.name)), 6], [by((p) => /Gaseosa/.test(p.name)), 1]]
     : profile === 'MULTIRUBRO' ? [[by((p) => /Taza/.test(p.name)), 2], [by((p) => p.unit === 'MT'), 3]]
     : profile === 'DISTRIBUIDORA' ? [[by((p) => /Gaseosa/.test(p.name)), 2], [by((p) => /Alfajor/.test(p.name)), 1]]
+    : profile === 'IMPRENTA' ? [[by((p) => /color/.test(p.name)), 10], [by((p) => /Anillado/.test(p.name)), 1]]
     : [[by((p) => /Gaseosa/.test(p.name)), 2], [by((p) => /Alfajor/.test(p.name)), 3]];
   return picks.filter(([p]) => !!p).map(([product, qty]) => ({ product, qty }));
 }
