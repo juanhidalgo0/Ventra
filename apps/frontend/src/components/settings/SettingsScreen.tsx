@@ -1043,8 +1043,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
 
                       <label className="flex items-center justify-between cursor-pointer group">
                         <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-slate-700 block">Consumo de empleados (sin cargo)</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Cada empleado registra lo que consume con su usuario: descuenta el stock y no toca la caja. Te avisamos al celular. <a href="#/employee-consumption" onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold underline">Ver consumos</a></span>
+                          <span className="text-xs font-bold text-slate-700 block">Consumo propio (sin cargo)</span>
+                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Lo que vos o tus empleados consumen del negocio. Se carga como una venta y en el cobro se toca "Consumo propio": descuenta el stock y no toca la caja. Queda a nombre de quien lo registró. <a href="#/employee-consumption" onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold underline">Ver consumos</a></span>
                         </div>
                         <input
                           type="checkbox"

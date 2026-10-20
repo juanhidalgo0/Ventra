@@ -64,7 +64,7 @@ export default function EmployeeConsumptionScreen() {
     <div className="p-4 sm:p-6 max-w-4xl w-full mx-auto space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2"><Coffee className="w-5 h-5 text-emerald-600" /> Consumo de empleados</h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2"><Coffee className="w-5 h-5 text-emerald-600" /> Consumo propio</h1>
           <p className="text-[13px] text-slate-500">Sin cargo: descontó el stock y no tocó la caja. Valuado a lo que te costó la mercadería.</p>
         </div>
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">

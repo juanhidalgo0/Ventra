@@ -150,7 +150,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         // Solo si el comercio permite que los empleados consuman (Configuración)
-        ...(user?.role === 'ADMIN' && localStorage.getItem('employee_consumption') === '1' ? [{ label: 'Consumo de empleados', icon: Coffee, path: '/employee-consumption' }] : []),
+        ...(user?.role === 'ADMIN' && localStorage.getItem('employee_consumption') === '1' ? [{ label: 'Consumo propio', icon: Coffee, path: '/employee-consumption' }] : []),
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
         // Sin caja, los turnos se cobran en la agenda: clientes y cobros propios
@@ -170,7 +170,6 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             { label: 'Métricas y Ventas', path: '/online-store/metrics' },
           ]
         },
-        { label: 'División de Ganancias', icon: Calculator, path: '/earnings-division' },
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
