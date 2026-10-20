@@ -65,10 +65,32 @@ export function isLocalServer() {
   return /^(localhost|127\.|\[::1\])/.test(host);
 }
 
-/** Estado del arranque sin señal (lo muestra el aviso de MainLayout) */
-let offlineSince: string | null = null;
-export const offlineStartedWith = () => offlineSince;
+/**
+ * Qué tan al día están los datos que se ven (lo muestra el aviso de arriba):
+ * - 'updating': se ven los guardados en el equipo mientras se bajan los nuevos.
+ * - 'offline': sin señal, se trabaja con los guardados.
+ * - null: al día. `justUpdated` marca el momento para mostrar "Datos al día" un instante.
+ */
+export type DataMode = 'updating' | 'offline' | null;
+let mode: DataMode = null;
+let since: string | null = null;
+let justUpdatedAt = 0;
+let freshAt = 0;
+export const dataState = () => ({ mode, since, justUpdatedAt, freshAt });
+const emit = () => window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
+export const offlineStartedWith = () => (mode === 'offline' ? since : null);
 export function markOfflineStart(savedAt: string | null) {
-  offlineSince = savedAt;
-  window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
+  if (savedAt === null) { markUpToDate(); return; }
+  mode = 'offline'; since = savedAt; emit();
 }
+export function markUpdating(savedAt: string | null) {
+  mode = 'updating'; since = savedAt; emit();
+}
+export function markUpToDate() {
+  const was = mode;
+  mode = null; since = null; freshAt = Date.now();
+  if (was) justUpdatedAt = Date.now();
+  emit();
+}
+/** En el celular la app arranca al instante con lo guardado y se actualiza de fondo */
+export const startsInstantly = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;

@@ -303,7 +303,8 @@ export class ProductsService {
 
   async getPOSCatalog(updatedAfter?: string) {
     // "Venta Rápida" is opened with code "1" / F1, never shown as a catalog card.
-    const where: any = { isActive: true, id: { not: 'VENTA_RAPIDA' } };
+    // "Pago de cuenta corriente" es interno (lo usan los cobros de fiado): no se vende tocándolo.
+    const where: any = { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } };
     if (updatedAfter) {
       const date = new Date(updatedAfter);
       if (!isNaN(date.getTime())) {

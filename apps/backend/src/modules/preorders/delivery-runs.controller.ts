@@ -23,7 +23,7 @@ export class DeliveryRunsController {
   @Get('today')
   todaySummary(@Request() req: any) {
     // La plata del día y quién debe: para el dueño y el encargado, no para vendedores ni choferes
-    if (req?.user?.workRole === 'VENDEDOR' || req?.user?.workRole === 'CHOFER') throw new ForbiddenException('Esta pantalla es del encargado');
+    if (req?.user?.role !== 'ADMIN' && req?.user?.role !== 'SUPERVISOR') throw new ForbiddenException('Esta pantalla es del encargado');
     return this.today.summary();
   }
 

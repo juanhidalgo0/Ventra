@@ -15,13 +15,13 @@ import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
 import { APP_VERSION } from './appVersion';
-import { saveWarmData, loadWarmData, isUnreachable, isLocalServer, markOfflineStart, offlineStartedWith } from './services/offlineStart';
+import { saveWarmData, loadWarmData, isUnreachable, isLocalServer, markOfflineStart, offlineStartedWith, markUpdating, markUpToDate, startsInstantly, dataState } from './services/offlineStart';
 
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { MangoLogo } from './components/common/MangoLogo';
 import { toggleFullscreen } from './utils/fullscreen';
 import { shortcutsLocked } from './utils/shortcutLock';
-import { useOwnerMobile } from './utils/ownerMobile';
+import { useOwnerMobile, useStaffMobile } from './utils/ownerMobile';
 import { startStoreSettingsSync } from './services/storeSettings';
 import ComingSoonScreen from './components/common/ComingSoon';
 import { COMING_SOON } from './utils/comingSoon';
@@ -57,6 +57,7 @@ const SuppliersScreen = lazy(() => import('./components/suppliers/SuppliersScree
 const MobileHomeScreen = lazy(() => import('./components/mobile/MobileHomeScreen'));
 const MobileMoreScreen = lazy(() => import('./components/mobile/MobileMoreScreen'));
 const MobileSellScreen = lazy(() => import('./components/mobile/MobileSellScreen'));
+const StaffMoreScreen = lazy(() => import('./components/mobile/StaffMoreScreen'));
 const MobileMovementsScreen = lazy(() => import('./components/mobile/MobileMovementsScreen'));
 const MobileProductsScreen = lazy(() => import('./components/mobile/MobileProductsScreen'));
 const MobileCashScreen = lazy(() => import('./components/mobile/MobileCashScreen'));
@@ -89,6 +90,27 @@ function rememberWarmData() {
  * conexión) y, apenas el servidor contesta, refresca catálogo y clientes sin cortar lo que se
  * está haciendo. Los pedidos y ventas guardados en el equipo se mandan con sus propias colas.
  */
+/** Baja catálogo, clientes y promos y los pone en la caja sin cortar lo que se está haciendo */
+async function refreshCatalog() {
+  const [categoriesRes, catalogRes, clientsRes, promotionsRes] = await Promise.all([
+    api.get('/categories', { silent: true } as any),
+    api.get('/products/pos-catalog', { silent: true } as any),
+    api.get('/clients', { silent: true } as any),
+    api.get('/promotions', { silent: true } as any).catch(() => ({ data: usePOSStore.getState().promotions })),
+  ]);
+  const raw = catalogRes.data?.products || (Array.isArray(catalogRes.data) ? catalogRes.data : []);
+  const products = raw.map((p: any) => {
+    const barcodeList = [p.barcode, ...(p.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
+    return { ...p, imageUrl: resolveServerUrl(p.imageUrl), _searchToken: `${p.name.toLowerCase()} ${p.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim() };
+  }).sort((a: any, b: any) => (b.salesCount ?? 0) - (a.salesCount ?? 0) || (a.name || '').localeCompare(b.name || ''));
+  const st = usePOSStore.getState();
+  st.setCategories(categoriesRes.data || []);
+  st.setProducts(products);
+  st.setClients(clientsRes.data || []);
+  st.setPromotions(promotionsRes.data || []);
+  rememberWarmData();
+}
+
 let reconnecting = false;
 function reconnectInBackground() {
   if (reconnecting) return;
@@ -96,24 +118,8 @@ function reconnectInBackground() {
   let timer = 0;
   const attempt = async () => {
     try {
-      const [categoriesRes, catalogRes, clientsRes, promotionsRes] = await Promise.all([
-        api.get('/categories', { silent: true } as any),
-        api.get('/products/pos-catalog', { silent: true } as any),
-        api.get('/clients', { silent: true } as any),
-        api.get('/promotions', { silent: true } as any).catch(() => ({ data: usePOSStore.getState().promotions })),
-      ]);
-      const raw = catalogRes.data?.products || (Array.isArray(catalogRes.data) ? catalogRes.data : []);
-      const products = raw.map((p: any) => {
-        const barcodeList = [p.barcode, ...(p.additionalBarcodes?.map((b: any) => b.barcode) || [])].filter(Boolean);
-        return { ...p, imageUrl: resolveServerUrl(p.imageUrl), _searchToken: `${p.name.toLowerCase()} ${p.sku?.toLowerCase() || ''} ${barcodeList.join(' ')}`.trim() };
-      }).sort((a: any, b: any) => (b.salesCount ?? 0) - (a.salesCount ?? 0) || (a.name || '').localeCompare(b.name || ''));
-      const st = usePOSStore.getState();
-      st.setCategories(categoriesRes.data || []);
-      st.setProducts(products);
-      st.setClients(clientsRes.data || []);
-      st.setPromotions(promotionsRes.data || []);
-      rememberWarmData();
-      markOfflineStart(null);
+      await refreshCatalog();
+      markUpToDate();
       window.clearInterval(timer);
       window.removeEventListener('online', attempt);
       reconnecting = false;
@@ -121,6 +127,37 @@ function reconnectInBackground() {
   };
   timer = window.setInterval(attempt, 30000);
   window.addEventListener('online', attempt);
+}
+
+/**
+ * Celular: se muestra lo guardado y se actualiza de fondo, con el aviso "Actualizando datos".
+ * Sin señal, queda el aviso "Sin señal" y se sigue probando.
+ */
+let refreshing = false;
+async function refreshWithNotice(savedAt: string | null) {
+  if (refreshing) return;
+  refreshing = true;
+  markUpdating(savedAt);
+  try {
+    await refreshCatalog();
+    markUpToDate();
+  } catch (err: any) {
+    if (isUnreachable(err)) { markOfflineStart(savedAt || new Date().toISOString()); reconnectInBackground(); }
+    else markUpToDate();
+  } finally {
+    refreshing = false;
+  }
+}
+
+// Volver a la app después de un rato (el celular la tuvo en segundo plano): se actualiza sola
+if (typeof document !== 'undefined') {
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (!hiddenAt || Date.now() - hiddenAt < 5 * 60_000 || !startsInstantly()) return;
+    if (!localStorage.getItem('accessToken') || dataState().mode === 'offline') return;
+    refreshWithNotice(new Date(dataState().freshAt || hiddenAt).toISOString());
+  });
 }
 
 /** En la app del dueño en el celular, algunas pestañas tienen su propia pantalla. */
@@ -142,6 +179,18 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
   const isAdminUnlocked = sessionStorage.getItem('admin_unlocked') === 'true';
   return isAuthenticated && (user?.role === 'ADMIN' || isAdminUnlocked) ? <>{children}</> : <Navigate to="/pos" replace />;
+}
+
+/** En el celular, dueño o empleado: la pantalla del celular */
+function PhoneOr({ mobile, children }: { mobile: React.ReactNode; children: React.ReactNode }) {
+  const owner = useOwnerMobile().active;
+  const staff = useStaffMobile().active;
+  return <>{owner || staff ? mobile : children}</>;
+}
+
+/** "Más" del empleado: solo lo suyo (su caja, gastos, cerrar sesión) */
+function StaffOr({ staff, children }: { staff: React.ReactNode; children: React.ReactNode }) {
+  return <>{useStaffMobile().active ? staff : children}</>;
 }
 
 /** Distribuidora (preventa y reparto): el inicio del dueño en el celular es "Hoy" */
@@ -399,6 +448,19 @@ export default function App() {
       try {
         if (retryCount === 0) {
           setWarmingError(null);
+          // En el celular no se espera: se muestra lo último guardado y se actualiza de fondo
+          if (startsInstantly()) {
+            const saved = await loadWarmData();
+            if (saved) {
+              setCategories(saved.categories || []);
+              setProducts(saved.products || []);
+              setPromotions(saved.promotions || []);
+              setClients(saved.clients || []);
+              setIsWarmed(true);
+              refreshWithNotice(saved.savedAt);
+              return;
+            }
+          }
         }
         setWarmingProgress(10);
         setWarmingStatus('Iniciando conexión con el servidor...');
@@ -608,7 +670,7 @@ export default function App() {
                 }>
                   <Routes>
                     <Route path="/" element={<Navigate to="/pos" />} />
-                    <Route path="/pos" element={<OwnerMobileOr mobile={<MobileSellScreen />}><POSScreen /></OwnerMobileOr>} />
+                    <Route path="/pos" element={<PhoneOr mobile={<MobileSellScreen />}><POSScreen /></PhoneOr>} />
                     <Route path="/dashboard" element={<DashboardScreen />} />
                     <Route path="/products" element={<OwnerMobileOr mobile={<MobileProductsScreen />}><ProductsScreen /></OwnerMobileOr>} />
                     <Route path="/clients" element={<OwnerMobileOr mobile={<MobileClientsScreen />}><CuentasCorrientesScreen /></OwnerMobileOr>} />
@@ -651,7 +713,7 @@ export default function App() {
 
                     {/* App móvil del dueño (MainLayout decide cuándo se muestran) */}
                     <Route path="/inicio" element={<AdminRoute><DistribuidoraOr hoy={<HoyScreen />}><MobileHomeScreen /></DistribuidoraOr></AdminRoute>} />
-                    <Route path="/mas" element={<MobileMoreScreen />} />
+                    <Route path="/mas" element={<StaffOr staff={<StaffMoreScreen />}><MobileMoreScreen /></StaffOr>} />
 
                     {/* Fallback for other routes */}
                     <Route path="*" element={<div className="h-full flex flex-col items-center justify-center text-slate-300 gap-4">

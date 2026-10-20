@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins } from 'lucide-react';
+import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins, Pencil, MapPin } from 'lucide-react';
+import { hasFeature } from '../../stores/businessStore';
 import api from '../../services/api';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount } from './ui';
 import { useCashSession } from './useCashSession';
@@ -98,7 +99,8 @@ export default function MobileClientsScreen() {
       </div>
 
       <ClientSheet clientId={selectedId} onClose={() => setSelectedId(null)} onChanged={load} />
-      <NewClientSheet open={creating} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />
+      <NewClientSheet open={creating} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }}
+        localities={Array.from(new Set((clients || []).map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[]} />
     </div>
   );
 }
@@ -106,6 +108,7 @@ export default function MobileClientsScreen() {
 function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null; onClose: () => void; onChanged: () => void }) {
   const [client, setClient] = useState<any | null>(null);
   const [paying, setPaying] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     if (!clientId) return;
@@ -136,6 +139,8 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
         <div className="h-48 flex items-center justify-center"><span className="w-6 h-6 border-2 border-rose-200 border-t-rose-600 rounded-full animate-spin" /></div>
       ) : paying ? (
         <PaymentForm client={client} onCancel={() => setPaying(false)} onDone={() => { setPaying(false); load(); onChanged(); }} />
+      ) : editing ? (
+        <NewClientSheet open editing={client} onClose={() => setEditing(false)} onCreated={() => { setEditing(false); load(); onChanged(); }} />
       ) : (
         <div className="space-y-4 pt-1">
           <div className={`rounded-2xl px-4 py-3 ${client.balance > 0.5 ? 'bg-red-50' : 'bg-emerald-50'}`}>
@@ -143,6 +148,10 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
             <p className={`text-[30px] font-bold tabular-nums tracking-tight ${client.balance > 0.5 ? 'text-red-700' : 'text-emerald-800'}`}>{money(Math.abs(client.balance))}</p>
             {client.creditLimit ? <p className="text-[12px] text-slate-500">Límite de crédito {money(client.creditLimit)}</p> : null}
           </div>
+          {(client.address || client.locality) && (
+            <p className="text-[13.5px] text-slate-600 flex items-start gap-1.5"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" /> {[client.address, client.locality].filter(Boolean).join(', ')}</p>
+          )}
+          <button onClick={() => setEditing(true)} className="w-full h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><Pencil className="w-4 h-4" /> Editar datos</button>
           {client.phone && (
             <div className="flex gap-2">
               <a href={`tel:${client.phone}`} className="flex-1 h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><Phone className="w-4 h-4" /> Llamar</a>
@@ -234,39 +243,89 @@ function PaymentForm({ client, onCancel, onDone }: { client: any; onCancel: () =
   );
 }
 
-function NewClientSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: '', phone: '', dni: '', address: '' });
+const IVA_OPTIONS: [string, string][] = [
+  ['CONSUMIDOR_FINAL', 'Consumidor final'],
+  ['RESPONSABLE_INSCRIPTO', 'Responsable inscripto'],
+  ['MONOTRIBUTO', 'Monotributo'],
+  ['EXENTO', 'Exento'],
+];
+const EMPTY = { name: '', phone: '', dni: '', address: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL', creditLimit: '' };
+
+/**
+ * Crear o corregir un cliente. En la distribuidora también la localidad (la zona del reparto),
+ * la CUIT y la condición frente al IVA (para la nota de venta y la factura).
+ */
+function NewClientSheet({ open, onClose, onCreated, editing, localities = [] }: { open: boolean; onClose: () => void; onCreated: () => void; editing?: any | null; localities?: string[] }) {
+  const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) setForm({ name: '', phone: '', dni: '', address: '' }); }, [open]);
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  const delivery = hasFeature('delivery');
+  useEffect(() => {
+    if (!open) return;
+    setForm(editing ? {
+      name: editing.name || '', phone: editing.phone || '', dni: editing.dni || '', address: editing.address || '',
+      locality: editing.locality || '', cuit: editing.cuit || '', ivaCondition: editing.ivaCondition || 'CONSUMIDOR_FINAL',
+      creditLimit: editing.creditLimit ? String(editing.creditLimit) : '',
+    } : EMPTY);
+  }, [open, editing]);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 
   const save = async () => {
     if (!form.name.trim()) return toast.error('Poné el nombre');
     setBusy(true);
+    const body: any = {
+      name: form.name.trim(),
+      phone: form.phone.trim() || undefined,
+      dni: form.dni.trim() || undefined,
+      address: form.address.trim() || undefined,
+      creditLimit: form.creditLimit ? parseAmount(form.creditLimit) : undefined,
+    };
+    if (delivery) Object.assign(body, { locality: form.locality.trim() || undefined, cuit: form.cuit.replace(/\D/g, '') || undefined, ivaCondition: form.ivaCondition });
     try {
-      await api.post('/clients', {
-        name: form.name.trim(),
-        phone: form.phone.trim() || undefined,
-        dni: form.dni.trim() || undefined,
-        address: form.address.trim() || undefined,
-      });
-      toast.success('Cliente creado');
+      if (editing) await api.patch(`/clients/${editing.id}`, body);
+      else await api.post('/clients', body);
+      toast.success(editing ? 'Cliente actualizado' : 'Cliente creado');
       onCreated();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'No se pudo crear el cliente');
+      toast.error(err.response?.data?.message || 'No se pudo guardar el cliente');
     } finally {
       setBusy(false);
     }
   };
 
   const input = 'w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white';
+  const label = 'block text-[12.5px] font-medium text-slate-500 mb-1';
   return (
-    <Sheet open={open} onClose={onClose} title="Nuevo cliente" footer={<PrimaryButton onClick={save} loading={busy}>Crear cliente</PrimaryButton>}>
+    <Sheet open={open} onClose={onClose} title={editing ? 'Datos del cliente' : 'Nuevo cliente'} footer={<PrimaryButton onClick={save} loading={busy}>{editing ? 'Guardar' : 'Crear cliente'}</PrimaryButton>}>
       <div className="space-y-3 pt-1">
-        <input className={input} placeholder="Nombre y apellido" value={form.name} onChange={set('name')} autoFocus />
+        <input className={input} placeholder={delivery ? 'Nombre del comercio' : 'Nombre y apellido'} value={form.name} onChange={set('name')} autoFocus={!editing} />
         <input className={input} placeholder="Teléfono (para WhatsApp)" inputMode="tel" value={form.phone} onChange={set('phone')} />
-        <input className={input} placeholder="DNI (opcional)" inputMode="numeric" value={form.dni} onChange={set('dni')} />
         <input className={input} placeholder="Dirección (opcional)" value={form.address} onChange={set('address')} />
+        {delivery && (
+          <>
+            <div>
+              <label className={label}>Localidad (la zona del reparto)</label>
+              <input className={input} list="mobile-client-localities" placeholder="Ej.: Verónica" value={form.locality} onChange={set('locality')} />
+              <datalist id="mobile-client-localities">{localities.map((l) => <option key={l} value={l} />)}</datalist>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={label}>CUIT</label>
+                <input className={input} placeholder="Sin guiones" inputMode="numeric" value={form.cuit} onChange={set('cuit')} />
+              </div>
+              <div>
+                <label className={label}>IVA</label>
+                <select className={input} value={form.ivaCondition} onChange={set('ivaCondition')}>
+                  {IVA_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+        {!delivery && <input className={input} placeholder="DNI (opcional)" inputMode="numeric" value={form.dni} onChange={set('dni')} />}
+        <div>
+          <label className={label}>Límite de crédito (opcional)</label>
+          <input className={input} placeholder="Sin límite" inputMode="decimal" value={form.creditLimit} onChange={set('creditLimit')} />
+        </div>
       </div>
     </Sheet>
   );

@@ -33,12 +33,21 @@ export class ClientsService {
     return client;
   }
 
-  async create(data: any) {
-    return this.prisma.client.create({ data });
+  /**
+   * El saldo se mueve con cobros y ventas a cuenta (addMovement). Ponerlo a mano (saldo inicial,
+   * corregirlo) solo puede el administrador: un empleado no puede borrar una deuda editando.
+   */
+  private clean(data: any, canSetBalance: boolean) {
+    const { id, createdAt, updatedAt, balance, ...rest } = data || {};
+    return canSetBalance && balance !== undefined ? { ...rest, balance } : rest;
   }
 
-  async update(id: string, data: any) {
-    return this.prisma.client.update({ where: { id }, data });
+  async create(data: any, canSetBalance = false) {
+    return this.prisma.client.create({ data: this.clean(data, canSetBalance) });
+  }
+
+  async update(id: string, data: any, canSetBalance = false) {
+    return this.prisma.client.update({ where: { id }, data: this.clean(data, canSetBalance) });
   }
 
   async addMovement(clientId: string, data: { type: 'DEBT' | 'PAYMENT', amount: number, description?: string, saleId?: string, userId: string }) {

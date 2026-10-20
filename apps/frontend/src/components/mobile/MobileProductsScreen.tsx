@@ -4,6 +4,7 @@ import { Search, Plus, X, Package, ScanLine, Minus, Star, ChevronRight, AlertTri
 import api, { resolveServerUrl } from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
 import { useBusinessStore } from '../../stores/businessStore';
+import { hasFeature } from '../../stores/businessStore';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ProductThumb, money, qty, parseAmount } from './ui';
 import ProductPhoto from './ProductPhoto';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
@@ -194,6 +195,11 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
   const [savingCategory, setSavingCategory] = useState(false);
   const [desc, setDesc] = useState('');
   const [savingDesc, setSavingDesc] = useState(false);
+  // Distribuidora: venta por bulto (unidades del bulto y su precio)
+  const bulk = hasFeature('bulk');
+  const [packUnits, setPackUnits] = useState('');
+  const [packPrice, setPackPrice] = useState('');
+  const [savingPack, setSavingPack] = useState(false);
 
   useEffect(() => {
     if (!productId) return;
@@ -204,6 +210,8 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
         setDesc(data.description || '');
         setPrice(String(data.salePrice ?? ''));
         setCost(String(data.costPrice ?? ''));
+        setPackUnits(data.unitsPerPack > 1 ? String(data.unitsPerPack) : '');
+        setPackPrice(data.packPrice ? String(data.packPrice) : '');
       })
       .catch(() => { toast.error('No pudimos abrir el producto'); onClose(); });
   }, [productId]);
@@ -226,6 +234,25 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
       toast.error(err.response?.data?.message || 'No se pudo guardar');
     } finally {
       setSavingPrice(false);
+    }
+  };
+
+  const packUnitsValue = Math.round(parseAmount(packUnits));
+  const packPriceValue = parseAmount(packPrice);
+  const packChanged = product && bulk && (packUnitsValue !== (product.unitsPerPack > 1 ? product.unitsPerPack : 0) || packPriceValue !== (product.packPrice || 0));
+  const savePack = async () => {
+    if (packUnitsValue === 1) return toast.error('Un bulto tiene que tener más de una unidad');
+    setSavingPack(true);
+    try {
+      const body = { unitsPerPack: packUnitsValue > 1 ? packUnitsValue : 1, packPrice: packUnitsValue > 1 && packPriceValue > 0 ? packPriceValue : null };
+      await api.patch(`/products/${product.id}`, body);
+      setProduct({ ...product, ...body });
+      onChanged(product.id, body);
+      toast.success(body.unitsPerPack > 1 ? 'Bulto guardado' : 'Ya no se vende por bulto');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo guardar');
+    } finally {
+      setSavingPack(false);
     }
   };
 
@@ -332,6 +359,28 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
             {priceChanged && <PrimaryButton className="mt-3" onClick={savePrices} loading={savingPrice}>Guardar precio</PrimaryButton>}
           </section>
 
+          {bulk && (
+            <section className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-[14px] font-semibold text-slate-800">Venta por bulto</p>
+              <p className="text-[12.5px] text-slate-500 mb-3">Caja, pack o fardo. El stock se sigue contando en unidades.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="block text-[12px] text-slate-500 mb-1">Unidades por bulto</span>
+                  <input inputMode="numeric" value={packUnits} onChange={(e) => setPackUnits(e.target.value)} placeholder="Ej.: 12"
+                    className="w-full h-12 px-3.5 rounded-xl bg-white border border-slate-200 text-[16px] font-semibold outline-none focus:border-rose-500" />
+                </label>
+                <label className="block">
+                  <span className="block text-[12px] text-slate-500 mb-1">Precio del bulto</span>
+                  <MoneyInput value={packPrice} onChange={setPackPrice} placeholder={packUnitsValue > 1 && priceValue > 0 ? String(Math.round(packUnitsValue * priceValue)) : '0'} />
+                </label>
+              </div>
+              {packUnitsValue > 1 && packPriceValue > 0 && priceValue > 0 && (
+                <p className="mt-2 text-[12.5px] text-slate-600">Sale {money(packPriceValue / packUnitsValue)} la unidad en el bulto (suelta, {money(priceValue)}).</p>
+              )}
+              {packChanged && <PrimaryButton className="mt-3" onClick={savePack} loading={savingPack}>Guardar bulto</PrimaryButton>}
+            </section>
+          )}
+
           {tracksStock && (
             <section className="rounded-2xl bg-slate-50 p-4">
               <div className="flex items-center justify-between">
@@ -353,8 +402,10 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
                 </div>
               </div>
               <div className="flex gap-2 mt-3">
-                {[6, 12, 24].map((n) => (
-                  <button key={n} onClick={() => setDelta((d) => d + n)} className="flex-1 h-9 rounded-xl bg-white border border-slate-200 text-[13px] font-medium text-slate-700">+{n}</button>
+                {(bulk && product.unitsPerPack > 1 ? [product.unitsPerPack, product.unitsPerPack * 5, product.unitsPerPack * 10] : [6, 12, 24]).map((n: number) => (
+                  <button key={n} onClick={() => setDelta((d) => d + n)} className="flex-1 h-10 rounded-xl bg-white border border-slate-200 text-[13px] font-medium text-slate-700">
+                    +{bulk && product.unitsPerPack > 1 ? `${qty(n / product.unitsPerPack)} ${n === product.unitsPerPack ? 'bulto' : 'bultos'}` : n}
+                  </button>
                 ))}
               </div>
               {delta !== 0 && (

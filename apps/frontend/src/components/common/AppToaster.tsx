@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Toaster, ToastBar, toast, useToasterStore, type Toast } from 'react-hot-toast';
 import { CheckCircle2, XCircle, AlertTriangle, Info, Loader2, X } from 'lucide-react';
+import { useSmallScreen } from '../../utils/ownerMobile';
 
 const MAX_VISIBLE = 3;
 
@@ -25,9 +26,11 @@ function ToastIcon({ t }: { t: Toast }) {
 /**
  * Avisos de la app: pastilla oscura y compacta abajo al centro, que no tapa
  * la barra superior ni el ticket. Máximo 3 a la vez; los errores duran más.
+ * En el celular van arriba: abajo están los botones principales y las hojas que se abren.
  */
 export default function AppToaster() {
   const { toasts } = useToasterStore();
+  const small = useSmallScreen();
 
   // Nunca más de MAX_VISIBLE en pantalla: los más viejos se van primero
   useEffect(() => {
@@ -39,10 +42,10 @@ export default function AppToaster() {
 
   return (
     <Toaster
-      position="bottom-center"
+      position={small ? 'top-center' : 'bottom-center'}
       gutter={8}
       containerClassName="keep-animated"
-      containerStyle={{ bottom: 20 }}
+      containerStyle={small ? { top: 'calc(env(safe-area-inset-top) + 10px)' as any } : { bottom: 20 }}
       toastOptions={{
         duration: 2500,
         success: { duration: 2000 },

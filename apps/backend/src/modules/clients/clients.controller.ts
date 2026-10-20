@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request, Delete, ForbiddenException } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -14,10 +14,10 @@ export class ClientsController {
   findOne(@Param('id') id: string) { return this.clientsService.findOne(id); }
 
   @Post()
-  create(@Body() data: any) { return this.clientsService.create(data); }
+  create(@Body() data: any, @Request() req: any) { return this.clientsService.create(data, req.user?.role === 'ADMIN'); }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: any) { return this.clientsService.update(id, data); }
+  update(@Param('id') id: string, @Body() data: any, @Request() req: any) { return this.clientsService.update(id, data, req.user?.role === 'ADMIN'); }
 
   @Post(':id/movement')
   addMovement(@Param('id') id: string, @Body() data: any, @Request() req: any) {
@@ -32,7 +32,8 @@ export class ClientsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Request() req: any) {
+    if (req.user?.role !== 'ADMIN') throw new ForbiddenException('Solo el administrador puede borrar clientes');
     return this.clientsService.remove(id);
   }
 }

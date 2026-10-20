@@ -515,6 +515,20 @@ async function main() {
     assert.deepStrictEqual(after.orders.map((x: any) => x.id), ['po-aud-b'], 'el cobrado en la caja ya no está en el reparto');
   });
 
+  await t('clientes: un empleado no cambia el saldo editando; el dueño sí', async () => {
+    const { ClientsService } = require('../src/modules/clients/clients.service');
+    const svc = new ClientsService(prisma);
+    const c = await svc.create({ name: 'Saldo inicial', balance: 500 }, false);
+    assert.strictEqual(c.balance, 0, 'el empleado no pone saldo inicial');
+    const c2 = await svc.create({ name: 'Saldo inicial dueño', balance: 500 }, true);
+    assert.strictEqual(c2.balance, 500);
+    const e = await svc.update(c2.id, { name: 'Editado', balance: 0 }, false);
+    assert.strictEqual(e.balance, 500, 'editar no borra la deuda');
+    assert.strictEqual(e.name, 'Editado');
+    const a = await svc.update(c2.id, { balance: 100 }, true);
+    assert.strictEqual(a.balance, 100);
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

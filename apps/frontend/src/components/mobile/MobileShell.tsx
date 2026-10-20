@@ -1,9 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { create } from 'zustand';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote } from 'lucide-react';
+import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote, Truck } from 'lucide-react';
+import { useBusinessStore } from '../../stores/businessStore';
+import { useWorkRole } from '../../services/workRole';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
+import OfflineStartBanner from '../common/OfflineStartBanner';
 
 const TABS = [
   { path: '/inicio', label: 'Inicio', icon: Home },
@@ -39,6 +43,15 @@ const SCREEN_TITLES: Record<string, string> = {
   '/settings': 'Configuración',
 };
 
+/** Distribuidora: el día gira alrededor de los pedidos y el reparto (vender en el mostrador está en Inicio y en Más) */
+const DISTRIB_TABS = [
+  { path: '/inicio', label: 'Inicio', icon: Home },
+  { path: '/preventa', label: 'Pedidos', icon: ClipboardList },
+  { path: '/reparto', label: 'Reparto', icon: Truck },
+  { path: '/products', label: 'Productos', icon: Package },
+  { path: '/mas', label: 'Más', icon: LayoutGrid },
+];
+
 /** Plan Tienda (sin sistema de ventas): la tienda y sus pedidos reemplazan a Inicio, Vender y Movimientos. */
 const TIENDA_TABS = [
   { path: '/tienda', label: 'Inicio', icon: Store },
@@ -55,10 +68,23 @@ const AGENDA_TABS = [
   { path: '/mas', label: 'Más', icon: LayoutGrid },
 ];
 
-type Tab = typeof TABS[number];
+type Tab = { path: string; label: string; icon: any };
+
+/**
+ * Tareas de foco (tomar un pedido, una parada del reparto): la barra de pestañas se esconde para
+ * dejar todo el lugar a la tarea y que no compita con su botón principal.
+ */
+const useFocus = create<{ n: number; add: (d: number) => void }>((set) => ({ n: 0, add: (d) => set((s) => ({ n: Math.max(0, s.n + d) })) }));
+export function useMobileFocus(active = true) {
+  useEffect(() => {
+    if (!active) return;
+    useFocus.getState().add(1);
+    return () => useFocus.getState().add(-1);
+  }, [active]);
+}
 const isTab = (tabs: Tab[], pathname: string) => tabs.some((t) => t.path === pathname);
 /** Pantallas de "Más" que ya tienen su versión móvil (traen su propio encabezado con "volver"). */
-export const NATIVE_MOBILE_PATHS = ['/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
+export const NATIVE_MOBILE_PATHS = ['/preventa', '/reparto', '/hoy', '/empezar', '/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
 /** Las pantallas que no son pestañas se abren desde "Más" y la marcan activa. */
 const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : '/mas');
 
@@ -120,10 +146,13 @@ function usePullToReload() {
 }
 
 /** Marco de la app del dueño en el celular: contenido arriba y barra de pestañas abajo. */
-export default function MobileShell({ children }: { children: React.ReactNode }) {
+export default function MobileShell({ children, tabs: staffTabs }: { children: React.ReactNode; tabs?: Tab[] }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const tabs = usePlanStore((s) => (s.features.caja ? TABS : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
+  const distrib = useBusinessStore((s) => !!s.features.preorders);
+  const planTabs = usePlanStore((s) => (s.features.caja ? (distrib ? DISTRIB_TABS : TABS) : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
+  const tabs: Tab[] = staffTabs || planTabs;
+  const focus = useFocus((s) => s.n > 0);
   const active = tabFor(tabs, pathname);
   const inTab = isTab(tabs, pathname) || NATIVE_MOBILE_PATHS.includes(pathname) || pathname.startsWith('/settings/');
   const scrollsItself = pathname === '/inicio' || pathname === '/mas';
@@ -141,6 +170,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
           </span>
         </div>
       )}
+      <OfflineStartBanner inline />
       {!inTab && (
         <div className="shrink-0 bg-rose-600 text-white pt-[env(safe-area-inset-top)] rounded-b-[20px] shadow-[0_6px_20px_-12px_rgba(14,110,82,0.8)] relative z-10">
           <div className="h-14 flex items-center gap-2 px-2">
@@ -160,6 +190,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
       </main>
 
       <nav
+        hidden={focus}
         className="shrink-0 bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)] z-40"
         aria-label="Secciones"
       >
@@ -189,4 +220,24 @@ export default function MobileShell({ children }: { children: React.ReactNode })
       </nav>
     </div>
   );
+}
+
+/**
+ * La app del celular para empleados: solo las pestañas de lo que hace cada uno.
+ * Chofer: su reparto. Vendedor: sus pedidos. Mostrador o cajero: vender (y en la distribuidora,
+ * los pedidos para cobrarlos en el mostrador). Lo demás del negocio queda para el dueño.
+ */
+export function StaffMobileShell({ children }: { children: React.ReactNode }) {
+  const role = useWorkRole();
+  const distrib = useBusinessStore((s) => !!s.features.preorders);
+  const more = { path: '/mas', label: 'Más', icon: LayoutGrid };
+  const sell = { path: '/pos', label: 'Vender', icon: ShoppingCart };
+  const orders = { path: '/preventa', label: 'Pedidos', icon: ClipboardList };
+  const route = { path: '/reparto', label: 'Reparto', icon: Truck };
+  const tabs = role === 'CHOFER' ? [route, more]
+    : role === 'VENDEDOR' ? [orders, more]
+    : role === 'MOSTRADOR' ? [sell, orders, more]
+    : distrib ? [sell, orders, route, more]
+    : [sell, more];
+  return <MobileShell tabs={tabs}>{children}</MobileShell>;
 }

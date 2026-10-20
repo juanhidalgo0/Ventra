@@ -15,17 +15,17 @@ import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
 import OfflineStartBanner from '../common/OfflineStartBanner';
-import { offlineStartedWith } from '../../services/offlineStart';
+import { offlineStartedWith, dataState } from '../../services/offlineStart';
 import { useTourStore } from '../common/tour/tourStore';
 import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
 import { shortcutsLocked } from '../../utils/shortcutLock';
-import MobileShell from '../mobile/MobileShell';
+import MobileShell, { StaffMobileShell } from '../mobile/MobileShell';
 import ClientPreview from '../common/ClientPreview';
 import PlanGate from '../subscription/PlanGate';
-import { useOwnerMobile } from '../../utils/ownerMobile';
+import { useOwnerMobile, useStaffMobile } from '../../utils/ownerMobile';
 import { usePwaInstall } from '../../utils/pwaInstall';
 import WelcomeSetup from '../onboarding/WelcomeSetup';
 import StoreNameRequired from '../onboarding/StoreNameRequired';
@@ -117,7 +117,7 @@ export default function MainLayout({ children }: Props) {
     const checkConnection = async (isFirstCheck = false) => {
       // Arrancó sin señal con lo guardado en el equipo: se trabaja igual, sin la pantalla de
       // "sin conexión"; los chequeos de fondo avisan cuando vuelve
-      if (isFirstCheck && offlineStartedWith()) {
+      if (isFirstCheck && (offlineStartedWith() || dataState().mode === 'updating')) {
         setIsOnline(false);
         setIsConnecting(false);
         setConnectionFailed(false);
@@ -212,6 +212,7 @@ export default function MainLayout({ children }: Props) {
 
   // Dueño en el celular: la app móvil arranca en Inicio (una vez por sesión; después "Vender" sí abre el POS)
   const ownerMobile = useOwnerMobile();
+  const staffMobile = useStaffMobile();
   const pwa = usePwaInstall();
   useEffect(() => {
     if (!ownerMobile.active || sessionStorage.getItem('owner_mobile_started')) return;
@@ -249,8 +250,8 @@ export default function MainLayout({ children }: Props) {
   const isMobileOnlyPath = location.pathname === '/inicio' || location.pathname === '/mas';
   useEffect(() => {
     // Las pantallas de la app móvil no existen en la versión completa
-    if (!ownerMobile.active && isMobileOnlyPath) navigate(isAdminUser ? '/dashboard' : '/pos', { replace: true });
-  }, [ownerMobile.active, isMobileOnlyPath]);
+    if (!ownerMobile.active && !staffMobile.active && isMobileOnlyPath) navigate(isAdminUser ? '/dashboard' : '/pos', { replace: true });
+  }, [ownerMobile.active, staffMobile.active, isMobileOnlyPath]);
 
   if (connectionFailed) {
     return (
@@ -317,8 +318,12 @@ export default function MainLayout({ children }: Props) {
     );
   }
 
+  if (staffMobile.active) {
+    return <StaffMobileShell>{children}<GuidedTour /></StaffMobileShell>;
+  }
+
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><OfflineStartBanner /><ClientPreview /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /></MobileShell>;
   }
 
   return (

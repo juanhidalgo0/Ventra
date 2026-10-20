@@ -5,6 +5,8 @@ import { Store } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { setStoreSetting, whenStoreSettingsReady, STORE_SETTINGS_EVENT } from '../../services/storeSettings';
 import { IS_DEMO_BUILD } from '../../demo/flag';
+import { useTourStore } from '../common/tour/tourStore';
+import { hasFeature } from '../../stores/businessStore';
 
 const hasName = () => (localStorage.getItem('gd_store_name') || '').trim().length >= 2;
 /** "Más tarde": no se vuelve a pedir hasta que se abra Ventra de nuevo */
@@ -23,6 +25,8 @@ const SELLING_PATHS = ['/pos', '/inicio'];
 export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
   const role = useAuthStore((s) => s.user?.role);
   const { pathname } = useLocation();
+  // La bienvenida (o la pregunta del rubro) está abierta: una ventana por vez
+  const welcomeOpen = useTourStore((s) => s.paused);
   const [show, setShow] = useState(false);
   const [name, setName] = useState('');
 
@@ -41,7 +45,7 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
     return () => { alive = false; window.removeEventListener(STORE_SETTINGS_EVENT, check); window.clearInterval(timer); };
   }, [role]);
 
-  if (!show || SELLING_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) return null;
+  if (!show || welcomeOpen || SELLING_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) return null;
 
   const valid = name.trim().length >= 2;
   const later = () => {
@@ -68,7 +72,7 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
         </p>
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-          placeholder="Ej.: Distribuidora Don Pepe"
+          placeholder={hasFeature('preorders') ? 'Ej.: Distribuidora Don Pepe' : 'Ej.: Almacén Don Pepe'}
           className="mt-5 w-full h-13 py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-200 text-[16px] font-semibold text-slate-900 outline-none focus:border-rose-500 focus:bg-white" />
         <button disabled={!valid} onClick={save}
           className="mt-4 w-full py-3.5 rounded-2xl bg-rose-600 text-white text-[15px] font-bold disabled:opacity-40 active:scale-[0.99] transition-transform">

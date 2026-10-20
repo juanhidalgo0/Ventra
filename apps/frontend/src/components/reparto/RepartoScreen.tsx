@@ -10,6 +10,7 @@ import {
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 import { loadEmisor, MissingStoreNameError, type Emisor } from '../pos/SalesNoteSheet';
@@ -22,7 +23,7 @@ import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSumma
  * De acá salen la hoja de carga, la hoja de ruta y los remitos de todo el reparto.
  */
 
-const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
 const plural = (n: number, one: string, many: string) => `${qty(n)} ${n === 1 ? one : many}`;
 const dayLabel = (d: any) => {
@@ -106,10 +107,10 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-      <div className={`max-w-3xl mx-auto space-y-4 pb-24 ${inShell ? 'px-1 py-2' : 'px-4 py-6'}`}>
+      <div className={`max-w-3xl mx-auto space-y-4 pb-24 ${inShell ? 'px-4 pt-4' : 'px-4 py-6'}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            {!inShell && <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Reparto</h1>}
+            {<h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Reparto</h1>}
             <p className="text-[13.5px] text-slate-500 leading-snug">Juntá los pedidos que salen en cada camión y sacá la hoja de carga, la de ruta y los remitos.</p>
             {useAuthStore.getState().user?.role !== 'ADMIN' && !myWorkRole() && (
               <button onClick={() => navigate('/empezar')} className="mt-1 text-[12px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">Cambiar lo que hago en este equipo</button>
@@ -260,6 +261,7 @@ const userNamed = (users: DriverUser[], name: string) => {
 function RunBuilder({ initialZone, onCancel, onCreated }: { initialZone?: string; onCancel: () => void; onCreated: (id: string) => void }) {
     const [orders, setOrders] = useState<any[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  useMobileFocus();
   useAutoTour('distribArmar', orders !== null);
   const [date, setDate] = useState(isoDay(1));
   const [driverName, setDriverName] = useState('');
@@ -384,6 +386,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [delivering, setDelivering] = useState<any | null>(null);
       const [settling, setSettling] = useState(false);
+  useMobileFocus();
   const users = useDriverUsers();
   const isDriver = myWorkRole() === 'CHOFER';
   // La primera vez que se ve un reparto armado y uno en la calle, se explica cada parte

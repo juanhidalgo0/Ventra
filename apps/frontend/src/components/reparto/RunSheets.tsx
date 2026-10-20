@@ -6,7 +6,7 @@ import { SalesNoteSheet, type Emisor } from '../pos/SalesNoteSheet';
  * pedido salen con la misma hoja que la nota de venta (SalesNoteSheet).
  */
 
-const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
 const fecha = (d: any) => (d ? new Date(d).toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
 

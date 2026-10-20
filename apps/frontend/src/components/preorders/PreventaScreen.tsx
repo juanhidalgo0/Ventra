@@ -12,6 +12,7 @@ import { myWorkRole } from '../../services/workRole';
 import { readRouteDays, saveRouteDays, zonesFor, dayName, WEEK, ROUTE_DAYS_EVENT, type RouteDays } from '../../services/routeDays';
 import { STORE_SETTINGS_EVENT } from '../../services/storeSettings';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 import {
@@ -33,7 +34,7 @@ const LAST_CACHE = 'ventra_preventa_last_orders';
 /** El pedido que se está armando: si se cierra la app o se sale sin querer, no se pierde */
 const DRAFT_KEY = 'ventra_preorder_draft';
 
-const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qtyFmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
 const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const plural = (n: number, one: string, many: string) => `${qtyFmt(n)} ${n === 1 ? one : many}`;
@@ -237,10 +238,10 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-      <div className={`max-w-3xl mx-auto space-y-4 pb-28 ${inShell ? 'px-1 py-2' : 'px-4 py-6'}`}>
+      <div className={`max-w-3xl mx-auto space-y-4 pb-28 ${inShell ? 'px-4 pt-4' : 'px-4 py-6'}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            {!inShell && <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Preventa</h1>}
+            {<h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">Preventa</h1>}
             <p className="text-[13.5px] text-slate-500 leading-snug">Los pedidos que toman los vendedores. Salen en un reparto o se cobran en el mostrador.</p>
             {useAuthStore.getState().user?.role !== 'ADMIN' && !myWorkRole() && (
               <button onClick={() => navigate('/empezar')} className="mt-1 text-[12px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">Cambiar lo que hago en este equipo</button>
@@ -441,6 +442,7 @@ function OrderEditor({ initial, products, clients, committed, lastOrders, onExit
   const user = useAuthStore((s) => s.user);
   const [client, setClient] = useState<any | null>(initial.client);
     const [step, setStep] = useState<'client' | 'products'>(initial.client ? 'products' : 'client');
+  useMobileFocus();
   // La primera vez que se toma un pedido, cada paso se explica solo
   useAutoTour('distribPedidoCliente', step === 'client');
   useAutoTour('distribPedidoProductos', step === 'products' && products.length > 0);

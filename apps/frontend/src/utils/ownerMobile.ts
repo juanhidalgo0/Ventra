@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 
 const QUERY = '(max-width: 767px)';
 
-function useSmallScreen() {
+export function useSmallScreen() {
   const [isSmall, setIsSmall] = useState(() => window.matchMedia(QUERY).matches);
   useEffect(() => {
     const mq = window.matchMedia(QUERY);
@@ -23,4 +23,14 @@ export function useOwnerMobile() {
   const user = useAuthStore((s) => s.user);
   const isSmall = useSmallScreen();
   return { active: isSmall && user?.role === 'ADMIN' };
+}
+
+/**
+ * Empleados en el celular (cajero, vendedor, chofer): la misma app del celular, con las
+ * pestañas de lo que hace cada uno (ver StaffMobileShell). En la PC siguen con la caja de siempre.
+ */
+export function useStaffMobile() {
+  const user = useAuthStore((s) => s.user);
+  const isSmall = useSmallScreen();
+  return { active: isSmall && !!user && user.role !== 'ADMIN' };
 }

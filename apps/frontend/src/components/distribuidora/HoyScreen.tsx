@@ -9,6 +9,7 @@ import { useOwnerMobile } from '../../utils/ownerMobile';
 import { readRouteDays, zonesFor } from '../../services/routeDays';
 import { Navigate } from 'react-router-dom';
 import { useWorkRole, WORK_PATH } from '../../services/workRole';
+import { useAuthStore } from '../../stores/authStore';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 
@@ -18,7 +19,7 @@ import { setTourScreen } from '../common/tour/tourContext';
  * en la calle, rendidos) y la plata (lo cobrado hoy, lo que está en la calle y quién debe).
  */
 
-const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
 const qty = (n: number) => (Math.round(n * 10) / 10).toLocaleString('es-AR', { maximumFractionDigits: 1 });
 const plural = (n: number, one: string, many: string) => `${qty(n)} ${n === 1 ? one : many}`;
 const dayLabel = (d: any) => {
@@ -66,6 +67,7 @@ export default function HoyScreen() {
   const todayZones = zonesFor(readRouteDays());
   // Vendedores y choferes van a lo suyo: la plata del día es del encargado
   const workRole = useWorkRole();
+  const manager = useAuthStore((s) => s.user?.role === 'ADMIN' || s.user?.role === 'SUPERVISOR');
   // El recorrido completo de la distribuidora arranca acá la primera vez (en el celular del dueño, sin pasar por la PC)
   setTourScreen({ mobile: inShell });
   useAutoTour('distrib', !!data);
@@ -93,10 +95,10 @@ export default function HoyScreen() {
   const todayRaw = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
 
-  if (workRole === 'VENDEDOR' || workRole === 'CHOFER') return <Navigate to={WORK_PATH[workRole]} replace />;
+  if (!manager) return <Navigate to={workRole ? WORK_PATH[workRole] : '/pos'} replace />;
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-      <div className={`max-w-6xl mx-auto space-y-5 pb-16 ${inShell ? 'px-1 py-2' : 'px-4 sm:px-6 py-6'}`}>
+      <div className={`max-w-6xl mx-auto space-y-5 pb-16 ${inShell ? 'px-4 pt-4' : 'px-4 sm:px-6 py-6'}`}>
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[13px] font-semibold text-slate-500">{today}</p>

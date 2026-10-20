@@ -12,6 +12,13 @@ import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, Emp
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 import { useCashSession } from './useCashSession';
 import { applySurcharges, getPaymentMethods } from './checkout';
+import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
+import { hasFeature } from '../../stores/businessStore';
+import { packOf } from '../../stores/posStore';
+import { collapseVariantGroups } from '../../utils/variants';
+
+/** Productos internos (cobros de fiado, venta rápida): no se venden tocándolos */
+const INTERNAL = new Set(['PAGO_CTA_CTE', 'VENTA_RAPIDA']);
 
 const PAGE = 40;
 
@@ -24,6 +31,10 @@ export default function MobileSellScreen() {
     getFinalTotal, getTotal, getDiscounts, getItemCount, getCheckoutPayload, getCartItemsWithDiscounts, setProducts,
   } = usePOSStore();
   const cash = useCashSession();
+  // Talles, metro/kilo, precio libre y bulto, como en la caja de la PC
+  const rubro = useRubroAdd();
+  const tapRef = useRef(rubro.tap);
+  tapRef.current = rubro.tap;
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
@@ -33,6 +44,8 @@ export default function MobileSellScreen() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Unidad de cada producto del carrito (metro, kilo, litro) para mostrarla
+  const unitOf = useMemo(() => Object.fromEntries(products.filter((p: any) => p.unit && p.unit !== 'UN').map((p: any) => [p.id, p.unit])), [products]) as Record<string, string>;
   const cartQty = useMemo(() => {
     const map: Record<string, number> = {};
     for (const i of cart) if (!i.isPromo && !i.isReturn) map[i.productId] = (map[i.productId] || 0) + i.quantity;
@@ -50,14 +63,16 @@ export default function MobileSellScreen() {
 
   const filtered = useMemo(() => {
     const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return products.filter((p: any) => {
-      if (p.isActive === false) return false;
+    const list = products.filter((p: any) => {
+      if (p.isActive === false || INTERNAL.has(p.id)) return false;
       if (category === 'FAV' && !p.isFavorite) return false;
       if (category !== 'ALL' && category !== 'FAV' && p.categoryId !== category) return false;
       if (!terms.length) return true;
       const token = p._searchToken || p.name?.toLowerCase() || '';
       return terms.every((t) => token.includes(t));
     });
+    // Un modelo con talles (o tamaños) aparece una sola vez y pregunta cuál al tocarlo
+    return hasFeature('variants') ? collapseVariantGroups(list, products) : list;
   }, [products, search, category]);
 
   useEffect(() => { setLimit(PAGE); listRef.current?.scrollTo({ top: 0 }); }, [search, category]);
@@ -67,10 +82,7 @@ export default function MobileSellScreen() {
     if (el.scrollTop + el.clientHeight > el.scrollHeight - 600 && limit < filtered.length) setLimit((l) => l + PAGE);
   };
 
-  const add = (p: any) => {
-    addToCart(p);
-    navigator.vibrate?.(12);
-  };
+  const add = (p: any) => rubro.tap(p);
 
   const onCode = useCallback((code: string) => {
     const c = code.trim().toUpperCase();
@@ -81,7 +93,7 @@ export default function MobileSellScreen() {
       x.additionalBarcodes?.some((b: any) => (b.barcode || '').toUpperCase() === c),
     );
     if (p) {
-      usePOSStore.getState().addToCart(p);
+      tapRef.current(p);
       haptic(15);
       toast.success(p.name, { id: 'scan', duration: 1200 });
     } else {
@@ -91,7 +103,8 @@ export default function MobileSellScreen() {
   }, []);
 
   const total = getFinalTotal();
-  const count = getItemCount();
+  // Los bultos cuentan como bultos (no como sus unidades sueltas)
+  const count = cart.reduce((n, i) => n + (i.packSize ? i.quantity / i.packSize : i.quantity), 0);
 
   // Sin caja abierta en este celular no se puede cobrar
   if (!cash.loading && !cash.session) {
@@ -138,7 +151,9 @@ export default function MobileSellScreen() {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {filtered.slice(0, limit).map((p: any) => (
-              <ProductTile key={p.id} product={p} inCart={cartQty[p.id] || 0} onAdd={() => add(p)} />
+              <ProductTile key={p.id} product={p}
+                inCart={p._isVariantGroup ? (p._variants || []).reduce((s: number, v: any) => s + (cartQty[v.id] || 0), 0) : (cartQty[p.id] || 0)}
+                onAdd={() => add(p)} />
             ))}
           </div>
         )}
@@ -203,7 +218,12 @@ export default function MobileSellScreen() {
                 <div key={item.cartKey} className="py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-medium text-slate-800 leading-snug line-clamp-2">{item.name}</p>
-                    <p className="text-[12.5px] text-slate-500 tabular-nums">{money(item.price)} c/u · <span className="text-slate-800 font-semibold">{money(item.price * item.quantity)}</span></p>
+                    <p className="text-[12.5px] text-slate-500 tabular-nums">
+                      {item.packSize
+                        ? <>Bulto x{item.packSize} · {money(item.price * item.packSize)}</>
+                        : <>{money(item.price)} {MEASURE[unitOf[item.productId]]?.short ? `el ${MEASURE[unitOf[item.productId]].short}` : 'c/u'}</>}
+                      {' · '}<span className="text-slate-800 font-semibold">{money(item.price * item.quantity)}</span>
+                    </p>
                   </div>
                   {item.isPromo ? (
                     <button onClick={() => removeFromCart(item.cartKey)} className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center" aria-label="Quitar">
@@ -211,8 +231,9 @@ export default function MobileSellScreen() {
                     </button>
                   ) : (
                     <Stepper
-                      value={item.quantity}
-                      onChange={(v) => (v <= 0 ? removeFromCart(item.cartKey) : updateQuantity(item.cartKey, v))}
+                      value={item.packSize ? item.quantity / item.packSize : item.quantity}
+                      unit={item.packSize ? (item.quantity === item.packSize ? 'bulto' : 'bultos') : MEASURE[unitOf[item.productId]]?.short}
+                      onChange={(v) => (v <= 0 ? removeFromCart(item.cartKey) : updateQuantity(item.cartKey, item.packSize ? Math.round(v) * item.packSize : v))}
                     />
                   )}
                 </div>
@@ -244,6 +265,7 @@ export default function MobileSellScreen() {
         }}
       />
 
+      {rubro.sheets}
       {scanning && <BarcodeScanner onCode={onCode} onClose={() => setScanning(false)} />}
     </div>
   );
@@ -253,6 +275,9 @@ function ProductTile({ product: p, inCart, onAdd }: { product: any; inCart: numb
   // Los productos virtuales (cargas, pagos) tienen stock "infinito": no se muestra
   const showStock = !p.unlimitedStock && typeof p.stock === 'number' && p.stock < 99999;
   const low = showStock && p.stock <= (p.minStock || 0);
+  const price = tilePrice(p);
+  const pack = !p.allowCustomPrice && !p._isVariantGroup ? packOf(p, hasFeature('bulk')) : null;
+  const shownInCart = pack ? Math.round((inCart / pack.size) * 100) / 100 : inCart;
   return (
     <motion.button
       whileTap={{ scale: 0.96 }}
@@ -262,7 +287,10 @@ function ProductTile({ product: p, inCart, onAdd }: { product: any; inCart: numb
       <ProductThumb src={p.imageUrl} className="aspect-[4/3] w-full rounded-xl p-1" iconClass="w-8 h-8" />
       <p className="mt-2 text-[13px] font-medium text-slate-800 leading-snug line-clamp-2 min-h-[2.5em]">{p.name}</p>
       <div className="mt-1 flex items-end justify-between gap-1">
-        <p className="text-[15px] font-bold text-slate-900 tabular-nums">{money(p.salePrice)}</p>
+        <p className="text-[15px] font-bold text-slate-900 tabular-nums leading-tight">
+          {price.main}
+          {price.sub && <span className="block text-[11.5px] font-medium text-slate-500">{price.sub}</span>}
+        </p>
         {showStock && (
           <span className={`text-[10.5px] font-medium px-1.5 py-0.5 rounded-md ${p.stock <= 0 ? 'bg-red-50 text-red-600' : low ? 'bg-amber-50 text-amber-800' : 'text-slate-400'}`}>
             {p.stock <= 0 ? 'Sin stock' : `${qty(p.stock)} u.`}
@@ -271,14 +299,14 @@ function ProductTile({ product: p, inCart, onAdd }: { product: any; inCart: numb
       </div>
       {inCart > 0 && (
         <span className="absolute top-1.5 right-1.5 min-w-[26px] h-[26px] px-1.5 rounded-full bg-rose-600 text-white text-[12px] font-bold flex items-center justify-center shadow">
-          {qty(inCart)}
+          {qty(shownInCart)}
         </span>
       )}
     </motion.button>
   );
 }
 
-function Stepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function Stepper({ value, onChange, unit }: { value: number; onChange: (v: number) => void; unit?: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   return (
@@ -297,8 +325,9 @@ function Stepper({ value, onChange }: { value: number; onChange: (v: number) => 
           className="w-12 h-9 text-center bg-white rounded-lg text-[14px] font-semibold outline-none"
         />
       ) : (
-        <button onClick={() => { setDraft(qty(value)); setEditing(true); }} className="min-w-[36px] h-9 text-[14px] font-semibold text-slate-900 tabular-nums">
+        <button onClick={() => { setDraft(qty(value)); setEditing(true); }} className="min-w-[36px] h-9 text-[14px] font-semibold text-slate-900 tabular-nums leading-none">
           {qty(value)}
+          {unit && <span className="block text-[9.5px] font-semibold text-slate-500 uppercase mt-0.5">{unit}</span>}
         </button>
       )}
       <button onClick={() => onChange(value + 1)} className="w-9 h-9 flex items-center justify-center active:scale-90" aria-label="Uno más">
@@ -352,16 +381,17 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
       .slice(0, 30);
   }, [clients, clientSearch]);
 
+  const needsClient = method === 'DEBT' || hasFeature('delivery');
   const confirm = async () => {
     if (!sessionId) return toast.error('No hay una caja abierta en este celular');
-    if (method === 'DEBT' && !clientId) return toast.error('Elegí el cliente');
+    if (needsClient && !clientId) return toast.error('Elegí el cliente');
     setProcessing(true);
     try {
       const { data } = await api.post('/sales', {
         sessionId,
         items,
         payments: [{ method, amount: finalTotal }],
-        clientId: method === 'DEBT' ? clientId : undefined,
+        clientId: needsClient ? clientId : undefined,
         appliedPromotions: appliedPromos(),
       });
       navigator.vibrate?.([20, 40, 20]);
@@ -406,7 +436,7 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
       onClose={onClose}
       title="Cobrar"
       footer={
-        <PrimaryButton onClick={confirm} loading={processing} disabled={cashShort || (method === 'DEBT' && !clientId) || total <= 0}>
+        <PrimaryButton onClick={confirm} loading={processing} disabled={cashShort || (needsClient && !clientId) || total <= 0}>
           Confirmar {money(finalTotal)}
         </PrimaryButton>
       }
@@ -457,9 +487,9 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         </div>
       )}
 
-      {method === 'DEBT' && (
+      {needsClient && (
         <div className="mt-5">
-          <p className="mb-2 text-[12.5px] font-medium text-slate-500">¿A qué cliente se le anota?</p>
+          <p className="mb-2 text-[12.5px] font-medium text-slate-500">{method === 'DEBT' ? '¿A qué cliente se le anota?' : '¿A qué cliente le vendés?'}</p>
           <div className="relative">
             <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-slate-400" />
             <input
