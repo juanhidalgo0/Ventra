@@ -5,7 +5,7 @@ import { myWorkRole } from '../../services/workRole';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Truck, Loader2, ChevronUp, ChevronDown, X, MapPin, Phone, Package, Route, FileText, Check,
-  CalendarDays, Undo2, Flag, Receipt,
+  CalendarDays, Undo2, Flag, Receipt, MessageCircle,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
@@ -19,6 +19,7 @@ import DocumentPreview from '../common/DocumentPreview';
 import { LoadSheet, RouteSheet, RunRemitos, consolidate, liveOrders, bultosOf, looseOf } from './RunSheets';
 import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner } from './DeliverySheets';
 import RunInvoicesPreview from './RunInvoices';
+import SalesNotePreview from '../pos/SalesNotePreview';
 import { COMING_SOON } from '../../utils/comingSoon';
 
 /**
@@ -418,6 +419,21 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [addSel, setAddSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [delivering, setDelivering] = useState<any | null>(null);
+  // El remito de una parada (la venta del pedido) para mandárselo al cliente por WhatsApp
+  const [noteSale, setNoteSale] = useState<any | null>(null);
+  const [loadingNote, setLoadingNote] = useState<string | null>(null);
+  const openRemito = async (o: any) => {
+    setLoadingNote(o.id);
+    try {
+      const { data } = await api.get(`/sales/${o.saleId}`);
+      // Los datos del cliente son los del pedido (la venta no los trae)
+      setNoteSale({ ...data, client: o.client || null });
+    } catch {
+      toast.error('No se pudo abrir el remito. Revisá la conexión.');
+    } finally {
+      setLoadingNote(null);
+    }
+  };
       const [settling, setSettling] = useState(false);
   useMobileFocus();
   const users = useDriverUsers();
@@ -638,12 +654,18 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
                         )}
                       </div>
                     )}
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       {(o.client?.address || o.client?.locality) && (
                                                 <a data-tour="ruta-contact" href={mapsUrl(o.client)} target="_blank" rel="noreferrer" className="h-8 px-2.5 rounded-lg bg-slate-100 text-slate-700 text-[12px] font-bold flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Mapa</a>
                       )}
                       {o.client?.phone && (
                         <a href={`tel:${o.client.phone.replace(/[^\d+]/g, '')}`} className="h-8 px-2.5 rounded-lg bg-slate-100 text-slate-700 text-[12px] font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Llamar</a>
+                      )}
+                      {run.status !== 'ARMANDO' && o.saleId && !picking && (
+                        <button onClick={() => openRemito(o)} disabled={loadingNote === o.id} title={o.client?.phone ? `Mandar el remito por WhatsApp al ${o.client.phone}` : 'Ver, imprimir o mandar el remito'}
+                          className="h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                          {loadingNote === o.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />} Remito
+                        </button>
                       )}
                       {run.status === 'EN_REPARTO' && o.status === 'BILLED' && !picking && (
                                                 <button data-tour="ruta-deliver" onClick={() => setDelivering(o)} className={`h-8 px-3 rounded-lg text-[12px] font-bold flex items-center gap-1 cursor-pointer ${o.deliveryStatus ? 'bg-slate-100 text-slate-700' : 'bg-rose-600 text-white'}`}>
@@ -776,6 +798,8 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
         </div>
       )}
+
+      {noteSale && <SalesNotePreview sale={noteSale} initialShow="remito" paymentLabel="Cuenta corriente" onClose={() => setNoteSale(null)} />}
 
       {doc === 'facturas' && emisor && (
         <RunInvoicesPreview run={run} emisor={emisor} canInvoice={!isDriver} subtitle={`${dayLabel(run.date)} · Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`} onClose={() => setDoc(null)} />

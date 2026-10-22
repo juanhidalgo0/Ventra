@@ -13,9 +13,9 @@ const FILE_LABEL: Record<SalesNoteShow, string> = { both: 'Nota_y_remito', note:
 const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 
 /** Distribuidora: la nota de venta y el remito de una venta, en pantalla antes de imprimir. */
-export default function SalesNotePreview({ sale, paymentLabel, onClose }: { sale: any; paymentLabel?: string; onClose: () => void }) {
+export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'both', onClose }: { sale: any; paymentLabel?: string; initialShow?: SalesNoteShow; onClose: () => void }) {
   const [ctx, setCtx] = useState<SalesNoteContext | null>(null);
-  const [show, setShow] = useState<SalesNoteShow>('both');
+  const [show, setShow] = useState<SalesNoteShow>(initialShow);
 
   useEffect(() => {
     let alive = true;
@@ -44,7 +44,7 @@ export default function SalesNotePreview({ sale, paymentLabel, onClose }: { sale
       fileName={`${FILE_LABEL[show]}_${numero}${client?.name ? '_' + safe(client.name) : ''}`}
       whatsapp={ctx ? {
         phone: client?.phone,
-        text: `Hola${client?.name ? ' ' + client.name : ''}! Te mando ${DOC_LABEL[show]} N° ${numero} de ${ctx.emisor.name}` + (show !== 'remito' ? ` por ${money(Number(sale.total) || 0)}.` : '.'),
+        text: `¡Hola${client?.name ? ' ' + client.name : ''}! Te mando ${DOC_LABEL[show]} N° ${numero} de ${ctx.emisor.name}` + (show !== 'remito' ? ` por ${money(Number(sale.total) || 0)}.` : '.'),
         hint: client?.phone ? `Al ${client.phone}` : 'El cliente no tiene teléfono: elegís el contacto en WhatsApp',
       } : undefined}
       onClose={onClose}
