@@ -1,4 +1,4 @@
-import { SalesNoteSheet, type Emisor } from '../pos/SalesNoteSheet';
+import { SalesNoteSheet, type Emisor, type SalesNoteShow, type SalesNoteCopies } from '../pos/SalesNoteSheet';
 
 /**
  * Hojas A4 de un reparto: la de carga (todo lo que sube al camión, sumado) y la de ruta (las
@@ -187,13 +187,13 @@ export const orderAsSale = (o: any, run: any) => ({
   client: o.client,
 });
 
-export function RunRemitos({ run, emisor, codeOf, withNote, paper }: { run: any; emisor: Emisor; codeOf: (id: string) => string; withNote: boolean; paper?: boolean }) {
+export function RunRemitos({ run, emisor, codeOf, show, copies = 1, paper }: { run: any; emisor: Emisor; codeOf: (id: string) => string; show: SalesNoteShow; copies?: SalesNoteCopies; paper?: boolean }) {
   const orders = liveOrders(run);
   return (
     <div style={paper ? { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' } : undefined}>
       {orders.map((o: any, i: number) => (
         <div key={o.id} style={!paper && i > 0 ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}>
-          <SalesNoteSheet sale={orderAsSale(o, run)} client={o.client} emisor={emisor} codeOf={codeOf} show={withNote ? 'both' : 'remito'} paper={paper} />
+          <SalesNoteSheet sale={orderAsSale(o, run)} client={o.client} emisor={emisor} codeOf={codeOf} show={show} copies={copies} paper={paper} />
         </div>
       ))}
     </div>

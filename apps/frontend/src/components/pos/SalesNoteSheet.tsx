@@ -1,9 +1,9 @@
 /**
  * Distribuidora: nota de venta y remito en hoja A4 (función `delivery` del rubro).
  *
- * Dos páginas de la misma venta: la NOTA DE VENTA, con precios, que se queda el cliente, y el
- * REMITO, sin precios y con lugar para la firma, que vuelve firmado a la distribuidora. Ninguna
- * de las dos es factura: si el cliente la pide, la factura sale aparte por ARCA.
+ * Por defecto una hoja: la NOTA DE VENTA, con precios y lugar para la firma (el cliente se queda
+ * con los precios; con duplicado, la copia firmada vuelve a la distribuidora). Si hace falta, el
+ * REMITO sin precios. Ninguna es factura: si el cliente la pide, la factura sale aparte por ARCA.
  *
  * Los renglones vendidos por bulto (sale_items.pack_size) se muestran en bultos con el precio del
  * bulto; la cantidad guardada sigue en unidades.
@@ -138,16 +138,50 @@ function Totals({ lines }: { lines: ReturnType<typeof lineOf>[] }) {
   );
 }
 
-/** Qué hojas: las dos (lo de siempre), solo la nota de venta o solo el remito */
-export type SalesNoteShow = 'both' | 'note' | 'remito';
+/**
+ * Qué hoja: con precios (la nota de venta, con lugar para la firma: lo que usan casi todas las
+ * distribuidoras, el cliente se queda con los precios), sin precios (el remito, para que firme un
+ * empleado que no tiene que ver los importes) o las dos por separado.
+ */
+export type SalesNoteShow = 'note' | 'remito' | 'both';
 
-export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, show = 'both', paper }: {
+/** Copias al imprimir: con duplicado sale la misma hoja dos veces (el original para el cliente y el duplicado vuelve firmado) */
+export type SalesNoteCopies = 1 | 2;
+const COPIES_KEY = 'ventra_note_copies';
+export const readNoteCopies = (): SalesNoteCopies => { try { return localStorage.getItem(COPIES_KEY) === '2' ? 2 : 1; } catch { return 1; } };
+export const saveNoteCopies = (c: SalesNoteCopies) => { try { localStorage.setItem(COPIES_KEY, String(c)); } catch { /* sin espacio */ } };
+
+/** Lugar para las firmas: quien recibe y el chofer */
+function Signatures() {
+  return (
+    <div style={{ marginTop: '30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px', fontSize: '9pt', breakInside: 'avoid' }}>
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '28px' }}>Recibí conforme la mercadería detallada.</div>
+        <div style={{ borderTop: '1px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+          <span>Firma</span><span>Aclaración</span><span>DNI</span>
+        </div>
+        <div style={{ marginTop: '22px', borderTop: '1px solid #000', paddingTop: '4px' }}>Fecha y hora de entrega</div>
+      </div>
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '28px' }}>Entregó</div>
+        <div style={{ borderTop: '1px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+          <span>Firma del chofer</span><span>Aclaración</span>
+        </div>
+        <div style={{ marginTop: '22px', borderTop: '1px solid #000', paddingTop: '4px' }}>Observaciones / faltantes</div>
+      </div>
+    </div>
+  );
+}
+
+export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, show = 'note', copies = 1, paper }: {
   sale: any;
   client: any;
   emisor: Emisor;
   paymentLabel?: string;
   codeOf: (productId: string) => string;
   show?: SalesNoteShow;
+  /** Solo al imprimir: en pantalla, en el PDF y por WhatsApp va una sola copia */
+  copies?: SalesNoteCopies;
   /** Vista previa en pantalla: cada hoja como un papel A4 */
   paper?: boolean;
 }) {
@@ -157,108 +191,108 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
   const page = { width: '100%', color: '#000', background: '#fff', fontFamily: 'Arial, Helvetica, sans-serif', boxSizing: 'border-box' } as const;
   const paperStyle = paper ? { width: '210mm', minHeight: '297mm', padding: '10mm', boxShadow: '0 4px 18px rgba(15,23,42,.18)', borderRadius: '2px' } : {};
 
+  // Las hojas a dibujar, con el rótulo de cada copia
+  const kinds: ('note' | 'remito')[] = show === 'both' ? ['note', 'remito'] : [show];
+  const sheets: { kind: 'note' | 'remito'; copy: string }[] = [];
+  for (const kind of kinds) {
+    if (copies === 2 && !paper) sheets.push({ kind, copy: 'ORIGINAL' }, { kind, copy: 'DUPLICADO' });
+    else sheets.push({ kind, copy: copies === 2 ? 'ORIGINAL' : show === 'both' ? (kind === 'note' ? 'ORIGINAL' : 'DUPLICADO') : '' });
+  }
+  const breakStyle = (on: boolean) => (on ? { breakBefore: 'page', pageBreakBefore: 'always' } as const : {});
+
+  const noteSheet = (copy: string, breakBefore: boolean, key: string) => (
+    <section key={key} data-sheet="note" style={{ ...page, ...breakStyle(breakBefore), ...paperStyle }}>
+      <Header emisor={emisor} title="NOTA DE VENTA" sale={sale} copy={copy} />
+      <ClientBox client={client} />
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, ...right, width: '52px' }}>Cant.</th>
+            <th style={{ ...th, width: '74px' }}>Unidad</th>
+            <th style={{ ...th, width: '96px' }}>Código</th>
+            <th style={th}>Descripción</th>
+            <th style={{ ...th, ...right, width: '92px' }}>Precio</th>
+            <th style={{ ...th, ...right, width: '100px' }}>Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => {
+            const l = lines[i];
+            return (
+              <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
+                <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
+                <td style={td}>{l.unit}</td>
+                <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
+                <td style={td}>{it.productName}{l.discount > 0 && <span style={{ fontSize: '8pt' }}> (desc. {money(l.discount)})</span>}</td>
+                <td style={{ ...td, ...right }}>{money(l.price)}</td>
+                <td style={{ ...td, ...right, fontWeight: 600 }}>{money(l.total)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '10px', gap: '16px', breakInside: 'avoid' }}>
+        <div style={{ fontSize: '9pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <div><strong>Total de mercadería:</strong> <Totals lines={lines} /></div>
+          {paymentLabel && <div><strong>Forma de pago:</strong> {paymentLabel}</div>}
+          {sale.notes && <div><strong>Observaciones:</strong> {sale.notes}</div>}
+        </div>
+        <div style={{ minWidth: '230px', border: '1.5px solid #000', borderRadius: '4px', padding: '8px 12px', fontSize: '10pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          {discounts > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(Number(sale.total) + discounts)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Descuentos</span><span>- {money(discounts)}</span></div>
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13pt', fontWeight: 800 }}><span>TOTAL</span><span>{money(Number(sale.total))}</span></div>
+        </div>
+      </div>
+      {/* Sola, la nota hace de comprobante de entrega; con las dos hojas, se firma el remito */}
+      {show !== 'both' && <Signatures />}
+      <VentraFooter />
+    </section>
+  );
+
+  const remitoSheet = (copy: string, breakBefore: boolean, key: string) => (
+    <section key={key} data-sheet="remito" style={{ ...page, ...breakStyle(breakBefore), paddingTop: '2px', ...paperStyle }}>
+      <Header emisor={emisor} title="REMITO" sale={sale} copy={copy} />
+      <ClientBox client={client} forDelivery />
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, ...right, width: '60px' }}>Cant.</th>
+            <th style={{ ...th, width: '84px' }}>Unidad</th>
+            <th style={{ ...th, width: '110px' }}>Código</th>
+            <th style={th}>Descripción</th>
+            <th style={{ ...th, ...right, width: '70px' }}>Unidades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => {
+            const l = lines[i];
+            return (
+              <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
+                <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
+                <td style={td}>{l.unit}</td>
+                <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
+                <td style={td}>{it.productName}</td>
+                <td style={{ ...td, ...right }}>{qtyFmt(l.units)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ marginTop: '10px', fontSize: '9.5pt', breakInside: 'avoid' }}>
+        <strong>Total de mercadería:</strong> <Totals lines={lines} />
+      </div>
+      <Signatures />
+      <VentraFooter />
+    </section>
+  );
+
   return (
     <div style={paper ? { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' } : undefined}>
-      {/* Nota de venta: con precios, se la queda el cliente */}
-      {show !== 'remito' && <section data-sheet="note" style={{ ...page, ...paperStyle }}>
-        <Header emisor={emisor} title="NOTA DE VENTA" sale={sale} copy="ORIGINAL" />
-        <ClientBox client={client} />
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
-          <thead>
-            <tr>
-              <th style={{ ...th, ...right, width: '52px' }}>Cant.</th>
-              <th style={{ ...th, width: '74px' }}>Unidad</th>
-              <th style={{ ...th, width: '96px' }}>Código</th>
-              <th style={th}>Descripción</th>
-              <th style={{ ...th, ...right, width: '92px' }}>Precio</th>
-              <th style={{ ...th, ...right, width: '100px' }}>Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, i) => {
-              const l = lines[i];
-              return (
-                <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
-                  <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
-                  <td style={td}>{l.unit}</td>
-                  <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
-                  <td style={td}>{it.productName}{l.discount > 0 && <span style={{ fontSize: '8pt' }}> (desc. {money(l.discount)})</span>}</td>
-                  <td style={{ ...td, ...right }}>{money(l.price)}</td>
-                  <td style={{ ...td, ...right, fontWeight: 600 }}>{money(l.total)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '10px', gap: '16px', breakInside: 'avoid' }}>
-          <div style={{ fontSize: '9pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <div><strong>Total de mercadería:</strong> <Totals lines={lines} /></div>
-            {paymentLabel && <div><strong>Forma de pago:</strong> {paymentLabel}</div>}
-            {sale.notes && <div><strong>Observaciones:</strong> {sale.notes}</div>}
-          </div>
-          <div style={{ minWidth: '230px', border: '1.5px solid #000', borderRadius: '4px', padding: '8px 12px', fontSize: '10pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {discounts > 0 && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(Number(sale.total) + discounts)}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Descuentos</span><span>- {money(discounts)}</span></div>
-              </>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13pt', fontWeight: 800 }}><span>TOTAL</span><span>{money(Number(sale.total))}</span></div>
-          </div>
-        </div>
-        <VentraFooter />
-      </section>}
-
-      {/* Remito: sin precios, lo firma quien recibe y vuelve a la distribuidora */}
-      {show !== 'note' && <section data-sheet="remito" style={{ ...page, ...(show === 'both' ? { breakBefore: 'page', pageBreakBefore: 'always' } : {}), paddingTop: '2px', ...paperStyle }}>
-        <Header emisor={emisor} title="REMITO" sale={sale} copy="DUPLICADO" />
-        <ClientBox client={client} forDelivery />
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
-          <thead>
-            <tr>
-              <th style={{ ...th, ...right, width: '60px' }}>Cant.</th>
-              <th style={{ ...th, width: '84px' }}>Unidad</th>
-              <th style={{ ...th, width: '110px' }}>Código</th>
-              <th style={th}>Descripción</th>
-              <th style={{ ...th, ...right, width: '70px' }}>Unidades</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, i) => {
-              const l = lines[i];
-              return (
-                <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
-                  <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
-                  <td style={td}>{l.unit}</td>
-                  <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
-                  <td style={td}>{it.productName}</td>
-                  <td style={{ ...td, ...right }}>{qtyFmt(l.units)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <div style={{ marginTop: '10px', fontSize: '9.5pt', breakInside: 'avoid' }}>
-          <strong>Total de mercadería:</strong> <Totals lines={lines} />
-        </div>
-        <div style={{ marginTop: '34px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px', fontSize: '9pt', breakInside: 'avoid' }}>
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: '28px' }}>Recibí conforme la mercadería detallada.</div>
-            <div style={{ borderTop: '1px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Firma</span><span>Aclaración</span><span>DNI</span>
-            </div>
-            <div style={{ marginTop: '22px', borderTop: '1px solid #000', paddingTop: '4px' }}>Fecha y hora de entrega</div>
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: '28px' }}>Entregó</div>
-            <div style={{ borderTop: '1px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Firma del chofer</span><span>Aclaración</span>
-            </div>
-            <div style={{ marginTop: '22px', borderTop: '1px solid #000', paddingTop: '4px' }}>Observaciones / faltantes</div>
-          </div>
-        </div>
-        <VentraFooter />
-      </section>}
+      {sheets.map((sh, i) => (sh.kind === 'note' ? noteSheet(sh.copy, i > 0, `${sh.kind}${i}`) : remitoSheet(sh.copy, i > 0, `${sh.kind}${i}`)))}
     </div>
   );
 }
@@ -310,5 +344,15 @@ export async function loadSalesNoteContext(sale: any, client?: any): Promise<Sal
  */
 export async function printSalesNote(sale: any, opts: { client?: any; paymentLabel?: string; show?: SalesNoteShow; ctx?: SalesNoteContext } = {}) {
   const { emisor, client, codeOf } = opts.ctx || await loadSalesNoteContext(sale, opts.client);
-  await printA4(<SalesNoteSheet sale={sale} client={client} emisor={emisor} paymentLabel={opts.paymentLabel} codeOf={codeOf} show={opts.show} />);
+  await printA4(<SalesNoteSheet sale={sale} client={client} emisor={emisor} paymentLabel={opts.paymentLabel} codeOf={codeOf} show={opts.show} copies={readNoteCopies()} />);
+}
+
+/** "Imprimir con duplicado": se recuerda en este equipo */
+export function CopiesToggle({ copies, onChange }: { copies: SalesNoteCopies; onChange: (c: SalesNoteCopies) => void }) {
+  return (
+    <label className="flex items-center gap-2.5 px-5 py-2 text-[12.5px] text-slate-700 cursor-pointer select-none">
+      <input type="checkbox" checked={copies === 2} onChange={(e) => { const c: SalesNoteCopies = e.target.checked ? 2 : 1; saveNoteCopies(c); onChange(c); }} className="w-4 h-4 accent-rose-600" />
+      <span><b>Imprimir con duplicado</b> · sale dos veces: el original queda en el comercio y el duplicado vuelve firmado (el PDF y el WhatsApp van con una sola copia)</span>
+    </label>
+  );
 }

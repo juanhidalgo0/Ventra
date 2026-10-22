@@ -14,7 +14,7 @@ import { ScreenHeader, HeaderAction, Chips } from '../mobile/ui';
 import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
-import { loadEmisor, MissingStoreNameError, type Emisor } from '../pos/SalesNoteSheet';
+import { loadEmisor, MissingStoreNameError, CopiesToggle, readNoteCopies, type Emisor } from '../pos/SalesNoteSheet';
 import DocumentPreview from '../common/DocumentPreview';
 import { LoadSheet, RouteSheet, RunRemitos, consolidate, liveOrders, bultosOf, looseOf } from './RunSheets';
 import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner } from './DeliverySheets';
@@ -414,7 +414,9 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [run, setRun] = useState<any | null>(null);
   const [tab, setTab] = useState<'ruta' | 'carga'>('ruta');
   const [doc, setDoc] = useState<null | 'carga' | 'ruta' | 'remitos' | 'facturas'>(null);
-  const [remitoMode, setRemitoMode] = useState<'remito' | 'both'>('remito');
+  // Hojas para el cliente: con precios (lo de siempre) o sin precios; con duplicado si se elige
+  const [remitoMode, setRemitoMode] = useState<'note' | 'remito'>('note');
+  const [copies, setCopies] = useState(readNoteCopies);
   const [adding, setAdding] = useState<any[] | null>(null);
   const [addSel, setAddSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -590,7 +592,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div data-tour="ruta-docs" className="flex flex-wrap gap-2">
             <button onClick={() => openDoc('carga')} className={actionBtn}><Package className="w-4 h-4 text-rose-600" /> Hoja de carga</button>
             <button onClick={() => openDoc('ruta')} className={actionBtn}><Route className="w-4 h-4 text-rose-600" /> Hoja de ruta</button>
-            <button onClick={() => openDoc('remitos')} className={actionBtn}><FileText className="w-4 h-4 text-rose-600" /> Remitos</button>
+            <button onClick={() => openDoc('remitos')} className={actionBtn}><FileText className="w-4 h-4 text-rose-600" /> Hojas de entrega</button>
             {invoicing && run.status !== 'ARMANDO' && (
               <button onClick={() => openDoc('facturas')} className={actionBtn}><Receipt className="w-4 h-4 text-rose-600" /> Facturas</button>
             )}
@@ -799,7 +801,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
       )}
 
-      {noteSale && <SalesNotePreview sale={noteSale} initialShow="remito" paymentLabel="Cuenta corriente" onClose={() => setNoteSale(null)} />}
+      {noteSale && <SalesNotePreview sale={noteSale} paymentLabel="Cuenta corriente" onClose={() => setNoteSale(null)} />}
 
       {doc === 'facturas' && emisor && (
         <RunInvoicesPreview run={run} emisor={emisor} canInvoice={!isDriver} subtitle={`${dayLabel(run.date)} · Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`} onClose={() => setDoc(null)} />
@@ -807,14 +809,15 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
       {doc && doc !== 'facturas' && emisor && (
         <DocumentPreview
-          title={doc === 'carga' ? 'Hoja de carga' : doc === 'ruta' ? 'Hoja de ruta' : 'Remitos del reparto'}
+          title={doc === 'carga' ? 'Hoja de carga' : doc === 'ruta' ? 'Hoja de ruta' : 'Hojas de entrega del reparto'}
           subtitle={`${dayLabel(run.date)} · Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`}
           options={doc === 'remitos' ? [
-            { key: 'remito', label: 'Solo remitos', help: 'Un remito sin precios por pedido: lo firma quien recibe y vuelve con el chofer.' },
-            { key: 'both', label: 'Remito y nota', help: 'Por cada pedido, la nota de venta con precios (para el cliente) y el remito para firmar.' },
+            { key: 'note', label: 'Con precios', help: 'Una hoja por pedido con precios, total y lugar para la firma: el cliente se queda con los precios y firma que recibió.' },
+            { key: 'remito', label: 'Sin precios', help: 'Una hoja por pedido sin importes, con lugar para la firma: para cuando recibe un empleado que no tiene que ver los precios.' },
           ] : undefined}
+          notice={doc === 'remitos' ? <CopiesToggle copies={copies} onChange={setCopies} /> : undefined}
           option={remitoMode}
-          onOption={(k) => setRemitoMode(k as 'remito' | 'both')}
+          onOption={(k) => setRemitoMode(k as 'note' | 'remito')}
           fileName={`${doc === 'carga' ? 'Hoja_de_carga' : doc === 'ruta' ? 'Hoja_de_ruta' : 'Remitos'}_${baseName}`}
           whatsapp={doc !== 'remitos' ? {
             text: `${doc === 'carga' ? 'Hoja de carga' : 'Hoja de ruta'} del reparto N° ${run.runNumber} (${dayLabel(run.date)}): ${plural(orders.length, 'parada', 'paradas')}, ${plural(bultos, 'bulto', 'bultos')}, ${money(total)} a cobrar.`,
@@ -824,7 +827,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
           render={(paper) => (
             doc === 'carga' ? <div style={paper ? { display: 'flex', justifyContent: 'center' } : undefined}><LoadSheet run={run} emisor={emisor} codeOf={codeOf} paper={paper} /></div>
               : doc === 'ruta' ? <div style={paper ? { display: 'flex', justifyContent: 'center' } : undefined}><RouteSheet run={run} emisor={emisor} paper={paper} /></div>
-                : <RunRemitos run={run} emisor={emisor} codeOf={codeOf} withNote={remitoMode === 'both'} paper={paper} />
+                : <RunRemitos run={run} emisor={emisor} codeOf={codeOf} show={remitoMode} copies={copies} paper={paper} />
           )}
         />
       )}

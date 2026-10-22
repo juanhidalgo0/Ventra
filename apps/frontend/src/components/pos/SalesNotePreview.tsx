@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { SalesNoteSheet, loadSalesNoteContext, MissingStoreNameError, type SalesNoteContext, type SalesNoteShow } from './SalesNoteSheet';
+import { SalesNoteSheet, loadSalesNoteContext, MissingStoreNameError, CopiesToggle, readNoteCopies, type SalesNoteContext, type SalesNoteShow } from './SalesNoteSheet';
 import DocumentPreview from '../common/DocumentPreview';
 
+// Lo de casi todas las distribuidoras: una hoja con precios que firma quien recibe. Sin precios,
+// para cuando recibe un empleado que no tiene que ver los importes.
 const OPTIONS: { key: SalesNoteShow; label: string; help: string }[] = [
-  { key: 'both', label: 'Las dos', help: 'La nota de venta (con precios) se la queda el cliente. El remito (sin precios) lo firma quien recibe y vuelve con el chofer.' },
-  { key: 'note', label: 'Nota de venta', help: 'Con precios y total: es el comprobante de lo que compró el cliente.' },
-  { key: 'remito', label: 'Remito', help: 'Sin precios: lo firma quien recibe la mercadería y vuelve con el chofer como prueba de entrega.' },
+  { key: 'note', label: 'Con precios', help: 'Nota de venta con precios, total y lugar para la firma: el cliente se queda con los precios y firma que recibió.' },
+  { key: 'remito', label: 'Sin precios', help: 'Remito sin importes, con lugar para la firma: para cuando recibe un empleado que no tiene que ver los precios.' },
 ];
 const DOC_LABEL: Record<SalesNoteShow, string> = { both: 'la nota de venta y el remito', note: 'la nota de venta', remito: 'el remito' };
 const FILE_LABEL: Record<SalesNoteShow, string> = { both: 'Nota_y_remito', note: 'Nota_de_venta', remito: 'Remito' };
 const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 
 /** Distribuidora: la nota de venta y el remito de una venta, en pantalla antes de imprimir. */
-export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'both', onClose }: { sale: any; paymentLabel?: string; initialShow?: SalesNoteShow; onClose: () => void }) {
+export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'note', onClose }: { sale: any; paymentLabel?: string; initialShow?: SalesNoteShow; onClose: () => void }) {
   const [ctx, setCtx] = useState<SalesNoteContext | null>(null);
   const [show, setShow] = useState<SalesNoteShow>(initialShow);
+  const [copies, setCopies] = useState(readNoteCopies);
 
   useEffect(() => {
     let alive = true;
@@ -48,8 +50,9 @@ export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'bo
         hint: client?.phone ? `Al ${client.phone}` : 'El cliente no tiene teléfono: elegís el contacto en WhatsApp',
       } : undefined}
       onClose={onClose}
+      notice={<CopiesToggle copies={copies} onChange={setCopies} />}
       render={(paper) => ctx && (
-        <SalesNoteSheet sale={sale} client={ctx.client} emisor={ctx.emisor} paymentLabel={paymentLabel} codeOf={ctx.codeOf} show={show} paper={paper} />
+        <SalesNoteSheet sale={sale} client={ctx.client} emisor={ctx.emisor} paymentLabel={paymentLabel} codeOf={ctx.codeOf} show={show} copies={copies} paper={paper} />
       )}
     />
   );
