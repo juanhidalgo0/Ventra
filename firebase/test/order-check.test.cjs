@@ -59,6 +59,22 @@ const t = async (name, fn) => {
     assert.ok(await priceProblem(legacy, {}, { items: [{ productId: "coca", name: "Coca", price: 100, qty: 1 }] }));
     assert.strictEqual(await priceProblem(legacy, {}, { items: [{ productId: "coca", name: "Coca", price: 1500, qty: 1 }] }), null);
   });
+  // Venta a comercios: bulto x12 a $36.000 ($3.000 la unidad), suelta $3.600, oferta $2.800 llevando 48
+  const ws = fakeStore([[{ productId: "galle", price: 3600, pack: { size: 12, price: 36000 }, wholesale: { price: 2800, minQty: 48 } }]]);
+  const wsStore = { catalogParts: 1, wholesale: { enabled: true } };
+  await t("comercios: el bulto vale lo publicado del bulto; una suelta, el precio de la unidad", async () => {
+    assert.strictEqual(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 36000, qty: 2, packSize: 12 }] }), null);
+    assert.strictEqual(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 3600, qty: 3 }] }), null);
+    assert.ok(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 3000, qty: 3 }] }), "la suelta no va a precio de bulto");
+    assert.ok(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 3600, qty: 1, packSize: 12 }] }), "un bulto a precio de una unidad");
+  });
+  await t("comercios: la oferta por cantidad vale solo llegando al mínimo entre bultos y sueltas", async () => {
+    assert.strictEqual(await priceProblem(ws, wsStore, { items: [
+      { productId: "galle", name: "Galletitas", price: 33600, qty: 3, packSize: 12 },
+      { productId: "galle", name: "Galletitas", price: 2800, qty: 12 },
+    ] }), null);
+    assert.ok(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 33600, qty: 3, packSize: 12 }] }), "36 unidades no llegan a 48");
+  });
   await t("pedido sin renglones válidos: sin problema", async () => {
     assert.strictEqual(await priceProblem(ref, store, { items: [] }), null);
     assert.strictEqual(await priceProblem(ref, store, {}), null);

@@ -16,8 +16,10 @@ import {
   X,
   Maximize2,
   Minimize2,
-  Trash2
+  Trash2,
+  Link2,
 } from 'lucide-react';
+import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '../pos/PaymentModal';
@@ -401,6 +403,15 @@ export default function CuentasCorrientesScreen() {
                               >
                                 <FileText className="w-3.5 h-3.5" /> Historial
                               </button>
+                              {hasFeature('bulk') && (
+                                <button
+                                  onClick={() => sendClientOrderLink(client)}
+                                  className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all"
+                                  title="Mandarle su link de pedidos (tienda online)"
+                                >
+                                  <Link2 className="w-4 h-4" />
+                                </button>
+                              )}
                               <button 
                                 onClick={() => { setEditingClient(client); setShowEditModal(true); }}
                                 className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all"
@@ -1036,6 +1047,15 @@ export default function CuentasCorrientesScreen() {
                                  >
                                   <FileText className="w-3.5 h-3.5" />
                                  </button>
+                                 {hasFeature('bulk') && (
+                                   <button
+                                     onClick={() => sendClientOrderLink(client)}
+                                     className="p-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all"
+                                     title="Mandarle su link de pedidos (tienda online)"
+                                   >
+                                     <Link2 className="w-3.5 h-3.5" />
+                                   </button>
+                                 )}
                                  <button 
                                   onClick={() => { setEditingClient(client); setShowEditModal(true); }}
                                   className="p-2 rounded-lg bg-slate-50 text-slate-450 hover:bg-emerald-50 hover:text-emerald-600 transition-all"

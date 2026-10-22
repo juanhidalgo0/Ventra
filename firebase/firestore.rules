@@ -127,6 +127,14 @@ service cloud.firestore {
         }
       }
 
+      // Clientes de una distribuidora con link personal: el id es un código secreto que Ventra le
+      // manda a cada comercio. Quien lo tiene lee sus datos (nombre, dirección, último pedido);
+      // listarlos o escribirlos, solo el dueño.
+      match /clients/{token} {
+        allow get: if true;
+        allow list, write: if storeOwner();
+      }
+
       match /orders/{orderId} {
         // Cualquier cliente puede hacer un pedido, con formato válido.
         allow create: if validNewOrder();
@@ -136,14 +144,16 @@ service cloud.firestore {
         function validNewOrder() {
           let o = request.resource.data;
           return o.keys().hasOnly(['items', 'total', 'customerName', 'customerPhone', 'customerNote', 'status', 'syncedLocal', 'createdAt',
-                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount', 'coupon'])
+                                   'orderCode', 'delivery', 'address', 'paymentMethod', 'deliveryCost', 'discount', 'coupon', 'clientToken'])
+            // Link personal del cliente de una distribuidora (ver clients/ arriba)
+            && (!('clientToken' in o) || (o.clientToken is string && o.clientToken.size() >= 16 && o.clientToken.size() <= 64))
             && (!('discount' in o) || (o.discount is number && o.discount >= 0))
             // El cupón lo valida la nube al crearse el pedido (coupon.valid o couponProblem)
             && (!('coupon' in o) || (o.coupon is map && o.coupon.keys().hasOnly(['code', 'discount', 'type'])
                 && o.coupon.code is string && o.coupon.code.size() <= 24
                 && o.coupon.discount is number && o.coupon.discount >= 0))
             && (!('orderCode' in o) || (o.orderCode is string && o.orderCode.size() <= 12))
-            && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY', 'TABLE'])
+            && (!('delivery' in o) || o.delivery in ['PICKUP', 'DELIVERY', 'GODELIVERY', 'TABLE', 'REPARTO'])
             && (!('address' in o) || (o.address is string && o.address.size() <= 300))
             && (!('paymentMethod' in o) || (o.paymentMethod is string && o.paymentMethod.size() <= 60))
             && (!('deliveryCost' in o) || (o.deliveryCost is number && o.deliveryCost >= 0))

@@ -41,6 +41,7 @@ import {
   ShoppingBag,
   Ticket,
   CalendarDays,
+  Users,
 } from 'lucide-react';
 import StoreCoupons from './StoreCoupons';
 import { ColorField, ImagePick, StorePreview, StoreHoursEditor, Switch } from '../store/StoreLook';
@@ -65,6 +66,8 @@ import {
   type StoreOrder,
 } from '../../services/onlineStore';
 import { publicStoreUrl, storeHost } from '../../utils/storeLinks';
+import { hasFeature } from '../../stores/businessStore';
+import { readRouteDays, dayName } from '../../services/routeDays';
 
 
 const RUBROS = [
@@ -81,11 +84,11 @@ const EDIT_KEYS = [
   'primaryColor', 'secondaryColor', 'logoUrl', 'bannerUrl', 'announcement',
   'pickupEnabled', 'deliveryEnabled', 'goDeliveryEnabled', 'deliveryCost', 'freeDeliveryFrom', 'deliveryZone',
   'deliveryEta', 'pickupEta', 'minOrder', 'transferAlias', 'paymentMethods',
-  'hours', 'showOutOfStock', 'alwaysInStock',
+  'hours', 'showOutOfStock', 'alwaysInStock', 'wholesale',
 ] as const;
 type EditKey = typeof EDIT_KEYS[number];
 
-type SectionId = 'resumen' | 'negocio' | 'productos' | 'apariencia' | 'entregas' | 'horarios' | 'extras' | 'cupones';
+type SectionId = 'resumen' | 'negocio' | 'productos' | 'apariencia' | 'entregas' | 'comercios' | 'horarios' | 'extras' | 'cupones';
 
 const SECTIONS: { id: SectionId; label: string; icon: any; keys: EditKey[] }[] = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, keys: [] },
@@ -93,6 +96,7 @@ const SECTIONS: { id: SectionId; label: string; icon: any; keys: EditKey[] }[] =
   { id: 'productos', label: 'Productos', icon: Package, keys: ['showOutOfStock', 'alwaysInStock'] },
   { id: 'apariencia', label: 'Apariencia', icon: Palette, keys: ['primaryColor', 'secondaryColor', 'logoUrl', 'bannerUrl', 'announcement'] },
   { id: 'entregas', label: 'Entregas y pagos', icon: Truck, keys: ['pickupEnabled', 'deliveryEnabled', 'goDeliveryEnabled', 'deliveryCost', 'freeDeliveryFrom', 'deliveryZone', 'deliveryEta', 'pickupEta', 'minOrder', 'transferAlias', 'paymentMethods'] },
+  { id: 'comercios', label: 'Venta a comercios', icon: Users, keys: ['wholesale'] },
   { id: 'horarios', label: 'Horarios', icon: Clock, keys: ['hours'] },
   { id: 'extras', label: 'Extras y agregados', icon: Plus, keys: [] },
   { id: 'cupones', label: 'Cupones', icon: Ticket, keys: [] },
@@ -104,6 +108,45 @@ const money = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency',
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 const inputBase = 'w-full h-11 bg-white border border-slate-300 rounded-xl px-3.5 text-[14px] text-slate-900 placeholder:text-slate-400 outline-none transition-shadow focus:border-rose-500 focus:ring-[3px] focus:ring-rose-500/15';
+
+/** La venta a comercios es de la distribuidora (venta por bulto o preventa) */
+const wholesaleAvailable = () => hasFeature('bulk') || hasFeature('preorders');
+
+/**
+ * Venta a comercios (distribuidora): la tienda muestra bultos y ofertas por cantidad, cada cliente
+ * entra con su link personal (desde Clientes) y los pedidos llegan a Pedidos para revisarlos.
+ */
+function WholesaleSection({ config, update }: { config: StoreConfig; update: (p: Partial<StoreConfig>) => void }) {
+  const w = config.wholesale || { enabled: false };
+  const set = (patch: Partial<NonNullable<StoreConfig['wholesale']>>) => update({ wholesale: { ...w, ...patch } as any });
+  const route = readRouteDays();
+  const zones = Object.keys(route).sort();
+  return (
+    <Card title="Venta a comercios" text="Para que tus clientes te hagan los pedidos desde el celular, con sus datos ya cargados.">
+      <ToggleCard title="Activar venta a comercios" text="Los productos se piden por bulto o por unidad, con la oferta por cantidad, y el pedido va al reparto de su localidad." on={!!w.enabled} onChange={(v) => set({ enabled: v })} />
+      {w.enabled && (
+        <div className="space-y-4 mt-4">
+          <ToggleCard title="Aceptar pedidos de quien no tiene link" text="Apagado, el que entra sin su link de cliente ve el catálogo pero para pedir tiene que pedirte el link por WhatsApp." on={!!w.publicOrders} onChange={(v) => set({ publicOrders: v })} />
+          <Field label="Aviso para los que entran sin link" hint="Opcional. Ej.: Hacemos reparto en Magdalena, Verónica y Bavio.">
+            <input type="text" maxLength={140} value={w.note || ''} onChange={(e) => set({ note: e.target.value })} className={inputBase} placeholder="Repartimos en Magdalena, Verónica y Bavio" />
+          </Field>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13.5px] text-slate-700 space-y-1.5">
+            <p className="font-semibold text-slate-900">Cómo funciona</p>
+            <p>1. A cada cliente le mandás su link desde <b>Clientes</b>: el botón verde del link al lado del cliente (en el celular, <b>Mandarle su link de pedidos</b>). Entra con su nombre, dirección y su último pedido para repetirlo.</p>
+            <p>2. El pedido llega a <b>Pedidos → Por revisar</b>. Lo aceptás (pasa a los pedidos para el reparto) o lo rechazás. Aceptado, la mercadería queda comprometida; el stock se descuenta cuando sale el reparto (o al cobrarlo en el mostrador) y lo que vuelve sin entregar se suma de nuevo al rendirlo.</p>
+            <p>3. Los precios son los de cada producto: el del bulto, el de la unidad y la oferta por cantidad.</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 px-4 py-3 text-[13.5px] text-slate-700">
+            <p className="font-semibold text-slate-900 mb-1">Días de reparto que ve el cliente</p>
+            {zones.length
+              ? zones.map((z) => <p key={z}>{z}: {route[z].map((d) => dayName(d)).join(', ')}</p>)
+              : <p className="text-slate-500">Todavía no cargaste el recorrido. Se carga en <b>Pedidos → Días</b> y se publica al guardar.</p>}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 /** Primero se resuelve la tienda del comercio (con la PC vinculada es la de la cuenta). */
 export default function OnlineStoreScreen() {
@@ -264,6 +307,8 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
         // Solo lo que cambió: no se pisa lo que se haya tocado desde el celular mientras tanto
         const patch: Record<string, any> = { ...extra };
         dirtyKeys.forEach((k) => { if ((next as any)[k] !== undefined) patch[k] = (next as any)[k]; });
+        // Venta a comercios: el recorrido (qué días se visita cada localidad) se publica con lo último
+        if (next.wholesale?.enabled) patch.wholesale = { ...next.wholesale, routeDays: readRouteDays() };
         await saveStoreConfig(storeId, patch as Partial<StoreConfig>);
         setSaved(pickEditable(next));
         if (extra) setConfig(next);
@@ -406,7 +451,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
       <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-[230px,1fr] gap-6">
         {/* Menú de secciones */}
         <nav className="lg:sticky lg:top-6 self-start flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-          {SECTIONS.map((s) => {
+          {SECTIONS.filter((s) => s.id !== 'comercios' || wholesaleAvailable()).map((s) => {
             const Icon = s.icon;
             const active = tab === s.id;
             const pending = dirtySections.has(s.id) || (s.id === 'productos' && catalogDirty);
@@ -566,6 +611,10 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
                 />
               )}
             </Card>
+          )}
+
+          {tab === 'comercios' && wholesaleAvailable() && (
+            <WholesaleSection config={config} update={update} />
           )}
 
           {tab === 'entregas' && (
@@ -765,7 +814,7 @@ function SummarySection({ config, savedUrl, publishedCount, markedCount, orders,
                   <p className="text-[14px] font-semibold text-slate-800 truncate">{o.customerName || 'Cliente'}{o.orderCode ? <span className="text-slate-400 font-medium"> · #{o.orderCode}</span> : null}</p>
                   <p className="text-[12.5px] text-slate-500 truncate">
                     {plural(o.items?.length || 0, 'producto', 'productos')}
-                    {o.delivery ? ` · ${o.delivery === 'DELIVERY' ? 'Envío' : o.delivery === 'GODELIVERY' ? 'GoDelivery' : o.delivery === 'TABLE' ? 'Mesa' : 'Retira'}` : ''}
+                    {o.delivery ? ` · ${o.delivery === 'REPARTO' ? 'Reparto' : o.delivery === 'DELIVERY' ? 'Envío' : o.delivery === 'GODELIVERY' ? 'GoDelivery' : o.delivery === 'TABLE' ? 'Mesa' : 'Retira'}` : ''}
                     {o.paymentMethod ? ` · ${o.paymentMethod}` : ''}
                   </p>
                 </div>

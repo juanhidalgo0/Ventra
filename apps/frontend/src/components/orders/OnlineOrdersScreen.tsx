@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ShoppingBag, Clock, ChefHat, PackageCheck, CheckCircle2, XCircle, MessageCircle, Phone, MapPin,
-  Truck, Store as StoreIcon, CreditCard, ShoppingCart, X, Globe, Printer,
+  Truck, Store as StoreIcon, CreditCard, ShoppingCart, X, Globe, Printer, ClipboardList,
 } from 'lucide-react';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
-import { updateOrderStage, type OrderStage, type StoreOrder } from '../../services/onlineStore';
-import { usePOSStore } from '../../stores/posStore';
+import { updateOrderStage, lockOrderForCharge, canAcceptOrder, reviewInProgress, type OrderStage, type StoreOrder, type StoreOrderItem } from '../../services/onlineStore';
+import { usePOSStore, packOf } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePlanStore } from '../../stores/planStore';
 import { useFeature } from '../../stores/businessStore';
@@ -33,8 +33,20 @@ const when = (o: StoreOrder) => {
     ? d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 };
+/** Lo que vale el renglón con los precios de la caja (bulto u unidad, con la oferta por cantidad si llega) */
+function catalogPrice(o: StoreOrder, it: StoreOrderItem, p: any) {
+  const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
+  const pack = size ? packOf(p, true) : null;
+  let price = size ? (pack && pack.size === size ? pack.price : Number(p.salePrice) * size) : Number(p.salePrice);
+  const offer = Number(p.wholesalePrice) || 0;
+  const min = Number(p.wholesaleMinQty) || 0;
+  const units = o.items.filter((x) => x.productId === it.productId).reduce((s, x) => s + x.qty * (Number(x.packSize) > 1 ? Number(x.packSize) : 1), 0);
+  if (offer > 0 && min > 0 && units >= min) price = Math.min(price, offer * (size || 1));
+  return price;
+}
+
 const deliveryText = (o: StoreOrder) =>
-  o.delivery === 'DELIVERY' ? 'Envío a domicilio' : o.delivery === 'GODELIVERY' ? 'Envío con GoDelivery' : 'Retira en el local';
+  o.delivery === 'REPARTO' ? 'En el reparto' : o.delivery === 'DELIVERY' ? 'Envío a domicilio' : o.delivery === 'GODELIVERY' ? 'Envío con GoDelivery' : 'Retira en el local';
 
 const waLink = (phone: string, text: string) => {
   let d = String(phone || '').replace(/\D/g, '');
@@ -224,16 +236,20 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
 
   /** Carga el pedido en la caja para cobrarlo como una venta normal (ahí se descuenta el stock). */
   const chargeInPos = async () => {
-    const { products, addToCart, clearCart, cart } = usePOSStore.getState();
+    const { products, addToCart, addPackToCart, clearCart, cart } = usePOSStore.getState();
     if (cart.length && !window.confirm('La caja tiene productos cargados. ¿Reemplazarlos por este pedido?')) return;
+    // Un pedido termina en un solo lado: si ya pasó a Pedidos (o lo están pasando), no se cobra acá
+    const free = await lockOrderForCharge(storeId, o.id).catch(() => undefined);
+    if (free === undefined) { toast.error('No se pudo tomar el pedido: revisá la conexión.'); return; }
+    if (!free) { toast.error('Este pedido ya está en Pedidos (o lo están pasando ahora): se cobra desde ahí.', { duration: 6000 }); return; }
     // El precio del pedido lo manda el navegador del cliente: si alguno es más bajo que el de la
     // caja, se avisa y decide el cajero (puede ser un cambio de precio reciente o un pedido alterado)
     const cheaper = o.items
       .map((it) => ({ it, p: products.find((x: any) => x.id === it.productId) }))
-      .filter(({ it, p }) => p && Number(it.price) < Number(p.salePrice) - 1);
+      .filter(({ it, p }) => p && Number(it.price) < catalogPrice(o, it, p) - 1);
     const useSystemPrice = cheaper.length > 0 && window.confirm(
       'Este pedido trae precios más bajos que los de la caja:\n\n'
-      + cheaper.slice(0, 8).map(({ it, p }) => `• ${it.name}: pedido ${money(Number(it.price))}, caja ${money(Number(p.salePrice))}`).join('\n')
+      + cheaper.slice(0, 8).map(({ it, p }) => `• ${it.name}: pedido ${money(Number(it.price))}, caja ${money(catalogPrice(o, it, p))}`).join('\n')
       + '\n\nAceptar: cobrar con los precios de la caja.\nCancelar: respetar los precios del pedido.',
     );
     clearCart();
@@ -241,6 +257,13 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
     for (const it of o.items) {
       const p = products.find((x: any) => x.id === it.productId);
       if (!p) { missing.push(it.name); continue; }
+      // Por bulto: entra como bulto (descuenta cantidad × unidades del bulto, no "un" producto)
+      const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
+      if (size) {
+        const sys = catalogPrice(o, it, p);
+        addPackToCart(p, { size, price: Number(it.price) < sys - 1 && useSystemPrice ? sys : Number(it.price) }, it.qty);
+        continue;
+      }
       // Se respeta el precio que vio el cliente en la tienda, salvo que el cajero elija el de la caja
       const lower = Number(it.price) < Number(p.salePrice) - 1;
       addToCart(p, Number(p.salePrice) === it.price || (lower && useSystemPrice) ? undefined : it.price, it.qty);
@@ -271,6 +294,15 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
     onClose();
     navigate('/encargos?nuevo=1');
   };
+
+  // Distribuidora: el pedido se acepta en Pedidos y desde ahí sale en el reparto o se cobra
+  const preorders = useFeature('preorders');
+  const accepted = !!o.preorderId;
+  const inReview = reviewInProgress(o);
+  // Solo los recién llegados: uno que ya se empezó a preparar o se pasó a encargo se cobra acá
+  const reviewable = preorders && stage === 'NEW' && canAcceptOrder(o);
+  const open = stage !== 'DELIVERED' && stage !== 'CANCELLED';
+  const toPedidos = () => { onClose(); onCharged?.(); navigate('/preventa'); };
 
   const next: { stage: OrderStage; label: string } | null =
     stage === 'NEW' ? { stage: 'PREPARING', label: 'Empezar a preparar' }
@@ -334,12 +366,29 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
         </div>
 
         <div className="px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] border-t border-slate-100 space-y-2">
-          {hasCaja && workorders && stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
+          {(accepted || inReview) && (
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-[13px] text-emerald-900">
+              {accepted
+                ? <><b>Ya está en tus Pedidos.</b> Sale en el reparto o se cobra desde ahí (el stock se descuenta en ese momento). Para cancelarlo, cancelalo en Pedidos.</>
+                : <><b>Lo están pasando a Pedidos</b> desde otro equipo.</>}
+              {accepted && (
+                <button onClick={toPedidos} className="mt-2 w-full h-10 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-semibold text-[13.5px] flex items-center justify-center gap-2 cursor-pointer">
+                  <ClipboardList className="w-4 h-4" /> Ver en Pedidos
+                </button>
+              )}
+            </div>
+          )}
+          {reviewable && open && (
+            <button onClick={toPedidos} className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
+              <ClipboardList className="w-4 h-4" /> Revisarlo en Pedidos
+            </button>
+          )}
+          {hasCaja && workorders && open && !accepted && !inReview && (
             <button onClick={toWorkOrder} className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
               <Printer className="w-4 h-4" /> Pasar a encargo
             </button>
           )}
-          {hasCaja && stage !== 'DELIVERED' && stage !== 'CANCELLED' && (
+          {hasCaja && open && !accepted && !inReview && (
             <button onClick={chargeInPos} className="w-full h-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer">
               <ShoppingCart className="w-4 h-4" /> Cobrar en la caja
             </button>
@@ -354,7 +403,7 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
               </button>
             </div>
           )}
-          {stage !== 'CANCELLED' && stage !== 'DELIVERED' && (
+          {open && !accepted && !inReview && (
             <button disabled={!!busy} onClick={() => { if (window.confirm('¿Cancelar este pedido?')) setStage('CANCELLED', true); }} className="w-full h-10 text-[13px] font-semibold text-red-600 cursor-pointer">
               Cancelar pedido
             </button>

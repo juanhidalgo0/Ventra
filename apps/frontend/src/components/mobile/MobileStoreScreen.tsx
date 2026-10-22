@@ -4,8 +4,10 @@ import ImageCropModal, { STORE_LOGO, STORE_BANNER } from '../common/ImageCropMod
 import toast from 'react-hot-toast';
 import {
   Store, Copy, Share2, ExternalLink, ShoppingBag, Info, Truck, Clock, Palette, RefreshCw, ChevronRight,
-  MessageCircle, Image as ImageIcon, Check, Package, Search, Eye, EyeOff, Plus,
+  MessageCircle, Image as ImageIcon, Check, Package, Search, Eye, EyeOff, Plus, Users,
 } from 'lucide-react';
+import { hasFeature } from '../../stores/businessStore';
+import { readRouteDays, dayName } from '../../services/routeDays';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
   compressImageFile, publishOnlineCatalog, countPendingCatalog, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
@@ -20,7 +22,7 @@ const WEEK = [
   { idx: 1, label: 'Lunes' }, { idx: 2, label: 'Martes' }, { idx: 3, label: 'Miércoles' }, { idx: 4, label: 'Jueves' },
   { idx: 5, label: 'Viernes' }, { idx: 6, label: 'Sábado' }, { idx: 0, label: 'Domingo' },
 ];
-type Panel = 'orders' | 'products' | 'info' | 'delivery' | 'hours' | 'look' | 'extras' | null;
+type Panel = 'orders' | 'products' | 'info' | 'delivery' | 'hours' | 'look' | 'extras' | 'wholesale' | null;
 
 const input = 'w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white';
 const waLink = (phone: string, text = '') => {
@@ -152,6 +154,9 @@ export default function MobileStoreScreen() {
             <Row icon={Palette} tint="bg-pink-50 text-pink-700" title="Apariencia" text="Logo, portada y color" onClick={() => setPanel('look')} />
 
             <Row icon={Plus} tint="bg-orange-50 text-orange-700" title="Extras y agregados" text={(config.extraGroups || []).length ? (config.extraGroups || []).map((g) => g.name).join(' · ') : 'Borde relleno, agregados con precio'} onClick={() => setPanel('extras')} />
+            {(hasFeature('bulk') || hasFeature('preorders')) && (
+              <Row icon={Users} tint="bg-teal-50 text-teal-700" title="Venta a comercios" text={config.wholesale?.enabled ? (config.wholesale.publicOrders ? 'Activa · pide cualquiera' : 'Activa · cada cliente con su link') : 'Tus clientes piden por bulto con su link'} onClick={() => setPanel('wholesale')} />
+            )}
             <Row icon={Package} tint="bg-emerald-50 text-emerald-700" title="Productos en la tienda" text="Elegí qué productos ven tus clientes" onClick={() => setPanel('products')} />
 
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4">
@@ -181,6 +186,8 @@ export default function MobileStoreScreen() {
           <Sheet open={panel === 'extras'} onClose={() => setPanel(null)} title="Extras y agregados">
             <ExtrasEditor storeId={storeId!} initial={config.extraGroups || []} onSaved={(g) => setConfig({ ...config, extraGroups: g })} />
           </Sheet>
+          <WholesaleSheet open={panel === 'wholesale'} config={config} onClose={() => setPanel(null)}
+            onSave={(p) => save(p).then(() => { setPanel(null); refreshPending(); })} />
           <LookSheet open={panel === 'look'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
         </>
       )}
@@ -368,7 +375,7 @@ function OrdersSheet({ open, orders, onClose, store }: { open: boolean; orders: 
           <div className="rounded-2xl bg-slate-50 px-4 py-3 space-y-1 text-[13.5px]">
             <p className="font-semibold text-slate-800">{selected.customerName}</p>
             <p className="text-slate-600">{selected.customerPhone}</p>
-            <p className="text-slate-600">{selected.delivery === 'DELIVERY' ? `Envío a ${selected.address || '—'}` : selected.delivery === 'GODELIVERY' ? `GoDelivery a ${selected.address || '—'}` : 'Retira en el local'}{selected.paymentMethod ? ` · paga con ${selected.paymentMethod}` : ''}</p>
+            <p className="text-slate-600">{selected.delivery === 'REPARTO' ? `Reparto a ${selected.address || '—'}` : selected.delivery === 'DELIVERY' ? `Envío a ${selected.address || '—'}` : selected.delivery === 'GODELIVERY' ? `GoDelivery a ${selected.address || '—'}` : 'Retira en el local'}{selected.paymentMethod ? ` · paga con ${selected.paymentMethod}` : ''}</p>
             {selected.customerNote && <p className="text-slate-600">{selected.customerNote}</p>}
           </div>
           {selected.priceProblem && (
@@ -400,7 +407,7 @@ function OrdersSheet({ open, orders, onClose, store }: { open: boolean; orders: 
               <span className="w-10 h-10 rounded-full bg-rose-50 text-rose-700 font-semibold flex items-center justify-center shrink-0">{(o.customerName || '?')[0].toUpperCase()}</span>
               <span className="flex-1 min-w-0">
                 <span className="block text-[14px] font-medium text-slate-800 truncate">{o.customerName}{o.orderCode ? ` · #${o.orderCode}` : ''}</span>
-                <span className="block text-[12px] text-slate-500 truncate">{when(o)} · {o.items.length} productos · {o.delivery === 'DELIVERY' ? 'envío' : o.delivery === 'GODELIVERY' ? 'GoDelivery' : 'retira'}</span>
+                <span className="block text-[12px] text-slate-500 truncate">{when(o)} · {o.items.length} productos · {o.delivery === 'REPARTO' ? 'reparto' : o.delivery === 'DELIVERY' ? 'envío' : o.delivery === 'GODELIVERY' ? 'GoDelivery' : 'retira'}</span>
               </span>
               <span className="text-[14px] font-semibold text-slate-900 tabular-nums">{money(o.total)}</span>
             </button>
@@ -515,6 +522,37 @@ function DeliverySheet({ open, config, onClose, onSave }: { open: boolean; confi
         )}
         <Toggle title="Mostrar productos sin stock" text="Aparecen como agotados." on={f.showOutOfStock !== false} onChange={(v) => setF({ ...f, showOutOfStock: v })} />
         <Toggle title="Vender todo como disponible" text="Todos los productos se pueden pedir aunque figuren sin stock." on={!!f.alwaysInStock} onChange={(v) => setF({ ...f, alwaysInStock: v })} />
+      </div>
+    </Sheet>
+  );
+}
+
+/** Venta a comercios: mismo ajuste que en la PC (OnlineStoreScreen → Venta a comercios) */
+function WholesaleSheet({ open, config, onClose, onSave }: { open: boolean; config: StoreConfig; onClose: () => void; onSave: (p: Partial<StoreConfig>) => Promise<void> }) {
+  const [w, setW] = useState(config.wholesale || { enabled: false });
+  useEffect(() => { if (open) setW(config.wholesale || { enabled: false }); }, [open]);
+  const route = readRouteDays();
+  const zones = Object.keys(route).sort();
+  // Los días de reparto viajan con la configuración: la tienda le muestra al cliente cuándo le llega
+  const { busy, run } = useSaving(() => onSave({ wholesale: { ...w, note: (w.note || '').trim(), routeDays: route } }));
+  return (
+    <Sheet open={open} onClose={onClose} title="Venta a comercios" footer={<PrimaryButton onClick={run} loading={busy}>Guardar</PrimaryButton>}>
+      <div className="space-y-4 pt-1">
+        <Toggle title="Activar venta a comercios" text="Piden por bulto o por unidad, con la oferta por cantidad, para el reparto de su localidad." on={!!w.enabled} onChange={(v) => setW({ ...w, enabled: v })} />
+        {w.enabled && (
+          <>
+            <Toggle title="Aceptar pedidos de quien no tiene link" text="Apagado, el que entra sin su link ve el catálogo y te pide el link por WhatsApp." on={!!w.publicOrders} onChange={(v) => setW({ ...w, publicOrders: v })} />
+            <Field label="Aviso para los que entran sin link" hint="Opcional.">
+              <input className={input} maxLength={140} value={w.note || ''} onChange={(e) => setW({ ...w, note: e.target.value })} placeholder="Repartimos en Magdalena, Verónica y Bavio" />
+            </Field>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-[13px] text-slate-600 space-y-1.5">
+              <p>El link de cada cliente se manda desde <b>Clientes → el cliente → Mandarle su link de pedidos</b>.</p>
+              <p>Los pedidos llegan a <b>Pedidos → Por revisar</b>. Aceptado queda comprometido; el stock se descuenta cuando sale el reparto.</p>
+              <p className="pt-1 font-semibold text-slate-800">Días de reparto que ve el cliente</p>
+              {zones.length ? zones.map((z) => <p key={z}>{z}: {route[z].map((d) => dayName(d)).join(', ')}</p>) : <p>Todavía no cargaste el recorrido (Pedidos → Días).</p>}
+            </div>
+          </>
+        )}
       </div>
     </Sheet>
   );

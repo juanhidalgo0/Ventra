@@ -570,6 +570,51 @@ async function main() {
     assert.deepStrictEqual(mucho.items.map((i: any) => i.unitPrice), [850, 850], 'llegando a 60 entre bultos y sueltas, todo a 850');
   });
 
+  await t('tienda online: el pedido aceptado entra una vez, con precios del catálogo, y el stock sale con el reparto', async () => {
+    const pre = new PreOrdersService(prisma);
+    const cli = await prisma.client.create({ data: { name: 'Almacén con link', locality: 'Bavio' } });
+    const p = await nuevo('Galletitas tienda', 100, { salePrice: 500, unitsPerPack: 12, packPrice: 5400 });
+    const pedido = (unitPrice: number) => ({ fromOnline: true, takenAt: new Date().toISOString(), clientId: cli.id, notes: 'Pedido por la tienda #K7P2', items: [
+      { productId: p.id, productName: p.name, quantity: 24, packSize: 12, unitPrice },
+      { productId: p.id, productName: p.name, quantity: 3, unitPrice: 500 },
+    ] });
+    // Lo acepta el dueño, pero con el precio del catálogo (el pedido lo armó el cliente en la tienda)
+    const o: any = await pre.save('tienda-orden-0001', pedido(1), admin.id, true);
+    assert.deepStrictEqual(o.items.map((i: any) => i.unitPrice), [450, 500]);
+    assert.strictEqual(o.total, 12300);
+    assert.strictEqual(await stockDe(p.id), 100, 'aceptar no mueve stock');
+    assert.strictEqual((await pre.committed())[p.id], 27, 'queda comprometido');
+    // Otro equipo lo acepta de nuevo: no se duplica ni se pisa
+    const otra: any = await pre.save('tienda-orden-0001', pedido(450), cajero.id, false);
+    assert.strictEqual(otra.orderNumber, o.orderNumber);
+    assert.strictEqual(await (prisma as any).preOrder.count({ where: { id: 'tienda-orden-0001' } }), 1);
+    // El dueño lo corrige en Pedidos (le saca las sueltas) y llega tarde otra aceptación: queda lo corregido
+    await pre.save('tienda-orden-0001', { clientId: cli.id, items: [{ productId: p.id, productName: p.name, quantity: 24, packSize: 12, unitPrice: 450 }] }, admin.id, true);
+    const tarde: any = await pre.save('tienda-orden-0001', pedido(450), cajero.id, false);
+    assert.strictEqual(tarde.items.length, 1);
+    assert.strictEqual(tarde.total, 10800);
+    assert.strictEqual((await pre.committed())[p.id], 24);
+    // Sale el reparto: recién ahí baja el stock, una sola vez
+    const run = await runs.create({ orderIds: ['tienda-orden-0001'] });
+    await runs.dispatch(run.id, {}, admin.id);
+    assert.strictEqual(await stockDe(p.id), 76);
+    const despues: any = await pre.save('tienda-orden-0001', pedido(450), cajero.id, false);
+    assert.strictEqual(despues.status, 'BILLED', 'aceptarlo después de que salió no lo toca');
+    assert.strictEqual(await stockDe(p.id), 76);
+    assert.ok(!(await pre.committed())[p.id], 'ya no está comprometido');
+    // Lo que no se entrega vuelve al stock en la rendición
+    const renglon = await (prisma as any).preOrderItem.findFirst({ where: { orderId: 'tienda-orden-0001' } });
+    await runs.saveDelivery(run.id, 'tienda-orden-0001', { status: 'PARTIAL', items: { [renglon.id]: 12 }, cash: 5400 });
+    await runs.settle(run.id, { cashReceived: 5400 }, admin.id);
+    assert.strictEqual(await stockDe(p.id), 88, 'el bulto rechazado vuelve');
+    // Uno rechazado antes de salir (cancelado) tampoco vuelve a entrar ni mueve stock
+    await pre.save('tienda-orden-0002', pedido(450), admin.id, true);
+    await pre.cancel('tienda-orden-0002');
+    const cancelado: any = await pre.save('tienda-orden-0002', pedido(450), admin.id, true);
+    assert.strictEqual(cancelado.status, 'CANCELLED');
+    assert.strictEqual(await stockDe(p.id), 88);
+  });
+
   await t('reparto: recuerda el orden de visita de cada cliente', async () => {
     const p = await nuevo('Agua visita', 100);
     const cs = [];

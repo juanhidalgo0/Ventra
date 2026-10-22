@@ -133,6 +133,17 @@
   .card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding-top:8px}
   .price{font:800 17px 'Plus Jakarta Sans',sans-serif;letter-spacing:-.02em}
   .price small{font:600 11.5px 'Inter';color:var(--ink-3)}
+  .ws-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border-radius:16px;background:var(--brand-soft);color:var(--brand-ink)}
+  .ws-txt{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px;font-size:13.5px}
+  .ws-txt b{font-size:15px}
+  .pk-rows{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+  .pk-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px}
+  .pk-txt{flex:1;display:flex;flex-direction:column}
+  .pk-txt b{font-size:15px}
+  .pk-txt small{font-size:12.5px;color:var(--ink-3)}
+  .pk-offer{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--line-2);font-size:13px;color:var(--ink-2);display:flex;gap:6px;align-items:center}
+  .ws-tag{display:block;margin-top:2px;font-size:11.5px;font-weight:600;color:var(--brand-ink)}
+  .pk-offer.on{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
   .add{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .15s}
   .add:active{transform:scale(.9)}
   .stepper{display:flex;align-items:center;background:var(--brand);color:#fff;border-radius:12px;height:38px;overflow:hidden}
@@ -618,16 +629,70 @@ function cartKey(){ return 'ventra_cart_v2_'+S.storeId; }
 function pidOf(key){ return String(key).split('~')[0]; }
 function extrasOf(key){ return (S.lines[key]&&S.lines[key].extras)||[]; }
 function halfOf(key){ var h=S.lines[key]&&S.lines[key].half; return h&&S.byId[h.id]?S.byId[h.id]:null; }
-function unitOf(key){ var p=S.byId[pidOf(key)], h=halfOf(key), base=p?p.price:0; if(h) base=Math.max(base,h.price); return base+extrasOf(key).reduce(function(a,x){ return a+(Number(x.price)||0); },0); }
+function unitOf(key){
+  var p=S.byId[pidOf(key)], h=halfOf(key), base=p?p.price:0;
+  // Venta a comercios: el bulto (o la unidad) con la oferta por cantidad
+  if(p && WS() && (lineSize(key)>1 || offerOf(p))){ var sz=lineSize(key); return r2(perUnit(p,sz)*sz); }
+  if(h) base=Math.max(base,h.price); return base+extrasOf(key).reduce(function(a,x){ return a+(Number(x.price)||0); },0);
+}
 /* Nombre de la línea: "Mitad Muzzarela / mitad Napolitana (Grande)" en mitad y mitad */
 function lineTitle(key){
   var p=S.byId[pidOf(key)], h=halfOf(key);
   if(!p) return '';
+  if(lineSize(key)>1) return p.name+' · bulto x'+lineSize(key);
   if(!h) return p.name;
   return 'Mitad '+baseName(p)+' / mitad '+baseName(h)+(p.optLabel?' ('+p.optLabel+')':'');
 }
 function lineName(key){ var ex=extrasOf(key); return lineTitle(key)+(ex.length?' + '+ex.map(function(x){ return x.name; }).join(' + '):''); }
 function qtyOf(pid){ return Object.keys(S.cart).reduce(function(a,k){ return a+(pidOf(k)===pid?S.cart[k]:0); },0); }
+/* ───────── venta a comercios (distribuidora) ─────────
+   La activa el comercio en Ventra (wholesale.enabled): cada producto se pide por bulto o por unidad,
+   la oferta por cantidad baja el precio de la unidad y el pedido va al reparto de su localidad.
+   Mismas cuentas que preorders.service (servidor) y withOffers (Ventra): mantener iguales. */
+function WS(){ var w=S.cfg&&S.cfg.wholesale; return w&&w.enabled?w:null; }
+function packOf(p){ return WS()&&p&&!p.isGroup&&p.pack&&Number(p.pack.size)>1&&Number(p.pack.price)>0?p.pack:null; }
+function packKey(pid){ return pid+'~B'; }
+function lineSize(key){ var l=S.lines[key]; return l&&l.pack?Number(l.pack):1; }
+function unitsOf(pid){ return Object.keys(S.cart).reduce(function(a,k){ return a+(pidOf(k)===pid?S.cart[k]*lineSize(k):0); },0); }
+function offerOf(p){ var w=WS()&&p&&p.wholesale; return w&&Number(w.price)>0&&Number(w.minQty)>0?w:null; }
+function offerOn(p){ var o=offerOf(p); return o&&unitsOf(p.id)>=Number(o.minQty)-1e-9?o:null; }
+/* Precio de una unidad suelta o de la unidad dentro del bulto, con la oferta si corresponde */
+function perUnit(p,size){ var per=size>1&&p.pack?Number(p.pack.price)/size:Number(p.price)||0, o=offerOn(p); if(o&&Number(o.price)<per-1e-9) per=Number(o.price); return per; }
+function r2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
+var DAY_NAMES=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+/* Próximo día de reparto a una localidad (desde mañana), según el recorrido que cargó el comercio */
+function nextRun(loc){
+  var w=WS(), days=w&&w.routeDays&&loc?(w.routeDays[loc]||w.routeDays[Object.keys(w.routeDays).filter(function(k){ return normalize(k)===normalize(loc); })[0]]):null;
+  if(!days||!days.length) return null;
+  var d=new Date();
+  for(var i=1;i<=7;i++){ var x=new Date(d.getTime()+i*86400000); if(days.indexOf(x.getDay())>=0) return i===1?'mañana':'el '+DAY_NAMES[x.getDay()]+' '+x.getDate()+'/'+(x.getMonth()+1); }
+  return null;
+}
+function clientLoc(){ return (S.client&&S.client.locality)||S.wsLoc||''; }
+/* Repetir el último pedido del cliente (lo publica Ventra en su link) */
+function repeatLast(){
+  var items=(S.client&&S.client.lastItems)||[], n=0;
+  if(!items.length) return;
+  // Reemplaza lo que hubiera en el pedido (sumarlo duplicaría las cantidades si lo toca dos veces)
+  if(Object.keys(S.cart).length && !confirm('¿Cambiar lo que tenés en el pedido por tu último pedido?')) return;
+  S.cart={}; S.lines={}; S.notes={};
+  items.forEach(function(it){
+    var p=S.byId[it.productId]; if(!p||p.inStock===false) return;
+    var size=Number(it.packSize)||0, pk=packOf(p), units=Math.max(0,Math.round(Number(it.qty)||0));
+    if(!units) return;
+    // Viene en unidades: los bultos enteros van como bulto y lo que sobra, suelto
+    if(size>1 && pk && Number(pk.size)===size){
+      var b=Math.floor(units/size), rest=units-b*size;
+      if(b){ var k=packKey(p.id); S.lines[k]={pack:size}; S.cart[k]=(S.cart[k]||0)+b; }
+      if(rest) S.cart[p.id]=(S.cart[p.id]||0)+rest;
+    } else S.cart[p.id]=(S.cart[p.id]||0)+units;
+    n++;
+  });
+  saveCart(); S.products.forEach(function(p){ refreshProduct(p.id); }); refreshCartBar();
+  if(!n){ toast('Esos productos ya no están disponibles'); return; }
+  toast('Cargamos tu último pedido: revisá las cantidades');
+  S.step='cart'; renderCartSheet(); openSheet('cartSheet');
+}
 function loadCart(){
   try{
     var raw=JSON.parse(localStorage.getItem(cartKey())||'{}'), lines=JSON.parse(localStorage.getItem(cartKey()+'_lines')||'{}'), out={};
@@ -813,8 +878,21 @@ async function init(){
     var rank=function(c){ return c==='Varios'||c==='Otros'?3:S.food&&/postre|dulce|helad/i.test(c)?2:S.food&&/bebida|gaseosa|cerveza|vino|trago|agua|jugo/i.test(c)?1:0; };
     S.cats=Object.keys(cs).sort(function(a,b){ return rank(a)-rank(b) || a.localeCompare(b,'es'); });
     S.cart=loadCart();
+    // Venta a comercios: el link personal del cliente (?c=…) trae sus datos y su último pedido
+    if(WS()){
+      var tkKey='ventra_client_'+S.storeId, tk=(new URLSearchParams(location.search).get('c')||'').replace(/[^A-Za-z0-9]/g,'').slice(0,64);
+      try{ if(!tk) tk=localStorage.getItem(tkKey)||''; }catch(e){}
+      if(tk){
+        try{
+          var cd=await doc.ref.collection('clients').doc(tk).get();
+          if(cd.exists && cd.data().active!==false){ S.client=cd.data(); S.clientToken=tk; try{ localStorage.setItem(tkKey,tk); }catch(e){} }
+          else { try{ localStorage.removeItem(tkKey); }catch(e){} }
+        }catch(e){ console.warn('No se pudo leer el cliente',e); }
+      }
+    }
     try{ var nt=JSON.parse(localStorage.getItem(cartKey()+'_notes')||'{}'); Object.keys(nt).forEach(function(id){ if(S.cart[id]) S.notes[id]=nt[id]; }); }catch(e){}
     S.delivery = cfg.pickupEnabled ? 'PICKUP' : (cfg.deliveryEnabled ? 'DELIVERY' : (cfg.goDeliveryEnabled ? 'GODELIVERY' : null));
+    if(WS()) S.delivery='REPARTO';
     // QR de una mesa: el pedido se sirve en el local, sin envío
     var mesa=(new URLSearchParams(location.search).get('mesa')||'').replace(/[^\w -]/g,'').slice(0,12);
     if(mesa){ S.table=mesa; S.delivery='TABLE'; }
@@ -1008,6 +1086,15 @@ function waBtn(c,cls,text){
   var wa=String(c.whatsappNumber||'').replace(/\D/g,'');
   return wa?'<a class="btn '+cls+'" href="https://wa.me/'+esc(wa)+'" target="_blank" rel="noopener">'+ic('wa')+text+'</a>':'';
 }
+function wsBarHtml(){
+  var w=WS(); if(!w) return '';
+  if(S.client){
+    var nr=nextRun(clientLoc()), last=(S.client.lastItems||[]).length;
+    return '<div class="ws-bar"><div class="ws-txt"><b>Hola, '+esc(S.client.name)+'</b><span>'+(nr?'Tu próximo reparto: '+esc(nr):'Hacé tu pedido y te lo llevamos en el reparto')+'</span></div>'
+      +(last?'<button class="btn btn-brand" data-act="ws-repeat">'+ic('check')+'Repetir último pedido</button>':'')+'</div>';
+  }
+  return w.note?'<div class="ws-bar"><div class="ws-txt"><span>'+esc(w.note)+'</span></div></div>':'';
+}
 function render(){
   var c=S.cfg, st=openStatus(c.hours), h='', bo=bookOnly();
   document.body.classList.toggle('food',S.food);
@@ -1045,9 +1132,10 @@ function render(){
     + '</div>':'')
     + (bo?'':'<div class="hero-meta">'
     +   (st&&!kitchenClosed()?'<span class="chip '+(st.open?'open':'closed')+'"><span class="dot"></span>'+esc(st.text)+'</span>':'')
-    +   (c.deliveryEnabled?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.deliveryEta?' · '+esc(c.deliveryEta):'')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
-    +   (c.goDeliveryEnabled?'<span class="chip">'+ic('truck')+'Envíos con GoDelivery</span>':'')
-    +   (c.pickupEnabled?'<span class="chip">'+ic('store')+'Retiro en el local'+(c.pickupEta?' · '+esc(c.pickupEta):'')+'</span>':'')
+    +   (WS()?'<span class="chip">'+ic('truck')+'Reparto a comercios</span>':'')
+    +   (c.deliveryEnabled&&!WS()?'<span class="chip">'+ic('truck')+(c.deliveryCost>0?'Envío '+money(c.deliveryCost):'Envío sin cargo')+(c.deliveryEta?' · '+esc(c.deliveryEta):'')+(c.freeDeliveryFrom>0&&c.deliveryCost>0?' · gratis desde '+money(c.freeDeliveryFrom):'')+'</span>':'')
+    +   (c.goDeliveryEnabled&&!WS()?'<span class="chip">'+ic('truck')+'Envíos con GoDelivery</span>':'')
+    +   (c.pickupEnabled?'<span class="chip">'+ic('store')+(WS()?'Retiro en el depósito':'Retiro en el local')+(c.pickupEta?' · '+esc(c.pickupEta):'')+'</span>':'')
     +   (c.minOrder>0?'<span class="chip">Pedido mínimo '+money(c.minOrder)+'</span>':'')
     + '</div>'
     + '<div class="hero-actions">'
@@ -1056,6 +1144,7 @@ function render(){
     +   '<button class="btn btn-ghost" data-act="share">'+ic('share')+'Compartir</button>'
     + '</div>')
     + promoStripHtml()
+    + wsBarHtml()
     + (S.table?'<div class="table-bar">'+ic('store')+'<span>Estás en la Mesa '+esc(S.table)+'. Pedí desde acá y te lo llevamos a la mesa.</span></div>':'')
     + (kitchenClosed()?'<div class="closed-bar">'+ic('clock')+'<span>Ahora estamos cerrados ('+esc(st.text.replace(/^Cerrado · /,''))+'). Podés ver la carta y armar tu pedido; lo enviás cuando abramos.</span></div>'
       :ordersPaused()?'<div class="closed-bar">'+ic('clock')+'<span>Estamos con muchos pedidos. '+esc(ordersPaused().text)+'.</span></div>':'')
@@ -1121,12 +1210,18 @@ function productCard(p){
     + (S.food&&!noImg?'<div class="fc-media"><div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div><div class="fc-btn">'+buyControl(p.id,qty,out)+'</div></div>':'')
     + '</article>';
 }
-function priceHtml(p){ return '<span class="price">'+(p.isGroup&&p.fromPrice?'<small class="from">desde</small>':'')+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'; }
+function priceHtml(p){
+  var pk=packOf(p), o=offerOf(p);
+  var tag=o?'<span class="ws-tag">Oferta: '+o.minQty+'+ u. a '+money(o.price)+' c/u</span>':'';
+  if(pk) return '<span class="price">'+money(pk.price)+'<small> bulto x'+pk.size+'</small></span>'+tag;
+  return priceHtmlBase(p)+tag;
+}
+function priceHtmlBase(p){ return '<span class="price">'+(p.isGroup&&p.fromPrice?'<small class="from">desde</small>':'')+money(p.price)+'<small>'+unitLabel(p.unit)+'</small></span>'; }
 function buyControl(id,qty,out){
   if(out) return '';
   // Con opciones (o en la carta, para poder aclarar) se elige en la ficha
   var p=S.byId[id];
-  if(p&&(p.isGroup||hasExtras(p))) return '<button class="add" data-act="product" data-id="'+esc(id)+'" aria-label="Elegir">'+ic('plus')+(qty?'<span class="cnt">'+qty+'</span>':'')+'</button>';
+  if(p&&(p.isGroup||hasExtras(p)||packOf(p))) return '<button class="add" data-act="product" data-id="'+esc(id)+'" aria-label="Elegir">'+ic('plus')+(qty?'<span class="cnt">'+qty+'</span>':'')+'</button>';
   if(!qty) return '<button class="add" data-act="add" data-id="'+esc(id)+'" aria-label="Agregar">'+ic('plus')+'</button>';
   return '<div class="stepper"><button data-act="dec" data-id="'+esc(id)+'" aria-label="Quitar uno">'+ic(qty===1?'trash':'minus')+'</button><span>'+qty+'</span><button data-act="inc" data-id="'+esc(id)+'" aria-label="Agregar uno">'+ic('plus')+'</button></div>';
 }
@@ -1240,7 +1335,38 @@ function refreshCartBar(){
 function openSheet(id){ $('#scrim').classList.add('show'); $('#'+id).classList.add('show'); document.body.style.overflow='hidden'; }
 function closeSheets(){ $('#scrim').classList.remove('show'); document.querySelectorAll('.sheet.show').forEach(function(s){s.classList.remove('show');}); document.body.style.overflow=''; S.openProduct=null; }
 
+/* Ficha de un producto que se vende por bulto: cuántos bultos y cuántas unidades sueltas */
+function renderPackSheet(p){
+  var pk=packOf(p), out=p.inStock===false, size=Number(pk.size);
+  var packs=S.pdPacks||0, units=S.pdUnits||0, total=packs*size+units;
+  var o=offerOf(p), on=o&&total>=Number(o.minQty)-1e-9;
+  var perPack=size>1?Number(pk.price)/size:Number(p.price), perUnitP=Number(p.price);
+  if(on){ perPack=Math.min(perPack,Number(o.price)); perUnitP=Math.min(perUnitP,Number(o.price)); }
+  var sum=r2(packs*r2(perPack*size)+units*perUnitP);
+  var row=function(label,sub,qty,dec,inc){
+    return '<div class="pk-row"><div class="pk-txt"><b>'+label+'</b><small>'+sub+'</small></div>'
+      +'<div class="stepper"><button data-act="'+dec+'" aria-label="Menos"'+(qty?'':' disabled')+'>'+ic('minus')+'</button><span>'+qty+'</span><button data-act="'+inc+'" aria-label="Más">'+ic('plus')+'</button></div></div>';
+  };
+  $('#productSheet').innerHTML='<div class="grab"></div>'
+    +'<div class="sheet-head"><h3></h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
+    +'<div class="sheet-body">'+(p.imageUrl?'<div class="pd-img">'+imgOrPh(p.imageUrl,p.name)+'</div>':'')
+    +(p.brand?'<div class="card-brand" style="margin-top:14px">'+esc(p.brand)+'</div>':'')
+    +'<h2 class="pd-name display">'+esc(p.name)+'</h2>'
+    +'<div class="pd-price">'+money(pk.price)+'<small style="font:600 13px Inter;color:var(--ink-3)"> el bulto de '+size+' · '+money(p.price)+' la unidad</small></div>'
+    +(p.description?'<p class="pd-desc">'+esc(p.description)+'</p>':'')
+    +(o?'<div class="pk-offer'+(on?' on':'')+'">'+(on?ic('check')+'Oferta aplicada: ':'')+'Llevando '+o.minQty+' unidades o más (entre bultos y sueltas), cada una a '+money(o.price)+'</div>':'')
+    +(out?'':'<div class="pk-rows">'
+      +row('Bultos de '+size,money(r2(perPack*size))+' el bulto',packs,'pk-dec','pk-inc')
+      +row('Unidades sueltas',money(perUnitP)+' cada una',units,'pu-dec','pu-inc')
+      +'</div>')
+    +'</div>'
+    +'<div class="sheet-foot">'
+    +(out?'<button class="btn btn-block" disabled>'+(p.paused?'No disponible hoy':'Agotado')+'</button>'
+      :'<button class="btn btn-brand btn-block" data-act="pk-save"'+(total||qtyOf(p.id)?'':' disabled')+'>'+(qtyOf(p.id)?(total?'Actualizar pedido · '+money(sum):'Sacar del pedido'):'Agregar '+money(sum))+'</button>')
+    +'</div>';
+}
 function renderProductSheet(id){
+  if(packOf(S.byId[id])) return renderPackSheet(S.byId[id]);
   var p=S.byId[id], sel=p, opts='';
   S.pdQty = S.pdQty || 1;
   if(p.isGroup){
@@ -1336,13 +1462,25 @@ function renderCheckout(){
   var c=S.cfg, el=$('#cartSheet'), sub=itemsTotal(), dc=deliveryCost(), saved={};
   try{ saved=JSON.parse(localStorage.getItem('ventra_customer')||'{}'); }catch(e){}
   if(!S.payment) S.payment=c.paymentMethods[0];
-  var modes=[];
-  if(c.pickupEnabled) modes.push({v:'PICKUP',t:'Retiro en el local',s:'Sin cargo'});
-  if(c.deliveryEnabled) modes.push({v:'DELIVERY',t:'Envío a domicilio',s:c.deliveryCost>0?money(c.deliveryCost):'Sin cargo'});
-  if(c.goDeliveryEnabled) modes.push({v:'GODELIVERY',t:'Envío con GoDelivery',s:'Lo cobra GoDelivery'});
+  var modes=[], w=WS();
+  if(w){
+    if(S.client) saved={name:S.client.name,phone:S.client.phone||saved.phone,address:S.client.address||saved.address};
+    // Sin link personal y el comercio no toma pedidos de cualquiera: se le pide el link
+    if(!S.client && !w.publicOrders){
+      el.innerHTML='<div class="grab"></div><div class="sheet-head"><button class="sheet-close" data-act="back-cart" aria-label="Volver">'+ic('back')+'</button><h3 class="display">Pedidos para comercios</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
+        +'<div class="sheet-body"><div class="note">Para hacer pedidos en '+esc(c.businessName)+' necesitás tu link de cliente. Pedíselo por WhatsApp y entrás con tus datos ya cargados.</div></div>'
+        +'<div class="sheet-foot">'+(c.whatsappNumber?'<a class="btn btn-wa btn-block" href="https://wa.me/'+esc(String(c.whatsappNumber).replace(/\D/g,''))+'?text='+encodeURIComponent('Hola! Quiero hacer pedidos: ¿me pasan mi link de cliente?')+'" target="_blank" rel="noopener">'+ic('wa')+'Pedir mi link</a>':'')+'</div>';
+      return;
+    }
+    modes.push({v:'REPARTO',t:'Te lo llevamos',s:nextRun(clientLoc())?'Reparto '+nextRun(clientLoc()):'En el próximo reparto'});
+  }
+  if(c.pickupEnabled) modes.push({v:'PICKUP',t:w?'Retiro en el depósito':'Retiro en el local',s:'Sin cargo'});
+  if(c.deliveryEnabled && !w) modes.push({v:'DELIVERY',t:'Envío a domicilio',s:c.deliveryCost>0?money(c.deliveryCost):'Sin cargo'});
+  if(c.goDeliveryEnabled && !w) modes.push({v:'GODELIVERY',t:'Envío con GoDelivery',s:'Lo cobra GoDelivery'});
+  if(w && S.delivery!=='PICKUP') S.delivery='REPARTO';
   var h='<div class="grab"></div><div class="sheet-head"><button class="sheet-close" data-act="back-cart" aria-label="Volver">'+ic('back')+'</button><h3 class="display">Tus datos</h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +'<div class="sheet-body">'
-    +'<div class="field" id="f-name"><label for="cName">Nombre y apellido</label><input id="cName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="Juana Pérez"><div class="err">Escribí tu nombre.</div></div>'
+    +'<div class="field" id="f-name"><label for="cName">'+(w?'Nombre del comercio':'Nombre y apellido')+'</label><input id="cName" autocomplete="name" value="'+esc(saved.name||'')+'" placeholder="'+(w?'Almacén Don José':'Juana Pérez')+'"><div class="err">Escribí tu nombre.</div></div>'
     +'<div class="field" id="f-phone"><label for="cPhone">Teléfono</label><input id="cPhone" type="tel" inputmode="tel" autocomplete="tel" value="'+esc(saved.phone||'')+'" placeholder="11 2345 6789"><div class="err">Escribí un teléfono para que te contacten.</div></div>';
   if(S.table){ modes=[]; S.delivery='TABLE'; h+='<div class="note" style="background:var(--brand-soft);color:var(--brand-ink)">Te lo llevamos a la Mesa '+esc(S.table)+'.</div>'; }
   if(modes.length>1){
@@ -1353,7 +1491,15 @@ function renderCheckout(){
   if(S.delivery==='GODELIVERY'){
     h+='<div class="note">El envío lo realiza y lo cobra GoDelivery, un servicio de envíos independiente. Su costo no está incluido en este pedido.</div>';
   }
-  if(S.delivery==='DELIVERY'||S.delivery==='GODELIVERY'){
+  if(S.delivery==='REPARTO'){
+    var locs=Object.keys((w&&w.routeDays)||{}).sort();
+    h+='<div class="field" id="f-addr"><label for="cAddr">Dirección de entrega</label><input id="cAddr" autocomplete="street-address" value="'+esc(saved.address||'')+'" placeholder="Calle y número"><div class="err">Escribí la dirección.</div></div>';
+    if(!(S.client&&S.client.locality) && locs.length){
+      h+='<div class="field" id="f-loc"><label>Localidad</label><div class="pills">'+locs.map(function(l){ return '<button class="pill'+(S.wsLoc===l?' on':'')+'" data-act="ws-loc" data-v="'+esc(l)+'">'+esc(l)+'</button>'; }).join('')+'</div><div class="err">Elegí tu localidad.</div></div>';
+    }
+    var nr=nextRun(clientLoc());
+    h+='<div class="note" style="background:var(--brand-soft);color:var(--brand-ink)">'+(nr?'Te lo llevamos en el reparto '+esc(nr)+(clientLoc()?' a '+esc(clientLoc()):'')+'.':'Te lo llevamos en el próximo reparto a tu zona.')+' '+esc(c.businessName)+' lo revisa y te lo confirma antes de salir.</div>';
+  } else if(S.delivery==='DELIVERY'||S.delivery==='GODELIVERY'){
     h+='<div class="field" id="f-addr"><label for="cAddr">Dirección de entrega</label><input id="cAddr" autocomplete="street-address" value="'+esc(saved.address||'')+'" placeholder="Calle, número, piso"><div class="err">Escribí la dirección.</div>'
       +(c.deliveryZone?'<div style="font-size:12.5px;color:var(--ink-3);margin-top:5px">Hacemos envíos a: '+esc(c.deliveryZone)+'</div>':'')+'</div>';
   } else if(c.address && c.pickupEnabled && !S.table){
@@ -1403,6 +1549,9 @@ async function sendOrder(btn){
   $('#f-name').classList.toggle('invalid',!name); if(!name) ok=false;
   $('#f-phone').classList.toggle('invalid',phone.replace(/\D/g,'').length<6); if(phone.replace(/\D/g,'').length<6) ok=false;
   if(addrEl){ $('#f-addr').classList.toggle('invalid',!addr); if(!addr) ok=false; }
+  var locEl=$('#f-loc');
+  if(S.delivery==='REPARTO' && locEl){ locEl.classList.toggle('invalid',!S.wsLoc); if(!S.wsLoc) ok=false; }
+  if(S.delivery==='REPARTO' && clientLoc() && addr.toLowerCase().indexOf(clientLoc().toLowerCase())<0) addr=addr+', '+clientLoc();
   if(!ok){ toast('Revisá los datos marcados'); return; }
   try{ localStorage.setItem('ventra_customer',JSON.stringify({name:name,phone:phone,address:addr||undefined})); }catch(e){}
 
@@ -1411,6 +1560,8 @@ async function sendOrder(btn){
     if(x.half) it.half={productId:x.half.id,name:x.half.name};
     if(x.extras.length) it.extras=x.extras.map(function(e){ return {name:e.name,price:Number(e.price)||0}; });
     if(S.notes[x.key]) it.note=S.notes[x.key];
+    // Por bulto: precio del bulto y cantidad de bultos (Ventra lo pasa a unidades)
+    if(lineSize(x.key)>1) it.packSize=lineSize(x.key);
     return it;
   });
   var promos=promoLines().filter(function(x){ return x.discount>0; }), disc=promoDiscount();
@@ -1419,7 +1570,7 @@ async function sendOrder(btn){
   btn.disabled=true; btn.innerHTML='<span class="spin" style="width:22px;height:22px;border-width:3px;border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>';
 
   var base={items:items,total:total,customerName:name,customerPhone:phone,customerNote:note,status:'PENDING',syncedLocal:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc},disc?{discount:disc}:{},cpn?{coupon:cpn}:{});
+  var rich=Object.assign({},base,{orderCode:code,delivery:S.delivery||'PICKUP',address:addr,paymentMethod:S.payment||'',deliveryCost:dc},disc?{discount:disc}:{},cpn?{coupon:cpn}:{},S.clientToken?{clientToken:S.clientToken}:{});
   var orders=db.collection('ventra_stores').doc(S.storeId).collection('orders'), saved=false;
   // "Solo WhatsApp": el pedido no se guarda en la app, llega únicamente por WhatsApp
   if(channel!=='WHATSAPP'){
@@ -1450,7 +1601,7 @@ async function sendOrder(btn){
   if(cpn) L.push('Cupón '+cpn.code+': -'+money(cpn.discount));
   L.push('*Total: '+money(total)+'*');
   L.push('');
-  L.push(S.delivery==='TABLE'?'*Mesa '+S.table+'*':S.delivery==='DELIVERY'?'*Envío a:* '+addr:S.delivery==='GODELIVERY'?'*Envío con GoDelivery a:* '+addr+' (el envío lo cobra GoDelivery)':'*Retiro en el local*');
+  L.push(S.delivery==='REPARTO'?'*Para el reparto a:* '+addr:S.delivery==='TABLE'?'*Mesa '+S.table+'*':S.delivery==='DELIVERY'?'*Envío a:* '+addr:S.delivery==='GODELIVERY'?'*Envío con GoDelivery a:* '+addr+' (el envío lo cobra GoDelivery)':'*Retiro en el local*');
   if(S.payment) L.push('*Pago:* '+S.payment+(S.payment==='Transferencia'&&c.transferAlias?' (alias '+c.transferAlias+')':''));
   L.push('*A nombre de:* '+name);
   if(note) L.push('*Aclaración:* '+note);
@@ -2084,10 +2235,11 @@ document.addEventListener('click',function(e){
   var act=t.getAttribute('data-act'), id=t.getAttribute('data-id');
   switch(act){
     case 'desc-more': e.preventDefault(); var dd=t.previousElementSibling, op=dd&&dd.classList.toggle('open'); t.textContent=op?'Ver menos':'Ver más'; break;
-    case 'add': if(S.byId[id]&&(S.byId[id].isGroup||hasExtras(S.byId[id]))) break; setQty(id,1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
+    case 'add': if(S.byId[id]&&(S.byId[id].isGroup||hasExtras(S.byId[id])||packOf(S.byId[id]))) break; setQty(id,1); if(navigator.vibrate) navigator.vibrate(10); toast('Agregado al pedido'); break;
     case 'inc': setQty(id,(S.cart[id]||0)+1); break;
     case 'dec': setQty(id,(S.cart[id]||0)-1); break;
-    case 'product': S.openProduct=id; S.pdQty=1; S.pdOpt=null; S.pdExtras={}; S.pdHalfOn=false; S.pdHalf=null; renderProductSheet(id); openSheet('productSheet'); break;
+    case 'product': if(packOf(S.byId[id])){ S.pdPacks=S.cart[packKey(id)]||0; S.pdUnits=S.cart[id]||0; if(!S.pdPacks&&!S.pdUnits) S.pdPacks=1; }
+      S.openProduct=id; S.pdQty=1; S.pdOpt=null; S.pdExtras={}; S.pdHalfOn=false; S.pdHalf=null; renderProductSheet(id); openSheet('productSheet'); break;
     case 'pd-half': var nh=$('#pdNote'); S.pdNote=nh?nh.value:null; S.pdHalfOn=!S.pdHalfOn; renderProductSheet(S.openProduct); break;
     case 'pd-half-pick': var nh2=$('#pdNote'); S.pdNote=nh2?nh2.value:null; S.pdHalf=id; renderProductSheet(S.openProduct); break;
     case 'pd-extra':
@@ -2106,6 +2258,17 @@ document.addEventListener('click',function(e){
     case 'pd-opt': if(!t.disabled){ var nEl=$('#pdNote'); S.pdNote=nEl?nEl.value:null; S.pdOpt=id; renderProductSheet(S.openProduct); } break;
     case 'pd-inc': var n1=$('#pdNote'); S.pdNote=n1?n1.value:null; S.pdQty++; renderProductSheet(S.openProduct); break;
     case 'pd-dec': if(S.pdQty>1){ var n2=$('#pdNote'); S.pdNote=n2?n2.value:null; S.pdQty--; renderProductSheet(S.openProduct); } break;
+    case 'pk-inc': S.pdPacks=(S.pdPacks||0)+1; renderProductSheet(S.openProduct); break;
+    case 'pk-dec': S.pdPacks=Math.max(0,(S.pdPacks||0)-1); renderProductSheet(S.openProduct); break;
+    case 'pu-inc': S.pdUnits=(S.pdUnits||0)+1; renderProductSheet(S.openProduct); break;
+    case 'pu-dec': S.pdUnits=Math.max(0,(S.pdUnits||0)-1); renderProductSheet(S.openProduct); break;
+    case 'pk-save':
+      var pp=S.byId[S.openProduct], pz=packOf(pp), kk=packKey(pp.id), had=qtyOf(pp.id);
+      if(S.pdPacks>0) S.lines[kk]={pack:Number(pz.size)};
+      setQty(kk,S.pdPacks||0); setQty(pp.id,S.pdUnits||0);
+      closeSheets(); toast(S.pdPacks||S.pdUnits?(had?'Pedido actualizado':'Agregado al pedido'):'Sacado del pedido'); break;
+    case 'ws-repeat': repeatLast(); break;
+    case 'ws-loc': snapshotForm(); S.wsLoc=t.getAttribute('data-v'); renderCartSheet(); restoreForm(); break;
     case 'pd-add':
       var shown=S.byId[S.openProduct], target=shown.isGroup?S.pdOpt:S.openProduct, nEl2=$('#pdNote');
       // Extras elegidos: se validan los obligatorios y arman la clave de la línea

@@ -96,6 +96,28 @@ test('solo el dueño lee y marca pedidos', async () => {
   await assertSucceeds(getDoc(doc(as('posA'), 'ventra_stores/owned/orders/o1')));
   await assertSucceeds(updateDoc(doc(as('posA'), 'ventra_stores/owned/orders/o1'), { syncedLocal: true }));
 });
+test('venta a comercios: el link del cliente se lee con su código; listarlos o escribirlos, solo el dueño', async () => {
+  await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { clientId: 'c1', name: 'Almacén', active: true }));
+  await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/clients/TOKEN1234567890abcd')));
+  await assertFails(getDocs(collection(as(null), 'ventra_stores/owned/clients')));
+  await assertFails(getDocs(collection(as('intruso'), 'ventra_stores/owned/clients')));
+  await assertSucceeds(getDocs(collection(as('posA'), 'ventra_stores/owned/clients')));
+  await assertFails(setDoc(doc(as(null), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { clientId: 'otro' }));
+  await assertFails(updateDoc(doc(as('intruso'), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { name: 'x' }));
+});
+test('venta a comercios: pedido por reparto con el link, y nada de campos de la revisión', async () => {
+  const ok = order({ delivery: 'REPARTO', address: 'Calle 1, Bavio', clientToken: 'TOKEN1234567890abcd', items: [{ productId: 'p', name: 'Coca', price: 120, qty: 2, packSize: 12 }], total: 240 });
+  await assertSucceeds(addDoc(collection(as(null), 'ventra_stores/owned/orders'), ok));
+  await assertFails(addDoc(collection(as(null), 'ventra_stores/owned/orders'), { ...ok, clientToken: 'corto' }));
+  // El cliente no puede mandarlo ya "aceptado" ni trabado
+  await assertFails(addDoc(collection(as(null), 'ventra_stores/owned/orders'), { ...ok, preorderId: 'x' }));
+  await assertFails(addDoc(collection(as(null), 'ventra_stores/owned/orders'), { ...ok, reviewing: true }));
+  await assertFails(addDoc(collection(as(null), 'ventra_stores/owned/orders'), { ...ok, chargedAt: serverTimestamp() }));
+  // El dueño lo traba, lo acepta o lo carga en la caja
+  await assertSucceeds(updateDoc(doc(as('posA'), 'ventra_stores/owned/orders/o1'), { reviewing: true, reviewAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(as('posA'), 'ventra_stores/owned/orders/o1'), { preorderId: 'o1', reviewing: false, stage: 'PREPARING' }));
+  await assertFails(updateDoc(doc(as('intruso'), 'ventra_stores/owned/orders/o1'), { preorderId: null }));
+});
 test('cuentas: cada usuario lee solo la suya y nadie escribe', async () => {
   await assertSucceeds(getDoc(doc(as('userX'), 'ventra_accounts/userX')));
   await assertFails(getDoc(doc(as('userY'), 'ventra_accounts/userX')));

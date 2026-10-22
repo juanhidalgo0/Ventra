@@ -61,6 +61,15 @@ export class PreOrdersService {
 
     async save(id: string, data: any, userId: string, canSetPrices = false) {
     if (!/^[\w-]{8,64}$/.test(id || '')) throw new BadRequestException('Pedido inválido');
+    // Pedido de la tienda online aceptado: entra una sola vez (si otro equipo ya lo pasó, se
+    // devuelve ese sin tocarlo, aunque ya lo hayan editado o haya salido en un reparto) y siempre
+    // con los precios del catálogo, aunque lo acepte el dueño: el precio lo eligió el cliente en la tienda.
+    const fromOnline = data?.fromOnline === true;
+    if (fromOnline) {
+      const existing = await (this.prisma as any).preOrder.findUnique({ where: { id }, include: INCLUDE });
+      if (existing) return existing;
+      canSetPrices = false;
+    }
     const items = (Array.isArray(data?.items) ? data.items : [])
       .map((i: any) => {
         const quantity = Number(i.quantity);
@@ -140,6 +149,7 @@ export class PreOrdersService {
         throw new BadRequestException('El cliente del pedido no existe');
       }
       const existing = await tx.preOrder.findUnique({ where: { id } });
+      if (existing && fromOnline) return tx.preOrder.findUnique({ where: { id }, include: INCLUDE });
       if (existing) {
         if (existing.status !== 'PENDING') {
           throw new BadRequestException(existing.status === 'BILLED' ? 'Este pedido ya se cobró en la caja: no se puede cambiar' : 'Este pedido está cancelado');

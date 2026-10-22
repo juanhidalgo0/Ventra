@@ -22,7 +22,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
 import { resolveServerUrl } from './api';
 
-import { RESERVED_SLUGS } from '../utils/storeLinks';
+import { RESERVED_SLUGS, publicStoreUrl } from '../utils/storeLinks';
 // Proyecto Firebase propio de Ventra (ver ventraFirebase.ts).
 const getDb = getVentraDb;
 
@@ -136,6 +136,8 @@ export interface StoreConfig {
   deliveryEta?: string;
   pickupEta?: string;
   minOrder?: number;
+  /** Venta a comercios (distribuidora): bultos, link personal por cliente y pedidos al reparto */
+  wholesale?: WholesaleConfig;
   paymentMethods?: string[];
   transferAlias?: string;
   showOutOfStock?: boolean;
@@ -275,6 +277,21 @@ export interface OnlineProduct {
   baseName?: string;
   /** "GRANDE", "M · NEGRO" */
   variantLabel?: string;
+  /** Venta por bulto (distribuidora): unidades del bulto y precio del bulto entero */
+  pack?: { size: number; price: number };
+  /** Oferta por cantidad: desde minQty unidades, cada una a price */
+  wholesale?: { price: number; minQty: number };
+}
+
+/** Venta a comercios (distribuidora): la tienda muestra bultos y los pedidos van al reparto */
+export interface WholesaleConfig {
+  enabled: boolean;
+  /** Toma pedidos de quien entra sin link personal (si no, se le pide el link) */
+  publicOrders?: boolean;
+  /** Aviso arriba de la tienda para los que entran sin link */
+  note?: string;
+  /** Qué días se visita cada localidad (lo publica Ventra desde Pedidos → Días) */
+  routeDays?: Record<string, number[]>;
 }
 
 /** Grupo de extras: min 0 = opcional, 1 = obligatorio; max = cuántas opciones puede elegir. Se ofrece en categorías o productos. */
@@ -310,6 +327,9 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
     brand: p.brand?.name || '',
     unit: p.unit || 'UNIT',
     inStock: !!p.unlimitedStock || p.stock > 0,
+    // Mismo precio del bulto que los pedidos (preorders.service): el de bulto o, si no tiene, la unidad por el tamaño
+    ...(Number(p.unitsPerPack) > 1 ? { pack: { size: Number(p.unitsPerPack), price: Number(p.packPrice) > 0 ? Number(p.packPrice) : Math.round(Number(p.salePrice) * Number(p.unitsPerPack) * 100) / 100 } } : {}),
+    ...(Number(p.wholesalePrice) > 0 && Number(p.wholesaleMinQty) > 0 ? { wholesale: { price: Number(p.wholesalePrice), minQty: Number(p.wholesaleMinQty) } } : {}),
     ...(p.variantGroupId ? { variantGroupId: p.variantGroupId, baseName: p.baseName || p.name, variantLabel } : {}),
   };
 }
@@ -512,6 +532,8 @@ export interface StoreOrderItem {
   qty: number;
   /** Aclaración del cliente ("sin aceitunas") */
   note?: string;
+  /** Por bulto (venta a comercios): price es el del bulto y qty la cantidad de bultos */
+  packSize?: number;
 }
 
 export type OrderStage = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
@@ -525,7 +547,16 @@ export interface StoreOrder {
   customerNote?: string;
   /** Código corto que ve el cliente en WhatsApp (ej. "K7P2") */
   orderCode?: string;
-  delivery?: 'PICKUP' | 'DELIVERY' | 'GODELIVERY' | 'TABLE';
+  delivery?: 'PICKUP' | 'DELIVERY' | 'GODELIVERY' | 'TABLE' | 'REPARTO';
+  /** Link personal del cliente de la distribuidora (ventra_stores/{id}/clients/{token}) */
+  clientToken?: string;
+  /** Ya se aceptó: el pedido de preventa que se armó con él (no se vuelve a cargar ni a cobrar) */
+  preorderId?: string;
+  /** Un equipo lo está pasando a Pedidos ahora (ver lockOrderForReview) */
+  reviewing?: boolean;
+  reviewAt?: any;
+  /** Se cargó en la caja para cobrarlo como venta: ya no se puede pasar a Pedidos */
+  chargedAt?: any;
   address?: string;
   paymentMethod?: string;
   deliveryCost?: number;
@@ -780,7 +811,8 @@ export function diffCatalog(local: OnlineProduct[], published: OnlineProduct[] |
     return diff;
   }
   const sig = (p: OnlineProduct) => [p.name, Number(p.price) || 0, p.category || '', p.parentCategory || '', p.brand || '', p.unit || '',
-    p.description || '', ignoreStock ? '' : !!p.inStock, !!p.imageUrl, p.variantGroupId || '', p.variantLabel || ''].join('|');
+    p.description || '', ignoreStock ? '' : !!p.inStock, !!p.imageUrl, p.variantGroupId || '', p.variantLabel || '',
+    p.pack ? `${p.pack.size}x${p.pack.price}` : '', p.wholesale ? `${p.wholesale.minQty}@${p.wholesale.price}` : ''].join('|');
   const pub = new Map(published.map((p) => [p.productId, sig(p)]));
   const localIds = new Set<string>();
   for (const p of local) {
@@ -812,4 +844,143 @@ export async function publishOnlineCatalog(storeId: string, onProgress?: (done: 
 export async function updateOrderStage(storeId: string, orderId: string, stage: OrderStage): Promise<void> {
   await ensureVentraSession();
   await updateDoc(doc(getDb(), 'ventra_stores', storeId, 'orders', orderId), { stage, stageAt: serverTimestamp() });
+}
+
+// ─── Venta a comercios: link personal de cada cliente ──────────────
+
+/** Lo que la tienda sabe de un cliente con link (ventra_stores/{id}/clients/{token}) */
+export interface WholesaleClientDoc {
+  clientId: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  locality?: string | null;
+  /** Su último pedido, para "Repetir último pedido" en la tienda (cantidades en unidades) */
+  lastItems?: { productId: string; qty: number; packSize?: number | null }[];
+  active: boolean;
+}
+
+function randomToken() {
+  const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const b = new Uint32Array(24);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => a[x % a.length]).join('');
+}
+
+/** El último pedido de cada cliente, como lo guarda la tienda */
+async function lastItemsOf(clientId: string) {
+  try {
+    const { default: api } = await import('./api');
+    const { data } = await api.get('/preorders/last-by-client', { silent: true } as any);
+    return ((data?.[clientId]?.items || []) as any[]).slice(0, 60).map((i) => ({ productId: String(i.productId), qty: Number(i.quantity) || 0, packSize: Number(i.packSize) > 1 ? Number(i.packSize) : null }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Link de pedidos del cliente: usa el que ya tiene (o crea uno) y le deja al día sus datos y su
+ * último pedido. Errores: WHOLESALE_OFF (la venta a comercios está apagada), STORE_OFF (la tienda
+ * no está publicada).
+ */
+export async function clientOrderLink(client: { id: string; name: string; phone?: string | null; address?: string | null; locality?: string | null }): Promise<string> {
+  await ensureVentraSession();
+  const storeId = await resolveStoreId();
+  const cfg = await loadStoreConfig(storeId);
+  if (!cfg.wholesale?.enabled) throw new Error('WHOLESALE_OFF');
+  if (!cfg.subdomain || !cfg.isPublished) throw new Error('STORE_OFF');
+  await claimStore(storeId);
+  const col = collection(getDb(), 'ventra_stores', storeId, 'clients');
+  const found = await getDocs(query(col, where('clientId', '==', String(client.id)), limit(1)));
+  const token = found.docs[0]?.id || randomToken();
+  const data: WholesaleClientDoc & { updatedAt: any } = {
+    clientId: String(client.id), name: client.name, phone: client.phone || null, address: client.address || null,
+    locality: client.locality || null, lastItems: await lastItemsOf(String(client.id)), active: true, updatedAt: serverTimestamp(),
+  };
+  await setDoc(doc(col, token), data, { merge: true });
+  const url = publicStoreUrl(cfg.subdomain);
+  return `${url}${url.includes('?') ? '&' : '?'}c=${token}`;
+}
+
+/** El cliente de un pedido hecho con link personal (null si el link ya no existe) */
+export async function wholesaleClientOf(storeId: string, token: string): Promise<WholesaleClientDoc | null> {
+  await ensureVentraSession();
+  const snap = await getDoc(doc(getDb(), 'ventra_stores', storeId, 'clients', token));
+  return snap.exists() ? (snap.data() as WholesaleClientDoc) : null;
+}
+
+/** Después de aceptar un pedido: el último pedido del cliente queda listo para repetirlo */
+export async function refreshWholesaleClient(storeId: string, clientId: string) {
+  const col = collection(getDb(), 'ventra_stores', storeId, 'clients');
+  const found = await getDocs(query(col, where('clientId', '==', clientId), limit(1)));
+  if (!found.docs[0]) return;
+  await updateDoc(found.docs[0].ref, { lastItems: await lastItemsOf(clientId), updatedAt: serverTimestamp() });
+}
+
+// Un pedido de la tienda termina en UN solo lado: en Pedidos (preventa: el stock sale cuando sale
+// el reparto) o cobrado en la caja (sale al cobrar). Varios equipos ven los mismos pedidos, así que
+// la nube decide con una transacción quién lo toma. Si el equipo que lo estaba aceptando se apaga a
+// mitad de camino, a los 2 minutos se puede volver a aceptar (el pedido de preventa usa el mismo id,
+// así que no se duplica).
+const REVIEW_LOCK_MS = 2 * 60000;
+const tsMs = (v: any) => (v?.toMillis ? v.toMillis() : v?.seconds ? v.seconds * 1000 : 0);
+
+/** Se puede pasar a Pedidos (o rechazar): no se aceptó, no se cargó en la caja ni está terminado */
+export function canAcceptOrder(o: Partial<StoreOrder>, now = Date.now()) {
+  if (o.preorderId || o.chargedAt || o.stage === 'CANCELLED' || o.stage === 'DELIVERED') return false;
+  return !o.reviewing || now - tsMs(o.reviewAt) > REVIEW_LOCK_MS;
+}
+
+/** Otro equipo lo está pasando a Pedidos en este momento */
+export const reviewInProgress = (o: Partial<StoreOrder>, now = Date.now()) => !!o.reviewing && !o.preorderId && now - tsMs(o.reviewAt) <= REVIEW_LOCK_MS;
+
+/** Toma el pedido para aceptarlo o rechazarlo. Devuelve el pedido como está en la nube, o null si ya lo tomó otro. */
+export async function lockOrderForReview(storeId: string, orderId: string): Promise<StoreOrder | null> {
+  await ensureVentraSession();
+  const ref = doc(getDb(), 'ventra_stores', storeId, 'orders', orderId);
+  return runTransaction(getDb(), async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists() || !canAcceptOrder(snap.data() as StoreOrder)) return null;
+    tx.update(ref, { reviewing: true, reviewAt: serverTimestamp() });
+    return { id: snap.id, ...(snap.data() as any) } as StoreOrder;
+  });
+}
+
+/** Cierra lo que empezó lockOrderForReview: aceptado (pasó a Pedidos), rechazado o falló (se suelta) */
+export async function finishOrderReview(storeId: string, orderId: string, result: { preorderId: string } | { rejected: true } | { failed: true }) {
+  await ensureVentraSession();
+  const ref = doc(getDb(), 'ventra_stores', storeId, 'orders', orderId);
+  if ('failed' in result) return updateDoc(ref, { reviewing: false });
+  return updateDoc(ref, 'preorderId' in result
+    ? { preorderId: result.preorderId, reviewing: false, stage: 'PREPARING', syncedLocal: true, stageAt: serverTimestamp() }
+    : { reviewing: false, stage: 'CANCELLED', syncedLocal: true, stageAt: serverTimestamp() });
+}
+
+/** Antes de cargarlo en la caja: false si ya está en Pedidos o lo está aceptando otro equipo */
+export async function lockOrderForCharge(storeId: string, orderId: string): Promise<boolean> {
+  await ensureVentraSession();
+  const ref = doc(getDb(), 'ventra_stores', storeId, 'orders', orderId);
+  return runTransaction(getDb(), async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return false;
+    const o = snap.data() as StoreOrder;
+    if (o.preorderId || (o.reviewing && Date.now() - tsMs(o.reviewAt) <= REVIEW_LOCK_MS)) return false;
+    tx.update(ref, { chargedAt: serverTimestamp(), ...(!o.stage || o.stage === 'NEW' ? { stage: 'PREPARING', stageAt: serverTimestamp() } : {}) });
+    return true;
+  });
+}
+
+/** Pasa los días de reparto a la tienda, solo si la venta a comercios está activa. Sin conexión no hace nada. */
+export async function syncWholesaleRouteDays(routeDays: Record<string, number[]>): Promise<void> {
+  const storeId = localStorage.getItem(STORE_ID_KEY);
+  if (!storeId) return;
+  try {
+    await ensureVentraSession();
+    const ref = doc(getDb(), 'ventra_stores', storeId);
+    const snap = await getDoc(ref);
+    if (!snap.exists() || !(snap.data() as any)?.wholesale?.enabled) return;
+    await updateDoc(ref, { 'wholesale.routeDays': routeDays, updatedAt: serverTimestamp() });
+  } catch (err) {
+    console.warn('[OnlineStore] No se pudieron pasar los días de reparto a la tienda', err);
+  }
 }

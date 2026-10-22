@@ -20,6 +20,9 @@ import {
   newPreOrderId, savePreOrder, flushPreOrderQueue, readQueue, loadPreOrderIntoCart, priceFor, withOffers,
   PREORDER_QUEUE_EVENT, type PreOrderItem,
 } from '../../services/preorders';
+import OnlineInbox from './OnlineInbox';
+import { useOnlineOrders } from '../../services/onlineStoreOrders';
+import { updateOrderStage } from '../../services/onlineStore';
 
 /**
  * Preventa (distribuidora). En el celular del vendedor: tomar pedidos, con o sin señal.
@@ -133,6 +136,7 @@ export default function PreventaScreen() {
   return (
     <OrderList
       clients={catalog.clients}
+      products={catalog.products}
       queue={queue}
       draft={draft}
       onNew={() => (draft ? open(draft) : startNew())}
@@ -146,8 +150,8 @@ export default function PreventaScreen() {
 
 // ─── Lista ────────────────────────────────────────────────────────
 
-function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, onNewFor }: {
-  clients: any[]; queue: any[]; draft: Draft | null;
+function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard, onEdit, onNewFor }: {
+  clients: any[]; products: any[]; queue: any[]; draft: Draft | null;
     onNew: () => void; onResume: () => void; onDiscard: () => void; onEdit: (o: any) => void; onNewFor: (client: any) => void;
 }) {
   const navigate = useNavigate();
@@ -231,7 +235,15 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
 
   const cancel = async (order: any) => {
     if (!window.confirm(`¿Cancelar el pedido N° ${order.orderNumber} de ${order.client?.name || 'sin cliente'}? No se puede deshacer.`)) return;
-    try { await api.post(`/preorders/${order.id}/cancel`); toast.success('Pedido cancelado'); load(); }
+    try {
+      await api.post(`/preorders/${order.id}/cancel`);
+      toast.success('Pedido cancelado');
+      load();
+      // Si vino de la tienda, también queda cancelado allá
+      const { orders: online, storeId } = useOnlineOrders.getState();
+      const from = online.find((x) => x.preorderId === order.id);
+      if (from && storeId) updateOrderStage(storeId, from.id, 'CANCELLED').catch(() => {});
+    }
     catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo cancelar'); }
   };
 
@@ -282,7 +294,9 @@ function OrderList({ clients, queue, draft, onNew, onResume, onDiscard, onEdit, 
           </div>
         )}
 
-                {todayZones.length > 0 ? (
+                {!isSeller && <OnlineInbox products={products} clients={clients} onAccepted={load} />}
+
+        {todayZones.length > 0 ? (
           <section data-tour="preventa-today" className="rounded-2xl bg-white border border-slate-200 overflow-hidden">
             <div className="px-4 pt-3.5 pb-2 flex items-start gap-3">
               <CalendarDays className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />

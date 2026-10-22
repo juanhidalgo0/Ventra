@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins, Pencil, MapPin } from 'lucide-react';
+import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins, Pencil, MapPin, Link2 } from 'lucide-react';
+import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { hasFeature } from '../../stores/businessStore';
 import api from '../../services/api';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount } from './ui';
@@ -152,6 +153,9 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
             <p className="text-[13.5px] text-slate-600 flex items-start gap-1.5"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" /> {[client.address, client.locality].filter(Boolean).join(', ')}</p>
           )}
           <button onClick={() => setEditing(true)} className="w-full h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><Pencil className="w-4 h-4" /> Editar datos</button>
+          {hasFeature('bulk') && (
+            <button onClick={() => sendClientOrderLink(client)} className="w-full h-11 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center justify-center gap-2 text-[14px] font-semibold text-emerald-800"><Link2 className="w-4 h-4" /> Mandarle su link de pedidos</button>
+          )}
           {client.phone && (
             <div className="flex gap-2">
               <a href={`tel:${client.phone}`} className="flex-1 h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><Phone className="w-4 h-4" /> Llamar</a>

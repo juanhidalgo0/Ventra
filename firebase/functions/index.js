@@ -1455,11 +1455,12 @@ exports.ventraOrderPush = onDocumentCreated("ventra_stores/{storeId}/orders/{ord
   const uid = store.exists && store.data().ownerUid;
   if (!uid) return;
   const count = (order.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
-  const how = order.delivery === "DELIVERY" || order.delivery === "GODELIVERY" ? "envío" : "retiro";
+  const how = order.delivery === "REPARTO" ? "reparto" : order.delivery === "DELIVERY" || order.delivery === "GODELIVERY" ? "envío" : "retiro";
   await notify.sendToAccount(db, uid, "orders", {
     title: `Nuevo pedido${order.orderCode ? " #" + order.orderCode : ""}: ${notify.money(order.total)}`,
     body: `${order.customerName || "Un cliente"} · ${count} ${count === 1 ? "producto" : "productos"} · ${how}${priceProblem ? " · revisá los precios" : ""}`,
-    url: "/#/pedidos?pedido=" + encodeURIComponent(event.params.orderId), tag: "order-" + event.params.orderId,
+    // Venta a comercios: se acepta en Pedidos (preventa), donde está "Por revisar"
+    url: order.delivery === "REPARTO" ? "/#/preventa" : "/#/pedidos?pedido=" + encodeURIComponent(event.params.orderId), tag: "order-" + event.params.orderId,
   }, { storeId });
 });
 

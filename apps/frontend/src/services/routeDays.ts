@@ -36,6 +36,8 @@ export function saveRouteDays(map: RouteDays) {
   // setStoreSetting lo guarda en este equipo y lo sube (si se escribiera antes acá, creería que no cambió)
   setStoreSetting('route_days', JSON.stringify(clean));
   window.dispatchEvent(new CustomEvent(ROUTE_DAYS_EVENT));
+  // La tienda (venta a comercios) muestra "próximo reparto": se le pasan los días nuevos si está activa
+  import('./onlineStore').then((m) => m.syncWholesaleRouteDays(clean)).catch(() => {});
 }
 
 /** Las localidades que tocan este día (por defecto, hoy) */
