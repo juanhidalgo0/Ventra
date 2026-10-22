@@ -27,6 +27,8 @@ const SHARED: Record<string, string> = {
   store_cuit: 'gd_store_cuit',
   store_iva: 'gd_store_iva',
   store_iibb: 'gd_store_iibb',
+  /** Logo para las impresiones (imagen chica en data URL, opcional: ver StoreLogoField) */
+  store_logo: 'gd_store_logo',
   /** Inicio de actividades (AAAA-MM-DD), para el encabezado de las hojas */
   store_start_date: 'gd_store_start',
   /** Numeración de las hojas impresas (punto de venta y desde qué número): JSON, ver SalesNoteSheet */

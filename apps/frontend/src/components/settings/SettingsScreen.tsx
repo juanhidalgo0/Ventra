@@ -46,6 +46,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { getOpeningFloat, saveOpeningFloat } from '../../utils/openingFloat';
 import { setStoreSetting } from '../../services/storeSettings';
 import { usePOSStore } from '../../stores/posStore';
+import StoreLogoField from '../common/StoreLogoField';
 import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
 import { usePlanStore } from '../../stores/planStore';
 import { effectiveIntents } from '../../utils/gettingStarted';
@@ -896,6 +897,8 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                         </select>
                       </div>
                     </div>
+                    {/* Logo de las impresiones: se guarda al elegirlo (no necesita Guardar) */}
+                    <StoreLogoField />
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[9px] text-slate-405 leading-relaxed">Salen en los tickets, las notas de venta, los remitos y las facturas. Se guardan para todas las cajas del comercio. Solo el nombre es obligatorio.</p>
                       <button

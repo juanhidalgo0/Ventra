@@ -7,6 +7,7 @@
  *
  * Los renglones vendidos por bulto se muestran en bultos con el precio del bulto.
  */
+import { readStoreLogo } from '../common/StoreLogoField';
 
 const IVA_LABEL: Record<string, string> = {
   RESPONSABLE_INSCRIPTO: 'IVA Responsable Inscripto',
@@ -46,6 +47,8 @@ export function FacturaA4({ doc, client, storeName, storePhone, qr, copy, condic
   paper?: boolean;
 }) {
   const emisor = doc.emisor || {};
+  // Logo del comercio para las impresiones (Configuración → Tu comercio), si cargó uno
+  const logo = readStoreLogo();
   const letra: string = doc.letter || String(doc.type || '').slice(-1);
   const esNota = doc.kind === 'NOTA_CREDITO' || String(doc.type || '').startsWith('NC_');
   const esA = letra === 'A';
@@ -67,12 +70,15 @@ export function FacturaA4({ doc, client, storeName, storePhone, qr, copy, condic
     <section data-sheet="factura" style={{ ...page, ...(paper ? paperStyle : {}) }}>
       {/* Encabezado: emisor | letra | comprobante */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 1fr', border: '1.5px solid #000', borderRadius: '4px' }}>
-        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '9pt' }}>
-          <div style={{ fontSize: '15pt', fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.1 }}>{storeName}</div>
-          {razonAparte && <div style={{ fontWeight: 600 }}>{emisor.razonSocial}</div>}
-          {emisor.domicilio && <div>{emisor.domicilio}</div>}
-          {storePhone && <div>Tel.: {storePhone}</div>}
-          <div style={{ fontWeight: 600 }}>{IVA_LABEL[emisor.ivaCondition] || emisor.ivaCondition}</div>
+        <div style={{ padding: '10px 12px', display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '9pt' }}>
+          {logo && <img src={logo} alt="" style={{ width: 'auto', height: 'auto', maxWidth: '34mm', maxHeight: '20mm', flexShrink: 0 }} />}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+            <div style={{ fontSize: logo ? '13pt' : '15pt', fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.1 }}>{storeName}</div>
+            {razonAparte && <div style={{ fontWeight: 600 }}>{emisor.razonSocial}</div>}
+            {emisor.domicilio && <div>{emisor.domicilio}</div>}
+            {storePhone && <div>Tel.: {storePhone}</div>}
+            <div style={{ fontWeight: 600 }}>{IVA_LABEL[emisor.ivaCondition] || emisor.ivaCondition}</div>
+          </div>
         </div>
         <div style={{ borderLeft: '1.5px solid #000', borderRight: '1.5px solid #000', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '6px' }}>
           <div style={{ fontSize: '28pt', fontWeight: 900, lineHeight: 1 }}>{letra}</div>

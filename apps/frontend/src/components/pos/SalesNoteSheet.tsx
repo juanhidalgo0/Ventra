@@ -21,6 +21,8 @@ export interface Emisor {
   ivaCondition?: string;
   iibb?: string;
   inicioActividades?: string | null;
+  /** Logo del comercio (opcional) */
+  logo?: string;
 }
 
 const IVA_LABEL: Record<string, string> = {
@@ -86,37 +88,50 @@ function lineOf(item: any) {
   };
 }
 
-const th = { textAlign: 'left', padding: '5px 6px', borderBottom: '1.5px solid #000', fontSize: '8.5pt', textTransform: 'uppercase', letterSpacing: '0.03em' } as const;
-const td = { padding: '4px 6px', borderBottom: '1px solid #d4d4d4', fontSize: '9.5pt', verticalAlign: 'top' } as const;
+const th = { textAlign: 'left', padding: '6px 8px', background: '#f4f4f5', borderTop: '1.5px solid #000', borderBottom: '1.5px solid #000', fontSize: '8pt', textTransform: 'uppercase', letterSpacing: '0.04em' } as const;
+const td = { padding: '5px 8px', borderBottom: '1px solid #e4e4e7', fontSize: '9.5pt', verticalAlign: 'top' } as const;
 const right = { textAlign: 'right' } as const;
 
 function Header({ emisor, title, sale, copy }: { emisor: Emisor; title: string; sale: any; copy: string }) {
   const fecha = sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+  const interno = printedNumber(sale.saleNumber, { raw: true }) !== String(sale.saleNumber);
+  // Datos del comprobante en dos columnas: el nombre del dato y su valor, alineados
+  const facts: [string, string][] = [
+    ['Fecha', fecha],
+    ['C.U.I.T.', emisor.cuit ? cuitAr(emisor.cuit) : ''],
+    ['Ing. Brutos', emisor.iibb || ''],
+    ['Inicio de act.', emisor.inicioActividades ? String(emisor.inicioActividades).slice(0, 10).split('-').reverse().join('/') : ''],
+  ].filter(([, v]) => v) as [string, string][];
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 1fr', border: '1.5px solid #000', borderRadius: '4px' }}>
-      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '9pt' }}>
-        <div style={{ fontSize: '15pt', fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.1 }}>{emisor.name}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 62px 1fr', border: '1.5px solid #000', borderRadius: '6px', overflow: 'hidden' }}>
+      {/* Comercio: el logo arriba (si hay) y los datos debajo, con todo el ancho */}
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px', fontSize: '8.5pt', lineHeight: 1.3 }}>
+        {emisor.logo && <img src={emisor.logo} alt="" style={{ width: 'auto', height: 'auto', maxWidth: '62mm', maxHeight: '15mm', alignSelf: 'flex-start', marginBottom: '5px' }} />}
+        <div style={{ fontSize: emisor.logo ? '12pt' : '15pt', fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.15 }}>{emisor.name}</div>
         {emisor.razonSocial && emisor.razonSocial.toUpperCase() !== emisor.name.toUpperCase() && <div style={{ fontWeight: 600 }}>{emisor.razonSocial}</div>}
         {emisor.domicilio && <div>{emisor.domicilio}</div>}
         {emisor.phone && <div>Tel.: {emisor.phone}</div>}
-        {emisor.ivaCondition && <div style={{ fontWeight: 600 }}>{IVA_LABEL[emisor.ivaCondition] || emisor.ivaCondition}</div>}
+        {emisor.ivaCondition && <div style={{ fontWeight: 700 }}>{IVA_LABEL[emisor.ivaCondition] || emisor.ivaCondition}</div>}
       </div>
-      <div style={{ borderLeft: '1.5px solid #000', borderRight: '1.5px solid #000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '6px' }}>
-        <div style={{ fontSize: '26pt', fontWeight: 900, lineHeight: 1 }}>X</div>
-        <div style={{ fontSize: '6pt', textAlign: 'center', lineHeight: 1.15, marginTop: '4px', padding: '0 3px' }}>DOCUMENTO NO VÁLIDO COMO FACTURA</div>
-      </div>
-      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '9pt' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '14pt', fontWeight: 800 }}>{title}</span>
-          <span style={{ fontSize: '7.5pt', fontWeight: 700 }}>{copy}</span>
+      <div style={{ borderLeft: '1.5px solid #000', borderRight: '1.5px solid #000', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '8px', background: '#f4f4f5' }}>
+        <div style={{ width: '40px', height: '40px', border: '1.5px solid #000', borderRadius: '4px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* Vectorial: queda centrada igual en pantalla, en el PDF y al imprimir */}
+          <svg width="22" height="24" viewBox="0 0 22 24" aria-label="X"><path d="M3 3 L19 21 M19 3 L3 21" stroke="#000" strokeWidth="4.2" strokeLinecap="square" fill="none" /></svg>
         </div>
-        <div style={{ fontWeight: 700, fontSize: '10.5pt' }}>N° {numero(sale.saleNumber)}</div>
+        <div style={{ fontSize: '5.5pt', fontWeight: 700, textAlign: 'center', lineHeight: 1.2, marginTop: '5px', padding: '0 3px' }}>DOCUMENTO NO VÁLIDO COMO FACTURA</div>
+      </div>
+      {/* Comprobante: tipo, número y datos fiscales */}
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '8.5pt', lineHeight: 1.3 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '14pt', fontWeight: 800, letterSpacing: '0.01em' }}>{title}</span>
+          {copy && <span style={{ fontSize: '7pt', fontWeight: 700, border: '1px solid #000', borderRadius: '3px', padding: '1px 5px' }}>{copy}</span>}
+        </div>
+        <div style={{ fontWeight: 800, fontSize: '11pt', marginTop: '1px' }}>N° {numero(sale.saleNumber)}</div>
         {/* Con numeración propia, el número de Ventra para encontrarlo en el sistema */}
-        {printedNumber(sale.saleNumber, { raw: true }) !== String(sale.saleNumber) && <div style={{ fontSize: '7.5pt' }}>Ref. interna {sale.saleNumber}</div>}
-        <div>Fecha: {fecha}</div>
-        {emisor.cuit && <div>C.U.I.T.: {cuitAr(emisor.cuit)}</div>}
-        {emisor.iibb && <div>Ing. Brutos: {emisor.iibb}</div>}
-        {emisor.inicioActividades && <div>Inicio de actividades: {String(emisor.inicioActividades).slice(0, 10).split('-').reverse().join('/')}</div>}
+        {interno && <div style={{ fontSize: '7pt', color: '#444' }}>Ref. interna {sale.saleNumber}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '8px', rowGap: '1px', marginTop: '4px' }}>
+          {facts.map(([k, v]) => <div key={k} style={{ display: 'contents' }}><span style={{ fontWeight: 700 }}>{k}:</span><span>{v}</span></div>)}
+        </div>
       </div>
     </div>
   );
@@ -141,7 +156,7 @@ function ClientBox({ client, forDelivery }: { client: any; forDelivery?: boolean
   }
   const rows = all.filter(([, v]) => v);
   return (
-    <div style={{ border: '1px solid #000', borderRadius: '4px', padding: '8px 12px', marginTop: '8px', display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '3px 18px', fontSize: '9.5pt' }}>
+    <div style={{ border: '1.5px solid #000', borderRadius: '6px', padding: '10px 14px', marginTop: '10px', display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '4px 18px', fontSize: '9pt', lineHeight: 1.3 }}>
       <div style={{ ...row, gridColumn: '1 / -1' }}><span style={k}>Cliente:</span><span style={{ fontWeight: 700 }}>{client?.name || 'Consumidor final'}</span></div>
       {rows.map(([label, value]) => <div key={label} style={row}><span style={k}>{label}</span><span>{value}</span></div>)}
     </div>
@@ -263,7 +278,7 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
           {paymentLabel && <div><strong>Forma de pago:</strong> {paymentLabel}</div>}
           {sale.notes && <div><strong>Observaciones:</strong> {sale.notes}</div>}
         </div>
-        <div style={{ minWidth: '230px', border: '1.5px solid #000', borderRadius: '4px', padding: '8px 12px', fontSize: '10pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        <div style={{ minWidth: '230px', border: '1.5px solid #000', borderRadius: '6px', padding: '8px 14px', background: '#f4f4f5', fontSize: '10pt', display: 'flex', flexDirection: 'column', gap: '3px' }}>
           {discounts > 0 && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(Number(sale.total) + discounts)}</span></div>
@@ -350,6 +365,7 @@ export async function loadEmisor(): Promise<Emisor> {
     domicilio: own('gd_store_address') || f.domicilio || '',
     ivaCondition: own('gd_store_iva') || (f.cuit ? f.ivaCondition : ''),
     iibb: own('gd_store_iibb') || f.iibb || '',
+    logo: own('gd_store_logo'),
     inicioActividades: own('gd_store_start') || f.inicioActividades || null,
   };
 }

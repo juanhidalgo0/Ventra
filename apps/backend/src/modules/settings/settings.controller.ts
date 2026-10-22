@@ -5,6 +5,8 @@ import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
 const KEY_RE = /^[a-z0-9_.-]{1,64}$/;
 const MAX_VALUE = 20_000;
+/** Ajustes que pueden ser más grandes: el logo de las impresiones (imagen chica, ver StoreLogoField) */
+const BIG_VALUES: Record<string, number> = { store_logo: 300_000 };
 const MAX_KEYS = 50;
 
 /**
@@ -56,7 +58,7 @@ export class SettingsController {
     if (entries.length > MAX_KEYS) throw new BadRequestException('Demasiados ajustes juntos');
     for (const [key, value] of entries) {
       if (!KEY_RE.test(key)) throw new BadRequestException(`Ajuste inválido: ${key}`);
-      if (value !== null && JSON.stringify(value).length > MAX_VALUE) throw new BadRequestException(`El ajuste ${key} es demasiado grande`);
+      if (value !== null && JSON.stringify(value).length > (BIG_VALUES[key] || MAX_VALUE)) throw new BadRequestException(`El ajuste ${key} es demasiado grande`);
     }
     await this.prisma.$transaction(async (tx) => {
       for (const [key, value] of entries) {

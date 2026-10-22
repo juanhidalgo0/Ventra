@@ -17,7 +17,8 @@ export async function printableToCanvas(source: HTMLElement, opts: { remove?: st
   const clone = source.cloneNode(true) as HTMLElement;
   clone.removeAttribute('id');
   clone.className = '';
-  clone.style.display = 'block';
+  // Las hojas que acomodan las firmas al pie (flex) lo conservan; el resto se muestra como bloque
+  if (clone.style.display !== 'flex') clone.style.display = 'block';
   // La hoja de la vista previa lleva sombra de papel: en el archivo no
   clone.style.boxShadow = 'none';
   for (const sel of opts.remove || []) clone.querySelectorAll(sel).forEach((el) => el.remove());
@@ -73,7 +74,8 @@ export async function downloadPrintableAsPdf(source: HTMLElement, filename: stri
   const clone = source.cloneNode(true) as HTMLElement;
   clone.removeAttribute('id');
   clone.className = '';
-  clone.style.display = 'block';
+  // Las hojas que acomodan las firmas al pie (flex) lo conservan; el resto se muestra como bloque
+  if (clone.style.display !== 'flex') clone.style.display = 'block';
   for (const sel of opts.remove || []) clone.querySelectorAll(sel).forEach((el) => el.remove());
   host.appendChild(clone);
   document.body.appendChild(host);

@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { useAuthStore } from '../../stores/authStore';
 import { CopiesToggle, readDocNumbering, printedNumber, type SalesNoteCopies } from './SalesNoteSheet';
+import StoreLogoField from '../common/StoreLogoField';
 
 const IVA_OPTIONS: [string, string][] = [
   ['', 'Sin indicar'],
@@ -90,6 +91,7 @@ export default function SheetOptions({ copies, onCopies, onSaved }: { copies: Sa
       {open && (
         <div className="px-5 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px]">
           <p className="sm:col-span-2 text-slate-500">Lo que sale arriba de cada hoja. Se guarda para todas las cajas del comercio.</p>
+          <div className="sm:col-span-2"><StoreLogoField onChange={onSaved} /></div>
           <label className="space-y-1"><span className="font-semibold text-slate-700">Nombre del comercio</span><input className={input} value={f.name} onChange={set('name')} maxLength={60} /></label>
           <label className="space-y-1"><span className="font-semibold text-slate-700">Dirección</span><input className={input} value={f.address} onChange={set('address')} maxLength={120} placeholder="Calle 12 N° 850, Magdalena" /></label>
           <label className="space-y-1"><span className="font-semibold text-slate-700">Teléfono</span><input className={input} value={f.phone} onChange={set('phone')} maxLength={40} /></label>
