@@ -72,7 +72,7 @@ interface POSState {
   getDiscounts: () => number;
   getAppliedPromotions: () => { name: string; discount: number }[];
   getCartItemsWithDiscounts: () => { discountsMap: { [productId: string]: number }; appliedPromosInfo: { id: string; quantitySold: number }[] };
-  getCheckoutPayload: () => { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number }[];
+  getCheckoutPayload: () => { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number; productName?: string }[];
   getFinalTotal: () => number;
   getItemCount: () => number;
 
@@ -375,9 +375,10 @@ export const usePOSStore = create<POSState>()(
         ? Number(product.wholesaleMinQty)
         : undefined;
 
+      // lineTag: renglones aparte aunque compartan producto y precio (artículos sin cargar en la caja)
       const cartKey = isReturn 
         ? `${product.id}_return` 
-        : (isCustom ? `${product.id}_custom_${regularPrice}` : `${product.id}_std`);
+        : (isCustom ? `${product.id}_custom_${regularPrice}${product.lineTag ? `_${product.lineTag}` : ''}` : `${product.id}_std`);
 
       const existing = state.cart.find((i) => i.cartKey === cartKey);
       let updatedCart;
@@ -953,15 +954,15 @@ export const usePOSStore = create<POSState>()(
   getCheckoutPayload: () => {
     const { cart, getCartItemsWithDiscounts } = get();
     const { discountsMap } = getCartItemsWithDiscounts();
-    const exploded: { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number }[] = [];
+    const exploded: { productId: string; quantity: number; discount: number; price?: number; categoryId?: string; packSize?: number; productName?: string }[] = [];
 
-    const addExplodedItem = (productId: string, qty: number, disc: number, price?: number, categoryId?: string, packSize?: number) => {
-      const existing = exploded.find(item => item.productId === productId && item.price === price && item.packSize === packSize);
+    const addExplodedItem = (productId: string, qty: number, disc: number, price?: number, categoryId?: string, packSize?: number, productName?: string) => {
+      const existing = exploded.find(item => item.productId === productId && item.price === price && item.packSize === packSize && item.productName === productName);
       if (existing) {
         existing.quantity += qty;
         existing.discount += disc;
       } else {
-        exploded.push({ productId, quantity: qty, discount: disc, price, categoryId, ...(packSize ? { packSize } : {}) });
+        exploded.push({ productId, quantity: qty, discount: disc, price, categoryId, ...(packSize ? { packSize } : {}), ...(productName ? { productName } : {}) });
       }
     };
 
@@ -983,7 +984,9 @@ export const usePOSStore = create<POSState>()(
         addExplodedItem(item.half.a, item.quantity * 0.5, 0, item.half.pa, item.categoryId);
         addExplodedItem(item.half.b, item.quantity * 0.5, 0, item.half.pb, item.categoryId);
       } else {
-        addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId, item.packSize);
+        // Venta rápida con nombre propio (código escaneado que no estaba cargado): la venta lo guarda así
+        const named = item.productId === 'VENTA_RAPIDA' && item.name && item.name !== 'VENTA RÁPIDA' ? item.name : undefined;
+        addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId, item.packSize, named);
       }
     });
 

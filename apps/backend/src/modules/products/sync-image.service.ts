@@ -868,6 +868,43 @@ export class SyncImageService {
     return null;
   }
 
+  /**
+   * Nombre del producto según los catálogos de los supermercados (los mismos de las fotos) y
+   * Open Food Facts: el primero que conteste. Para el alta rápida en la caja.
+   */
+  async searchNameByBarcode(barcode: string): Promise<string | null> {
+    if (!barcode || !this.isValidNumericBarcode(barcode)) return null;
+    const vtex = (host: string) => async () => {
+      const { data } = await axios.get(`${host}/api/catalog_system/pub/products/search?fq=alternateIds_Ean:${barcode}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+        timeout: 3500,
+      });
+      return String(data?.[0]?.productName || '').trim() || null;
+    };
+    const off = async () => {
+      const { data } = await axios.get(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`, {
+        headers: { 'User-Agent': 'Ventra/1.0 (ventra.store)' },
+        timeout: 3500,
+      });
+      const p = data?.status === 1 ? data.product : null;
+      return String(p?.product_name_es || p?.product_name || '').trim() || null;
+    };
+    const searchers = [
+      vtex('https://www.carrefour.com.ar'), vtex('https://www.jumbo.com.ar'), vtex('https://diaonline.supermercadosdia.com.ar'),
+      vtex('https://www.masonline.com.ar'), vtex('https://www.disco.com.ar'), vtex('https://www.veasupermercados.com.ar'),
+      vtex('https://www.farmacity.com'), off,
+    ];
+    try {
+      return await Promise.any(searchers.map(async (s) => {
+        const name = await s();
+        if (!name) throw new Error('sin nombre');
+        return name;
+      }));
+    } catch {
+      return null;
+    }
+  }
+
   async searchImageByBarcode(barcode: string): Promise<string | null> {
     if (!barcode || !this.isValidNumericBarcode(barcode)) return null;
     try {

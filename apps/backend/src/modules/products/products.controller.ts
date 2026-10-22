@@ -377,6 +377,16 @@ export class ProductsController {
     return this.productsService.bulkSetShowOnline(ids, showOnline);
   }
 
+  /** Código que no está cargado: nombre y foto según los supermercados, para darlo de alta en la caja */
+  @Get('barcode-info/:barcode')
+  async barcodeInfo(@Param('barcode') barcode: string) {
+    const [name, imageUrl] = await Promise.all([
+      this.syncImageService.searchNameByBarcode(barcode),
+      this.syncImageService.searchImageByBarcode(barcode),
+    ]);
+    return { name, imageUrl };
+  }
+
   @Get('search-external-image/:barcode')
   async searchExternalImage(@Param('barcode') barcode: string) {
     const imageUrl = await this.syncImageService.searchImageByBarcode(barcode);

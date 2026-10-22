@@ -28,6 +28,7 @@ import CierreCajaModal from './CierreCajaModal';
 import QuickSaleIcon from './QuickSaleIcon';
 import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
+import UnknownCodeModal from './UnknownCodeModal';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useFeature, hasFeature } from '../../stores/businessStore';
@@ -110,28 +111,11 @@ export default function POSScreen() {
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
-  // Código que no está en el inventario: el admin puede crearlo al toque, con los
-  // datos autocompletados desde la base de productos (ver ProductModal).
-  const notifyUnknownCode = (code: string) => {
-    if (!isAdmin) {
-      toast.error(`⚠️ Código no registrado: ${code}`, { id: code });
-      return;
-    }
-    toast(
-      (t) => (
-        <span className="flex items-center gap-3">
-          <span>Código no registrado: <b className="font-mono">{code}</b></span>
-          <button
-            onClick={() => { toast.dismiss(t.id); navigate(`/inventory?nuevo=${encodeURIComponent(code)}`); }}
-            className="shrink-0 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
-          >
-            Crear producto
-          </button>
-        </span>
-      ),
-      { id: code, icon: '⚠️', duration: 7000 },
-    );
-  };
+  // Código que no está en el inventario: se resuelve sin salir de la venta. El dueño o el
+  // encargado lo carga ahí mismo; el cajero lo vende con el precio a mano (ver UnknownCodeModal).
+  const canCreateProducts = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
+  const notifyUnknownCode = (code: string) => setUnknownCode(code);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -897,7 +881,7 @@ export default function POSScreen() {
 
     const handleGlobalKeyDown = async (e: KeyboardEvent) => {
       // If any modal/overlay is open, completely bypass global scanner and let elements handle events natively
-      if (showPayment || showGastos || showProveedores || showCierre || showHistorial || showCajaInfo || showAbrirCaja || showProfile || showCobroCtaCte || showQuickSale) {
+      if (showPayment || showGastos || showProveedores || showCierre || showHistorial || showCajaInfo || showAbrirCaja || showProfile || showCobroCtaCte || showQuickSale || unknownCode) {
         buffer = '';
         return;
       }
@@ -1000,7 +984,7 @@ export default function POSScreen() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keydown', handleGlobalKeyDown, true);
     };
-  }, [cart.length, currentSession, addToCart, cachedProducts, promotions, showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showCobroCtaCte, isCartBusy, showQuickSale]);
+  }, [cart.length, currentSession, addToCart, cachedProducts, promotions, showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showCobroCtaCte, isCartBusy, showQuickSale, unknownCode]);
 
   // Removed refocus of Confirm button on cart change to prevent stealing focus from barcode search input
 
@@ -1319,6 +1303,8 @@ export default function POSScreen() {
 
   const focusSearch = () => {
     const doFocus = () => {
+      // Con la ventana de código no registrado abierta, el foco es de ella (están cargando el precio)
+      if (document.querySelector('[data-unknown-code]')) return;
       const el = searchRef.current || (document.getElementById('pos-search') as HTMLInputElement | null);
       if (el) {
         el.focus();
@@ -1331,10 +1317,10 @@ export default function POSScreen() {
   };
 
   useEffect(() => {
-    if (!showPayment && !showGastos && !showProveedores && !showCierre && !showHistorial && !showCajaInfo && !showAbrirCaja && !showProfile && !showAdminPrompt && !showCobroCtaCte && !showHeldCartsModal && !showCalculator && !showCellularModal && !showHoldCartInputModal && !heldCartToDelete && !showQuickSale) {
+    if (!showPayment && !showGastos && !showProveedores && !showCierre && !showHistorial && !showCajaInfo && !showAbrirCaja && !showProfile && !showAdminPrompt && !showCobroCtaCte && !showHeldCartsModal && !showCalculator && !showCellularModal && !showHoldCartInputModal && !heldCartToDelete && !showQuickSale && !unknownCode) {
       focusSearch();
     }
-  }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showAdminPrompt, showCobroCtaCte, showHeldCartsModal, showCalculator, showCellularModal, showHoldCartInputModal, heldCartToDelete, showQuickSale]);
+  }, [showPayment, showGastos, showProveedores, showCierre, showHistorial, showCajaInfo, showAbrirCaja, showProfile, showAdminPrompt, showCobroCtaCte, showHeldCartsModal, showCalculator, showCellularModal, showHoldCartInputModal, heldCartToDelete, showQuickSale, unknownCode]);
 
   // Refocus search when clicking any toast notification
   useEffect(() => {
@@ -3551,6 +3537,27 @@ export default function POSScreen() {
           </MotionDiv>
         )}
         
+        {unknownCode && (
+          <UnknownCodeModal
+            code={unknownCode}
+            canCreate={canCreateProducts}
+            categories={cachedCategories || []}
+            onClose={() => setUnknownCode(null)}
+            onCreated={(product) => {
+              // Al catálogo de la caja: el próximo escaneo ya lo encuentra
+              setCachedProducts([product, ...usePOSStore.getState().products.filter((p: any) => p.id !== product.id)]);
+              addItem(product, 1);
+              playBeep();
+              setUnknownCode(null);
+            }}
+            onSell={({ name, price, quantity }) => {
+              addToCart({ ...buildQuickSaleProduct(price), name, lineTag: unknownCode }, price, quantity);
+              playBeep();
+              setUnknownCode(null);
+            }}
+          />
+        )}
+
         {showQuickSale && (
           <QuickSaleModal
             onClose={() => setShowQuickSale(false)}
