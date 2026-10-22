@@ -1188,6 +1188,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       // `rate`: alícuota con la que se declaró la línea (la factura A muestra los precios sin IVA)
       lines: items.filter((i) => esFacturable(i.productId)).map((i) => ({
         name: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, total: i.total,
+        // Vendido por bulto: la factura A4 lo muestra en bultos (quantity sigue en unidades)
+        packSize: Number(i.packSize) > 1 ? Number(i.packSize) : null,
         rate: doc.cbteTipo && tipoDesdeCodigo(doc.cbteTipo).discriminatesIva ? lineRate(i.product?.taxRate, config.defaultIvaRate) : null,
       })),
       excludedLines: items.filter((i) => !esFacturable(i.productId)).map((i) => ({ name: i.productName, quantity: i.quantity, total: i.total })),

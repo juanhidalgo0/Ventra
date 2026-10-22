@@ -45,7 +45,7 @@ export function saveBlob(blob: Blob, filename: string) {
  * con paper = true para la pantalla (cada hoja con `data-sheet`) y false para imprimir.
  */
 export default function DocumentPreview({
-  title, subtitle, options, option, onOption, render, fileName, whatsapp, onClose, loading,
+  title, subtitle, options, option, onOption, render, fileName, whatsapp, onClose, loading, notice, printable = true,
 }: {
   title: string;
   subtitle?: string;
@@ -59,6 +59,10 @@ export default function DocumentPreview({
   whatsapp?: { phone?: string | null; text: string; hint?: string };
   onClose: () => void;
   loading?: boolean;
+  /** Aviso fijo arriba de las hojas (no sale impreso) */
+  notice?: ReactNode;
+  /** false: todavía no hay nada para imprimir (los botones quedan apagados) */
+  printable?: boolean;
 }) {
   const [busy, setBusy] = useState<'print' | 'pdf' | 'wa' | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -79,7 +83,7 @@ export default function DocumentPreview({
   const sheets = () => Array.from(sheetsRef.current?.querySelectorAll<HTMLElement>('[data-sheet]') || []);
 
   const print = async () => {
-    if (loading || busy) return;
+    if (loading || busy || !printable) return;
     setBusy('print');
     try { await printA4(render(false)); }
     catch { toast.error('No se pudo imprimir'); }
@@ -87,7 +91,7 @@ export default function DocumentPreview({
   };
 
   const savePdf = async () => {
-    if (loading || busy) return;
+    if (loading || busy || !printable) return;
     setBusy('pdf');
     try {
       saveBlob(await sheetsToPdfBlob(sheets()), `${fileName}.pdf`);
@@ -97,7 +101,7 @@ export default function DocumentPreview({
   };
 
   const sendWhatsApp = async () => {
-    if (loading || busy || !whatsapp) return;
+    if (loading || busy || !whatsapp || !printable) return;
     const chat = `https://wa.me/${whatsapp.phone ? waPhone(whatsapp.phone) : ''}?text=${encodeURIComponent(whatsapp.text)}`;
     setBusy('wa');
     try {
@@ -179,6 +183,7 @@ export default function DocumentPreview({
         </div>
 
         {help && <p className="px-5 py-2 text-[12px] text-slate-600 bg-slate-50 border-b border-slate-200">{help}</p>}
+        {notice && <div className="border-b border-slate-200">{notice}</div>}
 
         <div ref={bodyRef} className="flex-1 overflow-auto bg-slate-200/70 py-5 custom-scrollbar">
           {loading ? (
@@ -190,15 +195,15 @@ export default function DocumentPreview({
 
         <div className="flex items-center gap-2.5 px-4 sm:px-5 py-3.5 border-t border-slate-200">
           {whatsapp && (
-            <button onClick={sendWhatsApp} disabled={loading || !!busy} className={`${btn} bg-[#25D366] hover:bg-[#1fbe5b] text-white`} aria-label="Mandar por WhatsApp" title={whatsapp.hint}>
+            <button onClick={sendWhatsApp} disabled={loading || !!busy || !printable} className={`${btn} bg-[#25D366] hover:bg-[#1fbe5b] text-white`} aria-label="Mandar por WhatsApp" title={whatsapp.hint}>
               {busy === 'wa' ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />} <span className="hidden sm:inline">WhatsApp</span>
             </button>
           )}
-          <button onClick={savePdf} disabled={loading || !!busy} className={`${btn} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
+          <button onClick={savePdf} disabled={loading || !!busy || !printable} className={`${btn} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
             {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} <span className="hidden sm:inline">Guardar</span> PDF
           </button>
           <span className="flex-1" />
-          <button onClick={print} disabled={loading || !!busy} className={`${btn} bg-slate-900 hover:bg-slate-800 text-white sm:min-w-[150px]`}>
+          <button onClick={print} disabled={loading || !!busy || !printable} className={`${btn} bg-slate-900 hover:bg-slate-800 text-white sm:min-w-[150px]`}>
             {busy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Imprimir
             <kbd className="hidden sm:inline ml-1 text-[10.5px] font-mono bg-white/15 px-1.5 py-0.5 rounded">Enter</kbd>
           </button>

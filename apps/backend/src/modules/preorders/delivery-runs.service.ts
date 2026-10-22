@@ -379,6 +379,39 @@ export class DeliveryRunsService {
   }
 
   /**
+   * Facturas del reparto, en el orden de las paradas, para imprimirlas antes de que salga el
+   * camión. Cada pedido que ya es venta trae su factura vigente (autorizada, en cola o rechazada)
+   * o null si no se facturó.
+   */
+  async invoices(runId: string) {
+    const run = await this.findOne(runId);
+    const enabled = await this.fiscal.isEnabled();
+    const list = [];
+    for (const o of run.orders.filter((x: any) => x.status !== 'CANCELLED' && x.saleId)) {
+      const { invoice } = await this.fiscal.getSaleFiscal(o.saleId).catch(() => ({ invoice: null }));
+      list.push({
+        orderId: o.id, orderNumber: o.orderNumber, saleId: o.saleId,
+        client: o.client ? { name: o.client.name, address: o.client.address, locality: o.client.locality, phone: o.client.phone } : null,
+        invoice,
+      });
+    }
+    return { enabled, invoices: list };
+  }
+
+  /** Factura las ventas del reparto que salieron sin factura (quedan en cola, como al salir). */
+  async invoiceMissing(runId: string, userId: string) {
+    if (!(await this.fiscal.isEnabled())) throw new BadRequestException('La facturación electrónica no está activada');
+    const { invoices } = await this.invoices(runId);
+    const warnings: string[] = [];
+    let queued = 0;
+    for (const it of invoices.filter((x: any) => !x.invoice)) {
+      try { await this.fiscal.queueInvoice(it.saleId, userId); queued++; }
+      catch (err: any) { if (!/ya tiene/i.test(err?.message || '')) warnings.push(`${it.client?.name || `Pedido N° ${it.orderNumber}`}: ${err?.message || 'no se pudo preparar la factura'}`); }
+    }
+    return { queued, warnings };
+  }
+
+  /**
    * Rendición: lo cobrado entra a la caja del día como cobro de la cuenta corriente de cada
    * cliente; lo rechazado o no entregado vuelve al stock con una devolución (que le baja la deuda
    * al cliente) y su nota de crédito si la venta tenía factura. Lo que no se entregó vuelve a

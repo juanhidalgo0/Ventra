@@ -5,7 +5,7 @@ import { myWorkRole } from '../../services/workRole';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Truck, Loader2, ChevronUp, ChevronDown, X, MapPin, Phone, Package, Route, FileText, Check,
-  CalendarDays, Undo2, Flag,
+  CalendarDays, Undo2, Flag, Receipt,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
@@ -18,6 +18,8 @@ import { loadEmisor, MissingStoreNameError, type Emisor } from '../pos/SalesNote
 import DocumentPreview from '../common/DocumentPreview';
 import { LoadSheet, RouteSheet, RunRemitos, consolidate, liveOrders, bultosOf, looseOf } from './RunSheets';
 import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner } from './DeliverySheets';
+import RunInvoicesPreview from './RunInvoices';
+import { COMING_SOON } from '../../utils/comingSoon';
 
 /**
  * Reparto (distribuidora): se juntan los pedidos de preventa que salen un día en un camión.
@@ -265,6 +267,18 @@ function OrderPicker({ orders, selected, setSelected }: { orders: any[]; selecte
 
 type DriverUser = { id: string; name: string; role: string; workRole?: string | null };
 const myId = () => useAuthStore.getState().user?.id;
+
+/**
+ * El reparto lo hizo quien está usando la app: es su usuario de chofer o, si se anotó solo un
+ * nombre, es el suyo. Sin chofer anotado se toma como propio (el dueño que reparte él mismo).
+ */
+const isMyRun = (run: any) => {
+  const me = useAuthStore.getState().user;
+  if (!me) return false;
+  if (run.driverUserId) return run.driverUserId === me.id;
+  const name = String(run.driverName || '').trim().toLowerCase();
+  return !name || [me.fullName, me.username].some((n) => String(n || '').trim().toLowerCase() === name);
+};
 /** Usuarios que pueden llevar un reparto (choferes primero, después el dueño) */
 function useDriverUsers() {
   const [users, setUsers] = useState<DriverUser[]>([]);
@@ -398,7 +412,7 @@ function RunBuilder({ initialZone, onCancel, onCreated }: { initialZone?: string
 function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [run, setRun] = useState<any | null>(null);
   const [tab, setTab] = useState<'ruta' | 'carga'>('ruta');
-  const [doc, setDoc] = useState<null | 'carga' | 'ruta' | 'remitos'>(null);
+  const [doc, setDoc] = useState<null | 'carga' | 'ruta' | 'remitos' | 'facturas'>(null);
   const [remitoMode, setRemitoMode] = useState<'remito' | 'both'>('remito');
   const [adding, setAdding] = useState<any[] | null>(null);
   const [addSel, setAddSel] = useState<Set<string>>(new Set());
@@ -408,6 +422,8 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   useMobileFocus();
   const users = useDriverUsers();
   const isDriver = myWorkRole() === 'CHOFER';
+  // El que cierra es el mismo que repartió (el dueño que hace todo): no hay rendición entre dos
+  const solo = !!run && !isDriver && isMyRun(run);
   // La primera vez que se ve un reparto armado y uno en la calle, se explica cada parte
   useAutoTour('distribRuta', run?.status === 'ARMANDO' && !doc && !adding);
   useAutoTour('distribEntregas', run?.status === 'EN_REPARTO' && !doc && !delivering && !settling);
@@ -417,6 +433,12 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [askPay, setAskPay] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const { emisor, missingName, codeOf } = useSheetData();
+  // Con facturación activa, las facturas del reparto se imprimen todas juntas antes de salir
+  const [invoicing, setInvoicing] = useState(false);
+  useEffect(() => {
+    if (COMING_SOON.arcaInvoicing) return;
+    api.get('/fiscal/config', { silent: true } as any).then(({ data }) => setInvoicing(Boolean(data?.enabled))).catch(() => {});
+  }, []);
 
   const load = () => api.get(`/delivery-runs/${id}`).then(({ data }) => setRun(data)).catch(() => { toast.error('No se pudo abrir el reparto'); onBack(); });
   useEffect(() => { load(); }, [id]);
@@ -474,7 +496,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
     await setStops([...orders.map((o: any) => o.id), ...Array.from(addSel)]);
     setAdding(null);
   };
-  const openDoc = (d: 'carga' | 'ruta' | 'remitos') => {
+  const openDoc = (d: 'carga' | 'ruta' | 'remitos' | 'facturas') => {
     if (missingName) { toast.error('Falta el nombre del comercio. Lo carga el administrador en Configuración → General y POS.', { duration: 6000 }); return; }
     if (!orders.length) { toast.error('El reparto no tiene pedidos'); return; }
     setDoc(d);
@@ -492,11 +514,18 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
       setRun(data);
       toast.success(`${plural(picked.size, 'parada marcada', 'paradas marcadas')} como entregadas`);
       setPicked(new Set()); setPicking(false); setAskPay(false);
+      offerClose(data);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'No se pudieron marcar');
     } finally {
       setBusy(false);
     }
+  };
+  // Repartió él mismo y anotó la última parada: se le ofrece cerrar ahí, sin buscar otro botón
+  const offerClose = (r: any) => {
+    if (isDriver || !isMyRun(r) || r.status !== 'EN_REPARTO') return;
+    const stops = liveOrders(r).filter((o: any) => o.status === 'BILLED' && o.saleId);
+    if (stops.length && stops.every((o: any) => o.deliveryStatus)) setSettling(true);
   };
   const actionBtn = 'flex-1 min-w-[110px] h-12 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-[13.5px] font-bold text-slate-800 flex items-center justify-center gap-2 cursor-pointer';
   const baseName = `Reparto_${run.runNumber}_${new Date(run.date).toISOString().slice(0, 10)}`;
@@ -546,6 +575,9 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <button onClick={() => openDoc('carga')} className={actionBtn}><Package className="w-4 h-4 text-rose-600" /> Hoja de carga</button>
             <button onClick={() => openDoc('ruta')} className={actionBtn}><Route className="w-4 h-4 text-rose-600" /> Hoja de ruta</button>
             <button onClick={() => openDoc('remitos')} className={actionBtn}><FileText className="w-4 h-4 text-rose-600" /> Remitos</button>
+            {invoicing && run.status !== 'ARMANDO' && (
+              <button onClick={() => openDoc('facturas')} className={actionBtn}><Receipt className="w-4 h-4 text-rose-600" /> Facturas</button>
+            )}
           </div>
 
                     <div data-tour="ruta-tabs" className="flex p-1 rounded-xl bg-slate-200/60">
@@ -682,7 +714,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 <p className="text-[12px] text-slate-500 text-right leading-snug max-w-[200px]">Al volver, el encargado cuenta la plata y cierra el reparto.</p>
               ) : (
                 <button data-tour="ruta-settle" onClick={() => setSettling(true)} disabled={busy} className="h-12 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[15px] font-bold cursor-pointer flex items-center gap-2 shrink-0">
-                  <Flag className="w-4 h-4" /> Volvió: rendir
+                  <Flag className="w-4 h-4" /> {solo ? 'Terminé el reparto' : 'Volvió: rendir'}
                 </button>
               )}
             </>
@@ -713,14 +745,19 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
       )}
 
       {dispatching && (
-        <DispatchSheet run={run} onClose={() => setDispatching(false)} onDone={(r) => { setRun(r); setDispatching(false); }} />
+        <DispatchSheet run={run} onClose={() => setDispatching(false)} onDone={(r, invoiced) => {
+          setRun(r);
+          setDispatching(false);
+          // Salió con factura: se abren para imprimirlas antes de que arranque el camión
+          if (invoiced && emisor) setDoc('facturas');
+        }} />
       )}
 
       {delivering && (
-        <DeliverySheet run={run} order={delivering} onClose={() => setDelivering(null)} onSaved={(r) => { setRun(r); setDelivering(null); }} />
+        <DeliverySheet run={run} order={delivering} onClose={() => setDelivering(null)} onSaved={(r) => { setRun(r); setDelivering(null); offerClose(r); }} />
       )}
       {settling && (
-        <SettleSheet run={run} onClose={() => setSettling(false)} onDone={(r) => { setRun(r); setSettling(false); }} />
+        <SettleSheet run={run} solo={solo} onClose={() => setSettling(false)} onDone={(r) => { setRun(r); setSettling(false); }} />
       )}
 
       {adding && (
@@ -740,7 +777,11 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
       )}
 
-      {doc && emisor && (
+      {doc === 'facturas' && emisor && (
+        <RunInvoicesPreview run={run} emisor={emisor} canInvoice={!isDriver} subtitle={`${dayLabel(run.date)} · Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`} onClose={() => setDoc(null)} />
+      )}
+
+      {doc && doc !== 'facturas' && emisor && (
         <DocumentPreview
           title={doc === 'carga' ? 'Hoja de carga' : doc === 'ruta' ? 'Hoja de ruta' : 'Remitos del reparto'}
           subtitle={`${dayLabel(run.date)} · Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`}

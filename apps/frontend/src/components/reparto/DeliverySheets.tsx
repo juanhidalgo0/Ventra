@@ -309,7 +309,7 @@ export function DeliverySheet({ run, order, onClose, onSaved }: { run: any; orde
 // ─── Salida ───────────────────────────────────────────────────────
 
 /** "Salió a reparto": confirma qué pasa al salir y, si la facturación está activa, si se factura */
-export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () => void; onDone: (run: any) => void }) {
+export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () => void; onDone: (run: any, invoiced: boolean) => void }) {
   const orders = (run.orders || []).filter((o: any) => o.status === 'PENDING' || (o.status === 'BILLED' && o.saleId));
   const total = orders.reduce((s: number, o: any) => s + (o.total || 0), 0);
   const [canInvoice, setCanInvoice] = useState(false);
@@ -331,9 +331,9 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
         toast('El reparto sigue armándose: corregí lo de arriba y volvé a tocar "Salió a reparto". Lo que ya salió no se repite.', { icon: '⚠️', duration: 9000 });
       } else {
-        toast.success(data.invoiced ? 'Reparto en camino: ventas registradas y facturas en camino a ARCA' : 'Reparto en camino: ventas registradas');
+        toast.success(data.invoiced ? 'Reparto en camino: ventas registradas y facturas pedidas a ARCA' : 'Reparto en camino: ventas registradas');
       }
-      onDone(data.run);
+      onDone(data.run, !!data.invoiced && !data.errors?.length);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'No se pudo registrar la salida');
     } finally {
@@ -387,8 +387,13 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
 
 // ─── Rendición ────────────────────────────────────────────────────
 
-export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () => void; onDone: (run: any) => void }) {
-  useAutoTour('distribRendir');
+/**
+ * Rendición del reparto. `solo`: el que repartió es el mismo que cierra (el dueño hace todo):
+ * no tiene a quién rendirle, así que no se le pregunta cuánto "entregó el chofer". Ve lo que
+ * cobró y cierra; si quiere, cuenta la plata igual.
+ */
+export function SettleSheet({ run, solo = false, onClose, onDone }: { run: any; solo?: boolean; onClose: () => void; onDone: (run: any) => void }) {
+  useAutoTour('distribRendir', !solo);
   const orders = (run.orders || []).filter((o: any) => o.status === 'BILLED' && o.saleId);
   const delivered = orders.filter((o: any) => o.deliveryStatus === 'DELIVERED' || o.deliveryStatus === 'PARTIAL');
   const notDelivered = orders.filter((o: any) => o.deliveryStatus === 'NOT_DELIVERED');
@@ -423,6 +428,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
   const netCash = round2(cashTotal - expTotal);
   const [received, setReceived] = useState(String(cashTotal));
   const [touched, setTouched] = useState(false);
+  const [counting, setCounting] = useState(!solo);
   useEffect(() => { if (!touched) setReceived(String(netCash)); }, [netCash, touched]);
   const addExpense = (concept: string) => setExpenses((list) => [...list, { concept: concept === 'Otro' ? '' : concept, amount: '' }]);
   const [undelivered, setUndelivered] = useState<'REPROGRAM' | 'CANCEL'>('REPROGRAM');
@@ -433,7 +439,8 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
     setSaving(true);
     try {
       const { data } = await api.post(`/delivery-runs/${run.id}/settle`, {
-        cashReceived: num(received), undelivered,
+        // Sin contar, lo que tiene es lo que cobró menos lo que gastó
+        cashReceived: counting ? num(received) : netCash, undelivered,
         expenses: expenses.filter((e) => num(e.amount) > 0).map((e) => ({ concept: e.concept.trim() || 'Gasto', amount: num(e.amount) })),
       });
       (data.warnings || []).forEach((w: string) => toast(w, { icon: '🧾', duration: 9000 }));
@@ -441,7 +448,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
         toast('El reparto quedó abierto: corregí lo de arriba y volvé a rendir. Lo que ya se registró no se repite.', { icon: '⚠️', duration: 9000 });
       } else {
-        toast.success('Reparto rendido: los cobros quedaron registrados y lo que volvió, en el stock');
+        toast.success(solo ? 'Reparto cerrado: los cobros quedaron registrados y lo que volvió, en el stock' : 'Reparto rendido: los cobros quedaron registrados y lo que volvió, en el stock');
       }
       onDone(data.run);
     } catch (err: any) {
@@ -461,7 +468,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
 
   return (
     <Sheet
-      title="Rendir reparto"
+      title={solo ? 'Terminar el reparto' : 'Rendir reparto'}
       subtitle={`Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`}
       onClose={onClose}
       footer={
@@ -479,7 +486,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
 
             <section data-tour="rendir-summary" className="rounded-2xl bg-white border border-slate-200 divide-y divide-slate-100">
         {row(<Check className="w-4 h-4 text-emerald-600" />, 'Entregas', `${delivered.length} de ${orders.length}`)}
-                        {row(<Banknote className="w-4 h-4 text-slate-600" />, 'Efectivo que tiene que traer', money(netCash), true)}
+                        {row(<Banknote className="w-4 h-4 text-slate-600" />, solo ? 'Efectivo que cobraste' : 'Efectivo que tiene que traer', money(netCash), true)}
         {expTotal > 0 && row(<Fuel className="w-4 h-4 text-amber-600" />, 'Ya descontados los gastos', `− ${money(expTotal)}`)}
         {row(<Landmark className="w-4 h-4 text-slate-600" />, 'Transferencias', money(round2(transfer + prevTransfer)))}
         {prevCash + prevTransfer > 0.009 && row(<BookUser className="w-4 h-4 text-emerald-600" />, 'Incluye cobros de deudas anteriores', money(round2(prevCash + prevTransfer)))}
@@ -487,7 +494,7 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
       </section>
 
                   <section data-tour="rendir-expenses" className="space-y-2">
-        <p className="text-[13px] font-bold text-slate-700">¿Gastó algo de lo cobrado? <span className="font-normal text-slate-400">(opcional)</span></p>
+        <p className="text-[13px] font-bold text-slate-700">{solo ? '¿Gastaste algo de lo cobrado?' : '¿Gastó algo de lo cobrado?'} <span className="font-normal text-slate-400">(opcional)</span></p>
         <div className="flex flex-wrap gap-2">
           {['Nafta', 'Peaje', 'Comida', 'Otro'].map((c) => (
             <button key={c} onClick={() => addExpense(c)} className="h-9 px-3.5 rounded-full text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 cursor-pointer hover:border-slate-300 flex items-center gap-1">
@@ -504,16 +511,22 @@ export function SettleSheet({ run, onClose, onDone }: { run: any; onClose: () =>
             <button onClick={() => setExpenses((list) => list.filter((_, k) => k !== i))} className="w-9 h-9 rounded-lg hover:bg-slate-200/60 flex items-center justify-center cursor-pointer shrink-0" aria-label="Quitar gasto"><X className="w-4 h-4 text-slate-500" /></button>
           </div>
         ))}
-        {expTotal > 0 && <p className="text-[12px] text-slate-500">Se descuentan {money(expTotal)} de lo que tiene que traer y quedan como gasto del reparto.</p>}
+        {expTotal > 0 && <p className="text-[12px] text-slate-500">Se descuentan {money(expTotal)} de {solo ? 'lo cobrado' : 'lo que tiene que traer'} y quedan como gasto del reparto.</p>}
       </section>
 
+      {!counting ? (
+        <button onClick={() => setCounting(true)} className="text-[13px] font-semibold text-slate-600 underline underline-offset-2 cursor-pointer">
+          Contar la plata
+        </button>
+      ) : (
       <section data-tour="rendir-cash" className="space-y-2">
-        <label className="block text-[13px] font-bold text-slate-700">¿Cuánto efectivo entregó el chofer?</label>
+        <label className="block text-[13px] font-bold text-slate-700">{solo ? '¿Cuánto efectivo tenés?' : '¿Cuánto efectivo entregó el chofer?'}</label>
                 <input inputMode="decimal" value={received} onChange={(e) => { setTouched(true); setReceived(e.target.value); }} className="w-full h-12 px-4 rounded-xl bg-white border border-slate-300 text-[18px] font-bold outline-none focus:border-rose-500" />
         <p className={`text-[13px] font-semibold px-3.5 py-2.5 rounded-xl ${Math.abs(diff) < 0.01 ? 'bg-emerald-50 text-emerald-800' : diff < 0 ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}`}>
           {Math.abs(diff) < 0.01 ? 'La plata cierra justa.' : diff < 0 ? `Faltan ${money(-diff)}.` : `Sobran ${money(diff)}.`}
         </p>
       </section>
+      )}
 
       {returns.length > 0 && (
         <section className="space-y-2">

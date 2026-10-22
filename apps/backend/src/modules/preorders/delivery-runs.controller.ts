@@ -82,6 +82,20 @@ export class DeliveryRunsController {
     return this.runs.dispatch(id, data, req.user?.sub);
   }
 
+  /** Las facturas del reparto, para imprimirlas todas juntas */
+  @Get(':id/invoices')
+  invoices(@Param('id') id: string, @Request() req: any) {
+    can(req, 'route');
+    return this.runs.invoices(id);
+  }
+
+  /** Factura lo que salió sin factura */
+  @Post(':id/invoices')
+  invoiceMissing(@Param('id') id: string, @Request() req: any) {
+    can(req, 'arm');
+    return this.runs.invoiceMissing(id, req.user?.sub);
+  }
+
   /** Varias paradas de una vez: entregadas completas y pagadas todas igual */
   @Put(':id/deliveries')
   saveMany(@Param('id') id: string, @Body() data: any, @Request() req: any) {
