@@ -154,7 +154,7 @@ export const saveNoteCopies = (c: SalesNoteCopies) => { try { localStorage.setIt
 /** Lugar para las firmas: quien recibe y el chofer */
 function Signatures() {
   return (
-    <div style={{ marginTop: '30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px', fontSize: '9pt', breakInside: 'avoid' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px', fontSize: '9pt', breakInside: 'avoid' }}>
       <div>
         <div style={{ fontWeight: 700, marginBottom: '28px' }}>Recibí conforme la mercadería detallada.</div>
         <div style={{ borderTop: '1px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
@@ -188,7 +188,11 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
   const items: any[] = (sale.items || []).filter((i: any) => Number(i.quantity) !== 0);
   const lines = items.map(lineOf);
   const discounts = lines.reduce((s, l) => s + l.discount, 0);
-  const page = { width: '100%', color: '#000', background: '#fff', fontFamily: 'Arial, Helvetica, sans-serif', boxSizing: 'border-box' } as const;
+  // Cada hoja ocupa la página entera (A4 menos los 10 mm de margen): las firmas y el pie quedan
+  // siempre abajo. Si el pedido es largo y sigue en otra página, van al final del último.
+  const page = { width: '100%', color: '#000', background: '#fff', fontFamily: 'Arial, Helvetica, sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', ...(paper ? {} : { minHeight: '276mm' }) } as const;
+  // Sin códigos cargados, la columna no ocupa lugar
+  const hasCodes = items.some((it) => codeOf(it.productId));
   const paperStyle = paper ? { width: '210mm', minHeight: '297mm', padding: '10mm', boxShadow: '0 4px 18px rgba(15,23,42,.18)', borderRadius: '2px' } : {};
 
   // Las hojas a dibujar, con el rótulo de cada copia
@@ -209,7 +213,7 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
           <tr>
             <th style={{ ...th, ...right, width: '52px' }}>Cant.</th>
             <th style={{ ...th, width: '74px' }}>Unidad</th>
-            <th style={{ ...th, width: '96px' }}>Código</th>
+            {hasCodes && <th style={{ ...th, width: '96px' }}>Código</th>}
             <th style={th}>Descripción</th>
             <th style={{ ...th, ...right, width: '92px' }}>Precio</th>
             <th style={{ ...th, ...right, width: '100px' }}>Importe</th>
@@ -222,7 +226,7 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
               <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
                 <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
                 <td style={td}>{l.unit}</td>
-                <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
+                {hasCodes && <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>}
                 <td style={td}>{it.productName}{l.discount > 0 && <span style={{ fontSize: '8pt' }}> (desc. {money(l.discount)})</span>}</td>
                 <td style={{ ...td, ...right }}>{money(l.price)}</td>
                 <td style={{ ...td, ...right, fontWeight: 600 }}>{money(l.total)}</td>
@@ -248,8 +252,10 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
         </div>
       </div>
       {/* Sola, la nota hace de comprobante de entrega; con las dos hojas, se firma el remito */}
-      {show !== 'both' && <Signatures />}
-      <VentraFooter />
+      <div style={{ marginTop: 'auto', paddingTop: '28px', breakInside: 'avoid' }}>
+        {show !== 'both' && <Signatures />}
+        <VentraFooter />
+      </div>
     </section>
   );
 
@@ -262,7 +268,7 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
           <tr>
             <th style={{ ...th, ...right, width: '60px' }}>Cant.</th>
             <th style={{ ...th, width: '84px' }}>Unidad</th>
-            <th style={{ ...th, width: '110px' }}>Código</th>
+            {hasCodes && <th style={{ ...th, width: '110px' }}>Código</th>}
             <th style={th}>Descripción</th>
             <th style={{ ...th, ...right, width: '70px' }}>Unidades</th>
           </tr>
@@ -274,7 +280,7 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
               <tr key={it.id || i} style={{ breakInside: 'avoid' }}>
                 <td style={{ ...td, ...right, fontWeight: 700 }}>{qtyFmt(l.qty)}</td>
                 <td style={td}>{l.unit}</td>
-                <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>
+                {hasCodes && <td style={{ ...td, fontSize: '8.5pt' }}>{codeOf(it.productId)}</td>}
                 <td style={td}>{it.productName}</td>
                 <td style={{ ...td, ...right }}>{qtyFmt(l.units)}</td>
               </tr>
@@ -285,8 +291,10 @@ export function SalesNoteSheet({ sale, client, emisor, paymentLabel, codeOf, sho
       <div style={{ marginTop: '10px', fontSize: '9.5pt', breakInside: 'avoid' }}>
         <strong>Total de mercadería:</strong> <Totals lines={lines} />
       </div>
-      <Signatures />
-      <VentraFooter />
+      <div style={{ marginTop: 'auto', paddingTop: '28px', breakInside: 'avoid' }}>
+        <Signatures />
+        <VentraFooter />
+      </div>
     </section>
   );
 
