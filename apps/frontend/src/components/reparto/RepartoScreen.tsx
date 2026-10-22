@@ -14,7 +14,8 @@ import { ScreenHeader, HeaderAction, Chips } from '../mobile/ui';
 import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
-import { loadEmisor, MissingStoreNameError, CopiesToggle, readNoteCopies, type Emisor } from '../pos/SalesNoteSheet';
+import { loadEmisor, MissingStoreNameError, readNoteCopies, type Emisor } from '../pos/SalesNoteSheet';
+import SheetOptions from '../pos/SheetOptions';
 import DocumentPreview from '../common/DocumentPreview';
 import { LoadSheet, RouteSheet, RunRemitos, consolidate, liveOrders, bultosOf, looseOf } from './RunSheets';
 import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner } from './DeliverySheets';
@@ -68,7 +69,9 @@ function useSheetData() {
     const p = usePOSStore.getState().products.find((x: any) => x.id === id);
     return p?.barcode || p?.sku || '';
   };
-  return { emisor, missingName, codeOf };
+  // Después de cambiar los datos de la hoja (o la numeración): se vuelve a dibujar con lo nuevo
+  const reloadEmisor = () => loadEmisor().then((e) => { setEmisor(e); setMissingName(false); setTick((t) => t + 1); }).catch(() => {});
+  return { emisor, missingName, codeOf, reloadEmisor };
 }
 
 export default function RepartoScreen() {
@@ -450,7 +453,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [askPay, setAskPay] = useState(false);
   const [dispatching, setDispatching] = useState(false);
-  const { emisor, missingName, codeOf } = useSheetData();
+  const { emisor, missingName, codeOf, reloadEmisor } = useSheetData();
   // Con facturación activa, las facturas del reparto se imprimen todas juntas antes de salir
   const [invoicing, setInvoicing] = useState(false);
   useEffect(() => {
@@ -815,7 +818,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
             { key: 'note', label: 'Con precios', help: 'Una hoja por pedido con precios, total y lugar para la firma: el cliente se queda con los precios y firma que recibió.' },
             { key: 'remito', label: 'Sin precios', help: 'Una hoja por pedido sin importes, con lugar para la firma: para cuando recibe un empleado que no tiene que ver los precios.' },
           ] : undefined}
-          notice={doc === 'remitos' ? <CopiesToggle copies={copies} onChange={setCopies} /> : undefined}
+          notice={doc === 'remitos' ? <SheetOptions copies={copies} onCopies={setCopies} onSaved={reloadEmisor} /> : undefined}
           option={remitoMode}
           onOption={(k) => setRemitoMode(k as 'note' | 'remito')}
           fileName={`${doc === 'carga' ? 'Hoja_de_carga' : doc === 'ruta' ? 'Hoja_de_ruta' : 'Remitos'}_${baseName}`}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { SalesNoteSheet, loadSalesNoteContext, MissingStoreNameError, CopiesToggle, readNoteCopies, type SalesNoteContext, type SalesNoteShow } from './SalesNoteSheet';
+import { SalesNoteSheet, loadSalesNoteContext, MissingStoreNameError, readNoteCopies, printedNumber, type SalesNoteContext, type SalesNoteShow } from './SalesNoteSheet';
+import SheetOptions from './SheetOptions';
 import DocumentPreview from '../common/DocumentPreview';
 
 // Lo de casi todas las distribuidoras: una hoja con precios que firma quien recibe. Sin precios,
@@ -33,6 +34,8 @@ export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'no
 
   const client = ctx?.client;
   const numero = String(sale.saleNumber ?? 0).padStart(8, '0');
+  // El número que va impreso (puede seguir la numeración de los talonarios: ver printedNumber)
+  const impreso = printedNumber(sale.saleNumber);
   const safe = (s: string) => s.replace(/[^\wÀ-ſ]+/g, '_').slice(0, 30);
 
   return (
@@ -43,14 +46,14 @@ export default function SalesNotePreview({ sale, paymentLabel, initialShow = 'no
       option={show}
       onOption={(k) => setShow(k as SalesNoteShow)}
       loading={!ctx}
-      fileName={`${FILE_LABEL[show]}_${numero}${client?.name ? '_' + safe(client.name) : ''}`}
+      fileName={`${FILE_LABEL[show]}_${impreso}${client?.name ? '_' + safe(client.name) : ''}`}
       whatsapp={ctx ? {
         phone: client?.phone,
-        text: `¡Hola${client?.name ? ' ' + client.name : ''}! Te mando ${DOC_LABEL[show]} N° ${numero} de ${ctx.emisor.name}` + (show !== 'remito' ? ` por ${money(Number(sale.total) || 0)}.` : '.'),
+        text: `¡Hola${client?.name ? ' ' + client.name : ''}! Te mando ${DOC_LABEL[show]} N° ${impreso} de ${ctx.emisor.name}` + (show !== 'remito' ? ` por ${money(Number(sale.total) || 0)}.` : '.'),
         hint: client?.phone ? `Al ${client.phone}` : 'El cliente no tiene teléfono: elegís el contacto en WhatsApp',
       } : undefined}
       onClose={onClose}
-      notice={<CopiesToggle copies={copies} onChange={setCopies} />}
+      notice={<SheetOptions copies={copies} onCopies={setCopies} onSaved={() => loadSalesNoteContext(sale).then(setCtx).catch(() => {})} />}
       render={(paper) => ctx && (
         <SalesNoteSheet sale={sale} client={ctx.client} emisor={ctx.emisor} paymentLabel={paymentLabel} codeOf={ctx.codeOf} show={show} copies={copies} paper={paper} />
       )}

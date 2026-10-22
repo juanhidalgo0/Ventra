@@ -99,6 +99,10 @@ export class SalesController {
     return this.salesService.getConsolidatedMetrics(email, from, to);
   }
 
+  /** Rango de números de esta caja y el próximo (para la numeración de las hojas impresas) */
+  @Get('next-number')
+  nextNumber() { return this.salesService.nextNumberInfo(); }
+
   @Get(':id')
   findById(@Param('id') id: string) { return this.salesService.findById(id); }
 

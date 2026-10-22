@@ -26,6 +26,11 @@ const SHARED: Record<string, string> = {
   store_phone: 'gd_store_phone',
   store_cuit: 'gd_store_cuit',
   store_iva: 'gd_store_iva',
+  store_iibb: 'gd_store_iibb',
+  /** Inicio de actividades (AAAA-MM-DD), para el encabezado de las hojas */
+  store_start_date: 'gd_store_start',
+  /** Numeración de las hojas impresas (punto de venta y desde qué número): JSON, ver SalesNoteSheet */
+  doc_numbering: 'ventra_doc_numbering',
   allow_negative_stock: 'allow_negative_stock',
   low_stock_alerts: 'low_stock_alerts',
   hourly_rate: 'hourly_rate',

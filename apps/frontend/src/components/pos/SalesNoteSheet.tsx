@@ -37,7 +37,27 @@ const cuitAr = (c?: string | null) => {
 };
 const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const qtyFmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 3 });
-const numero = (n: number) => String(n ?? 0).padStart(8, '0');
+
+/**
+ * Numeración de las hojas impresas. Por dentro, ventas y pedidos comparten un número y cada caja
+ * tiene su rango (ver backend sync/numbering): eso no se toca. Para seguir los talonarios del
+ * comercio, se elige el próximo número de la hoja: desde el pedido o venta `base + 1` de esa caja
+ * la hoja sale con `start` y sigue. Opcional, el punto de venta adelante (0001-00004521).
+ */
+export interface DocNumbering { prefix?: string; byNode?: Record<string, { base: number; start: number }> }
+const RANGE = 1_000_000;
+export const readDocNumbering = (): DocNumbering => {
+  try { const v = JSON.parse(localStorage.getItem('ventra_doc_numbering') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+};
+/** El número que sale impreso para la venta o el pedido N° n (raw: sin ceros ni punto de venta) */
+export function printedNumber(n: number, opts: { raw?: boolean } = {}): string {
+  const cfg = readDocNumbering();
+  const r = cfg.byNode?.[String(Math.floor((Number(n) || 0) / RANGE))];
+  const v = r && n > r.base ? r.start + (n - r.base - 1) : Number(n) || 0;
+  if (opts.raw) return String(v);
+  return `${cfg.prefix ? `${cfg.prefix}-` : ''}${String(v).padStart(8, '0')}`;
+}
+const numero = (n: number) => printedNumber(n);
 
 /** Nombre del comercio (Configuración → Tu comercio). Es obligatorio: sin él no se imprime. */
 export const storeNameOf = () => (localStorage.getItem('gd_store_name') || '').trim();
@@ -91,6 +111,8 @@ function Header({ emisor, title, sale, copy }: { emisor: Emisor; title: string; 
           <span style={{ fontSize: '7.5pt', fontWeight: 700 }}>{copy}</span>
         </div>
         <div style={{ fontWeight: 700, fontSize: '10.5pt' }}>N° {numero(sale.saleNumber)}</div>
+        {/* Con numeración propia, el número de Ventra para encontrarlo en el sistema */}
+        {printedNumber(sale.saleNumber, { raw: true }) !== String(sale.saleNumber) && <div style={{ fontSize: '7.5pt' }}>Ref. interna {sale.saleNumber}</div>}
         <div>Fecha: {fecha}</div>
         {emisor.cuit && <div>C.U.I.T.: {cuitAr(emisor.cuit)}</div>}
         {emisor.iibb && <div>Ing. Brutos: {emisor.iibb}</div>}
@@ -327,8 +349,8 @@ export async function loadEmisor(): Promise<Emisor> {
     cuit,
     domicilio: own('gd_store_address') || f.domicilio || '',
     ivaCondition: own('gd_store_iva') || (f.cuit ? f.ivaCondition : ''),
-    iibb: f.iibb || '',
-    inicioActividades: f.inicioActividades || null,
+    iibb: own('gd_store_iibb') || f.iibb || '',
+    inicioActividades: own('gd_store_start') || f.inicioActividades || null,
   };
 }
 

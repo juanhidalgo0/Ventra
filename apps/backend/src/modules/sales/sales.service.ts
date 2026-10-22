@@ -3,7 +3,7 @@ import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
-import { nextDocNumber } from '../sync/numbering';
+import { nextDocNumber, numberRange } from '../sync/numbering';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { FiscalService } from '../fiscal/fiscal.service';
@@ -463,6 +463,11 @@ export class SalesService {
       console.error('Error in findAll sales:', err);
       return [];
     }
+  }
+
+  async nextNumberInfo() {
+    const range = await numberRange(this.prisma as any);
+    return { index: range.index, from: range.from, next: await nextDocNumber(this.prisma as any) };
   }
 
   async findById(id: string) {
