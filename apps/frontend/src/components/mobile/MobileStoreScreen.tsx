@@ -10,7 +10,7 @@ import { hasFeature } from '../../stores/businessStore';
 import { readRouteDays, dayName } from '../../services/routeDays';
 import {
   resolveStoreId, loadStoreConfig, saveStoreConfig, isSubdomainAvailable, subscribeToStoreOrders,
-  compressImageFile, publishOnlineCatalog, countPendingCatalog, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
+  compressImageFile, publishOnlineCatalog, countPendingCatalog, refreshWholesaleStock, wholesaleTurnedOn, dayRanges, withRanges, PAYMENT_OPTIONS, ORDER_CHANNELS,
   type StoreConfig, type StoreOrder, type DayHours,
 } from '../../services/onlineStore';
 import api from '../../services/api';
@@ -36,7 +36,8 @@ export default function MobileStoreScreen() {
   const [storeId, setStoreId] = useState<string | null>(null);
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [orders, setOrders] = useState<StoreOrder[]>([]);
-  const [panel, setPanel] = useState<Panel>(null);
+  // ?seccion=comercios (desde Pedidos): abre directo la venta a comercios
+  const [panel, setPanel] = useState<Panel>(() => (new URLSearchParams(window.location.hash.split('?')[1] || '').get('seccion') === 'comercios' ? 'wholesale' : null));
   const [error, setError] = useState(false);
   const [publishing, setPublishing] = useState<{ done: number; total: number } | null>(null);
   /** Productos con cambios sin publicar (null = no se sabe, p. ej. sin conexión o POS sin actualizar) */
@@ -187,7 +188,7 @@ export default function MobileStoreScreen() {
             <ExtrasEditor storeId={storeId!} initial={config.extraGroups || []} onSaved={(g) => setConfig({ ...config, extraGroups: g })} />
           </Sheet>
           <WholesaleSheet open={panel === 'wholesale'} config={config} onClose={() => setPanel(null)}
-            onSave={(p) => save(p).then(() => { setPanel(null); refreshPending(); })} />
+            onSave={(p) => save(p).then(() => { setPanel(null); refreshPending(); wholesaleTurnedOn(!!p.wholesale?.enabled); refreshWholesaleStock(0); })} />
           <LookSheet open={panel === 'look'} config={config} onClose={() => setPanel(null)} onSave={(p) => save(p).then(() => setPanel(null))} />
         </>
       )}

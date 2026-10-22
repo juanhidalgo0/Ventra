@@ -448,6 +448,8 @@ export function SettleSheet({ run, solo = false, onClose, onDone }: { run: any; 
         data.errors.forEach((e: string) => toast.error(e, { duration: 9000 }));
         toast('El reparto quedó abierto: corregí lo de arriba y volvé a rendir. Lo que ya se registró no se repite.', { icon: '⚠️', duration: 9000 });
       } else {
+        // Lo que volvió está de nuevo en el stock: la tienda (venta a comercios) lo vuelve a ofrecer
+        import('../../services/onlineStore').then((m) => m.refreshWholesaleStock()).catch(() => {});
         toast.success(solo ? 'Reparto cerrado: los cobros quedaron registrados y lo que volvió, en el stock' : 'Reparto rendido: los cobros quedaron registrados y lo que volvió, en el stock');
       }
       onDone(data.run);

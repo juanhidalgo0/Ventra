@@ -57,6 +57,8 @@ export async function savePreOrder(draft: PreOrderDraft): Promise<'saved' | 'que
   try {
     await api.put(`/preorders/${draft.id}`, draft);
     writeQueue(readQueue().filter((d) => d.id !== draft.id));
+    // Venta a comercios: la tienda muestra el stock libre (cambió lo comprometido)
+    import('./onlineStore').then((m) => m.refreshWholesaleStock()).catch(() => {});
     return 'saved';
   } catch (err: any) {
     if (!isNetworkError(err)) throw err;
@@ -80,6 +82,7 @@ export async function flushPreOrderQueue(): Promise<{ sent: number; failed: stri
         await api.put(`/preorders/${draft.id}`, draft, { silent: true } as any);
         sent++;
         writeQueue(readQueue().filter((d) => d.id !== draft.id));
+        import('./onlineStore').then((m) => m.refreshWholesaleStock()).catch(() => {});
       } catch (err: any) {
         if (isNetworkError(err)) break; // sigue sin señal: se reintenta después
         failed.push(`${draft.clientName || 'Pedido'}: ${err?.response?.data?.message || 'rechazado'}`);

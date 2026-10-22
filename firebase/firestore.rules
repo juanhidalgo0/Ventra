@@ -134,6 +134,12 @@ service cloud.firestore {
         allow get: if true;
         allow list, write: if storeOwner();
       }
+      // Venta a comercios: unidades libres de cada producto (stock menos lo comprometido en pedidos),
+      // para que la tienda no deje pedir de más. Lo escribe solo el dueño (refreshWholesaleStock).
+      match /stock/{docId} {
+        allow get: if true;
+        allow list, write: if storeOwner();
+      }
 
       match /orders/{orderId} {
         // Cualquier cliente puede hacer un pedido, con formato válido.

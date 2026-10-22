@@ -4,7 +4,7 @@ import { Globe, Check, X, Loader2, AlertTriangle, Link2, Truck, Store, MessageCi
 import api from '../../services/api';
 import { useOnlineOrders } from '../../services/onlineStoreOrders';
 import {
-  canAcceptOrder, lockOrderForReview, finishOrderReview, wholesaleClientOf, refreshWholesaleClient,
+  canAcceptOrder, lockOrderForReview, finishOrderReview, wholesaleClientOf, refreshWholesaleClient, refreshWholesaleStock,
   type StoreOrder,
 } from '../../services/onlineStore';
 import { readRouteDays, dayName } from '../../services/routeDays';
@@ -113,7 +113,7 @@ export default function OnlineInbox({ products, clients, onAccepted }: { product
       <div className="divide-y divide-slate-100">
         {pending.map((o) => (
           <InboxCard key={o.id} order={o} storeId={storeId} products={products} clients={clients} committed={committed}
-            onDone={() => { loadCommitted(); onAccepted(); }} />
+            onDone={() => { loadCommitted(); refreshWholesaleStock(); onAccepted(); }} />
         ))}
       </div>
     </section>

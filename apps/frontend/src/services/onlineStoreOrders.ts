@@ -18,9 +18,11 @@ interface OnlineOrdersState {
   ready: boolean;
   /** La tienda está publicada: recién ahí tienen sentido el botón y la sección de pedidos */
   published: boolean;
+  /** Venta a comercios activa (null = todavía no se sabe) */
+  wholesale: boolean | null;
 }
 
-export const useOnlineOrders = create<OnlineOrdersState>(() => ({ storeId: null, orders: [], ready: false, published: false }));
+export const useOnlineOrders = create<OnlineOrdersState>(() => ({ storeId: null, orders: [], ready: false, published: false, wholesale: null }));
 
 /** Pedidos que todavía nadie empezó a preparar */
 export const isNewOrder = (o: StoreOrder) => !o.stage || o.stage === 'NEW';
@@ -74,14 +76,16 @@ export async function startOnlineOrdersSync() {
     }
     retries = 0;
     const storeId = localStorage.getItem(STORE_ID_KEY);
-    if (!storeId) return; // este comercio todavía no tiene tienda online
+    // Este comercio todavía no tiene tienda online (tampoco venta a comercios)
+    if (!storeId) { useOnlineOrders.setState({ wholesale: false }); return; }
 
     let seen: Set<string>;
     try { seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { seen = new Set(); }
     let first = true;
 
     useOnlineOrders.setState({ storeId });
-    loadStoreConfig(storeId).then((c) => useOnlineOrders.setState({ published: !!c.isPublished })).catch(() => {});
+    startFreeStockTimer();
+    loadStoreConfig(storeId).then((c) => useOnlineOrders.setState({ published: !!c.isPublished, wholesale: !!c.wholesale?.enabled })).catch(() => {});
     unsubscribe = subscribeToStoreOrders(storeId, (orders) => {
       useOnlineOrders.setState({ orders, ready: true });
       const fresh = orders.filter((o) => isNewOrder(o) && !seen.has(o.id));
@@ -106,11 +110,28 @@ export async function startOnlineOrdersSync() {
   }
 }
 
+/**
+ * Venta a comercios: el stock libre de la tienda también cambia con las compras y las ventas del
+ * mostrador, que no pasan por los pedidos. Se revisa cada 3 minutos (solo escribe si cambió).
+ */
+let freeStockTimer: ReturnType<typeof setInterval> | null = null;
+function startFreeStockTimer() {
+  if (freeStockTimer) return;
+  import('../stores/businessStore').then(({ hasFeature }) => {
+    if (freeStockTimer || !(hasFeature('bulk') || hasFeature('preorders'))) return;
+    import('./onlineStore').then((m) => {
+      m.refreshWholesaleStock(5000);
+      freeStockTimer = setInterval(() => m.refreshWholesaleStock(0), 3 * 60000);
+    });
+  }).catch(() => {});
+}
+
 export function stopOnlineOrdersSync() {
   if (retry) { clearTimeout(retry); retry = null; }
+  if (freeStockTimer) { clearInterval(freeStockTimer); freeStockTimer = null; }
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
   }
-  useOnlineOrders.setState({ storeId: null, orders: [], ready: false, published: false });
+  useOnlineOrders.setState({ storeId: null, orders: [], ready: false, published: false, wholesale: null });
 }

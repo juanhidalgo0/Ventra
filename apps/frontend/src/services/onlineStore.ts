@@ -837,6 +837,7 @@ export async function publishOnlineCatalog(storeId: string, onProgress?: (done: 
   const images = await publishProductImages(storeId, online, onProgress);
   await syncCatalogToStore(storeId, online.map((p) => toOnlineProduct(p, images.get(p.id) || '')));
   await publishOnlinePromos(storeId, new Set(online.map((p) => String(p.id)))).catch((e) => console.warn('[OnlineStore] Promos sin publicar', e));
+  refreshWholesaleStock(0);
   return online.length;
 }
 
@@ -983,4 +984,61 @@ export async function syncWholesaleRouteDays(routeDays: Record<string, number[]>
   } catch (err) {
     console.warn('[OnlineStore] No se pudieron pasar los días de reparto a la tienda', err);
   }
+}
+
+// ─── Venta a comercios: stock libre en la tienda ───────────────────
+// La tienda le muestra a cada comercio lo que de verdad se puede pedir: el stock menos lo que ya
+// está en otros pedidos sin salir (comprometido). Va en un documento aparte (stock/free) para no
+// republicar el catálogo con cada pedido; se actualiza solo al aceptar, guardar o cancelar pedidos,
+// al rendir un reparto y cada pocos minutos (compras y ventas del mostrador). Arriba de 999 no se
+// informa el número exacto: alcanza para pedir y no muestra cuánto hay en el depósito.
+const FREE_CAP = 999;
+let freeLast = '';
+let freeTimer: ReturnType<typeof setTimeout> | null = null;
+let freeRunning: Promise<void> | null = null;
+
+async function publishFreeStock(): Promise<void> {
+  const storeId = localStorage.getItem(STORE_ID_KEY);
+  if (!storeId) return;
+  await ensureVentraSession();
+  const cfg = await loadStoreConfig(storeId);
+  if (!cfg.wholesale?.enabled || !cfg.isPublished || cfg.alwaysInStock) return;
+  const { default: api } = await import('./api');
+  const [{ data: cat }, { data: committed }] = await Promise.all([
+    api.get('/products/pos-catalog', { silent: true } as any),
+    api.get('/preorders/committed', { silent: true } as any),
+  ]);
+  const units: Record<string, number> = {};
+  for (const p of ((cat?.products || []) as any[]).slice(0, 12000)) {
+    if (p.unlimitedStock) continue;
+    const free = (Number(p.stock) || 0) - (Number(committed?.[p.id]) || 0);
+    units[p.id] = Math.min(FREE_CAP, Math.max(0, Math.round(free * 1000) / 1000));
+  }
+  const key = storeId + JSON.stringify(units);
+  if (key === freeLast) return;
+  await setDoc(doc(getDb(), 'ventra_stores', storeId, 'stock', 'free'), { units, updatedAt: serverTimestamp() });
+  freeLast = key;
+}
+
+/**
+ * Al activar la venta a comercios: la tienda y sus pedidos vuelven al menú si en la bienvenida no se
+ * eligió "Vender por internet" (ver INTENT_PATHS en businessStore), y la pantalla de Pedidos lo sabe.
+ */
+export function wholesaleTurnedOn(enabled: boolean) {
+  import('./onlineStoreOrders').then((m) => m.useOnlineOrders.setState({ wholesale: enabled })).catch(() => {});
+  if (!enabled) return;
+  import('../stores/businessStore').then(({ useBusinessStore }) => {
+    const { intents, setIntents } = useBusinessStore.getState();
+    if (intents && !intents.includes('online')) setIntents([...intents, 'online']);
+  }).catch(() => {});
+}
+
+/** Pide actualizar el stock libre de la tienda (se juntan los pedidos de unos segundos). Nunca falla. */
+export function refreshWholesaleStock(delayMs = 2500) {
+  if (freeTimer) clearTimeout(freeTimer);
+  freeTimer = setTimeout(() => {
+    freeTimer = null;
+    const run = () => publishFreeStock().catch((err) => console.warn('[OnlineStore] No se pudo actualizar el stock libre', err?.message || err));
+    freeRunning = (freeRunning || Promise.resolve()).then(run).finally(() => { freeRunning = null; });
+  }, delayMs);
 }

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Minus, Search, X, ClipboardList, WifiOff, ShoppingCart, Trash2, Loader2, ChevronDown, ChevronUp,
-    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays, UserPlus,
+    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays, UserPlus, Globe,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore, packOf } from '../../stores/posStore';
@@ -22,7 +22,7 @@ import {
 } from '../../services/preorders';
 import OnlineInbox from './OnlineInbox';
 import { useOnlineOrders } from '../../services/onlineStoreOrders';
-import { updateOrderStage } from '../../services/onlineStore';
+import { updateOrderStage, refreshWholesaleStock } from '../../services/onlineStore';
 
 /**
  * Preventa (distribuidora). En el celular del vendedor: tomar pedidos, con o sin señal.
@@ -243,6 +243,7 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
       const { orders: online, storeId } = useOnlineOrders.getState();
       const from = online.find((x) => x.preorderId === order.id);
       if (from && storeId) updateOrderStage(storeId, from.id, 'CANCELLED').catch(() => {});
+      refreshWholesaleStock();
     }
     catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo cancelar'); }
   };
@@ -294,7 +295,8 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
           </div>
         )}
 
-                {!isSeller && <OnlineInbox products={products} clients={clients} onAccepted={load} />}
+                {isAdmin && <WholesaleInvite />}
+        {!isSeller && <OnlineInbox products={products} clients={clients} onAccepted={load} />}
 
         {todayZones.length > 0 ? (
           <section data-tour="preventa-today" className="rounded-2xl bg-white border border-slate-200 overflow-hidden">
@@ -453,6 +455,39 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
             })}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Venta a comercios todavía apagada: que el dueño sepa que sus clientes pueden pedirle solos por la
+ * tienda, aunque en la bienvenida no haya elegido "Vender por internet" (y el menú no la muestre).
+ */
+const INVITE_KEY = 'ventra_wholesale_invite_closed';
+function WholesaleInvite() {
+  const navigate = useNavigate();
+  const wholesale = useOnlineOrders((s) => s.wholesale);
+  const [closed, setClosed] = useState(() => { try { return localStorage.getItem(INVITE_KEY) === '1'; } catch { return false; } });
+  if (wholesale !== false || closed) return null;
+  const close = () => { try { localStorage.setItem(INVITE_KEY, '1'); } catch { /* sin espacio */ } setClosed(true); };
+  const open = () => {
+    import('../../stores/businessStore').then(({ useBusinessStore }) => {
+      const { intents, setIntents } = useBusinessStore.getState();
+      if (intents && !intents.includes('online')) setIntents([...intents, 'online']);
+    }).catch(() => {});
+    navigate('/online-store?seccion=comercios');
+  };
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-white border border-emerald-200">
+      <Globe className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-bold text-slate-900 leading-tight">Que tus clientes te pidan solos</p>
+        <p className="text-[12.5px] text-slate-500 mt-0.5">Cada comercio recibe su link de la tienda, pide por bulto y el pedido te llega acá para aceptarlo.</p>
+        <div className="mt-2 flex items-center gap-3">
+          <button onClick={open} className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold cursor-pointer">Configurar</button>
+          <button onClick={close} className="text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer">Ahora no</button>
+        </div>
       </div>
     </div>
   );

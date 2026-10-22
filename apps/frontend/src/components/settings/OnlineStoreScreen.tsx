@@ -52,6 +52,8 @@ import {
   saveStoreConfig,
   isSubdomainAvailable,
   syncCatalogToStore,
+  refreshWholesaleStock,
+  wholesaleTurnedOn,
   toOnlineProduct,
   publishOnlinePromos,
   ORDER_CHANNELS,
@@ -184,7 +186,8 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
   const [saved, setSaved] = useState<Record<EditKey, any> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   useAutoTour('onlineStore', !isLoading);
-  const [tab, setTab] = useState<SectionId>('resumen');
+  // ?seccion=comercios (desde Pedidos): abre directo esa sección
+  const [tab, setTab] = useState<SectionId>(() => (new URLSearchParams(window.location.hash.split('?')[1] || '').get('seccion') === 'comercios' ? 'comercios' : 'resumen'));
   const [subdomainStatus, setSubdomainStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
 
   const [products, setProducts] = useState<any[]>([]);
@@ -290,6 +293,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
     setPublishing('Publicando productos…');
     const list = online.map((p) => toOnlineProduct(p, images.get(p.id) || ''));
     await syncCatalogToStore(storeId, list);
+    refreshWholesaleStock(0);
     await publishOnlinePromos(storeId, new Set(online.map((p) => String(p.id)))).catch((e) => console.warn('[OnlineStore] Promos sin publicar', e));
     setPublished(list);
     return true;
@@ -310,6 +314,7 @@ function OnlineStoreEditor({ storeId }: { storeId: string }) {
         // Venta a comercios: el recorrido (qué días se visita cada localidad) se publica con lo último
         if (next.wholesale?.enabled) patch.wholesale = { ...next.wholesale, routeDays: readRouteDays() };
         await saveStoreConfig(storeId, patch as Partial<StoreConfig>);
+        if (patch.wholesale) { wholesaleTurnedOn(!!patch.wholesale.enabled); refreshWholesaleStock(0); }
         setSaved(pickEditable(next));
         if (extra) setConfig(next);
       }

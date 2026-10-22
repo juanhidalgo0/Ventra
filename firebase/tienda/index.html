@@ -142,6 +142,7 @@
   .pk-txt b{font-size:15px}
   .pk-txt small{font-size:12.5px;color:var(--ink-3)}
   .pk-offer{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--line-2);font-size:13px;color:var(--ink-2);display:flex;gap:6px;align-items:center}
+  .pk-avail{margin-top:10px;font-size:13px;font-weight:600;color:var(--ink-2)}
   .ws-tag{display:block;margin-top:2px;font-size:11.5px;font-weight:600;color:var(--brand-ink)}
   .pk-offer.on{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
   .add{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .15s}
@@ -659,6 +660,12 @@ function offerOn(p){ var o=offerOf(p); return o&&unitsOf(p.id)>=Number(o.minQty)
 /* Precio de una unidad suelta o de la unidad dentro del bulto, con la oferta si corresponde */
 function perUnit(p,size){ var per=size>1&&p.pack?Number(p.pack.price)/size:Number(p.price)||0, o=offerOn(p); if(o&&Number(o.price)<per-1e-9) per=Number(o.price); return per; }
 function r2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
+/* Unidades que se pueden pedir de un producto (null = sin límite) y cuántas quedan sin contar la línea `except` */
+function availOf(p){ return p&&typeof p.avail==='number'?p.avail:null; }
+function roomFor(pid,except){ var a=availOf(S.byId[pid]); if(a===null) return Infinity; return a-Object.keys(S.cart).reduce(function(s,k){ return s+(pidOf(k)===pid&&k!==except?S.cart[k]*lineSize(k):0); },0); }
+function fullMsg(pid){ var a=availOf(S.byId[pid]); return a>0?'Ya tenés todo lo disponible: '+unitsWord(a):'No quedan disponibles'; }
+function unitsWord(n){ return n===1?'1 unidad':(Math.round(n*100)/100)+' unidades'; }
+function overStock(){ var ids={}; Object.keys(S.cart).forEach(function(k){ ids[pidOf(k)]=1; }); var bad=null; Object.keys(ids).forEach(function(id){ if(!bad && roomFor(id)< -1e-9) bad=S.byId[id]; }); return bad; }
 var DAY_NAMES=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 /* Próximo día de reparto a una localidad (desde mañana), según el recorrido que cargó el comercio */
 function nextRun(loc){
@@ -671,7 +678,7 @@ function nextRun(loc){
 function clientLoc(){ return (S.client&&S.client.locality)||S.wsLoc||''; }
 /* Repetir el último pedido del cliente (lo publica Ventra en su link) */
 function repeatLast(){
-  var items=(S.client&&S.client.lastItems)||[], n=0;
+  var items=(S.client&&S.client.lastItems)||[], n=0, capped=false;
   if(!items.length) return;
   // Reemplaza lo que hubiera en el pedido (sumarlo duplicaría las cantidades si lo toca dos veces)
   if(Object.keys(S.cart).length && !confirm('¿Cambiar lo que tenés en el pedido por tu último pedido?')) return;
@@ -681,6 +688,7 @@ function repeatLast(){
     var size=Number(it.packSize)||0, pk=packOf(p), units=Math.max(0,Math.round(Number(it.qty)||0));
     if(!units) return;
     // Viene en unidades: los bultos enteros van como bulto y lo que sobra, suelto
+    var av=availOf(p); if(av!==null && units>av){ units=Math.floor(av+1e-9); capped=true; if(!units) return; }
     if(size>1 && pk && Number(pk.size)===size){
       var b=Math.floor(units/size), rest=units-b*size;
       if(b){ var k=packKey(p.id); S.lines[k]={pack:size}; S.cart[k]=(S.cart[k]||0)+b; }
@@ -690,7 +698,7 @@ function repeatLast(){
   });
   saveCart(); S.products.forEach(function(p){ refreshProduct(p.id); }); refreshCartBar();
   if(!n){ toast('Esos productos ya no están disponibles'); return; }
-  toast('Cargamos tu último pedido: revisá las cantidades');
+  toast(capped?'Cargamos tu último pedido con lo que hay disponible: revisá las cantidades':'Cargamos tu último pedido: revisá las cantidades');
   S.step='cart'; renderCartSheet(); openSheet('cartSheet');
 }
 function loadCart(){
@@ -792,7 +800,9 @@ async function applyCoupon(btn){
   S.couponMsg=msg;
   renderCartSheet(); restoreForm();
 }
-function setQty(id,qty){
+function setQty(id,qty,force){
+  // No se pide más de lo que hay libre: se deja lo que entra y se avisa
+  if(!force && qty>(S.cart[id]||0)){ var room=roomFor(pidOf(id),id), max=Math.floor((room+1e-9)/lineSize(id)); if(qty>max){ qty=Math.max(S.cart[id]||0,max); toast(fullMsg(pidOf(id))); if(qty===(S.cart[id]||0)) return; } }
   if(qty<=0){ delete S.cart[id]; delete S.notes[id]; delete S.lines[id]; } else S.cart[id]=qty;
   saveCart(); refreshProduct(pidOf(id)); refreshCartBar();
   if($('#cartSheet').classList.contains('show') && S.step==='cart') renderCartSheet();
@@ -850,6 +860,14 @@ async function init(){
     // Pausados a mano ("hoy no hay"): se ven, pero no se pueden pedir
     var paused=cfg.pausedIds||[];
     list.forEach(function(p){ if(paused.indexOf(p.id)>=0){ p.inStock=false; p.paused=true; } });
+    // Venta a comercios: lo que de verdad se puede pedir (stock menos lo que ya está en otros pedidos).
+    // Es más nuevo que el catálogo: lo publica Ventra solo con cada pedido, reparto o compra.
+    if(cfg.wholesale&&cfg.wholesale.enabled&&!cfg.alwaysInStock){
+      try{
+        var fr=await doc.ref.collection('stock').doc('free').get(), fu=fr.exists&&fr.data().units;
+        if(fu) list.forEach(function(p){ var v=fu[p.id]; if(typeof v!=='number'||p.paused) return; p.avail=Math.max(0,v); p.inStock=p.avail>0; });
+      }catch(e){ console.warn('Stock libre no disponible',e); }
+    }
     // Foto por categoría: la usan los productos que todavía no tienen foto propia
     var ci=cfg.categoryImages||{};
     list.forEach(function(p){ if(!p.imageUrl){ var u=ci[p.category]||ci[p.parentCategory]; if(u) p.imageUrl=u; } });
@@ -1355,6 +1373,7 @@ function renderPackSheet(p){
     +'<div class="pd-price">'+money(pk.price)+'<small style="font:600 13px Inter;color:var(--ink-3)"> el bulto de '+size+' · '+money(p.price)+' la unidad</small></div>'
     +(p.description?'<p class="pd-desc">'+esc(p.description)+'</p>':'')
     +(o?'<div class="pk-offer'+(on?' on':'')+'">'+(on?ic('check')+'Oferta aplicada: ':'')+'Llevando '+o.minQty+' unidades o más (entre bultos y sueltas), cada una a '+money(o.price)+'</div>':'')
+    +(!out&&availOf(p)!==null&&availOf(p)<999?'<div class="pk-avail">Disponibles: '+unitsWord(availOf(p))+'</div>':'')
     +(out?'':'<div class="pk-rows">'
       +row('Bultos de '+size,money(r2(perPack*size))+' el bulto',packs,'pk-dec','pk-inc')
       +row('Unidades sueltas',money(perUnitP)+' cada una',units,'pu-dec','pu-inc')
@@ -1543,6 +1562,7 @@ function orderCode(){ var a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s=''; for(var i=
 
 async function sendOrder(btn){
   if(cantOrder()){ toast(cantOrder()); return; }
+  var ov=overStock(); if(ov){ toast('De '+ov.name+' quedan '+unitsWord(Math.max(0,availOf(ov)))+': ajustá la cantidad'); S.step='cart'; renderCartSheet(); return; }
   var c=S.cfg, name=$('#cName').value.trim(), phone=$('#cPhone').value.trim(), addrEl=$('#cAddr'), addr=addrEl?addrEl.value.trim():'', note=$('#cNote').value.trim();
   if(S.table){ S.delivery='TABLE'; addr='Mesa '+S.table; }
   var ok=true;
@@ -2258,14 +2278,14 @@ document.addEventListener('click',function(e){
     case 'pd-opt': if(!t.disabled){ var nEl=$('#pdNote'); S.pdNote=nEl?nEl.value:null; S.pdOpt=id; renderProductSheet(S.openProduct); } break;
     case 'pd-inc': var n1=$('#pdNote'); S.pdNote=n1?n1.value:null; S.pdQty++; renderProductSheet(S.openProduct); break;
     case 'pd-dec': if(S.pdQty>1){ var n2=$('#pdNote'); S.pdNote=n2?n2.value:null; S.pdQty--; renderProductSheet(S.openProduct); } break;
-    case 'pk-inc': S.pdPacks=(S.pdPacks||0)+1; renderProductSheet(S.openProduct); break;
+    case 'pk-inc': var pq=S.byId[S.openProduct], ps=Number(packOf(pq).size); if(((S.pdPacks||0)+1)*ps+(S.pdUnits||0)>(availOf(pq)===null?Infinity:availOf(pq))+1e-9){ toast(fullMsg(pq.id)); break; } S.pdPacks=(S.pdPacks||0)+1; renderProductSheet(S.openProduct); break;
     case 'pk-dec': S.pdPacks=Math.max(0,(S.pdPacks||0)-1); renderProductSheet(S.openProduct); break;
-    case 'pu-inc': S.pdUnits=(S.pdUnits||0)+1; renderProductSheet(S.openProduct); break;
+    case 'pu-inc': var uq=S.byId[S.openProduct], us=Number(packOf(uq).size); if((S.pdPacks||0)*us+(S.pdUnits||0)+1>(availOf(uq)===null?Infinity:availOf(uq))+1e-9){ toast(fullMsg(uq.id)); break; } S.pdUnits=(S.pdUnits||0)+1; renderProductSheet(S.openProduct); break;
     case 'pu-dec': S.pdUnits=Math.max(0,(S.pdUnits||0)-1); renderProductSheet(S.openProduct); break;
     case 'pk-save':
       var pp=S.byId[S.openProduct], pz=packOf(pp), kk=packKey(pp.id), had=qtyOf(pp.id);
       if(S.pdPacks>0) S.lines[kk]={pack:Number(pz.size)};
-      setQty(kk,S.pdPacks||0); setQty(pp.id,S.pdUnits||0);
+      setQty(kk,S.pdPacks||0,true); setQty(pp.id,S.pdUnits||0,true);
       closeSheets(); toast(S.pdPacks||S.pdUnits?(had?'Pedido actualizado':'Agregado al pedido'):'Sacado del pedido'); break;
     case 'ws-repeat': repeatLast(); break;
     case 'ws-loc': snapshotForm(); S.wsLoc=t.getAttribute('data-v'); renderCartSheet(); restoreForm(); break;

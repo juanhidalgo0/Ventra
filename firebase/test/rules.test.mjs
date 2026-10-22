@@ -105,6 +105,13 @@ test('venta a comercios: el link del cliente se lee con su código; listarlos o 
   await assertFails(setDoc(doc(as(null), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { clientId: 'otro' }));
   await assertFails(updateDoc(doc(as('intruso'), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { name: 'x' }));
 });
+test('venta a comercios: el stock libre lo lee cualquiera y lo escribe solo el dueño', async () => {
+  await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/stock/free'), { units: { p: 5 } }));
+  await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/stock/free')));
+  await assertFails(getDocs(collection(as(null), 'ventra_stores/owned/stock')));
+  await assertFails(setDoc(doc(as(null), 'ventra_stores/owned/stock/free'), { units: { p: 999 } }));
+  await assertFails(updateDoc(doc(as('intruso'), 'ventra_stores/owned/stock/free'), { units: {} }));
+});
 test('venta a comercios: pedido por reparto con el link, y nada de campos de la revisión', async () => {
   const ok = order({ delivery: 'REPARTO', address: 'Calle 1, Bavio', clientToken: 'TOKEN1234567890abcd', items: [{ productId: 'p', name: 'Coca', price: 120, qty: 2, packSize: 12 }], total: 240 });
   await assertSucceeds(addDoc(collection(as(null), 'ventra_stores/owned/orders'), ok));
