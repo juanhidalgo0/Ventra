@@ -222,6 +222,16 @@ export class PurchasesService {
     private ai: AiService,
   ) {}
 
+  async pending() {
+    const rows = await (this.prisma as any).purchase.findMany({
+      where: { status: 'PENDING' },
+      select: { id: true, total: true, invoiceNumber: true, createdAt: true, supplier: { select: { name: true } }, user: { select: { fullName: true } }, _count: { select: { items: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    return rows.map((p: any) => ({ id: p.id, total: p.total, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, supplierName: p.supplier?.name || '', userName: p.user?.fullName || '', items: p._count?.items || 0 }));
+  }
+
   async findAll() {
     return (this.prisma as any).purchase.findMany({
       include: { supplier: true, user: { select: { fullName: true } }, items: true },

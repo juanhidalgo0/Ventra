@@ -14,6 +14,12 @@ export class PurchasesController {
     return this.purchasesService.findAll();
   }
 
+  /** Boletas escaneadas que esperan revisión (las que se sacan con el celular): liviano, para avisar en la PC */
+  @Get('pending')
+  pending() {
+    return this.purchasesService.pending();
+  }
+
   @Get('suggested-replenishment')
   getSuggestedReplenishment() {
     return this.purchasesService.getSuggestedReplenishment();

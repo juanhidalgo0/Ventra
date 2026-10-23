@@ -128,7 +128,7 @@ Reglas:
 2. Si está escrito a mano, transcribí lo mejor posible.
 3. Ignorá descuentos globales y promociones ("Promoción…", "15% llevando…", "Paga solo"), recargos y resúmenes ("21 BULTOS EN CARRO", "KILOS", "TOTAL GENERAL").
 4. Cada fila: código, descripción, cantidad y total de la misma línea. Que el total de cada fila sea el de ese producto, no el de la fila de arriba o de abajo.
-5. "packageQuantity" es la cantidad de bultos de la columna CANTIDAD (o unidades si se vende suelto). "unitsPerPack" son las unidades por bulto (U.B.); si no hay, 1.
+5. "packageQuantity" es la cantidad de bultos de la columna CANTIDAD (o unidades si se vende suelto). "unitsPerPack" son las unidades por bulto, solo si hay una columna de unidades por bulto ("U.B.", "Unid. x bulto"); si no, 1. Columnas como "Presentación" ("1 de 30 UN", "1 de 100 GR", "4 x 1u.") describen el envase, no son unidades por bulto: no las uses. Control: si CANTIDAD x precio unitario da el total de la línea, la cantidad ya está en unidades y unitsPerPack es 1.
 6. "total" es el total neto de la línea, tal cual está impreso (por ejemplo "6.528,97"). Nunca pongas el precio unitario como total.
 7. Controlá: la suma de los totales con IVA (x1,21) y los descuentos del pie tiene que dar el total de la factura ("totalFacturaAPagar"). Si no da, revisá la alineación y corregí.
 8. "barcode" solo si aparece un código de barras (EAN) del producto; "sku" el código interno del proveedor si hay. Si no, vacíos.

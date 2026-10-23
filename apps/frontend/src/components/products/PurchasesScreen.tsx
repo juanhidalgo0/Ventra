@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PURCHASES_CHANGED_EVENT } from './ScannedPurchasesWatcher';
 import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt, Edit, Sparkles, Barcode } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewPurchaseScreen from './NewPurchaseScreen';
@@ -24,20 +25,25 @@ export default function PurchasesScreen() {
   };
 
   useEffect(() => {
-    if (view === 'list') {
-      loadPurchases();
-    }
+    if (view !== 'list') return;
+    loadPurchases();
+    // Las boletas que se escanean con el celular aparecen solas (ver ScannedPurchasesWatcher)
+    const onChanged = () => loadPurchases(true);
+    window.addEventListener(PURCHASES_CHANGED_EVENT, onChanged);
+    const t = window.setInterval(() => loadPurchases(true), 20000);
+    return () => { window.removeEventListener(PURCHASES_CHANGED_EVENT, onChanged); window.clearInterval(t); };
   }, [view]);
 
-  const loadPurchases = async () => {
-    setIsLoading(true);
+  /** quiet: actualización de fondo, sin cargando ni aviso de error */
+  const loadPurchases = async (quiet = false) => {
+    if (!quiet) setIsLoading(true);
     try {
-      const { data } = await api.get('/purchases');
+      const { data } = await api.get('/purchases', { silent: quiet } as any);
       setPurchases(data);
     } catch (err) {
-      toast.error('Error al cargar historial de compras');
+      if (!quiet) toast.error('Error al cargar historial de compras');
     } finally {
-      setIsLoading(false);
+      if (!quiet) setIsLoading(false);
     }
   };
 

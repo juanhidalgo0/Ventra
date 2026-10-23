@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, ShoppingBag } from 'lucide-react';
+import { Search, X, ShoppingBag, Camera, ChevronRight } from 'lucide-react';
+import ScanInvoiceSheet from './ScanInvoiceSheet';
 import api from '../../services/api';
 import { ScreenHeader, headerInput, Chips, Sheet, EmptyState, ListSkeleton, money, qty } from './ui';
 
@@ -13,10 +14,11 @@ export default function MobilePurchasesScreen() {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [selected, setSelected] = useState<any | null>(null);
   const [limit, setLimit] = useState(60);
+  const [scanning, setScanning] = useState(false);
 
-  useEffect(() => {
-    api.get('/purchases').then((r) => setRows((r.data || []).filter((p: any) => p.status !== 'CANCELLED'))).catch(() => { setRows([]); toast.error('No pudimos traer las compras'); });
-  }, []);
+  const load = () => api.get('/purchases').then((r) => setRows((r.data || []).filter((p: any) => p.status !== 'CANCELLED'))).catch(() => { setRows([]); toast.error('No pudimos traer las compras'); });
+  useEffect(() => { load(); }, []);
+  const pending = (rows || []).filter((p) => p.status === 'PENDING');
 
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const monthTotal = (rows || []).filter((p) => new Date(p.createdAt) >= monthStart).reduce((s, p) => s + p.total, 0);
@@ -56,12 +58,28 @@ export default function MobilePurchasesScreen() {
         </div>
       </ScreenHeader>
 
+      {/* Escanear la boleta: lo más usado desde el celular, bien a mano */}
+      <div className="px-4 pt-3">
+        <button onClick={() => setScanning(true)} className="w-full flex items-center gap-3 rounded-2xl bg-rose-600 text-white px-4 py-3.5 text-left active:scale-[0.99] shadow-sm">
+          <span className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Camera className="w-6 h-6" /></span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15.5px] font-bold">Escanear boleta</span>
+            <span className="block text-[12.5px] text-rose-100">Sacale foto a la factura del proveedor: se carga sola para revisar en la PC</span>
+          </span>
+          <ChevronRight className="w-5 h-5 text-rose-200 shrink-0" />
+        </button>
+        {pending.length > 0 && (
+          <p className="mt-2 text-[12.5px] text-amber-800 font-semibold">{pending.length === 1 ? '1 boleta escaneada espera' : `${pending.length} boletas escaneadas esperan`} que la confirmen en la PC.</p>
+        )}
+      </div>
+      <ScanInvoiceSheet open={scanning} onClose={() => setScanning(false)} onDone={load} />
+
       <div
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         onScroll={(e) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight > el.scrollHeight - 500 && limit < list.length) setLimit((l) => l + 60); }}
       >
         {rows === null ? <ListSkeleton /> : list.length === 0 ? (
-          <EmptyState icon={ShoppingBag} title={search ? 'Sin resultados' : 'No hay compras'} text={!search ? 'Las compras se cargan desde la PC, con la factura del proveedor.' : undefined} />
+          <EmptyState icon={ShoppingBag} title={search ? 'Sin resultados' : 'No hay compras'} text={!search ? 'Escaneá la boleta del proveedor con el botón de arriba, o cargala desde la PC.' : undefined} />
         ) : (
           <div className="px-4 py-3">
             <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
@@ -74,7 +92,9 @@ export default function MobilePurchasesScreen() {
                   </span>
                   <span className="text-right shrink-0">
                     <span className="block text-[14.5px] font-semibold text-slate-900 tabular-nums">{money(p.total)}</span>
-                    <span className={`block text-[11px] font-semibold ${p.paymentStatus === 'OWED' ? 'text-red-600' : 'text-emerald-600'}`}>{p.paymentStatus === 'OWED' ? 'A pagar' : 'Pagada'}</span>
+                    {p.status === 'PENDING'
+                      ? <span className="block text-[11px] font-semibold text-amber-700">Por revisar</span>
+                      : <span className={`block text-[11px] font-semibold ${p.paymentStatus === 'OWED' ? 'text-red-600' : 'text-emerald-600'}`}>{p.paymentStatus === 'OWED' ? 'A pagar' : 'Pagada'}</span>}
                   </span>
                 </button>
               ))}
