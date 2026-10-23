@@ -13,6 +13,8 @@ import { readRouteDays, dayName } from '../../services/routeDays';
  */
 
 const TEXT_KEY = 'ventra_zone_notice_text';
+/** Mandar con el mensaje armado o solo abrir el chat (lo de siempre): se recuerda en el equipo */
+const USE_TEXT_KEY = 'ventra_zone_notice_use_text';
 const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 const today = () => new Date().toISOString().slice(0, 10);
 const sentKey = (zone: string) => `ventra_zone_sent_${norm(zone)}_${today()}`;
@@ -38,6 +40,7 @@ export default function ZoneNotice({ zone, clients, onClose }: { zone: string; c
   const defaultText = wholesale
     ? '¡Hola {nombre}! {dia} pasamos por {zona}. Pasanos tu pedido acá: {link} o respondé este mensaje.'
     : '¡Hola {nombre}! {dia} pasamos por {zona}. ¿Qué te llevamos? Respondé este mensaje con tu pedido.';
+  const [useText, setUseText] = useState(() => { try { return localStorage.getItem(USE_TEXT_KEY) === '1'; } catch { return false; } });
   const [text, setText] = useState(() => { try { return localStorage.getItem(TEXT_KEY) || defaultText; } catch { return defaultText; } });
   const [sent, setSent] = useState<string[]>(() => readSent(zone));
   const [links, setLinks] = useState<Record<string, string>>({});
@@ -49,6 +52,7 @@ export default function ZoneNotice({ zone, clients, onClose }: { zone: string; c
   const usesLink = text.includes('{link}');
 
   useEffect(() => { try { localStorage.setItem(TEXT_KEY, text); } catch { /* sin espacio */ } }, [text]);
+  useEffect(() => { try { localStorage.setItem(USE_TEXT_KEY, useText ? '1' : '0'); } catch { /* sin espacio */ } }, [useText]);
 
   const messageFor = (c: any, link?: string) => {
     const put = (s: string, key: string, value: string) => s.split(key).join(value);
@@ -63,10 +67,11 @@ export default function ZoneNotice({ zone, clients, onClose }: { zone: string; c
     if (!wa) return;
     setBusy(c.id);
     let link = links[c.id];
-    if (usesLink && wholesale && !link) {
+    if (useText && usesLink && wholesale && !link) {
       try { link = await clientOrderLink(c); setLinks((m) => ({ ...m, [c.id]: link! })); } catch { link = ''; }
     }
-    window.open(`https://wa.me/${wa}?text=${encodeURIComponent(messageFor(c, link))}`, '_blank');
+    // Sin mensaje armado solo se abre el chat con el cliente
+    window.open(useText ? `https://wa.me/${wa}?text=${encodeURIComponent(messageFor(c, link))}` : `https://wa.me/${wa}`, '_blank');
     const next = Array.from(new Set([...sent, c.id]));
     setSent(next);
     try { localStorage.setItem(sentKey(zone), JSON.stringify(next)); } catch { /* sin espacio */ }
@@ -89,7 +94,14 @@ export default function ZoneNotice({ zone, clients, onClose }: { zone: string; c
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <div>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 cursor-pointer select-none">
+            <span>
+              <span className="block text-[13.5px] font-semibold text-slate-800">Con mensaje armado</span>
+              <span className="block text-[12px] text-slate-500">{useText ? 'Se abre el chat con el mensaje ya escrito.' : 'Apagado: solo se abre el chat con cada cliente.'}</span>
+            </span>
+            <input type="checkbox" checked={useText} onChange={(e) => setUseText(e.target.checked)} className="w-5 h-5 accent-emerald-600 shrink-0" />
+          </label>
+          {useText && <div>
             <p className="text-[12.5px] font-semibold text-slate-700 mb-1.5">Mensaje</p>
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={600}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[14px] outline-none focus:border-emerald-500 focus:bg-white resize-none" />
@@ -102,7 +114,7 @@ export default function ZoneNotice({ zone, clients, onClose }: { zone: string; c
                 {messageFor(sample, usesLink && wholesale ? 'ventra.store/…' : '')}
               </p>
             )}
-          </div>
+          </div>}
 
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
             {withPhone.map((c) => {
