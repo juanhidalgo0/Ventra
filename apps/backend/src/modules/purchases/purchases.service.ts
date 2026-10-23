@@ -10,6 +10,30 @@ import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { createPurchaseLot } from '../products/lots.util';
 import { InvoiceReadError, isPdfFile, isSheetFile, readInvoiceFile, type ParsedInvoice } from './invoice-reader';
 
+/**
+ * Precio de venta de un producto que ya existe cuando cambia su costo: el que se eligió en la
+ * compra o, si no vino ninguno, el que mantiene su margen (sube o baja en la misma proporción
+ * que el costo). Si el costo no cambió o no tenía costo, queda el que tenía.
+ */
+export function keepMarginSale(product: { costPrice: number; salePrice: number }, newCost: number, chosen: number | undefined, round = 10) {
+  if (chosen && chosen > 0) return chosen;
+  if (!(product.costPrice > 0) || !(newCost > 0) || Math.abs(newCost - product.costPrice) < 0.01) return product.salePrice;
+  const v = product.salePrice * (newCost / product.costPrice);
+  return round ? Math.ceil(v / round - 1e-9) * round : Math.round(v * 100) / 100;
+}
+
+/** El precio del bulto, mayorista y de gremio acompañan al precio de venta (mismo margen) */
+export function scaledPrices(product: { salePrice: number; packPrice?: number | null; wholesalePrice?: number | null; tradePrice?: number | null }, newSale: number, round = 10) {
+  if (!(product.salePrice > 0) || Math.abs(newSale - product.salePrice) < 0.01) return {};
+  const f = newSale / product.salePrice;
+  const r = (v: number) => (round ? Math.ceil((v * f) / round - 1e-9) * round : Math.round(v * f * 100) / 100);
+  const out: any = {};
+  if (product.packPrice) out.packPrice = r(product.packPrice);
+  if (product.wholesalePrice) out.wholesalePrice = r(product.wholesalePrice);
+  if (product.tradePrice) out.tradePrice = r(product.tradePrice);
+  return out;
+}
+
 /** Nombre de un producto nuevo tal como vino en la boleta, prolijo */
 const niceName = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
 
@@ -298,6 +322,7 @@ export class PurchasesService {
     const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
 
     const learned: { code?: string; name?: string; productId: string }[] = [];
+    const priceRound = (await this.scanSettings()).round;
     const purchase = await this.prisma.$transaction(async (tx) => {
       // 1. Create Purchase
       const newPurchase = await (tx as any).purchase.create({
@@ -393,10 +418,12 @@ export class PurchasesService {
         const stockBefore = stockAfter - totalUnitsAdded;
 
         // Update Product Stock, Cost Price and Sale Price
-        const updatedSalePrice = item.salePrice || product.salePrice;
+        // Sin un precio de venta elegido, se mantiene el margen que ya tenía el producto
+        const updatedSalePrice = keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
         const updateData: any = {
           costPrice: unitCostWithIva, // Store unit cost with IVA
           salePrice: updatedSalePrice,
+          ...scaledPrices(product, updatedSalePrice, priceRound),
           isActive: true // Reactivate if soft-deleted
         };
 
@@ -766,6 +793,7 @@ export class PurchasesService {
     const total = data.manualTotal !== undefined 
       ? Number(data.manualTotal) 
       : (data.items || []).reduce((acc, item) => acc + (item.quantity * item.cost), 0) * 1.21;
+    const priceRound = (await this.scanSettings()).round;
     const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
 
     const purchase = await this.prisma.$transaction(async (tx) => {
@@ -825,10 +853,11 @@ export class PurchasesService {
           const stockBefore = stockAfter - totalUnitsAdded;
 
           // Update Product Stock, Cost Price and Sale Price
-          const updatedSalePrice = item.salePrice || product.salePrice;
+          const updatedSalePrice = keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
           const updateData: any = {
             costPrice: unitCostWithIva,
             salePrice: updatedSalePrice,
+            ...scaledPrices(product, updatedSalePrice, priceRound),
             isActive: true
           };
 

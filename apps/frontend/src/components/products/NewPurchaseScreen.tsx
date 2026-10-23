@@ -80,6 +80,8 @@ interface PurchaseItem {
   discount3?: number;
   categoryName?: string;
   brandName?: string;
+  /** Costo y precio de venta que tenía el producto: si cambia el costo, la venta mantiene ese margen */
+  base?: { costPrice: number; salePrice: number };
   /** El renglón de la boleta (código y nombre del proveedor): el sistema lo aprende al confirmar */
   source?: { code?: string; name?: string };
   newProductData?: {
@@ -251,7 +253,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           presentationType: item.product?.presentationType || 'UNIT',
           margin: item.product ? Math.round(((item.product.salePrice - (cost * 1.21)) / (cost * 1.21)) * 100) : 0,
           salePrice: item.product?.salePrice || 0,
-          trackExpiry: Boolean(item.product?.trackExpiry)
+          trackExpiry: Boolean(item.product?.trackExpiry),
+          base: item.product ? { costPrice: item.product.costPrice || 0, salePrice: item.product.salePrice || 0 } : undefined,
         };
       });
       setItems(loadedItems);
@@ -559,6 +562,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         margin: initMargin,
         salePrice: initSale,
         trackExpiry: Boolean(product.trackExpiry),
+        base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
       }]);
     }
     setProductSearch('');
@@ -591,6 +595,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             };
           } else {
             const baseCost = useIvaGlobal ? c * 1.21 : c;
+            // El precio de venta acompaña al costo: se mantiene el margen que ya tenía el producto
+            if (updated.base && updated.base.costPrice > 0) updated.salePrice = keepMarginPrice(updated.base, c);
             updated.margin = baseCost > 0 ? Math.round(((updated.salePrice! - baseCost) / baseCost) * 100) : 0;
           }
         } else if (field === 'margin') {
@@ -639,7 +645,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const keepMarginPrice = (product: any, netCost: number) => {
     const auto = readPurchaseAuto();
     const base = useIvaGlobal ? netCost * 1.21 : netCost;
-    if (!auto.keepMargin || !(product.costPrice > 0) || !(base > 0)) return product.salePrice;
+    if (!auto.keepMargin || !(product.costPrice > 0) || !(base > 0) || Math.abs(base - product.costPrice) < 0.01) return product.salePrice;
     const v = product.salePrice * (base / product.costPrice);
     return auto.round ? Math.ceil(v / auto.round - 1e-9) * auto.round : Math.round(v * 100) / 100;
   };
@@ -680,6 +686,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           salePrice: keepMarginPrice(item.product, item.cost),
           margin: item.cost > 0 ? Math.round(((keepMarginPrice(item.product, item.cost) - (useIvaGlobal ? item.cost * 1.21 : item.cost)) / (useIvaGlobal ? item.cost * 1.21 : item.cost)) * 100) : 0,
           trackExpiry: Boolean(item.product.trackExpiry),
+          base: { costPrice: item.product.costPrice || 0, salePrice: item.product.salePrice || 0 },
           source: { code: item.sku || undefined, name: item.name },
         });
         if (item.doubtful) doubtful.push(`${item.product.name}: ${(item.reasons || []).join(', ')}`);
@@ -799,9 +806,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         buyFormat: product.unitsPerPack > 1 ? 'PACK' : 'UNIT',
         unitsPerPack: product.unitsPerPack || 1,
         presentationType: product.presentationType || 'UNIT',
-        margin: unmatched.cost > 0 ? Math.round(((product.salePrice - (unmatched.cost * 1.21)) / (unmatched.cost * 1.21)) * 100) : 0,
-        salePrice: product.salePrice,
+        salePrice: keepMarginPrice(product, unmatched.cost),
+        margin: unmatched.cost > 0 ? Math.round(((keepMarginPrice(product, unmatched.cost) - (useIvaGlobal ? unmatched.cost * 1.21 : unmatched.cost)) / (useIvaGlobal ? unmatched.cost * 1.21 : unmatched.cost)) * 100) : 0,
         trackExpiry: Boolean(product.trackExpiry),
+        base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
         source: { code: unmatched.sku || undefined, name: unmatched.name },
       };
 
