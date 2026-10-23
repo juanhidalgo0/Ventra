@@ -80,7 +80,7 @@ function Preview() {
       {view === 'cierre' && <CierreCajaModal session={session} onClose={() => setView(null)} onConfirm={async () => {}} />}
       {view === 'z' && <CierreDiaModal zReport={zReport} onClose={() => setView(null)} />}
       <AppToaster />
-      <HelpMenu pathname="/pos" side="left" />
+      <HelpMenu pathname="/pos" placement="floating" />
       {view === 'zh' && <CierreDiaModal zReport={zReport} isHistory onClose={() => setView(null)} />}
     </div>
   );

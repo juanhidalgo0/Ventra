@@ -36,12 +36,12 @@ export class AiService {
     return out;
   }
 
-  async call(kind: 'order' | 'invoice', body: Record<string, unknown>): Promise<{ result: any; left: number }> {
+  async call(kind: 'order' | 'invoice' | 'pricelist' | 'ask' | 'help', body: Record<string, unknown>): Promise<{ result: any; left: number; leftToday?: number }> {
     const creds = this.subscription.getDeviceCredentials();
     if (!creds) throw new BadRequestException('La IA necesita esta PC vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
     try {
       const { data } = await axios.post(`${FUNCTIONS_URL}/ventraAi`, { ...creds, kind, ...body }, { timeout: 150_000, maxBodyLength: 40_000_000 });
-      return { result: data.result, left: data.left };
+      return { result: data.result, left: data.left, leftToday: data.leftToday };
     } catch (err: any) {
       const status = err?.response?.status;
       const message = err?.response?.data?.error;
@@ -84,5 +84,27 @@ export class AiService {
       };
     });
     return { client: String(result?.cliente || ''), note: String(result?.aclaracion || ''), items, left };
+  }
+
+  /**
+   * Preguntale a tu negocio: la IA elige consultas fijas (InsightsService), la PC las corre y la
+   * IA redacta la respuesta con esos números. La base nunca sale entera de la PC.
+   */
+  async ask(question: string, run: (queries: any[]) => Promise<any[]>) {
+    const q = String(question || '').trim().slice(0, 500);
+    if (!q) throw new BadRequestException('Escribí tu pregunta.');
+    const { result: plan } = await this.call('ask', { step: 'plan', question: q });
+    const queries = Array.isArray(plan?.queries) ? plan.queries : [];
+    if (!queries.length) return { answer: String(plan?.noSePuede || 'Eso no lo puedo responder con los datos del sistema.'), data: [] };
+    const data = await run(queries);
+    const { result, left, leftToday } = await this.call('ask', { step: 'answer', question: q, data });
+    // Cada pregunta son dos usos (elegir las consultas y redactar)
+    return { answer: String(result?.answer || ''), data, left, questionsLeftToday: leftToday === undefined ? undefined : Math.floor(leftToday / 2) };
+  }
+
+  /** Ayuda adentro del sistema: cómo se hace algo en Ventra */
+  async help(messages: { role: string; content: string }[], screen?: string) {
+    const { result, left, leftToday } = await this.call('help', { messages: (messages || []).slice(-12), screen: String(screen || '').slice(0, 60) });
+    return { answer: String(result?.answer || ''), left, leftToday };
   }
 }

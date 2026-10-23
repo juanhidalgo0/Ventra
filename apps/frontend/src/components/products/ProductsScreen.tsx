@@ -12,6 +12,7 @@ import {
   Filter, 
   AlertTriangle, 
   RefreshCw,
+  FileSpreadsheet,
   Edit2,
   Trash2,
   ChevronRight,
@@ -32,6 +33,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
 import BulkPriceModal from './BulkPriceModal';
+import PriceListModal from './PriceListModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
 import BarcodeLabelModal from './BarcodeLabelModal';
 import VentraImportModal from './VentraImportModal';
@@ -52,6 +54,7 @@ export default function ProductsScreen() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [showPriceList, setShowPriceList] = useState(false);
   const [showVentraImport, setShowVentraImport] = useState(false);
   const [showRoundPrices, setShowRoundPrices] = useState(false);
   const [isRoundingPrices, setIsRoundingPrices] = useState(false);
@@ -895,6 +898,12 @@ export default function ProductsScreen() {
                 icon={<Percent className="w-3.5 h-3.5 text-rose-600" />}
                 items={[
                   {
+                    label: 'Lista de precios del proveedor',
+                    description: 'Subí la lista nueva y actualizá los costos de una',
+                    icon: <FileSpreadsheet className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowPriceList(true),
+                  },
+                  {
                     label: 'Ajuste masivo por %',
                     description: 'Aumentar o descontar precios por proveedor, rubro o marca',
                     icon: <Percent className="w-3.5 h-3.5 text-rose-500" />,
@@ -1709,6 +1718,10 @@ export default function ProductsScreen() {
           onClose={() => setShowBulkPriceModal(false)}
           onSuccess={() => loadProducts(true)}
         />
+      )}
+
+      {showPriceList && (
+        <PriceListModal onClose={() => setShowPriceList(false)} onSuccess={() => loadProducts(true)} />
       )}
 
       {showBarcodeLabels && (

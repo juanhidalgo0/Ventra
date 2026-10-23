@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
+import AskBusiness, { useCanAskBusiness } from '../common/AskBusiness';
 import { TrendingUp, Package, Users } from 'lucide-react';
 import api from '../../services/api';
 import { ScreenHeader, Chips, ListSkeleton, money, qty, METHOD_LABELS } from './ui';
@@ -23,6 +24,7 @@ const PAY_COLORS = ['#0E6E52', '#93AE25', '#34AC7E', '#D9A70F', '#9EDDC3', '#586
 
 /** Reportes en el celular: cuánto vendiste y ganaste en el período, qué se vende y quién compra. */
 export default function MobileReportsScreen() {
+  const isManager = useCanAskBusiness();
   const [range, setRange] = useState<Range>('MONTH');
   const [summary, setSummary] = useState<any | null>(null);
   const [dash, setDash] = useState<any | null>(null);
@@ -78,6 +80,7 @@ export default function MobileReportsScreen() {
       </ScreenHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
+        {isManager && <AskBusiness compact />}
         {!summary || !dash ? <ListSkeleton rows={4} /> : (
           <>
             <div className="grid grid-cols-3 gap-2">

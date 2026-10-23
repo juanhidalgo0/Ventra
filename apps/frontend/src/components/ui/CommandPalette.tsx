@@ -4,13 +4,15 @@ import {
   Search, Zap, PauseCircle, History, Calculator, Printer, HandCoins, ReceiptText,
   TrendingDown, Vault, Truck, User, Maximize2, Settings, ShoppingBag, LayoutDashboard,
   Package, Tag, ShoppingCart, ClipboardCheck, Wallet, Users, Receipt, BarChart3,
-  FileText, Globe, CornerDownLeft, type LucideIcon,
+  FileText, Globe, CornerDownLeft, Sparkles, MessageCircleQuestion, type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { usePlanStore } from '../../stores/planStore';
 import { useBusinessStore, menuAllows } from '../../stores/businessStore';
 import { lockShortcuts, shortcutsLocked } from '../../utils/shortcutLock';
 import Kbd from './Kbd';
+import { openAskBusiness } from '../common/AskBusiness';
+import { openHelpChat } from '../common/tour/HelpMenu';
 
 // Paleta de comandos (Ctrl+K): buscar cualquier acción o pantalla escribiendo.
 // Las acciones del POS no se duplican: la paleta dispara el mismo atajo de
@@ -98,6 +100,8 @@ export default function CommandPalette() {
       });
     }
 
+    list.push({ id: 'help-chat', label: 'Ayuda: preguntar cómo se hace algo', group: 'Ir a', icon: MessageCircleQuestion, keywords: 'ayuda como hago tutorial soporte', run: openHelpChat });
+
     // Las pantallas del panel solo se ofrecen a un usuario administrador.
     if (isAdmin) {
       const go: [string, string, LucideIcon, string?][] = [
@@ -117,6 +121,7 @@ export default function CommandPalette() {
         ['Tienda online', '/online-store', Globe, 'web catalogo'],
         ['Configuración', '/settings', Settings, 'ajustes opciones'],
       ];
+      if (planFeatures.caja) list.push({ id: 'ask-business', label: 'Preguntale a tu negocio', group: 'Ir a', icon: Sparkles, keywords: 'ia pregunta consulta cuanto vendi ganancia deuda', run: openAskBusiness });
       go.filter(([, path]) => path !== location.pathname && menuAllows(planFeatures, intents, path))
         .forEach(([label, path, icon, keywords]) => {
           list.push({ id: `go-${path}`, label, group: 'Ir a', icon, keywords, run: () => navigate(path) });

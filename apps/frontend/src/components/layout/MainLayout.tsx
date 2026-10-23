@@ -11,6 +11,7 @@ import api from '../../services/api';
 import { MangoLogo as GoDeliveryLogo } from '../common/MangoLogo';
 import CalculatorModal from '../pos/CalculatorModal';
 import CommandPalette from '../ui/CommandPalette';
+import { AskBusinessButton } from '../common/AskBusiness';
 import { wsService } from '../../services/websocket';
 import { getClientId } from '../../utils/clientId';
 import { isLogoutHeld } from '../../utils/logoutHold';
@@ -395,6 +396,7 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex items-center gap-3">
+            <AskBusinessButton />
             <GettingStartedPill />
             {pwa.mode === 'prompt' && (
               <button
@@ -405,6 +407,7 @@ export default function MainLayout({ children }: Props) {
                 <Download className="w-3.5 h-3.5" /> Instalar app
               </button>
             )}
+            <HelpMenu pathname={location.pathname} placement="header" />
             <NotificationBell />
             <UpdateBadge />
             <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
@@ -451,7 +454,7 @@ export default function MainLayout({ children }: Props) {
       </div>
 
       {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
-      <HelpMenu pathname={location.pathname} side={isPOS ? 'left' : 'right'} />
+      {isPOS && <HelpMenu pathname={location.pathname} placement="floating" />}
       <GuidedTour />
       <OfflineStartBanner />
       <ClientPreview />

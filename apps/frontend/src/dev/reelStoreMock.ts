@@ -192,3 +192,16 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
 export const ORDER_CHANNELS: { id: 'BOTH' | 'APP' | 'WHATSAPP'; title: string; text: string }[] = [
   { id: 'BOTH', title: 'App y WhatsApp', text: '' }, { id: 'APP', title: 'Solo la app', text: '' }, { id: 'WHATSAPP', title: 'Solo WhatsApp', text: '' },
 ];
+
+// Venta a comercios y revisión de pedidos: sin uso en el reel, solo para que importe igual que onlineStore
+export const canAcceptOrder = (_o: any, _now = Date.now()) => true;
+export const reviewInProgress = (_o: any) => false;
+export async function clientOrderLink(_client: any): Promise<string> { return 'https://ventra.store/demo'; }
+export async function finishOrderReview(_storeId: string, _orderId: string, _result: any) {}
+export async function lockOrderForCharge(_storeId: string, _orderId: string): Promise<boolean> { return true; }
+export async function lockOrderForReview(_storeId: string, _orderId: string): Promise<any> { return null; }
+export async function refreshWholesaleClient(_storeId: string, _clientId: string) {}
+export function refreshWholesaleStock(_delayMs = 2500) {}
+export async function syncWholesaleRouteDays(_routeDays: Record<string, number[]>): Promise<void> {}
+export async function wholesaleClientOf(_storeId: string, _token: string): Promise<any> { return null; }
+export function wholesaleTurnedOn(_enabled: boolean) {}

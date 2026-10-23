@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import AskBusiness, { useCanAskBusiness } from '../common/AskBusiness';
 import toast from 'react-hot-toast';
 import { 
   BarChart3, 
@@ -331,6 +332,7 @@ const ABCProgressChart = ({ data }: { data: any[] }) => {
 // ----------------------------------------------------
 
 export default function ReportsScreen() {
+  const isManager = useCanAskBusiness();
   const [activeReport, setActiveReport] = useState<string | null>(null);
   const [reportData, setReportData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -900,6 +902,7 @@ export default function ReportsScreen() {
 
       {/* Grid of Report Cards */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {isManager && <div className="mb-5"><AskBusiness /></div>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-6">
           {filteredReports.map((report) => (
             <button

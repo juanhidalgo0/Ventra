@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AskBusiness, { useCanAskBusiness } from '../common/AskBusiness';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, Tooltip } from 'recharts';
@@ -60,6 +61,7 @@ function timeAgo(date: Date | null, now: number) {
 
 
 export default function MobileHomeScreen() {
+  const canAsk = useCanAskBusiness();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [period, setPeriod] = useState<Period>('day');
@@ -226,6 +228,8 @@ export default function MobileHomeScreen() {
             ))}
           </div>
         )}
+
+        {canAsk && <AskBusiness compact />}
 
         <WorkOrdersHomeCard />
 

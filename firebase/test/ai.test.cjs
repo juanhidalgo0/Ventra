@@ -81,6 +81,50 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.throws(() => ai.imageBlocks([{ mediaType: "image/jpeg", data: "x".repeat(8_000_000) }]), /muy pesada/);
     assert.strictEqual(ai.imageBlocks([{ mediaType: "image/png", data: "data:image/png;base64,QUJD" }])[0].source.data, "QUJD");
   });
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const textClient = (text) => {
+    const calls = [];
+    return { calls, messages: { create: async (req) => { calls.push(req); return { stop_reason: "end_turn", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 10 } }; } } };
+  };
+  await t("tope por día: al llegar no llama a la IA, aunque quede del mes", async () => {
+    const db = fakeDb();
+    db.docs[`${today}_u5`] = { help: ai.DAILY.help };
+    const client = textClient("hola");
+    await assert.rejects(() => ai.handle({ db, logger, client }, "u5", { kind: "help", messages: [{ role: "user", content: "¿cómo cierro la caja?" }] }), /tope de consultas a la ayuda de hoy/);
+    assert.strictEqual(client.calls.length, 0);
+  });
+  await t("pregunta: reserva las dos llamadas y descarta consultas desconocidas", async () => {
+    const db = fakeDb();
+    db.docs[`${today}_u6`] = { ask: ai.DAILY.ask - 1 };
+    await assert.rejects(() => ai.handle({ db, logger, client: fakeClient({ queries: [], noSePuede: "" }) }, "u6", { kind: "ask", question: "¿cuánto vendí?" }), /preguntas de hoy/);
+    const db2 = fakeDb();
+    const client = fakeClient({ queries: [{ tipo: "ventas", desde: "2026-10-01", hasta: "2026-10-23", agrupar: "ninguno", orden: "", buscar: "", limite: 0, dias: 0 }, { tipo: "borrar_todo", desde: "", hasta: "", agrupar: "", orden: "", buscar: "", limite: 0, dias: 0 }], noSePuede: "" });
+    const out = await ai.handle({ db: db2, logger, client }, "u7", { kind: "ask", question: "¿cuánto vendí este mes?" });
+    assert.deepStrictEqual(out.result.queries.map((q) => q.tipo), ["ventas"]);
+    assert.ok(client.calls[0].system.includes(today), "le dice qué día es hoy");
+    assert.strictEqual(out.leftToday, ai.DAILY.ask - 1);
+    const answer = await ai.handle({ db: db2, logger, client: textClient("Vendiste **$ 100**.") }, "u7", { kind: "ask", step: "answer", question: "¿cuánto vendí?", data: [{ total: 100 }] });
+    assert.strictEqual(answer.result.answer, "Vendiste **$ 100**.");
+  });
+  await t("lista de precios: el PDF largo va en partes y la IA solo empareja con ids del catálogo", async () => {
+    const lines = Array.from({ length: 600 }, (_, i) => `${i} PRODUCTO ${i} $ ${100 + i},00`);
+    const client = fakeClient({ priceIncludesIva: "no", items: [{ code: "1", barcode: "", name: "PRODUCTO", price: 100, packUnits: 0 }] });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u8", { kind: "pricelist", mode: "rows", lines });
+    assert.strictEqual(client.calls.length, 3);
+    assert.strictEqual(out.result.items.length, 3);
+    assert.strictEqual(out.result.priceIncludesIva, "no");
+    const match = fakeClient({ matches: [{ i: 0, productId: "coca", confianza: "alta" }, { i: 1, productId: "inventado", confianza: "alta" }] });
+    const m = await ai.handle({ db: fakeDb(), logger, client: match }, "u8", { kind: "pricelist", mode: "match", items: [{ name: "COCA 2.25" }, { name: "OTRA" }], catalog });
+    assert.deepStrictEqual(m.result.matches.map((x) => x.productId), ["coca"]);
+  });
+  await t("ayuda: con la guía cacheada y la pantalla en la pregunta", async () => {
+    const client = textClient("Tocá **F8**.");
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u9", { kind: "help", screen: "/pos", messages: [{ role: "user", content: "¿cómo cierro la caja?" }] });
+    assert.strictEqual(out.result.answer, "Tocá **F8**.");
+    const req = client.calls[0];
+    assert.ok(req.system[0].cache_control && req.system[0].text.includes("dónde está cada cosa"));
+    assert.ok(req.messages[0].content.startsWith("[Pantalla: /pos]"));
+  });
   console.log(`\n${ok} bien, ${bad} con falla`);
   process.exit(bad ? 1 : 0);
 })();

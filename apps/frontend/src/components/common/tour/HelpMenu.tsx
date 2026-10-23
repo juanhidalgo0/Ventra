@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { GraduationCap, PlayCircle, Keyboard, X, ChevronRight, ChevronUp } from 'lucide-react';
+import { GraduationCap, PlayCircle, Keyboard, X, ChevronRight, ChevronUp, MessageCircleQuestion } from 'lucide-react';
 import { tourSteps, ROUTE_HELP, ROUTE_SHORTCUTS, type HelpEntry } from './tours';
 import { getTourCtx } from './tourContext';
 import { useTourStore } from './tourStore';
+import HelpChat from './HelpChat';
 
 /** A tour is offered only if at least one of its targets is on screen right now. */
 function isAvailable(entry: HelpEntry) {
@@ -19,15 +20,65 @@ function isAvailable(entry: HelpEntry) {
   );
 }
 
-export default function HelpMenu({ pathname, side }: { pathname: string; side: 'left' | 'right' }) {
-  const entries = ROUTE_HELP[pathname];
+/** Abre la ayuda con IA desde cualquier lado (por ejemplo la paleta Ctrl+K) */
+export const openHelpChat = () => window.dispatchEvent(new Event('ventra:help-chat'));
+
+/** ¿Hay un botón, link o campo debajo de este rectángulo? (sin contar la propia ayuda) */
+function coversSomething(root: HTMLElement, rect: DOMRect) {
+  const pad = 3;
+  const points: [number, number][] = [
+    [rect.left + pad, rect.top + pad], [rect.right - pad, rect.top + pad], [rect.left + pad, rect.bottom - pad],
+    [rect.right - pad, rect.bottom - pad], [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2],
+  ];
+  for (const [x, y] of points) {
+    const under = document.elementsFromPoint(x, y).find((el) => !root.contains(el));
+    if (under?.closest('button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])')) return true;
+  }
+  return false;
+}
+
+/**
+ * Botón de Ayuda: recorridos guiados de la pantalla, atajos y la ayuda con IA.
+ * header: en la barra de arriba (todas las pantallas menos la caja), así no tapa nada.
+ * floating: abajo a la izquierda en la caja; si queda encima de un botón o un campo, se esconde
+ * (se sigue abriendo con Ctrl+K → Ayuda).
+ */
+export default function HelpMenu({ pathname, placement }: { pathname: string; placement: 'header' | 'floating' }) {
+  const entries = ROUTE_HELP[pathname] || [];
   const shortcuts = ROUTE_SHORTCUTS[pathname];
   const start = useTourStore((s) => s.start);
   const tourActive = useTourStore((s) => !!s.activeTour);
   const [open, setOpen] = useState(false);
   const [available, setAvailable] = useState<HelpEntry[]>([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const floating = placement === 'floating';
+
+  useEffect(() => {
+    const onOpen = () => setShowChat(true);
+    window.addEventListener('ventra:help-chat', onOpen);
+    return () => window.removeEventListener('ventra:help-chat', onOpen);
+  }, []);
+
+  // Flotante: nunca encima de otro botón. Se revisa seguido (las pantallas cambian sin avisar)
+  useEffect(() => {
+    if (!floating) return;
+    const check = () => {
+      const root = rootRef.current;
+      const btn = buttonRef.current;
+      if (!root || !btn || open) return;
+      const r = btn.getBoundingClientRect();
+      if (!r.width) return;
+      setBlocked(coversSomething(root, r));
+    };
+    check();
+    const t = setInterval(check, 600);
+    window.addEventListener('resize', check);
+    return () => { clearInterval(t); window.removeEventListener('resize', check); };
+  }, [floating, open, pathname]);
 
   useEffect(() => setOpen(false), [pathname]);
 
@@ -49,31 +100,46 @@ export default function HelpMenu({ pathname, side }: { pathname: string; side: '
     return () => window.removeEventListener('keydown', onKey, true);
   }, [showShortcuts]);
 
-  if (!entries || tourActive) return null;
+  if (tourActive) return null;
 
   const onButton = () => {
     const list = entries.filter(isAvailable);
-    // One tour and nothing else to show: skip the menu.
-    if (list.length === 1 && !shortcuts) { start(list[0].tour); return; }
+    // Sin recorridos ni atajos en esta pantalla: directo a preguntarle a la ayuda
+    if (!list.length && !shortcuts) { setShowChat(true); return; }
     setAvailable(list);
     setOpen((o) => !o);
   };
 
   return (
     <>
-      <div ref={rootRef} data-help-menu className={`fixed bottom-5 z-40 ${side === 'left' ? 'left-5 hidden md:block' : 'right-5'}`}>
+      <div ref={rootRef} data-help-menu={placement}
+        className={floating
+          ? `fixed bottom-5 left-5 z-40 hidden md:block transition-opacity duration-150 ${blocked ? 'opacity-0 pointer-events-none' : ''}`
+          : 'relative'}>
         {/* Menú siempre montado: solo cambia su visibilidad con CSS (sin montar/desmontar
             ni librerías de animación), así no puede aparecer un cuadro de más al abrir/cerrar. */}
         <div
               aria-hidden={!open}
-              className={`keep-style absolute bottom-[52px] origin-bottom transition-[opacity,transform,visibility] duration-150 ease-out ${
-                open ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-1.5 invisible pointer-events-none'
-              } w-[310px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] p-2 ${side === 'left' ? 'left-0' : 'right-0'}`}
+              className={`keep-style absolute ${floating ? 'bottom-[52px] left-0 origin-bottom' : 'top-[42px] right-0 origin-top z-50'} transition-[opacity,transform,visibility] duration-150 ease-out ${
+                open ? 'opacity-100 translate-y-0 visible' : `opacity-0 ${floating ? 'translate-y-1.5' : '-translate-y-1.5'} invisible pointer-events-none`
+              } w-[310px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] p-2`}
             >
               <div className="px-3 pt-2.5 pb-2">
                 <p className="eyebrow">Ayuda</p>
                 <p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 mt-0.5">¿Qué querés aprender?</p>
               </div>
+              <button
+                onClick={() => { setOpen(false); setShowChat(true); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+              >
+                <MessageCircleQuestion className="w-5 h-5 text-rose-600 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100">Preguntale a la ayuda</span>
+                  <span className="block text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug">Escribí qué querés hacer y te dice los pasos</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+              </button>
+              {available.length > 0 && <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5 mx-2" />}
               {available.map((entry) => (
                 <button
                   key={entry.tour}
@@ -103,7 +169,21 @@ export default function HelpMenu({ pathname, side }: { pathname: string; side: '
               )}
         </div>
 
+        {!floating ? (
+          <button
+            ref={buttonRef}
+            onClick={onButton}
+            title="Ayuda: preguntale cómo se hace algo, recorridos guiados y atajos"
+            aria-expanded={open}
+            className={`flex items-center gap-1.5 h-8 px-2.5 sm:px-3 rounded-full border text-[12px] font-semibold transition-colors ${
+              open ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-slate-200 text-slate-700 hover:border-rose-300'
+            }`}
+          >
+            <GraduationCap className="w-3.5 h-3.5 text-rose-600" /> <span className="hidden sm:inline">Ayuda</span>
+          </button>
+        ) : (
         <button
+          ref={buttonRef}
           onClick={onButton}
           title="Ayuda y recorridos guiados"
           aria-expanded={open}
@@ -117,7 +197,10 @@ export default function HelpMenu({ pathname, side }: { pathname: string; side: '
           <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Ayuda</span>
           <ChevronUp className={`w-4 h-4 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
         </button>
+        )}
       </div>
+
+      {showChat && <HelpChat pathname={pathname} onClose={() => setShowChat(false)} />}
 
       {showShortcuts && shortcuts && createPortal(
         <div className="fixed inset-0 z-[9000] bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setShowShortcuts(false)}>

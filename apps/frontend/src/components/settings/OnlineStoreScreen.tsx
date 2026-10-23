@@ -734,12 +734,12 @@ function useLeftOfHelpButton() {
   const [right, setRight] = useState(20);
   useLayoutEffect(() => {
     const measure = () => {
-      const help = document.querySelector<HTMLElement>('[data-help-menu]');
+      const help = document.querySelector<HTMLElement>('[data-help-menu="floating"]');
       const r = help?.getBoundingClientRect();
       setRight(r && r.width > 0 ? Math.round(window.innerWidth - r.left + 12) : 20);
     };
     measure();
-    const help = document.querySelector<HTMLElement>('[data-help-menu]');
+    const help = document.querySelector<HTMLElement>('[data-help-menu="floating"]');
     const ro = help ? new ResizeObserver(measure) : null;
     if (help) ro!.observe(help);
     window.addEventListener('resize', measure);
