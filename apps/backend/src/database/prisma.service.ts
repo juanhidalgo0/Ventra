@@ -351,6 +351,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               WHEN OLD.sale_price IS NOT NEW.sale_price OR OLD.pack_price IS NOT NEW.pack_price
               BEGIN UPDATE products SET prev_sale_price = OLD.sale_price, prev_pack_price = OLD.pack_price,
                 price_changed_at = CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER) WHERE id = NEW.id; END`);
+            // Productos que un empleado dio de alta desde la caja (código no registrado): el dueño
+            // los revisa y decide si los deja así, los edita o los borra. id = el del producto.
+            // Tabla aparte (no una columna de products): se sincroniza sola entre las cajas.
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_reviews" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "product_name" TEXT NOT NULL,
+              "user_name" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,

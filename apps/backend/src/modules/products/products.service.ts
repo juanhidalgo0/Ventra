@@ -676,6 +676,35 @@ export class ProductsService {
     return product;
   }
 
+  /** Lo dio de alta un empleado: queda en la lista para que el dueño lo revise (ver product_reviews) */
+  async markForReview(product: { id: string; name: string }, userId?: string) {
+    const user = userId ? await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } }) : null;
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO product_reviews (id, product_name, user_name, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(id) DO UPDATE SET product_name = excluded.product_name, user_name = excluded.user_name`,
+      product.id, String(product.name || '').slice(0, 200), user?.fullName || user?.username || null,
+    );
+  }
+
+  /** Los que faltan revisar, con lo que tiene hoy el producto (si lo borraron, sale solo de la lista) */
+  async pendingReviews() {
+    const rows: any[] = await this.prisma.$queryRawUnsafe(
+      `SELECT r.id, r.product_name AS productName, r.user_name AS userName, r.created_at AS createdAt,
+              p.name, p.barcode, CAST(p.sale_price AS REAL) AS salePrice, CAST(p.cost_price AS REAL) AS costPrice, CAST(p.stock AS REAL) AS stock,
+              (p.image_url IS NOT NULL AND p.image_url <> '') AS hasImage, p.is_active AS isActive
+         FROM product_reviews r LEFT JOIN products p ON p.id = r.id
+        ORDER BY r.created_at DESC LIMIT 100`,
+    );
+    const gone = rows.filter((r) => r.name == null || !Number(r.isActive)).map((r) => r.id);
+    if (gone.length) await this.prisma.$executeRawUnsafe(`DELETE FROM product_reviews WHERE id IN (${gone.map(() => '?').join(',')})`, ...gone);
+    return this.withImageLinks(rows.filter((r) => !gone.includes(r.id)).map((r) => ({ ...r, hasImage: !!Number(r.hasImage), isActive: undefined })));
+  }
+
+  async reviewDone(id: string) {
+    await this.prisma.$executeRawUnsafe(`DELETE FROM product_reviews WHERE id = ?`, id);
+    return { ok: true };
+  }
+
   async create(createProductDto: any) {
     const { additionalBarcodes, kitItems, ...data } = createProductDto;
     

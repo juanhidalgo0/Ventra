@@ -150,8 +150,25 @@ export class ProductsController {
   }
 
   @Post()
-  create(@Body() data: any) {
-    return this.productsService.create(data);
+  async create(@Body() data: any, @Request() req) {
+    const product = await this.productsService.create(data);
+    // Lo cargó un empleado (desde la caja, un código que no estaba): queda para que lo revise el dueño
+    if (req.user?.role !== 'ADMIN' && product?.id) await this.productsService.markForReview(product, req.user?.sub).catch(() => {});
+    return product;
+  }
+
+  /** Productos que cargaron los empleados y el dueño todavía no revisó */
+  @Get('reviews/pending')
+  @Roles(...MANAGERS)
+  pendingReviews() {
+    return this.productsService.pendingReviews();
+  }
+
+  /** El dueño lo revisó (lo dejó como estaba, lo editó o lo borró): sale de la lista */
+  @Post('reviews/:id/done')
+  @Roles(...MANAGERS)
+  reviewDone(@Param('id') id: string) {
+    return this.productsService.reviewDone(id);
   }
 
   @Patch(':id')

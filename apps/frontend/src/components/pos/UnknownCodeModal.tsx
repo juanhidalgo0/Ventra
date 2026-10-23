@@ -27,6 +27,8 @@ interface Props {
   code: string;
   /** Dueño o encargado: puede dar de alta productos */
   canCreate: boolean;
+  /** Lo carga un empleado: se avisa que el dueño lo va a revisar */
+  reviewNote?: boolean;
   categories: { id: string; name: string }[];
   onClose: () => void;
   /** Producto recién creado: va al ticket */
@@ -38,7 +40,7 @@ interface Props {
 const input = 'w-full h-12 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-850 text-[16px] font-semibold text-slate-900 dark:text-white outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-all placeholder:text-slate-300 placeholder:font-normal';
 const label = 'block text-[13px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5';
 
-export default function UnknownCodeModal({ code, canCreate, categories, onClose, onCreated, onSell }: Props) {
+export default function UnknownCodeModal({ code, canCreate, reviewNote, categories, onClose, onCreated, onSell }: Props) {
   const [mode, setMode] = useState<'create' | 'sell'>(canCreate ? 'create' : 'sell');
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
@@ -227,6 +229,9 @@ export default function UnknownCodeModal({ code, canCreate, categories, onClose,
           </button>
         </div>
 
+        {reviewNote && mode === 'create' && (
+          <p className="mt-3 text-center text-[12px] text-slate-500">El dueño recibe un aviso para revisar el producto que cargues.</p>
+        )}
         {canCreate && (
           <button onClick={() => setMode(mode === 'create' ? 'sell' : 'create')}
             className="mt-3 w-full text-center text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 underline underline-offset-2">

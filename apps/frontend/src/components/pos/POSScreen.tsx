@@ -111,9 +111,10 @@ export default function POSScreen() {
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
-  // Código que no está en el inventario: se resuelve sin salir de la venta. El dueño o el
-  // encargado lo carga ahí mismo; el cajero lo vende con el precio a mano (ver UnknownCodeModal).
-  const canCreateProducts = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+  // Código que no está en el inventario: se resuelve sin salir de la venta. Cualquiera lo carga ahí
+  // mismo (nombre y foto según el código); si lo carga un empleado, el dueño recibe el aviso para
+  // revisarlo (ver ProductReviews). También se puede vender con el precio a mano sin cargarlo.
+  const canCreateProducts = true;
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const notifyUnknownCode = (code: string) => setUnknownCode(code);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -3541,6 +3542,7 @@ export default function POSScreen() {
           <UnknownCodeModal
             code={unknownCode}
             canCreate={canCreateProducts}
+            reviewNote={!isAdmin}
             categories={cachedCategories || []}
             onClose={() => setUnknownCode(null)}
             onCreated={(product) => {

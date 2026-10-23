@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ProductReviewWatcher from '../products/ProductReviews';
 import ScannedPurchasesWatcher from '../products/ScannedPurchasesWatcher';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Download, Loader2, WifiOff, RefreshCw, Menu, X } from 'lucide-react';
@@ -331,7 +332,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /><ProductReviewWatcher /></MobileShell>;
   }
 
   return (
@@ -444,6 +445,7 @@ export default function MainLayout({ children }: Props) {
           <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
             <PlanGate mobile={false}>{children}</PlanGate>
             <ScannedPurchasesWatcher />
+            <ProductReviewWatcher />
           </div>
         </main>
       </div>
