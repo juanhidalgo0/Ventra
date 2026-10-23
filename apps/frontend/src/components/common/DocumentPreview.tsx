@@ -183,7 +183,8 @@ export default function DocumentPreview({
         </div>
 
         {help && <p className="px-5 py-2 text-[12px] text-slate-600 bg-slate-50 border-b border-slate-200">{help}</p>}
-        {notice && <div className="border-b border-slate-200">{notice}</div>}
+        {/* Con scroll propio: un aviso largo (Datos de la hoja) no tapa las hojas ni se corta */}
+        {notice && <div className="border-b border-slate-200 max-h-[48vh] overflow-y-auto custom-scrollbar shrink-0">{notice}</div>}
 
         <div ref={bodyRef} className="flex-1 overflow-auto bg-slate-200/70 py-5 custom-scrollbar">
           {loading ? (

@@ -312,8 +312,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
         setIsSearchingImage(true);
         setSuggestedImageUrl(null);
         try {
-          const { data } = await api.get(`/products/search-external-image/${barcode}`);
-          if (data.imageUrl) {
+          // Nombre y foto según los supermercados: el nombre solo si es un producto nuevo y todavía no se escribió
+          const { data } = await api.get(`/products/barcode-info/${barcode}`, { silent: true, timeout: 12000 } as any);
+          if (data?.name && !product?.id) setFormData((prev) => (prev.name.trim() ? prev : { ...prev, name: data.name }));
+          if (data?.imageUrl) {
             setSuggestedImageUrl(data.imageUrl);
           }
         } catch (err) {

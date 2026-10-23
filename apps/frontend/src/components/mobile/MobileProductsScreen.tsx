@@ -456,6 +456,11 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   const [category, setCategory] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // Con el código de barras: nombre y foto según los supermercados (ver /products/barcode-info)
+  const [foundImage, setFoundImage] = useState<string | null>(null);
+  const [useFound, setUseFound] = useState(true);
+  const [looking, setLooking] = useState(false);
+  const nameTouched = useRef(false);
   // Gastronomía: sin stock (se cocina a pedido) y con tamaños a distinto precio
   const isFood = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
   const [withOptions, setWithOptions] = useState(false);
@@ -465,6 +470,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   useEffect(() => {
     if (open) {
       setName(''); setDescription(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null);
+      setFoundImage(null); setUseFound(true); nameTouched.current = false;
       setWithOptions(false); setOptionName(isFood ? 'Tamaño' : 'Opción');
       setOptions(isFood ? [{ label: 'Chica', price: '' }, { label: 'Grande', price: '' }] : [{ label: '', price: '' }, { label: '', price: '' }]);
     }
@@ -508,6 +514,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
         stock: parseAmount(stock),
         categoryId: category?.id,
         ...(isFood ? { unlimitedStock: true } : {}),
+        ...(foundImage && useFound ? { imageUrl: foundImage } : {}),
       });
       toast.success('Producto creado');
       onCreated({ ...data, category: data.category || category });
@@ -520,17 +527,30 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
 
   const onCode = useCallback((code: string) => { setBarcode(code); setScanning(false); }, []);
 
+  useEffect(() => {
+    const code = barcode.trim();
+    setFoundImage(null);
+    if (!open || !/^\d{8,14}$/.test(code)) { setLooking(false); return; }
+    let alive = true;
+    const t = setTimeout(() => {
+      setLooking(true);
+      api.get(`/products/barcode-info/${code}`, { silent: true, timeout: 12000 } as any)
+        .then(({ data }) => {
+          if (!alive) return;
+          if (data?.name) setName((current) => (nameTouched.current && current.trim() ? current : data.name));
+          if (data?.imageUrl) { setFoundImage(data.imageUrl); setUseFound(true); }
+        })
+        .catch(() => {})
+        .finally(() => { if (alive) setLooking(false); });
+    }, 500);
+    return () => { alive = false; clearTimeout(t); };
+  }, [barcode, open]);
+
   return (
     <>
       <Sheet open={open} onClose={onClose} title="Nuevo producto" footer={<PrimaryButton onClick={save} loading={busy}>Crear producto</PrimaryButton>}>
         <div className="space-y-4 pt-1">
-          <Field label="Nombre">
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder={isFood ? 'Pizza muzzarella' : 'Coca-Cola 2,25 L'} className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
-          </Field>
-          <Field label="Descripción (opcional)">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2} placeholder={isFood ? 'Salsa de tomate, muzzarella y aceitunas' : 'Se ve en la tienda online'} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white resize-none" />
-          </Field>
-{!isFood && (
+          {!isFood && (
           <Field label="Código de barras (opcional)">
             <div className="flex gap-2">
               <input value={barcode} onChange={(e) => setBarcode(e.target.value)} inputMode="numeric" placeholder="7790895000997" className="flex-1 min-w-0 h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white tabular-nums" />
@@ -540,8 +560,22 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
                 </button>
               )}
             </div>
+            {looking && <p className="text-[12px] text-slate-500 mt-1.5">Buscando el nombre y la foto…</p>}
+            {foundImage && (
+              <label className="mt-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <img src={foundImage} alt="" className="w-12 h-12 object-contain rounded-lg bg-slate-50" />
+                <span className="flex-1 text-[13px] text-slate-700">Usar esta foto</span>
+                <input type="checkbox" checked={useFound} onChange={(e) => setUseFound(e.target.checked)} className="w-5 h-5 accent-rose-600" />
+              </label>
+            )}
           </Field>
           )}
+          <Field label="Nombre">
+            <input value={name} onChange={(e) => { nameTouched.current = true; setName(e.target.value); }} autoFocus={isFood} placeholder={isFood ? 'Pizza muzzarella' : 'Coca-Cola 2,25 L'} className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white" />
+          </Field>
+          <Field label="Descripción (opcional)">
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2} placeholder={isFood ? 'Salsa de tomate, muzzarella y aceitunas' : 'Se ve en la tienda online'} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[15px] outline-none focus:border-rose-500 focus:bg-white resize-none" />
+          </Field>
           <button type="button" onClick={() => setWithOptions(!withOptions)} className="w-full flex items-center justify-between gap-3 text-left rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3">
             <span>
               <span className="block text-[14px] font-semibold text-slate-800">{isFood ? 'Tiene tamaños' : 'Tiene opciones'} con distinto precio</span>

@@ -21,6 +21,9 @@ export default function MobileClientsScreen() {
   const [clients, setClients] = useState<any[] | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('DEBT');
+  // Zona (localidad) del cliente: '' = todas
+  const [zone, setZone] = useState('');
+  const localities = useMemo(() => Array.from(new Set((clients || []).map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[], [clients]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -36,9 +39,10 @@ export default function MobileClientsScreen() {
     const t = search.trim().toLowerCase();
     return (clients || [])
       .filter((c) => (filter === 'DEBT' ? c.balance > 0.5 : true))
+      .filter((c) => !zone || (c.locality || '').trim() === zone)
       .filter((c) => !t || `${c.name} ${c.dni || ''} ${c.phone || ''}`.toLowerCase().includes(t))
       .sort((a, b) => (filter === 'DEBT' ? b.balance - a.balance : a.name.localeCompare(b.name, 'es')));
-  }, [clients, search, filter]);
+  }, [clients, search, filter, zone]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -70,6 +74,13 @@ export default function MobileClientsScreen() {
         <div className="mt-3">
           <Chips<Filter> options={[{ id: 'DEBT', label: 'Deben', count: debtors.length }, { id: 'ALL', label: 'Todos', count: clients?.length }]} value={filter} onChange={setFilter} />
         </div>
+        {localities.length > 0 && (
+          <select value={zone} onChange={(e) => setZone(e.target.value)} aria-label="Zona"
+            className="mt-2.5 w-full h-10 px-3 rounded-xl bg-white/10 ring-1 ring-inset ring-white/20 text-[13.5px] font-semibold text-white outline-none">
+            <option value="" className="text-slate-900">Todas las zonas</option>
+            {localities.map((l) => <option key={l} value={l} className="text-slate-900">{l}</option>)}
+          </select>
+        )}
       </ScreenHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">

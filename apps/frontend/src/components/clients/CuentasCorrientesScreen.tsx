@@ -62,6 +62,8 @@ export default function CuentasCorrientesScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'debt' | 'credit' | 'none'>('all');
+  // Zona (localidad) del cliente: '' = todas
+  const [zone, setZone] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   // New Client Modal States
@@ -231,7 +233,7 @@ export default function CuentasCorrientesScreen() {
     const nameMatch = c.name?.toLowerCase().includes(searchQuery.toLowerCase());
     const dniMatch = c.dni?.toLowerCase().includes(searchQuery.toLowerCase());
     const phoneMatch = c.phone?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesSearch = nameMatch || dniMatch || phoneMatch;
+    const matchesSearch = (nameMatch || dniMatch || phoneMatch) && (!zone || (c.locality || '').trim() === zone);
     
     if (activeFilter === 'debt') return matchesSearch && c.balance > 0;
     if (activeFilter === 'credit') return matchesSearch && c.balance < 0;
@@ -322,6 +324,13 @@ export default function CuentasCorrientesScreen() {
                 {f.label} ({f.count})
               </button>
             ))}
+            {localities.length > 0 && (
+              <select value={zone} onChange={(e) => setZone(e.target.value)} aria-label="Zona"
+                className={`h-9 px-3 rounded-xl border text-[11px] font-bold outline-none cursor-pointer ${zone ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                <option value="">Todas las zonas</option>
+                {localities.map((l) => <option key={l} value={l}>{l} ({clients.filter((c: any) => (c.locality || '').trim() === l).length})</option>)}
+              </select>
+            )}
           </div>
           <button 
             onClick={() => setShowListModal(true)}
