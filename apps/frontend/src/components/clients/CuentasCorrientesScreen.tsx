@@ -18,7 +18,9 @@ import {
   Minimize2,
   Trash2,
   Link2,
+  MessageCircle,
 } from 'lucide-react';
+import ZoneNotice from './ZoneNotice';
 import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -64,6 +66,10 @@ export default function CuentasCorrientesScreen() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'debt' | 'credit' | 'none'>('all');
   // Zona (localidad) del cliente: '' = todas
   const [zone, setZone] = useState('');
+  // Aviso por WhatsApp a los clientes de la zona elegida
+  const [noticeZone, setNoticeZone] = useState<string | null>(null);
+  // El aviso va a todos los de la zona, deban o no
+  const zoneClients = clients.filter((c: any) => zone && (c.locality || '').trim() === zone);
   const [isLoading, setIsLoading] = useState(true);
 
   // New Client Modal States
@@ -331,7 +337,14 @@ export default function CuentasCorrientesScreen() {
                 {localities.map((l) => <option key={l} value={l}>{l} ({clients.filter((c: any) => (c.locality || '').trim() === l).length})</option>)}
               </select>
             )}
+            {zone && (
+              <button onClick={() => setNoticeZone(zone)}
+                className="h-9 px-3.5 rounded-xl bg-[#25D366] hover:bg-[#1fbe5b] text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer">
+                <MessageCircle className="w-3.5 h-3.5" /> Avisar a {zoneClients.length}
+              </button>
+            )}
           </div>
+          {noticeZone && <ZoneNotice zone={noticeZone} clients={zoneClients} onClose={() => setNoticeZone(null)} />}
           <button 
             onClick={() => setShowListModal(true)}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all active:scale-[0.97] cursor-pointer shrink-0"

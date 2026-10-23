@@ -4,6 +4,7 @@ import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, Arrow
 import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { hasFeature } from '../../stores/businessStore';
 import api from '../../services/api';
+import ZoneNotice from '../clients/ZoneNotice';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount } from './ui';
 import { useCashSession } from './useCashSession';
 import { getPaymentMethods } from './checkout';
@@ -23,6 +24,9 @@ export default function MobileClientsScreen() {
   const [filter, setFilter] = useState<Filter>('DEBT');
   // Zona (localidad) del cliente: '' = todas
   const [zone, setZone] = useState('');
+  const [notice, setNotice] = useState(false);
+  // El aviso va a todos los de la zona, deban o no
+  const zoneClients = useMemo(() => (clients || []).filter((c: any) => zone && (c.locality || '').trim() === zone), [clients, zone]);
   const localities = useMemo(() => Array.from(new Set((clients || []).map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[], [clients]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -81,6 +85,12 @@ export default function MobileClientsScreen() {
             {localities.map((l) => <option key={l} value={l} className="text-slate-900">{l}</option>)}
           </select>
         )}
+        {zone && (
+          <button onClick={() => setNotice(true)} className="mt-2 w-full h-10 rounded-xl bg-[#25D366] text-white text-[13.5px] font-bold flex items-center justify-center gap-1.5 active:scale-[0.99]">
+            <MessageCircle className="w-4 h-4" /> Avisar a los {zoneClients.length} de {zone}
+          </button>
+        )}
+        {notice && zone && <ZoneNotice zone={zone} clients={zoneClients} onClose={() => setNotice(false)} />}
       </ScreenHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
