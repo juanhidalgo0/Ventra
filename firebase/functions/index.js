@@ -2134,6 +2134,23 @@ exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY], maxInstances: 10
   }
 });
 
+// ─── Catálogo compartido de códigos de barras (ver barcodes.js) ───
+const barcodes = require("./barcodes");
+exports.ventraBarcodes = onRequest({ maxInstances: 20, timeoutSeconds: 30, memory: "256MiB" }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret, action } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  try {
+    if (action === "get") return res.status(200).json(await barcodes.get(db, req.body.barcodes));
+    if (action === "confirm") return res.status(200).json(await barcodes.confirm(db, uid, req.body.items));
+    return res.status(400).json({ error: "Acción inválida" });
+  } catch (err) {
+    logger.error(`Ventra códigos (${uid}): error`, err);
+    return res.status(500).json({ error: "Error del catálogo compartido" });
+  }
+});
+
 // ─── Instagram de Ventra atendido solo (ver instagram.js) ───
 // Mensajes directos por webhook, comentarios y publicaciones aprobadas desde la tarea programada.
 // La conexión (token de Instagram) se hace desde ventra.store/instagram; sin conectar, nada se manda.

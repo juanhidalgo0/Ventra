@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { ProductsService } from './products.service';
 import { SyncImageService } from './sync-image.service';
+import { SharedCatalogService } from './shared-catalog.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,6 +19,7 @@ const MANAGERS = ['ADMIN', 'SUPERVISOR'];
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductsController {
   constructor(
+    private shared: SharedCatalogService,
     private productsService: ProductsService,
     private syncImageService: SyncImageService,
     private ventraImport: VentraImportService,
@@ -152,8 +154,14 @@ export class ProductsController {
   @Post()
   async create(@Body() data: any, @Request() req) {
     const product = await this.productsService.create(data);
-    // Lo cargó un empleado (desde la caja, un código que no estaba): queda para que lo revise el dueño
-    if (req.user?.role !== 'ADMIN' && product?.id) await this.productsService.markForReview(product, req.user?.sub).catch(() => {});
+    const sourceImage = /^https:\/\//.test(String(data?.imageUrl || '')) ? String(data.imageUrl) : null;
+    if (req.user?.role !== 'ADMIN' && product?.id) {
+      // Lo cargó un empleado (desde la caja, un código que no estaba): queda para que lo revise el dueño
+      await this.productsService.markForReview(product, req.user?.sub, sourceImage).catch(() => {});
+    } else if (product?.barcode) {
+      // Lo cargó el dueño: su nombre y su foto suman al catálogo compartido de Ventra
+      this.shared.confirm([{ barcode: product.barcode, name: product.name, imageUrl: sourceImage }]).catch(() => {});
+    }
     return product;
   }
 
@@ -167,8 +175,8 @@ export class ProductsController {
   /** El dueño lo revisó (lo dejó como estaba, lo editó o lo borró): sale de la lista */
   @Post('reviews/:id/done')
   @Roles(...MANAGERS)
-  reviewDone(@Param('id') id: string) {
-    return this.productsService.reviewDone(id);
+  reviewDone(@Param('id') id: string, @Body('verdict') verdict?: 'keep' | 'edit' | 'delete') {
+    return this.productsService.reviewDone(id, verdict);
   }
 
   @Patch(':id')
@@ -328,8 +336,8 @@ export class ProductsController {
   }
 
   @Post('auto-assign-images')
-  autoAssignImages(@Request() req) {
-    this.syncImageService.assignImagesToProducts(req.user.sub).catch(err => {
+  autoAssignImages(@Request() req, @Body('all') all?: boolean) {
+    this.syncImageService.assignImagesToProducts(req.user.sub, { all: all === true }).catch(err => {
       console.error('Error running auto-image assigner:', err);
     });
     return { success: true, message: 'Buscador de imágenes de alta precisión iniciado' };
@@ -397,11 +405,10 @@ export class ProductsController {
   /** Código que no está cargado: nombre y foto según los supermercados, para darlo de alta en la caja */
   @Get('barcode-info/:barcode')
   async barcodeInfo(@Param('barcode') barcode: string) {
-    const [name, imageUrl] = await Promise.all([
-      this.syncImageService.searchNameByBarcode(barcode),
-      this.syncImageService.searchImageByBarcode(barcode),
-    ]);
-    return { name, imageUrl };
+    // Nombre y foto de la misma fuente, y hasta 3 fotos para elegir (ver lookupBarcode)
+    const r = await this.syncImageService.lookupBarcode(barcode);
+    const sure = r.candidates.find((c) => c.imageUrl === r.imageUrl && !c.doubtful);
+    return { name: r.name, imageUrl: sure ? r.imageUrl : null, source: r.source, candidates: r.candidates };
   }
 
   @Get('search-external-image/:barcode')

@@ -2,7 +2,36 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from './firebase-sync.service';
+import { SharedCatalogService } from './shared-catalog.service';
 import axios from 'axios';
+
+/** Un resultado de la búsqueda por código: de qué fuente, con qué nombre y foto */
+export interface BarcodeHit { source: string; name: string | null; imageUrl: string | null; exact: boolean }
+export interface BarcodeLookup {
+  name: string | null;
+  imageUrl: string | null;
+  /** De dónde salió lo elegido: shared (otros comercios lo confirmaron), un supermercado, etc. */
+  source: string | null;
+  /** Hasta 3 fotos para elegir cuando las fuentes no coinciden (la elegida primero) */
+  candidates: { imageUrl: string; source: string; name: string | null; doubtful: boolean }[];
+}
+
+// Supermercados que buscan por código de barras exacto (VTEX): si devuelven algo, es ese producto
+const VTEX_HOSTS: [string, string][] = [
+  ['carrefour', 'https://www.carrefour.com.ar'], ['jumbo', 'https://www.jumbo.com.ar'], ['disco', 'https://www.disco.com.ar'],
+  ['vea', 'https://www.veasupermercados.com.ar'], ['dia', 'https://diaonline.supermercadosdia.com.ar'],
+  ['masonline', 'https://www.masonline.com.ar'], ['farmacity', 'https://www.farmacity.com'],
+];
+const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+/** Cuánto se parecen dos nombres de producto (palabras en común) */
+export function nameSimilarity(a: string, b: string) {
+  const wa = new Set(norm(a).split(' ').filter((w) => w.length > 2));
+  const wb = new Set(norm(b).split(' ').filter((w) => w.length > 2));
+  if (!wa.size || !wb.size) return 0;
+  let common = 0;
+  for (const w of wa) if (wb.has(w)) common++;
+  return common / Math.min(wa.size, wb.size);
+}
 
 @Injectable()
 export class SyncImageService {
@@ -10,7 +39,103 @@ export class SyncImageService {
     private prisma: PrismaService,
     private events: EventsGateway,
     private firebaseSync: FirebaseSyncService,
+    private shared: SharedCatalogService,
   ) {}
+
+  // ─── Búsqueda por código de barras ───────────────────────────────────
+  // Antes se quedaba con la foto que respondía primero entre 11 fuentes, y las más rápidas
+  // (MercadoLibre por texto, Bing) traían fotos de cualquier cosa. Ahora: 1) lo que confirmaron
+  // otros comercios de Ventra, 2) supermercados por código exacto, con nombre y foto de la misma
+  // fuente, 3) MercadoLibre solo si su publicación tiene ese código, 4) Bing solo como opción.
+
+  private async vtexHit(source: string, host: string, barcode: string): Promise<BarcodeHit | null> {
+    try {
+      const { data } = await axios.get(`${host}/api/catalog_system/pub/products/search?fq=alternateIds_Ean:${barcode}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }, timeout: 4000,
+      });
+      const product = Array.isArray(data) ? data[0] : null;
+      if (!product) return null;
+      const items: any[] = product.items || [];
+      // El ítem con ese código (un producto puede tener varios tamaños)
+      const item = items.find((i) => String(i.ean || '') === barcode) || items[0];
+      if (items.length && item && item.ean && String(item.ean) !== barcode && !items.some((i) => String(i.ean || '') === barcode)) return null;
+      const name = String(product.productName || item?.nameComplete || '').trim() || null;
+      const imageUrl = item?.images?.[0]?.imageUrl || null;
+      return name || imageUrl ? { source, name, imageUrl, exact: true } : null;
+    } catch { return null; }
+  }
+
+  private async offHit(barcode: string): Promise<BarcodeHit | null> {
+    try {
+      const { data } = await axios.get(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`, { headers: { 'User-Agent': 'Ventra/1.0 (ventra.store)' }, timeout: 3500 });
+      const p = data?.status === 1 ? data.product : null;
+      if (!p) return null;
+      const name = String(p.product_name_es || p.product_name || '').trim() || null;
+      const imageUrl = p.image_front_url || p.image_url || null;
+      return name || imageUrl ? { source: 'openfoodfacts', name, imageUrl, exact: true } : null;
+    } catch { return null; }
+  }
+
+  /** MercadoLibre busca por texto: vale solo si la publicación tiene ese código entre sus datos */
+  private async mercadoLibreHit(barcode: string): Promise<BarcodeHit | null> {
+    try {
+      const { data } = await axios.get(`https://api.mercadolibre.com/sites/MLA/search?q=${barcode}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 });
+      for (const it of (data?.results || []).slice(0, 5)) {
+        const codes = (it.attributes || []).filter((a: any) => /GTIN|EAN|UPC/i.test(String(a.id || '')))
+          .map((a: any) => String(a.value_name || '').replace(/\D/g, ''));
+        if (codes.some((c: string) => c && (c === barcode || c.replace(/^0+/, '') === barcode.replace(/^0+/, '')))) {
+          return { source: 'mercadolibre', name: String(it.title || '').trim() || null, imageUrl: it.thumbnail ? String(it.thumbnail).replace(/-I\.(jpg|jpeg|png|webp)/gi, '-O.$1') : null, exact: true };
+        }
+      }
+    } catch { /* sin resultado */ }
+    return null;
+  }
+
+  async lookupBarcode(barcode: string): Promise<BarcodeLookup> {
+    const empty: BarcodeLookup = { name: null, imageUrl: null, source: null, candidates: [] };
+    if (!barcode || !this.isValidNumericBarcode(barcode)) return empty;
+    const [shared, ...exactRaw] = await Promise.all([
+      this.shared.get(barcode),
+      ...VTEX_HOSTS.map(([source, host]) => this.vtexHit(source, host, barcode)),
+      this.offHit(barcode),
+    ]);
+    // En el orden de VTEX_HOSTS y después Open Food Facts (el más completo primero)
+    const exact = exactRaw.filter(Boolean) as BarcodeHit[];
+    let hits: BarcodeHit[] = [...exact];
+    // Lo confirmado por otros comercios va primero si lo confirmaron dos o más; con uno solo, después
+    // de los supermercados (así el error de un comercio no les pisa el dato bueno a los demás)
+    if (shared && (shared.name || shared.imageUrl)) {
+      const hit: BarcodeHit = { source: 'shared', name: shared.name, imageUrl: shared.imageUrl, exact: true };
+      hits = shared.votes >= 2 ? [hit, ...hits] : [...hits, hit];
+    }
+    if (!hits.some((h) => h.imageUrl)) {
+      const ml = await this.mercadoLibreHit(barcode);
+      if (ml) hits.push(ml);
+    }
+    // Nombre y foto de la misma fuente, si alguna trae las dos
+    const both = hits.find((h) => h.name && h.imageUrl);
+    const name = both?.name || hits.find((h) => h.name)?.name || null;
+    const chosen = both || hits.find((h) => h.imageUrl) || null;
+    const candidates: BarcodeLookup['candidates'] = [];
+    const seen = new Set<string>();
+    const add = (h: BarcodeHit, doubtful = false) => {
+      if (!h.imageUrl || seen.has(h.imageUrl) || candidates.length >= 3) return;
+      // De otra fuente exacta pero con un nombre muy distinto: se ofrece, marcada como dudosa
+      const off = !!(name && h.name && nameSimilarity(name, h.name) < 0.34);
+      seen.add(h.imageUrl);
+      candidates.push({ imageUrl: h.imageUrl, source: h.source, name: h.name, doubtful: doubtful || off });
+    };
+    if (chosen) add(chosen);
+    hits.forEach((h) => add(h));
+    // Sin ninguna foto confiable: las de Bing van como opción, nunca solas
+    if (!candidates.length) {
+      for (const f of [() => this.fetchImageFromPedidosYaViaBing(barcode), () => this.fetchImageFromRappiViaBing(barcode)]) {
+        const url = await f().catch(() => null);
+        if (url) add({ source: 'bing', name: null, imageUrl: url, exact: false }, true);
+      }
+    }
+    return { name, imageUrl: chosen?.imageUrl || null, source: chosen?.source || (name ? hits.find((h) => h.name)?.source || null : null), candidates };
+  }
 
   // Helper: Clean product names for search engines
   cleanName(name: string): string {
@@ -657,23 +782,27 @@ export class SyncImageService {
     this.isCancelled = true;
   }
 
-  async assignImagesToProducts(userId: string): Promise<{ successCount: number; totalProcessed: number }> {
+  /**
+   * all: también los que ya tienen foto. A esos solo se les cambia por una foto confiable por
+   * código de barras (de otros comercios o de un supermercado), nunca por búsqueda por nombre.
+   */
+  async assignImagesToProducts(userId: string, opts: { all?: boolean } = {}): Promise<{ successCount: number; totalProcessed: number }> {
     console.log('[SyncImageService] Starting high precision Argentine image assignment...');
     this.isCancelled = false;
 
+    const missing = [
+      { imageUrl: null },
+      { imageUrl: '' },
+      { imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80' }
+    ];
     const products = await this.prisma.product.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { imageUrl: null },
-          { imageUrl: '' },
-          { imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80' }
-        ]
-      },
-      include: {
-        category: true
-      }
+      where: opts.all
+        ? { isActive: true, OR: [...missing, { barcode: { not: null } }] }
+        : { isActive: true, OR: missing },
+      // Sin la foto en sí (pueden ser miles en base64): solo saber cuáles ya tenían una
+      select: { id: true, name: true, barcode: true },
     });
+    const withoutImage = new Set((await this.prisma.product.findMany({ where: { isActive: true, OR: missing }, select: { id: true } })).map((p) => p.id));
 
     const totalProducts = products.length;
     console.log(`[SyncImageService] Found ${totalProducts} products to process.`);
@@ -694,7 +823,8 @@ export class SyncImageService {
     let successCount = 0;
     let index = 0;
 
-    const concurrency = 15;
+    // Cada producto consulta varias fuentes a la vez: de a pocos, para no saturar a los supermercados
+    const concurrency = 6;
     for (let i = 0; i < products.length; i += concurrency) {
       const chunk = products.slice(i, i + concurrency);
 
@@ -718,31 +848,20 @@ export class SyncImageService {
 
         // TIER 1: Barcode EAN Search across 11 Barcode/Supermarket/Delivery databases (100% Precision)
         if (product.barcode && this.isValidNumericBarcode(product.barcode)) {
-          foundImageUrl = await this.runSearchersInParallel([
-            () => this.fetchImageFromOpenFoodFacts(product.barcode),
-            () => this.fetchImageFromMercadoLibreByBarcode(product.barcode),
-            () => this.fetchImageFromPedidosYaViaBing(product.barcode),
-            () => this.fetchImageFromRappiViaBing(product.barcode),
-            () => this.fetchImageFromCarrefourByBarcode(product.barcode),
-            () => this.fetchImageFromDiaByBarcode(product.barcode),
-            () => this.fetchImageFromChangoMasByBarcode(product.barcode),
-            () => this.fetchImageFromJumboByBarcode(product.barcode),
-            () => this.fetchImageFromDiscoByBarcode(product.barcode),
-            () => this.fetchImageFromVeaByBarcode(product.barcode),
-            () => this.fetchImageFromFarmacityByBarcode(product.barcode)
-          ]);
+          // Solo fotos confiables: confirmadas por otros comercios o de un supermercado por código exacto
+          const r = await this.lookupBarcode(product.barcode);
+          foundImageUrl = r.candidates.find((c) => c.imageUrl === r.imageUrl && !c.doubtful)?.imageUrl || null;
         }
 
-        // TIER 2: Strict Name Search on official channels (65%+ Match required)
-        if (!foundImageUrl && product.name) {
+        const hadImage = !withoutImage.has(product.id);
+        // TIER 2: Strict Name Search on official channels (65%+ Match required). No para los que ya tenían foto
+        if (!foundImageUrl && product.name && !hadImage) {
           foundImageUrl = await this.runSearchersInParallel([
             () => this.fetchImageFromCarrefourByName(product.name),
             () => this.fetchImageFromDiaByName(product.name),
             () => this.fetchImageFromChangoMasByName(product.name),
             () => this.fetchImageFromJumboByName(product.name),
-            () => this.fetchImageFromFarmacityByName(product.name),
-            () => this.fetchImageFromPedidosYaByNameViaBing(product.name),
-            () => this.fetchImageFromRappiByNameViaBing(product.name)
+            () => this.fetchImageFromFarmacityByName(product.name)
           ]);
         }
 
@@ -798,19 +917,8 @@ export class SyncImageService {
 
     // TIER 1: Barcode EAN Search
     if (barcode && this.isValidNumericBarcode(barcode)) {
-      foundImageUrl = await this.runSearchersInParallel([
-        () => this.fetchImageFromOpenFoodFacts(barcode),
-        () => this.fetchImageFromMercadoLibreByBarcode(barcode),
-        () => this.fetchImageFromPedidosYaViaBing(barcode),
-        () => this.fetchImageFromRappiViaBing(barcode),
-        () => this.fetchImageFromCarrefourByBarcode(barcode),
-        () => this.fetchImageFromDiaByBarcode(barcode),
-        () => this.fetchImageFromChangoMasByBarcode(barcode),
-        () => this.fetchImageFromJumboByBarcode(barcode),
-        () => this.fetchImageFromDiscoByBarcode(barcode),
-        () => this.fetchImageFromVeaByBarcode(barcode),
-        () => this.fetchImageFromFarmacityByBarcode(barcode)
-      ]);
+      const r = await this.lookupBarcode(barcode);
+      foundImageUrl = r.candidates.find((c) => c.imageUrl === r.imageUrl && !c.doubtful)?.imageUrl || null;
     }
 
     // TIER 2: Strict Name Search on official channels if barcode yields no results
@@ -822,9 +930,7 @@ export class SyncImageService {
           () => this.fetchImageFromDiaByName(product.name),
           () => this.fetchImageFromChangoMasByName(product.name),
           () => this.fetchImageFromJumboByName(product.name),
-          () => this.fetchImageFromFarmacityByName(product.name),
-          () => this.fetchImageFromPedidosYaByNameViaBing(product.name),
-          () => this.fetchImageFromRappiByNameViaBing(product.name)
+          () => this.fetchImageFromFarmacityByName(product.name)
         ]);
       }
     }
@@ -873,57 +979,13 @@ export class SyncImageService {
    * Open Food Facts: el primero que conteste. Para el alta rápida en la caja.
    */
   async searchNameByBarcode(barcode: string): Promise<string | null> {
-    if (!barcode || !this.isValidNumericBarcode(barcode)) return null;
-    const vtex = (host: string) => async () => {
-      const { data } = await axios.get(`${host}/api/catalog_system/pub/products/search?fq=alternateIds_Ean:${barcode}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
-        timeout: 3500,
-      });
-      return String(data?.[0]?.productName || '').trim() || null;
-    };
-    const off = async () => {
-      const { data } = await axios.get(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`, {
-        headers: { 'User-Agent': 'Ventra/1.0 (ventra.store)' },
-        timeout: 3500,
-      });
-      const p = data?.status === 1 ? data.product : null;
-      return String(p?.product_name_es || p?.product_name || '').trim() || null;
-    };
-    const searchers = [
-      vtex('https://www.carrefour.com.ar'), vtex('https://www.jumbo.com.ar'), vtex('https://diaonline.supermercadosdia.com.ar'),
-      vtex('https://www.masonline.com.ar'), vtex('https://www.disco.com.ar'), vtex('https://www.veasupermercados.com.ar'),
-      vtex('https://www.farmacity.com'), off,
-    ];
-    try {
-      return await Promise.any(searchers.map(async (s) => {
-        const name = await s();
-        if (!name) throw new Error('sin nombre');
-        return name;
-      }));
-    } catch {
-      return null;
-    }
+    return (await this.lookupBarcode(barcode)).name;
   }
 
   async searchImageByBarcode(barcode: string): Promise<string | null> {
-    if (!barcode || !this.isValidNumericBarcode(barcode)) return null;
-    try {
-      return await this.runSearchersInParallel([
-        () => this.fetchImageFromOpenFoodFacts(barcode),
-        () => this.fetchImageFromMercadoLibreByBarcode(barcode),
-        () => this.fetchImageFromPedidosYaViaBing(barcode),
-        () => this.fetchImageFromRappiViaBing(barcode),
-        () => this.fetchImageFromCarrefourByBarcode(barcode),
-        () => this.fetchImageFromDiaByBarcode(barcode),
-        () => this.fetchImageFromChangoMasByBarcode(barcode),
-        () => this.fetchImageFromJumboByBarcode(barcode),
-        () => this.fetchImageFromDiscoByBarcode(barcode),
-        () => this.fetchImageFromVeaByBarcode(barcode),
-        () => this.fetchImageFromFarmacityByBarcode(barcode)
-      ]);
-    } catch (err) {
-      console.error('Error searching image by barcode:', err);
-      return null;
-    }
+    // Solo fotos confiables (lo de Bing queda como opción para elegir, no se pone sola)
+    const r = await this.lookupBarcode(barcode);
+    return r.candidates.find((c) => c.imageUrl === r.imageUrl && !c.doubtful)?.imageUrl || r.imageUrl;
   }
+
 }

@@ -603,7 +603,8 @@ export default function ProductsScreen() {
 
 
 
-  const handleAssignImages = async () => {
+  /** all: vuelve a buscar también para los que ya tienen foto (solo la cambia por una segura por código) */
+  const handleAssignImages = async (all = false) => {
     setIsAssigningImages(true);
     setShowImageSyncModal(true);
     setImageSyncStatus({
@@ -625,7 +626,7 @@ export default function ProductsScreen() {
         toast.success('Búsqueda de fotos iniciada', { id: loadingToast });
         return;
       }
-      await api.post('/products/auto-assign-images');
+      await api.post('/products/auto-assign-images', { all });
       toast.success('Buscador de imágenes de alta precisión iniciado', { id: loadingToast });
     } catch (err: any) {
       const errMsg = err.response?.data?.message || 'Error al iniciar buscador.';
@@ -942,6 +943,16 @@ export default function ProductsScreen() {
                     description: isHardwareStore ? 'Solo asigna las seguras; las dudosas quedan para revisar' : 'Busca fotos por código de barras y nombre',
                     icon: <Package className="w-3.5 h-3.5 text-rose-500" />,
                     onClick: () => { if (!isAssigningImages) handleAssignImages(); else setShowImageSyncModal(true); },
+                  },
+                  {
+                    label: 'Volver a buscar para todos',
+                    description: 'También los que ya tienen foto: la cambia solo por una segura por código',
+                    icon: <RefreshCw className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => {
+                      if (isAssigningImages) return setShowImageSyncModal(true);
+                      if (window.confirm('Se vuelven a buscar las fotos de todos los productos. A los que ya tienen foto solo se les cambia si aparece una segura por su código de barras (de otros comercios o de un supermercado). Puede tardar. ¿Seguir?')) handleAssignImages(true);
+                    },
+                    disabled: isHardwareStore,
                   },
                   {
                     label: 'Revisar fotos sugeridas',

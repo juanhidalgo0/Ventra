@@ -287,6 +287,8 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
 
   const [suggestedImageUrl, setSuggestedImageUrl] = useState<string | null>(null);
   const [isSearchingImage, setIsSearchingImage] = useState(false);
+  // Las fotos encontradas por código (hasta 3) para elegir en la vista grande
+  const [imageCandidates, setImageCandidates] = useState<{ imageUrl: string; doubtful: boolean }[]>([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [rejectedBarcodeSuggestion, setRejectedBarcodeSuggestion] = useState<string | null>(null);
   const [activeLargeImage, setActiveLargeImage] = useState<{ url: string; isSuggestion: boolean } | null>(null);
@@ -315,9 +317,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           // Nombre y foto según los supermercados: el nombre solo si es un producto nuevo y todavía no se escribió
           const { data } = await api.get(`/products/barcode-info/${barcode}`, { silent: true, timeout: 12000 } as any);
           if (data?.name && !product?.id) setFormData((prev) => (prev.name.trim() ? prev : { ...prev, name: data.name }));
-          if (data?.imageUrl) {
-            setSuggestedImageUrl(data.imageUrl);
-          }
+          const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+          setImageCandidates(candidates);
+          // Sin una segura, se muestra la primera opción para que el dueño decida
+          if (data?.imageUrl || candidates[0]?.imageUrl) setSuggestedImageUrl(data?.imageUrl || candidates[0].imageUrl);
         } catch (err) {
           console.error('Error searching image for barcode:', err);
         } finally {
@@ -2114,6 +2117,23 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 }}
               />
             </div>
+
+            {activeLargeImage.isSuggestion && imageCandidates.some((c) => c.imageUrl === activeLargeImage.url && c.doubtful) && (
+              <p className="text-[12px] font-semibold text-amber-700">Foto dudosa: fijate que sea este producto antes de usarla.</p>
+            )}
+            {activeLargeImage.isSuggestion && imageCandidates.length > 1 && (
+              <div>
+                <p className="text-[11.5px] font-semibold text-slate-500 mb-1.5">Se encontraron {imageCandidates.length} fotos: tocá la correcta</p>
+                <div className="flex gap-2">
+                  {imageCandidates.map((c) => (
+                    <button key={c.imageUrl} type="button" onClick={() => setActiveLargeImage({ url: c.imageUrl, isSuggestion: true })}
+                      className={`w-14 h-14 rounded-lg border-2 overflow-hidden bg-white ${c.imageUrl === activeLargeImage.url ? 'border-rose-500' : c.doubtful ? 'border-amber-300' : 'border-slate-200'}`}>
+                      <img src={c.imageUrl} alt="" className="w-full h-full object-contain" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {activeLargeImage.isSuggestion ? (
               <div className="flex gap-3 pt-2">

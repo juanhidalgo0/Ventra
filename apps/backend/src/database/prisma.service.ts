@@ -358,8 +358,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_name" TEXT NOT NULL,
               "user_name" TEXT,
+              "image_source" TEXT,
               "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             );`);
+            // La foto de dónde salió (enlace): al confirmarlo el dueño, va al catálogo compartido
+            const reviewCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(product_reviews)`);
+            if (!reviewCols.some((c) => c.name === 'image_source')) await this.$executeRawUnsafe(`ALTER TABLE product_reviews ADD COLUMN image_source TEXT DEFAULT NULL;`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,

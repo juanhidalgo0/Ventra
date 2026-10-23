@@ -47,6 +47,8 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
   const [looking, setLooking] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [useImage, setUseImage] = useState(true);
+  // Otras fotos encontradas (hasta 3): se elige la correcta o ninguna
+  const [candidates, setCandidates] = useState<{ imageUrl: string; source: string; doubtful: boolean }[]>([]);
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
   const [stock, setStock] = useState('');
@@ -65,6 +67,7 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
         if (!alive) return;
         if (data?.name) setName((current) => (nameTouched || current ? current : data.name));
         if (data?.imageUrl) setImageUrl(data.imageUrl);
+        setCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
       })
       .catch(() => {})
       .finally(() => { if (alive) setLooking(false); });
@@ -170,6 +173,20 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
               placeholder={looking ? '' : 'Ej: Galletitas de agua 300 g'} maxLength={120} className={input} />
           </label>
         </div>
+
+        {mode === 'create' && candidates.filter((c) => c.imageUrl !== imageUrl).length > 0 && (
+          <div className="mt-2.5">
+            <p className="text-[11.5px] font-semibold text-slate-500 mb-1.5">{imageUrl ? 'Otras fotos encontradas: tocá la correcta' : '¿Es alguna de estas? Tocá la correcta (si no, queda sin foto)'}</p>
+            <div className="flex gap-2">
+              {candidates.filter((c) => c.imageUrl !== imageUrl).map((c) => (
+                <button key={c.imageUrl} type="button" onClick={() => { setImageUrl(c.imageUrl); setUseImage(true); }} title={c.doubtful ? 'Foto dudosa: revisala' : 'Usar esta foto'}
+                  className={`w-14 h-14 rounded-lg border-2 overflow-hidden bg-white ${c.doubtful ? 'border-amber-300' : 'border-slate-200'} hover:border-rose-400`}>
+                  <img src={c.imageUrl} alt="" className="w-full h-full object-contain" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mt-3">
           <label className="block">

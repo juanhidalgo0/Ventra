@@ -461,6 +461,8 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   // Con el código de barras: nombre y foto según los supermercados (ver /products/barcode-info)
   const [foundImage, setFoundImage] = useState<string | null>(null);
   const [useFound, setUseFound] = useState(true);
+  // Otras fotos encontradas (hasta 3) para elegir la correcta
+  const [candidates, setCandidates] = useState<{ imageUrl: string; doubtful: boolean }[]>([]);
   const [looking, setLooking] = useState(false);
   const nameTouched = useRef(false);
   // Gastronomía: sin stock (se cocina a pedido) y con tamaños a distinto precio
@@ -472,7 +474,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   useEffect(() => {
     if (open) {
       setName(''); setDescription(''); setBarcode(''); setPrice(''); setCost(''); setStock(''); setCategory(null);
-      setFoundImage(null); setUseFound(true); nameTouched.current = false;
+      setFoundImage(null); setUseFound(true); setCandidates([]); nameTouched.current = false;
       setWithOptions(false); setOptionName(isFood ? 'Tamaño' : 'Opción');
       setOptions(isFood ? [{ label: 'Chica', price: '' }, { label: 'Grande', price: '' }] : [{ label: '', price: '' }, { label: '', price: '' }]);
     }
@@ -532,6 +534,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   useEffect(() => {
     const code = barcode.trim();
     setFoundImage(null);
+    setCandidates([]);
     if (!open || !/^\d{8,14}$/.test(code)) { setLooking(false); return; }
     let alive = true;
     const t = setTimeout(() => {
@@ -541,6 +544,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
           if (!alive) return;
           if (data?.name) setName((current) => (nameTouched.current && current.trim() ? current : data.name));
           if (data?.imageUrl) { setFoundImage(data.imageUrl); setUseFound(true); }
+          setCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
         })
         .catch(() => {})
         .finally(() => { if (alive) setLooking(false); });
@@ -569,6 +573,19 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
                 <span className="flex-1 text-[13px] text-slate-700">Usar esta foto</span>
                 <input type="checkbox" checked={useFound} onChange={(e) => setUseFound(e.target.checked)} className="w-5 h-5 accent-rose-600" />
               </label>
+            )}
+            {candidates.some((c) => c.imageUrl !== foundImage) && (
+              <div className="mt-2">
+                <p className="text-[12px] text-slate-500 mb-1.5">{foundImage ? 'Otras fotos encontradas: tocá la correcta' : '¿Es alguna de estas? Tocá la correcta'}</p>
+                <div className="flex gap-2">
+                  {candidates.filter((c) => c.imageUrl !== foundImage).map((c) => (
+                    <button key={c.imageUrl} type="button" onClick={() => { setFoundImage(c.imageUrl); setUseFound(true); }} aria-label="Usar esta foto"
+                      className={`w-16 h-16 rounded-xl border-2 overflow-hidden bg-white ${c.doubtful ? 'border-amber-300' : 'border-slate-200'}`}>
+                      <img src={c.imageUrl} alt="" className="w-full h-full object-contain" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </Field>
           )}

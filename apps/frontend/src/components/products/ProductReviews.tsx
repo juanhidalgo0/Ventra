@@ -45,15 +45,15 @@ export function ProductReviewsSheet({ onClose }: { onClose: () => void }) {
   const load = () => api.get('/products/reviews/pending').then(({ data }) => { setRows(data || []); useProductReviews.setState({ count: (data || []).length }); }).catch(() => setRows([]));
   useEffect(() => { load(); }, []);
 
-  const done = async (id: string) => {
-    await api.post(`/products/reviews/${id}/done`).catch(() => {});
+  const done = async (id: string, verdict: 'keep' | 'edit' | 'delete') => {
+    await api.post(`/products/reviews/${id}/done`, { verdict }).catch(() => {});
     setRows((r) => {
       const next = (r || []).filter((x) => x.id !== id);
       useProductReviews.setState({ count: next.length });
       return next;
     });
   };
-  const keep = async (r: any) => { setBusy(r.id); await done(r.id); setBusy(null); toast.success(`${r.name} quedó como estaba`); };
+  const keep = async (r: any) => { setBusy(r.id); await done(r.id, 'keep'); setBusy(null); toast.success(`${r.name} quedó como estaba`); };
   const edit = async (r: any) => {
     setBusy(r.id);
     try { setEditing((await api.get(`/products/${r.id}`)).data); } catch { toast.error('No se pudo abrir el producto'); } finally { setBusy(null); }
@@ -61,7 +61,7 @@ export function ProductReviewsSheet({ onClose }: { onClose: () => void }) {
   const remove = async (r: any) => {
     if (!window.confirm(`¿Borrar "${r.name}"? Si ya se vendió, queda en el historial.`)) return;
     setBusy(r.id);
-    try { await api.delete(`/products/${r.id}`); await done(r.id); toast.success('Producto borrado'); }
+    try { await api.delete(`/products/${r.id}`); await done(r.id, 'delete'); toast.success('Producto borrado'); }
     catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo borrar'); }
     finally { setBusy(null); }
   };
@@ -102,7 +102,7 @@ export function ProductReviewsSheet({ onClose }: { onClose: () => void }) {
       </div>
       {editing && (
         <ProductModal product={editing} onClose={() => setEditing(null)}
-          onSuccess={async () => { const id = editing.id; setEditing(null); await done(id); toast.success('Producto actualizado'); }} />
+          onSuccess={async () => { const id = editing.id; setEditing(null); await done(id, 'edit'); toast.success('Producto actualizado'); }} />
       )}
     </div>
   );

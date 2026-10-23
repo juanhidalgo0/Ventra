@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from './firebase-sync.service';
 import { SyncImageService } from './sync-image.service';
+import { SharedCatalogService } from './shared-catalog.service';
 import { DBFFile, DELETED } from 'dbffile';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
@@ -102,6 +103,7 @@ export class ProductsService {
     private eventsGateway: EventsGateway,
     private firebaseSync: FirebaseSyncService,
     private syncImageService: SyncImageService,
+    private shared: SharedCatalogService,
   ) {}
 
   private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean }): any {
@@ -677,12 +679,12 @@ export class ProductsService {
   }
 
   /** Lo dio de alta un empleado: queda en la lista para que el dueño lo revise (ver product_reviews) */
-  async markForReview(product: { id: string; name: string }, userId?: string) {
+  async markForReview(product: { id: string; name: string }, userId?: string, sourceImage?: string | null) {
     const user = userId ? await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } }) : null;
     await this.prisma.$executeRawUnsafe(
-      `INSERT INTO product_reviews (id, product_name, user_name, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(id) DO UPDATE SET product_name = excluded.product_name, user_name = excluded.user_name`,
-      product.id, String(product.name || '').slice(0, 200), user?.fullName || user?.username || null,
+      `INSERT INTO product_reviews (id, product_name, user_name, image_source, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(id) DO UPDATE SET product_name = excluded.product_name, user_name = excluded.user_name, image_source = excluded.image_source`,
+      product.id, String(product.name || '').slice(0, 200), user?.fullName || user?.username || null, sourceImage || null,
     );
   }
 
@@ -700,8 +702,17 @@ export class ProductsService {
     return this.withImageLinks(rows.filter((r) => !gone.includes(r.id)).map((r) => ({ ...r, hasImage: !!Number(r.hasImage), isActive: undefined })));
   }
 
-  async reviewDone(id: string) {
+  /**
+   * keep: el dueño lo dejó como estaba (nombre y foto van al catálogo compartido); edit: lo
+   * corrigió (va el nombre nuevo; la foto no, porque pudo cambiarla); delete: nada.
+   */
+  async reviewDone(id: string, verdict?: 'keep' | 'edit' | 'delete') {
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT image_source AS imageSource FROM product_reviews WHERE id = ?`, id).catch((): any[] => []);
     await this.prisma.$executeRawUnsafe(`DELETE FROM product_reviews WHERE id = ?`, id);
+    if (verdict === 'keep' || verdict === 'edit') {
+      const p = await this.prisma.product.findUnique({ where: { id }, select: { barcode: true, name: true } });
+      if (p?.barcode) this.shared.confirm([{ barcode: p.barcode, name: p.name, imageUrl: verdict === 'keep' ? rows[0]?.imageSource : null }]).catch(() => {});
+    }
     return { ok: true };
   }
 

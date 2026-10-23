@@ -45,6 +45,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Venta rápida: lector de código de barras, búsqueda instantánea, atajos de teclado; unidad, kilo o pack en la misma venta.
 - Caja: apertura y cierre de turno, arqueo, cierre X y reporte Z con el detalle por medio de pago (efectivo, Mercado Pago, tarjetas/posnet). Tesorería y gastos.
 - Stock: alertas de stock mínimo, compras a proveedores, auditoría de cada movimiento. Vencimientos por lote con avisos antes de que venzan.
+- Fotos y nombres solos, gratis: al escanear un código que no está cargado (en la caja, en la ficha del producto o en el celular), Ventra trae el nombre y la foto de supermercados que buscan por ese código exacto, y si encuentra fotos distintas muestra hasta 3 para tocar la correcta (las dudosas no se ponen solas). Lo que confirma el dueño de cada comercio se comparte entre los comercios de Ventra, así el próximo que escanee ese código ya lo recibe bien. En Productos → Fotos: "Buscar y asignar fotos" (los que no tienen) y "Volver a buscar para todos" (a los que ya tienen foto solo se la cambia por una segura por su código).
 - Promos: 2×1, combos a precio fijo y descuentos, con tope de stock o fecha.
 - Cuentas corrientes (fiado) con límite de crédito e historial.
 - Varias cajas y terminales al mismo tiempo, cada usuario con su rol y permisos, sin pagar por cada una.
