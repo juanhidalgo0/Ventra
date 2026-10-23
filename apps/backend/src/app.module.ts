@@ -28,6 +28,7 @@ import { WorkOrdersModule } from './modules/workorders/workorders.module';
 import { AcopioModule } from './modules/acopio/acopio.module';
 import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     AcopioModule,
     MercadoPagoModule,
     SettingsModule,
+    AiModule,
   ],
   providers: [
     {

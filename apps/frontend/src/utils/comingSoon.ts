@@ -5,8 +5,9 @@ import { usePlanStore } from '../stores/planStore';
  * Para habilitar una, ponerla en false (el resto del código queda intacto).
  */
 export const COMING_SOON = {
-  /** Leer boletas desde fotos con IA (los PDF con texto y los Excel se leen igual, sin IA) */
-  aiInvoiceScan: true,
+  /** Leer boletas desde fotos con IA (los PDF con texto y los Excel se leen igual, sin IA). Habilitado el 2026-10-23:
+   *  la lee la nube (ventraAi, Claude) con un tope de facturas por mes por comercio */
+  aiInvoiceScan: false,
   /** Mercado Pago: conectar la cuenta, cobrar con Point y cuadrar la caja automáticamente. Habilitado para todos
    *  el 2026-10-15 para probar la seña de la agenda con una cuenta real (todavía sin un pago real probado). */
   mercadoPago: false,

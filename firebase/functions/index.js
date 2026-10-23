@@ -2115,6 +2115,25 @@ exports.ventraFiscal = onRequest({ secrets: [ARCA_CREDENTIALS], maxInstances: 20
   }
 });
 
+// ─── IA para los comercios (ver ai.js) ───
+// Pedido de WhatsApp → renglones del catálogo, y factura de compra por foto. Lo llama el
+// backend de la PC vinculada; la clave de Claude queda acá.
+const ai = require("./ai");
+exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY], maxInstances: 10, timeoutSeconds: 180, memory: "512MiB" }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  try {
+    const out = await ai.handle({ db, logger, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() }, uid, req.body);
+    return res.status(200).json({ ok: true, ...out });
+  } catch (err) {
+    if (err instanceof ai.AiError) return res.status(err.status).json({ error: err.message, code: err.code });
+    logger.error(`Ventra IA: error inesperado (${uid})`, err);
+    return res.status(500).json({ error: "Error de la IA de Ventra", code: "INTERNAL" });
+  }
+});
+
 // ─── Instagram de Ventra atendido solo (ver instagram.js) ───
 // Mensajes directos por webhook, comentarios y publicaciones aprobadas desde la tarea programada.
 // La conexión (token de Instagram) se hace desde ventra.store/instagram; sin conectar, nada se manda.

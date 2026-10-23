@@ -1,3 +1,4 @@
+import { AiService } from '../ai/ai.service';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
@@ -218,6 +219,7 @@ export class PurchasesService {
   constructor(
     private prisma: PrismaService,
     private firebaseSync: FirebaseSyncService,
+    private ai: AiService,
   ) {}
 
   async findAll() {
@@ -488,156 +490,16 @@ export class PurchasesService {
       sourceLabel = isPdfFile(name, docFile.mimetype) ? 'Cargado automáticamente desde el PDF del proveedor.' : 'Cargado automáticamente desde planilla Excel.';
       console.log(`[PurchasesService] Boleta leída sin IA (${name}): ${parsedData.items.length} productos. ${readCheck?.message || ''}`);
     } else {
-      // Fotos con IA: todavía no habilitado (se prende con VENTRA_AI_INVOICE_SCAN=true)
-      if (process.env.VENTRA_AI_INVOICE_SCAN !== 'true') {
-        throw new BadRequestException('La lectura de fotos de boletas llega próximamente. Por ahora subí la factura en PDF o la planilla Excel del proveedor.');
+      // Fotos: las lee la IA de Ventra en la nube (Claude, ver firebase/functions/ai.js). La PC no
+      // tiene ninguna clave: pide con su vinculación y el comercio tiene un tope de facturas por mes.
+      const images = await this.ai.shrink(files, 2000);
+      const { result } = await this.ai.call('invoice', { images, manualTotal: manualTotal ?? null });
+      parsedData = result;
+      if (!parsedData?.items?.length) {
+        throw new BadRequestException('No encontramos productos en la foto. Probá con una foto más nítida, de frente y con buena luz.');
       }
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('La clave de API de Gemini (GEMINI_API_KEY) no está configurada en las variables de entorno.');
-      }
-
-      const inlineDataParts = [];
-      for (const file of files) {
-        console.log(`[GeminiAI] Preparando imagen original para escaneo: ${file.originalname || 'sin-nombre'} (${(file.buffer.length / 1024 / 1024).toFixed(2)} MB)`);
-        inlineDataParts.push({
-          inlineData: {
-            mimeType: file.mimetype || 'image/jpeg',
-            data: file.buffer.toString('base64'),
-          }
-        });
-      }
-
-    let promptText = `Eres un experto en OCR visual y extracción de datos estructurados de comprobantes de compra.
-Tu tarea es analizar la imagen de la boleta (factura impresa, ticket de supermercado/mayorista o incluso notas/comprobantes escritos a mano) y extraer la lista completa de todos los productos físicos reales comprados.
-
-Primero, transcribe la tabla completa de artículos de la boleta columna por columna en formato markdown. Esto sirve para alinear visualmente los datos. Luego, extrae cada artículo detallado.
-
-Extrae los datos en formato JSON con la siguiente estructura:
-{
-  "rawTableTranscription": "Transcripción en markdown de la tabla de la boleta (con columnas: ARTICULO/SKU, CANTIDAD, U.B., DESCRIPCION, PRECIO UNITARIO, TOTAL) para asegurar la alineación horizontal de cada fila.",
-  "supplierName": "Nombre del proveedor o emisor de la boleta (detecta el membrete o texto superior)",
-  "invoiceNumber": "Número de comprobante completo (por ejemplo, FA-0001-00001234, o el número de ticket)",
-  "date": "Fecha de la factura en formato YYYY-MM-DD",
-  "totalFacturaAPagar": "Total general final a pagar impreso al pie de la boleta (por ejemplo, '304.947,88' o '304947.88').",
-  "items": [
-    {
-      "sku": "Código interno o número de artículo del proveedor si existe en la línea del producto (por ejemplo, de la columna ARTICULO). Déjalo vacío si no tiene o si es manuscrito.",
-      "barcode": "Código de barras numérico (EAN/GTIN) si aparece impreso o manuscrito al lado del producto. Si no está, déjalo vacío.",
-      "name": "Nombre o descripción del producto de forma clara y completa. Si es abreviado, consérvalo tal cual. Si está escrito a mano, transcríbelo lo mejor posible.",
-      "packageQuantity": "Cantidad literal de bultos/packs comprados según se indica en la columna 'CANTIDAD' (por ejemplo, si compraste 1 caja/bulto de galletitas, extrae 1). Si no hay bultos y se vende por unidad suelta, es simplemente la cantidad indicada.",
-      "unitsPerPack": "Unidades por bulto/pack de la columna 'U.B.' (Unidades por Bulto). Si es por unidad individual o no se especifica, usa 1.",
-      "total": "Valor neto o subtotal de la línea de este producto de la columna TOTAL (como STRING, por ejemplo '6.528,97' o '9.153,36' o '31.171,08'). NUNCA extraigas el precio unitario (columna P.U. CON I.V.A. o PRECIO SIN I.V.A.) como TOTAL de la línea. Extrae el total literal acumulado de esa línea del producto."
+      console.log(`[PurchasesService] Factura leída con IA: ${parsedData.items.length} productos.`);
     }
-  ]
-}
-
-REGLAS CRÍTICAS:
-1. Extrae ABSOLUTAMENTE TODOS los productos físicos de la lista que tengan una cantidad y precio/total. No importa si son 2, 21, o 50 filas. Extrae todas las que encuentres.
-2. Si la boleta está escrita a mano, haz tu mejor esfuerzo para transcribir las descripciones de los artículos, cantidades y totales.
-3. IGNORA POR COMPLETO las líneas de descuentos globales o promociones (ej. "Promoción 161559", "15% - Llevando...", "Paga Solo"), recargos, o resúmenes de pie de página como "BULTOS" (ej. "21 BULTOS EN CARRO"), "KILOS" o "TOTAL GENERAL". NUNCA mezcles cantidades de resúmenes de bultos con líneas de descuento.
-4. Asegúrate de alinear correctamente cada columna de la misma fila (código, descripción, cantidad y total de la misma línea pertenecen al mismo producto). Asegúrate de que los valores de TOTAL de cada fila correspondan exactamente a ese producto y no a la fila superior o inferior.
-5. AUTO-CORRECCIÓN MATEMÁTICA CON CONCORDANCIA: Suma todos los 'total' de los artículos, multiplícalo por 1.21 (IVA) y aplica los descuentos del pie de la factura. Corrobora que esta suma coincida exactamente con el total general de la factura ('totalFacturaAPagar'). Si no coincide, significa que has cometido un error de alineación de precios o has leído mal un total; vuelve a analizar la imagen, auto-corrígete y devuelve los datos alineados correctamente.`;
-
-    if (manualTotal !== undefined && manualTotal !== null) {
-      promptText += `\n\n6. ANCLAJE DE TOTAL: El total final a pagar de esta factura/boleta es exactamente: ${manualTotal}. Usa este valor de anclaje para validar que el subtotal y la suma de los productos que extraigas (contando IVA y descuentos) coincidan lógicamente con este total general de ${manualTotal}.`;
-    }
-
-    const models = [
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.1-pro-preview',
-      'gemini-2.5-flash',
-      'gemini-2.5-pro'
-    ];
-
-    let lastError = null;
-    const errors: string[] = [];
-
-    for (const model of models) {
-      try {
-        console.log(`[GeminiAI] Intentando escaneo con modelo ${model} y ${files.length} imágenes...`);
-        const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            contents: [
-              {
-                parts: [
-                  { text: promptText },
-                  ...inlineDataParts
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'OBJECT',
-                properties: {
-                  rawTableTranscription: { type: 'STRING', description: 'Transcripción markdown de la tabla de artículos de la boleta.' },
-                  supplierName: { type: 'STRING' },
-                  invoiceNumber: { type: 'STRING' },
-                  date: { type: 'STRING', description: 'Fecha de la boleta en formato YYYY-MM-DD' },
-                  totalFacturaAPagar: { type: 'STRING', description: 'Total general de la factura impreso al final.' },
-                  items: {
-                    type: 'ARRAY',
-                    items: {
-                      type: 'OBJECT',
-                      properties: {
-                        barcode: { type: 'STRING' },
-                        sku: { type: 'STRING' },
-                        name: { type: 'STRING' },
-                        packageQuantity: { type: 'NUMBER' },
-                        unitsPerPack: { type: 'NUMBER' },
-                        total: { type: 'STRING', description: 'Total neto literal de la línea de la boleta (ej: "6.528,97" o "6528.97")' },
-                      },
-                      required: ['name', 'packageQuantity', 'total'],
-                    },
-                  },
-                },
-                required: ['rawTableTranscription', 'items'],
-              },
-            },
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            timeout: 25000, // 25 seconds timeout for fast failover
-          }
-        );
-
-        const parsedText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!parsedText) {
-          throw new Error('No se recibió respuesta válida del modelo de IA.');
-        }
-
-        parsedData = JSON.parse(parsedText);
-        console.log(`[GeminiAI] Escaneo exitoso con modelo ${model}`);
-        break; // Exit models loop
-      } catch (err: any) {
-        lastError = err;
-        const status = err.response?.status;
-        const apiErrorMsg = err.response?.data?.error?.message || err.message;
-        const logMsg = `Modelo ${model} falló (Status ${status}): ${apiErrorMsg}`;
-        console.warn(`[GeminiAI] ${logMsg}`);
-        errors.push(logMsg);
-        
-        // Only abort immediately on definitive authentication or authorization errors (401, 403)
-        if (status && [401, 403].includes(status)) {
-          throw err;
-        }
-        // Failover to the next model immediately
-      }
-    }
-
-    if (!parsedData) {
-      if (lastError?.response?.status === 503) {
-        throw new Error('Los servidores de Google Gemini están temporalmente saturados. Por favor, intenta de nuevo en unos segundos.');
-      }
-      throw new Error(`No se pudo procesar la boleta con IA tras intentar con varios modelos: ${errors.join(' | ')}`);
-    }
-  }
 
     try {
       // Match supplier if found

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Minus, Search, X, ClipboardList, WifiOff, ShoppingCart, Trash2, Loader2, ChevronDown, ChevronUp,
-    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays, UserPlus, Globe,
+    MapPin, Check, PencilLine, Store, AlertTriangle, RotateCcw, CalendarDays, UserPlus, Globe, Sparkles,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore, packOf } from '../../stores/posStore';
@@ -21,6 +21,7 @@ import {
   PREORDER_QUEUE_EVENT, type PreOrderItem,
 } from '../../services/preorders';
 import OnlineInbox from './OnlineInbox';
+import WhatsAppOrder from './WhatsAppOrder';
 import { useOnlineOrders } from '../../services/onlineStoreOrders';
 import { updateOrderStage, refreshWholesaleStock } from '../../services/onlineStore';
 
@@ -167,6 +168,8 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
   const [range, setRange] = useState<'today' | 'week' | 'all'>('week');
   const [locality, setLocality] = useState('');
   const [open, setOpen] = useState<string | null>(null);
+  // Pedido de WhatsApp leído con IA (ver WhatsAppOrder)
+  const [waOrder, setWaOrder] = useState(false);
     const localities = useMemo(() => Array.from(new Set(clients.map((c) => (c.locality || '').trim()).filter(Boolean))).sort(), [clients]);
 
   // Recorrido fijo: las localidades de hoy y sus clientes que todavía no pidieron
@@ -295,7 +298,23 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
           </div>
         )}
 
-                {isAdmin && <WholesaleInvite />}
+                <button onClick={() => setWaOrder(true)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-white border border-emerald-200 text-left cursor-pointer hover:border-emerald-300">
+          <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0"><Sparkles className="w-[18px] h-[18px]" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-bold text-slate-900">Pedido de WhatsApp</span>
+            <span className="block text-[12.5px] text-slate-500">Pegá el mensaje o la foto de la lista del cliente y se arma solo.</span>
+          </span>
+        </button>
+        {waOrder && (
+          <WhatsAppOrder products={products} clients={clients} onClose={() => setWaOrder(false)}
+            onCreate={async ({ client, items, notes }) => {
+              const total = items.reduce((t, it) => t + it.quantity * it.unitPrice, 0);
+              const res = await savePreOrder({ id: newPreOrderId(), takenAt: new Date().toISOString(), clientId: client.id, notes, items, clientName: client.name, total });
+              toast.success(res === 'saved' ? `Pedido de ${client.name} guardado` : 'Sin señal: el pedido quedó guardado y se manda solo cuando vuelva la conexión.');
+              load();
+            }} />
+        )}
+        {isAdmin && <WholesaleInvite />}
         {!isSeller && <OnlineInbox products={products} clients={clients} onAccepted={load} />}
 
         {todayZones.length > 0 ? (
