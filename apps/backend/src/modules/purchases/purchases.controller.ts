@@ -47,19 +47,27 @@ export class PurchasesController {
     return this.purchasesService.restorePurchase(id);
   }
 
+  /** Cómo se cargan las boletas escaneadas desde el celular (ver PurchasesService.scanSettings) */
+  @Get('scan-settings')
+  scanSettings() {
+    return this.purchasesService.scanSettings();
+  }
+
   @Post('scan-invoice')
   @UseInterceptors(FilesInterceptor('files'))
   async scanInvoice(
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req,
-    @Body('manualTotal') manualTotal?: string
+    @Body('manualTotal') manualTotal?: string,
+    @Body('mode') mode?: string,
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
     try {
       const parsedTotal = manualTotal ? Number(manualTotal) : undefined;
-      return await this.purchasesService.scanInvoice(files, parsedTotal, req.user.sub);
+      // inline: la PC la revisa en la misma pantalla; sin modo (celular): se carga sola si cierra
+      return await this.purchasesService.scanInvoice(files, parsedTotal, req.user.sub, { inline: mode === 'inline' });
     } catch (err: any) {
       console.error('Controller Error Stack:', err.stack);
       // El mensaje tiene que llegar a la pantalla (antes quedaba un "Internal server error")

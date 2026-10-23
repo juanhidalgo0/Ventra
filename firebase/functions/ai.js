@@ -23,10 +23,11 @@ const admin = require("firebase-admin");
 const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); return new (SDK.default || SDK)(opts); };
 
 const MODEL = "claude-haiku-5-5";
-// pricelist: hasta 2 usos por lista (leerla y buscar los que faltan); ask: 2 por pregunta
-const LIMITS = { order: 300, invoice: 60, pricelist: 100, ask: 400, help: 300 };
+// pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
+// (de una lista o de una boleta); ask: 2 usos por pregunta
+const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 400, help: 300 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { order: 40, invoice: 15, pricelist: 10, ask: 40, help: 30 };
+const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 40, help: 30 };
 // Haiku 5.5: $0,10 / $0,50 por millón (entrada / salida); cache: escritura 1,25x, lectura 0,1x
 const costOf = (u) => ((u.input_tokens || 0) * 0.1 + (u.cache_creation_input_tokens || 0) * 0.125
   + (u.cache_read_input_tokens || 0) * 0.01 + (u.output_tokens || 0) * 0.5) / 1e6;
@@ -501,20 +502,21 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
       order: `Llegaste a los ${LIMITS.order} pedidos leídos con IA de este mes. Se renueva el mes que viene.`,
       invoice: `Llegaste a las ${LIMITS.invoice} facturas leídas con IA de este mes. Se renueva el mes que viene; mientras, subí el PDF o el Excel del proveedor.`,
       pricelist: "Llegaste al tope de listas de precios leídas con IA de este mes. Se renueva el mes que viene.",
+      match: "Llegaste al tope de búsquedas con IA de este mes: los productos que no se encuentran solos quedan para elegirlos a mano.",
       ask: "Llegaste al tope de preguntas de este mes. Se renueva el mes que viene; mientras, tenés todo en Reportes.",
       help: "Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: https://wa.me/5492212025603",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
   }
   if (usedToday + need > DAILY[kind]) {
-    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", ask: "preguntas", help: "consultas a la ayuda" }[kind];
+    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda" }[kind];
     throw new AiError(429, "DAILY_LIMIT", `Llegaste al tope de ${what} de hoy. Mañana podés seguir.`);
   }
   // client: solo en las pruebas (firebase/test/ai.test.cjs)
   const client = injected || anthropicClient({ apiKey, maxRetries: 2, timeout: 120 * 1000 });
   let out;
   try {
-    const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, ask, help }[kind];
+    const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help }[kind];
     out = await run(client, body);
   } catch (err) {
     if (err instanceof AiError) throw err;

@@ -102,7 +102,7 @@ export default function PriceListModal({ onClose, onSuccess }: { onClose: () => 
     setApplying(true);
     try {
       const { data } = await api.post('/ai/price-list/apply', {
-        items: selected.map((r) => ({ productId: r.product!.id, price: r.price, perPack: r.perPack })),
+        items: selected.map((r) => ({ productId: r.product!.id, price: r.price, perPack: r.perPack, code: r.code, name: r.name })),
         supplierId: supplierId || undefined,
         ivaMode, discount: parseFloat(discount.replace(',', '.')) || 0, keepMargin, round,
       }, { timeout: 120000 } as any);

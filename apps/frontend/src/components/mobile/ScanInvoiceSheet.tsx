@@ -1,18 +1,29 @@
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Camera, ImagePlus, X, Loader2, CheckCircle2, Monitor } from 'lucide-react';
+import { Camera, ImagePlus, X, Loader2, CheckCircle2, Monitor, Sparkles } from 'lucide-react';
 import api from '../../services/api';
+import { setStoreSetting } from '../../services/storeSettings';
 import { Sheet, PrimaryButton, money } from './ui';
 
+/** Cómo se cargan las boletas (Compras): JSON en el ajuste del comercio purchase_auto */
+export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
+  let v: any = null;
+  try { v = JSON.parse(localStorage.getItem('purchase_auto') || 'null'); } catch { /* sin ajuste */ }
+  return { enabled: v?.enabled !== false, keepMargin: v?.keepMargin !== false, round: [0, 10, 100].includes(Number(v?.round)) ? Number(v.round) : 10 };
+}
+export const savePurchaseAuto = (v: { enabled: boolean; keepMargin: boolean; round: number }) => setStoreSetting('purchase_auto', JSON.stringify(v));
+
 /**
- * Escanear una boleta de compra con el celular: se sacan las fotos (una por hoja), la IA de
- * Ventra la lee y queda como compra "por revisar". En la PC aparece sola en Compras para
- * confirmarla (precios, productos nuevos); el stock no se toca hasta confirmar.
+ * Escanear una boleta de compra con el celular: se sacan las fotos (una por hoja) y la IA de
+ * Ventra la lee. Si la boleta cierra (los renglones suman el total) y no hay nada dudoso, se
+ * carga sola: suma el stock, actualiza costos y precios (manteniendo el margen) y crea los
+ * productos nuevos. Si no, queda "por revisar" en la PC, sin tocar nada.
  */
 export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const [photos, setPhotos] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any | null>(null);
+  const [auto, setAuto] = useState(readPurchaseAuto);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -49,19 +60,32 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
       {result ? (
         <div className="space-y-4 pt-1">
           <div className="text-center">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
+            <CheckCircle2 className={`w-12 h-12 mx-auto ${result.auto ? 'text-emerald-600' : 'text-amber-500'}`} />
             <p className="mt-2 text-[17px] font-bold text-slate-900">{result.matchedSupplier?.name || result.supplierName || 'Proveedor'}</p>
             <p className="text-[13px] text-slate-500">{(result.items || []).length} productos{result.invoiceNumber ? ` · Factura ${result.invoiceNumber}` : ''} · {money(total)} sin IVA</p>
           </div>
-          <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex gap-3 text-[13.5px] text-emerald-900">
-            <Monitor className="w-5 h-5 shrink-0 mt-0.5" />
-            <span>Quedó en <b>Compras → Por revisar</b>. En la PC aparece sola: revisá precios y productos nuevos y confirmala. El stock se suma al confirmar.</span>
-          </div>
+          {result.auto ? (
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex gap-3 text-[13.5px] text-emerald-900">
+              <Sparkles className="w-5 h-5 shrink-0 mt-0.5" />
+              <span><b>Listo, se cargó sola.</b> Se sumó el stock{result.updatedPrices ? `, se actualizaron ${result.updatedPrices} precios manteniendo tu margen` : ''}{result.newProducts ? ` y se crearon ${result.newProducts} productos nuevos (te quedan para revisar en Productos)` : ''}. Queda a cuenta del proveedor.</span>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3 flex gap-3 text-[13.5px] text-amber-900">
+              <Monitor className="w-5 h-5 shrink-0 mt-0.5" />
+              <span>Quedó en <b>Compras → Por revisar</b>{result.why?.length ? ` porque ${result.why.join(' y ')}` : ''}. En la PC aparece sola para revisarla y confirmarla. Hasta entonces no se toca el stock ni los precios.</span>
+            </div>
+          )}
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100 max-h-[40vh] overflow-y-auto">
             {(result.items || []).map((it: any, i: number) => (
-              <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[13px]">
-                <span className="text-slate-700 min-w-0">{it.quantity} × {it.name}</span>
-                <span className="text-slate-800 tabular-nums shrink-0">{money(Number(it.total) || 0)}</span>
+              <div key={i} className="px-3.5 py-2 text-[13px]">
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-700 min-w-0">{it.quantity} × {it.product?.name || it.name}{!it.product && <span className="ml-1.5 text-[11px] font-semibold text-sky-700">nuevo</span>}</span>
+                  <span className="text-slate-800 tabular-nums shrink-0">{money(Number(it.total) || 0)}</span>
+                </div>
+                {it.product && it.suggestedSalePrice !== it.product.salePrice && (
+                  <p className="text-[11.5px] text-slate-500">Precio de venta {money(it.product.salePrice)} → {money(it.suggestedSalePrice)}</p>
+                )}
+                {it.doubtful && <p className="text-[11.5px] text-amber-700">Revisar: {(it.reasons || []).join(', ')}</p>}
               </div>
             ))}
           </div>
@@ -90,6 +114,13 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
               ))}
             </div>
           )}
+          <label className="flex items-start gap-3 rounded-2xl border border-slate-200 px-3.5 py-3">
+            <input type="checkbox" checked={auto.enabled} onChange={(e) => { const v = { ...auto, enabled: e.target.checked }; setAuto(v); savePurchaseAuto(v); }} className="w-5 h-5 mt-0.5 accent-rose-600 shrink-0" />
+            <span className="text-[13px] text-slate-700">
+              <b className="block text-slate-900">Cargarla sola si está todo bien</b>
+              Si los renglones suman el total y no hay nada dudoso: suma el stock, actualiza los precios manteniendo tu margen y crea los productos nuevos. Si algo no cierra, queda para revisar.
+            </span>
+          </label>
           {busy && <p className="flex items-center justify-center gap-2 text-[13px] text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> La IA está leyendo los productos y los totales…</p>}
         </div>
       )}

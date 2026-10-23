@@ -364,6 +364,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             // La foto de dónde salió (enlace): al confirmarlo el dueño, va al catálogo compartido
             const reviewCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(product_reviews)`);
             if (!reviewCols.some((c) => c.name === 'image_source')) await this.$executeRawUnsafe(`ALTER TABLE product_reviews ADD COLUMN image_source TEXT DEFAULT NULL;`);
+            // Qué producto es cada renglón de las boletas y listas de cada proveedor (su código o su
+            // nombre): se aprende al confirmar una compra, y la próxima boleta lo encuentra directo.
+            // id = proveedor|c:código o proveedor|n:nombre (tabla aparte: se sincroniza sola).
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "supplier_codes" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "supplier_id" TEXT NOT NULL,
+              "product_id" TEXT NOT NULL,
+              "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );`);
+            // Compras escaneadas que esperan revisión: los renglones tal como se leyeron (con los
+            // productos que todavía no existen), para no crear nada antes de confirmar.
+            const purchaseCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(purchases)`);
+            if (!purchaseCols.some((c) => c.name === 'draft')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN draft TEXT DEFAULT NULL;`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,

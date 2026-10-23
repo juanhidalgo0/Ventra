@@ -6,6 +6,7 @@ import { readSheetFiles } from '../purchases/invoice-reader/sheet-rows';
 import { readPdfLines } from '../purchases/invoice-reader/pdf-text';
 import { parseArNumber } from '../purchases/invoice-reader/numbers';
 import { computeCost } from '../products/ventra-format';
+import { ProductMatcherService, PRODUCT_SELECT, norm } from './product-matcher.service';
 
 type Iva = 'si' | 'no' | 'no_se';
 /** incluido: la lista ya tiene IVA; sumar: es sin IVA y el costo lo lleva; sin: sin IVA y el costo queda sin IVA */
@@ -14,19 +15,7 @@ export interface ListRow { code: string; barcode: string; name: string; price: n
 export interface PriceOptions { ivaMode: IvaMode; discount: number; keepMargin: boolean; round: number }
 
 const MAX_ROWS = 5000;
-const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2').replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ').trim();
-const codeKey = (s: string) => String(s || '').toUpperCase().replace(/[\s.\-_/]/g, '').replace(/^0+/, '');
-const words = (s: string) => norm(s).split(' ').filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w));
-/** Los números del nombre (tamaños, pesos, sabores numerados): tienen que coincidir */
-const sizes = (s: string) => (norm(s).match(/\d+(?:\.\d+)?/g) || []).map((n) => String(Number(n))).sort().join(' ');
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-const PRODUCT_SELECT = {
-  id: true, name: true, barcode: true, sku: true, supplierId: true, costPrice: true, salePrice: true, packPrice: true,
-  wholesalePrice: true, tradePrice: true, unitsPerPack: true, taxRate: true, listPrice: true, discount1: true, discount2: true, discount3: true,
-  additionalBarcodes: { select: { barcode: true } },
-} as const;
 
 /**
  * Lista de precios de un proveedor (PDF, Excel/CSV o fotos) → costos nuevos. La PC lee la
@@ -37,7 +26,7 @@ const PRODUCT_SELECT = {
  */
 @Injectable()
 export class PriceListService {
-  constructor(private prisma: PrismaService, private ai: AiService, private events: EventsGateway) {}
+  constructor(private prisma: PrismaService, private ai: AiService, private events: EventsGateway, private matcher: ProductMatcherService) {}
 
   async read(files: { buffer: Buffer; mimetype?: string; originalname?: string }[], supplierId?: string) {
     if (!files.length) throw new BadRequestException('Subí la lista de precios.');
@@ -136,81 +125,14 @@ export class PriceListService {
     return null;
   }
 
-  /** Qué producto del catálogo es cada renglón */
+  /** Qué producto del catálogo es cada renglón (ver ProductMatcherService) */
   private async match(rows: ListRow[], supplierId?: string) {
-    const products = await this.prisma.product.findMany({ where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } }, select: PRODUCT_SELECT });
-    const byBarcode = new Map<string, any>();
-    const bySku = new Map<string, any>();
-    const byName = new Map<string, any>();
-    const index = new Map<string, any[]>();
-    for (const p of products) {
-      for (const b of [p.barcode, ...p.additionalBarcodes.map((x) => x.barcode)]) if (b) byBarcode.set(codeKey(b), p);
-      if (p.sku) bySku.set(codeKey(p.sku), p);
-      byName.set(norm(p.name), p);
-      for (const w of new Set(words(p.name))) { const l = index.get(w) || []; l.push(p); index.set(w, l); }
-    }
+    const { matches: found, aiMatched } = await this.matcher.match(rows, { supplierId });
     const view = (p: any) => ({
       id: p.id, name: p.name, costPrice: p.costPrice, salePrice: p.salePrice, packPrice: p.packPrice,
       unitsPerPack: p.unitsPerPack, supplierId: p.supplierId, usesListPrice: p.listPrice != null && p.listPrice > 0,
     });
-    const matches: any[] = rows.map((r) => {
-      const bc = r.barcode || (/^\d{8,14}$/.test(r.code) ? r.code : '');
-      let p = bc ? byBarcode.get(codeKey(bc)) : null;
-      if (p) return { product: view(p), by: 'barcode', confidence: 'alta' };
-      p = r.code ? bySku.get(codeKey(r.code)) : null;
-      if (p) return { product: view(p), by: 'code', confidence: supplierId && p.supplierId && p.supplierId !== supplierId ? 'media' : 'alta' };
-      p = byName.get(norm(r.name));
-      if (p) return { product: view(p), by: 'name', confidence: 'alta' };
-      // Por nombre parecido: muchas palabras en común y los mismos números (tamaño, peso)
-      const ws = words(r.name);
-      const rs = sizes(r.name);
-      const seen = new Set<any>();
-      let best: any = null;
-      let bestScore = 0;
-      for (const w of ws) for (const cand of (index.get(w) || []).length < 300 ? index.get(w) || [] : []) {
-        if (seen.has(cand)) continue;
-        seen.add(cand);
-        if (sizes(cand.name) !== rs) continue;
-        const cw = new Set(words(cand.name));
-        const common = ws.filter((x) => cw.has(x)).length;
-        let score = common / Math.max(ws.length, cw.size);
-        if (supplierId && cand.supplierId === supplierId) score += 0.05;
-        if (score > bestScore) { bestScore = score; best = cand; }
-      }
-      if (best && bestScore >= 0.75) return { product: view(best), by: 'name', confidence: bestScore >= 0.9 ? 'alta' : 'media' };
-      return null;
-    });
-
-    // Los que faltan, con la IA (si la PC está vinculada y no se pasó del tope)
-    let aiMatched = 0;
-    const missing = rows.map((r, i) => ({ r, i })).filter((x) => !matches[x.i]).slice(0, 400);
-    if (missing.length && products.length) {
-      try {
-        const { result } = await this.ai.call('pricelist', {
-          mode: 'match',
-          items: missing.map((x) => ({ name: x.r.name, code: x.r.code })),
-          catalog: products.slice(0, 4000).map((p) => ({ id: p.id, name: p.name })),
-        });
-        const byId = new Map(products.map((p) => [p.id, p]));
-        for (const m of result?.matches || []) {
-          const target = missing[Number(m.i)];
-          const p = byId.get(String(m.productId));
-          if (!target || !p) continue;
-          matches[target.i] = { product: view(p), by: 'ia', confidence: m.confianza === 'alta' ? 'media' : 'baja' };
-          aiMatched++;
-        }
-      } catch { /* sin IA: quedan sin encontrar */ }
-    }
-
-    // Un producto en dos renglones: se queda el más seguro
-    const rank = { alta: 3, media: 2, baja: 1 } as Record<string, number>;
-    const owner = new Map<string, number>();
-    matches.forEach((m, i) => {
-      if (!m) return;
-      const prev = owner.get(m.product.id);
-      if (prev === undefined) { owner.set(m.product.id, i); return; }
-      if (rank[m.confidence] > rank[matches[prev].confidence]) { matches[prev] = null; owner.set(m.product.id, i); } else matches[i] = null;
-    });
+    const matches: any[] = found.map((m) => (m ? { ...m, product: view(m.product) } : null));
 
     return {
       aiMatched,
@@ -266,7 +188,7 @@ export class PriceListService {
     });
   }
 
-  async apply(body: { items: { productId: string; price: number; perPack?: boolean }[]; supplierId?: string } & PriceOptions, userId: string) {
+  async apply(body: { items: { productId: string; price: number; perPack?: boolean; code?: string; name?: string }[]; supplierId?: string } & PriceOptions, userId: string) {
     const items = (body.items || []).filter((i) => i && i.productId && Number(i.price) > 0).slice(0, MAX_ROWS);
     if (!items.length) throw new BadRequestException('No hay precios para aplicar.');
     const o: PriceOptions = { ivaMode: ['incluido', 'sumar', 'sin'].includes(body.ivaMode) ? body.ivaMode : 'incluido', discount: Number(body.discount) || 0, keepMargin: body.keepMargin !== false, round: Number(body.round) || 0 };
@@ -296,6 +218,8 @@ export class PriceListService {
       }
     }
     for (let i = 0; i < ops.length; i += 400) await this.prisma.$transaction(ops.slice(i, i + 400));
+    // La próxima lista o boleta de este proveedor encuentra estos productos directo
+    if (supplier) await this.matcher.learn(supplier.id, items.map((i) => ({ code: i.code, name: i.name, productId: String(i.productId) })));
     try { this.events.server?.emit('products:bulk-updated', { count: updated }); } catch { /* sin clientes conectados */ }
     return { updated };
   }

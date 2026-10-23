@@ -114,7 +114,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(out.result.items.length, 3);
     assert.strictEqual(out.result.priceIncludesIva, "no");
     const match = fakeClient({ matches: [{ i: 0, productId: "coca", confianza: "alta" }, { i: 1, productId: "inventado", confianza: "alta" }] });
-    const m = await ai.handle({ db: fakeDb(), logger, client: match }, "u8", { kind: "pricelist", mode: "match", items: [{ name: "COCA 2.25" }, { name: "OTRA" }], catalog });
+    const m = await ai.handle({ db: fakeDb(), logger, client: match }, "u8", { kind: "match", items: [{ name: "COCA 2.25" }, { name: "OTRA" }], catalog });
     assert.deepStrictEqual(m.result.matches.map((x) => x.productId), ["coca"]);
   });
   await t("ayuda: con la guía cacheada y la pantalla en la pregunta", async () => {

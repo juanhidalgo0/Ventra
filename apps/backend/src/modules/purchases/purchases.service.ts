@@ -1,4 +1,5 @@
 import { AiService } from '../ai/ai.service';
+import { ProductMatcherService } from '../ai/product-matcher.service';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
@@ -8,6 +9,9 @@ import * as XLSX from 'xlsx';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { createPurchaseLot } from '../products/lots.util';
 import { InvoiceReadError, isPdfFile, isSheetFile, readInvoiceFile, type ParsedInvoice } from './invoice-reader';
+
+/** Nombre de un producto nuevo tal como vino en la boleta, prolijo */
+const niceName = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
 
 function normalizeHeaderCell(s: any): string {
   return String(s || '')
@@ -220,6 +224,7 @@ export class PurchasesService {
     private prisma: PrismaService,
     private firebaseSync: FirebaseSyncService,
     private ai: AiService,
+    private matcher: ProductMatcherService,
   ) {}
 
   async pending() {
@@ -229,14 +234,28 @@ export class PurchasesService {
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
-    return rows.map((p: any) => ({ id: p.id, total: p.total, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, supplierName: p.supplier?.name || '', userName: p.user?.fullName || '', items: p._count?.items || 0 }));
+    const drafts = await this.drafts(rows.map((p: any) => p.id));
+    return rows.map((p: any) => ({ id: p.id, total: p.total, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, supplierName: p.supplier?.name || '', userName: p.user?.fullName || '', items: drafts.get(p.id)?.items?.length ?? p._count?.items ?? 0 }));
+  }
+
+  /** Renglones guardados de las compras escaneadas que esperan revisión */
+  private async drafts(ids: string[]): Promise<Map<string, any>> {
+    if (!ids.length) return new Map();
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string; draft: string }[]>(
+      `SELECT id, draft FROM purchases WHERE draft IS NOT NULL AND id IN (${ids.map(() => '?').join(',')})`, ...ids,
+    ).catch((): any[] => []);
+    const out = new Map<string, any>();
+    for (const r of rows) { try { out.set(r.id, JSON.parse(r.draft)); } catch { /* dañado: se revisa como antes */ } }
+    return out;
   }
 
   async findAll() {
-    return (this.prisma as any).purchase.findMany({
+    const rows = await (this.prisma as any).purchase.findMany({
       include: { supplier: true, user: { select: { fullName: true } }, items: true },
       orderBy: { createdAt: 'desc' },
     });
+    const drafts = await this.drafts(rows.filter((p: any) => p.status === 'PENDING').map((p: any) => p.id));
+    return rows.map((p: any) => (drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p));
   }
 
   async create(data: {
@@ -250,6 +269,8 @@ export class PurchasesService {
       buyFormat?: string;
       salePrice?: number;
       expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
+      /** El renglón de la boleta (código y nombre del proveedor): se aprende para la próxima */
+      source?: { code?: string; name?: string };
       newProductData?: {
         name: string;
         barcode?: string;
@@ -276,6 +297,7 @@ export class PurchasesService {
       : (data.items || []).reduce((acc, item) => acc + (item.quantity * item.cost), 0) * 1.21;
     const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
 
+    const learned: { code?: string; name?: string; productId: string }[] = [];
     const purchase = await this.prisma.$transaction(async (tx) => {
       // 1. Create Purchase
       const newPurchase = await (tx as any).purchase.create({
@@ -339,6 +361,8 @@ export class PurchasesService {
             productId = newProduct.id;
           }
         }
+
+        if (item.source && productId) learned.push({ ...item.source, productId });
 
         const product = await tx.product.findUnique({ 
           where: { id: productId }, 
@@ -432,6 +456,9 @@ export class PurchasesService {
       return newPurchase;
     });
 
+    // La próxima boleta de este proveedor encuentra estos productos directo
+    if (learned.length) await this.matcher.learn(data.supplierId, learned).catch(() => {});
+
     // Sync all updated stocks to GoDelivery in real-time outside transaction
     for (const p of productsToSync) {
       this.firebaseSync.syncProductToFirestore(
@@ -453,7 +480,11 @@ export class PurchasesService {
     return purchase;
   }
 
-  async scanInvoice(files: Express.Multer.File[], manualTotal?: number, userId?: string) {
+  /**
+   * Boleta de un proveedor (fotos con IA, PDF o planilla sin IA). inline: la PC la revisa en la
+   * misma pantalla (no se guarda nada). Si no, viene del celular: se carga sola cuando cierra.
+   */
+  async scanInvoice(files: Express.Multer.File[], manualTotal?: number, userId?: string, opts: { inline?: boolean } = {}) {
     // PDF con texto, Excel y CSV se leen en la PC, sin IA ni costo
     const docFile = files.find(f => isPdfFile(f.originalname || '', f.mimetype) || isSheetFile(f.originalname || '', f.mimetype));
     const isExcel = !!docFile;
@@ -511,204 +542,195 @@ export class PurchasesService {
       console.log(`[PurchasesService] Factura leída con IA: ${parsedData.items.length} productos.`);
     }
 
-    try {
-      // Match supplier if found
-      let matchedSupplier = null;
-      if (parsedData.supplierName) {
-        matchedSupplier = await this.prisma.supplier.findFirst({
-          where: {
-            name: {
-              contains: parsedData.supplierName,
-            },
-          },
-        });
-      }
+    // Proveedor: el que ya está cargado (parecido) o, en una boleta del celular, uno nuevo
+    const supplier = await this.findSupplier(parsedData.supplierName);
+    const settings = await this.scanSettings();
 
-      // Load all active products into memory once to prevent SQLite lock and database bottleneck
-      const rawProducts = await this.prisma.product.findMany({
-        where: { isActive: true },
-        include: { additionalBarcodes: true },
-      });
-
-      // Filter out any potential nulls to be absolutely safe
-      const allProducts = (rawProducts || []).filter(p => p !== null && p !== undefined);
-
-      // Match products in memory
-      const items = (parsedData.items || []).map((item: any) => {
-        let matchedProduct = null;
-        
-        // Clean and validate barcodes and SKUs
-        let barcodeVal = item.barcode ? String(item.barcode).trim() : '';
-        const skuVal = item.sku ? String(item.sku).trim() : '';
-        
-        // Safety check: if barcode was populated with the SKU value, clear it
-        if (barcodeVal === skuVal) {
-          barcodeVal = '';
-        }
-
-        // 1. Match by Barcode
-        if (barcodeVal) {
-          matchedProduct = allProducts.find(
-            p => p && (p.barcode === barcodeVal || (p.additionalBarcodes && p.additionalBarcodes.some(ab => ab && ab.barcode === barcodeVal)))
-          );
-        }
-
-        // 2. Match by SKU
-        if (!matchedProduct && skuVal) {
-          matchedProduct = allProducts.find(
-            p => p && (p.sku === skuVal || p.barcode === skuVal)
-          );
-        }
-
-        // 3. Match by Name
-        if (!matchedProduct && item.name) {
-          const searchName = item.name.toUpperCase();
-          matchedProduct = allProducts.find(
-            p => p && p.name && p.name.toUpperCase().includes(searchName)
-          );
-        }
-
-        // Calculate quantity based on bultos and units per bulto (U.B.)
-        const unitsPerPackVal = item.unitsPerPack || 1;
-        const packageQtyVal = item.packageQuantity || 1;
-        const quantityVal = packageQtyVal * unitsPerPackVal;
-        const rawNetTotal = parseArgentineNumber(item.total);
-        const netCost = rawNetTotal / quantityVal;
-
-        return {
-          barcode: barcodeVal,
-          sku: skuVal,
-          name: item.name,
-          quantity: quantityVal,
-          unitsPerPack: unitsPerPackVal,
-          presentationType: 'UNIT', // Default everything to UNIT as requested
-          cost: parseFloat(netCost.toFixed(2)),
-          total: parseFloat(rawNetTotal.toFixed(2)),
-          product: (matchedProduct && matchedProduct.id) ? {
-            id: matchedProduct.id,
-            barcode: matchedProduct.barcode,
-            sku: matchedProduct.sku,
-            name: matchedProduct.name,
-            costPrice: matchedProduct.costPrice,
-            salePrice: matchedProduct.salePrice,
-            unit: matchedProduct.unit,
-            presentationType: matchedProduct.presentationType,
-            unitsPerPack: matchedProduct.unitsPerPack,
-          } : null,
-        };
-      });
-
-      // 1. Get or create default supplier if none matched
-      let supplierId = matchedSupplier?.id;
-      if (!supplierId) {
-        let defaultSupplier = await this.prisma.supplier.findFirst({
-          where: { name: 'IA - Pendiente de Clasificar' }
-        });
-        if (!defaultSupplier) {
-          defaultSupplier = await this.prisma.supplier.create({
-            data: {
-              name: 'IA - Pendiente de Clasificar',
-              contact: 'IA',
-              phone: '',
-              email: ''
-            }
-          });
-        }
-        supplierId = defaultSupplier.id;
-      }
-
-      // 2. Create the Purchase in PENDING status
-      // El total impreso en la boleta (con IVA y percepciones) si se pudo leer; si no, se estima
-      const printedTotal = parseArgentineNumber(parsedData.totalFacturaAPagar);
-      const total = printedTotal > 0 ? printedTotal : items.reduce((acc, item) => acc + item.total, 0) * 1.21;
-      
-      const purchase = await this.prisma.$transaction(async (tx) => {
-        const newPurchase = await (tx as any).purchase.create({
-          data: {
-            supplierId,
-            userId: userId || (await tx.user.findFirst()).id, // fallback to first user if none provided
-            invoiceNumber: parsedData.invoiceNumber || null,
-            total,
-            status: 'PENDING',
-            paymentStatus: 'OWED',
-            notes: isExcel ? sourceLabel : 'Escaneado automáticamente con IA.',
-          },
-        });
-
-        // For each item, if it has a matched product, use it.
-        // If not, we create it in the database immediately as inactive
-        for (const item of items) {
-          let productId = item.product?.id;
-          if (!productId) {
-            const costVal = item.cost * 1.21;
-            const saleVal = costVal * 1.35; // default 35% markup
-            const newProduct = await tx.product.create({
-              data: {
-                name: item.name,
-                barcode: item.barcode || null,
-                sku: item.sku || null,
-                costPrice: costVal,
-                salePrice: saleVal,
-                stock: 0,
-                presentationType: 'UNIT',
-                unitsPerPack: 1,
-              }
-            });
-            productId = newProduct.id;
-            
-            // Update the item's product info so the frontend knows it was created
-            item.product = {
-              id: newProduct.id,
-              barcode: newProduct.barcode,
-              sku: newProduct.sku,
-              name: newProduct.name,
-              costPrice: newProduct.costPrice,
-              salePrice: newProduct.salePrice,
-              unit: newProduct.unit,
-              presentationType: newProduct.presentationType,
-              unitsPerPack: newProduct.unitsPerPack,
-            };
-          }
-
-          await (tx as any).purchaseItem.create({
-            data: {
-              purchaseId: newPurchase.id,
-              productId,
-              productName: item.name,
-              quantity: item.quantity,
-              cost: item.cost * 1.21,
-              total: item.total * 1.21,
-              buyFormat: 'UNIT',
-            }
-          });
-        }
-
-        return newPurchase;
-      });
-
-      return {
-        purchaseId: purchase.id,
-        status: purchase.status,
-        supplierName: parsedData.supplierName || '',
-        matchedSupplier: (matchedSupplier && matchedSupplier.id) ? {
-          id: matchedSupplier.id,
-          name: matchedSupplier.name,
-        } : null,
-        invoiceNumber: parsedData.invoiceNumber || '',
-        date: parsedData.date || new Date().toISOString().split('T')[0],
-        items,
-        // Control de la lectura: si las cuentas de la boleta cierran
-        check: readCheck,
-        invoice: readInfo,
-      };
-
-    } catch (err: any) {
-      console.error('Error scanning/parsing invoice:', err.response?.data || err.message);
-      if (err.response?.status === 503) {
-        throw new BadRequestException('El servicio está temporalmente saturado. Por favor, intenta de nuevo en unos segundos.');
-      }
-      throw new BadRequestException(`Error al procesar la boleta: ${err.message}`);
+    // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
+    // adentro (factura B/C, ticket), la suma da el total. Así se sabe también si los precios lo traen.
+    const rawItems: any[] = parsedData.items || [];
+    const lineTotals = rawItems.map((it) => parseArgentineNumber(it.total));
+    const sum = lineTotals.reduce((a, b) => a + b, 0);
+    const printed = parseArgentineNumber(parsedData.totalFacturaAPagar);
+    const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(50, b * 0.02);
+    let totalsOk: boolean | null = readCheck ? !!readCheck.ok : null;
+    let netFactor = 1;
+    if (!readCheck && printed > 0 && sum > 0) {
+      if (near(sum * 1.21, printed)) totalsOk = true;
+      else if (near(sum, printed)) { totalsOk = true; netFactor = 1 / 1.21; }
+      else totalsOk = false;
     }
+
+    const rows = rawItems.map((it) => {
+      let barcode = it.barcode ? String(it.barcode).trim() : '';
+      const sku = it.sku ? String(it.sku).trim() : '';
+      if (barcode === sku) barcode = /^\d{8,14}$/.test(barcode) ? barcode : '';
+      return { barcode, sku, code: sku, name: String(it.name || '').trim() };
+    });
+    const { matches } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
+
+    const roundUp = (n: number) => (settings.round ? Math.ceil(n / settings.round - 1e-9) * settings.round : Math.round(n * 100) / 100);
+    const items = rawItems.map((it, i) => {
+      const r = rows[i];
+      const m = matches[i];
+      const unitsPerPackVal = Number(it.unitsPerPack) || 1;
+      const quantityVal = (Number(it.packageQuantity) || 1) * unitsPerPackVal;
+      const netTotal = lineTotals[i] * netFactor;
+      const netCost = quantityVal > 0 ? netTotal / quantityVal : 0;
+      const costWithIva = netCost * 1.21;
+      const p: any = m?.product || null;
+      const changePct = p && p.costPrice > 0 ? Math.round((costWithIva / p.costPrice - 1) * 1000) / 10 : null;
+      // Precio de venta sugerido: mantiene el margen del producto, o el margen de siempre si es nuevo
+      const suggestedSalePrice = p
+        ? (p.costPrice > 0 && settings.keepMargin ? roundUp(p.salePrice * (costWithIva / p.costPrice)) : p.salePrice)
+        : roundUp(costWithIva * (1 + settings.margin / 100));
+      const reasons: string[] = [];
+      if (!(quantityVal > 0) || !(netCost > 0)) reasons.push('no se leyó la cantidad o el precio');
+      if (m?.confidence === 'baja') reasons.push('no es seguro que sea ese producto');
+      if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
+      else if (m?.confidence === 'media' && changePct !== null && Math.abs(changePct) > 25) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}% y el producto no es seguro`);
+      return {
+        barcode: r.barcode,
+        sku: r.sku,
+        name: r.name,
+        quantity: quantityVal,
+        unitsPerPack: unitsPerPackVal,
+        presentationType: 'UNIT',
+        cost: parseFloat(netCost.toFixed(2)),
+        total: parseFloat(netTotal.toFixed(2)),
+        match: m ? { by: m.by, confidence: m.confidence } : null,
+        changePct,
+        suggestedSalePrice,
+        doubtful: reasons.length > 0,
+        reasons,
+        product: p ? {
+          id: p.id, barcode: p.barcode, sku: p.sku, name: p.name, costPrice: p.costPrice, salePrice: p.salePrice,
+          unit: p.unit, presentationType: p.presentationType, unitsPerPack: p.unitsPerPack, trackExpiry: p.trackExpiry,
+        } : null,
+      };
+    });
+
+    const base = {
+      supplierName: parsedData.supplierName || '',
+      matchedSupplier: supplier ? { id: supplier.id, name: supplier.name } : null,
+      invoiceNumber: parsedData.invoiceNumber || '',
+      date: parsedData.date || new Date().toISOString().split('T')[0],
+      items,
+      check: readCheck || (totalsOk === null ? null : {
+        ok: totalsOk,
+        message: totalsOk ? 'Los renglones suman el total de la boleta.' : `Los renglones suman $ ${Math.round(sum * 1.21).toLocaleString('es-AR')} con IVA y la boleta dice $ ${Math.round(printed).toLocaleString('es-AR')}: revisá cantidades y precios.`,
+        details: [],
+      }),
+      invoice: readInfo,
+      pricesIncludeIva: netFactor !== 1,
+    };
+
+    // En la PC la boleta se revisa en la misma pantalla: no se guarda nada todavía
+    if (opts.inline) return { ...base, status: 'INLINE', purchaseId: null };
+
+    // Del celular: si la boleta cierra y no hay nada dudoso, se carga sola (stock, costos, precios
+    // y productos nuevos). Si no, queda para revisar en la PC, sin crear nada.
+    const doubts = items.filter((it) => it.doubtful);
+    const why: string[] = [];
+    if (!settings.auto) why.push('la carga automática está apagada');
+    if (totalsOk !== true) why.push(totalsOk === false ? 'los renglones no suman el total de la boleta' : 'no se pudo leer el total de la boleta');
+    if (doubts.length) why.push(`${doubts.length} ${doubts.length === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
+    if (!items.length) why.push('no hay productos');
+
+    const supplierId = supplier?.id || (await this.findSupplier(parsedData.supplierName || 'Proveedor sin nombre', true))!.id;
+    const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
+    const printedTotal = printed > 0 ? printed : sum * 1.21 * netFactor;
+
+    if (!why.length) {
+      const purchase = await this.create({
+        supplierId,
+        userId: resolvedUser,
+        invoiceNumber: parsedData.invoiceNumber || undefined,
+        manualTotal: printedTotal,
+        paymentStatus: 'OWED',
+        notes: 'Cargada sola desde la foto de la boleta (Ventra IA).',
+        items: items.map((it) => ({
+          productId: it.product?.id,
+          quantity: it.quantity,
+          cost: it.cost,
+          buyFormat: 'UNIT',
+          salePrice: it.suggestedSalePrice,
+          source: { code: it.sku, name: it.name },
+          newProductData: it.product ? undefined : {
+            name: niceName(it.name),
+            barcode: /^\d{8,14}$/.test(it.barcode) ? it.barcode : undefined,
+            salePrice: it.suggestedSalePrice,
+            taxRate: 21,
+          },
+        })),
+      });
+      // Los productos nuevos quedan a la vista del dueño para revisarlos (nombre, categoría, precio)
+      const created = await this.prisma.purchaseItem.findMany({ where: { purchaseId: purchase.id }, select: { productId: true, productName: true } });
+      const newIds = new Set<string>();
+      for (const it of items) if (!it.product) { const c = created.find((x) => x.productName === niceName(it.name)); if (c) newIds.add(c.productId); }
+      for (const id of newIds) {
+        const name = created.find((c) => c.productId === id)?.productName || '';
+        await this.prisma.$executeRawUnsafe(
+          `INSERT INTO product_reviews (id, product_name, user_name, image_source, created_at) VALUES (?, ?, ?, NULL, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING`,
+          id, name.slice(0, 200), 'Boleta escaneada',
+        ).catch(() => {});
+      }
+      const updatedPrices = items.filter((it) => it.product && it.suggestedSalePrice !== it.product.salePrice).length;
+      await this.notify('Boleta cargada sola',
+        `${supplier?.name || parsedData.supplierName || 'Proveedor'}: ${items.length} productos, ${updatedPrices} precios actualizados${newIds.size ? `, ${newIds.size} productos nuevos para revisar` : ''}.`);
+      return { ...base, status: 'COMPLETED', purchaseId: purchase.id, auto: true, newProducts: newIds.size, updatedPrices };
+    }
+
+    // Para revisar: la compra queda pendiente con los renglones tal cual (sin crear productos)
+    const pending = await (this.prisma as any).purchase.create({
+      data: {
+        supplierId,
+        userId: resolvedUser,
+        invoiceNumber: parsedData.invoiceNumber || null,
+        total: printedTotal,
+        status: 'PENDING',
+        paymentStatus: 'OWED',
+        notes: isExcel ? sourceLabel : 'Escaneada con IA: falta revisarla.',
+      },
+    });
+    await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
+    return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
+  }
+
+  /** El proveedor de la boleta entre los cargados (nombre parecido); create: si no está, se agrega */
+  private async findSupplier(name?: string, create = false) {
+    const clean = String(name || '').trim();
+    if (!clean) return null;
+    const key = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad anonima|de|la|el)\b/g, ' ').replace(/[^a-z0-9]/g, '');
+    const target = key(clean);
+    const all = await this.prisma.supplier.findMany({ select: { id: true, name: true } });
+    const found = target ? all.find((s) => key(s.name) === target) || all.find((s) => { const k = key(s.name); return k.length >= 4 && (k.includes(target) || target.includes(k)); }) : null;
+    if (found || !create) return found || null;
+    return this.prisma.supplier.create({ data: { name: clean.slice(0, 120) } });
+  }
+
+  /** Cómo se cargan las boletas escaneadas (Compras → configuración) */
+  async scanSettings() {
+    const read = async (id: string) => {
+      const row = await this.prisma.storeSetting.findUnique({ where: { id } }).catch(() => null);
+      // Desde las pantallas llega como texto (a veces un JSON adentro de otro)
+      let v: any = row?.value ?? null;
+      for (let i = 0; i < 2 && typeof v === 'string'; i++) { try { v = JSON.parse(v); } catch { break; } }
+      return v;
+    };
+    const auto = (await read('purchase_auto')) || {};
+    const margin = Number(await read('purchase_default_margin'));
+    return {
+      auto: auto.enabled !== false,
+      keepMargin: auto.keepMargin !== false,
+      round: [0, 10, 100].includes(Number(auto.round)) ? Number(auto.round) : 10,
+      margin: Number.isFinite(margin) && margin > 0 ? margin : 30,
+    };
+  }
+
+  private async notify(title: string, body: string) {
+    await this.prisma.appNotification.create({ data: { type: 'purchaseAuto', title, body, url: '/purchases' } }).catch(() => {});
   }
 
   async confirmPending(id: string, data: {
@@ -722,12 +744,25 @@ export class PurchasesService {
       buyFormat?: string;
       salePrice?: number;
       expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
+      source?: { code?: string; name?: string };
+      newProductData?: any;
     }[];
     paymentStatus: 'PAID' | 'OWED';
     paymentMethod?: string;
     notes?: string;
     manualTotal?: number;
   }) {
+    // Escaneada con la versión nueva (renglones en draft, productos nuevos sin crear): se registra
+    // como una compra normal, que crea los productos nuevos, y la pendiente se borra
+    const draftRow = await this.prisma.$queryRawUnsafe<{ status: string; draft: string | null }[]>(`SELECT status, draft FROM purchases WHERE id = ?`, id);
+    if (!draftRow.length) throw new NotFoundException('Compra no encontrada');
+    if (draftRow[0].status !== 'PENDING') throw new BadRequestException('Esta compra ya fue confirmada: su stock ya está cargado');
+    if (draftRow[0].draft || (data.items || []).some((it: any) => !it.productId)) {
+      const purchase = await this.create(data as any);
+      await (this.prisma as any).purchaseItem.deleteMany({ where: { purchaseId: id } });
+      await (this.prisma as any).purchase.delete({ where: { id } });
+      return purchase;
+    }
     const total = data.manualTotal !== undefined 
       ? Number(data.manualTotal) 
       : (data.items || []).reduce((acc, item) => acc + (item.quantity * item.cost), 0) * 1.21;

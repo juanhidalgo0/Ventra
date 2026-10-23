@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { readPurchaseAuto } from '../mobile/ScanInvoiceSheet';
 import { 
   ArrowLeft, 
   Search, 
@@ -79,6 +80,8 @@ interface PurchaseItem {
   discount3?: number;
   categoryName?: string;
   brandName?: string;
+  /** El renglón de la boleta (código y nombre del proveedor): el sistema lo aprende al confirmar */
+  source?: { code?: string; name?: string };
   newProductData?: {
     name: string;
     barcode?: string;
@@ -221,7 +224,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       setPaymentStatus(initialPurchase.paymentStatus || 'PAID');
       setPaymentMethod(initialPurchase.paymentMethod || 'Efectivo');
       setNotes(initialPurchase.notes || '');
-      
+      // Escaneada desde el celular con la versión nueva: los renglones tal como se leyeron
+      if (initialPurchase.draft) {
+        applyScanResult({ ...initialPurchase.draft, matchedSupplier: initialPurchase.supplier ? null : initialPurchase.draft.matchedSupplier });
+        if (initialPurchase.draft.why?.length) toast(`Quedó para revisar porque ${initialPurchase.draft.why.join(' y ')}.`, { icon: 'ℹ️', duration: 10000 });
+        return;
+      }
+
       const loadedItems = (initialPurchase.items || []).map((item: any) => {
         const cost = item.cost / 1.21;
         const total = item.total / 1.21;
@@ -626,6 +635,85 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     e.target.value = ''; // Reset input so it can be clicked again
   };
 
+  /** El precio de venta que mantiene el margen del producto con el costo nuevo (redondeado según Compras) */
+  const keepMarginPrice = (product: any, netCost: number) => {
+    const auto = readPurchaseAuto();
+    const base = useIvaGlobal ? netCost * 1.21 : netCost;
+    if (!auto.keepMargin || !(product.costPrice > 0) || !(base > 0)) return product.salePrice;
+    const v = product.salePrice * (base / product.costPrice);
+    return auto.round ? Math.ceil(v / auto.round - 1e-9) * auto.round : Math.round(v * 100) / 100;
+  };
+
+  /** Lo leído de una boleta (recién escaneada o pendiente del celular) → renglones de la compra */
+  const applyScanResult = (data: any) => {
+    if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
+    if (data.date) setDate(data.date);
+    if (data.matchedSupplier) {
+      setSelectedSupplier(data.matchedSupplier);
+      setSupplierSearch(data.matchedSupplier.name);
+    } else if (data.supplierName) {
+      setSupplierSearch(data.supplierName);
+    }
+
+    const newItems: PurchaseItem[] = [];
+    const unmatched: any[] = [];
+    const doubtful: string[] = [];
+
+    for (const item of data.items) {
+      if (item.product) {
+        newItems.push({
+          productId: item.product.id,
+          barcode: item.product.barcode || item.barcode || '',
+          sku: item.product.sku || item.sku || '',
+          name: item.name || item.product.name,
+          categoryName: item.product.category?.name || '-',
+          brandName: item.product.brand?.name || '-',
+          variant: '-',
+          unit: item.product.unit || 'UNIT',
+          quantity: item.quantity,
+          cost: item.cost,
+          total: item.total,
+          buyFormat: 'UNIT',
+          unitsPerPack: item.product.unitsPerPack || 1,
+          presentationType: item.product.presentationType || 'UNIT',
+          // Precio de venta sugerido: sube con el costo manteniendo el margen (con o sin IVA, como esté elegido)
+          salePrice: keepMarginPrice(item.product, item.cost),
+          margin: item.cost > 0 ? Math.round(((keepMarginPrice(item.product, item.cost) - (useIvaGlobal ? item.cost * 1.21 : item.cost)) / (useIvaGlobal ? item.cost * 1.21 : item.cost)) * 100) : 0,
+          trackExpiry: Boolean(item.product.trackExpiry),
+          source: { code: item.sku || undefined, name: item.name },
+        });
+        if (item.doubtful) doubtful.push(`${item.product.name}: ${(item.reasons || []).join(', ')}`);
+      } else {
+        unmatched.push(item);
+      }
+    }
+
+    if (newItems.length > 0) {
+      setItems(prev => {
+        const filtered = prev.filter(p => !newItems.some(n => n.productId === p.productId));
+        return [...filtered, ...newItems];
+      });
+    }
+
+    if (doubtful.length) {
+      toast(['Revisá estos renglones:', ...doubtful.slice(0, 6)].join('\n'), { icon: '⚠️', duration: 15000, style: { maxWidth: 560, whiteSpace: 'pre-line' } });
+    }
+
+    // Control de la lectura: si las cuentas de la boleta no cierran, se avisa qué revisar
+    if (data.check && !data.check.ok) {
+      const lines = [data.check.message, ...(data.check.details || []).slice(0, 3)].join('\n');
+      toast(lines, { icon: '⚠️', duration: 15000, style: { maxWidth: 520, whiteSpace: 'pre-line' } });
+    }
+
+    if (unmatched.length > 0) {
+      setPendingNewProducts(unmatched);
+      setShowNewProductsModal(true);
+      toast.success(`Boleta leída: ${newItems.length} productos encontrados y ${unmatched.length} nuevos.`);
+    } else {
+      toast.success(`Boleta leída: ${newItems.length} productos encontrados. Revisá y confirmá.`);
+    }
+  };
+
   const executeScanWithTotal = async (useManualTotal: boolean) => {
     if (!selectedFilesForScan || selectedFilesForScan.length === 0) return;
     setShowTotalPrompt(false);
@@ -655,6 +743,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     if (useManualTotal && manualTotalInput.trim()) {
       formData.append('manualTotal', manualTotalInput.trim());
     }
+    // Se revisa en esta pantalla: no queda guardada como compra pendiente
+    formData.append('mode', 'inline');
 
     try {
       setScanStep(hasExcel ? 'Leyendo productos y totales, y cruzando con tu inventario...' : 'La IA está analizando detalladamente los productos y totales...');
@@ -669,64 +759,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       await new Promise(resolve => setTimeout(resolve, 600));
 
       setScanStep('Buscando coincidencias con tu inventario...');
-      if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
-      if (data.date) setDate(data.date);
-      if (data.matchedSupplier) {
-        setSelectedSupplier(data.matchedSupplier);
-        setSupplierSearch(data.matchedSupplier.name);
-      } else if (data.supplierName) {
-        setSupplierSearch(data.supplierName);
-      }
-
-      const newItems: PurchaseItem[] = [];
-      const unmatched: any[] = [];
-
-      for (const item of data.items) {
-        if (item.product) {
-          newItems.push({
-            productId: item.product.id,
-            barcode: item.product.barcode || item.barcode || '',
-            sku: item.product.sku || item.sku || '',
-            name: item.name || item.product.name,
-            categoryName: item.product.category?.name || '-',
-            brandName: item.product.brand?.name || '-',
-            variant: '-',
-            unit: item.product.unit || 'UNIT',
-            quantity: item.quantity,
-            cost: item.cost,
-            total: item.total,
-            buyFormat: 'UNIT',
-            unitsPerPack: item.product.unitsPerPack || 1,
-            presentationType: item.product.presentationType || 'UNIT',
-            margin: item.cost > 0 ? Math.round(((item.product.salePrice - (item.cost * 1.21)) / (item.cost * 1.21)) * 100) : 0,
-            salePrice: item.product.salePrice,
-            trackExpiry: Boolean(item.product.trackExpiry)
-          });
-        } else {
-          unmatched.push(item);
-        }
-      }
-
-      if (newItems.length > 0) {
-        setItems(prev => {
-          const filtered = prev.filter(p => !newItems.some(n => n.productId === p.productId));
-          return [...filtered, ...newItems];
-        });
-      }
-
-      // Control de la lectura (PDF/Excel): si las cuentas de la boleta no cierran, se avisa qué revisar
-      if (data.check && !data.check.ok) {
-        const lines = [data.check.message, ...(data.check.details || []).slice(0, 3)].join('\n');
-        toast(lines, { icon: '⚠️', duration: 15000, style: { maxWidth: 520, whiteSpace: 'pre-line' } });
-      }
-
-      if (unmatched.length > 0) {
-        setPendingNewProducts(unmatched);
-        setShowNewProductsModal(true);
-        toast.success(`Escaneo completado. Borrador #${data.purchaseId.substring(0, 8).toUpperCase()} guardado. ${newItems.length} productos vinculados, ${unmatched.length} nuevos detectados.`);
-      } else {
-        toast.success(`¡Boleta procesada con éxito! Borrador #${data.purchaseId.substring(0, 8).toUpperCase()} guardado en el sistema.`);
-      }
+      applyScanResult(data);
     } catch (err: any) {
       clearInterval(progressInterval);
       console.error(err);
@@ -768,7 +801,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         presentationType: product.presentationType || 'UNIT',
         margin: unmatched.cost > 0 ? Math.round(((product.salePrice - (unmatched.cost * 1.21)) / (unmatched.cost * 1.21)) * 100) : 0,
         salePrice: product.salePrice,
-        trackExpiry: Boolean(product.trackExpiry)
+        trackExpiry: Boolean(product.trackExpiry),
+        source: { code: unmatched.sku || undefined, name: unmatched.name },
       };
 
       setItems(prev => {
@@ -936,6 +970,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             cost: backendCost, 
             buyFormat: i.buyFormat,
             expiresAt: (i.trackExpiry || (i.isNew && expiryEnabled)) && i.expiresAt ? i.expiresAt : undefined,
+            salePrice: i.isNew ? undefined : (Number(i.salePrice) || undefined),
+            source: i.source,
             newProductData: i.isNew ? {
               name: i.name,
               barcode: i.barcode || null,
@@ -1042,9 +1078,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   className="hidden" 
                   onChange={(e) => {
                     const files = e.target.files;
-                    if (files && files.length > 0) {
-                      setSelectedFilesForScan(prev => [...prev, files[0]]);
-                    }
+                    // El archivo se toma ya: al vaciar el campo (abajo) la lista de archivos queda vacía
+                    const file = files && files.length > 0 ? files[0] : null;
+                    if (file) setSelectedFilesForScan(prev => [...prev, file]);
                     e.target.value = '';
                   }}
                 />
@@ -1068,9 +1104,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   className="hidden" 
                   onChange={(e) => {
                     const files = e.target.files;
-                    if (files && files.length > 0) {
-                      setSelectedFilesForScan(prev => [...prev, ...Array.from(files)]);
-                    }
+                    const picked = Array.from(files || []);
+                    if (picked.length) setSelectedFilesForScan(prev => [...prev, ...picked]);
                     e.target.value = '';
                   }}
                 />
@@ -1094,9 +1129,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   className="hidden" 
                   onChange={(e) => {
                     const files = e.target.files;
-                    if (files && files.length > 0) {
-                      setSelectedFilesForScan(prev => [...prev, files[0]]);
-                    }
+                    // El archivo se toma ya: al vaciar el campo (abajo) la lista de archivos queda vacía
+                    const file = files && files.length > 0 ? files[0] : null;
+                    if (file) setSelectedFilesForScan(prev => [...prev, file]);
                     e.target.value = '';
                   }}
                 />
@@ -1717,6 +1752,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                               unitsPerPack: item.unitsPerPack || 1,
                               presentationType: 'UNIT',
                               isNew: true,
+                              source: { code: item.sku || undefined, name: item.name },
                               newProductData: {
                                 name: item.name.toUpperCase(),
                                 barcode: item.barcode || null,

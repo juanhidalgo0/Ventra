@@ -44,7 +44,8 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 - Talles y colores, tamaños con distinto precio: al cargar el producto, la opción de variantes u opciones.
 
 ## Compras y proveedores
-- **Productos → Compras**: cargar una compra a mano o subir la boleta del proveedor en PDF, Excel o CSV (se lee sola, sin IA). La foto de la boleta se lee con IA (también escaneándola desde el celular: Compras → Escanear boleta); la compra queda para revisar en la PC antes de confirmar. Al confirmar suma el stock y actualiza costos.
+- **Productos → Compras**: cargar una compra a mano o subir la boleta del proveedor (PDF, Excel o CSV se leen sin IA; las fotos, con IA). En la PC se revisa en la misma pantalla: los productos encontrados vienen con el precio de venta sugerido (mantiene el margen) y los que no están se asocian a uno existente o se crean. Al confirmar suma el stock y actualiza costos y precios; Ventra aprende el código de cada proveedor para la próxima.
+- Desde el celular: **Compras → Escanear boleta**. Si los renglones suman el total y no hay nada dudoso, la compra se carga sola (stock, costos, precios manteniendo el margen y productos nuevos, que quedan para revisar en Productos) y queda a cuenta del proveedor. Si algo no cierra, queda en **Compras → Por revisar** en la PC. La opción "Cargarla sola si está todo bien" está en esa misma pantalla del celular.
 - **Proveedores**: datos, cuenta con cada proveedor y pagos. Pagarle con plata de la caja: **F9** en la caja.
 
 ## Clientes y cuentas corrientes

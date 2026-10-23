@@ -43,6 +43,8 @@ const SHARED: Record<string, string> = {
   virtual2_surcharge: 'virtual2_surcharge',
   purchase_default_margin: 'purchase_default_margin',
   purchase_use_iva: 'purchase_use_iva',
+  /** Boletas escaneadas desde el celular: JSON { enabled, keepMargin, round } (ver PurchasesService.scanSettings) */
+  purchase_auto: 'purchase_auto',
   earnings_division_partners: 'earnings_division_partners',
   /** Los empleados pueden registrar su consumo (sin cargo, solo descuenta stock): '1' / '0' */
   employee_consumption: 'employee_consumption',
