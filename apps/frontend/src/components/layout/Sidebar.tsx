@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useProductReviews } from '../products/ProductReviews';
 import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
@@ -102,6 +103,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   };
 
   const ordersVisible = useOrdersVisible();
+  const reviewCount = useProductReviews((s) => s.count);
   const newOrders = useOnlineOrders((s) => s.orders.filter(isNewOrder).length);
 
   const planFeatures = usePlanStore((s) => s.features);
@@ -125,6 +127,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           label: 'Productos',  
           icon: Box, 
           path: '/products', 
+          // Productos que cargaron los empleados en la caja y falta revisar
+          badge: reviewCount,
           collapsible: true,
           subItems: [
             { label: 'Inventario', path: '/inventory' },

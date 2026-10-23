@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { ProductReviewsBanner } from './ProductReviews';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import api from '../../services/api';
@@ -775,6 +776,8 @@ export default function ProductsScreen() {
 
   return (
     <div className="h-full flex flex-col gap-4 p-2 overflow-hidden">
+      {/* Los que cargaron los empleados en la caja: a la vista hasta revisarlos */}
+      <ProductReviewsBanner className="shrink-0" />
       {/* Search and Global Filters */}
       <div className="card p-5 space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">

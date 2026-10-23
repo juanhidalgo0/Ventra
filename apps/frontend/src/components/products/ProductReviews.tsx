@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { X, Check, Pencil, Trash2, Loader2, PackagePlus, ImageOff } from 'lucide-react';
+import { create } from 'zustand';
+import { X, Check, Pencil, Trash2, Loader2, PackagePlus, ImageOff, ChevronRight } from 'lucide-react';
 import api, { resolveServerUrl } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import ProductModal from './ProductModal';
@@ -15,16 +16,42 @@ const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleStr
 const SEEN_KEY = 'ventra_product_reviews_seen';
 export const OPEN_REVIEWS_EVENT = 'ventra:open-product-reviews';
 
+/** Cuántos quedan por revisar: lo muestran el menú y las pantallas de Productos hasta que se revisan */
+export const useProductReviews = create<{ count: number }>(() => ({ count: 0 }));
+export const openProductReviews = () => window.dispatchEvent(new CustomEvent(OPEN_REVIEWS_EVENT));
+const canReview = (role?: string) => role === 'ADMIN' || role === 'SUPERVISOR';
+
+/** Cartel fijo arriba de Productos: se ve mientras haya alguno sin revisar */
+export function ProductReviewsBanner({ className = '' }: { className?: string }) {
+  const count = useProductReviews((s) => s.count);
+  const role = useAuthStore((s) => s.user?.role);
+  if (!count || !canReview(role)) return null;
+  return (
+    <button onClick={openProductReviews} className={`w-full flex items-center gap-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left cursor-pointer hover:bg-amber-100/70 ${className}`}>
+      <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0"><PackagePlus className="w-[18px] h-[18px]" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px] font-bold text-amber-900">{count === 1 ? '1 producto cargado en la caja para revisar' : `${count} productos cargados en la caja para revisar`}</span>
+        <span className="block text-[12.5px] text-amber-800">Los cargaron tus empleados: confirmalos, editalos o borralos.</span>
+      </span>
+      <span className="text-[13px] font-bold text-amber-900 flex items-center gap-0.5 shrink-0">Revisar <ChevronRight className="w-4 h-4" /></span>
+    </button>
+  );
+}
+
 export function ProductReviewsSheet({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
-  const load = () => api.get('/products/reviews/pending').then(({ data }) => setRows(data || [])).catch(() => setRows([]));
+  const load = () => api.get('/products/reviews/pending').then(({ data }) => { setRows(data || []); useProductReviews.setState({ count: (data || []).length }); }).catch(() => setRows([]));
   useEffect(() => { load(); }, []);
 
   const done = async (id: string) => {
     await api.post(`/products/reviews/${id}/done`).catch(() => {});
-    setRows((r) => (r || []).filter((x) => x.id !== id));
+    setRows((r) => {
+      const next = (r || []).filter((x) => x.id !== id);
+      useProductReviews.setState({ count: next.length });
+      return next;
+    });
   };
   const keep = async (r: any) => { setBusy(r.id); await done(r.id); setBusy(null); toast.success(`${r.name} quedó como estaba`); };
   const edit = async (r: any) => {
@@ -94,13 +121,14 @@ export default function ProductReviewWatcher() {
   }, []);
 
   useEffect(() => {
-    if (role !== 'ADMIN' && role !== 'SUPERVISOR') return;
+    if (!canReview(role)) { useProductReviews.setState({ count: 0 }); return; }
     let alive = true;
     const check = async () => {
       try {
         const { data } = await api.get('/products/reviews/pending', { silent: true } as any);
         if (!alive) return;
         const rows: any[] = data || [];
+        useProductReviews.setState({ count: rows.length });
         let seen: string[] = [];
         try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); } catch { /* nada */ }
         const fresh = rows.filter((r) => !seen.includes(r.id));

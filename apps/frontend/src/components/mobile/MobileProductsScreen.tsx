@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ProductReviewsBanner } from '../products/ProductReviews';
 import toast from 'react-hot-toast';
 import { Search, Plus, X, Package, ScanLine, Minus, Star, ChevronRight, AlertTriangle } from 'lucide-react';
 import api, { resolveServerUrl } from '../../services/api';
@@ -116,6 +117,7 @@ export default function MobileProductsScreen({ initialFilter = 'ALL', title = 'P
           />
         </div>
       </ScreenHeader>
+      <div className="px-4 pt-3 empty:hidden"><ProductReviewsBanner /></div>
 
       <div
         ref={listRef}
