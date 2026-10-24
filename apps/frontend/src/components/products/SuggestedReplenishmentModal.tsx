@@ -85,7 +85,10 @@ export default function SuggestedReplenishmentModal({ onClose }: SuggestedReplen
     group.items.forEach((item: any) => {
       const qty = adjustedQtys[item.productId] !== undefined ? adjustedQtys[item.productId] : item.suggestedQty;
       if (qty > 0) {
-        text += `• ${qty} un. - ${item.name} ${item.sku ? `(Cód: ${item.sku})` : ''}\n`;
+        // Por bulto si el producto se compra así (y el código del proveedor, que Ventra aprendió de sus boletas)
+        const upp = Number(item.unitsPerPack) || 1;
+        const amount = upp > 1 && qty % upp === 0 ? `${qty / upp} ${qty / upp === 1 ? 'bulto' : 'bultos'} x${upp}` : `${qty} un.`;
+        text += `• ${amount} - ${item.name}${item.sku ? ` (Cód: ${item.sku})` : ''}\n`;
       }
     });
     text += `\nPor favor confirmar disponibilidad y plazo de entrega. Muchas gracias!`;
@@ -261,6 +264,11 @@ export default function SuggestedReplenishmentModal({ onClose }: SuggestedReplen
                               <td className="px-4 py-2.5">
                                 <p className="font-bold text-slate-800 dark:text-slate-200">{item.name}</p>
                                 {item.sku && <span className="text-[10px] font-mono text-slate-400">SKU: {item.sku}</span>}
+                                {item.soldPerDay > 0 && (
+                                  <p className={`text-[10px] font-semibold ${item.daysLeft !== null && item.daysLeft <= 3 ? 'text-rose-600' : 'text-slate-500'}`}>
+                                    Se venden {String(item.soldPerDay).replace('.', ',')} por día · {item.daysLeft === 0 ? 'se acaba hoy' : `alcanza para ${item.daysLeft} ${item.daysLeft === 1 ? 'día' : 'días'}`}
+                                  </p>
+                                )}
                               </td>
                               <td className="px-3 py-2.5 text-center font-mono font-bold text-rose-600 dark:text-rose-400">
                                 {item.stock} {item.unit || 'un'}

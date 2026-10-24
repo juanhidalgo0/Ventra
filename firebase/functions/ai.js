@@ -144,13 +144,15 @@ Reglas:
 6. "total" es el total neto de la línea, tal cual está impreso (por ejemplo "6.528,97"). Nunca pongas el precio unitario como total.
 7. Controlá: la suma de los totales con IVA (x1,21) y los descuentos del pie tiene que dar el total de la factura ("totalFacturaAPagar"). Si no da, revisá la alineación y corregí.
 8. "barcode" solo si aparece un código de barras (EAN) del producto; "sku" el código interno del proveedor si hay. Si no, vacíos.
-9. "date" en formato AAAA-MM-DD.`;
+9. "date" en formato AAAA-MM-DD.
+10. "supplierCuit": el CUIT de quien EMITE la factura (el proveedor, arriba junto a su razón social), con guiones (30-12345678-9). NO el del cliente o comprador. Si no se ve, vacío.`;
 
 const INVOICE_SCHEMA = {
   type: "object",
   properties: {
     rawTableTranscription: { type: "string" },
     supplierName: { type: "string" },
+    supplierCuit: { type: "string" },
     invoiceNumber: { type: "string" },
     date: { type: "string" },
     totalFacturaAPagar: { type: "string" },
@@ -171,7 +173,7 @@ const INVOICE_SCHEMA = {
       },
     },
   },
-  required: ["rawTableTranscription", "supplierName", "invoiceNumber", "date", "totalFacturaAPagar", "items"],
+  required: ["rawTableTranscription", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "items"],
   additionalProperties: false,
 };
 

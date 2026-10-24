@@ -92,6 +92,12 @@ export class ProductsController {
     return this.productsService.getLowStockIds();
   }
 
+  /** Productos que cambiaron de precio de venta en los últimos días (para reimprimir etiquetas) */
+  @Get('price-changes')
+  getPriceChanges(@Query('days') days?: string) {
+    return this.productsService.getPriceChanges(Number(days) || 1);
+  }
+
   /** Lotes vencidos o por vencer, para el panel y los avisos. */
   @Get('expiring')
   getExpiring() {

@@ -678,6 +678,22 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Cambiaron de precio de venta desde hace N días (hoy = desde la medianoche). Lo anota solo el
+   * trigger ventra_price_prev (prev_sale_price, price_changed_at): venga de una boleta, una lista,
+   * un ajuste masivo o la ficha del producto.
+   */
+  async getPriceChanges(days = 1) {
+    const d = Math.min(90, Math.max(1, Math.round(days)));
+    const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (d - 1));
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, name, sale_price AS salePrice, CAST(prev_sale_price AS REAL) AS prevSalePrice, CAST(price_changed_at AS REAL) AS changedAt
+       FROM products WHERE is_active = 1 AND price_changed_at >= ? AND (prev_sale_price IS NULL OR prev_sale_price <> sale_price)
+       ORDER BY price_changed_at DESC LIMIT 2000`, start.getTime(),
+    ).catch((): any[] => []);
+    return rows.map((r) => ({ id: r.id, name: r.name, salePrice: Number(r.salePrice), prevSalePrice: r.prevSalePrice === null ? null : Number(r.prevSalePrice), changedAt: Number(r.changedAt) }));
+  }
+
   /** Lo dio de alta un empleado: queda en la lista para que el dueño lo revise (ver product_reviews) */
   async markForReview(product: { id: string; name: string }, userId?: string, sourceImage?: string | null) {
     const user = userId ? await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } }) : null;

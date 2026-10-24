@@ -375,6 +375,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             );`);
             // Compras escaneadas que esperan revisión: los renglones tal como se leyeron (con los
             // productos que todavía no existen), para no crear nada antes de confirmar.
+            // Proveedores: CUIT (para reconocerlo en las boletas) y plazo de pago en días (vencimientos)
+            const supplierCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(suppliers)`);
+            if (!supplierCols.some((c) => c.name === 'cuit')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN cuit TEXT DEFAULT NULL;`);
+            if (!supplierCols.some((c) => c.name === 'payment_days')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN payment_days INTEGER DEFAULT NULL;`);
             const purchaseCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(purchases)`);
             if (!purchaseCols.some((c) => c.name === 'draft')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN draft TEXT DEFAULT NULL;`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (

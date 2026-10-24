@@ -53,6 +53,12 @@ export class PurchasesController {
     return this.purchasesService.scanSettings();
   }
 
+  /** Aumentos desde la última compra y si otro proveedor lo vendió más barato */
+  @Post('cost-insights')
+  costInsights(@Body() body: { supplierId?: string; items?: { productId: string; cost: number }[] }) {
+    return this.purchasesService.costInsights(body?.supplierId, body?.items || []);
+  }
+
   @Post('scan-invoice')
   @UseInterceptors(FilesInterceptor('files'))
   async scanInvoice(

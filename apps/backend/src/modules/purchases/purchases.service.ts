@@ -1,5 +1,5 @@
 import { AiService } from '../ai/ai.service';
-import { ProductMatcherService } from '../ai/product-matcher.service';
+import { ProductMatcherService, isBarcode } from '../ai/product-matcher.service';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
@@ -424,6 +424,8 @@ export class PurchasesService {
           costPrice: unitCostWithIva, // Store unit cost with IVA
           salePrice: updatedSalePrice,
           ...scaledPrices(product, updatedSalePrice, priceRound),
+          // Sin proveedor asignado: queda el de esta compra (agrupa el pedido sugerido)
+          ...(product.supplierId ? {} : { supplierId: data.supplierId }),
           isActive: true // Reactivate if soft-deleted
         };
 
@@ -570,7 +572,7 @@ export class PurchasesService {
     }
 
     // Proveedor: el que ya está cargado (nombre parecido) o, si no está, se crea con el nombre de la boleta
-    const supplier = await this.matcher.findSupplier(parsedData.supplierName, true);
+    const supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
     const settings = await this.scanSettings();
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
@@ -589,9 +591,12 @@ export class PurchasesService {
     }
 
     const rows = rawItems.map((it) => {
-      let barcode = it.barcode ? String(it.barcode).trim() : '';
-      const sku = it.sku ? String(it.sku).trim() : '';
-      if (barcode === sku) barcode = /^\d{8,14}$/.test(barcode) ? barcode : '';
+      // Código de barras y SKU son distintos: el EAN va al código de barras y el código del
+      // proveedor al SKU, aunque la IA los haya puesto cambiados o repetidos
+      const rawBarcode = it.barcode ? String(it.barcode).trim() : '';
+      const rawSku = it.sku ? String(it.sku).trim() : '';
+      const barcode = isBarcode(rawBarcode) ? rawBarcode : isBarcode(rawSku) ? rawSku : '';
+      const sku = rawSku && rawSku !== barcode ? rawSku : (!isBarcode(rawBarcode) ? rawBarcode : '');
       return { barcode, sku, code: sku, name: String(it.name || '').trim() };
     });
     const { matches, candidates } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
@@ -701,7 +706,8 @@ export class PurchasesService {
           source: { code: it.sku, name: it.name },
           newProductData: it.product ? undefined : {
             name: niceName(it.name),
-            barcode: /^\d{8,14}$/.test(it.barcode) ? it.barcode : undefined,
+            barcode: isBarcode(it.barcode) ? it.barcode : undefined,
+            sku: it.sku || undefined,
             salePrice: it.suggestedSalePrice,
             taxRate: 21,
           },
@@ -719,8 +725,12 @@ export class PurchasesService {
         ).catch(() => {});
       }
       const updatedPrices = items.filter((it) => it.product && it.suggestedSalePrice !== it.product.salePrice).length;
+      // Aumentos que vale la pena saber (más de 10% desde el costo que tenía)
+      const raises = items.filter((it) => it.product && it.changePct !== null && it.changePct >= 10)
+        .sort((a, b) => (b.changePct || 0) - (a.changePct || 0)).slice(0, 3)
+        .map((it) => `${it.product!.name} +${String(it.changePct).replace('.', ',')}%`);
       await this.notify('Boleta cargada sola',
-        `${supplier?.name || parsedData.supplierName || 'Proveedor'}: ${items.length} productos, ${updatedPrices} precios actualizados${newIds.size ? `, ${newIds.size} productos nuevos para revisar` : ''}.`);
+        `${supplier?.name || parsedData.supplierName || 'Proveedor'}: ${items.length} productos, ${updatedPrices} precios actualizados${newIds.size ? `, ${newIds.size} productos nuevos para revisar` : ''}.${raises.length ? ` Aumentos: ${raises.join(', ')}.` : ''}`);
       return { ...base, status: 'COMPLETED', purchaseId: purchase.id, auto: true, newProducts: newIds.size, updatedPrices };
     }
 
@@ -738,6 +748,43 @@ export class PurchasesService {
     });
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
     return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
+  }
+
+  /**
+   * Cómo viene el costo de cada producto de una compra frente a las anteriores: cuánto subió desde
+   * la última compra y si otro proveedor lo vendió más barato (últimos 6 meses). Costos con IVA,
+   * por unidad (las compras por bulto se pasan a unidades).
+   */
+  async costInsights(supplierId: string | null | undefined, items: { productId: string; cost: number }[]) {
+    const ids = [...new Set((items || []).map((i) => String(i.productId)).filter(Boolean))].slice(0, 500);
+    if (!ids.length) return {};
+    const since = new Date(Date.now() - 180 * 864e5);
+    const history = await (this.prisma as any).purchaseItem.findMany({
+      where: { productId: { in: ids }, purchase: { status: 'COMPLETED', createdAt: { gte: since } } },
+      select: { productId: true, cost: true, buyFormat: true, product: { select: { unitsPerPack: true } }, purchase: { select: { createdAt: true, supplierId: true, supplier: { select: { name: true } } } } },
+      orderBy: { purchase: { createdAt: 'desc' } },
+    });
+    const out: Record<string, any> = {};
+    for (const it of items) {
+      const newCost = (Number(it.cost) || 0) * 1.21;
+      const rows = history.filter((h: any) => h.productId === it.productId).map((h: any) => ({
+        cost: h.buyFormat === 'PACK' && h.product?.unitsPerPack > 1 ? h.cost / h.product.unitsPerPack : h.cost,
+        at: h.purchase.createdAt, supplierId: h.purchase.supplierId, supplierName: h.purchase.supplier?.name || '',
+      })).filter((h: any) => h.cost > 0);
+      if (!rows.length || !(newCost > 0)) continue;
+      const last = rows[0];
+      const cheapest = rows.filter((r: any) => r.supplierId !== supplierId).sort((a: any, b: any) => a.cost - b.cost)[0];
+      out[it.productId] = {
+        lastCost: Math.round(last.cost * 100) / 100,
+        lastSupplier: last.supplierName,
+        lastAt: last.at,
+        changePct: Math.round((newCost / last.cost - 1) * 1000) / 10,
+        cheaper: cheapest && cheapest.cost < newCost * 0.97
+          ? { supplierName: cheapest.supplierName, cost: Math.round(cheapest.cost * 100) / 100, at: cheapest.at }
+          : null,
+      };
+    }
+    return out;
   }
 
   /** Cómo se cargan las boletas escaneadas (Compras → configuración) */
@@ -861,6 +908,7 @@ export class PurchasesService {
             costPrice: unitCostWithIva,
             salePrice: updatedSalePrice,
             ...scaledPrices(product, updatedSalePrice, priceRound),
+            ...(product.supplierId ? {} : { supplierId: data.supplierId }),
             isActive: true
           };
 
@@ -1063,33 +1111,51 @@ export class PurchasesService {
     return { success: true, restoredCount: restoredProducts.length };
   }
 
+  /**
+   * Pedido sugerido para cada proveedor: lo que se vende (últimos 30 días) para cubrir 2 semanas,
+   * y además lo que está en el stock mínimo o por debajo. Por bulto si el producto se compra así.
+   * El proveedor es el del producto o, si no tiene, el de su última compra.
+   */
   async getSuggestedReplenishment() {
-    const lowStockProducts = await this.prisma.product.findMany({
-      where: {
-        isActive: true,
-        unlimitedStock: false,
-        minStock: { gt: 0 }
-      },
+    const DAYS_SOLD = 30;
+    const COVER_DAYS = 14;
+    const products = await this.prisma.product.findMany({
+      where: { isActive: true, unlimitedStock: false, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } },
       include: {
-        supplier: {
-          select: { id: true, name: true, phone: true, email: true, contact: true }
-        },
-        category: {
-          select: { id: true, name: true }
-        }
+        supplier: { select: { id: true, name: true, phone: true, email: true, contact: true } },
+        category: { select: { id: true, name: true } },
       },
-      orderBy: [
-        { supplierId: 'asc' },
-        { name: 'asc' }
-      ]
+      orderBy: { name: 'asc' },
     });
+    const since = new Date(Date.now() - DAYS_SOLD * 864e5);
+    const sold = await this.prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: { sale: { status: 'COMPLETED', createdAt: { gte: since } } },
+      _sum: { quantity: true },
+    });
+    const soldBy = new Map(sold.map((s) => [s.productId, Number(s._sum.quantity) || 0]));
+    // Proveedor de la última compra, para los productos que no tienen uno asignado
+    const lastBuys = await (this.prisma as any).purchaseItem.findMany({
+      where: { purchase: { status: 'COMPLETED' } },
+      select: { productId: true, purchase: { select: { createdAt: true, supplier: { select: { id: true, name: true, phone: true, email: true, contact: true } } } } },
+      orderBy: { purchase: { createdAt: 'desc' } },
+      take: 5000,
+    });
+    const lastSupplier = new Map<string, any>();
+    for (const b of lastBuys) if (!lastSupplier.has(b.productId) && b.purchase?.supplier) lastSupplier.set(b.productId, b.purchase.supplier);
 
-    const filtered = lowStockProducts.filter((p: any) => p.stock <= p.minStock);
-
-    const items = filtered.map((p: any) => {
-      const targetStock = p.minStock * 2;
-      const deficit = Math.max(1, Math.ceil(targetStock - p.stock));
-      return {
+    const items: any[] = [];
+    for (const p of products as any[]) {
+      const daily = (soldBy.get(p.id) || 0) / DAYS_SOLD;
+      const lowByMin = p.minStock > 0 && p.stock <= p.minStock;
+      const lowBySales = daily > 0 && p.stock < daily * 7;
+      if (!lowByMin && !lowBySales) continue;
+      let qty = Math.max(lowByMin ? Math.ceil(p.minStock * 2 - p.stock) : 0, lowBySales ? Math.ceil(daily * COVER_DAYS - p.stock) : 0, 1);
+      const upp = Number(p.unitsPerPack) || 1;
+      const packs = upp > 1 ? Math.ceil(qty / upp) : null;
+      if (packs) qty = packs * upp;
+      const supplier = p.supplier || lastSupplier.get(p.id) || { id: 'UNASSIGNED', name: 'Sin Proveedor Asignado', phone: null, email: null };
+      items.push({
         productId: p.id,
         barcode: p.barcode,
         sku: p.sku,
@@ -1100,13 +1166,16 @@ export class PurchasesService {
         unit: p.unit,
         presentationType: p.presentationType,
         unitsPerPack: p.unitsPerPack,
-        suggestedQty: deficit,
-        estimatedTotal: deficit * (p.costPrice || 0),
-        supplier: p.supplier || { id: 'UNASSIGNED', name: 'Sin Proveedor Asignado', phone: null, email: null },
-        category: p.category?.name || 'General'
-      };
-    });
-
+        suggestedQty: qty,
+        suggestedPacks: packs,
+        soldPerDay: Math.round(daily * 10) / 10,
+        daysLeft: daily > 0 ? Math.floor(p.stock / daily) : null,
+        estimatedTotal: qty * (p.costPrice || 0),
+        supplier,
+        category: p.category?.name || 'General',
+      });
+    }
+    items.sort((a, b) => String(a.supplier.name).localeCompare(String(b.supplier.name), 'es') || (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
     return items;
   }
 }

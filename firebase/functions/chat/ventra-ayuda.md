@@ -35,7 +35,7 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 ## Productos
 - **Productos → Inventario**: la lista. **Nuevo Producto** para cargar uno (con el código de barras trae nombre y foto solo). Tocar un producto lo edita.
 - Menú **Precios**: **Ajuste masivo por %** (por proveedor, rubro o marca), **Redondear precios**, y **Lista de precios del proveedor** (subir el PDF, Excel o fotos de la lista nueva: Ventra encuentra cada producto, muestra cuánto cambia el costo y deja aplicar manteniendo el margen). En la pestaña "Sin encontrar" se asocia cada renglón a tu producto (sugeridos o "Buscar el mío"); con el proveedor elegido arriba, Ventra lo recuerda para las próximas listas y boletas de ese proveedor.
-- Menú **Etiquetas**: etiquetas con código de barras y etiquetas de gavetero.
+- Menú **Etiquetas**: etiquetas con código de barras, **Etiquetas de precios que cambiaron** (hoy, 7 o 30 días: para cambiar las de la góndola después de una boleta o una lista) y etiquetas de gavetero. Después de aplicar una lista de precios, Ventra ofrece prepararlas.
 - Menú **Fotos**: **Buscar y asignar fotos** (a los que no tienen) y **Volver a buscar para todos**.
 - Menú **Datos**: **Importar productos** (planilla de Excel en formato Ventra, o base de otros sistemas), **Exportar productos**, exportar para GoDelivery.
 - Promos (2×1, combos, descuentos por cantidad): **Productos → Promociones y Combos**.
@@ -46,7 +46,9 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 ## Compras y proveedores
 - **Productos → Compras**: cargar una compra a mano o subir la boleta del proveedor (PDF, Excel o CSV se leen sin IA; las fotos, con IA). En la PC se revisa en la misma pantalla: los productos encontrados vienen con el precio de venta sugerido (mantiene el margen) y los que no están se asocian a uno existente o se crean. Al confirmar suma el stock y actualiza costos y precios; Ventra aprende el código de cada proveedor para la próxima.
 - Desde el celular: **Compras → Escanear boleta**. Si los renglones suman el total y no hay nada dudoso, la compra se carga sola (stock, costos, precios manteniendo el margen y productos nuevos, que quedan para revisar en Productos) y queda a cuenta del proveedor. Si algo no cierra, queda en **Compras → Por revisar** en la PC. La opción "Cargarla sola si está todo bien" está en esa misma pantalla del celular.
-- **Proveedores**: datos, cuenta con cada proveedor y pagos. Pagarle con plata de la caja: **F9** en la caja.
+- **Proveedores**: datos, CUIT, plazo de pago en días, cuánto le debés a cada uno (compras a cuenta menos los pagos) y vencimientos: avisa en la campanita lo vencido o por vencer. Registrar un pago baja la deuda. El CUIT sirve para que las boletas lo reconozcan solas; si un proveedor no existe, la boleta lo crea. Pagarle con plata de la caja: **F9** en la caja.
+- **Pedido sugerido** (en Compras): según lo que se vendió en los últimos 30 días (para cubrir 2 semanas) y el stock mínimo, agrupado por proveedor y por bulto; **Pedir por WhatsApp** le manda el pedido con sus códigos.
+- En la revisión de una compra, debajo de cada producto se ve si el costo subió mucho desde la última compra y si otro proveedor lo vendió más barato.
 
 ## Clientes y cuentas corrientes
 - **Clientes**: alta, datos, límite de crédito y saldo. Vender fiado: elegir el cliente en la venta y cobrar "a cuenta corriente".

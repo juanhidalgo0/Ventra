@@ -21,6 +21,8 @@ interface BarcodeLabelModalProps {
   title?: string;
   /** Called after internal barcodes were saved, so the caller can refresh its list. */
   onBarcodesAssigned?: () => void;
+  /** Con el precio impreso aunque la última vez se haya sacado (etiquetas de precios que cambiaron) */
+  defaultShowPrice?: boolean;
 }
 
 interface SelectedItem {
@@ -40,12 +42,12 @@ function loadSettings(): { formatId: string; showName: boolean; showPrice: boole
   return { formatId: 'a4-plain-48x25', showName: true, showPrice: false };
 }
 
-export default function BarcodeLabelModal({ onClose, initialItems, title, onBarcodesAssigned }: BarcodeLabelModalProps) {
+export default function BarcodeLabelModal({ onClose, initialItems, title, onBarcodesAssigned, defaultShowPrice }: BarcodeLabelModalProps) {
   const useVariants = useFeature('variants');
   const initialSettings = useMemo(loadSettings, []);
   const [formatId, setFormatId] = useState(initialSettings.formatId);
   const [showName, setShowName] = useState(initialSettings.showName);
-  const [showPrice, setShowPrice] = useState(initialSettings.showPrice);
+  const [showPrice, setShowPrice] = useState(defaultShowPrice ?? initialSettings.showPrice);
   const [startPosition, setStartPosition] = useState(1);
 
   const [items, setItems] = useState<SelectedItem[]>([]);

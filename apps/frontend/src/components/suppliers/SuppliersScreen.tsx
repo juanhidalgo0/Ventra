@@ -21,6 +21,39 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 
+/** Vencimiento de lo que se le debe (según el plazo de pago del proveedor) */
+function DueNote({ s }: { s: any }) {
+  const money = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
+  if (s?.overdue > 0) return <p className="text-[11px] font-bold text-rose-600">Vencido: {money(s.overdue)}</p>;
+  if (s?.dueSoon > 0) return <p className="text-[11px] font-bold text-amber-600">Vence en estos días: {money(s.dueSoon)}</p>;
+  if (s?.nextDueAt) return <p className="text-[11px] font-semibold text-slate-500">Próximo vencimiento: {new Date(s.nextDueAt).toLocaleDateString('es-AR')}</p>;
+  if (s?.debt > 0 && (s?.paymentDays === null || s?.paymentDays === undefined)) return <p className="text-[11px] font-semibold text-slate-400">Cargá el plazo de pago para ver cuándo vence</p>;
+  return null;
+}
+
+/** CUIT (para reconocerlo en las boletas) y plazo de pago (avisa antes de que venza) */
+function SupplierTerms({ supplier, onSaved }: { supplier: any; onSaved: () => void }) {
+  const [cuit, setCuit] = useState(supplier.cuit || '');
+  const [days, setDays] = useState(supplier.paymentDays ?? '');
+  useEffect(() => { setCuit(supplier.cuit || ''); setDays(supplier.paymentDays ?? ''); }, [supplier.id, supplier.cuit, supplier.paymentDays]);
+  const save = async (patch: any) => {
+    try { await api.patch(`/suppliers/${supplier.id}`, patch); onSaved(); }
+    catch (err: any) { toast.error(err?.response?.data?.message || 'No se pudo guardar'); }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] font-bold text-slate-600">
+      <label className="flex items-center gap-1.5">CUIT
+        <input value={cuit} onChange={(e) => setCuit(e.target.value)} onBlur={() => cuit !== (supplier.cuit || '') && save({ cuit })} placeholder="30-12345678-9"
+          className="w-32 h-7 px-2 rounded-lg border border-slate-300 bg-white text-[11.5px] outline-none focus:border-rose-500" />
+      </label>
+      <label className="flex items-center gap-1.5">Plazo de pago
+        <input type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} onBlur={() => String(days) !== String(supplier.paymentDays ?? '') && save({ paymentDays: days })} placeholder="—"
+          className="w-16 h-7 px-2 rounded-lg border border-slate-300 bg-white text-[11.5px] outline-none focus:border-rose-500" /> días
+      </label>
+    </div>
+  );
+}
+
 export default function SuppliersScreen() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
@@ -38,7 +71,9 @@ export default function SuppliersScreen() {
     name: '',
     contact: '',
     phone: '',
-    email: ''
+    email: '',
+    cuit: '',
+    paymentDays: ''
   });
 
   const [paymentData, setPaymentData] = useState({
@@ -121,10 +156,10 @@ export default function SuppliersScreen() {
     try {
       await api.post('/suppliers', formData);
       setShowModal(false);
-      setFormData({ name: '', contact: '', phone: '', email: '' });
+      setFormData({ name: '', contact: '', phone: '', email: '', cuit: '', paymentDays: '' });
       loadData();
-    } catch {
-      toast.error('Error al crear proveedor. Verifica los campos.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al crear proveedor. Verifica los campos.');
     }
   };
 
@@ -153,7 +188,10 @@ export default function SuppliersScreen() {
     }
   };
 
+  // Lo que se le debe: compras a cuenta menos los pagos (lo calcula el servidor, ver SuppliersService.debts)
   const calculateDebt = (supplierId: string) => {
+    const s = suppliers.find((x) => x.id === supplierId);
+    if (s && typeof s.debt === 'number') return s.debt;
     return purchases
       .filter(p => p.supplierId === supplierId && p.paymentStatus === 'OWED')
       .reduce((sum, p) => sum + p.total, 0);
@@ -354,6 +392,7 @@ export default function SuppliersScreen() {
                         <div>
                            <h3 className="text-lg md:text-2xl font-bold text-slate-800 uppercase leading-snug">{selectedSupplier.name}</h3>
                            <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-widest leading-none mt-0.5">{selectedSupplier.contact || 'Sin contacto'}</p>
+                           <SupplierTerms supplier={selectedSupplier} onSaved={loadData} />
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -366,6 +405,7 @@ export default function SuppliersScreen() {
                        <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
                           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Saldo Pendiente</p>
                           <p className="text-4xl font-bold text-rose-500">$ {calculateDebt(selectedSupplier.id).toLocaleString('es-AR')}</p>
+                          <DueNote s={selectedSupplier} />
                        </div>
                        <div className="bg-white p-8 rounded-2xl border border-slate-300 shadow-sm space-y-2">
                           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Última Compra</p>
@@ -471,6 +511,16 @@ export default function SuppliersScreen() {
                      <div>
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Correo Electrónico</span>
                         <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="admin@distribuidora.com" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
+                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                     <div>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">CUIT</span>
+                        <input type="text" value={formData.cuit} onChange={e => setFormData({...formData, cuit: e.target.value})} placeholder="30-12345678-9" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
+                     </div>
+                     <div>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Plazo de pago (días)</span>
+                        <input type="number" min={0} value={formData.paymentDays} onChange={e => setFormData({...formData, paymentDays: e.target.value})} placeholder="Ej: 30" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all" />
                      </div>
                   </div>
                   <div className="group">

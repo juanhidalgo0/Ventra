@@ -34,6 +34,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
 import BulkPriceModal from './BulkPriceModal';
 import PriceListModal from './PriceListModal';
+import PriceChangesLabelsModal from './PriceChangesLabelsModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
 import BarcodeLabelModal from './BarcodeLabelModal';
 import VentraImportModal from './VentraImportModal';
@@ -55,6 +56,7 @@ export default function ProductsScreen() {
   const [showModal, setShowModal] = useState(false);
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
   const [showPriceList, setShowPriceList] = useState(false);
+  const [showPriceChangeLabels, setShowPriceChangeLabels] = useState(false);
   const [showVentraImport, setShowVentraImport] = useState(false);
   const [showRoundPrices, setShowRoundPrices] = useState(false);
   const [isRoundingPrices, setIsRoundingPrices] = useState(false);
@@ -928,6 +930,12 @@ export default function ProductsScreen() {
                     onClick: () => setShowBarcodeLabels(true),
                   },
                   {
+                    label: 'Etiquetas de precios que cambiaron',
+                    description: 'Hoy o en los últimos días, con el precio nuevo',
+                    icon: <Tag className="w-3.5 h-3.5 text-rose-600" />,
+                    onClick: () => setShowPriceChangeLabels(true),
+                  },
+                  {
                     label: 'Etiquetas de gavetero',
                     description: 'Para cajoneras y estanterías',
                     icon: <Tag className="w-3.5 h-3.5 text-amber-600" />,
@@ -1721,8 +1729,10 @@ export default function ProductsScreen() {
       )}
 
       {showPriceList && (
-        <PriceListModal onClose={() => setShowPriceList(false)} onSuccess={() => loadProducts(true)} />
+        <PriceListModal onClose={() => setShowPriceList(false)} onSuccess={() => loadProducts(true)} onPrintLabels={() => setShowPriceChangeLabels(true)} />
       )}
+
+      {showPriceChangeLabels && <PriceChangesLabelsModal onClose={() => setShowPriceChangeLabels(false)} />}
 
       {showBarcodeLabels && (
         <BarcodeLabelModal

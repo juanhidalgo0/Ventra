@@ -1,9 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from './ai.service';
+import { validCuit } from '../purchases/invoice-reader/invoice-parser';
 
 export const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2').replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ').trim();
+/**
+ * Código de barras (EAN-8, UPC-12, EAN-13, GTIN-14) con su dígito verificador correcto. El SKU
+ * (código interno del proveedor o del comercio) es otra cosa, aunque sea un número largo: nunca
+ * se mezclan.
+ */
+export function isBarcode(code: string) {
+  const c = String(code || '').trim();
+  if (!/^(\d{8}|\d{12,14})$/.test(c)) return false;
+  const digits = c.split('').map(Number);
+  const check = digits.pop()!;
+  const sum = digits.reverse().reduce((a, d, i) => a + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === check;
+}
 export const codeKey = (s: string) => String(s || '').toUpperCase().replace(/[\s.\-_/]/g, '').replace(/^0+/, '');
 /** Palabras del nombre, sin los puntos de las abreviaturas ("alf.") ni la cantidad del bulto ("x24") */
 const words = (s: string) => norm(s).split(' ').map((w) => w.replace(/^\.+|\.+$/g, '')).filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w) && !/^x\d+$/.test(w));
@@ -55,11 +69,25 @@ export class ProductMatcherService {
   }
 
   /**
-   * El proveedor de una boleta o lista entre los cargados (nombre parecido, sin "S.A.", "S.R.L.").
-   * create: si no está, se agrega con ese nombre.
+   * El proveedor de una boleta o lista entre los cargados: por CUIT (lo más seguro) o por nombre
+   * parecido (sin "S.A.", "S.R.L."). create: si no está, se agrega. El CUIT queda guardado en el
+   * proveedor para las próximas boletas (nunca el del propio comercio, que también sale impreso).
    */
-  async findSupplier(name?: string | null, create = false) {
+  async findSupplier(name?: string | null, create = false, rawCuit?: string | null) {
     const clean = String(name || '').replace(/\s+/g, ' ').trim();
+    let cuit = String(rawCuit || '').replace(/\D/g, '');
+    if (cuit && (!validCuit(cuit) || (await this.ownCuits()).includes(cuit))) cuit = '';
+    const pretty = cuit ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}` : '';
+    if (cuit) {
+      const byCuit = await this.prisma.$queryRawUnsafe<{ id: string; name: string }[]>(
+        `SELECT id, name FROM suppliers WHERE REPLACE(cuit, '-', '') = ? LIMIT 1`, cuit,
+      ).catch((): any[] => []);
+      if (byCuit.length) return byCuit[0];
+    }
+    const saveCuit = async (s: { id: string; name: string } | null) => {
+      if (s && pretty) await this.prisma.$executeRawUnsafe(`UPDATE suppliers SET cuit = ? WHERE id = ? AND (cuit IS NULL OR cuit = '')`, pretty, s.id).catch(() => {});
+      return s;
+    };
     if (!clean || clean.length < 3) return null;
     const key = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad anonima|de|la|el)\b/g, ' ').replace(/[^a-z0-9]/g, '');
@@ -68,8 +96,18 @@ export class ProductMatcherService {
     const all = await this.prisma.supplier.findMany({ select: { id: true, name: true } });
     const found = all.find((s) => key(s.name) === target)
       || all.find((s) => { const k = key(s.name); return k.length >= 4 && target.length >= 4 && (k.includes(target) || target.includes(k)); });
-    if (found || !create) return found || null;
-    return this.prisma.supplier.create({ data: { name: clean.slice(0, 120) }, select: { id: true, name: true } });
+    if (found || !create) return saveCuit(found || null);
+    return saveCuit(await this.prisma.supplier.create({ data: { name: clean.slice(0, 120) }, select: { id: true, name: true } }));
+  }
+
+  /** CUIT del propio comercio (facturación y datos de las hojas): no es el del proveedor */
+  private async ownCuits(): Promise<string[]> {
+    const out: string[] = [];
+    const fiscal = await this.prisma.fiscalConfig.findFirst({ select: { cuit: true } }).catch(() => null);
+    if (fiscal?.cuit) out.push(fiscal.cuit.replace(/\D/g, ''));
+    const setting = await this.prisma.storeSetting.findUnique({ where: { id: 'store_cuit' } }).catch(() => null);
+    if (setting?.value) out.push(String(setting.value).replace(/\D/g, ''));
+    return out.filter(Boolean);
   }
 
   /**
@@ -79,7 +117,8 @@ export class ProductMatcherService {
   async learn(supplierId: string | null | undefined, items: { code?: string; name?: string; productId: string }[]) {
     for (const it of items) {
       const code = String(it.code || '').trim().slice(0, 40);
-      if (!it.productId || !code || /^\d{8,14}$/.test(code)) continue;
+      // Un EAN no es un SKU: no se guarda como código interno (el código de barras va por su lado)
+      if (!it.productId || !code || isBarcode(code)) continue;
       const p = await this.prisma.product.findUnique({ where: { id: it.productId }, select: { sku: true } }).catch(() => null);
       if (p && !p.sku && !(await this.prisma.product.findFirst({ where: { sku: code }, select: { id: true } }))) {
         await this.prisma.product.update({ where: { id: it.productId }, data: { sku: code } }).catch(() => {});
@@ -117,7 +156,8 @@ export class ProductMatcherService {
     const supplierId = opts.supplierId || null;
     const matches: (Match | null)[] = rows.map((r) => {
       const code = String(r.code || '').trim();
-      const bc = String(r.barcode || '').trim() || (/^\d{8,14}$/.test(code) ? code : '');
+      // El código de la boleta solo se busca como código de barras si es un EAN válido
+      const bc = String(r.barcode || '').trim() || (isBarcode(code) ? code : '');
       let p = bc ? byBarcode.get(codeKey(bc)) : null;
       if (p) return { product: p, by: 'barcode', confidence: 'alta' };
       const lc = code ? learned.get(`c:${codeKey(code)}`) : null;

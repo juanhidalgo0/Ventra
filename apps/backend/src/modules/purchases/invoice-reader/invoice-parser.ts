@@ -301,7 +301,7 @@ function fallbackItem(row: Row): InvoiceItem | null {
 
 // ─── Datos del comprobante ───
 
-function validCuit(digits: string) {
+export function validCuit(digits: string) {
   if (!/^(20|23|24|25|26|27|30|33|34)\d{9}$/.test(digits)) return false;
   const w = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
   const sum = w.reduce((s, k, i) => s + k * Number(digits[i]), 0);

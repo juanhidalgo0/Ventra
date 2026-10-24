@@ -159,6 +159,22 @@ const FilePreview = ({ file }: { file: File }) => {
   );
 };
 
+/** Debajo del producto: cuánto subió desde la última compra y si otro proveedor lo vendió más barato */
+function CostInsight({ info }: { info: { changePct: number; lastSupplier: string; cheaper: { supplierName: string; cost: number } | null } }) {
+  const money = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
+  const big = Math.abs(info.changePct) >= 10;
+  return (
+    <div className="mt-0.5 space-y-0.5 text-[10px] font-semibold normal-case">
+      {big && (
+        <p className={info.changePct > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+          {info.changePct > 0 ? '▲' : '▼'} {info.changePct > 0 ? '+' : ''}{String(info.changePct).replace('.', ',')}% desde la última compra{info.lastSupplier ? ` (${info.lastSupplier})` : ''}
+        </p>
+      )}
+      {info.cheaper && <p className="text-amber-700">Más barato en {info.cheaper.supplierName}: {money(info.cheaper.cost)} c/u</p>}
+    </div>
+  );
+}
+
 /** "¿Es alguno de estos?": los productos tuyos más parecidos al renglón de la boleta */
 function CandidateChips({ candidates, onPick }: { candidates?: { id: string; name: string }[]; onPick: (id: string) => void }) {
   if (!candidates?.length) return null;
@@ -657,6 +673,22 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     e.target.value = ''; // Reset input so it can be clicked again
   };
 
+  // Aumentos desde la última compra y si otro proveedor lo vendió más barato (ver /purchases/cost-insights)
+  const [costInsights, setCostInsights] = useState<Record<string, any>>({});
+  const insightKey = items.filter((i) => !i.isNew).map((i) => `${i.productId}:${netCostOf(i)}`).join('|') + `#${selectedSupplier?.id || ''}`;
+  useEffect(() => {
+    const list = items.filter((i) => !i.isNew && netCostOf(i) > 0);
+    if (!list.length) { setCostInsights({}); return; }
+    const t = setTimeout(() => {
+      api.post('/purchases/cost-insights', {
+        supplierId: selectedSupplier?.id,
+        // El backend compara con IVA: si la compra se carga sin IVA, el costo ya es el final
+        items: list.map((i) => ({ productId: i.productId, cost: useIvaGlobal ? netCostOf(i) : netCostOf(i) / 1.21 })),
+      }, { silent: true } as any).then(({ data }) => setCostInsights(data || {})).catch(() => {});
+    }, 600);
+    return () => clearTimeout(t);
+  }, [insightKey, useIvaGlobal]);
+
   /** El precio de venta que mantiene el margen del producto con el costo nuevo (redondeado según Compras) */
   const keepMarginPrice = (product: any, netCost: number) => {
     const auto = readPurchaseAuto();
@@ -926,7 +958,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
       const newPurchaseItem: PurchaseItem = {
         productId: product.id,
-        barcode: product.barcode || (unmatched ? unmatched.barcode || unmatched.sku || '' : ''),
+        barcode: product.barcode || (unmatched ? unmatched.barcode || '' : ''),
         sku: product.sku || (unmatched ? unmatched.sku || '' : ''),
         name: product.name,
         categoryName: product.category?.name || '-',
@@ -941,7 +973,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         presentationType: product.presentationType || 'UNIT',
         margin: (unmatched ? unmatched.cost : baseCost) > 0 ? Math.round(((product.salePrice - finalCost) / finalCost) * 100) : 0,
         salePrice: product.salePrice,
-        trackExpiry: Boolean(product.trackExpiry)
+        trackExpiry: Boolean(product.trackExpiry),
+        source: unmatched ? { code: unmatched.sku || undefined, name: unmatched.name } : undefined,
       };
 
       setItems(prev => {
@@ -1387,8 +1420,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                <div className="space-y-1.5">
                  <div className="flex items-center gap-2">
                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-[9px] font-bold uppercase">Escaneado</span>
-                   {(unmatchedItems[activeUnmatchedIndex].barcode || unmatchedItems[activeUnmatchedIndex].sku) && (
-                     <span className="text-[10px] font-bold text-slate-450">SKU: {unmatchedItems[activeUnmatchedIndex].barcode || unmatchedItems[activeUnmatchedIndex].sku}</span>
+                   {unmatchedItems[activeUnmatchedIndex].sku && (
+                     <span className="text-[10px] font-bold text-slate-450">SKU: {unmatchedItems[activeUnmatchedIndex].sku}</span>
+                   )}
+                   {unmatchedItems[activeUnmatchedIndex].barcode && (
+                     <span className="text-[10px] font-bold text-slate-450">Código de barras: {unmatchedItems[activeUnmatchedIndex].barcode}</span>
                    )}
                  </div>
                  <h4 className="text-sm font-extrabold text-slate-800 uppercase">{unmatchedItems[activeUnmatchedIndex].name}</h4>
@@ -1941,6 +1977,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                             {item.isNew && (
                               <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px] font-extrabold uppercase">Nuevo</span>
                             )}
+                            {!item.isNew && costInsights[item.productId] && <CostInsight info={costInsights[item.productId]} />}
                          </td>
                          <td className="px-4 py-1.5">
                              {item.isNew ? (

@@ -86,7 +86,7 @@ const suspicious = (c?: Calc) => !!c && c.changePct !== null && (c.changePct > 6
  * Lista de precios del proveedor → costos nuevos (ver PriceListService en el backend).
  * Paso 1: subir la lista. Paso 2: revisar qué producto es cada renglón y cuánto cambia, y aplicar.
  */
-export default function PriceListModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+export default function PriceListModal({ onClose, onSuccess, onPrintLabels }: { onClose: () => void; onSuccess: () => void; onPrintLabels?: () => void }) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [supplierId, setSupplierId] = useState('');
   /** Nombre que parece ser el del proveedor pero no está cargado: se ofrece crearlo */
@@ -203,6 +203,7 @@ export default function PriceListModal({ onClose, onSuccess }: { onClose: () => 
       usePOSStore.getState().setProducts([]);
       onSuccess();
       onClose();
+      if (onPrintLabels && keepMargin && window.confirm('¿Preparás las etiquetas con los precios nuevos?')) onPrintLabels();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'No se pudieron aplicar los precios');
     } finally {

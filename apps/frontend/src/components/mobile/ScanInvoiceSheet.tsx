@@ -85,6 +85,9 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
                 {it.product && it.suggestedSalePrice !== it.product.salePrice && (
                   <p className="text-[11.5px] text-slate-500">Precio de venta {money(it.product.salePrice)} → {money(it.suggestedSalePrice)}</p>
                 )}
+                {it.product && it.changePct !== null && Math.abs(it.changePct) >= 10 && (
+                  <p className={`text-[11.5px] font-semibold ${it.changePct > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>Costo {it.changePct > 0 ? '+' : ''}{String(it.changePct).replace('.', ',')}% desde el que tenía</p>
+                )}
                 {it.doubtful && <p className="text-[11.5px] text-amber-700">Revisar: {(it.reasons || []).join(', ')}</p>}
               </div>
             ))}

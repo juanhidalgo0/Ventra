@@ -32,7 +32,12 @@ export default function MobileSuppliersScreen() {
   useEffect(() => { load(); }, [load]);
 
   // Misma regla que la PC: la deuda es la suma de las compras marcadas "debo"
-  const debtOf = useCallback((id: string) => purchases.filter((p) => p.supplierId === id && p.paymentStatus === 'OWED' && p.status !== 'CANCELLED').reduce((s, p) => s + p.total, 0), [purchases]);
+  // Compras a cuenta menos los pagos (lo calcula el servidor); si no vino, como antes
+  const debtOf = useCallback((id: string) => {
+    const s = (suppliers || []).find((x) => x.id === id);
+    if (s && typeof s.debt === 'number') return s.debt;
+    return purchases.filter((p) => p.supplierId === id && p.paymentStatus === 'OWED' && p.status !== 'CANCELLED').reduce((sum, p) => sum + p.total, 0);
+  }, [purchases, suppliers]);
   const totalDebt = useMemo(() => (suppliers || []).reduce((s, x) => s + debtOf(x.id), 0), [suppliers, debtOf]);
   const withDebt = (suppliers || []).filter((s) => debtOf(s.id) > 0).length;
 
@@ -84,6 +89,8 @@ export default function MobileSuppliersScreen() {
                     <span className="flex-1 min-w-0">
                       <span className="block text-[14.5px] font-medium text-slate-800 truncate">{s.name}</span>
                       <span className="block text-[12px] text-slate-500 truncate">{s._count?.products || 0} productos · {s._count?.purchases || 0} compras</span>
+                      {s.overdue > 0 ? <span className="block text-[12px] font-semibold text-red-600">Vencido {money(s.overdue)}</span>
+                        : s.dueSoon > 0 ? <span className="block text-[12px] font-semibold text-amber-600">Vence en estos días</span> : null}
                     </span>
                     <span className={`text-[14.5px] font-bold tabular-nums shrink-0 ${debt > 0 ? 'text-red-600' : 'text-slate-400'}`}>{debt > 0 ? money(debt) : 'Al día'}</span>
                   </button>
