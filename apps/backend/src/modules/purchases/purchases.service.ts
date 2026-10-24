@@ -626,6 +626,8 @@ export class PurchasesService {
       const reasons: string[] = [];
       if (!(quantityVal > 0) || !(netCost > 0)) reasons.push('no se leyó la cantidad o el precio');
       if (m?.confidence === 'baja') reasons.push('no es seguro que sea ese producto');
+      // No está, pero hay alguno parecido: puede ser tuyo con otro nombre. No se crea solo (sería un duplicado)
+      if (!p && candidates[i]?.length) reasons.push(`puede que ya lo tengas (¿${candidates[i][0].name}?)`);
       if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
       else if (m?.confidence === 'media' && changePct !== null && Math.abs(changePct) > 25) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}% y el producto no es seguro`);
       return {
