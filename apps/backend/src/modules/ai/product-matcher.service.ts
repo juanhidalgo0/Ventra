@@ -8,6 +8,16 @@ export const codeKey = (s: string) => String(s || '').toUpperCase().replace(/[\s
 const words = (s: string) => norm(s).split(' ').filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w));
 /** Los números del nombre (tamaños, pesos, sabores numerados): tienen que coincidir */
 const sizes = (s: string) => (norm(s).match(/\d+(?:\.\d+)?/g) || []).map((n) => String(Number(n))).sort().join(' ');
+/** Clave del índice: las primeras 3 letras (así "alf." encuentra "alfajor") */
+const key3 = (w: string) => (/^\d/.test(w) ? w : w.slice(0, 3));
+/** Palabras en común, contando las abreviadas de las boletas: "alf" = "alfajor", "gall" = "galletitas" */
+function overlap(ws: string[], other: string[]) {
+  let n = 0;
+  for (const w of ws) {
+    if (other.some((c) => c === w || (!/^\d/.test(w) && !/^\d/.test(c) && Math.min(w.length, c.length) >= 3 && (c.startsWith(w) || w.startsWith(c))))) n++;
+  }
+  return n;
+}
 
 export const PRODUCT_SELECT = {
   id: true, name: true, barcode: true, sku: true, supplierId: true, costPrice: true, salePrice: true, packPrice: true,
@@ -72,7 +82,7 @@ export class ProductMatcherService {
       for (const b of [p.barcode, ...p.additionalBarcodes.map((x) => x.barcode)]) if (b) byBarcode.set(codeKey(b), p);
       if (p.sku) bySku.set(codeKey(p.sku), p);
       byName.set(norm(p.name), p);
-      for (const w of new Set(words(p.name))) { const l = index.get(w) || []; l.push(p); index.set(w, l); }
+      for (const w of new Set(words(p.name).map(key3))) { const l = index.get(w) || []; l.push(p); index.set(w, l); }
     }
     const supplierId = opts.supplierId || null;
     const matches: (Match | null)[] = rows.map((r) => {
@@ -94,16 +104,15 @@ export class ProductMatcherService {
       const seen = new Set<any>();
       let best: any = null;
       let bestScore = 0;
-      for (const w of ws) {
+      for (const w of new Set(ws.map(key3))) {
         const list = index.get(w) || [];
         if (list.length >= 300) continue;
         for (const cand of list) {
           if (seen.has(cand)) continue;
           seen.add(cand);
           if (sizes(cand.name) !== rs) continue;
-          const cw = new Set(words(cand.name));
-          const common = ws.filter((x) => cw.has(x)).length;
-          let score = common / Math.max(ws.length, cw.size);
+          const cw = words(cand.name);
+          let score = overlap(ws, cw) / Math.max(ws.length, cw.length);
           if (supplierId && cand.supplierId === supplierId) score += 0.05;
           if (score > bestScore) { bestScore = score; best = cand; }
         }
@@ -131,6 +140,9 @@ export class ProductMatcherService {
       } catch { /* sin IA: quedan sin encontrar */ }
     }
 
+    // Los que no se encontraron: los 3 más parecidos, para elegir con un toque (el dueño decide)
+    const candidates: any[][] = rows.map((r, i) => (matches[i] ? [] : this.similar(r.name, index)));
+
     const rank: Record<Confidence, number> = { alta: 3, media: 2, baja: 1 };
     const owner = new Map<string, number>();
     matches.forEach((m, i) => {
@@ -139,6 +151,23 @@ export class ProductMatcherService {
       if (prev === undefined) { owner.set(m.product.id, i); return; }
       if (rank[m.confidence] > rank[matches[prev]!.confidence]) { matches[prev] = null; owner.set(m.product.id, i); } else matches[i] = null;
     });
-    return { matches, aiMatched, products };
+    return { matches, aiMatched, products, candidates };
+  }
+
+  /** Productos parecidos por palabras en común (mismo tamaño suma); sin exigir que sea seguro */
+  private similar(name: string, index: Map<string, any[]>) {
+    const ws = words(name);
+    const rs = sizes(name);
+    const seen = new Set<any>();
+    for (const w of new Set(ws.map(key3))) {
+      const list = index.get(w) || [];
+      if (list.length >= 500) continue;
+      for (const cand of list) seen.add(cand);
+    }
+    return [...seen].map((cand) => {
+      const cw = words(cand.name);
+      return { cand, score: overlap(ws, cw) / Math.max(ws.length, cw.length) + (rs && sizes(cand.name) === rs ? 0.3 : 0) };
+    }).filter((x) => x.score >= 0.25).sort((a, b) => b.score - a.score).slice(0, 3)
+      .map(({ cand }) => ({ id: cand.id, name: cand.name, costPrice: cand.costPrice, salePrice: cand.salePrice, unitsPerPack: cand.unitsPerPack }));
   }
 }

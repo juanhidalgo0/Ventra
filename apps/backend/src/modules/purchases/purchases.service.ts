@@ -594,18 +594,30 @@ export class PurchasesService {
       if (barcode === sku) barcode = /^\d{8,14}$/.test(barcode) ? barcode : '';
       return { barcode, sku, code: sku, name: String(it.name || '').trim() };
     });
-    const { matches } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
+    const { matches, candidates } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
 
     const roundUp = (n: number) => (settings.round ? Math.ceil(n / settings.round - 1e-9) * settings.round : Math.round(n * 100) / 100);
     const items = rawItems.map((it, i) => {
       const r = rows[i];
       const m = matches[i];
-      const unitsPerPackVal = Number(it.unitsPerPack) || 1;
-      const quantityVal = (Number(it.packageQuantity) || 1) * unitsPerPackVal;
+      const p: any = m?.product || null;
+      let unitsPerPackVal = Number(it.unitsPerPack) || 1;
+      let quantityVal = (Number(it.packageQuantity) || 1) * unitsPerPackVal;
       const netTotal = lineTotals[i] * netFactor;
+      // Vino como unidades pero el precio es del bulto entero (el producto trae N por bulto y el
+      // costo queda N veces más cerca del que tenía): se pasa a unidades
+      let packFixed = false;
+      const upp = Number(p?.unitsPerPack) || 1;
+      if (p && upp > 1 && unitsPerPackVal === 1 && p.costPrice > 0 && quantityVal > 0) {
+        const asUnit = (netTotal / quantityVal) * 1.21;
+        if (Math.abs(Math.log(asUnit / upp / p.costPrice)) < Math.abs(Math.log(asUnit / p.costPrice)) && Math.abs(Math.log(asUnit / upp / p.costPrice)) < Math.log(1.6)) {
+          unitsPerPackVal = upp;
+          quantityVal *= upp;
+          packFixed = true;
+        }
+      }
       const netCost = quantityVal > 0 ? netTotal / quantityVal : 0;
       const costWithIva = netCost * 1.21;
-      const p: any = m?.product || null;
       const changePct = p && p.costPrice > 0 ? Math.round((costWithIva / p.costPrice - 1) * 1000) / 10 : null;
       // Precio de venta sugerido: mantiene el margen del producto, o el margen de siempre si es nuevo
       const suggestedSalePrice = p
@@ -630,6 +642,8 @@ export class PurchasesService {
         suggestedSalePrice,
         doubtful: reasons.length > 0,
         reasons,
+        packFixed,
+        candidates: p ? [] : candidates[i],
         product: p ? {
           id: p.id, barcode: p.barcode, sku: p.sku, name: p.name, costPrice: p.costPrice, salePrice: p.salePrice,
           unit: p.unit, presentationType: p.presentationType, unitsPerPack: p.unitsPerPack, trackExpiry: p.trackExpiry,

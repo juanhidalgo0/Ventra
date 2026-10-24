@@ -159,6 +159,22 @@ const FilePreview = ({ file }: { file: File }) => {
   );
 };
 
+/** "¿Es alguno de estos?": los productos tuyos más parecidos al renglón de la boleta */
+function CandidateChips({ candidates, onPick }: { candidates?: { id: string; name: string }[]; onPick: (id: string) => void }) {
+  if (!candidates?.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+      <span className="text-[10px] font-bold text-slate-500">¿Ya lo tenés? Tocá el tuyo:</span>
+      {candidates.map((c) => (
+        <button key={c.id} type="button" onClick={() => onPick(c.id)}
+          className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10.5px] font-bold text-emerald-800 hover:bg-emerald-100 cursor-pointer">
+          {c.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack: () => void, initialPurchase?: any }) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -779,58 +795,83 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     }
   };
 
-  const handleAssociateUnmatched = async (productId: string, idx: number) => {
-    const unmatched = unmatchedItems[idx];
-    try {
-      const codeToSave = unmatched.barcode || unmatched.sku;
-      if (codeToSave) {
-        // Associate barcode to existing product
-        await api.patch(`/products/${productId}`, { barcode: codeToSave });
-        toast.success('Código de barras guardado en el producto');
+  /** Un renglón de la boleta es un producto que ya tenés: entra a la compra con ese producto */
+  const associateRow = async (unmatched: any, productId: string) => {
+    let { data: product } = await api.get(`/products/${productId}`);
+    // El código de barras de la boleta solo se guarda si es un EAN y el producto no tiene uno; el
+    // código propio del proveedor no pisa nada: Ventra lo aprende al confirmar la compra
+    if (/^\d{8,14}$/.test(unmatched.barcode || '') && !product.barcode) {
+      await api.patch(`/products/${productId}`, { barcode: unmatched.barcode }).catch(() => {});
+      product = { ...product, barcode: unmatched.barcode };
+    }
+    // Vino como unidades pero el producto se compra por bulto y el precio es del bulto entero
+    let quantity = unmatched.quantity;
+    let cost = unmatched.cost;
+    const upp = Number(product.unitsPerPack) || 1;
+    if (upp > 1 && (unmatched.unitsPerPack || 1) === 1 && product.costPrice > 0 && cost > 0) {
+      const asUnit = cost * 1.21;
+      const asPack = asUnit / upp;
+      if (Math.abs(Math.log(asPack / product.costPrice)) < Math.abs(Math.log(asUnit / product.costPrice)) && Math.abs(Math.log(asPack / product.costPrice)) < Math.log(1.6)) {
+        quantity = quantity * upp;
+        cost = parseFloat((cost / upp).toFixed(2));
+        toast(`${product.name}: el precio de la boleta es por bulto de ${upp}; se pasó a ${quantity} unidades.`, { icon: '📦' });
       }
+    }
+    const sale = keepMarginPrice(product, cost);
+    const base = useIvaGlobal ? cost * 1.21 : cost;
+    const newPurchaseItem: PurchaseItem = {
+      productId: product.id,
+      barcode: product.barcode || '',
+      sku: product.sku || '',
+      name: product.name,
+      categoryName: product.category?.name || '-',
+      brandName: product.brand?.name || '-',
+      variant: '-',
+      unit: product.unit || 'UNIT',
+      quantity,
+      cost,
+      total: unmatched.total,
+      buyFormat: 'UNIT',
+      unitsPerPack: upp,
+      presentationType: product.presentationType || 'UNIT',
+      salePrice: sale,
+      margin: base > 0 ? Math.round(((sale - base) / base) * 100) : 0,
+      trackExpiry: Boolean(product.trackExpiry),
+      base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
+      source: { code: unmatched.sku || undefined, name: unmatched.name },
+    };
+    setItems(prev => [...prev.filter(p => p.productId !== product.id), newPurchaseItem]);
+    return product;
+  };
 
-      const { data: product } = await api.get(`/products/${productId}`);
-
-      const newPurchaseItem: PurchaseItem = {
-        productId: product.id,
-        barcode: product.barcode || unmatched.barcode || unmatched.sku || '',
-        sku: product.sku || unmatched.sku || '',
-        name: product.name,
-        categoryName: product.category?.name || '-',
-        brandName: product.brand?.name || '-',
-        variant: '-',
-        unit: product.unit || 'UNIT',
-        quantity: unmatched.quantity,
-        cost: unmatched.cost,
-        total: unmatched.total,
-        buyFormat: product.unitsPerPack > 1 ? 'PACK' : 'UNIT',
-        unitsPerPack: product.unitsPerPack || 1,
-        presentationType: product.presentationType || 'UNIT',
-        salePrice: keepMarginPrice(product, unmatched.cost),
-        margin: unmatched.cost > 0 ? Math.round(((keepMarginPrice(product, unmatched.cost) - (useIvaGlobal ? unmatched.cost * 1.21 : unmatched.cost)) / (useIvaGlobal ? unmatched.cost * 1.21 : unmatched.cost)) * 100) : 0,
-        trackExpiry: Boolean(product.trackExpiry),
-        base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
-        source: { code: unmatched.sku || undefined, name: unmatched.name },
-      };
-
-      setItems(prev => {
-        const filtered = prev.filter(p => p.productId !== product.id);
-        return [...filtered, newPurchaseItem];
-      });
-
+  const handleAssociateUnmatched = async (productId: string, idx: number) => {
+    try {
+      await associateRow(unmatchedItems[idx], productId);
       const nextUnmatched = unmatchedItems.filter((_, i) => i !== idx);
       setUnmatchedItems(nextUnmatched);
       setQuickProductSearch('');
       setQuickProductResults([]);
-      
       if (nextUnmatched.length > 0) {
         setActiveUnmatchedIndex(0);
         focusUnmatchedSearch();
       } else {
         setActiveUnmatchedIndex(null);
       }
-      toast.success('Producto asociado correctamente');
-    } catch (err: any) {
+      toast.success('Producto asociado: la próxima boleta de este proveedor lo reconoce sola');
+    } catch {
+      toast.error('Error al asociar el producto');
+    }
+  };
+
+  /** Desde la ventana de productos nuevos: "¿Ya lo tenés?" → es este */
+  const associatePending = async (idx: number, productId: string) => {
+    try {
+      const product = await associateRow(pendingNewProducts[idx], productId);
+      const next = pendingNewProducts.filter((_, i) => i !== idx);
+      setPendingNewProducts(next);
+      if (!next.length) setShowNewProductsModal(false);
+      toast.success(`Asociado a ${product.name}`);
+    } catch {
       toast.error('Error al asociar el producto');
     }
   };
@@ -1351,6 +1392,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                    )}
                  </div>
                  <h4 className="text-sm font-extrabold text-slate-800 uppercase">{unmatchedItems[activeUnmatchedIndex].name}</h4>
+                 <CandidateChips candidates={unmatchedItems[activeUnmatchedIndex].candidates} onPick={(id) => handleAssociateUnmatched(id, activeUnmatchedIndex)} />
                  <div className="flex items-center gap-4 text-xs font-bold text-slate-700">
                    <span>Cantidad: {unmatchedItems[activeUnmatchedIndex].quantity} u.</span>
                    <span>Costo unitario: $ {unmatchedItems[activeUnmatchedIndex].cost}</span>
@@ -1545,7 +1587,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   </div>
                   <div className="p-6 overflow-y-auto space-y-4 flex-1">
                     <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                      Se detectaron <strong className="text-slate-800">{pendingNewProducts.length} productos nuevos</strong> en el escaneo que no coinciden con tu catálogo actual. Puedes editarlos o eliminarlos de la lista antes de agregarlos.
+                      Hay <strong className="text-slate-800">{pendingNewProducts.length} {pendingNewProducts.length === 1 ? 'renglón' : 'renglones'}</strong> de la boleta que no se encontraron en tu catálogo. Si ya tenés el producto con otro nombre, tocalo abajo del nombre (o "Asociar/Crear uno por uno" para buscarlo): Ventra lo recuerda para las próximas boletas de este proveedor. Los que no tengas, agregalos como nuevos.
                     </p>
                     
                     <div className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50/30 overflow-x-auto custom-scrollbar">
@@ -1585,6 +1627,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                                   }}
                                   className="w-full bg-slate-50 border border-slate-400 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:bg-white focus:border-amber-500 uppercase transition-all"
                                 />
+                                <CandidateChips candidates={item.candidates} onPick={(id) => associatePending(idx, id)} />
                               </td>
                               <td className="px-4 py-2">
                                 <input 
