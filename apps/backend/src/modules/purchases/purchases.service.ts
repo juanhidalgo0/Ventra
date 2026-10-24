@@ -295,6 +295,8 @@ export class PurchasesService {
       expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
       /** El renglón de la boleta (código y nombre del proveedor): se aprende para la próxima */
       source?: { code?: string; name?: string };
+      /** EAN de la boleta para un producto que no tenía código de barras (se guarda al confirmar) */
+      setBarcode?: string;
       newProductData?: {
         name: string;
         barcode?: string;
@@ -345,14 +347,14 @@ export class PurchasesService {
         // If it's a new product, create it first
         if (!productId && item.newProductData) {
           const barcode = item.newProductData.barcode || null;
-          const sku = item.newProductData.sku || null;
-          
+          // El SKU (código del proveedor) no identifica al producto: otro proveedor puede usar el
+          // mismo código. Si ya lo tiene otro producto, el nuevo queda sin SKU (Ventra lo recuerda igual)
+          let sku = item.newProductData.sku || null;
+          if (sku && await tx.product.findUnique({ where: { sku }, select: { id: true } })) sku = null;
+
           let existingProduct = null;
           if (barcode) {
             existingProduct = await tx.product.findUnique({ where: { barcode } });
-          }
-          if (!existingProduct && sku) {
-            existingProduct = await tx.product.findUnique({ where: { sku } });
           }
 
           if (existingProduct) {
@@ -388,6 +390,11 @@ export class PurchasesService {
         }
 
         if (item.source && productId) learned.push({ ...item.source, productId });
+        // El EAN de la boleta, si el producto no tenía código de barras y nadie más lo usa
+        if (item.setBarcode && isBarcode(item.setBarcode) && productId) {
+          const owner = await tx.product.findUnique({ where: { barcode: item.setBarcode }, select: { id: true } });
+          if (!owner) await tx.product.updateMany({ where: { id: productId, OR: [{ barcode: null }, { barcode: '' }] }, data: { barcode: item.setBarcode } });
+        }
 
         const product = await tx.product.findUnique({ 
           where: { id: productId }, 
@@ -574,6 +581,8 @@ export class PurchasesService {
     // Proveedor: el que ya está cargado (nombre parecido) o, si no está, se crea con el nombre de la boleta
     const supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
     const settings = await this.scanSettings();
+    // ¿Esta boleta ya se cargó? (mismo proveedor y número): escanearla de nuevo duplicaría el stock y la deuda
+    const duplicate = await this.findSameInvoice(supplier?.id, parsedData.invoiceNumber);
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
     // adentro (factura B/C, ticket), la suma da el total. Así se sabe también si los precios lo traen.
@@ -581,10 +590,16 @@ export class PurchasesService {
     const lineTotals = rawItems.map((it) => parseArgentineNumber(it.total));
     const sum = lineTotals.reduce((a, b) => a + b, 0);
     const printed = parseArgentineNumber(parsedData.totalFacturaAPagar);
+    const subtotal = parseArgentineNumber(parsedData.subtotalNeto);
     const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(50, b * 0.02);
     let totalsOk: boolean | null = readCheck ? !!readCheck.ok : null;
     let netFactor = 1;
-    if (!readCheck && printed > 0 && sum > 0) {
+    if (!readCheck && subtotal > 0 && sum > 0 && near(sum, subtotal)) {
+      // Contra el subtotal neto impreso: cierra aunque haya percepciones, IVA 10,5% o impuestos
+      // internos. Si el subtotal es igual al total (factura B/C o ticket), los precios traen IVA.
+      totalsOk = true;
+      if (printed > 0 && near(printed, subtotal)) netFactor = 1 / 1.21;
+    } else if (!readCheck && printed > 0 && sum > 0) {
       if (near(sum * 1.21, printed)) totalsOk = true;
       else if (near(sum, printed)) { totalsOk = true; netFactor = 1 / 1.21; }
       else totalsOk = false;
@@ -671,10 +686,13 @@ export class PurchasesService {
       }),
       invoice: readInfo,
       pricesIncludeIva: netFactor !== 1,
+      duplicate,
     };
 
     // En la PC la boleta se revisa en la misma pantalla: no se guarda nada todavía
     if (opts.inline) return { ...base, status: 'INLINE', purchaseId: null };
+    // Del celular, una boleta ya cargada no se vuelve a cargar ni queda pendiente
+    if (duplicate) return { ...base, status: 'DUPLICATE', purchaseId: duplicate.id, auto: false, why: ['esta boleta ya estaba cargada'] };
 
     // Del celular: si la boleta cierra y no hay nada dudoso, se carga sola (stock, costos, precios
     // y productos nuevos). Si no, queda para revisar en la PC, sin crear nada.
@@ -748,6 +766,20 @@ export class PurchasesService {
     });
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
     return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
+  }
+
+  /** Una compra del mismo proveedor con el mismo número de boleta (sin contar las anuladas) */
+  private async findSameInvoice(supplierId: string | null | undefined, invoiceNumber?: string | null) {
+    const digits = (s: string) => String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+    const target = digits(invoiceNumber || '');
+    if (!supplierId || target.length < 3) return null;
+    const rows = await (this.prisma as any).purchase.findMany({
+      where: { supplierId, invoiceNumber: { not: null }, status: { not: 'CANCELLED' } },
+      select: { id: true, invoiceNumber: true, status: true, createdAt: true, total: true },
+      orderBy: { createdAt: 'desc' }, take: 500,
+    });
+    const same = rows.find((r: any) => digits(r.invoiceNumber) === target);
+    return same ? { id: same.id, status: same.status, createdAt: same.createdAt, total: same.total } : null;
   }
 
   /**

@@ -161,8 +161,9 @@ export class ProductsController {
   async create(@Body() data: any, @Request() req) {
     const product = await this.productsService.create(data);
     const sourceImage = /^https:\/\//.test(String(data?.imageUrl || '')) ? String(data.imageUrl) : null;
-    if (req.user?.role !== 'ADMIN' && product?.id) {
-      // Lo cargó un empleado (desde la caja, un código que no estaba): queda para que lo revise el dueño
+    // Cargado de apuro desde la caja (un código que no estaba), lo cargue quien lo cargue, o por un
+    // empleado desde cualquier lado: queda para que el dueño lo revise (precio, categoría, foto)
+    if (product?.id && (data?.fromPos === true || req.user?.role !== 'ADMIN')) {
       await this.productsService.markForReview(product, req.user?.sub, sourceImage).catch(() => {});
     } else if (product?.barcode) {
       // Lo cargó el dueño: su nombre y su foto suman al catálogo compartido de Ventra

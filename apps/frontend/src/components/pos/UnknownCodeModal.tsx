@@ -111,6 +111,8 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
         stock: parseAmount(stock),
         ...(categoryId ? { categoryId } : {}),
         ...(useImage && imageUrl ? { imageUrl } : {}),
+        // Cargado desde la caja: queda para que el dueño lo revise
+        fromPos: true,
       });
       toast.success(`${data?.name || cleanName} quedó cargado`);
       onCreated(data);
@@ -246,8 +248,8 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
           </button>
         </div>
 
-        {reviewNote && mode === 'create' && (
-          <p className="mt-3 text-center text-[12px] text-slate-500">El dueño recibe un aviso para revisar el producto que cargues.</p>
+        {mode === 'create' && (
+          <p className="mt-3 text-center text-[12px] text-slate-500">{reviewNote ? 'El dueño recibe un aviso para revisar el producto que cargues.' : 'Queda en Productos → "para revisar", así después le completás categoría, foto y demás.'}</p>
         )}
         {canCreate && (
           <button onClick={() => setMode(mode === 'create' ? 'sell' : 'create')}

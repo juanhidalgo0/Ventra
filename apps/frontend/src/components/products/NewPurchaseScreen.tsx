@@ -80,6 +80,8 @@ interface PurchaseItem {
   discount3?: number;
   categoryName?: string;
   brandName?: string;
+  /** EAN de la boleta para el producto que no tenía código de barras: se guarda al confirmar la compra */
+  setBarcode?: string;
   /** Costo y precio de venta que tenía el producto: si cambia el costo, la venta mantiene ese margen */
   base?: { costPrice: number; salePrice: number };
   /** El renglón de la boleta (código y nombre del proveedor): el sistema lo aprende al confirmar */
@@ -700,6 +702,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
   /** Lo leído de una boleta (recién escaneada o pendiente del celular) → renglones de la compra */
   const applyScanResult = (data: any) => {
+    if (data.duplicate) {
+      toast.error(`Ojo: esta boleta ya se cargó el ${new Date(data.duplicate.createdAt).toLocaleDateString('es-AR')}${data.duplicate.status === 'PENDING' ? ' (está en "Por revisar")' : ''}. Si la confirmás de nuevo, se suma dos veces el stock.`, { duration: 15000 });
+    }
     if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
     if (data.date) setDate(data.date);
     if (data.matchedSupplier) {
@@ -829,13 +834,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
   /** Un renglón de la boleta es un producto que ya tenés: entra a la compra con ese producto */
   const associateRow = async (unmatched: any, productId: string) => {
-    let { data: product } = await api.get(`/products/${productId}`);
-    // El código de barras de la boleta solo se guarda si es un EAN y el producto no tiene uno; el
-    // código propio del proveedor no pisa nada: Ventra lo aprende al confirmar la compra
-    if (/^\d{8,14}$/.test(unmatched.barcode || '') && !product.barcode) {
-      await api.patch(`/products/${productId}`, { barcode: unmatched.barcode }).catch(() => {});
-      product = { ...product, barcode: unmatched.barcode };
-    }
+    const { data: product } = await api.get(`/products/${productId}`);
+    // Nada se guarda en el producto hasta confirmar la compra: el EAN de la boleta (si no tenía
+    // código de barras) y el código del proveedor (SKU) se guardan recién ahí
     // Vino como unidades pero el producto se compra por bulto y el precio es del bulto entero
     let quantity = unmatched.quantity;
     let cost = unmatched.cost;
@@ -871,6 +872,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       trackExpiry: Boolean(product.trackExpiry),
       base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
       source: { code: unmatched.sku || undefined, name: unmatched.name },
+      setBarcode: !product.barcode && unmatched.barcode ? unmatched.barcode : undefined,
     };
     setItems(prev => [...prev.filter(p => p.productId !== product.id), newPurchaseItem]);
     return product;
@@ -944,43 +946,44 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       const baseCost = quickCreateForm.costPrice;
       const finalCost = useIvaForQuickCreate ? baseCost * 1.21 : baseCost;
 
-      const { data: product } = await api.post('/products', {
-        ...quickCreateForm,
-        costPrice: finalCost,
-        sku: unmatched ? unmatched.sku || null : null,
-        stock: 0,
-        minStock: 0,
-        unit: 'UNIT',
-        presentationType: unmatched && unmatched.unitsPerPack > 1 ? 'PACK' : 'UNIT',
-        unitsPerPack: unmatched ? unmatched.unitsPerPack || 1 : 1,
-        isActive: true
-      });
-
+      // No se crea todavía: entra a la compra como producto nuevo y se crea al confirmarla
+      const name = String(quickCreateForm.name || '').trim();
+      if (!name) { toast.error('Poné el nombre del producto'); return; }
+      const upp = unmatched ? unmatched.unitsPerPack || 1 : 1;
+      const sale = Number(quickCreateForm.salePrice) || 0;
       const newPurchaseItem: PurchaseItem = {
-        productId: product.id,
-        barcode: product.barcode || (unmatched ? unmatched.barcode || '' : ''),
-        sku: product.sku || (unmatched ? unmatched.sku || '' : ''),
-        name: product.name,
-        categoryName: product.category?.name || '-',
-        brandName: product.brand?.name || '-',
+        productId: `NEW_PRODUCT_Q_${Date.now()}`,
+        barcode: quickCreateForm.barcode || (unmatched ? unmatched.barcode || '' : ''),
+        sku: unmatched ? unmatched.sku || '' : '',
+        name,
+        categoryName: '-',
+        brandName: '-',
         variant: '-',
-        unit: product.unit || 'UNIT',
+        unit: 'UNIT',
         quantity: unmatched ? unmatched.quantity : 1,
         cost: unmatched ? unmatched.cost : baseCost,
         total: unmatched ? unmatched.total : baseCost,
-        buyFormat: product.unitsPerPack > 1 ? 'PACK' : 'UNIT',
-        unitsPerPack: product.unitsPerPack || 1,
-        presentationType: product.presentationType || 'UNIT',
-        margin: (unmatched ? unmatched.cost : baseCost) > 0 ? Math.round(((product.salePrice - finalCost) / finalCost) * 100) : 0,
-        salePrice: product.salePrice,
-        trackExpiry: Boolean(product.trackExpiry),
+        buyFormat: 'UNIT',
+        unitsPerPack: upp,
+        presentationType: 'UNIT',
+        isNew: true,
+        margin: finalCost > 0 ? Math.round(((sale - finalCost) / finalCost) * 100) : 0,
+        salePrice: sale,
         source: unmatched ? { code: unmatched.sku || undefined, name: unmatched.name } : undefined,
+        newProductData: {
+          name,
+          barcode: quickCreateForm.barcode || (unmatched ? unmatched.barcode || undefined : undefined),
+          sku: unmatched ? unmatched.sku || undefined : undefined,
+          salePrice: sale,
+          categoryId: null,
+          brandId: null,
+          unitsPerPack: upp,
+          presentationType: 'UNIT',
+        },
       };
 
-      setItems(prev => {
-        const filtered = prev.filter(p => p.productId !== product.id);
-        return [...filtered, newPurchaseItem];
-      });
+      setItems(prev => [...prev, newPurchaseItem]);
+      toast.success(`${name} se crea al confirmar la compra`);
 
       if (unmatched && idx !== null) {
         const nextUnmatched = unmatchedItems.filter((_, i) => i !== idx);
@@ -1054,6 +1057,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             expiresAt: (i.trackExpiry || (i.isNew && expiryEnabled)) && i.expiresAt ? i.expiresAt : undefined,
             salePrice: i.isNew ? undefined : (Number(i.salePrice) || undefined),
             source: i.source,
+            setBarcode: i.isNew ? undefined : i.setBarcode,
             newProductData: i.isNew ? {
               name: i.name,
               barcode: i.barcode || null,

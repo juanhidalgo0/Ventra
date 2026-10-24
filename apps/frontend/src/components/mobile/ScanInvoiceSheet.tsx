@@ -64,7 +64,12 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
             <p className="mt-2 text-[17px] font-bold text-slate-900">{result.matchedSupplier?.name || result.supplierName || 'Proveedor'}</p>
             <p className="text-[13px] text-slate-500">{(result.items || []).length} productos{result.invoiceNumber ? ` · Factura ${result.invoiceNumber}` : ''} · {money(total)} sin IVA</p>
           </div>
-          {result.auto ? (
+          {result.status === 'DUPLICATE' ? (
+            <div className="rounded-2xl bg-rose-50 border border-rose-100 px-4 py-3 flex gap-3 text-[13.5px] text-rose-900">
+              <Monitor className="w-5 h-5 shrink-0 mt-0.5" />
+              <span><b>Esta boleta ya estaba cargada</b>{result.duplicate?.createdAt ? ` (el ${new Date(result.duplicate.createdAt).toLocaleDateString('es-AR')})` : ''}. No se volvió a cargar, así no se duplica el stock.</span>
+            </div>
+          ) : result.auto ? (
             <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex gap-3 text-[13.5px] text-emerald-900">
               <Sparkles className="w-5 h-5 shrink-0 mt-0.5" />
               <span><b>Listo, se cargó sola.</b> Se sumó el stock{result.updatedPrices ? `, se actualizaron ${result.updatedPrices} precios manteniendo tu margen` : ''}{result.newProducts ? ` y se crearon ${result.newProducts} productos nuevos (te quedan para revisar en Productos)` : ''}. Queda a cuenta del proveedor.</span>

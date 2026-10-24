@@ -145,7 +145,8 @@ Reglas:
 7. Controlá: la suma de los totales con IVA (x1,21) y los descuentos del pie tiene que dar el total de la factura ("totalFacturaAPagar"). Si no da, revisá la alineación y corregí.
 8. "barcode" solo si aparece un código de barras (EAN) del producto; "sku" el código interno del proveedor si hay. Si no, vacíos.
 9. "date" en formato AAAA-MM-DD.
-10. "supplierCuit": el CUIT de quien EMITE la factura (el proveedor, arriba junto a su razón social), con guiones (30-12345678-9). NO el del cliente o comprador. Si no se ve, vacío.`;
+10. "supplierCuit": el CUIT de quien EMITE la factura (el proveedor, arriba junto a su razón social), con guiones (30-12345678-9). NO el del cliente o comprador. Si no se ve, vacío.
+11. "subtotalNeto": el subtotal o importe neto gravado impreso al pie, ANTES de IVA, percepciones e impuestos (por ejemplo "Subtotal", "Neto gravado", "Importe neto"), tal cual está impreso. Si la factura no lo muestra (ticket, factura B o C con todo incluido), vacío.`;
 
 const INVOICE_SCHEMA = {
   type: "object",
@@ -156,6 +157,7 @@ const INVOICE_SCHEMA = {
     invoiceNumber: { type: "string" },
     date: { type: "string" },
     totalFacturaAPagar: { type: "string" },
+    subtotalNeto: { type: "string" },
     items: {
       type: "array",
       items: {
@@ -173,7 +175,7 @@ const INVOICE_SCHEMA = {
       },
     },
   },
-  required: ["rawTableTranscription", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "items"],
+  required: ["rawTableTranscription", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "subtotalNeto", "items"],
   additionalProperties: false,
 };
 

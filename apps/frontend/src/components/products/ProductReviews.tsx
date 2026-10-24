@@ -7,7 +7,8 @@ import { useAuthStore } from '../../stores/authStore';
 import ProductModal from './ProductModal';
 
 /**
- * Productos que los empleados cargaron desde la caja (un código que no estaba en el sistema).
+ * Productos cargados desde la caja (un código que no estaba en el sistema), lo haya hecho un
+ * empleado o el mismo dueño, y los nuevos que crea una boleta escaneada.
  * El dueño recibe el aviso y decide: dejarlo como está, editarlo (precio, categoría, foto) o
  * borrarlo. Un vigía (cada 30 s, una consulta liviana) avisa desde cualquier pantalla.
  */
@@ -31,7 +32,7 @@ export function ProductReviewsBanner({ className = '' }: { className?: string })
       <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0"><PackagePlus className="w-[18px] h-[18px]" /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-[14px] font-bold text-amber-900">{count === 1 ? '1 producto cargado en la caja para revisar' : `${count} productos cargados en la caja para revisar`}</span>
-        <span className="block text-[12.5px] text-amber-800">Los cargaron tus empleados: confirmalos, editalos o borralos.</span>
+        <span className="block text-[12.5px] text-amber-800">Cargados de apuro en la caja o desde una boleta: confirmalos, editalos o borralos.</span>
       </span>
       <span className="text-[13px] font-bold text-amber-900 flex items-center gap-0.5 shrink-0">Revisar <ChevronRight className="w-4 h-4" /></span>
     </button>
@@ -140,7 +141,7 @@ export default function ProductReviewWatcher() {
             <span className="flex items-center gap-3">
               <span className="text-[13.5px]">
                 <b>{show.length === 1 ? 'Producto nuevo para revisar' : `${show.length} productos nuevos para revisar`}</b>
-                <span className="block text-slate-600">{show.length === 1 ? `${r.name}${r.userName ? ` · lo cargó ${r.userName}` : ''}` : 'Los cargaron tus empleados desde la caja'}</span>
+                <span className="block text-slate-600">{show.length === 1 ? `${r.name}${r.userName ? ` · lo cargó ${r.userName}` : ''}` : 'Se cargaron desde la caja'}</span>
               </span>
               <button onClick={() => { toast.dismiss(t.id); setOpen(true); }} className="shrink-0 h-9 px-3 rounded-lg bg-amber-500 text-white text-[13px] font-bold cursor-pointer">Revisar</button>
             </span>

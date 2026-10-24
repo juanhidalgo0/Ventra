@@ -702,6 +702,10 @@ export class ProductsService {
        ON CONFLICT(id) DO UPDATE SET product_name = excluded.product_name, user_name = excluded.user_name, image_source = excluded.image_source`,
       product.id, String(product.name || '').slice(0, 200), user?.fullName || user?.username || null, sourceImage || null,
     );
+    // También a la campanita (queda en el historial de avisos aunque no esté mirando Productos)
+    await this.prisma.appNotification.create({
+      data: { type: 'productReview', title: 'Producto nuevo para revisar', body: `${product.name}${user ? ` · lo cargó ${user.fullName || user.username}` : ''}`, url: '/products' },
+    }).catch(() => {});
   }
 
   /** Los que faltan revisar, con lo que tiene hoy el producto (si lo borraron, sale solo de la lista) */
