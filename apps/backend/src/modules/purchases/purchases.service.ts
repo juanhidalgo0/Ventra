@@ -831,7 +831,8 @@ export class PurchasesService {
     const auto = (await read('purchase_auto')) || {};
     const margin = Number(await read('purchase_default_margin'));
     return {
-      auto: auto.enabled !== false,
+      // Arranca apagada: toda boleta queda para confirmar en la PC hasta que el dueño la prenda
+      auto: auto.enabled === true,
       keepMargin: auto.keepMargin !== false,
       round: [0, 10, 100].includes(Number(auto.round)) ? Number(auto.round) : 10,
       margin: Number.isFinite(margin) && margin > 0 ? margin : 30,

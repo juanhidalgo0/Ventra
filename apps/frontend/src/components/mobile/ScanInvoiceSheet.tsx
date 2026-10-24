@@ -9,7 +9,7 @@ import { Sheet, PrimaryButton, money } from './ui';
 export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
   let v: any = null;
   try { v = JSON.parse(localStorage.getItem('purchase_auto') || 'null'); } catch { /* sin ajuste */ }
-  return { enabled: v?.enabled !== false, keepMargin: v?.keepMargin !== false, round: [0, 10, 100].includes(Number(v?.round)) ? Number(v.round) : 10 };
+  return { enabled: v?.enabled === true, keepMargin: v?.keepMargin !== false, round: [0, 10, 100].includes(Number(v?.round)) ? Number(v.round) : 10 };
 }
 export const savePurchaseAuto = (v: { enabled: boolean; keepMargin: boolean; round: number }) => setStoreSetting('purchase_auto', JSON.stringify(v));
 
