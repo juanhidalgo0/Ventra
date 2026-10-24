@@ -34,7 +34,7 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 
 ## Productos
 - **Productos → Inventario**: la lista. **Nuevo Producto** para cargar uno (con el código de barras trae nombre y foto solo). Tocar un producto lo edita.
-- Menú **Precios**: **Ajuste masivo por %** (por proveedor, rubro o marca), **Redondear precios**, y **Lista de precios del proveedor** (subir el PDF, Excel o fotos de la lista nueva: Ventra encuentra cada producto, muestra cuánto cambia el costo y deja aplicar manteniendo el margen).
+- Menú **Precios**: **Ajuste masivo por %** (por proveedor, rubro o marca), **Redondear precios**, y **Lista de precios del proveedor** (subir el PDF, Excel o fotos de la lista nueva: Ventra encuentra cada producto, muestra cuánto cambia el costo y deja aplicar manteniendo el margen). En la pestaña "Sin encontrar" se asocia cada renglón a tu producto (sugeridos o "Buscar el mío"); con el proveedor elegido arriba, Ventra lo recuerda para las próximas listas y boletas de ese proveedor.
 - Menú **Etiquetas**: etiquetas con código de barras y etiquetas de gavetero.
 - Menú **Fotos**: **Buscar y asignar fotos** (a los que no tienen) y **Volver a buscar para todos**.
 - Menú **Datos**: **Importar productos** (planilla de Excel en formato Ventra, o base de otros sistemas), **Exportar productos**, exportar para GoDelivery.

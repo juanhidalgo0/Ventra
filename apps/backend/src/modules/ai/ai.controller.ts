@@ -35,6 +35,13 @@ export class AiController {
     return this.priceList.preview(body?.items || [], body);
   }
 
+  /** Este renglón de la lista es este producto: se aprende para ese proveedor */
+  @Post('price-list/learn')
+  @Roles(...MANAGERS)
+  learnPriceList(@Body() body: any) {
+    return this.priceList.learn(String(body?.supplierId || ''), body?.items || []);
+  }
+
   @Post('price-list/apply')
   @Roles(...MANAGERS)
   applyPriceList(@Body() body: any, @Request() req) {

@@ -5,9 +5,10 @@ import { AiService } from './ai.service';
 export const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2').replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ').trim();
 export const codeKey = (s: string) => String(s || '').toUpperCase().replace(/[\s.\-_/]/g, '').replace(/^0+/, '');
-const words = (s: string) => norm(s).split(' ').filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w));
+/** Palabras del nombre, sin los puntos de las abreviaturas ("alf.") ni la cantidad del bulto ("x24") */
+const words = (s: string) => norm(s).split(' ').map((w) => w.replace(/^\.+|\.+$/g, '')).filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w) && !/^x\d+$/.test(w));
 /** Los números del nombre (tamaños, pesos, sabores numerados): tienen que coincidir */
-const sizes = (s: string) => (norm(s).match(/\d+(?:\.\d+)?/g) || []).map((n) => String(Number(n))).sort().join(' ');
+const sizes = (s: string) => (norm(s).replace(/\bx ?\d+\b/g, ' ').match(/\d+(?:\.\d+)?/g) || []).map((n) => String(Number(n))).sort().join(' ');
 /** Clave del índice: las primeras 3 letras (así "alf." encuentra "alfajor") */
 const key3 = (w: string) => (/^\d/.test(w) ? w : w.slice(0, 3));
 /** Palabras en común, contando las abreviadas de las boletas: "alf" = "alfajor", "gall" = "galletitas" */

@@ -127,7 +127,7 @@ export class PriceListService {
 
   /** Qué producto del catálogo es cada renglón (ver ProductMatcherService) */
   private async match(rows: ListRow[], supplierId?: string) {
-    const { matches: found, aiMatched } = await this.matcher.match(rows, { supplierId });
+    const { matches: found, aiMatched, candidates } = await this.matcher.match(rows, { supplierId });
     const view = (p: any) => ({
       id: p.id, name: p.name, costPrice: p.costPrice, salePrice: p.salePrice, packPrice: p.packPrice,
       unitsPerPack: p.unitsPerPack, supplierId: p.supplierId, usesListPrice: p.listPrice != null && p.listPrice > 0,
@@ -137,7 +137,8 @@ export class PriceListService {
     return {
       aiMatched,
       matches: matches.map((m, i) => {
-        if (!m) return { product: null, by: null, confidence: null, perPack: false };
+        // Sin encontrar: los más parecidos del catálogo, para asociarlo con un toque
+        if (!m) return { product: null, by: null, confidence: null, perPack: false, candidates: candidates[i] || [] };
         // ¿El precio es del bulto? Si la lista lo dice, o si así queda más cerca del costo anterior
         const upp = Number(m.product.unitsPerPack) || 1;
         const r = rows[i];
@@ -149,6 +150,19 @@ export class PriceListService {
         return { ...m, perPack };
       }),
     };
+  }
+
+  /**
+   * El dueño dijo qué producto es un renglón que no se encontró: se aprende ya para ese proveedor
+   * (las próximas listas y boletas lo encuentran solas), aunque todavía no aplique precios.
+   */
+  async learn(supplierId: string, items: { code?: string; name?: string; productId: string }[]) {
+    if (!supplierId) throw new BadRequestException('Elegí el proveedor para que Ventra lo recuerde.');
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+    if (!supplier) throw new BadRequestException('Proveedor no encontrado');
+    const valid = (items || []).filter((i) => i && i.productId).slice(0, 500);
+    await this.matcher.learn(supplier.id, valid.map((i) => ({ code: i.code, name: i.name, productId: String(i.productId) })));
+    return { learned: valid.length };
   }
 
   /** Costo y precios nuevos de un producto (lo mismo para la vista previa y para aplicar) */
