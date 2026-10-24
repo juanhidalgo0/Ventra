@@ -204,7 +204,8 @@ Reglas:
 - El precio que importa es el precio de costo para el comercio: si hay "sin IVA" y "con IVA", elegí el SIN IVA y marcá priceIncludesIva "no". Si hay "contado" y "lista", el de lista. Si solo hay uno, ese.
 - priceIncludesIva: "si" si la lista dice que los precios tienen IVA incluido ("IVA incluido", "final", "c/IVA"), "no" si dice "+ IVA", "s/IVA", "neto", "no incluye IVA", y "no_se" si no dice nada.
 - packUnits: unidades por bulto o caja si la lista lo dice ("x 12", "caja 6 u", "bulto 24"), o 0 si no.
-- Ignorá títulos, rubros, encabezados, notas, condiciones de venta y renglones sin precio.`;
+- Ignorá títulos, rubros, encabezados, notas, condiciones de venta y renglones sin precio.
+- supplierName: el nombre de la empresa que emite la lista (razón social o nombre de fantasía) si aparece; si no, vacío.`;
 
 const PRICELIST_MAP_SCHEMA = {
   type: "object",
@@ -216,8 +217,9 @@ const PRICELIST_MAP_SCHEMA = {
     price: { type: "integer", description: "Columna del precio de costo" },
     packUnits: { type: "integer", description: "Columna de unidades por bulto, o -1" },
     priceIncludesIva: { type: "string", enum: ["si", "no", "no_se"] },
+    supplierName: { type: "string" },
   },
-  required: ["headerRow", "code", "barcode", "name", "price", "packUnits", "priceIncludesIva"],
+  required: ["headerRow", "code", "barcode", "name", "price", "packUnits", "priceIncludesIva", "supplierName"],
   additionalProperties: false,
 };
 
@@ -225,6 +227,7 @@ const PRICELIST_ROWS_SCHEMA = {
   type: "object",
   properties: {
     priceIncludesIva: { type: "string", enum: ["si", "no", "no_se"] },
+    supplierName: { type: "string" },
     items: {
       type: "array",
       items: {
@@ -241,7 +244,7 @@ const PRICELIST_ROWS_SCHEMA = {
       },
     },
   },
-  required: ["priceIncludesIva", "items"],
+  required: ["priceIncludesIva", "supplierName", "items"],
   additionalProperties: false,
 };
 
@@ -321,7 +324,8 @@ async function priceList(client, body) {
     }));
     const usage = results.reduce((acc, r) => addUsage(acc, r.usage), {});
     const iva = results.map((r) => r.out.priceIncludesIva).find((v) => v && v !== "no_se") || "no_se";
-    return { result: { priceIncludesIva: iva, items: results.flatMap((r) => r.out.items || []) }, usage };
+    const supplierName = results.map((r) => r.out.supplierName).find((v) => v && v.trim()) || "";
+    return { result: { priceIncludesIva: iva, supplierName, items: results.flatMap((r) => r.out.items || []) }, usage };
   }
   if (mode === "match") {
     const ids = new Set((body.catalog || []).map((p) => String(p && p.id || "")));

@@ -54,8 +54,37 @@ export class ProductMatcherService {
     return new Map(rows.map((r) => [r.id.slice(supplierId.length + 1), r.product_id] as [string, string]));
   }
 
-  /** Lo confirmó el dueño: la próxima boleta de ese proveedor encuentra el producto directo */
+  /**
+   * El proveedor de una boleta o lista entre los cargados (nombre parecido, sin "S.A.", "S.R.L.").
+   * create: si no está, se agrega con ese nombre.
+   */
+  async findSupplier(name?: string | null, create = false) {
+    const clean = String(name || '').replace(/\s+/g, ' ').trim();
+    if (!clean || clean.length < 3) return null;
+    const key = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad anonima|de|la|el)\b/g, ' ').replace(/[^a-z0-9]/g, '');
+    const target = key(clean);
+    if (!target) return null;
+    const all = await this.prisma.supplier.findMany({ select: { id: true, name: true } });
+    const found = all.find((s) => key(s.name) === target)
+      || all.find((s) => { const k = key(s.name); return k.length >= 4 && target.length >= 4 && (k.includes(target) || target.includes(k)); });
+    if (found || !create) return found || null;
+    return this.prisma.supplier.create({ data: { name: clean.slice(0, 120) }, select: { id: true, name: true } });
+  }
+
+  /**
+   * Lo confirmó el dueño: la próxima boleta de ese proveedor encuentra el producto directo. Si el
+   * producto no tenía código interno (SKU), se le pone el del proveedor (si ningún otro lo usa).
+   */
   async learn(supplierId: string | null | undefined, items: { code?: string; name?: string; productId: string }[]) {
+    for (const it of items) {
+      const code = String(it.code || '').trim().slice(0, 40);
+      if (!it.productId || !code || /^\d{8,14}$/.test(code)) continue;
+      const p = await this.prisma.product.findUnique({ where: { id: it.productId }, select: { sku: true } }).catch(() => null);
+      if (p && !p.sku && !(await this.prisma.product.findFirst({ where: { sku: code }, select: { id: true } }))) {
+        await this.prisma.product.update({ where: { id: it.productId }, data: { sku: code } }).catch(() => {});
+      }
+    }
     if (!supplierId) return;
     for (const it of items) {
       if (!it.productId) continue;

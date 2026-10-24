@@ -569,8 +569,8 @@ export class PurchasesService {
       console.log(`[PurchasesService] Factura leída con IA: ${parsedData.items.length} productos.`);
     }
 
-    // Proveedor: el que ya está cargado (parecido) o, en una boleta del celular, uno nuevo
-    const supplier = await this.findSupplier(parsedData.supplierName);
+    // Proveedor: el que ya está cargado (nombre parecido) o, si no está, se crea con el nombre de la boleta
+    const supplier = await this.matcher.findSupplier(parsedData.supplierName, true);
     const settings = await this.scanSettings();
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
@@ -680,7 +680,7 @@ export class PurchasesService {
     if (doubts.length) why.push(`${doubts.length} ${doubts.length === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
     if (!items.length) why.push('no hay productos');
 
-    const supplierId = supplier?.id || (await this.findSupplier(parsedData.supplierName || 'Proveedor sin nombre', true))!.id;
+    const supplierId = supplier?.id || (await this.matcher.findSupplier('Proveedor sin nombre', true))!.id;
     const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
     const printedTotal = printed > 0 ? printed : sum * 1.21 * netFactor;
 
@@ -738,19 +738,6 @@ export class PurchasesService {
     });
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
     return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
-  }
-
-  /** El proveedor de la boleta entre los cargados (nombre parecido); create: si no está, se agrega */
-  private async findSupplier(name?: string, create = false) {
-    const clean = String(name || '').trim();
-    if (!clean) return null;
-    const key = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad anonima|de|la|el)\b/g, ' ').replace(/[^a-z0-9]/g, '');
-    const target = key(clean);
-    const all = await this.prisma.supplier.findMany({ select: { id: true, name: true } });
-    const found = target ? all.find((s) => key(s.name) === target) || all.find((s) => { const k = key(s.name); return k.length >= 4 && (k.includes(target) || target.includes(k)); }) : null;
-    if (found || !create) return found || null;
-    return this.prisma.supplier.create({ data: { name: clean.slice(0, 120) } });
   }
 
   /** Cómo se cargan las boletas escaneadas (Compras → configuración) */

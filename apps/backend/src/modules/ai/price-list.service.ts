@@ -32,18 +32,18 @@ export class PriceListService {
     if (!files.length) throw new BadRequestException('Subí la lista de precios.');
     const first = files[0];
     const name = first.originalname || '';
-    let read: { rows: ListRow[]; iva: Iva; source: string };
+    let read: { rows: ListRow[]; iva: Iva; source: string; supplierName?: string; fromAi?: boolean };
     if (files.every((f) => /^image\//.test(f.mimetype || ''))) {
       const images = await this.ai.shrink(files, 2000);
       const { result } = await this.ai.call('pricelist', { mode: 'rows', images });
-      read = { rows: this.cleanRows(result?.items), iva: result?.priceIncludesIva || 'no_se', source: 'foto' };
+      read = { rows: this.cleanRows(result?.items), iva: result?.priceIncludesIva || 'no_se', source: 'foto', supplierName: result?.supplierName || '', fromAi: true };
     } else if (/\.pdf$/i.test(name) || first.mimetype === 'application/pdf') {
       let lines;
       try { lines = await readPdfLines(first.buffer); } catch { throw new BadRequestException('No se pudo abrir el PDF. Puede estar dañado o protegido con contraseña.'); }
       const text = lines.map((l) => l.text).filter((t) => t.trim());
       if (text.filter((t) => /[a-z]{3}/i.test(t)).length < 5) throw new BadRequestException('Este PDF es una imagen escaneada: sacale fotos a las hojas y subilas.');
       const { result } = await this.ai.call('pricelist', { mode: 'rows', lines: text.slice(0, 4000) });
-      read = { rows: this.cleanRows(result?.items), iva: result?.priceIncludesIva || 'no_se', source: 'pdf' };
+      read = { rows: this.cleanRows(result?.items), iva: result?.priceIncludesIva || 'no_se', source: 'pdf', supplierName: result?.supplierName || '', fromAi: true };
     } else if (/\.(xlsx|xls|csv|txt)$/i.test(name)) {
       read = await this.readSheet(first.buffer, name);
     } else {
@@ -51,13 +51,19 @@ export class PriceListService {
     }
     if (!read.rows.length) throw new BadRequestException('No se encontraron productos con precio en la lista.');
     const rows = read.rows.slice(0, MAX_ROWS);
-    const { matches, aiMatched } = await this.match(rows, supplierId);
+    // Proveedor: el elegido o el de la lista. Si lo leyó la IA y no está cargado, se crea; si es un
+    // título de la planilla, solo se usa si coincide con uno cargado
+    let supplier = supplierId ? await this.prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, name: true } }) : null;
+    if (!supplier && read.supplierName) supplier = await this.matcher.findSupplier(read.supplierName, !!read.fromAi);
+    const { matches, aiMatched } = await this.match(rows, supplier?.id);
     return {
       source: read.source,
       priceIncludesIva: read.iva,
       total: rows.length,
       truncated: read.rows.length > MAX_ROWS,
       aiMatched,
+      supplier,
+      supplierGuess: supplier ? null : read.supplierName || null,
       rows: rows.map((r, i) => ({ ...r, i, ...matches[i] })),
     };
   }
@@ -80,10 +86,19 @@ export class PriceListService {
     const grid = grids.sort((a, b) => b.length - a.length)[0] || [];
     if (!grid.length) throw new BadRequestException('La planilla está vacía.');
     let map = this.guessColumns(grid);
+    let supplierName = '';
+    let fromAi = false;
     if (!map) {
       const sample = grid.slice(0, 40).map((row) => row.map((c) => String(c ?? '')));
       const { result } = await this.ai.call('pricelist', { mode: 'map', sample });
-      if (result && result.name >= 0 && result.price >= 0) map = result;
+      if (result && result.name >= 0 && result.price >= 0) { map = result; supplierName = result.supplierName || ''; fromAi = true; }
+    }
+    // Sin IA: el primer título de arriba del encabezado puede ser el nombre del proveedor
+    if (!supplierName && map) {
+      for (const row of grid.slice(0, Math.max(0, map.headerRow))) {
+        const t = row.map((c) => String(c ?? '').trim()).find((c) => /[a-z]{3}/i.test(c));
+        if (t && !/(lista|precio|fecha|vigencia|pagina|página|hoja|actualiz)/i.test(t) && t.length <= 60) { supplierName = t; break; }
+      }
     }
     if (!map) throw new BadRequestException('No se reconocieron las columnas de la lista (descripción y precio).');
     const at = (row: any[], col: number) => (col >= 0 ? row[col] : '');
@@ -100,7 +115,7 @@ export class PriceListService {
         packUnits: Math.max(0, Math.round(parseArNumber(at(row, map.packUnits)) || 0)),
       });
     }
-    return { rows, iva: (map.priceIncludesIva || 'no_se') as Iva, source: 'planilla' };
+    return { rows, iva: (map.priceIncludesIva || 'no_se') as Iva, source: 'planilla', supplierName, fromAi };
   }
 
   /** Encabezado con una sola columna de precio y una de descripción: no hace falta la IA */

@@ -89,6 +89,8 @@ const suspicious = (c?: Calc) => !!c && c.changePct !== null && (c.changePct > 6
 export default function PriceListModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [supplierId, setSupplierId] = useState('');
+  /** Nombre que parece ser el del proveedor pero no está cargado: se ofrece crearlo */
+  const [supplierGuess, setSupplierGuess] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [reading, setReading] = useState(false);
   const [rows, setRows] = useState<ListRow[] | null>(null);
@@ -116,6 +118,11 @@ export default function PriceListModal({ onClose, onSuccess }: { onClose: () => 
       const { data } = await api.post('/ai/price-list/read', form, { timeout: 240000 } as any);
       setRows(data.rows || []);
       setInfo({ source: data.source, truncated: data.truncated, aiMatched: data.aiMatched || 0 });
+      if (data.supplier) {
+        setSupplierId(data.supplier.id);
+        setSuppliers((list) => (list.some((s) => s.id === data.supplier.id) ? list : [...list, data.supplier]));
+      }
+      setSupplierGuess(data.supplierGuess || '');
       setIvaMode(data.priceIncludesIva === 'no' ? 'sumar' : 'incluido');
       firstPreview.current = true;
     } catch (err: any) {
@@ -276,6 +283,18 @@ export default function PriceListModal({ onClose, onSuccess }: { onClose: () => 
                   <option value="">Sin elegir</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                {!supplierId && supplierGuess && (
+                  <button type="button" onClick={async () => {
+                    try {
+                      const { data } = await api.post('/suppliers', { name: supplierGuess });
+                      setSuppliers((list) => [...list, data]);
+                      await chooseSupplier(data.id);
+                      setSupplierGuess('');
+                    } catch { toast.error('No se pudo crear el proveedor'); }
+                  }} className="px-2 py-1 rounded-md bg-amber-50 border border-amber-300 text-[11px] font-bold text-amber-800">
+                    Crear proveedor «{supplierGuess}»
+                  </button>
+                )}
                 {!supplierId && <span className="text-[11px] text-amber-700">Elegilo para que Ventra recuerde los productos de este proveedor.</span>}
               </div>
               {info?.truncated && <p className="text-[11.5px] text-amber-700">La lista es muy larga: se leyeron los primeros 5.000 renglones.</p>}
