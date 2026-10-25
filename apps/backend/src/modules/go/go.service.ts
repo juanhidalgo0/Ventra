@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import * as os from 'os';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
+import { AiService } from '../ai/ai.service';
 
 /**
  * GO Delivery: el catálogo de la caja publicado en la app de GO y los pedidos que llegan de ahí.
@@ -16,7 +17,8 @@ import { EventsGateway } from '../../websockets/events.gateway';
  * Los cambios hechos en otras cajas le llegan por el sync y los publica en la próxima comparación.
  *
  *   go_link        (sync)  la vinculación y qué se publica
- *   go_products    (sync)  producto por producto: publicar sí/no (por encima de la regla general)
+ *   go_products    (sync)  producto por producto: publicar sí/no (por encima de la regla general),
+ *                          su rubro en GO (lo elige la IA si no tiene rubro en la caja) y cuándo faltó
  *   go_orders      (sync)  los pedidos de GO, para la pantalla y las estadísticas
  *   go_published   (local) lo último que esta PC mandó de cada producto (para mandar solo cambios)
  *
@@ -59,7 +61,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
   private lastPollAt = 0;
   private lastError = '';
 
-  constructor(private prisma: PrismaService, private events: EventsGateway) {}
+  private classifyPausedUntil = 0;
+
+  constructor(private prisma: PrismaService, private events: EventsGateway, private ai: AiService) {}
 
   private get host() { return os.hostname(); }
 
@@ -101,6 +105,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       "publish" INTEGER,
       "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP
     );`);
+    // Rubro de la tienda de GO ("Rubro › Subrubro", de la IA) y cuándo el repartidor no lo encontró
+    await run(`ALTER TABLE "go_products" ADD COLUMN "go_category" TEXT`).catch(() => { /* ya estaba */ });
+    await run(`ALTER TABLE "go_products" ADD COLUMN "missing_at" REAL`).catch(() => { /* ya estaba */ });
     await run(`CREATE TABLE IF NOT EXISTS "go_orders" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "number" TEXT,
@@ -276,7 +283,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
   async updateSettings(body: { publishMode?: string; publishCategories?: string[]; syncStock?: boolean }) {
     const l = await this.getLink(true);
     if (!l) throw new BadRequestException('La caja no está vinculada con GO');
-    const mode = ['all', 'categories', 'selected'].includes(String(body.publishMode)) ? String(body.publishMode) : l.publish_mode;
+    const mode = ['all', 'categories', 'selected', 'sold'].includes(String(body.publishMode)) ? String(body.publishMode) : l.publish_mode;
     const cats = Array.isArray(body.publishCategories) ? body.publishCategories.map(String).slice(0, 500) : safeJson(l.publish_categories, []);
     const stock = body.syncStock === undefined ? l.sync_stock : (body.syncStock ? 1 : 0);
     await this.prisma.$executeRawUnsafe(`UPDATE go_link SET publish_mode = ?, publish_categories = ?, sync_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`,
@@ -298,7 +305,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       .filter((r) => (!q.categoryId || r.category_id === q.categoryId) && (!s || r.name.toLowerCase().includes(s) || String(r.barcode || '').includes(s)))
       .filter((r) => (q.only === 'published' ? r.published : q.only === 'hidden' ? !r.published : true))
       .slice(0, 300)
-      .map((r) => ({ id: r.id, name: r.name, barcode: r.barcode, price: r.sale_price, category: r.category, categoryId: r.category_id, published: r.published, override: r.override, reason: r.reason }));
+      .map((r) => ({ id: r.id, name: r.name, barcode: r.barcode, price: r.sale_price, category: r.category || (r.go_category ? `En GO: ${r.go_category}` : null), categoryId: r.category_id, published: r.published, override: r.override, reason: r.reason }));
   }
 
   /**
@@ -309,7 +316,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     const l = await this.getLink(true);
     if (!l) throw new BadRequestException('La caja no está vinculada con GO');
     await this.prisma.$executeRawUnsafe(`UPDATE go_link SET publish_mode = 'selected', updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`);
-    await this.prisma.$executeRawUnsafe(`DELETE FROM go_products WHERE publish = 1`);
+    await this.prisma.$executeRawUnsafe(`UPDATE go_products SET publish = NULL, updated_at = CURRENT_TIMESTAMP WHERE publish = 1`);
     await this.getLink(true);
     this.lastFullAt = 0; // publicación completa: GO oculta todo lo que tenía
     this.reconcile().catch(() => {});
@@ -320,7 +327,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
   async setProductsPublish(ids: string[], publish: boolean | null) {
     const list = (Array.isArray(ids) ? ids : []).map(String).slice(0, 1000);
     for (const id of list) {
-      if (publish === null) await this.prisma.$executeRawUnsafe(`DELETE FROM go_products WHERE id = ?`, id);
+      if (publish === null) await this.prisma.$executeRawUnsafe(`UPDATE go_products SET publish = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND publish IS NOT NULL`, id);
       else await this.prisma.$executeRawUnsafe(
         `INSERT INTO go_products (id, publish, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET publish = excluded.publish, updated_at = CURRENT_TIMESTAMP WHERE go_products.publish IS NOT excluded.publish`,
@@ -335,16 +342,20 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
    * alcanza con una huella (largo, principio y final) para saber si cambió.
    */
   private async candidates(l: Link | null) {
+    const mode = l?.publish_mode || 'selected';
+    // "Lo que se vende": la última venta de cada producto (solo en ese modo: recorre las ventas)
+    const sold = mode === 'sold';
     const rows: any[] = await this.prisma.$queryRawUnsafe(`
       SELECT p.id, p.barcode, p.name, p.description, CAST(p.sale_price AS REAL) AS sale_price, CAST(p.stock AS REAL) AS stock,
              p.unlimited_stock, p.unit, p.category_id, c.name AS category,
              length(p.image_url) AS img_len, substr(p.image_url, 1, 40) AS img_head, substr(p.image_url, -40) AS img_tail,
-             g.publish AS override
+             g.publish AS override, g.go_category, g.missing_at${sold ? ', ls.last_sold' : ''}
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN go_products g ON g.id = p.id
+      ${sold ? `LEFT JOIN (SELECT si.product_id AS pid, MAX(s.created_at) AS last_sold FROM sale_items si JOIN sales s ON s.id = si.sale_id
+                 WHERE s.status = 'COMPLETED' GROUP BY si.product_id) ls ON ls.pid = p.id` : ''}
       WHERE p.is_active = 1`);
-    const mode = l?.publish_mode || 'selected';
     const cats = new Set(safeJson<string[]>(l?.publish_categories, []));
     return rows.map((r) => {
       const override = r.override === null || r.override === undefined ? null : Number(r.override) === 1;
@@ -355,9 +366,56 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       else if (override !== null) { published = override; reason = override ? 'Elegido a mano' : 'Sacado a mano'; }
       else if (mode === 'all') published = true;
       else if (mode === 'selected') { published = false; reason = 'No elegido'; }
+      else if (mode === 'sold') {
+        const lastSold = toMs(r.last_sold);
+        const missingAt = num(r.missing_at);
+        if (!lastSold) { published = false; reason = 'Todavía no se vendió'; }
+        // Lo que el repartidor no encontró vuelve cuando se vende de nuevo en la caja
+        else if (missingAt && missingAt >= lastSold) { published = false; reason = 'El repartidor no lo encontró: vuelve cuando se venda'; }
+        else published = true;
+      }
       else { published = cats.has(r.category_id || NO_CATEGORY); if (!published) reason = 'Rubro sin publicar'; }
       return { ...r, name: String(r.name || ''), override, published, reason };
     });
+  }
+
+  // ───────────────────────────────────────────── rubros de GO (IA)
+
+  /**
+   * Lo que se publica sin rubro en la caja recibe un "Rubro › Subrubro" de la tienda de GO,
+   * elegido por la IA de Ventra de una lista fija (functions/ai.js, GO_TAXONOMY). Una tanda de
+   * hasta 150 por publicación; queda guardado y no se vuelve a pedir. Los rubros de la caja no se tocan.
+   */
+  private async classifyForGo(wanted: any[]) {
+    if (Date.now() < this.classifyPausedUntil) return;
+    const todo = wanted.filter((r) => !r.category && !r.go_category).slice(0, 150);
+    if (!todo.length) return;
+    let items: { i: number; rubro: string }[] = [];
+    try {
+      const out = await this.ai.call('gocats', { names: todo.map((r) => r.name) });
+      items = Array.isArray(out?.result?.items) ? out.result.items : [];
+    } catch (e: any) {
+      // Sin IA (sin vincular, sin internet o tope del mes): se reintenta en una hora; se publica igual sin rubro
+      this.classifyPausedUntil = Date.now() + 60 * 60_000;
+      this.logger.warn(`No se pudieron ordenar los productos de GO: ${e?.message || e}`);
+      return;
+    }
+    for (const it of items) {
+      const r = todo[it.i];
+      const rubro = String(it.rubro || '').slice(0, 80);
+      if (!r || !rubro) continue;
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO go_products (id, publish, go_category, updated_at) VALUES (?, NULL, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET go_category = excluded.go_category, updated_at = CURRENT_TIMESTAMP`,
+        r.id, rubro);
+      r.go_category = rubro;
+    }
+  }
+
+  /** Venta en la caja: en "Lo que se vende" se publica en unos segundos lo que todavía no estaba */
+  async onSale() {
+    const l = await this.getLink();
+    if (l && l.publish_mode === 'sold') this.touch();
   }
 
   // ───────────────────────────────────────────── publicar
@@ -393,11 +451,12 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     const syncStock = !!l.sync_stock;
     const all = await this.candidates(l);
     const wanted = all.filter((r) => r.published);
+    await this.classifyForGo(wanted);
     const sent: any[] = await this.prisma.$queryRawUnsafe(`SELECT id, data_fp, image_fp FROM go_published`);
     const sentMap = new Map(sent.map((s) => [s.id, s]));
     const changed: { r: any; dataFp: string; imageFp: string | null; withImage: boolean }[] = [];
     for (const r of wanted) {
-      const dataFp = fp([r.name, num(r.sale_price), r.barcode || '', r.category || '', r.description || '', syncStock ? (r.unlimited_stock ? 'inf' : Math.max(0, Math.floor(num(r.stock)))) : '']);
+      const dataFp = fp([r.name, num(r.sale_price), r.barcode || '', r.category || '', r.go_category || '', r.description || '', syncStock ? (r.unlimited_stock ? 'inf' : Math.max(0, Math.floor(num(r.stock)))) : '']);
       const imageFp = r.img_len ? fp([r.img_len, r.img_head, r.img_tail]) : null;
       const prev = sentMap.get(r.id);
       if (!prev || prev.data_fp !== dataFp || (prev.image_fp || null) !== imageFp) {
@@ -425,6 +484,8 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
           upserts.push({
             ventraId: c.r.id, barcode: c.r.barcode || '', name: c.r.name, price: num(c.r.sale_price),
             category: c.r.category || '', description: c.r.description || '',
+            // Sin rubro en la caja: el de GO que eligió la IA ("Rubro › Subrubro")
+            ...(!c.r.category && c.r.go_category ? { goCategory: c.r.go_category } : {}),
             ...(syncStock ? { stock: c.r.unlimited_stock ? 9999 : Math.max(0, Math.floor(num(c.r.stock))) } : {}),
             ...(image ? { image } : {}),
           });
@@ -486,6 +547,16 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     const known: any[] = await this.prisma.$queryRawUnsafe(`SELECT id, fingerprint, status FROM go_orders WHERE id IN (${(r.orders || []).map(() => '?').join(',') || "''"})`, ...(r.orders || []).map((o: any) => o.id));
     const knownMap = new Map(known.map((k) => [k.id, k]));
     for (const o of r.orders || []) {
+      // "No había": en "Lo que se vende" sale de la tienda hasta que se vuelva a vender en la caja
+      for (const it of Array.isArray(o.items) ? o.items : []) {
+        if (it?.shopStatus !== 'missing' || !it.ventraId) continue;
+        const at = num(o.completedAt) || num(o.createdAt) || Date.now();
+        await this.prisma.$executeRawUnsafe(
+          `INSERT INTO go_products (id, publish, missing_at, updated_at) VALUES (?, NULL, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(id) DO UPDATE SET missing_at = MAX(COALESCE(go_products.missing_at, 0), excluded.missing_at), updated_at = CURRENT_TIMESTAMP
+           WHERE COALESCE(go_products.missing_at, 0) < excluded.missing_at`,
+          String(it.ventraId), at);
+      }
       const f = fp(o);
       const prev = knownMap.get(o.id);
       if (prev && prev.fingerprint === f) continue; // sin cambios: no se escribe (cada escritura viaja por el sync)
@@ -591,6 +662,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
 function safeJson<T>(s: string | null | undefined, fallback: T): T {
   try { return s ? JSON.parse(s) : fallback; } catch { return fallback; }
 }
+
+/** Fecha de SQLite (número en ms o texto) → ms */
+const toMs = (v: any) => (v === null || v === undefined || v === '' ? 0 : typeof v === 'number' || typeof v === 'bigint' ? Number(v) : (Date.parse(String(v)) || Number(v) || 0));
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 

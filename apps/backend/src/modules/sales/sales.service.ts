@@ -8,6 +8,7 @@ import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { FiscalService } from '../fiscal/fiscal.service';
 import { consumeLotsFefo, restoreLots } from '../products/lots.util';
+import { GoService } from '../go/go.service';
 
 interface CreateSaleDto {
   sessionId: string;
@@ -40,6 +41,7 @@ export class SalesService {
     private notify: NotifyService,
     private cashRegister: CashRegisterService,
     private fiscal: FiscalService,
+    private go: GoService,
   ) {}
 
   /** ¿El dueño activó el consumo de empleados? */
@@ -376,6 +378,9 @@ export class SalesService {
       }
       throw err;
     }
+
+    // GO en "Lo que se vende": lo que se vendió y no estaba en la tienda se publica en unos segundos
+    if (!consumption) this.go.onSale().catch(() => { /* la venta ya está hecha */ });
 
     // El pedido de GO queda cobrado con esta venta (una sola vez) y las otras cajas lo sacan de la lista
     if (goOrder && !consumption) {

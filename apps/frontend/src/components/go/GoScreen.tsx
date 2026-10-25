@@ -16,7 +16,7 @@ import { GoOrder, isChargeable, loadGoOrderInCart } from './goOrders';
 type Status = {
   linked: boolean; comercioId?: string; storeName?: string; fulfillmentMode?: string | null;
   storeActive?: boolean | null; storePaused?: boolean; unlinkedInGo?: boolean;
-  publishMode?: 'all' | 'categories' | 'selected'; publishCategories?: string[]; syncStock?: boolean;
+  publishMode?: 'all' | 'categories' | 'selected' | 'sold'; publishCategories?: string[]; syncStock?: boolean;
   isMainPc?: boolean; mainPc?: string | null; thisPc?: string; publishedCount?: number;
   lastPushAt?: number | null; lastPollAt?: number | null; lastError?: string | null;
 };
@@ -549,8 +549,9 @@ function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status
     <div className="space-y-5">
       {confirmDialog}
       <Card title="Qué productos se ven en GO">
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
           {([
+            ['sold', 'Lo que se vende', 'Lo vendido en la caja; lo nuevo se suma solo'],
             ['all', 'Todo el catálogo', 'Todos los productos con precio'],
             ['categories', 'Por rubros', 'Solo los rubros que elijas'],
             ['selected', 'Solo los que elijo', 'Uno por uno, abajo'],
@@ -562,6 +563,12 @@ function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status
             </button>
           ))}
         </div>
+        {mode === 'sold' && (
+          <p className="mt-3 text-[12.5px] text-slate-500 leading-relaxed">
+            Se publica todo lo que se vendió alguna vez en la caja. Cuando se vende algo que no estaba en la tienda, se suma solo en unos segundos.
+            Si el repartidor marca que no había, se saca hasta que se vuelva a vender en el kiosco. Lo que saques a mano no vuelve solo.
+          </p>
+        )}
         {mode === 'categories' && (
           <div className="mt-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">

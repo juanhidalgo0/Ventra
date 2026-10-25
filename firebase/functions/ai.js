@@ -25,9 +25,9 @@ const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); re
 const MODEL = "claude-haiku-5-5";
 // pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
 // (de una lista o de una boleta); ask: 2 usos por pregunta
-const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 400, help: 300 };
+const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 400, help: 300, gocats: 200 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 40, help: 30 };
+const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 40, help: 30, gocats: 60 };
 // Haiku 5.5: $0,10 / $0,50 por millón (entrada / salida); cache: escritura 1,25x, lectura 0,1x
 const costOf = (u) => ((u.input_tokens || 0) * 0.1 + (u.cache_creation_input_tokens || 0) * 0.125
   + (u.cache_read_input_tokens || 0) * 0.01 + (u.output_tokens || 0) * 0.5) / 1e6;
@@ -492,6 +492,66 @@ async function help(client, body) {
   return { result: { answer }, usage: msg.usage || {} };
 }
 
+// ─── Rubros para la tienda de GO ───
+
+// Rubros y subrubros de la tienda de GO para un kiosco / almacén. La IA solo puede elegir de acá
+// (enum del esquema): así no inventa rubros y todos los comercios quedan ordenados igual.
+const GO_TAXONOMY = {
+  "Cervezas": ["Latas", "Packs", "Botellas y porrones"],
+  "Bebidas": ["Gaseosas", "Aguas", "Aguas saborizadas", "Jugos", "Energizantes", "Isotónicas"],
+  "Vinos y bebidas blancas": ["Vinos", "Espumantes", "Fernet y aperitivos", "Whisky y destilados", "Licores"],
+  "Cigarrillos y tabaco": ["Cigarrillos", "Tabaco y armado", "Encendedores"],
+  "Golosinas": ["Alfajores", "Chocolates", "Caramelos y chicles", "Chupetines", "Gomitas", "Turrones y barritas"],
+  "Galletitas": ["Dulces", "Saladas", "Obleas y bizcochos"],
+  "Snacks": ["Papas fritas", "Palitos y chizitos", "Maní y frutos secos"],
+  "Almacén": ["Yerba", "Café, té y mate cocido", "Azúcar y endulzantes", "Fideos y arroz", "Harinas y premezclas", "Aceites y vinagres", "Salsas y aderezos", "Enlatados", "Especias y caldos", "Desayuno y cereales", "Dulces y mermeladas"],
+  "Lácteos y frescos": ["Leches", "Yogures", "Quesos", "Manteca y cremas", "Fiambres", "Huevos"],
+  "Panadería": ["Pan", "Budines y magdalenas"],
+  "Helados y congelados": ["Helados", "Congelados"],
+  "Limpieza": ["Ropa", "Cocina", "Baño y pisos", "Papeles y descartables"],
+  "Perfumería e higiene": ["Higiene personal", "Pañales", "Cuidado personal", "Farmacia"],
+  "Mascotas": ["Alimento", "Accesorios"],
+  "Librería y varios": ["Librería", "Pilas", "Hielo y carbón", "Regalos", "Varios"],
+};
+const GO_CATEGORIES = Object.entries(GO_TAXONOMY).flatMap(([top, subs]) => subs.map((s) => `${top} › ${s}`));
+const GOCATS_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { i: { type: "integer" }, rubro: { type: "string", enum: GO_CATEGORIES } },
+        required: ["i", "rubro"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
+
+/** Nombres de productos de la caja → "Rubro › Subrubro" de la tienda de GO (hasta 150 por vez) */
+async function goCategories(client, body) {
+  const names = (Array.isArray(body.names) ? body.names : []).slice(0, 150)
+    .map((n, i) => ({ i, n: String(n || "").trim().slice(0, 120) })).filter((x) => x.n);
+  if (!names.length) throw new AiError(400, "EMPTY", "No hay productos para ordenar.");
+  const { out, usage } = await jsonCall(client, {
+    model: MODEL, max_tokens: 8000,
+    output_config: { effort: "low", format: { type: "json_schema", schema: GOCATS_SCHEMA } },
+    system: [{ type: "text", cache_control: { type: "ephemeral" }, text:
+      "Ordenás los productos de un kiosco / almacén argentino en los rubros de su tienda online. " +
+      "Para cada producto elegí el rubro › subrubro que mejor le queda, de la lista. Los nombres vienen como los carga el kiosco " +
+      "(abreviados, en mayúsculas, con marcas): reconocé el producto por la marca y el tipo. Pistas: LATA / LATÓN / X 473 / X 710 en cervezas es Latas; " +
+      "PACK X 6 es Packs; PORRÓN o botella es Botellas y porrones. Un alfajor es Golosinas › Alfajores aunque diga chocolate. " +
+      "Cigarrillos sueltos o atados (MARLBORO, PHILIP MORRIS, LUCKY, etc.) son Cigarrillos; papel, filtros, blunts y tabaco para armar son Tabaco y armado. " +
+      "Si de verdad no sabés qué es, Librería y varios › Varios.\n\nRubros posibles:\n" + GO_CATEGORIES.join("\n") }],
+    messages: [{ role: "user", content: names.map((x) => `${x.i}. ${x.n}`).join("\n") }],
+  });
+  const byI = new Map((out.items || []).map((x) => [x.i, x.rubro]));
+  return { result: { items: names.map((x) => ({ i: x.i, rubro: byI.get(x.i) || "Librería y varios › Varios" })) }, usage };
+}
+
 // ─── Entrada ───
 
 async function handle({ db, logger, apiKey, client: injected }, uid, body) {
@@ -513,18 +573,19 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
       match: "Llegaste al tope de búsquedas con IA de este mes: los productos que no se encuentran solos quedan para elegirlos a mano.",
       ask: "Llegaste al tope de preguntas de este mes. Se renueva el mes que viene; mientras, tenés todo en Reportes.",
       help: "Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: https://wa.me/5492212025603",
+      gocats: "Llegaste al tope de productos ordenados con IA de este mes: lo que falta queda sin rubro hasta el mes que viene.",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
   }
   if (usedToday + need > DAILY[kind]) {
-    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda" }[kind];
+    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA" }[kind];
     throw new AiError(429, "DAILY_LIMIT", `Llegaste al tope de ${what} de hoy. Mañana podés seguir.`);
   }
   // client: solo en las pruebas (firebase/test/ai.test.cjs)
   const client = injected || anthropicClient({ apiKey, maxRetries: 2, timeout: 120 * 1000 });
   let out;
   try {
-    const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help }[kind];
+    const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
     out = await run(client, body);
   } catch (err) {
     if (err instanceof AiError) throw err;
@@ -541,4 +602,4 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
   return { result: out.result, left: LIMITS[kind] - used - 1, leftToday: DAILY[kind] - usedToday - 1 };
 }
 
-module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES };
+module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, GO_CATEGORIES };

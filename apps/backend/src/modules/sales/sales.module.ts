@@ -5,9 +5,10 @@ import { WebsocketModule } from '../../websockets/websocket.module';
 import { ProductsModule } from '../products/products.module';
 import { CashRegisterModule } from '../cash-register/cash-register.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
+import { GoModule } from '../go/go.module';
 
 @Module({
-  imports: [WebsocketModule, ProductsModule, CashRegisterModule, FiscalModule],
+  imports: [WebsocketModule, ProductsModule, CashRegisterModule, FiscalModule, GoModule],
   controllers: [SalesController],
   providers: [SalesService],
   exports: [SalesService],

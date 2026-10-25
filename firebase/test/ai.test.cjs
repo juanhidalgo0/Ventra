@@ -125,6 +125,16 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(req.system[0].cache_control && req.system[0].text.includes("dónde está cada cosa"));
     assert.ok(req.messages[0].content.startsWith("[Pantalla: /pos]"));
   });
+  await t("rubros de GO: solo de la lista, uno por producto y los que faltan van a Varios", async () => {
+    const client = fakeClient({ items: [{ i: 0, rubro: "Cervezas › Latas" }, { i: 2, rubro: "Golosinas › Alfajores" }] });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u10", { kind: "gocats", names: ["QUILMES LATA 473", "", "ALF JORGITO CHOC", "COSA RARA"] });
+    assert.deepStrictEqual(out.result.items, [
+      { i: 0, rubro: "Cervezas › Latas" }, { i: 2, rubro: "Golosinas › Alfajores" }, { i: 3, rubro: "Librería y varios › Varios" },
+    ]);
+    const enumList = client.calls[0].output_config.format.schema.properties.items.items.properties.rubro.enum;
+    assert.ok(enumList.includes("Cervezas › Packs") && enumList.length === ai.GO_CATEGORIES.length, "la IA no puede inventar rubros");
+    await assert.rejects(() => ai.handle({ db: fakeDb(), logger, client }, "u10", { kind: "gocats", names: [] }), /No hay productos/);
+  });
   console.log(`\n${ok} bien, ${bad} con falla`);
   process.exit(bad ? 1 : 0);
 })();
