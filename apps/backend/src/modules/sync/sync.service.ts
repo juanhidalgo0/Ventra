@@ -61,7 +61,7 @@ const IMAGE_CONCURRENCY = 5;
 const IMG_PREFIX = 'ventra-img:';
 const TRIGGER_PREFIX = 'ventra_sync2_';
 /** Tablas que no son datos del comercio. */
-const EXCLUDED = new Set(['app_licenses', 'image_suggestions', 'sync_outbox', 'sync_state', 'sync_images', 'sync_deltas', 'sync_stash', 'sync_img_fetch', 'sync_parked', '_prisma_migrations']);
+const EXCLUDED = new Set(['app_licenses', 'image_suggestions', 'sync_outbox', 'sync_state', 'sync_images', 'sync_deltas', 'sync_stash', 'sync_img_fetch', 'sync_parked', '_prisma_migrations', 'go_published']);
 /** Lo que sobrevive a un reinicio de fábrica (igual que en la nube). */
 const KEEP_ON_RESET = new Set(['fiscal_config', 'fiscal_tokens', 'surcharges']);
 /** Tablas de las que la nube guarda solo los últimos días: al subir todo, lo viejo no se manda. */

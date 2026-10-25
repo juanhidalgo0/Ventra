@@ -129,6 +129,13 @@ export class SalesService {
     // Cuánto se descontó de cada producto (para el aviso de stock mínimo)
     const sold = new Map<string, number>();
 
+    // Pedido de GO cobrado en el mostrador (el repartidor compra como cualquier cliente)
+    const goOrderId = typeof (dto as any).goOrderId === 'string' && (dto as any).goOrderId ? String((dto as any).goOrderId) : null;
+    const goOrder: any = goOrderId
+      ? (await this.prisma.$queryRawUnsafe<any[]>(`SELECT number FROM go_orders WHERE id = ?`, goOrderId).catch(() => [] as any[]))[0] || null
+      : null;
+    const goNote = goOrder ? `Pedido GO${goOrder.number ? ` #${goOrder.number}` : ''}` : '';
+
     let sale: any;
     try {
     sale = await this.prisma.$transaction(async (tx) => {
@@ -282,7 +289,7 @@ export class SalesService {
         data: {
           ...(clientSaleId ? { id: clientSaleId } : {}),
           saleNumber, userId, sessionId: dto.sessionId, subtotal, total: subtotal, paymentMethodSummary,
-          notes: consumption ? 'Consumo de empleado (sin cargo)' : dto.notes,
+          notes: consumption ? 'Consumo de empleado (sin cargo)' : ([dto.notes, goNote].filter(Boolean).join(' · ') || undefined),
           ...(consumption ? { status: 'INTERNAL' } : {}),
           clientId: dto.clientId, pickedUpBy: dto.pickedUpBy || null,
           isAcopio: dto.isAcopio ? true : false,
@@ -368,6 +375,13 @@ export class SalesService {
         if (existing) return existing;
       }
       throw err;
+    }
+
+    // El pedido de GO queda cobrado con esta venta (una sola vez) y las otras cajas lo sacan de la lista
+    if (goOrder && !consumption) {
+      await this.prisma.$executeRawUnsafe(`UPDATE go_orders SET sale_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND sale_id IS NULL`, sale.id, goOrderId)
+        .then(() => { try { this.events.server?.emit('go:order', { type: 'charged', id: goOrderId, number: goOrder.number }); } catch { /* sin pantallas */ } })
+        .catch(() => { /* la venta ya está hecha */ });
     }
 
     // Sync to Firestore outside transaction to avoid blocking SQLite writer lock

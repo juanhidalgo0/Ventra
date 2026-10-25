@@ -29,6 +29,7 @@ import { AcopioModule } from './modules/acopio/acopio.module';
 import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiModule } from './modules/ai/ai.module';
+import { GoModule } from './modules/go/go.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AiModule } from './modules/ai/ai.module';
     MercadoPagoModule,
     SettingsModule,
     AiModule,
+    GoModule,
   ],
   providers: [
     {

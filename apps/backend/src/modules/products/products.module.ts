@@ -9,9 +9,10 @@ import { HardwareImageService } from './hardware-image.service';
 import { ProductsController } from './products.controller';
 import { SyncController } from './sync.controller';
 import { WebsocketModule } from '../../websockets/websocket.module';
+import { GoModule } from '../go/go.module';
 
 @Module({
-  imports: [WebsocketModule],
+  imports: [WebsocketModule, GoModule],
   controllers: [ProductsController, SyncController, ProductImagesController],
   providers: [ProductsService, FirebaseSyncService, SyncImageService, SharedCatalogService, VentraImportService, HardwareImageService],
   exports: [ProductsService, FirebaseSyncService, SyncImageService, SharedCatalogService],

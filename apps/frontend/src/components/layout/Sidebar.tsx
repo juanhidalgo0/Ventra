@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useProductReviews } from '../products/ProductReviews';
-import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun, Printer, Bike } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -174,6 +174,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             { label: 'Métricas y Ventas', path: '/online-store/metrics' },
           ]
         },
+        // GO Delivery: solo con la caja vinculada (se vincula desde Configuración → Integraciones)
+        ...(user?.role === 'ADMIN' && localStorage.getItem('go_linked') === '1' ? [{ label: 'GO Delivery', icon: Bike, path: '/go' }] : []),
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),

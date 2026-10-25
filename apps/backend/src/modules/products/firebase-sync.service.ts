@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import { Jimp } from 'jimp';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
+import { GoService } from '../go/go.service';
 
 @Injectable()
 export class FirebaseSyncService implements OnModuleInit {
@@ -43,11 +44,18 @@ export class FirebaseSyncService implements OnModuleInit {
     private config: ConfigService,
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private go: GoService,
   ) {}
 
   async onModuleInit() {
     await this.prisma.ensureInitialized();
     this.comercioId = 'godelivery-magdalena';
+    // Con el puente nuevo (código de GO, clave propia del comercio) esta conexión vieja, que
+    // carga la clave de administrador de todo GoDelivery, no arranca. Ver GoService.
+    if (await this.go.isLinked()) {
+      console.log('[FirebaseSync] La caja está vinculada con GO por el puente nuevo: la conexión vieja queda apagada.');
+      return;
+    }
     
     try {
       const credentialsJsonEnv = this.config.get<string>('FIREBASE_CREDENTIALS_JSON');
@@ -462,6 +470,9 @@ export class FirebaseSyncService implements OnModuleInit {
       imageUrl?: string;
     }
   ): Promise<string | undefined> {
+    // Puente nuevo: avisa del cambio y publica en unos segundos (solo lo que cambió)
+    this.go.touch();
+    if (await this.go.isLinked()) return;
     if (!this.isInitialized || !this.firestore || !barcode) return;
 
     try {
@@ -612,6 +623,8 @@ export class FirebaseSyncService implements OnModuleInit {
    * Sincroniza la eliminación/desactivación de un producto con GoDelivery.
    */
   async syncProductDeletion(barcode: string) {
+    this.go.touch();
+    if (await this.go.isLinked()) return;
     if (!this.isInitialized || !this.firestore || !barcode) return;
 
     try {
@@ -914,6 +927,8 @@ export class FirebaseSyncService implements OnModuleInit {
   }
 
   private async processLocalStockDiscountForOrder(orderId: string, order: any) {
+    // Con el puente nuevo el repartidor paga en el mostrador: el stock baja por esa venta
+    if (await this.go.isLinked()) return;
     const enabled = await this.isBidirectionalSyncEnabled();
     if (!enabled) {
       console.log(`[FirebaseSync] Pedido [${orderId}] está listo/retirado pero la sincronización bidireccional está desactivada.`);

@@ -1,5 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useTransition, useMemo } from 'react';
 import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
+import GoOrdersModal from '../go/GoOrdersModal';
+import { useGoOpenOrders } from '../go/goOrders';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useWorkRole } from '../../services/workRole';
@@ -15,7 +17,7 @@ import CategoryPickerModal from './CategoryPickerModal';
 import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes, Bike } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
 import { wsService } from '../../services/websocket';
@@ -106,7 +108,10 @@ export default function POSScreen() {
   const ordersVisible = useOrdersVisible();
   const [showOnlineOrders, setShowOnlineOrders] = useState(false);
   const newOnlineOrders = useOnlineOrders((st) => st.orders.filter(isNewOrder).length);
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale, activeQuote, setActiveQuote, activeOrder } = usePOSStore();
+  // GO Delivery: el botón aparece solo mientras hay pedidos de GO en curso sin cobrar
+  const { orders: goOrders } = useGoOpenOrders();
+  const [showGoOrders, setShowGoOrders] = useState(false);
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotal, getDiscounts, getFinalTotal, getItemCount, setPromotions, promotions, getAppliedPromotions, addPromoToCart, applySuggestedPromo, getCartItemsWithDiscounts, heldCarts, holdCart, resumeCart, deleteHeldCart, lastSale, setLastSale, activeQuote, setActiveQuote, activeOrder, activeGoOrder } = usePOSStore();
   const { discountsMap } = getCartItemsWithDiscounts();
   const { user, logout, login } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
@@ -1738,7 +1743,7 @@ export default function POSScreen() {
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
   const [headerMode, setHeaderMode] = useState<0 | 1 | 2>(0);
   const headerNeedRef = useRef<number[]>([0, 0]);
-  const headerKey = `${ordersVisible}|${canQuote}|${canAcopio}|${!!currentSession}|${newOnlineOrders > 0}`;
+  const headerKey = `${ordersVisible}|${canQuote}|${canAcopio}|${!!currentSession}|${newOnlineOrders > 0}|${goOrders.length > 0}`;
   const headerKeyRef = useRef(headerKey);
   useLayoutEffect(() => {
     const el = headerActionsEl;
@@ -1905,6 +1910,16 @@ export default function POSScreen() {
                 <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-orange-200 text-orange-900 text-[11px] font-bold flex items-center justify-center animate-pulse">{newOnlineOrders}</span>
               )}
               {headerMode === 2 && <span className={hdrTip}>Pedidos online</span>}
+            </button>
+          )}
+
+          {/* GO Delivery: pedidos en curso (el repartidor viene a comprar al mostrador) */}
+          {goOrders.length > 0 && (
+            <button onClick={() => setShowGoOrders(true)} className={`${hdrBtn} bg-emerald-700 hover:bg-emerald-800`}>
+              <Bike strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              {hdrLabel('GO', 'GO')}
+              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-200 text-emerald-900 text-[11px] font-bold flex items-center justify-center">{goOrders.length}</span>
+              {headerMode === 2 && <span className={hdrTip}>Pedidos de GO</span>}
             </button>
           )}
 
@@ -2722,6 +2737,23 @@ export default function POSScreen() {
               </div>
             )}
 
+            {/* Pedido de GO: al cobrarlo queda unido a la venta */}
+            {activeGoOrder && cart.length > 0 && (
+              <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200">
+                <Bike className="w-3.5 h-3.5 shrink-0" />
+                <span className="min-w-0 truncate">
+                  Pedido GO{activeGoOrder.number ? <> <strong>#{activeGoOrder.number}</strong></> : null}{activeGoOrder.driverName ? ` · ${activeGoOrder.driverName}` : ''}
+                </span>
+                <button
+                  onClick={() => usePOSStore.getState().setActiveGoOrder(null)}
+                  className="ml-auto p-0.5 rounded hover:bg-sky-100 dark:hover:bg-sky-900/40 cursor-pointer shrink-0"
+                  title="Desvincular: se cobra como una venta común"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Ticket armado desde un presupuesto: al cobrarlo, el presupuesto queda aceptado */}
             {activeQuote && cart.length > 0 && (
               <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
@@ -3069,6 +3101,7 @@ export default function POSScreen() {
           />
         )}
         {showOnlineOrders && <OnlineOrdersScreen key="online-orders" modal onClose={() => setShowOnlineOrders(false)} />}
+        {showGoOrders && <GoOrdersModal key="go-orders" orders={goOrders} onClose={() => { setShowGoOrders(false); focusSearch(); }} />}
         {showGastos && <GastosModal key="gastos-modal" sessionId={currentSession?.id} terminalName={terminalName} onClose={() => { setShowGastos(false); loadCurrentSession(); focusSearch(); }} />}
         {showProveedores && <ProveedoresModal key="proveedores-modal" sessionId={currentSession?.id} onClose={() => { setShowProveedores(false); loadCurrentSession(); focusSearch(); }} />}
         {showCobroCtaCte && currentSession && (

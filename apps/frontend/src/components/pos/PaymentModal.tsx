@@ -687,6 +687,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           quoteId: usePOSStore.getState().activeQuote?.id,
           // Pedido de preventa: queda cobrado (una sola vez)
           orderId: usePOSStore.getState().activeOrder?.id,
+          // Pedido de GO cobrado en el mostrador: queda unido a esta venta
+          goOrderId: usePOSStore.getState().activeGoOrder?.id,
           // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
           notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : undefined,
         });
@@ -723,6 +725,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           appliedPromotions: appliedPromosInfo,
           quoteId: usePOSStore.getState().activeQuote?.id,
           orderId: usePOSStore.getState().activeOrder?.id,
+          // Pedido de GO cobrado en el mostrador: queda unido a esta venta
+          goOrderId: usePOSStore.getState().activeGoOrder?.id,
           queuedAt: new Date().toISOString()
         };
         const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales_queue') || '[]');

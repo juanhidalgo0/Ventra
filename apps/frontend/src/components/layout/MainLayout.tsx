@@ -78,6 +78,23 @@ export default function MainLayout({ children }: Props) {
     return () => wsService.off('auth:force-logout', onForceLogout);
   }, []);
 
+  // GO Delivery: aviso chico cuando entra un pedido (el repartidor viene a comprar al mostrador
+  // y se le cobra como a cualquier cliente). No cambia la pantalla de cobro.
+  useEffect(() => {
+    const onGoOrder = (e: { type: string; number?: string; count?: number; isShopper?: boolean; status?: string }) => {
+      if (e.type === 'new') {
+        const n = e.count || 0;
+        toast(e.isShopper
+          ? `🛵 Pedido GO${e.number ? ` #${e.number}` : ''}: un repartidor viene a comprar ${n} producto${n === 1 ? '' : 's'}`
+          : `🛵 Pedido GO${e.number ? ` #${e.number}` : ''} nuevo`, { duration: 8000 });
+      } else if (e.type === 'status' && e.status === 'cancelled') {
+        toast(`Pedido GO${e.number ? ` #${e.number}` : ''} cancelado`, { duration: 6000 });
+      }
+    };
+    wsService.on('go:order', onGoOrder);
+    return () => wsService.off('go:order', onGoOrder);
+  }, []);
+
   // Destraba la pantalla si queda una capa invisible tapando todo (ver overlayWatchdog). Sin
   // aviso: al cajero le alcanza con que la pantalla responda, y el cartel confundía.
   useEffect(() => startOverlayWatchdog(count => {

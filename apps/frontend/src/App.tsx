@@ -52,6 +52,7 @@ const MarketingScreen = lazy(() => import('./components/marketing/MarketingScree
 const TreasuryScreen = lazy(() => import('./components/pos/TreasuryScreen'));
 const OnlineStoreScreen = lazy(() => import('./components/settings/OnlineStoreScreen'));
 const OnlineStoreMetricsScreen = lazy(() => import('./components/settings/OnlineStoreMetricsScreen'));
+const GoScreen = lazy(() => import('./components/go/GoScreen'));
 const EarningsDivisionScreen = lazy(() => import('./components/settings/EarningsDivisionScreen'));
 const SettingsScreen = lazy(() => import('./components/settings/SettingsScreen'));
 const RemoteAccessScreen = lazy(() => import('./components/settings/RemoteAccessScreen'));
@@ -711,6 +712,7 @@ export default function App() {
                     <Route path="/agenda/clientes" element={<AdminRoute><AgendaClientsScreen /></AdminRoute>} />
                     <Route path="/agenda/cobros" element={<AdminRoute><AgendaPaymentsScreen /></AdminRoute>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
+                    <Route path="/go" element={<AdminRoute><GoScreen /></AdminRoute>} />
                     <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />
                     <Route path="/suppliers" element={<OwnerMobileOr mobile={<MobileSuppliersScreen />}><SuppliersScreen /></OwnerMobileOr>} />

@@ -42,6 +42,7 @@ import {
 import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
 import MercadoPagoCard from './MercadoPagoCard';
+import GoDeliveryCard from '../go/GoDeliveryCard';
 import { useAuthStore } from '../../stores/authStore';
 import { getOpeningFloat, saveOpeningFloat } from '../../utils/openingFloat';
 import { setStoreSetting } from '../../services/storeSettings';
@@ -1666,6 +1667,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                 className="space-y-6 max-w-4xl"
               >
                 {isAdmin && <MercadoPagoCard />}
+                {isAdmin && <GoDeliveryCard />}
 
                 <div className="card p-6 space-y-4">
                   <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">

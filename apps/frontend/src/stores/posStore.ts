@@ -49,6 +49,8 @@ export function packOf(product: any, bulkEnabled: boolean): { size: number; pric
 export interface ActiveQuote { id: string; quoteNumber: string; clientName: string }
 /** Pedido de preventa cargado al carrito: al cobrarlo queda como venta */
 export interface ActiveOrder { id: string; number: number; clientName: string }
+/** Pedido de GO cargado al carrito (el repartidor compra en el mostrador): al cobrarlo queda unido a la venta */
+export interface ActiveGoOrder { id: string; number: string | null; driverName: string | null }
 
 interface POSState {
   cart: CartItem[];
@@ -56,6 +58,8 @@ interface POSState {
   setActiveQuote: (quote: ActiveQuote | null) => void;
   activeOrder: ActiveOrder | null;
   setActiveOrder: (order: ActiveOrder | null) => void;
+  activeGoOrder: ActiveGoOrder | null;
+  setActiveGoOrder: (order: ActiveGoOrder | null) => void;
   promotions: any[];
   setPromotions: (promos: any[]) => void;
   addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean) => void;
@@ -88,7 +92,7 @@ interface POSState {
   setClients: (clients: any[]) => void;
   setIsWarmed: (isWarmed: boolean) => void;
 
-  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string; quote?: ActiveQuote | null; order?: ActiveOrder | null }[];
+  heldCarts: { id: string; cart: CartItem[]; createdAt: string; clientName?: string; quote?: ActiveQuote | null; order?: ActiveOrder | null; goOrder?: ActiveGoOrder | null }[];
   holdCart: (clientName?: string) => void;
   resumeCart: (id: string) => void;
   deleteHeldCart: (id: string) => void;
@@ -241,6 +245,8 @@ export const usePOSStore = create<POSState>()(
       setActiveQuote: (activeQuote) => set({ activeQuote }),
       activeOrder: null,
       setActiveOrder: (activeOrder) => set({ activeOrder }),
+      activeGoOrder: null,
+      setActiveGoOrder: (activeGoOrder) => set({ activeGoOrder }),
       promotions: [],
       products: [],
       categories: [],
@@ -260,6 +266,7 @@ export const usePOSStore = create<POSState>()(
           // El presupuesto (o el pedido) viaja con su ticket en espera y vuelve al retomarlo
           quote: get().activeQuote,
           order: get().activeOrder,
+          goOrder: get().activeGoOrder,
         };
 
         set({
@@ -267,6 +274,7 @@ export const usePOSStore = create<POSState>()(
           cart: [],
           activeQuote: null,
           activeOrder: null,
+          activeGoOrder: null,
         });
       },
 
@@ -285,6 +293,7 @@ export const usePOSStore = create<POSState>()(
             clientName: `Sesión Anterior (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
             quote: get().activeQuote,
             order: get().activeOrder,
+            goOrder: get().activeGoOrder,
           };
           newHeldCarts = [autoHeld, ...newHeldCarts];
         }
@@ -294,6 +303,7 @@ export const usePOSStore = create<POSState>()(
           heldCarts: newHeldCarts,
           activeQuote: target.quote || null,
           activeOrder: target.order || null,
+          activeGoOrder: target.goOrder || null,
         });
       },
 
@@ -704,7 +714,7 @@ export const usePOSStore = create<POSState>()(
   }),
 
   // Vaciar el ticket también lo desvincula del presupuesto
-  clearCart: () => set({ cart: [], activeQuote: null, activeOrder: null }),
+  clearCart: () => set({ cart: [], activeQuote: null, activeOrder: null, activeGoOrder: null }),
   
   getTotal: () => {
     const total = get().cart.reduce((sum, item) => {
