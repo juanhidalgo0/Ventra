@@ -38,6 +38,13 @@ export class GoController {
     return this.go.makeMainPc();
   }
 
+  /** Entrar al panel del comercio en GO (link de un solo uso) */
+  @Post('panel-link')
+  @Roles('ADMIN')
+  panelLink(@Body() body: { section?: string }) {
+    return this.go.panelLink(String(body?.section || 'settings'));
+  }
+
   @Post('sync-now')
   @Roles('ADMIN')
   syncNow() {

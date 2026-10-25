@@ -24,6 +24,8 @@ import { EventsGateway } from '../../websockets/events.gateway';
  * cualquier cliente: la venta se cobra en la caja como siempre y el stock baja por esa venta.
  */
 const GO_URL = process.env.GO_FUNCTIONS_URL || 'https://us-central1-godelivery-magdalena.cloudfunctions.net';
+/** La app GO (para abrir el panel del comercio y la tienda) */
+const GO_APP_URL = (process.env.GO_APP_URL || 'https://godelivery-magdalena.web.app').replace(/\/+$/, '');
 const POLL_MS = 30_000;
 const RECONCILE_MS = 3 * 60_000;
 const FULL_MS = 6 * 60 * 60_000;
@@ -222,6 +224,23 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_published`);
     await this.getLink(true);
     return { linked: false };
+  }
+
+  /**
+   * Link para entrar al panel del comercio en la app GO (fotos, datos, horarios y todo el modo
+   * comercio) sin iniciar sesión en GO: el puente da un código de un solo uso que vence en 2 minutos.
+   */
+  async panelLink(section = 'settings') {
+    const l = await this.getLink(true);
+    if (!l) throw new BadRequestException('La caja no está vinculada con GO');
+    let r: any;
+    try {
+      r = await this.bridge('panelLink', {}, l.api_key);
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+    const s = ['panel', 'settings', 'products', 'promos', 'metrics', 'orders'].includes(section) ? section : 'settings';
+    return { url: `${GO_APP_URL}/#/ventra/${encodeURIComponent(r.code)}?s=${s}` };
   }
 
   /** Esta PC pasa a ser la que publica y recibe los pedidos */

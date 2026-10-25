@@ -90,10 +90,14 @@ export default function GoScreen() {
                 : 'Publicá tus productos en la app GO y mirá lo que vendés por ahí.'}
             </p>
             {status?.linked && status.comercioId && (
-              <button onClick={() => openExternal(GO_STORE_URL(status.comercioId!))}
-                className="mt-2 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
-                <ExternalLink className="w-4 h-4" /> Ver mi tienda en GO{status.storeActive === false ? ' (todavía oculta al público)' : ''}
-              </button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button onClick={() => openExternal(GO_STORE_URL(status.comercioId!))}
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
+                  <ExternalLink className="w-4 h-4" /> Ver mi tienda en GO{status.storeActive === false ? ' (todavía oculta al público)' : ''}
+                </button>
+                <PanelButton section="settings" label="Fotos, datos y horarios" />
+                <PanelButton section="panel" label="Todo el panel de GO" />
+              </div>
             )}
           </div>
           {status?.linked && (
@@ -131,6 +135,34 @@ export default function GoScreen() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Abre el panel del comercio en la app GO con la sesión de la caja (sin iniciar sesión en GO):
+ * el servidor pide un link de un solo uso que vence en 2 minutos.
+ */
+function PanelButton({ section, label }: { section: 'settings' | 'panel'; label: string }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    // En el navegador la pestaña se abre ya (en el toque): después de esperar al servidor se bloquea
+    const tab = (window as any).__TAURI__ ? null : window.open('', '_blank');
+    try {
+      const { data } = await api.post('/go/panel-link', { section });
+      if (tab) { tab.opener = null; tab.location.href = data.url; } else openExternal(data.url);
+    } catch (e) {
+      tab?.close();
+      toast.error(errMsg(e, 'No se pudo abrir el panel de GO'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button onClick={open} disabled={busy}
+      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-white text-[13px] font-semibold disabled:opacity-60" style={{ background: BRAND }}>
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />} {label}
+    </button>
   );
 }
 
