@@ -395,8 +395,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       const out = await this.ai.call('gocats', { names: todo.map((r) => r.name) });
       items = Array.isArray(out?.result?.items) ? out.result.items : [];
     } catch (e: any) {
-      // Sin IA (sin vincular, sin internet o tope del mes): se reintenta en una hora; se publica igual sin rubro
-      this.classifyPausedUntil = Date.now() + 60 * 60_000;
+      // Se publica igual sin rubro. Tope del mes o del día (429): se reintenta en una hora; cualquier
+      // otra falla (sin internet, la IA no respondió) en 10 minutos, para no frenar el ordenado
+      this.classifyPausedUntil = Date.now() + (e?.getStatus?.() === 429 ? 60 : 10) * 60_000;
       this.logger.warn(`No se pudieron ordenar los productos de GO: ${e?.message || e}`);
       return;
     }
@@ -410,6 +411,55 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
         r.id, rubro);
       r.go_category = rubro;
     }
+  }
+
+  private saleStats: Map<string, { sold: number; pairs: string[] }> = new Map();
+  private saleStatsAt = 0;
+
+  /**
+   * Ventas de los últimos 90 días, una vez cada 6 horas: en cuántos tickets aparece cada producto
+   * ("Lo más vendido" en GO) y con qué otros productos se compra más ("Combiná con…").
+   */
+  private async salesStats() {
+    if (Date.now() - this.saleStatsAt < FULL_MS) return this.saleStats;
+    this.saleStatsAt = Date.now();
+    try {
+      const since = Date.now() - 90 * 86_400_000;
+      const rows: any[] = await this.prisma.$queryRawUnsafe(
+        `SELECT si.sale_id AS s, si.product_id AS p FROM sale_items si JOIN sales s ON s.id = si.sale_id
+         WHERE s.status = 'COMPLETED' AND ((typeof(s.created_at) = 'integer' AND s.created_at >= ?) OR (typeof(s.created_at) = 'text' AND s.created_at >= ?))`,
+        since, new Date(since).toISOString());
+      const bySale = new Map<string, Set<string>>();
+      for (const x of rows) {
+        if (!bySale.has(x.s)) bySale.set(x.s, new Set());
+        bySale.get(x.s)!.add(String(x.p));
+      }
+      const sold = new Map<string, number>();
+      const co = new Map<string, Map<string, number>>();
+      for (const set of bySale.values()) {
+        const arr = [...set];
+        for (const a of arr) sold.set(a, (sold.get(a) || 0) + 1);
+        // Tickets grandes (compras del mes) no dicen qué se lleva junto
+        if (arr.length < 2 || arr.length > 15) continue;
+        for (const a of arr) {
+          const m = co.get(a) || new Map<string, number>();
+          for (const b of arr) if (a !== b) m.set(b, (m.get(b) || 0) + 1);
+          co.set(a, m);
+        }
+      }
+      const out = new Map<string, { sold: number; pairs: string[] }>();
+      for (const [p, n] of sold) {
+        // Por afinidad, no por cantidad: lo que se lleva con todo (pan, cigarrillos) no es "combiná con"
+        const pairs = [...(co.get(p) || new Map<string, number>())].filter(([, c]) => c >= 3)
+          .map(([id, c]) => [id, c / Math.sqrt(sold.get(id) || 1)] as [string, number])
+          .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => id);
+        out.set(p, { sold: n, pairs });
+      }
+      this.saleStats = out;
+    } catch (e: any) {
+      this.logger.warn(`No se pudieron calcular las ventas para GO: ${e?.message || e}`);
+    }
+    return this.saleStats;
   }
 
   /** Venta en la caja: en "Lo que se vende" se publica en unos segundos lo que todavía no estaba */
@@ -452,11 +502,17 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     const all = await this.candidates(l);
     const wanted = all.filter((r) => r.published);
     await this.classifyForGo(wanted);
+    const stats = await this.salesStats();
     const sent: any[] = await this.prisma.$queryRawUnsafe(`SELECT id, data_fp, image_fp FROM go_published`);
     const sentMap = new Map(sent.map((s) => [s.id, s]));
     const changed: { r: any; dataFp: string; imageFp: string | null; withImage: boolean }[] = [];
     for (const r of wanted) {
-      const dataFp = fp([r.name, num(r.sale_price), r.barcode || '', r.category || '', r.go_category || '', r.description || '', syncStock ? (r.unlimited_stock ? 'inf' : Math.max(0, Math.floor(num(r.stock)))) : '']);
+      const st = stats.get(r.id);
+      r.sold = st?.sold || 0;
+      r.pairs = st?.pairs || [];
+      // Las ventas van por escalón (1, 2, 4, 8…): así no se reenvía el producto en cada venta
+      const dataFp = fp([r.name, num(r.sale_price), r.barcode || '', r.category || '', r.go_category || '', r.description || '', syncStock ? (r.unlimited_stock ? 'inf' : Math.max(0, Math.floor(num(r.stock)))) : '',
+        Math.round(Math.log2(r.sold + 1)), r.pairs.join('|')]);
       const imageFp = r.img_len ? fp([r.img_len, r.img_head, r.img_tail]) : null;
       const prev = sentMap.get(r.id);
       if (!prev || prev.data_fp !== dataFp || (prev.image_fp || null) !== imageFp) {
@@ -486,6 +542,8 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
             category: realCategory(c.r.category), description: c.r.description || '',
             // Sin rubro en la caja: el de GO que eligió la IA ("Rubro › Subrubro")
             ...(!realCategory(c.r.category) && c.r.go_category ? { goCategory: c.r.go_category } : {}),
+            // "Lo más vendido" y "Combiná con…" de la tienda
+            sold: c.r.sold, pairs: c.r.pairs,
             ...(syncStock ? { stock: c.r.unlimited_stock ? 9999 : Math.max(0, Math.floor(num(c.r.stock))) } : {}),
             ...(image ? { image } : {}),
           });
