@@ -57,6 +57,13 @@ export class GoController {
     return this.go.listProducts({ search, categoryId, only });
   }
 
+  /** Saca todos los productos de la tienda de GO (quedan sin publicar) */
+  @Post('products/unpublish-all')
+  @Roles('ADMIN')
+  unpublishAll() {
+    return this.go.unpublishAll();
+  }
+
   /** publish: true / false fija los productos; null los vuelve a la regla general */
   @Put('products')
   @Roles('ADMIN')

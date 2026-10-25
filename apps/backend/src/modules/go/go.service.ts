@@ -32,27 +32,8 @@ const FULL_MS = 6 * 60 * 60_000;
 const MAX_BATCH = 200;
 const MAX_BATCH_BYTES = 4_000_000;
 const FINAL = ['completed', 'delivered', 'cancelled'];
-/** Lo que no conviene vender por la app al principio (edad, control): se puede publicar a mano */
 /** Los productos sin rubro se eligen como si fueran un rubro más */
 export const NO_CATEGORY = '__none__';
-const RESTRICTED_RE = /cigarr|tabac|alcoh|cervez|vino|fernet|whisk|vodka|licor|aperitiv|espumant|champ/i;
-/**
- * Lo mismo por el nombre del producto: muchos comercios no cargan rubros (todo cae en "Sin
- * rubro") y por el rubro no se ve. Palabras y marcas; ante la duda queda afuera y se publica a mano.
- */
-export const RESTRICTED_NAME_RE = new RegExp([
-  'cigarr', 'tabaco', '\\bhabanos?\\b', 'marlboro', 'philip\\s*morris', 'lucky\\s*strike', '\\bcamel\\b', 'chesterfield',
-  'parliament', 'pall\\s*mall', 'red\\s*point', '\\bjockey\\b', '\\bderby\\b', 'rothmans', '\\bbenson\\b',
-  '\\bblunts?\\b', '\\bsedas\\b',
-  'cervez', '\\bbirra\\b', '\\bvinos?\\b', 'malbec', 'cabernet', '\\bcab\\.?\\s*sauv', 'merlot', '\\bsyrah\\b', 'torront', 'chardonnay',
-  'espumant', 'champa[gñ]', '\\bsidra\\b', 'fernet', 'aperitiv', 'vermou?th', 'vermut', '\\blicor', '\\bwhiske?y', 'vodka',
-  '\\bgin\\b', '\\bron\\b', 'tequila', '\\bgrapa\\b', 'gancia', 'campari', 'cinzano', 'smirnoff', 'absolut', '\\bcria?dores\\b',
-  'quilmes', 'brahma', 'stella\\s*artois', 'heineken', 'schneider', 'budweiser', 'isenbeck', 'amstel', '\\bcorona\\b',
-  '\\bantares\\b', '\\bimperial\\s+(lata|cerveza|x\\b)',
-].join('|'), 'i');
-/** Lo que tiene esas palabras pero se vende a cualquiera (una bolsa para botella de vino) */
-const NOT_RESTRICTED_RE = /^bolsa\b/i;
-export const isRestrictedName = (name: string) => RESTRICTED_NAME_RE.test(name) && !NOT_RESTRICTED_RE.test(name);
 
 type Link = {
   id: string; comercio_id: string; store_name: string; api_key: string;
@@ -199,9 +180,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(e.message);
     }
     // Al vincular no se publica nada: el dueño elige qué (uno por uno o por rubros). Los rubros
-    // quedan marcados para cuando elija "Por rubros", sin lo que no conviene vender por la app.
-    const cats: { id: string; name: string }[] = await this.prisma.$queryRawUnsafe(`SELECT id, name FROM categories WHERE is_active = 1`);
-    const allowed = [NO_CATEGORY, ...cats.filter((c) => !RESTRICTED_RE.test(c.name)).map((c) => c.id)];
+    // quedan todos marcados para cuando elija "Por rubros".
+    const cats: { id: string; name: string }[] = await this.prisma.$queryRawUnsafe(`SELECT id FROM categories WHERE is_active = 1`);
+    const allowed = [NO_CATEGORY, ...cats.map((c) => c.id)];
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_link`);
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_published`);
     await this.prisma.$executeRawUnsafe(
@@ -261,10 +242,10 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     if (l.poller_host === this.host) {
       try {
         store = (await this.bridge('status', {}, l.api_key)).store;
-        // GO puede cambiar el modo o el tope: se guardan para mostrarlos en todas las cajas
-        if (store && (store.fulfillmentMode !== l.fulfillment_mode || (store.shopperMaxTotal ?? null) !== (l.shopper_max_total ?? null) || store.name !== l.store_name)) {
-          await this.prisma.$executeRawUnsafe(`UPDATE go_link SET fulfillment_mode = ?, shopper_max_total = ?, store_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`,
-            store.fulfillmentMode || null, store.shopperMaxTotal ?? null, store.name || l.store_name);
+        // GO puede cambiar el modo o el nombre: se guardan para mostrarlos en todas las cajas
+        if (store && (store.fulfillmentMode !== l.fulfillment_mode || store.name !== l.store_name)) {
+          await this.prisma.$executeRawUnsafe(`UPDATE go_link SET fulfillment_mode = ?, store_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`,
+            store.fulfillmentMode || null, store.name || l.store_name);
         }
       } catch (e: any) {
         if (e.status === 401) store = { unlinked: true };
@@ -275,7 +256,6 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       comercioId: l.comercio_id,
       storeName: store?.name || l.store_name,
       fulfillmentMode: store?.fulfillmentMode || l.fulfillment_mode,
-      shopperMaxTotal: store?.shopperMaxTotal ?? l.shopper_max_total,
       storeActive: store ? store.isActive !== false && store.approved !== false : null,
       storePaused: store?.isPaused === true,
       unlinkedInGo: store?.unlinked === true,
@@ -321,6 +301,21 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       .map((r) => ({ id: r.id, name: r.name, barcode: r.barcode, price: r.sale_price, category: r.category, categoryId: r.category_id, published: r.published, override: r.override, reason: r.reason }));
   }
 
+  /**
+   * Saca todos los productos de la tienda de GO: "Solo los que elijo" sin nada elegido (también
+   * se olvidan los elegidos a mano). GO los oculta en la próxima publicación, en unos segundos.
+   */
+  async unpublishAll() {
+    const l = await this.getLink(true);
+    if (!l) throw new BadRequestException('La caja no está vinculada con GO');
+    await this.prisma.$executeRawUnsafe(`UPDATE go_link SET publish_mode = 'selected', updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM go_products WHERE publish = 1`);
+    await this.getLink(true);
+    this.lastFullAt = 0; // publicación completa: GO oculta todo lo que tenía
+    this.reconcile().catch(() => {});
+    return this.status();
+  }
+
   /** publish: true / false fija el producto; null vuelve a la regla general */
   async setProductsPublish(ids: string[], publish: boolean | null) {
     const list = (Array.isArray(ids) ? ids : []).map(String).slice(0, 1000);
@@ -358,7 +353,6 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       if (!(num(r.sale_price) > 0)) { published = false; reason = 'Sin precio'; }
       else if (r.unit && !['UNIT', 'PACK'].includes(String(r.unit))) { published = false; reason = 'Por peso o medida: todavía no se publica'; }
       else if (override !== null) { published = override; reason = override ? 'Elegido a mano' : 'Sacado a mano'; }
-      else if (isRestrictedName(String(r.name || ''))) { published = false; reason = 'Alcohol o cigarrillos: se publica a mano'; }
       else if (mode === 'all') published = true;
       else if (mode === 'selected') { published = false; reason = 'No elegido'; }
       else { published = cats.has(r.category_id || NO_CATEGORY); if (!published) reason = 'Rubro sin publicar'; }

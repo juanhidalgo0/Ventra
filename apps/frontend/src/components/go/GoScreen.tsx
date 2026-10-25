@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { openExternal } from '../../utils/externalLinks';
+import { useConfirm } from '../common/ConfirmDialog';
 import { GoOrder, isChargeable, loadGoOrderInCart } from './goOrders';
 
 /**
@@ -13,7 +14,7 @@ import { GoOrder, isChargeable, loadGoOrderInCart } from './goOrders';
  * el repartidor paga en el mostrador como cualquier cliente y la venta se cobra en la caja.
  */
 type Status = {
-  linked: boolean; comercioId?: string; storeName?: string; fulfillmentMode?: string | null; shopperMaxTotal?: number | null;
+  linked: boolean; comercioId?: string; storeName?: string; fulfillmentMode?: string | null;
   storeActive?: boolean | null; storePaused?: boolean; unlinkedInGo?: boolean;
   publishMode?: 'all' | 'categories' | 'selected'; publishCategories?: string[]; syncStock?: boolean;
   isMainPc?: boolean; mainPc?: string | null; thisPc?: string; publishedCount?: number;
@@ -193,7 +194,6 @@ function LinkCard({ onLinked }: { onLinked: (s: Status) => void }) {
           <p>1. Pedile a GO el <b>código de vinculación</b> de tu comercio (8 letras y números).</p>
           <p>2. Pegalo acá y elegí qué productos se publican (uno por uno o por rubros). <b>Hasta que no elijas, no se publica nada.</b> Se publican sin stock: si algo falta, el repartidor lo marca y se oculta un día.</p>
           <p>3. Cada vez que cambies un precio o un producto en Ventra, se actualiza en GO.</p>
-          <p className="text-[12.5px] text-slate-500">Cigarrillos y bebidas con alcohol no se publican aunque elijas su rubro: si querés venderlos, se eligen uno por uno.</p>
         </div>
         <div className="space-y-3">
           <label className="block text-[12.5px] font-semibold text-slate-600" htmlFor="go-code">Código de GO</label>
@@ -478,6 +478,8 @@ function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status
   const [search, setSearch] = useState('');
   const [only, setOnly] = useState<'' | 'published' | 'hidden'>('');
   const [products, setProducts] = useState<GoProduct[] | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const dirty = mode !== status.publishMode || syncStock !== !!status.syncStock || JSON.stringify([...selCats].sort()) !== JSON.stringify([...(status.publishCategories || [])].sort());
 
   useEffect(() => {
@@ -517,10 +519,35 @@ function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status
       toast.error(errMsg(e, 'No se pudo cambiar'));
     }
   };
+  /** Todos los productos quedan sin publicar ("Solo los que elijo" sin nada elegido) */
+  const unpublishAll = async () => {
+    const ok = await confirm({
+      title: '¿Sacar todos los productos de la tienda?',
+      message: 'Ningún producto se va a ver en GO. La tienda queda en "Solo los que elijo", sin nada elegido, y después podés volver a publicar los que quieras. No se borra nada de tu caja.',
+      confirmLabel: 'Sí, sacar todos',
+      danger: true,
+    });
+    if (!ok) return;
+    setClearing(true);
+    try {
+      const { data } = await api.post('/go/products/unpublish-all');
+      onChange(data);
+      setMode('selected');
+      loadProducts();
+      toast.success('Listo: en unos segundos ningún producto se ve en GO');
+      // El contador baja cuando GO termina de ocultarlos
+      setTimeout(() => { api.get('/go/status').then(({ data: s }) => onChange(s)).catch(() => {}); }, 6000);
+    } catch (e) {
+      toast.error(errMsg(e, 'No se pudo sacar los productos'));
+    } finally {
+      setClearing(false);
+    }
+  };
   const toggleCat = (id: string) => setSelCats((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <Card title="Qué productos se ven en GO">
         <div className="grid gap-2 sm:grid-cols-3">
           {([
@@ -570,7 +597,15 @@ function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status
         </div>
       </Card>
 
-      <Card title="Producto por producto" action={<span className="text-[12.5px] text-slate-500">{plural(status.publishedCount || 0, 'publicado', 'publicados')}</span>}>
+      <Card title="Producto por producto" action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="text-[12.5px] text-slate-500">{plural(status.publishedCount || 0, 'publicado', 'publicados')}</span>
+          <button onClick={unpublishAll} disabled={clearing || !(status.publishedCount || 0)}
+            className="h-8 px-3 rounded-lg border border-rose-200 bg-white text-[12.5px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-40 flex items-center gap-1.5">
+            {clearing && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Sacar todos de la tienda
+          </button>
+        </div>
+      }>
         <p className="text-[12.5px] text-slate-500 -mt-1 mb-3">Podés sumar o sacar productos sueltos, aunque no estén en los rubros elegidos. El nombre que se ve en la app se cambia desde GO.</p>
         <div className="flex flex-wrap gap-2 mb-3">
           <div className="relative flex-1 min-w-[200px]">
@@ -632,7 +667,7 @@ function LinkTab({ status, onChange }: { status: Status; onChange: (s: Status) =
       <Card title="Tu comercio en GO">
         <dl className="grid gap-3 sm:grid-cols-2 text-[13.5px]">
           <Row k="Nombre en GO" v={status.storeName || '—'} />
-          <Row k="Cómo se arman los pedidos" v={status.fulfillmentMode === 'shopper' ? `Lo compra el repartidor (tope ${money(status.shopperMaxTotal || 40000)} por pedido)` : 'Los prepara el comercio'} />
+          <Row k="Cómo se arman los pedidos" v={status.fulfillmentMode === 'shopper' ? 'Lo compra el repartidor en tu mostrador' : 'Los prepara el comercio'} />
           <Row k="Productos publicados" v={(status.publishedCount || 0).toLocaleString('es-AR')} />
           <Row k="Estado en la app" v={status.storeActive === false ? 'Todavía no visible' : status.storePaused ? 'Pausado' : 'Visible'} />
         </dl>
