@@ -305,7 +305,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       .filter((r) => (!q.categoryId || r.category_id === q.categoryId) && (!s || r.name.toLowerCase().includes(s) || String(r.barcode || '').includes(s)))
       .filter((r) => (q.only === 'published' ? r.published : q.only === 'hidden' ? !r.published : true))
       .slice(0, 300)
-      .map((r) => ({ id: r.id, name: r.name, barcode: r.barcode, price: r.sale_price, category: r.category || (r.go_category ? `En GO: ${r.go_category}` : null), categoryId: r.category_id, published: r.published, override: r.override, reason: r.reason }));
+      .map((r) => ({ id: r.id, name: r.name, barcode: r.barcode, price: r.sale_price, category: r.go_category && !realCategory(r.category) ? `En GO: ${r.go_category}` : (r.category || null), categoryId: r.category_id, published: r.published, override: r.override, reason: r.reason }));
   }
 
   /**
@@ -388,7 +388,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
    */
   private async classifyForGo(wanted: any[]) {
     if (Date.now() < this.classifyPausedUntil) return;
-    const todo = wanted.filter((r) => !r.category && !r.go_category).slice(0, 150);
+    const todo = wanted.filter((r) => !realCategory(r.category) && !r.go_category).slice(0, 150);
     if (!todo.length) return;
     let items: { i: number; rubro: string }[] = [];
     try {
@@ -483,9 +483,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
           }
           upserts.push({
             ventraId: c.r.id, barcode: c.r.barcode || '', name: c.r.name, price: num(c.r.sale_price),
-            category: c.r.category || '', description: c.r.description || '',
+            category: realCategory(c.r.category), description: c.r.description || '',
             // Sin rubro en la caja: el de GO que eligió la IA ("Rubro › Subrubro")
-            ...(!c.r.category && c.r.go_category ? { goCategory: c.r.go_category } : {}),
+            ...(!realCategory(c.r.category) && c.r.go_category ? { goCategory: c.r.go_category } : {}),
             ...(syncStock ? { stock: c.r.unlimited_stock ? 9999 : Math.max(0, Math.floor(num(c.r.stock))) } : {}),
             ...(image ? { image } : {}),
           });
@@ -662,6 +662,12 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
 function safeJson<T>(s: string | null | undefined, fallback: T): T {
   try { return s ? JSON.parse(s) : fallback; } catch { return fallback; }
 }
+
+/** "Varios", "Otros", "General"…: para GO es como no tener rubro (lo ordena la IA) */
+const realCategory = (name: any) => {
+  const n = String(name || '').trim();
+  return n && !/^(varios|otros|general|sin rubro|sin categor[ií]a|-)$/i.test(n) ? n : '';
+};
 
 /** Fecha de SQLite (número en ms o texto) → ms */
 const toMs = (v: any) => (v === null || v === undefined || v === '' ? 0 : typeof v === 'number' || typeof v === 'bigint' ? Number(v) : (Date.parse(String(v)) || Number(v) || 0));
