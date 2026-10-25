@@ -34,6 +34,23 @@ const FINAL = ['completed', 'delivered', 'cancelled'];
 /** Los productos sin rubro se eligen como si fueran un rubro más */
 export const NO_CATEGORY = '__none__';
 const RESTRICTED_RE = /cigarr|tabac|alcoh|cervez|vino|fernet|whisk|vodka|licor|aperitiv|espumant|champ/i;
+/**
+ * Lo mismo por el nombre del producto: muchos comercios no cargan rubros (todo cae en "Sin
+ * rubro") y por el rubro no se ve. Palabras y marcas; ante la duda queda afuera y se publica a mano.
+ */
+export const RESTRICTED_NAME_RE = new RegExp([
+  'cigarr', 'tabaco', '\\bhabanos?\\b', 'marlboro', 'philip\\s*morris', 'lucky\\s*strike', '\\bcamel\\b', 'chesterfield',
+  'parliament', 'pall\\s*mall', 'red\\s*point', '\\bjockey\\b', '\\bderby\\b', 'rothmans', '\\bbenson\\b',
+  '\\bblunts?\\b', '\\bsedas\\b',
+  'cervez', '\\bbirra\\b', '\\bvinos?\\b', 'malbec', 'cabernet', '\\bcab\\.?\\s*sauv', 'merlot', '\\bsyrah\\b', 'torront', 'chardonnay',
+  'espumant', 'champa[gñ]', '\\bsidra\\b', 'fernet', 'aperitiv', 'vermou?th', 'vermut', '\\blicor', '\\bwhiske?y', 'vodka',
+  '\\bgin\\b', '\\bron\\b', 'tequila', '\\bgrapa\\b', 'gancia', 'campari', 'cinzano', 'smirnoff', 'absolut', '\\bcria?dores\\b',
+  'quilmes', 'brahma', 'stella\\s*artois', 'heineken', 'schneider', 'budweiser', 'isenbeck', 'amstel', '\\bcorona\\b',
+  '\\bantares\\b', '\\bimperial\\s+(lata|cerveza|x\\b)',
+].join('|'), 'i');
+/** Lo que tiene esas palabras pero se vende a cualquiera (una bolsa para botella de vino) */
+const NOT_RESTRICTED_RE = /^bolsa\b/i;
+export const isRestrictedName = (name: string) => RESTRICTED_NAME_RE.test(name) && !NOT_RESTRICTED_RE.test(name);
 
 type Link = {
   id: string; comercio_id: string; store_name: string; api_key: string;
@@ -89,7 +106,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       "api_key" TEXT NOT NULL,
       "fulfillment_mode" TEXT,
       "shopper_max_total" REAL,
-      "publish_mode" TEXT NOT NULL DEFAULT 'categories',
+      "publish_mode" TEXT NOT NULL DEFAULT 'selected',
       "publish_categories" TEXT,
       "sync_stock" INTEGER NOT NULL DEFAULT 0,
       "poller_host" TEXT,
@@ -179,14 +196,15 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     } catch (e: any) {
       throw new BadRequestException(e.message);
     }
-    // Lo que no conviene vender por la app arranca sin publicar (se puede sumar a mano)
+    // Al vincular no se publica nada: el dueño elige qué (uno por uno o por rubros). Los rubros
+    // quedan marcados para cuando elija "Por rubros", sin lo que no conviene vender por la app.
     const cats: { id: string; name: string }[] = await this.prisma.$queryRawUnsafe(`SELECT id, name FROM categories WHERE is_active = 1`);
     const allowed = [NO_CATEGORY, ...cats.filter((c) => !RESTRICTED_RE.test(c.name)).map((c) => c.id)];
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_link`);
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_published`);
     await this.prisma.$executeRawUnsafe(
       `INSERT INTO go_link (id, comercio_id, store_name, api_key, fulfillment_mode, shopper_max_total, publish_mode, publish_categories, sync_stock, poller_host, linked_at, updated_at)
-       VALUES ('main', ?, ?, ?, ?, ?, 'categories', ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ('main', ?, ?, ?, ?, ?, 'selected', ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       r.store.comercioId, r.store.name || '', r.key, r.store.fulfillmentMode || null, r.store.shopperMaxTotal ?? null,
       JSON.stringify(allowed), this.host,
     );
@@ -312,7 +330,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN go_products g ON g.id = p.id
       WHERE p.is_active = 1`);
-    const mode = l?.publish_mode || 'categories';
+    const mode = l?.publish_mode || 'selected';
     const cats = new Set(safeJson<string[]>(l?.publish_categories, []));
     return rows.map((r) => {
       const override = r.override === null || r.override === undefined ? null : Number(r.override) === 1;
@@ -321,6 +339,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       if (!(num(r.sale_price) > 0)) { published = false; reason = 'Sin precio'; }
       else if (r.unit && !['UNIT', 'PACK'].includes(String(r.unit))) { published = false; reason = 'Por peso o medida: todavía no se publica'; }
       else if (override !== null) { published = override; reason = override ? 'Elegido a mano' : 'Sacado a mano'; }
+      else if (isRestrictedName(String(r.name || ''))) { published = false; reason = 'Alcohol o cigarrillos: se publica a mano'; }
       else if (mode === 'all') published = true;
       else if (mode === 'selected') { published = false; reason = 'No elegido'; }
       else { published = cats.has(r.category_id || NO_CATEGORY); if (!published) reason = 'Rubro sin publicar'; }

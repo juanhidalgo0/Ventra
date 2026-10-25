@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { AlertCircle, Bike, ChevronDown, Link2, Loader2, RefreshCw, Search, ShoppingBag } from 'lucide-react';
+import { AlertCircle, Bike, ChevronDown, ExternalLink, Link2, Loader2, RefreshCw, Search, ShoppingBag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { openExternal } from '../../utils/externalLinks';
 import { GoOrder, isChargeable, loadGoOrderInCart } from './goOrders';
 
 /**
@@ -12,7 +13,7 @@ import { GoOrder, isChargeable, loadGoOrderInCart } from './goOrders';
  * el repartidor paga en el mostrador como cualquier cliente y la venta se cobra en la caja.
  */
 type Status = {
-  linked: boolean; storeName?: string; fulfillmentMode?: string | null; shopperMaxTotal?: number | null;
+  linked: boolean; comercioId?: string; storeName?: string; fulfillmentMode?: string | null; shopperMaxTotal?: number | null;
   storeActive?: boolean | null; storePaused?: boolean; unlinkedInGo?: boolean;
   publishMode?: 'all' | 'categories' | 'selected'; publishCategories?: string[]; syncStock?: boolean;
   isMainPc?: boolean; mainPc?: string | null; thisPc?: string; publishedCount?: number;
@@ -33,6 +34,8 @@ const TABS = [
 type Tab = typeof TABS[number]['id'];
 
 const BRAND = '#0E6E52';
+/** La página del comercio en la app GO (se ve con el link aunque la tienda esté oculta) */
+const GO_STORE_URL = (comercioId: string) => `https://godelivery-magdalena.web.app/#/comercio/${encodeURIComponent(comercioId)}`;
 const money = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n || 0);
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('es-AR')} ${n === 1 ? one : many}`;
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -86,6 +89,12 @@ export default function GoScreen() {
                 ? <>Tus productos están en GO como <b className="text-slate-700">{status.storeName}</b>{status.fulfillmentMode === 'shopper' ? '. Los pedidos los compra el repartidor en tu mostrador.' : '.'}</>
                 : 'Publicá tus productos en la app GO y mirá lo que vendés por ahí.'}
             </p>
+            {status?.linked && status.comercioId && (
+              <button onClick={() => openExternal(GO_STORE_URL(status.comercioId!))}
+                className="mt-2 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
+                <ExternalLink className="w-4 h-4" /> Ver mi tienda en GO{status.storeActive === false ? ' (todavía oculta al público)' : ''}
+              </button>
+            )}
           </div>
           {status?.linked && (
             <div className="inline-flex flex-wrap gap-1 bg-white border border-slate-200 rounded-xl p-1 max-w-full">
@@ -150,9 +159,9 @@ function LinkCard({ onLinked }: { onLinked: (s: Status) => void }) {
       <div className="grid gap-5 md:grid-cols-[1.2fr,1fr]">
         <div className="space-y-2 text-[13.5px] text-slate-600 leading-relaxed">
           <p>1. Pedile a GO el <b>código de vinculación</b> de tu comercio (8 letras y números).</p>
-          <p>2. Pegalo acá. Tus productos se publican solos en la app, <b>sin stock</b>: si algo falta, el repartidor lo marca y se oculta un día.</p>
+          <p>2. Pegalo acá y elegí qué productos se publican (uno por uno o por rubros). <b>Hasta que no elijas, no se publica nada.</b> Se publican sin stock: si algo falta, el repartidor lo marca y se oculta un día.</p>
           <p>3. Cada vez que cambies un precio o un producto en Ventra, se actualiza en GO.</p>
-          <p className="text-[12.5px] text-slate-500">Cigarrillos y bebidas con alcohol arrancan sin publicar. Podés cambiarlo después en "Qué se publica".</p>
+          <p className="text-[12.5px] text-slate-500">Cigarrillos y bebidas con alcohol no se publican aunque elijas su rubro: si querés venderlos, se eligen uno por uno.</p>
         </div>
         <div className="space-y-3">
           <label className="block text-[12.5px] font-semibold text-slate-600" htmlFor="go-code">Código de GO</label>
@@ -430,7 +439,7 @@ type GoProduct = { id: string; name: string; barcode?: string | null; price: num
 
 function PublishTab({ status, onChange }: { status: Status; onChange: (s: Status) => void }) {
   const [cats, setCats] = useState<{ id: string; name: string }[]>([]);
-  const [mode, setMode] = useState(status.publishMode || 'categories');
+  const [mode, setMode] = useState(status.publishMode || 'selected');
   const [selCats, setSelCats] = useState<string[]>(status.publishCategories || []);
   const [syncStock, setSyncStock] = useState(!!status.syncStock);
   const [saving, setSaving] = useState(false);
