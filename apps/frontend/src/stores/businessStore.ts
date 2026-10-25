@@ -228,3 +228,6 @@ export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStor
 /** Igual que `hasFeature` pero re-renderiza cuando se cambia la configuración. */
 export const useFeature = (feature: BusinessFeature): boolean =>
   useBusinessStore((s) => s.features[feature]);
+
+/** Rubros que no venden (consultorio): el sistema gira alrededor de los pacientes. */
+export const isConsultorio = (profile: string) => profile === 'NUTRICION';
