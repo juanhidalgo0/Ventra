@@ -498,22 +498,27 @@ async function help(client, body) {
 // (enum del esquema): así no inventa rubros y todos los comercios quedan ordenados igual.
 const GO_TAXONOMY = {
   "Cervezas": ["Latas", "Packs", "Botellas y porrones"],
-  "Bebidas": ["Gaseosas", "Aguas", "Aguas saborizadas", "Jugos", "Energizantes", "Isotónicas"],
-  "Vinos y bebidas blancas": ["Vinos", "Espumantes", "Fernet y aperitivos", "Whisky y destilados", "Licores"],
-  "Cigarrillos y tabaco": ["Cigarrillos", "Tabaco y armado", "Encendedores"],
-  "Golosinas": ["Alfajores", "Chocolates", "Caramelos y chicles", "Chupetines", "Gomitas", "Turrones y barritas"],
+  "Bebidas": ["Gaseosas", "Aguas", "Aguas saborizadas", "Jugos", "Jugos en polvo", "Energizantes", "Isotónicas"],
+  "Vinos y bebidas blancas": ["Vinos", "Espumantes y sidras", "Fernet y aperitivos", "Whisky y destilados", "Licores"],
+  "Cigarrillos": [],
+  "Tabacos": ["Tabaco y armado", "Vapers", "Encendedores"],
+  "Golosinas": ["Alfajores", "Chocolates", "Bombones y huevos de chocolate", "Caramelos y chicles", "Chupetines", "Gomitas", "Turrones y barritas"],
   "Galletitas": ["Dulces", "Saladas", "Obleas y bizcochos"],
   "Snacks": ["Papas fritas", "Palitos y chizitos", "Maní y frutos secos"],
-  "Almacén": ["Yerba", "Café, té y mate cocido", "Azúcar y endulzantes", "Fideos y arroz", "Harinas y premezclas", "Aceites y vinagres", "Salsas y aderezos", "Enlatados", "Especias y caldos", "Desayuno y cereales", "Dulces y mermeladas"],
-  "Lácteos y frescos": ["Leches", "Yogures", "Quesos", "Manteca y cremas", "Fiambres", "Huevos"],
-  "Panadería": ["Pan", "Budines y magdalenas"],
+  "Almacén": ["Yerba", "Café, té y mate cocido", "Azúcar y endulzantes", "Fideos y arroz", "Harinas y premezclas", "Aceites y vinagres", "Salsas y aderezos", "Enlatados y conservas", "Especias y caldos", "Desayuno y cereales", "Dulce de leche y mermeladas", "Postres y gelatinas", "Sopas y comidas rápidas"],
+  "Lácteos y frescos": ["Leches", "Yogures", "Quesos", "Manteca y cremas", "Fiambres y salchichas", "Huevos", "Pastas frescas y tapas"],
+  "Panadería": ["Pan", "Budines, magdalenas y pan dulce"],
   "Helados y congelados": ["Helados", "Congelados"],
-  "Limpieza": ["Ropa", "Cocina", "Baño y pisos", "Papeles y descartables"],
-  "Perfumería e higiene": ["Higiene personal", "Pañales", "Cuidado personal", "Farmacia"],
+  "Limpieza": ["Ropa", "Cocina", "Baño y pisos", "Papeles y descartables", "Insecticidas", "Aromatizantes"],
+  "Perfumería e higiene": ["Higiene personal", "Toallitas y protección femenina", "Pañales", "Cuidado personal"],
+  "Medicamentos": [],
   "Mascotas": ["Alimento", "Accesorios"],
-  "Librería y varios": ["Librería", "Pilas", "Hielo y carbón", "Regalos", "Varios"],
+  "Librería y varios": ["Librería", "Pegamentos y cintas", "Pilas y electricidad", "Celulares y accesorios", "Hielo y carbón", "Velas y sahumerios", "Bazar", "Juguetes y regalos", "Varios"],
 };
-const GO_CATEGORIES = Object.entries(GO_TAXONOMY).flatMap(([top, subs]) => subs.map((s) => `${top} › ${s}`));
+// Sin subrubros (Cigarrillos, Medicamentos): el rubro solo
+const GO_CATEGORIES = Object.entries(GO_TAXONOMY).flatMap(([top, subs]) => (subs.length ? subs.map((s) => `${top} › ${s}`) : [top]));
+// "producto" (qué es, en pocas palabras) va antes del rubro: obliga a reconocer el producto antes de
+// elegir, y es lo que más bajó los errores en las pruebas con los nombres reales de un kiosco
 const GOCATS_SCHEMA = {
   type: "object",
   properties: {
@@ -521,8 +526,8 @@ const GOCATS_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { i: { type: "integer" }, rubro: { type: "string", enum: GO_CATEGORIES } },
-        required: ["i", "rubro"],
+        properties: { i: { type: "integer" }, producto: { type: "string" }, rubro: { type: "string", enum: GO_CATEGORIES } },
+        required: ["i", "producto", "rubro"],
         additionalProperties: false,
       },
     },
@@ -530,25 +535,42 @@ const GOCATS_SCHEMA = {
   required: ["items"],
   additionalProperties: false,
 };
+const GOCATS_SYSTEM = [{ type: "text", cache_control: { type: "ephemeral" }, text:
+  "Ordenás los productos de un kiosco / almacén argentino en los rubros de su tienda online. Los nombres vienen como los carga el kiosco: " +
+  "abreviados, en mayúsculas, con marcas y errores de tipeo.\n\n" +
+  "Para cada producto, primero escribí en \"producto\" qué es en pocas palabras (por ejemplo \"jugo listo para tomar\", \"toallitas femeninas\", " +
+  "\"galletitas dulces\", \"vaper descartable\"), usando lo que sabés de las marcas argentinas. Después elegí el rubro (o rubro › subrubro) de la lista que corresponde a ESO.\n\n" +
+  "Reglas:\n" +
+  "- Guiate por la marca y el tipo de producto, no por una palabra suelta del nombre (un alfajor de chocolate es Alfajores; un helado sabor KitKat es Helados).\n" +
+  "- Cervezas: LATA / LATÓN / X 473 / X 710 es Latas; PACK es Packs; botella o porrón (X 1 LT, X 660, X 970) es Botellas y porrones.\n" +
+  "- Atados, cigarrillos sueltos, cigarros y cigarritos son Cigarrillos. Vapers, pods y ELFBAR / IGNITE son Vapers. Papel, filtros, blunts, picadores y tabaco para armar son Tabaco y armado.\n" +
+  "- Remedios, pastillas sueltas, curitas, gasas y alcohol son Medicamentos. Toallitas femeninas, protectores y tampones son Toallitas y protección femenina.\n" +
+  "- Si no reconocés el producto con seguridad, poné \"no sé\" en producto y Librería y varios › Varios. Es mejor Varios que un rubro equivocado.\n\n" +
+  "Rubros posibles:\n" + GO_CATEGORIES.join("\n") }];
+// Haiku a propósito: es barato y alcanza para los productos nuevos de a uno. Antes se cortaba: a veces
+// piensa más de 8000 tokens y la respuesta quedaba a medias (por eso el tope alto y las tandas de 50)
+const GOCATS_MODEL = MODEL;
+const GOCATS_CHUNK = 50; // de a 50 en paralelo: cada parte tarda ~20 s y responde entera
 
 /** Nombres de productos de la caja → "Rubro › Subrubro" de la tienda de GO (hasta 150 por vez) */
 async function goCategories(client, body) {
   const names = (Array.isArray(body.names) ? body.names : []).slice(0, 150)
     .map((n, i) => ({ i, n: String(n || "").trim().slice(0, 120) })).filter((x) => x.n);
   if (!names.length) throw new AiError(400, "EMPTY", "No hay productos para ordenar.");
-  const { out, usage } = await jsonCall(client, {
-    model: MODEL, max_tokens: 8000,
-    output_config: { effort: "low", format: { type: "json_schema", schema: GOCATS_SCHEMA } },
-    system: [{ type: "text", cache_control: { type: "ephemeral" }, text:
-      "Ordenás los productos de un kiosco / almacén argentino en los rubros de su tienda online. " +
-      "Para cada producto elegí el rubro › subrubro que mejor le queda, de la lista. Los nombres vienen como los carga el kiosco " +
-      "(abreviados, en mayúsculas, con marcas): reconocé el producto por la marca y el tipo. Pistas: LATA / LATÓN / X 473 / X 710 en cervezas es Latas; " +
-      "PACK X 6 es Packs; PORRÓN o botella es Botellas y porrones. Un alfajor es Golosinas › Alfajores aunque diga chocolate. " +
-      "Cigarrillos sueltos o atados (MARLBORO, PHILIP MORRIS, LUCKY, etc.) son Cigarrillos; papel, filtros, blunts y tabaco para armar son Tabaco y armado. " +
-      "Si de verdad no sabés qué es, Librería y varios › Varios.\n\nRubros posibles:\n" + GO_CATEGORIES.join("\n") }],
-    messages: [{ role: "user", content: names.map((x) => `${x.i}. ${x.n}`).join("\n") }],
-  });
-  const byI = new Map((out.items || []).map((x) => [x.i, x.rubro]));
+  const chunks = [];
+  for (let k = 0; k < names.length; k += GOCATS_CHUNK) chunks.push(names.slice(k, k + GOCATS_CHUNK));
+  const results = await Promise.all(chunks.map((part) => jsonCall(client, {
+    model: GOCATS_MODEL, max_tokens: 32000,
+    output_config: { effort: "medium", format: { type: "json_schema", schema: GOCATS_SCHEMA } },
+    system: GOCATS_SYSTEM,
+    messages: [{ role: "user", content: part.map((x, j) => `${j}. ${x.n}`).join("\n") }],
+  }).then(({ out, usage }) => ({ part, out, usage }))));
+  const byI = new Map();
+  const usage = {};
+  for (const { part, out, usage: u } of results) {
+    for (const x of out.items || []) if (part[x.i]) byI.set(part[x.i].i, x.rubro);
+    for (const k of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]) usage[k] = (usage[k] || 0) + (u[k] || 0);
+  }
   return { result: { items: names.map((x) => ({ i: x.i, rubro: byI.get(x.i) || "Librería y varios › Varios" })) }, usage };
 }
 

@@ -126,7 +126,8 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(req.messages[0].content.startsWith("[Pantalla: /pos]"));
   });
   await t("rubros de GO: solo de la lista, uno por producto y los que faltan van a Varios", async () => {
-    const client = fakeClient({ items: [{ i: 0, rubro: "Cervezas › Latas" }, { i: 2, rubro: "Golosinas › Alfajores" }] });
+    // La IA numera cada tanda desde 0 (sin el nombre vacío): 0 = QUILMES, 1 = ALF JORGITO, 2 = COSA RARA
+    const client = fakeClient({ items: [{ i: 0, producto: "cerveza en lata", rubro: "Cervezas › Latas" }, { i: 1, producto: "alfajor", rubro: "Golosinas › Alfajores" }] });
     const out = await ai.handle({ db: fakeDb(), logger, client }, "u10", { kind: "gocats", names: ["QUILMES LATA 473", "", "ALF JORGITO CHOC", "COSA RARA"] });
     assert.deepStrictEqual(out.result.items, [
       { i: 0, rubro: "Cervezas › Latas" }, { i: 2, rubro: "Golosinas › Alfajores" }, { i: 3, rubro: "Librería y varios › Varios" },
