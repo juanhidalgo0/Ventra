@@ -380,7 +380,7 @@ export class SalesService {
     }
 
     // GO en "Lo que se vende": lo que se vendió y no estaba en la tienda se publica en unos segundos
-    if (!consumption) this.go.onSale().catch(() => { /* la venta ya está hecha */ });
+    if (!consumption) this.go?.onSale().catch(() => { /* la venta ya está hecha */ });
 
     // El pedido de GO queda cobrado con esta venta (una sola vez) y las otras cajas lo sacan de la lista
     if (goOrder && !consumption) {
