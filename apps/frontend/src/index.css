@@ -467,3 +467,13 @@ html.dark #pos-search {
   .ag-live::after, .ag-skel, .ag-sheet { animation: none !important; }
   .ag-sheet-out, .ag-veil-out { transition: none !important; }
 }
+
+/* Pedidos de GO en la caja (POSScreen): el número en el rojo de GO con una onda suave cada 2 s,
+   como el aviso de las apps (no titila ni cambia de tamaño) */
+@keyframes go-badge-wave {
+  0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.6); }
+  70% { box-shadow: 0 0 0 8px rgba(225, 29, 72, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+}
+.go-badge { background: #e11d48; color: #fff; animation: go-badge-wave 2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .go-badge { animation: none; } }

@@ -1914,15 +1914,12 @@ export default function POSScreen() {
             </button>
           )}
 
-          {/* GO Delivery: pedidos en curso (el repartidor viene a comprar al mostrador) */}
+          {/* GO Delivery: pedidos en curso (el repartidor viene a comprar al mostrador). Solo el logo
+              (ya dice "GO!") y cuántos hay, en rojo con una onda suave (.go-badge en index.css) */}
           {goOrders.length > 0 && (
-            <button onClick={() => setShowGoOrders(true)} className={`${hdrBtn} bg-[#0b0b0c] hover:bg-black`}>
-              <GoMark size={20} />
-              {hdrLabel('Pedido GO', 'GO')}
-              <span className="relative min-w-[20px] h-5 px-1.5 rounded-full bg-white/15 text-white text-[11px] font-bold flex items-center justify-center">
-                {goOrders.length}
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-              </span>
+            <button onClick={() => setShowGoOrders(true)} title="Pedidos de GO" aria-label="Pedidos de GO" className={`${hdrBtn} bg-[#0b0b0c] hover:bg-black`}>
+              <GoMark size={26} />
+              <span className="go-badge min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center">{goOrders.length}</span>
               {headerMode === 2 && <span className={hdrTip}>Pedidos de GO</span>}
             </button>
           )}
