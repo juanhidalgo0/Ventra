@@ -346,7 +346,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /><ProductReviewWatcher /><GoOrderAlert /></MobileShell>;
+    return <MobileShell><GoOrderAlert /><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /><ProductReviewWatcher /></MobileShell>;
   }
 
   return (
@@ -383,6 +383,8 @@ export default function MainLayout({ children }: Props) {
       )}
 
       <div className="flex-1 min-w-0 flex flex-col h-full relative overflow-hidden">
+        {/* Aviso de pedido GO: franja arriba, corre el contenido hacia abajo (no tapa nada) */}
+        <GoOrderAlert />
         {/* TopBar */}
         {!isPOS && (
           <header className="h-14 bg-white/95 border-b border-slate-200 px-4 md:px-5 flex items-center justify-between shrink-0 sticky top-0 z-40">
@@ -469,7 +471,6 @@ export default function MainLayout({ children }: Props) {
       {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
       {isPOS && <HelpMenu pathname={location.pathname} placement="floating" />}
       <GuidedTour />
-      <GoOrderAlert />
       <OfflineStartBanner />
       <ClientPreview />
 

@@ -70,18 +70,20 @@ export default function GoOrderAlert() {
   const close = (id: string) => setAlerts((a) => a.filter((x) => x.id !== id));
   if (!alerts.length) return null;
 
+  // Franja arriba de la pantalla, dentro del diseño: corre el contenido hacia abajo mientras está y
+  // no tapa nada (ni la barra de arriba ni el ticket). Late entre negro y rojo oscuro para que se vea.
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[min(520px,calc(100vw-24px))]">
+    <div className="shrink-0 w-full flex flex-col">
       <style>{`
-        @keyframes go-alert-blink { 0%,100% { box-shadow: 0 0 0 0 rgba(225,29,72,.75), 0 18px 40px rgba(0,0,0,.35); } 50% { box-shadow: 0 0 0 7px rgba(225,29,72,0), 0 18px 40px rgba(0,0,0,.35); } }
-        @keyframes go-alert-in { from { transform: translateY(-18px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+        @keyframes go-alert-blink { 0%,100% { background-color: #0b0b0c; } 50% { background-color: #4c0519; } }
+        @keyframes go-alert-in { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
       {alerts.map((a) => {
         const n = a.count || 0;
         return (
           <div key={a.id} role="alert"
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[#0b0b0c] text-white px-4 py-3 border-2 border-[#e11d48]"
-            style={{ animation: 'go-alert-in .25s ease-out, go-alert-blink 1.1s ease-in-out infinite' }}>
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 text-white px-4 py-2.5 border-b-2 border-[#e11d48]"
+            style={{ animation: 'go-alert-in .25s ease-out, go-alert-blink 1.2s ease-in-out infinite' }}>
             <GoMark size={48} inverted />
             {/* En pantallas chicas los botones bajan a su propia fila (el texto no queda en una columna angosta) */}
             <div className="flex-1 min-w-[210px]">
