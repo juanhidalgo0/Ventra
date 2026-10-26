@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useProductReviews } from '../products/ProductReviews';
-import { ShoppingCart, ClipboardList, Sun, Printer, Bike } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -32,7 +32,7 @@ import {
   Smartphone,
   X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { MangoLogo as BrandLogo } from '../common/MangoLogo';
@@ -41,6 +41,11 @@ import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { menuAllows } from '../../stores/businessStore';
 import { ComingSoonBadge } from '../common/ComingSoon';
 import { COMING_SOON } from '../../utils/comingSoon';
+
+/** El logo real de GO (redondo, negro) en el tamaño de los íconos del menú */
+const GoIcon = ({ className = '' }: { className?: string }) => (
+  <img src="/godelivery-logo.jpg" alt="" className={`${className} rounded-full object-cover`} />
+);
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -101,6 +106,17 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
       prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
     );
   };
+
+  // GO Delivery: la vinculación es de la cuenta (se sincroniza a todas las PCs), así que se le
+  // pregunta a la caja en vez de depender de que esta PC haya abierto la pantalla de GO
+  const [goLinked, setGoLinked] = useState(() => localStorage.getItem('go_linked') === '1');
+  useEffect(() => {
+    if (user?.role !== 'ADMIN') return;
+    api.get('/go/status', { silent: true } as any).then(({ data }) => {
+      setGoLinked(!!data?.linked);
+      try { localStorage.setItem('go_linked', data?.linked ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    }).catch(() => { /* sin conexión: queda lo último que se supo */ });
+  }, [user?.role]);
 
   const ordersVisible = useOrdersVisible();
   const reviewCount = useProductReviews((s) => s.count);
@@ -174,8 +190,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             { label: 'Métricas y Ventas', path: '/online-store/metrics' },
           ]
         },
-        // GO Delivery: solo con la caja vinculada (se vincula desde Configuración → Integraciones)
-        ...(user?.role === 'ADMIN' && localStorage.getItem('go_linked') === '1' ? [{ label: 'GO Delivery', icon: Bike, path: '/go' }] : []),
+        // GO Delivery: con la cuenta vinculada (se vincula desde Configuración → Integraciones)
+        ...(user?.role === 'ADMIN' && goLinked ? [{ label: 'GO Delivery', icon: GoIcon, path: '/go' }] : []),
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),

@@ -161,13 +161,56 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     return match ? match.percentage : 0;
   };
 
+  /**
+   * Pago mixto: lo que se paga con el medio sin recargo (o con menos) cubre primero los productos
+   * que tienen recargo. Si el efectivo alcanza para los cigarrillos, no hay recargo; si alcanza para
+   * una parte, el recargo es solo sobre lo que falta. Devuelve el porcentaje efectivo de cada ítem.
+   * El monto del segundo pago se calcula del total con recargo, por eso se repite hasta que se asienta.
+   */
+  const mixedSurchargePercents = (items: any[]): number[] => {
+    const rows = items.map((item) => {
+      const product = products?.find((p: any) => p.id === item.productId);
+      const categoryId = item.categoryId || product?.categoryId;
+      const base = (item.price ?? (product ? product.salePrice : 0)) * item.quantity;
+      const p1 = categoryId ? getSurchargeForCategory(categoryId, mixedMethod1) : 0;
+      const p2 = categoryId ? getSurchargeForCategory(categoryId, mixedMethod2) : 0;
+      return { base, p1, p2 };
+    });
+    // Primero los que más ahorran si los cubre el medio más barato
+    const order = rows.map((_, i) => i).filter((i) => rows[i].p1 !== rows[i].p2 && rows[i].base > 0)
+      .sort((a, b) => Math.abs(rows[b].p1 - rows[b].p2) * rows[b].base - Math.abs(rows[a].p1 - rows[a].p2) * rows[a].base);
+    const baseTotal = rows.reduce((s, r) => s + r.base, 0);
+    let pcts = rows.map((r) => (r.p1 === r.p2 ? r.p1 : 0));
+    let surcharge = 0;
+    for (let round = 0; round < 6; round++) {
+      // El primer pago lo escribe el cajero; el segundo es lo que falta (total con recargo - primero)
+      const budget = [Math.max(0, mixedAmount1), Math.max(0, baseTotal + surcharge - mixedAmount1)];
+      const next = rows.map((r) => (r.p1 === r.p2 ? r.p1 : 0));
+      for (const i of order) {
+        const r = rows[i];
+        const cheap = r.p1 < r.p2 ? 0 : 1;
+        const covered = Math.min(budget[cheap], r.base);
+        budget[cheap] -= covered;
+        const lowP = Math.min(r.p1, r.p2);
+        const highP = Math.max(r.p1, r.p2);
+        next[i] = (covered * lowP + (r.base - covered) * highP) / r.base;
+      }
+      const nextSurcharge = rows.reduce((s, r, i) => s + r.base * next[i] / 100, 0);
+      pcts = next;
+      if (Math.abs(nextSurcharge - surcharge) < 0.5) break;
+      surcharge = nextSurcharge;
+    }
+    return pcts;
+  };
+
   const getAdjustedTotalAndItems = () => {
     let totalSurcharge = 0;
     const surchargedProductsList: { name: string; originalPrice: number; newPrice: number; percentage: number }[] = [];
     
     const baseItems = getCheckoutPayload();
-    
-    const adjustedItems = baseItems.map(item => {
+    const mixedPct = paymentType === 'MIXED' ? mixedSurchargePercents(baseItems) : [];
+
+    const adjustedItems = baseItems.map((item, index) => {
       const product = products?.find((p: any) => p.id === item.productId);
       const categoryId = item.categoryId || product?.categoryId;
       
@@ -177,17 +220,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       
       let percentage = 0;
       if (paymentType === 'MIXED') {
-        const p1 = getSurchargeForCategory(categoryId, mixedMethod1);
-        const p2 = getSurchargeForCategory(categoryId, mixedMethod2);
-        
-        const totalPay = mixedAmount1 + mixedAmount2;
-        if (totalPay > 0) {
-          const weight1 = mixedAmount1 / totalPay;
-          const weight2 = mixedAmount2 / totalPay;
-          percentage = (p1 * weight1) + (p2 * weight2);
-        } else {
-          percentage = Math.max(p1, p2);
-        }
+        percentage = mixedPct[index] || 0;
       } else if (paymentType) {
         percentage = getSurchargeForCategory(categoryId, paymentType);
       }

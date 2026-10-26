@@ -18,7 +18,7 @@ import CategoryPickerModal from './CategoryPickerModal';
 import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
 import toast from 'react-hot-toast';
-import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes, Bike } from 'lucide-react';
+import { Search, X, Minus, Plus, ShoppingCart, CreditCard, Banknote, Smartphone, Shuffle, Check, CheckCircle2, Package, RefreshCw, CornerDownLeft, CornerUpLeft, Repeat, Receipt, Truck, Monitor, History, LayoutDashboard, Tag, LogOut, Wallet, Lock, Unlock, Settings, Key, DollarSign, Server, User, Eye, EyeOff, Moon, Sun, Grid, List, Menu, Sparkles, Star, Calculator, Trash2, PauseCircle, AlertTriangle, Clock, Printer, FileText, Maximize2, LayoutGrid, Zap , Vault, HandCoins, ReceiptText, TrendingDown, ClipboardList, Boxes } from 'lucide-react';
 import { GoDeliveryLogo } from '../auth/ConnectionScreen';
 import QRCode from 'qrcode';
 import { wsService } from '../../services/websocket';
@@ -2741,7 +2741,7 @@ export default function POSScreen() {
             {/* Pedido de GO: al cobrarlo queda unido a la venta */}
             {activeGoOrder && cart.length > 0 && (
               <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200">
-                <Bike className="w-3.5 h-3.5 shrink-0" />
+                <GoMark size={16} />
                 <span className="min-w-0 truncate">
                   Pedido GO{activeGoOrder.number ? <> <strong>#{activeGoOrder.number}</strong></> : null}{activeGoOrder.driverName ? ` · ${activeGoOrder.driverName}` : ''}
                 </span>
