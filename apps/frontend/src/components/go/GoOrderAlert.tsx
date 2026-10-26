@@ -15,7 +15,7 @@ type Alert = { id: string; number?: string; count?: number; isShopper?: boolean 
 export function GoMark({ size = 36 }: { size?: number }) {
   return (
     <img src="/godelivery-logo.jpg" alt="GO" width={size} height={size}
-      className="rounded-full shrink-0 object-cover ring-2 ring-white/80" style={{ width: size, height: size }} />
+      className="rounded-full shrink-0 object-cover" style={{ width: size, height: size }} />
   );
 }
 
@@ -69,39 +69,47 @@ export default function GoOrderAlert() {
   if (!alerts.length) return null;
 
   // Franja arriba de la pantalla, dentro del diseño: corre el contenido hacia abajo mientras está y
-  // no tapa nada (ni la barra de arriba ni el ticket). Late entre negro y rojo oscuro para que se vea.
+  // no tapa nada. Con el estilo de la caja (blanco, grises, bordes finos): llama la atención el
+  // puntito que late y el sonido, no un fondo que parpadea.
   return (
     <div className="shrink-0 w-full flex flex-col">
       <style>{`
-        @keyframes go-alert-blink { 0%,100% { background-color: #0b0b0c; } 50% { background-color: #4c0519; } }
-        @keyframes go-alert-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes go-alert-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       `}</style>
       {alerts.map((a) => {
         const n = a.count || 0;
         return (
           <div key={a.id} role="alert"
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 text-white px-4 py-2.5 border-b-2 border-[#e11d48]"
-            style={{ animation: 'go-alert-in .25s ease-out, go-alert-blink 1.2s ease-in-out infinite' }}>
-            <GoMark size={46} />
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2"
+            style={{ animation: 'go-alert-in .2s ease-out' }}>
+            <GoMark size={30} />
             {/* En pantallas chicas los botones bajan a su propia fila (el texto no queda en una columna angosta) */}
-            <div className="flex-1 min-w-[210px]">
-              <div className="text-[15px] font-extrabold leading-tight">Pedido GO{a.number ? ` #${a.number}` : ''}</div>
-              <div className="text-[13px] text-white/75 leading-snug mt-0.5">
-                {a.isShopper
-                  ? `Un repartidor viene a comprar ${n} producto${n === 1 ? '' : 's'}: cobrale como a cualquier cliente.`
-                  : 'Hay un pedido nuevo para preparar.'}
+            <div className="flex-1 min-w-[210px] leading-snug">
+              <div className="flex items-center gap-2 text-[13.5px] text-slate-800 dark:text-slate-100">
+                <span className="relative flex w-2 h-2 shrink-0">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-rose-500 opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2 h-2 rounded-full bg-rose-500" />
+                </span>
+                <span>
+                  <b className="font-semibold">Pedido GO{a.number ? ` #${a.number}` : ''}</b>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {a.isShopper
+                      ? ` · Un repartidor viene a comprar ${n} producto${n === 1 ? '' : 's'}: cobrale como a cualquier cliente.`
+                      : ' · Hay un pedido nuevo para preparar.'}
+                  </span>
+                </span>
               </div>
               {a.isShopper && (
-                <div className="text-[11.5px] text-white/50 leading-snug mt-1">
-                  Es solo un aviso, no hace falta hacer nada. Si querés, “Ver pedido” te muestra lo que pidió y lo podés cargar en la caja para cobrar más rápido; si no, cerralo y cobrá normal.
+                <div className="text-[11.5px] text-slate-400 mt-0.5 pl-4">
+                  Es solo un aviso, no hace falta hacer nada. “Ver pedido” te muestra lo que pidió por si querés cargarlo en la caja.
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-1.5 ml-auto">
               <button onClick={() => { close(a.id); navigate('/go'); }}
-                className="h-10 px-4 rounded-xl bg-[#e11d48] hover:bg-[#be123c] text-white text-[13px] font-bold shrink-0">Ver pedido</button>
-              <button onClick={() => close(a.id)} aria-label="Cerrar aviso" className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center shrink-0">
-                <X className="w-5 h-5" />
+                className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[12.5px] font-semibold shrink-0">Ver pedido</button>
+              <button onClick={() => close(a.id)} aria-label="Cerrar aviso" className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center shrink-0">
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
