@@ -21,7 +21,7 @@ const fakeStore = (catalogItems, legacyDocs = null) => {
   };
 };
 
-const catalog = [[{ productId: "coca", price: 1500 }, { productId: "muzza", price: 9000 }], [{ productId: "napo", price: 11000 }]];
+const catalog = [[{ productId: "coca", price: 1500 }, { productId: "muzza", price: 9000 }], [{ productId: "napo", price: 12000 }]];
 const ref = fakeStore(catalog);
 const store = { catalogParts: 2 };
 
@@ -41,9 +41,11 @@ const t = async (name, fn) => {
   await t("con agregados (más caro que el producto): sin problema", async () => {
     assert.strictEqual(await priceProblem(ref, store, { items: [{ productId: "muzza", name: "Muzza + borde", price: 10500, qty: 1, extras: [{ name: "borde", price: 1500 }] }] }), null);
   });
-  await t("mitad y mitad: vale la más cara de las dos", async () => {
+  await t("mitad y mitad: la mitad de cada una, redondeado para arriba a $1.000", async () => {
+    // 9.000 y 12.000 → 10.500 → 11.000
     assert.strictEqual(await priceProblem(ref, store, { items: [{ productId: "muzza", half: { productId: "napo" }, name: "Mitad", price: 11000, qty: 1 }] }), null);
-    assert.ok(await priceProblem(ref, store, { items: [{ productId: "muzza", half: { productId: "napo" }, name: "Mitad", price: 9000, qty: 1 }] }));
+    assert.ok(await priceProblem(ref, store, { items: [{ productId: "muzza", half: { productId: "napo" }, name: "Mitad", price: 10500, qty: 1 }] }));
+    assert.strictEqual(await priceProblem(ref, store, { items: [{ productId: "muzza", half: { productId: "viejo" }, name: "Mitad", price: 1, qty: 1 }] }), null);
   });
   await t("producto que ya no está publicado: no se marca", async () => {
     assert.strictEqual(await priceProblem(ref, store, { items: [{ productId: "viejo", name: "Viejo", price: 1, qty: 1 }] }), null);

@@ -49,6 +49,9 @@ function wholesaleFloor(x, it, unitsByProduct) {
   return per * size;
 }
 
+/** Mitad y mitad: la mitad de cada pizza, redondeado para arriba a $1.000. Misma cuenta que halfPrice en la tienda. */
+const halfPrice = (a, b) => Math.ceil(Math.round((Number(a) + Number(b)) / 2) / 1000) * 1000;
+
 const money = (n) => `$${Math.round(Number(n) || 0).toLocaleString("es-AR")}`;
 
 /** Texto del problema, o null si los precios están bien (o no se pueden comparar). */
@@ -72,7 +75,9 @@ async function priceProblem(storeRef, store, order) {
     // Un producto que ya no está publicado no se puede comparar: no se marca
     if (!known.length) continue;
     const pub = products.get(String(it.productId));
-    const base = wholesale && pub && !it.half ? wholesaleFloor(pub, it, unitsByProduct) : Math.max(...known);
+    // Mitad y mitad con un gusto que ya no está publicado: no se puede sacar la cuenta
+    if (it.half && known.length < 2) continue;
+    const base = it.half ? halfPrice(known[0], known[1]) : wholesale && pub ? wholesaleFloor(pub, it, unitsByProduct) : known[0];
     const paid = Number(it.price);
     if (!Number.isFinite(paid) || paid < base - 1) {
       lower.push(`${String(it.name || it.title || "Producto").slice(0, 60)}: ${Number.isFinite(paid) ? money(paid) : "sin precio"} (publicado ${money(base)})`);
@@ -83,4 +88,4 @@ async function priceProblem(storeRef, store, order) {
   return `Precios más bajos que los publicados: ${lower.slice(0, 5).join("; ")}${more}`;
 }
 
-module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor };
+module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor, halfPrice };

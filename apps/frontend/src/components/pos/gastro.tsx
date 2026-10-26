@@ -98,7 +98,8 @@ export function setItemNote(cartKey: string, note: string) {
 
 /**
  * Convierte una pizza del ticket en mitad y mitad con otra del mismo tamaño: se cobra la mitad
- * del precio de cada una (y la venta registra media pizza de cada una, ver getCheckoutPayload).
+ * del precio de cada una, redondeado para arriba a $1.000 como en la tienda online (22.500 → 23.000),
+ * y la venta registra media pizza de cada una (ver getCheckoutPayload).
  */
 export function makeHalf(cartKey: string, otherId: string) {
   const st = usePOSStore.getState();
@@ -106,8 +107,11 @@ export function makeHalf(cartKey: string, otherId: string) {
   const a = st.products.find((p) => p.id === item?.productId);
   const b = st.products.find((p) => p.id === otherId);
   if (!item || !a || !b) return;
-  const pa = Number(a.salePrice) || 0, pb = Number(b.salePrice) || 0;
-  const price = Math.round(((pa + pb) / 2) * 100) / 100;
+  const sa = Number(a.salePrice) || 0, sb = Number(b.salePrice) || 0;
+  const price = Math.ceil(Math.round((sa + sb) / 2) / 1000) * 1000;
+  // El redondeo se reparte entre las dos mitades, así la venta suma lo cobrado
+  const up = price - (sa + sb) / 2;
+  const pa = sa + up, pb = sb + up;
   const size = sizeOf(a);
   const half = {
     ...item,

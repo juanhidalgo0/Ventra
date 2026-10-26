@@ -634,7 +634,7 @@ function unitOf(key){
   var p=S.byId[pidOf(key)], h=halfOf(key), base=p?p.price:0;
   // Venta a comercios: el bulto (o la unidad) con la oferta por cantidad
   if(p && WS() && (lineSize(key)>1 || offerOf(p))){ var sz=lineSize(key); return r2(perUnit(p,sz)*sz); }
-  if(h) base=Math.max(base,h.price); return base+extrasOf(key).reduce(function(a,x){ return a+(Number(x.price)||0); },0);
+  if(h) base=halfPrice(base,h.price); return base+extrasOf(key).reduce(function(a,x){ return a+(Number(x.price)||0); },0);
 }
 /* Nombre de la línea: "Mitad Muzzarela / mitad Napolitana (Grande)" en mitad y mitad */
 function lineTitle(key){
@@ -1045,11 +1045,15 @@ function ordersPaused(){
 }
 /* ¿Se puede enviar el pedido ahora? (cocina abierta y pedidos no pausados) */
 function cantOrder(){ var k=kitchenClosed(); if(k) return 'Ahora estamos cerrados ('+k.text.replace(/^Cerrado · /,'')+'). Podés dejar el pedido armado y enviarlo cuando abramos.'; var pz=ordersPaused(); if(pz) return 'Estamos con muchos pedidos. '+pz.text+'. Podés dejar el pedido armado y enviarlo en un rato.'; return null; }
-/* Mitad y mitad: pizzas de las categorías habilitadas; se cobra la mitad más cara */
+/* Mitad y mitad: en gastronomía, las pizzas (o las categorías que elija el comercio) se piden con dos gustos.
+   Se cobra la mitad de cada una, redondeado para arriba a múltiplos de $1.000 (22.500 → 23.000).
+   Misma cuenta que halfPrice en firebase/functions/order-check.js y makeHalf en la caja. */
+function halfPrice(a,b){ return Math.ceil(Math.round(((Number(a)||0)+(Number(b)||0))/2)/1000)*1000; }
 function halfOk(p){
-  var h=S.cfg.halfHalf; if(!S.food||!h||!h.enabled) return false;
+  var h=S.cfg.halfHalf||{}; if(!S.food||h.enabled===false) return false;
   var cats=h.categories||[], ex=h.excludeIds||[];
-  if(cats.indexOf(p.category)<0 && !(p.parentCategory&&cats.indexOf(p.parentCategory)>=0)) return false;
+  if(cats.length){ if(cats.indexOf(p.category)<0 && !(p.parentCategory&&cats.indexOf(p.parentCategory)>=0)) return false; }
+  else if(!/pizza/i.test((p.parentCategory||'')+' '+(p.category||'')+' '+(p.name||''))) return false;
   if(ex.indexOf(p.id)>=0) return false;
   if(p.isGroup && p.variants.every(function(v){ return ex.indexOf(v.id)>=0; })) return false;
   return true;
@@ -1413,24 +1417,24 @@ function renderProductSheet(id){
           +'<b>'+esc(o.name)+'</b><span class="p extra">'+(Number(o.price)>0?'+ '+money(o.price):'Sin cargo')+'</span></button>';
       }).join('')+'</div>';
   });
-  // Mitad y mitad: la segunda mitad del mismo tamaño, se cobra la más cara
+  // Mitad y mitad: la segunda mitad del mismo tamaño, se cobra la mitad de cada una
   var half='';
   if(halfOk(p) && !out){
     var others=S.products.filter(function(o){ return o.id!==p.id && halfOk(o) && halfPartner(o,sel); });
     if(others.length){
       var hv=S.pdHalf?S.byId[S.pdHalf]:null;
       if(hv && (!halfPartner(S.byId[hv.groupId]||hv,sel) || halfPartner(S.byId[hv.groupId]||hv,sel).id!==hv.id)){ var og=S.byId[hv.groupId]||hv; hv=halfPartner(og,sel); S.pdHalf=hv?hv.id:null; }
-      half='<button class="half-toggle'+(S.pdHalfOn?' on':'')+'" data-act="pd-half"><span class="half-ic"></span><b>Mitad y mitad<small>Elegí otro gusto para la otra mitad. Se cobra la más cara.</small></b></button>';
+      half='<button class="half-toggle'+(S.pdHalfOn?' on':'')+'" data-act="pd-half"><span class="half-ic"></span><b>Mitad y mitad<small>Elegí otro gusto para la otra mitad. Se cobra la mitad de cada una.</small></b></button>';
       if(S.pdHalfOn){
         half+='<p class="opt-title">Otra mitad</p><div class="opts">'+others.map(function(o){
           var v=halfPartner(o,sel), on=S.pdHalf===v.id;
-          return '<button class="opt-row'+(on?' on':'')+'" data-act="pd-half-pick" data-id="'+esc(v.id)+'"><span class="rad"></span><b>'+esc(o.name)+'</b><span class="p extra">'+(v.price>sel.price?'+ '+money(v.price-sel.price):'')+'</span></button>';
+          return '<button class="opt-row'+(on?' on':'')+'" data-act="pd-half-pick" data-id="'+esc(v.id)+'"><span class="rad"></span><b>'+esc(o.name)+'</b><span class="p extra">'+money(halfPrice(sel.price,v.price))+'</span></button>';
         }).join('')+'</div>';
       }
     }
   }
   var halfV=S.pdHalfOn&&S.pdHalf?S.byId[S.pdHalf]:null;
-  var unit=Math.max(sel.price,halfV?halfV.price:0)+extraSum;
+  var unit=(halfV?halfPrice(sel.price,halfV.price):sel.price)+extraSum;
   $('#productSheet').innerHTML='<div class="grab"></div>'
     +'<div class="sheet-head"><h3></h3><button class="sheet-close" data-act="close" aria-label="Cerrar">'+ic('x')+'</button></div>'
     +'<div class="sheet-body">'+(S.food&&!(sel.imageUrl||p.imageUrl)?'':'<div class="pd-img">'+imgOrPh(sel.imageUrl||p.imageUrl,p.name)+'</div>')
