@@ -10,14 +10,12 @@ import { wsService } from '../../services/websocket';
  */
 type Alert = { id: string; number?: string; count?: number; isShopper?: boolean };
 
-/** Logo de GO: el círculo negro con "GO!" y el punto rojo de la marca */
-export function GoMark({ size = 36, inverted = false }: { size?: number; inverted?: boolean }) {
+/** El logo real de GO (public/godelivery-logo.jpg: "GO!" blanco sobre negro), en círculo con borde blanco
+ *  para que se distinga sobre fondos oscuros */
+export function GoMark({ size = 36 }: { size?: number }) {
   return (
-    <span className={`relative inline-flex items-center justify-center rounded-full font-black shrink-0 ${inverted ? 'bg-white text-[#0b0b0c]' : 'bg-[#0b0b0c] text-white'}`}
-      style={{ width: size, height: size, fontSize: size * 0.36, letterSpacing: '-0.04em' }}>
-      GO!
-      <span className="absolute rounded-full bg-[#e11d48]" style={{ width: size * 0.2, height: size * 0.2, top: size * 0.04, right: size * 0.04 }} />
-    </span>
+    <img src="/godelivery-logo.jpg" alt="GO" width={size} height={size}
+      className="rounded-full shrink-0 object-cover ring-2 ring-white/80" style={{ width: size, height: size }} />
   );
 }
 
@@ -84,7 +82,7 @@ export default function GoOrderAlert() {
           <div key={a.id} role="alert"
             className="flex flex-wrap items-center gap-x-3 gap-y-2 text-white px-4 py-2.5 border-b-2 border-[#e11d48]"
             style={{ animation: 'go-alert-in .25s ease-out, go-alert-blink 1.2s ease-in-out infinite' }}>
-            <GoMark size={48} inverted />
+            <GoMark size={46} />
             {/* En pantallas chicas los botones bajan a su propia fila (el texto no queda en una columna angosta) */}
             <div className="flex-1 min-w-[210px]">
               <div className="text-[15px] font-extrabold leading-tight">Pedido GO{a.number ? ` #${a.number}` : ''}</div>
