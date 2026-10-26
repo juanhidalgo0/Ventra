@@ -661,7 +661,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     if (!l) return;
     const [last]: any[] = await this.prisma.$queryRawUnsafe(`SELECT MAX(created_ms) AS m FROM go_orders`);
     const open: any[] = await this.prisma.$queryRawUnsafe(
-      `SELECT id FROM go_orders WHERE status NOT IN ('completed','delivered','cancelled') AND created_ms > ? ORDER BY created_ms DESC LIMIT 100`,
+      `SELECT id, number FROM go_orders WHERE status NOT IN ('completed','delivered','cancelled') AND created_ms > ? ORDER BY created_ms DESC LIMIT 100`,
       Date.now() - 4 * 864e5);
     let r: any;
     try {
@@ -700,6 +700,15 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
         o.customer || null, o.driverName || null, o.paymentMethod || null,
         num(o.subtotal), num(o.estimatedSubtotal), num(o.total), num(o.deliveryCost), JSON.stringify(o.items || []), f,
       );
+    }
+    // Los abiertos que pedimos por id y GO no devolvió ya no existen (se borraron desde GO, por
+    // ejemplo con "eliminar pedido de la base"): se cierran acá, si no quedaban "en curso" para siempre
+    const returned = new Set((r.orders || []).map((o: any) => o.id));
+    for (const g of open.filter((o) => !returned.has(o.id))) {
+      const n = await this.prisma.$executeRawUnsafe(
+        `UPDATE go_orders SET status = 'cancelled', cancelled_ms = ?, cancel_reason = 'Eliminado en GO', fingerprint = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND status NOT IN ('completed','delivered','cancelled')`, Date.now(), g.id);
+      if (n) try { this.events.server?.emit('go:order', { type: 'status', id: g.id, number: g.number, status: 'cancelled' }); } catch { /* sin pantallas conectadas */ }
     }
     // Avisos en esta caja: pedido nuevo (de los últimos 30 minutos) o cambio de estado
     for (const o of r.orders || []) {
