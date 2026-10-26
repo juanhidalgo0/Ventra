@@ -168,14 +168,31 @@ function isSyncingInFull(uid) {
   return !!st && ['full', 'restoring'].includes(st.phase) && Date.now() - Date.parse(st.at) < 3 * 60 * 1000;
 }
 
+// La caja que publica en GO deja la marca go-keepalive (apps/backend/.../go.service.ts): siempre
+// prendida, si no los pedidos y los precios no viajan mientras nadie la usa
+const keepsAlive = (uid) => fs.existsSync(path.join(tenantDir(uid), 'go-keepalive'));
+
 // Apaga las cajas sin uso
 setInterval(() => {
   for (const [uid, t] of tenants) {
-    if (Date.now() - t.lastUsed <= CFG.idleMs || isSyncingInFull(uid)) continue;
+    if (Date.now() - t.lastUsed <= CFG.idleMs || isSyncingInFull(uid) || keepsAlive(uid)) continue;
     log(`Apagando la caja de ${uid} (sin uso)`);
     stopTenant(uid);
   }
 }, 60 * 1000).unref();
+
+// Al arrancar (y cada minuto, por si una se cayó) levanta las que publican en GO
+function startKeepAlive() {
+  let dirs = [];
+  try { dirs = fs.readdirSync(CFG.dataDir); } catch { return; }
+  for (const uid of dirs) {
+    if (tenants.has(uid) || !/^[A-Za-z0-9_-]{6,128}$/.test(uid) || !keepsAlive(uid)) continue;
+    log(`Levantando la caja de ${uid} (publica en GO)`);
+    ensureTenant(uid).catch((err) => log(`La caja de ${uid} (GO) no arrancó: ${err.message}`));
+  }
+}
+setTimeout(startKeepAlive, 5000).unref();
+setInterval(startKeepAlive, 60 * 1000).unref();
 
 // ── Entrada con Google ─────────────────────────────────
 /**

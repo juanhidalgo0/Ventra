@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy, BadRequestException 
 import axios from 'axios';
 import * as crypto from 'crypto';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
 import { AiService } from '../ai/ai.service';
@@ -13,8 +15,11 @@ import { AiService } from '../ai/ai.service';
  * caja recibe una clave propia del comercio (no la del administrador de GO, como la conexión vieja
  * de FirebaseSyncService, que con el puente vinculado no arranca).
  *
- * Una sola PC del comercio hace el trabajo (go_link.poller_host): publica y recibe los pedidos.
- * Los cambios hechos en otras cajas le llegan por el sync y los publica en la próxima comparación.
+ * Una sola caja publica el catálogo (go_link.poller_host), para no mandar todo dos veces; los
+ * cambios hechos en las otras le llegan por el sync y los publica en la próxima comparación. Esa
+ * caja da señales (poller_seen_ms): si deja de darlas 10 minutos, la primera que esté prendida
+ * toma su lugar, y una PC siempre se lo toma a la caja web (que se apaga sin uso). Los pedidos
+ * los consultan todas.
  *
  *   go_link        (sync)  la vinculación y qué se publica
  *   go_products    (sync)  producto por producto: publicar sí/no (por encima de la regla general),
@@ -42,7 +47,12 @@ type Link = {
   fulfillment_mode: string | null; shopper_max_total: number | null;
   publish_mode: string; publish_categories: string | null; sync_stock: number;
   poller_host: string | null; linked_at: string | null;
+  poller_kind?: string | null; poller_seen_ms?: number | null;
 };
+
+/** Sin señales de la caja que publica en este tiempo, otra toma su lugar */
+const PUBLISHER_STALE_MS = 10 * 60_000;
+const IS_CLOUD = process.env.VENTRA_NODE_KIND === 'cloud';
 
 // SQLite devuelve algunos enteros (COUNT, length) como BigInt
 const fp = (v: unknown) => crypto.createHash('sha1').update(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? Number(x) : x))).digest('hex');
@@ -107,6 +117,9 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     );`);
     // Rubro de la tienda de GO ("Rubro › Subrubro", de la IA) y cuándo el repartidor no lo encontró
     await run(`ALTER TABLE "go_products" ADD COLUMN "go_category" TEXT`).catch(() => { /* ya estaba */ });
+    // Qué caja publica (pc / cloud) y su última señal
+    await run(`ALTER TABLE "go_link" ADD COLUMN "poller_kind" TEXT`).catch(() => { /* ya estaba */ });
+    await run(`ALTER TABLE "go_link" ADD COLUMN "poller_seen_ms" REAL`).catch(() => { /* ya estaba */ });
     await run(`ALTER TABLE "go_products" ADD COLUMN "missing_at" REAL`).catch(() => { /* ya estaba */ });
     await run(`CREATE TABLE IF NOT EXISTS "go_orders" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -233,7 +246,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
 
   /** Esta PC pasa a ser la que publica y recibe los pedidos */
   async makeMainPc() {
-    await this.prisma.$executeRawUnsafe(`UPDATE go_link SET poller_host = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`, this.host);
+    await this.prisma.$executeRawUnsafe(`UPDATE go_link SET poller_host = ?, poller_kind = ?, poller_seen_ms = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`, this.host, IS_CLOUD ? 'cloud' : 'pc', Date.now());
     await this.prisma.$executeRawUnsafe(`DELETE FROM go_published`); // no sabe qué mandó la otra: compara todo de nuevo
     await this.getLink(true);
     this.lastFullAt = 0;
@@ -349,10 +362,11 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       SELECT p.id, p.barcode, p.name, p.description, CAST(p.sale_price AS REAL) AS sale_price, CAST(p.stock AS REAL) AS stock,
              p.unlimited_stock, p.unit, p.category_id, c.name AS category,
              length(p.image_url) AS img_len, substr(p.image_url, 1, 40) AS img_head, substr(p.image_url, -40) AS img_tail,
-             g.publish AS override, g.go_category, g.missing_at${sold ? ', ls.last_sold' : ''}
+             g.publish AS override, g.go_category, g.missing_at, sc.percentage AS sc_pct, sc.payment_methods AS sc_pm${sold ? ', ls.last_sold' : ''}
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN go_products g ON g.id = p.id
+      LEFT JOIN surcharges sc ON sc.category_id = p.category_id
       ${sold ? `LEFT JOIN (SELECT si.product_id AS pid, MAX(s.created_at) AS last_sold FROM sale_items si JOIN sales s ON s.id = si.sale_id
                  WHERE s.status = 'COMPLETED' GROUP BY si.product_id) ls ON ls.pid = p.id` : ''}
       WHERE p.is_active = 1`);
@@ -375,7 +389,10 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
         else published = true;
       }
       else { published = cats.has(r.category_id || NO_CATEGORY); if (!published) reason = 'Rubro sin publicar'; }
-      return { ...r, name: String(r.name || ''), override, published, reason };
+      // Recargo del rubro al pagar con transferencia (en la caja: Mercado Pago o transferencia)
+      const pms = String(r.sc_pm || '').split(',').map((x) => x.trim().toUpperCase());
+      const transferSurcharge = num(r.sc_pct) > 0 && (pms.includes('MERCADOPAGO') || pms.includes('TRANSFER')) ? num(r.sc_pct) : 0;
+      return { ...r, name: String(r.name || ''), override, published, reason, transferSurcharge };
     });
   }
 
@@ -495,9 +512,34 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
     return this.running;
   }
 
+  /**
+   * ¿Esta caja publica el catálogo? La que publica deja su señal cada 2 minutos. Si no hay señal
+   * hace 10 minutos (apagada), toma el lugar la primera que esté prendida; una PC además se lo
+   * toma a la caja web, que se apaga sin uso: así publica la PC del kiosco, siempre prendida.
+   */
+  private async claimPublisher(l: Link): Promise<boolean> {
+    const now = Date.now();
+    const seen = num(l.poller_seen_ms);
+    if (l.poller_host === this.host) {
+      if (now - seen > 2 * 60_000) {
+        await this.prisma.$executeRawUnsafe(`UPDATE go_link SET poller_seen_ms = ?, poller_kind = ? WHERE id = 'main'`, now, IS_CLOUD ? 'cloud' : 'pc');
+        await this.getLink(true);
+      }
+      return true;
+    }
+    const stale = now - seen > PUBLISHER_STALE_MS;
+    if (!stale && (IS_CLOUD || l.poller_kind !== 'cloud')) return false;
+    this.logger.log(`GO: esta caja publica el catálogo desde ahora (antes ${l.poller_host}${stale ? ', sin señales' : ', la caja web'})`);
+    await this.prisma.$executeRawUnsafe(`UPDATE go_link SET poller_host = ?, poller_kind = ?, poller_seen_ms = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`,
+      this.host, IS_CLOUD ? 'cloud' : 'pc', now);
+    await this.getLink(true);
+    this.lastFullAt = 0; // la primera vez compara y manda todo
+    return true;
+  }
+
   private async doReconcile() {
     const l = await this.getLink();
-    if (!l || l.poller_host !== this.host) return;
+    if (!l || !(await this.claimPublisher(l))) return;
     const syncStock = !!l.sync_stock;
     const all = await this.candidates(l);
     const wanted = all.filter((r) => r.published);
@@ -512,7 +554,7 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
       r.pairs = st?.pairs || [];
       // Las ventas van por escalón (1, 2, 4, 8…): así no se reenvía el producto en cada venta
       const dataFp = fp([r.name, num(r.sale_price), r.barcode || '', r.category || '', r.go_category || '', r.description || '', syncStock ? (r.unlimited_stock ? 'inf' : Math.max(0, Math.floor(num(r.stock)))) : '',
-        Math.round(Math.log2(r.sold + 1)), r.pairs.join('|')]);
+        Math.round(Math.log2(r.sold + 1)), r.pairs.join('|'), r.transferSurcharge || 0]);
       const imageFp = r.img_len ? fp([r.img_len, r.img_head, r.img_tail]) : null;
       const prev = sentMap.get(r.id);
       if (!prev || prev.data_fp !== dataFp || (prev.image_fp || null) !== imageFp) {
@@ -544,6 +586,8 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
             ...(!realCategory(c.r.category) && c.r.go_category ? { goCategory: c.r.go_category } : {}),
             // "Lo más vendido" y "Combiná con…" de la tienda
             sold: c.r.sold, pairs: c.r.pairs,
+            // % que se suma si el cliente paga con transferencia (Configuración → Recargos de la caja)
+            transferSurcharge: c.r.transferSurcharge || 0,
             ...(syncStock ? { stock: c.r.unlimited_stock ? 9999 : Math.max(0, Math.floor(num(c.r.stock))) } : {}),
             ...(image ? { image } : {}),
           });
@@ -587,9 +631,34 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
 
   // ───────────────────────────────────────────── pedidos
 
+  // Avisos ya dados en esta caja (el pedido puede llegar por la sincronización antes de consultarlo)
+  private alerted = new Set<string>();
+  private seenStatus = new Map<string, string>();
+
+  /**
+   * En la nube, la caja que publica en GO deja una marca en su carpeta: el anfitrión
+   * (apps/cloud-host/host.js) no la apaga por falta de uso y la vuelve a levantar si se reinicia.
+   * Si no, mientras nadie la usaba no viajaban ni los pedidos ni los precios.
+   */
+  private keepAlive(l: Link | null) {
+    if (process.env.VENTRA_NODE_KIND !== 'cloud') return;
+    const file = path.join(process.cwd(), 'go-keepalive');
+    try {
+      if (l && l.poller_host === this.host) fs.writeFileSync(file, String(Date.now()));
+      else if (fs.existsSync(file)) fs.unlinkSync(file);
+    } catch { /* sin disco: el anfitrión la apaga como antes */ }
+  }
+
+  /**
+   * Pedidos de GO. Los consultan todas las cajas vinculadas (no solo la que publica el catálogo):
+   * así la PC del kiosco, que está siempre prendida, avisa y tiene sus números aunque la caja
+   * web esté apagada. Escribir el mismo pedido desde dos cajas no hace daño: si no cambió
+   * (misma huella) no se escribe.
+   */
   async pollOrders() {
     const l = await this.getLink();
-    if (!l || l.poller_host !== this.host) return;
+    this.keepAlive(l);
+    if (!l) return;
     const [last]: any[] = await this.prisma.$queryRawUnsafe(`SELECT MAX(created_ms) AS m FROM go_orders`);
     const open: any[] = await this.prisma.$queryRawUnsafe(
       `SELECT id FROM go_orders WHERE status NOT IN ('completed','delivered','cancelled') AND created_ms > ? ORDER BY created_ms DESC LIMIT 100`,
@@ -631,10 +700,18 @@ export class GoService implements OnModuleInit, OnModuleDestroy {
         o.customer || null, o.driverName || null, o.paymentMethod || null,
         num(o.subtotal), num(o.estimatedSubtotal), num(o.total), num(o.deliveryCost), JSON.stringify(o.items || []), f,
       );
-      // Aviso discreto en las cajas: pedido nuevo, o el repartidor ya está comprando
+    }
+    // Avisos en esta caja: pedido nuevo (de los últimos 30 minutos) o cambio de estado
+    for (const o of r.orders || []) {
       try {
-        if (!prev && !FINAL.includes(o.status)) this.events.server?.emit('go:order', { type: 'new', id: o.id, number: o.number, count: (o.items || []).length, isShopper: o.isShopper });
-        else if (prev && prev.status !== o.status) this.events.server?.emit('go:order', { type: 'status', id: o.id, number: o.number, status: o.status });
+        const fresh = num(o.createdAt) > Date.now() - 30 * 60_000;
+        if (!this.alerted.has(o.id)) {
+          this.alerted.add(o.id);
+          if (fresh && !FINAL.includes(o.status)) this.events.server?.emit('go:order', { type: 'new', id: o.id, number: o.number, count: (o.items || []).length, isShopper: o.isShopper, status: o.status });
+        } else if (this.seenStatus.get(o.id) !== o.status) {
+          this.events.server?.emit('go:order', { type: 'status', id: o.id, number: o.number, status: o.status, isShopper: o.isShopper });
+        }
+        this.seenStatus.set(o.id, o.status);
       } catch { /* sin pantallas conectadas */ }
     }
     this.lastError = '';

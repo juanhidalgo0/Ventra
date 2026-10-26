@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useTransition, useMemo } 
 import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
 import GoOrdersModal from '../go/GoOrdersModal';
 import { useGoOpenOrders } from '../go/goOrders';
+import { GoMark } from '../go/GoOrderAlert';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useWorkRole } from '../../services/workRole';
@@ -1915,10 +1916,10 @@ export default function POSScreen() {
 
           {/* GO Delivery: pedidos en curso (el repartidor viene a comprar al mostrador) */}
           {goOrders.length > 0 && (
-            <button onClick={() => setShowGoOrders(true)} className={`${hdrBtn} bg-emerald-700 hover:bg-emerald-800`}>
-              <Bike strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
-              {hdrLabel('GO', 'GO')}
-              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-200 text-emerald-900 text-[11px] font-bold flex items-center justify-center">{goOrders.length}</span>
+            <button onClick={() => setShowGoOrders(true)} className={`${hdrBtn} bg-[#0b0b0c] hover:bg-black ring-2 ring-[#e11d48] animate-pulse`}>
+              <GoMark size={22} />
+              {hdrLabel('Pedido GO', 'GO')}
+              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#e11d48] text-white text-[11px] font-bold flex items-center justify-center">{goOrders.length}</span>
               {headerMode === 2 && <span className={hdrTip}>Pedidos de GO</span>}
             </button>
           )}

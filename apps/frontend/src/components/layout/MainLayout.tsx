@@ -17,6 +17,7 @@ import { getClientId } from '../../utils/clientId';
 import { isLogoutHeld } from '../../utils/logoutHold';
 import { startOverlayWatchdog } from '../../utils/overlayWatchdog';
 import GuidedTour from '../common/tour/GuidedTour';
+import GoOrderAlert from '../go/GoOrderAlert';
 import OfflineStartBanner from '../common/OfflineStartBanner';
 import { offlineStartedWith, dataState } from '../../services/offlineStart';
 import { useTourStore } from '../common/tour/tourStore';
@@ -78,16 +79,11 @@ export default function MainLayout({ children }: Props) {
     return () => wsService.off('auth:force-logout', onForceLogout);
   }, []);
 
-  // GO Delivery: aviso chico cuando entra un pedido (el repartidor viene a comprar al mostrador
-  // y se le cobra como a cualquier cliente). No cambia la pantalla de cobro.
+  // GO Delivery: el pedido nuevo lo avisa GoOrderAlert (cartel con logo, sonido y vibración);
+  // acá solo la cancelación. No cambia la pantalla de cobro.
   useEffect(() => {
-    const onGoOrder = (e: { type: string; number?: string; count?: number; isShopper?: boolean; status?: string }) => {
-      if (e.type === 'new') {
-        const n = e.count || 0;
-        toast(e.isShopper
-          ? `🛵 Pedido GO${e.number ? ` #${e.number}` : ''}: un repartidor viene a comprar ${n} producto${n === 1 ? '' : 's'}`
-          : `🛵 Pedido GO${e.number ? ` #${e.number}` : ''} nuevo`, { duration: 8000 });
-      } else if (e.type === 'status' && e.status === 'cancelled') {
+    const onGoOrder = (e: { type: string; number?: string; status?: string }) => {
+      if (e.type === 'status' && e.status === 'cancelled') {
         toast(`Pedido GO${e.number ? ` #${e.number}` : ''} cancelado`, { duration: 6000 });
       }
     };
@@ -350,7 +346,7 @@ export default function MainLayout({ children }: Props) {
   }
 
   if (ownerMobile.active) {
-    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /><ProductReviewWatcher /></MobileShell>;
+    return <MobileShell><PlanGate mobile>{children}</PlanGate><WelcomeSetup mobile /><StoreNameRequired mobile /><DemoPlanSwitcher mobile /><GuidedTour /><ClientPreview /><ProductReviewWatcher /><GoOrderAlert /></MobileShell>;
   }
 
   return (
@@ -473,6 +469,7 @@ export default function MainLayout({ children }: Props) {
       {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
       {isPOS && <HelpMenu pathname={location.pathname} placement="floating" />}
       <GuidedTour />
+      <GoOrderAlert />
       <OfflineStartBanner />
       <ClientPreview />
 
