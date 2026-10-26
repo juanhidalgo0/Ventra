@@ -11,9 +11,9 @@ import { wsService } from '../../services/websocket';
 type Alert = { id: string; number?: string; count?: number; isShopper?: boolean };
 
 /** Logo de GO: el círculo negro con "GO!" y el punto rojo de la marca */
-export function GoMark({ size = 36 }: { size?: number }) {
+export function GoMark({ size = 36, inverted = false }: { size?: number; inverted?: boolean }) {
   return (
-    <span className="relative inline-flex items-center justify-center rounded-full bg-[#0b0b0c] text-white font-black shrink-0"
+    <span className={`relative inline-flex items-center justify-center rounded-full font-black shrink-0 ${inverted ? 'bg-white text-[#0b0b0c]' : 'bg-[#0b0b0c] text-white'}`}
       style={{ width: size, height: size, fontSize: size * 0.36, letterSpacing: '-0.04em' }}>
       GO!
       <span className="absolute rounded-full bg-[#e11d48]" style={{ width: size * 0.2, height: size * 0.2, top: size * 0.04, right: size * 0.04 }} />
@@ -80,10 +80,11 @@ export default function GoOrderAlert() {
         const n = a.count || 0;
         return (
           <div key={a.id} role="alert"
-            className="flex items-center gap-3 rounded-2xl bg-[#0b0b0c] text-white px-4 py-3 border-2 border-[#e11d48]"
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[#0b0b0c] text-white px-4 py-3 border-2 border-[#e11d48]"
             style={{ animation: 'go-alert-in .25s ease-out, go-alert-blink 1.1s ease-in-out infinite' }}>
-            <GoMark size={46} />
-            <div className="flex-1 min-w-0">
+            <GoMark size={48} inverted />
+            {/* En pantallas chicas los botones bajan a su propia fila (el texto no queda en una columna angosta) */}
+            <div className="flex-1 min-w-[210px]">
               <div className="text-[15px] font-extrabold leading-tight">Pedido GO{a.number ? ` #${a.number}` : ''}</div>
               <div className="text-[13px] text-white/75 leading-snug mt-0.5">
                 {a.isShopper
@@ -96,11 +97,13 @@ export default function GoOrderAlert() {
                 </div>
               )}
             </div>
-            <button onClick={() => { close(a.id); navigate('/go'); }}
-              className="h-10 px-4 rounded-xl bg-[#e11d48] hover:bg-[#be123c] text-white text-[13px] font-bold shrink-0">Ver pedido</button>
-            <button onClick={() => close(a.id)} aria-label="Cerrar aviso" className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center shrink-0">
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={() => { close(a.id); navigate('/go'); }}
+                className="h-10 px-4 rounded-xl bg-[#e11d48] hover:bg-[#be123c] text-white text-[13px] font-bold shrink-0">Ver pedido</button>
+              <button onClick={() => close(a.id)} aria-label="Cerrar aviso" className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         );
       })}
