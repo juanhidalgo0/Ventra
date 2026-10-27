@@ -35,7 +35,7 @@ import WelcomeSetup from '../onboarding/WelcomeSetup';
 import StoreNameRequired from '../onboarding/StoreNameRequired';
 import { hasFeature } from '../../stores/businessStore';
 import { deviceStart, START_PATH } from '../distribuidora/StartChooser';
-import { myWorkRole, WORK_PATH, type WorkRole } from '../../services/workRole';
+import { myWorkRole, useWorkRole, WORK_PATH, isProductionRole, PRODUCTION_PATHS, type WorkRole } from '../../services/workRole';
 import DemoPlanSwitcher from '../subscription/DemoPlanSwitcher';
 import { GettingStartedPill } from '../onboarding/GettingStarted';
 
@@ -270,6 +270,13 @@ export default function MainLayout({ children }: Props) {
       })
       .catch(() => {});
   }, [ownerMobile.active, location.pathname, isAdminUser]);
+  // Imprenta: Taller y Diseño trabajan solo en los encargos (sin caja, precios ni cobros).
+  // Si el dueño puso su clave en ese equipo (Configuración), puede ir a lo demás.
+  const workRoleNow = useWorkRole();
+  useEffect(() => {
+    if (sessionStorage.getItem('admin_unlocked') === 'true') return;
+    if (isProductionRole(workRoleNow) && !PRODUCTION_PATHS.includes(location.pathname)) navigate('/encargos', { replace: true });
+  }, [workRoleNow, location.pathname]);
   const isMobileOnlyPath = location.pathname === '/inicio' || location.pathname === '/mas';
   useEffect(() => {
     // Las pantallas de la app móvil no existen en la versión completa

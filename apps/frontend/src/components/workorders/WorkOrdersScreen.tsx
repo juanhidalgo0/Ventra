@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Plus, Search, X, Loader2, Check, Trash2, Printer, MessageCircle, Wallet, PackageCheck, Pencil, Ban,
-  CalendarClock, Phone, ClipboardList, Store, AlertTriangle, Clock,
+  CalendarClock, Phone, ClipboardList, Store, AlertTriangle, Clock, KeyRound, History, FileText,
 } from 'lucide-react';
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
@@ -17,6 +17,8 @@ import DocumentPreview from '../common/DocumentPreview';
 import { loadEmisor, MissingStoreNameError, type Emisor } from '../pos/SalesNoteSheet';
 import { WorkOrderReceipt, PRIORITY_LABEL } from './WorkOrderReceipt';
 import { waNumber, dayDiff, dueLabel } from './workOrderUtils';
+import { useWorkRole, isProductionRole } from '../../services/workRole';
+import { useConfirm } from '../common/ConfirmDialog';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -49,6 +51,8 @@ export default function WorkOrdersScreen() {
   const [active, setActive] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(() => (params.get('nuevo') ? blankOrder() : null));
   const [openId, setOpenId] = useState<string | null>(params.get('id'));
+  // Taller y Diseño: ven los trabajos y los mueven, sin precios ni cobros
+  const production = isProductionRole(useWorkRole());
 
   const load = () => {
     api.get('/work-orders', { params: { status: filter === 'ACTIVOS' ? 'ACTIVOS' : filter, search: search.trim() || undefined } })
@@ -111,7 +115,7 @@ export default function WorkOrdersScreen() {
   const subtitle = stats.count
     ? `${stats.count} para entregar${stats.late ? ` · ${stats.late} atrasado${stats.late === 1 ? '' : 's'}` : ''}${stats.ready ? ` · ${stats.ready} listo${stats.ready === 1 ? '' : 's'}` : ''}`
     : 'Nada para entregar';
-  const newButton = <button onClick={() => setEditing(blankOrder())} className={`${ui.btn} ${ui.btnPrimary}`}><Plus className="w-4 h-4" /> Nuevo encargo</button>;
+  const newButton = production ? undefined : <button onClick={() => setEditing(blankOrder())} className={`${ui.btn} ${ui.btnPrimary}`}><Plus className="w-4 h-4" /> Nuevo encargo</button>;
 
   const list = orders === null ? (
     <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 text-slate-400 animate-spin" /></div>
@@ -119,7 +123,7 @@ export default function WorkOrdersScreen() {
     <div className="rounded-2xl bg-white border border-slate-200">
       <EmptyState icon={ClipboardList}
         title={search ? 'Sin resultados' : filter === 'ACTIVOS' ? 'No hay encargos para entregar' : 'No hay encargos acá'}
-        description={search ? 'Probá con otro nombre, trabajo o número.' : 'Cargá el primero: cliente, trabajo, fecha de entrega y seña.'}
+        description={search ? 'Probá con otro nombre, trabajo o número.' : production ? 'Cuando el mostrador cargue un trabajo, aparece acá.' : 'Cargá el primero: cliente, trabajo, fecha de entrega y seña.'}
         action={search ? undefined : newButton} />
     </div>
   ) : (
@@ -132,7 +136,7 @@ export default function WorkOrdersScreen() {
             </h2>
           )}
           <div className={phone ? 'space-y-2' : 'grid grid-cols-1 lg:grid-cols-2 gap-2.5'}>
-            {g.items.map((o) => <OrderCard key={o.id} o={o} onOpen={() => setOpenId(o.id)} />)}
+            {g.items.map((o) => <OrderCard key={o.id} o={o} hidePrices={production} onOpen={() => setOpenId(o.id)} />)}
           </div>
         </section>
       ))}
@@ -146,7 +150,7 @@ export default function WorkOrdersScreen() {
   if (phone) {
     return (
       <div className="h-full flex flex-col bg-slate-50">
-        <ScreenHeader title="Encargos" subtitle={subtitle} action={<HeaderAction icon={Plus} label="Nuevo" onClick={() => setEditing(blankOrder())} />}>
+        <ScreenHeader title="Encargos" subtitle={subtitle} action={production ? undefined : <HeaderAction icon={Plus} label="Nuevo" onClick={() => setEditing(blankOrder())} />}>
           <div className="space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -160,7 +164,9 @@ export default function WorkOrdersScreen() {
             <div className="grid grid-cols-3 gap-2">
               <MiniStat label="Atrasados" value={stats.late} tone={stats.late ? 'text-red-600' : 'text-slate-900'} />
               <MiniStat label="Para hoy" value={stats.today} tone="text-slate-900" />
-              <MiniStat label="Por cobrar" value={money(stats.toCollect)} tone="text-slate-900" small />
+              {production
+                ? <MiniStat label="Listos" value={stats.ready} tone="text-slate-900" />
+                : <MiniStat label="Por cobrar" value={money(stats.toCollect)} tone="text-slate-900" small />}
             </div>
           )}
           {list}
@@ -173,12 +179,12 @@ export default function WorkOrdersScreen() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
-        <PageHeader title="Encargos" description="Los trabajos a pedido, ordenados por fecha de entrega." actions={newButton} />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <PageHeader title="Encargos" description={production ? 'Los trabajos para hacer, ordenados por fecha de entrega.' : 'Los trabajos a pedido, ordenados por fecha de entrega.'} actions={newButton} />
+        <div className={`grid grid-cols-2 ${production ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-3`}>
           <StatCard label="Atrasados" value={stats.late} icon={AlertTriangle} tone={stats.late ? 'danger' : 'neutral'} valueTone={stats.late ? 'danger' : 'neutral'} hint="Ya pasó la fecha de entrega" />
           <StatCard label="Para hoy" value={stats.today} icon={CalendarClock} tone="brand" hint="Se entregan hoy" />
-          <StatCard label="Listos para retirar" value={stats.ready} icon={PackageCheck} tone="success" hint="Avisale al cliente" onClick={() => setFilter('LISTO')} />
-          <StatCard label="Por cobrar" value={money(stats.toCollect)} icon={Wallet} tone="warning" hint={`${stats.count} encargo${stats.count === 1 ? '' : 's'} sin entregar`} />
+          <StatCard label="Listos para retirar" value={stats.ready} icon={PackageCheck} tone="success" hint={production ? 'Ya terminados' : 'Avisale al cliente'} onClick={() => setFilter('LISTO')} />
+          {!production && <StatCard label="Por cobrar" value={money(stats.toCollect)} icon={Wallet} tone="warning" hint={`${stats.count} encargo${stats.count === 1 ? '' : 's'} sin entregar`} />}
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <Segmented<Filter> options={filters.map(({ id, label }) => ({ id, label }))} value={filter} onChange={setFilter} />
@@ -205,7 +211,7 @@ function MiniStat({ label, value, tone, small }: { label: string; value: any; to
 
 const AVATAR_TONE: Record<string, string> = { PENDIENTE: 'bg-slate-100 text-slate-600', EN_PROCESO: 'bg-sky-100 text-sky-700', LISTO: 'bg-emerald-100 text-emerald-700', ENTREGADO: 'bg-slate-100 text-slate-400', CANCELADO: 'bg-red-50 text-red-400' };
 
-function OrderCard({ o, onOpen }: { o: any; onOpen: () => void }) {
+function OrderCard({ o, onOpen, hidePrices }: { o: any; onOpen: () => void; hidePrices?: boolean }) {
   const rest = Math.max(0, (o.total || 0) - (o.deposit || 0));
   const title = (o.items || []).map((i: any) => i.description).join(' · ');
   const isLate = late(o);
@@ -224,9 +230,11 @@ function OrderCard({ o, onOpen }: { o: any; onOpen: () => void }) {
           <p className={`text-[13px] font-semibold flex items-center justify-end gap-1 ${isLate ? 'text-red-600' : 'text-slate-700'}`}>
             <Clock className="w-3.5 h-3.5" />{dueLabel(o.dueAt)}
           </p>
-          <p className={`text-[13px] tabular-nums ${o.status === 'ENTREGADO' ? 'text-slate-400' : rest > 0 ? 'text-slate-900 font-semibold' : 'text-emerald-700 font-semibold'}`}>
-            {o.status === 'ENTREGADO' ? money(o.total) : rest > 0 ? money(rest) : 'Pagado'}
-          </p>
+          {!hidePrices && (
+            <p className={`text-[13px] tabular-nums ${o.status === 'ENTREGADO' ? 'text-slate-400' : rest > 0 ? 'text-slate-900 font-semibold' : 'text-emerald-700 font-semibold'}`}>
+              {o.status === 'ENTREGADO' ? money(o.total) : rest > 0 ? money(rest) : 'Pagado'}
+            </p>
+          )}
         </div>
       </div>
       <div className="mt-2 pl-[52px] flex items-center gap-1.5 text-[12px] min-w-0">
@@ -234,7 +242,7 @@ function OrderCard({ o, onOpen }: { o: any; onOpen: () => void }) {
         {o.priority === 'ALTA' && o.status !== 'ENTREGADO' && <span className="font-bold px-2 py-0.5 rounded-full shrink-0 bg-red-50 text-red-700">Urgente</span>}
         {o.source === 'TIENDA' && <span className="font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 flex items-center gap-1 shrink-0"><Store className="w-3 h-3" /> Tienda</span>}
         <span className="text-slate-400 shrink-0">N° {o.number}</span>
-        {o.deposit > 0 && o.status !== 'ENTREGADO' && <span className="ml-auto text-slate-500 truncate">Seña {money(o.deposit)}</span>}
+        {!hidePrices && o.deposit > 0 && o.status !== 'ENTREGADO' && <span className="ml-auto text-slate-500 truncate">Seña {money(o.deposit)}</span>}
       </div>
     </button>
   );
@@ -275,6 +283,7 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
   const [method, setMethod] = useState('CASH');
   const [productQuery, setProductQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [askOwnerKey, ownerKeyPanel] = useOwnerKey();
   const cash = useCashSession();
   const methods = useMemo(() => [...getPaymentMethods().filter((m) => m.id !== 'DEBT'), { id: 'TRANSFERENCIA', name: 'Transferencia' }], []);
 
@@ -310,7 +319,16 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
         ...(client ? { clientId: client.id } : { clientName: clientName.trim(), clientPhone: clientPhone.trim() }),
         ...(initial.source ? { source: initial.source, onlineOrderId: initial.onlineOrderId } : {}),
       };
-      let { data } = await api.put(`/work-orders/${initial.id}`, body);
+      let data: any;
+      try {
+        data = (await api.put(`/work-orders/${initial.id}`, body)).data;
+      } catch (err: any) {
+        // Con seña cobrada, cambiar el total lo autoriza el dueño con su clave
+        if (!err?.response?.data?.needsAdmin) throw err;
+        const adminPassword = await askOwnerKey(err.response.data.message);
+        if (!adminPassword) return;
+        data = (await api.put(`/work-orders/${initial.id}`, { ...body, adminPassword })).data;
+      }
       if (sena > 0) {
         let sessionId = cash.session?.id;
         if (!sessionId) sessionId = (await cash.open(0))?.id;
@@ -464,6 +482,7 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Guardar encargo
         </button>
       </div>
+      {ownerKeyPanel}
     </div>
   );
 }
@@ -500,6 +519,11 @@ function WorkOrderDetail({ id, onClose, onChanged, onEdit }: { id: string; onClo
   const [emisor, setEmisor] = useState<Emisor | null>(null);
   const cash = useCashSession();
   const methods = useMemo(() => [...getPaymentMethods(), { id: 'TRANSFERENCIA', name: 'Transferencia' }], []);
+  const role = useWorkRole();
+  const production = isProductionRole(role);
+  const [askOwnerKey, ownerKeyPanel] = useOwnerKey();
+  const [askConfirm, confirmDialog] = useConfirm();
+  const [notesDraft, setNotesDraft] = useState<{ notes: string; specs: Record<string, string> } | null>(null);
 
   const load = () => api.get(`/work-orders/${id}`).then(({ data }) => setO(data)).catch(() => { toast.error('No se encontró el encargo'); onClose(); });
   useEffect(() => { load(); }, [id]);
@@ -523,6 +547,34 @@ function WorkOrderDetail({ id, onClose, onChanged, onEdit }: { id: string; onClo
     }
   };
   const session = async () => cash.session?.id || (await cash.open(0))?.id;
+  // Cancelar con seña lo autoriza el dueño: si el servidor pide la clave, se pide y se reintenta
+  const cancel = async () => {
+    const ok = await askConfirm({
+      title: '¿Cancelar el encargo?',
+      message: o.deposit > 0 ? `La seña de ${money(o.deposit)} queda a favor del cliente.` : undefined,
+      confirmLabel: 'Cancelar encargo', cancelLabel: 'Volver', danger: true,
+    });
+    if (!ok) return;
+    setBusy('cancel');
+    try {
+      let data: any;
+      try {
+        data = (await api.post(`/work-orders/${o.id}/cancel`, {})).data;
+      } catch (err: any) {
+        if (!err?.response?.data?.needsAdmin) throw err;
+        const adminPassword = await askOwnerKey(err.response.data.message);
+        if (!adminPassword) return;
+        data = (await api.post(`/work-orders/${o.id}/cancel`, { adminPassword })).data;
+      }
+      setO(data);
+      onChanged();
+      toast.success('Encargo cancelado');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo cancelar');
+    } finally {
+      setBusy('');
+    }
+  };
   const wa = waNumber(o.client?.phone);
   const notify = async () => {
     if (!wa) return;
@@ -544,7 +596,7 @@ function WorkOrderDetail({ id, onClose, onChanged, onEdit }: { id: string; onClo
   return (
     <>
       <Panel title={`Encargo N° ${o.number}`} onClose={onClose}
-        footer={open ? (
+        footer={open && !production ? (
           <button onClick={() => { setAmount(String(rest)); setMethod('CASH'); setMode('deliver'); }} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[15px] font-bold flex items-center justify-center gap-2 cursor-pointer">
             <PackageCheck className="w-4 h-4" /> Entregar{rest > 0 ? ` y cobrar ${money(rest)}` : ''}
           </button>
@@ -596,31 +648,83 @@ function WorkOrderDetail({ id, onClose, onChanged, onEdit }: { id: string; onClo
                   <p className="text-[14.5px] font-semibold text-slate-900">{qty(it.quantity)} × {it.description}</p>
                   {it.specs && <p className="text-[12.5px] text-slate-600 whitespace-pre-wrap">{it.specs}</p>}
                 </div>
-                <p className="text-[14px] font-semibold text-slate-900 tabular-nums shrink-0">{money(it.total)}</p>
+                {!production && <p className="text-[14px] font-semibold text-slate-900 tabular-nums shrink-0">{money(it.total)}</p>}
               </div>
             ))}
-            <div className="px-3.5 py-2.5 text-[14px] space-y-0.5">
+            {!production && <div className="px-3.5 py-2.5 text-[14px] space-y-0.5">
               <div className="flex justify-between"><span className="text-slate-600">Total</span><span className="font-bold tabular-nums">{money(o.total)}</span></div>
               <div className="flex justify-between"><span className="text-slate-600">Seña</span><span className="tabular-nums">{money(o.deposit)}</span></div>
               {open && <div className="flex justify-between"><span className="font-semibold text-slate-900">Falta pagar</span><span className="font-bold tabular-nums">{money(rest)}</span></div>}
-            </div>
+            </div>}
           </div>
           {o.notes && <p className="text-[13px] text-slate-600 whitespace-pre-wrap"><b>Notas:</b> {o.notes}</p>}
 
-          <div className="grid grid-cols-2 gap-2">
-            {action(MessageCircle, o.notifiedAt ? 'Avisar de nuevo' : 'Avisar que está listo', notify, 'text-emerald-700', !wa)}
-            {action(Printer, 'Comprobante', print)}
-            {open && action(Wallet, 'Cobrar seña', () => { setAmount(''); setMethod('CASH'); setMode('collect'); }, 'text-slate-800', rest <= 0 || !o.clientId)}
-            {open && action(Pencil, 'Editar', () => onEdit(o))}
-          </div>
-          {!wa && <p className="text-[12px] text-slate-500">Para avisar por WhatsApp, cargale el teléfono al cliente.</p>}
-          {o.notifiedAt && <p className="text-[12px] text-slate-500">Avisado por WhatsApp el {new Date(o.notifiedAt).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}.</p>}
-          {open && (
-            <button onClick={() => { if (window.confirm(o.deposit > 0 ? `¿Cancelar el encargo? La seña de ${money(o.deposit)} queda a favor del cliente.` : '¿Cancelar el encargo?')) run('cancel', () => api.post(`/work-orders/${o.id}/cancel`), 'Encargo cancelado'); }}
-              className="w-full h-10 text-[13.5px] font-semibold text-red-700 flex items-center justify-center gap-1.5 cursor-pointer"><Ban className="w-4 h-4" /> Cancelar encargo</button>
+          {!production && (
+            <div className="grid grid-cols-2 gap-2">
+              {action(MessageCircle, o.notifiedAt ? 'Avisar de nuevo' : 'Avisar que está listo', notify, 'text-emerald-700', !wa)}
+              {action(Printer, 'Comprobante', print)}
+              {open && action(Wallet, 'Cobrar seña', () => { setAmount(''); setMethod('CASH'); setMode('collect'); }, 'text-slate-800', rest <= 0 || !o.clientId)}
+              {open && action(Pencil, 'Editar', () => onEdit(o))}
+            </div>
+          )}
+          {/* Diseño corrige las notas y el detalle de cada trabajo (sin tocar precios) */}
+          {open && role === 'DISENO' && <div className="grid">{action(FileText, 'Corregir notas y detalle', () => setNotesDraft({ notes: o.notes || '', specs: Object.fromEntries(o.items.map((it: any) => [it.id, it.specs || ''])) }))}</div>}
+          {!production && !wa && <p className="text-[12px] text-slate-500">Para avisar por WhatsApp, cargale el teléfono al cliente.</p>}
+          {!production && o.notifiedAt && <p className="text-[12px] text-slate-500">Avisado por WhatsApp el {new Date(o.notifiedAt).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}.</p>}
+          {open && !production && (
+            <button onClick={cancel} disabled={!!busy}
+              className="w-full h-10 text-[13.5px] font-semibold text-red-700 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"><Ban className="w-4 h-4" /> Cancelar encargo</button>
+          )}
+
+          {/* Quién hizo cada cosa */}
+          {o.history?.length > 0 && (
+            <div className="pt-1">
+              <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-slate-500 flex items-center gap-1.5 mb-1.5"><History className="w-3.5 h-3.5" /> Movimientos</p>
+              <ol className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
+                {o.history.slice().reverse().map((h: any, i: number) => (
+                  <li key={i} className="px-3.5 py-2 text-[13px] flex items-start gap-3">
+                    <span className="text-slate-500 tabular-nums shrink-0 w-[86px]">{new Date(h.at).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                    <span className="min-w-0 flex-1 text-slate-800">
+                      <b className="font-semibold">{h.who}</b> · {h.action === 'STATUS' && h.detail ? `Pasó a ${(STATUS_LABEL[h.detail] || h.detail).toLowerCase()}` : h.label}
+                      {h.action !== 'STATUS' && h.detail && <span className="text-slate-500"> · {fmtDetail(h.detail)}</span>}
+                      {h.byOwner && <span className="ml-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-700"><KeyRound className="w-3 h-3" /> con clave del dueño</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </div>
       </Panel>
+
+      {notesDraft && (
+        <Panel title="Notas y detalle" onClose={() => setNotesDraft(null)}
+          footer={
+            <button disabled={!!busy} onClick={async () => {
+              const ok = await run('notes', () => api.post(`/work-orders/${o.id}/notes`, notesDraft), 'Notas guardadas');
+              if (ok) setNotesDraft(null);
+            }} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[15px] font-bold flex items-center justify-center gap-2 cursor-pointer">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Guardar
+            </button>
+          }>
+          <div className="space-y-3 pt-1">
+            {o.items.map((it: any) => (
+              <label key={it.id} className="block">
+                <span className="block text-[12.5px] font-semibold text-slate-600 mb-1">{qty(it.quantity)} × {it.description}</span>
+                <textarea value={notesDraft.specs[it.id] || ''} onChange={(e) => setNotesDraft({ ...notesDraft, specs: { ...notesDraft.specs, [it.id]: e.target.value } })} rows={2}
+                  placeholder="Medidas, papel, terminación…" className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-[14.5px] outline-none focus:border-rose-500 resize-none" />
+              </label>
+            ))}
+            <label className="block">
+              <span className="block text-[12.5px] font-semibold text-slate-600 mb-1">Notas del encargo</span>
+              <textarea value={notesDraft.notes} onChange={(e) => setNotesDraft({ ...notesDraft, notes: e.target.value })} rows={3}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-[14.5px] outline-none focus:border-rose-500 resize-none" />
+            </label>
+          </div>
+        </Panel>
+      )}
+      {ownerKeyPanel}
+      {confirmDialog}
 
       {(mode === 'collect' || mode === 'deliver') && (
         <Panel title={mode === 'collect' ? 'Cobrar seña' : 'Entregar encargo'} onClose={() => setMode('')}
@@ -668,4 +772,37 @@ function WorkOrderDetail({ id, onClose, onChanged, onEdit }: { id: string; onClo
       )}
     </>
   );
+}
+
+/** Detalle del historial: los importes en pesos ("Total 5000 → 4000", "2000 (CASH)") */
+function fmtDetail(d: string) {
+  return String(d)
+    .replace(/\((CASH|DEBT|CLOVER|MERCADOPAGO|TRANSFERENCIA)\)/, (_, m) => `(${({ CASH: 'efectivo', DEBT: 'a cuenta', CLOVER: 'tarjeta', MERCADOPAGO: 'Mercado Pago', TRANSFERENCIA: 'transferencia' } as any)[m]})`)
+    .replace(/(\d+(?:\.\d+)?)/g, (n) => money(Number(n)));
+}
+
+/**
+ * Pide la clave del administrador para algo que autoriza el dueño (cancelar o cambiar el precio
+ * de un encargo con seña). Devuelve la clave, o null si se cerró. El servidor la verifica.
+ */
+function useOwnerKey(): [(reason?: string) => Promise<string | null>, JSX.Element | null] {
+  const [req, setReq] = useState<{ reason?: string; resolve: (v: string | null) => void } | null>(null);
+  const [pass, setPass] = useState('');
+  const ask = (reason?: string) => new Promise<string | null>((resolve) => { setPass(''); setReq({ reason, resolve }); });
+  const close = (v: string | null) => { req?.resolve(v); setReq(null); };
+  const panel = req ? (
+    <Panel title="Lo autoriza el dueño" onClose={() => close(null)}
+      footer={
+        <button disabled={!pass} onClick={() => close(pass)} className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[15px] font-bold flex items-center justify-center gap-2 cursor-pointer">
+          <KeyRound className="w-4 h-4" /> Autorizar
+        </button>
+      }>
+      <form className="space-y-3 pt-1" onSubmit={(e) => { e.preventDefault(); if (pass) close(pass); }}>
+        <p className="text-[14px] text-slate-600">{req.reason || 'Hace falta la clave del administrador.'}</p>
+        <input type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Clave del administrador"
+          className="w-full h-12 px-4 rounded-xl bg-white border border-slate-300 text-[16px] outline-none focus:border-rose-500" />
+      </form>
+    </Panel>
+  ) : null;
+  return [ask, panel];
 }

@@ -3,7 +3,7 @@ import TicketPrinterCard from './TicketPrinterCard';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
 import api from '../../services/api';
-import { WORK_ROLES, workRoleLabel } from '../../services/workRole';
+import { WORK_ROLES, IMPRENTA_ROLES, workRoleLabel } from '../../services/workRole';
 import { hasFeature } from '../../stores/businessStore';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2060,6 +2060,23 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   </select>
                 </div>
 
+                {/* Imprenta (o cualquier comercio con encargos): quién atiende y quién solo trabaja */}
+                {!hasFeature('preorders') && hasFeature('workorders') && newRole !== 'ADMIN' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en los encargos?</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[{ key: '', label: 'De todo', text: 'Atiende y trabaja' }, ...IMPRENTA_ROLES].map((w) => (
+                        <button key={w.key || 'todo'} type="button" onClick={() => setNewWorkRole(w.key)}
+                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${newWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
+                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 mt-1">Taller y Diseño entran directo a los encargos y no ven precios. Cancelar o cambiar el precio de un encargo con seña pide la clave del administrador.</p>
+                  </div>
+                )}
+
                 {hasFeature('preorders') && newRole !== 'ADMIN' && (
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en la distribuidora?</label>
@@ -2157,6 +2174,23 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                     <option value="ADMIN">Administrador (Acceso Completo)</option>
                   </select>
                 </div>
+
+                {/* Imprenta (o cualquier comercio con encargos): quién atiende y quién solo trabaja */}
+                {!hasFeature('preorders') && hasFeature('workorders') && editRole !== 'ADMIN' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en los encargos?</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[{ key: '', label: 'De todo', text: 'Atiende y trabaja' }, ...IMPRENTA_ROLES].map((w) => (
+                        <button key={w.key || 'todo'} type="button" onClick={() => setEditWorkRole(w.key)}
+                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${editWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
+                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 mt-1">Taller y Diseño entran directo a los encargos y no ven precios. Cancelar o cambiar el precio de un encargo con seña pide la clave del administrador.</p>
+                  </div>
+                )}
 
                 {hasFeature('preorders') && editRole !== 'ADMIN' && (
                   <div>

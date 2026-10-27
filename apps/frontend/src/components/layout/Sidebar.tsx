@@ -41,6 +41,7 @@ import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { menuAllows } from '../../stores/businessStore';
 import { ComingSoonBadge } from '../common/ComingSoon';
 import { COMING_SOON } from '../../utils/comingSoon';
+import { isProductionRole } from '../../services/workRole';
 
 /** El logo real de GO (redondo, negro) en el tamaño de los íconos del menú */
 const GoIcon = ({ className = '' }: { className?: string }) => (
@@ -128,7 +129,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   // Botón principal y subtítulo según lo que hace el comercio con Ventra
   // Distribuidora: la caja es la venta de mostrador; el inicio es "Hoy"
   const distrib = hasFeature('preorders');
-  const home = planFeatures.caja
+  // Taller y Diseño (imprenta) trabajan solo en los encargos: el menú no les muestra nada más
+  const production = user?.role !== 'ADMIN' && isProductionRole(user?.workRole);
+  const home = production
+    ? { path: '/encargos', label: 'Encargos', icon: Printer, subtitle: 'Trabajos para hacer' }
+    : planFeatures.caja
     ? { path: '/pos', label: distrib ? 'Venta de mostrador' : 'Punto de Venta', icon: ShoppingBag, subtitle: distrib ? 'Distribuidora' : 'Sistema de ventas' }
     : agendaOnly
       ? { path: '/agenda', label: 'Mi agenda', icon: CalendarDays, subtitle: 'Turnos online' }
@@ -209,7 +214,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   ];
 
   // Solo lo que incluye el plan (Caja / Tienda / Full)
-  const visibleGroups = menuGroups.map((group) => ({
+  const visibleGroups = production ? [] : menuGroups.map((group) => ({
     ...group,
     items: group.items
       .map((item: any) => (item.subItems ? { ...item, subItems: item.subItems.filter((sub: any) => menuAllows(planFeatures, intents, sub.path)) } : item))
@@ -256,7 +261,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             {!isCollapsed && <span>{home.label}</span>}
           </button>
 
-          {planFeatures.caja && <button
+          {planFeatures.caja && !production && <button
             onClick={() => handleSidebarClick('/dashboard')}
             className={`relative w-full flex items-center gap-3 px-3 h-9 rounded-lg font-medium text-[13.5px] transition-colors cursor-pointer ${isActive('/dashboard') ? 'bg-rose-50 text-rose-700 font-semibold' : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'}`}
           >

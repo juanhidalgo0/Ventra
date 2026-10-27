@@ -247,6 +247,7 @@ export function StaffMobileShell({ children }: { children: React.ReactNode }) {
   const orders = { path: '/preventa', label: 'Pedidos', icon: ClipboardList };
   const route = { path: '/reparto', label: 'Reparto', icon: Truck };
   const tabs = role === 'CHOFER' ? [route, more]
+    : role === 'TALLER' || role === 'DISENO' ? [jobs, more]
     : role === 'VENDEDOR' ? [orders, more]
     : role === 'MOSTRADOR' ? [sell, orders, more]
     : distrib ? [sell, orders, route, more]

@@ -658,6 +658,7 @@ async function main() {
     const avisos: any[] = [];
     const notifyStub: any = { enqueue: (type: string, data: any) => avisos.push({ type, data }) };
     const wo = new WorkOrdersService(prisma, sales, notifyStub);
+    const caja = { sub: cajero.id, role: 'CASHIER' };
     const papel = await nuevo('Resma A4', 50, { salePrice: 9000 });
     const manana = new Date(Date.now() + 86400000);
     // Cliente nuevo por nombre y teléfono; un trabajo a mano y un producto del catálogo
@@ -667,27 +668,27 @@ async function main() {
         { description: 'Tarjetas personales', specs: '9x5 cm, ilustración 300 g, laminado mate', quantity: 500, unitPrice: 30 },
         { productId: papel.id, description: 'Resma A4', quantity: 1, unitPrice: 9000 },
       ],
-    }, cajero.id);
+    }, caja);
     assert.strictEqual(o.total, 24000);
     assert.ok(o.clientId && o.number > 0);
-    const otra: any = await wo.save('wo-test-0002', { clientName: 'Otro nombre', clientPhone: '2215550199', items: [{ description: 'Volantes', quantity: 1, unitPrice: 100 }] }, cajero.id);
+    const otra: any = await wo.save('wo-test-0002', { clientName: 'Otro nombre', clientPhone: '2215550199', items: [{ description: 'Volantes', quantity: 1, unitPrice: 100 }] }, caja);
     assert.strictEqual(otra.clientId, o.clientId, 'mismo teléfono = mismo cliente');
     // Seña: entra a la caja y le queda a favor
-    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, cajero.id);
-    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, cajero.id); // repetido: no cobra dos veces
+    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, caja);
+    await wo.collect(o.id, { amount: 10000, method: 'CASH', sessionId: session.id, key: 'a' }, caja); // repetido: no cobra dos veces
     let c: any = await prisma.client.findUnique({ where: { id: o.clientId } });
     assert.strictEqual(c.balance, -10000, 'la seña queda a favor');
     assert.strictEqual((await wo.findOne(o.id)).deposit, 10000);
-    await assert.rejects(() => wo.collect(o.id, { amount: 20000, method: 'CASH', sessionId: session.id, key: 'b' }, cajero.id), /mayor/);
+    await assert.rejects(() => wo.collect(o.id, { amount: 20000, method: 'CASH', sessionId: session.id, key: 'b' }, caja), /mayor/);
     // Recordatorio: vence mañana
     const r = await wo.remind(new Date(new Date().setHours(10, 0, 0, 0)));
     assert.ok(r.some((x: any) => x.number === o.number) && avisos[0]?.type === 'workOrderDue');
     assert.strictEqual((await wo.remind(new Date(new Date().setHours(11, 0, 0, 0)))).length, 0, 'una vez por día');
     // Estados y entrega
-    await wo.setStatus(o.id, 'LISTO');
-    await assert.rejects(() => wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 1000 }] }, cajero.id), /Falta cobrar/);
+    await wo.setStatus(o.id, 'LISTO', caja);
+    await assert.rejects(() => wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 1000 }] }, caja), /Falta cobrar/);
     const stockAntes = await stockDe(papel.id);
-    const d: any = await wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 14000 }] }, cajero.id);
+    const d: any = await wo.deliver(o.id, { sessionId: session.id, payments: [{ method: 'CASH', amount: 14000 }] }, caja);
     assert.strictEqual(d.status, 'ENTREGADO');
     const venta: any = await prisma.sale.findUnique({ where: { id: d.saleId }, include: { payments: true, items: true } });
     assert.strictEqual(venta.total, 24000);
@@ -695,7 +696,60 @@ async function main() {
     assert.strictEqual(await stockDe(papel.id), stockAntes - 1, 'el producto del catálogo sale del stock');
     c = await prisma.client.findUnique({ where: { id: o.clientId } });
     assert.strictEqual(c.balance, 0, 'la seña se usó en la venta: no debe ni le deben');
-    await assert.rejects(() => wo.save(o.id, { clientId: o.clientId, items: [{ description: 'x', quantity: 1, unitPrice: 1 }] }, cajero.id), /ya se entregó/);
+    await assert.rejects(() => wo.save(o.id, { clientId: o.clientId, items: [{ description: 'x', quantity: 1, unitPrice: 1 }] }, caja), /ya se entregó/);
+  });
+
+  await t('encargos: roles de la imprenta y lo que autoriza el dueño', async () => {
+    const bcrypt = require('bcrypt');
+    const { WorkOrdersService } = require('../src/modules/workorders/workorders.service');
+    const wo = new WorkOrdersService(prisma, sales, { enqueue: () => {} } as any);
+    await prisma.user.update({ where: { id: admin.id }, data: { passwordHash: await bcrypt.hash('clave-del-duenio', 4) } });
+    const caja = { sub: cajero.id, role: 'CASHIER', workRole: 'MOSTRADOR' };
+    const dueno = { sub: admin.id, role: 'ADMIN' };
+    const tallerU = await prisma.user.create({ data: { username: 'TALLER1', passwordHash: 'x', fullName: 'Pedro Taller', role: 'CASHIER', workRole: 'TALLER' } as any });
+    const disenoU = await prisma.user.create({ data: { username: 'DISENO1', passwordHash: 'x', fullName: 'Lu Diseño', role: 'CASHIER', workRole: 'DISENO' } as any });
+    const taller = { sub: tallerU.id, role: 'CASHIER', workRole: 'TALLER' };
+    const diseno = { sub: disenoU.id, role: 'CASHIER', workRole: 'DISENO' };
+    const item = { description: 'Banner', specs: '1x2 m', quantity: 1, unitPrice: 5000 };
+    const o: any = await wo.save('wo-rol-0001', { clientName: 'Cliente Roles', clientPhone: '2215550777', items: [item] }, caja);
+    // Taller y Diseño: no atienden, no ven precios, sí mueven el estado
+    await assert.rejects(() => wo.save('wo-rol-0002', { clientName: 'X', items: [item] }, taller), /mostrador o el dueño/);
+    await assert.rejects(() => wo.collect(o.id, { amount: 100, sessionId: session.id, key: 'r1' }, diseno), /mostrador o el dueño/);
+    await assert.rejects(() => wo.deliver(o.id, { sessionId: session.id, payments: [] }, taller), /mostrador o el dueño/);
+    await assert.rejects(() => wo.cancel(o.id, {}, taller), /mostrador o el dueño/);
+    const visto: any = await wo.findForUser(o.id, taller);
+    assert.strictEqual(visto.total, null, 'el taller no ve el total');
+    assert.strictEqual(visto.items[0].unitPrice, null, 'ni los precios');
+    assert.ok((await wo.list({}, diseno)).every((x: any) => x.total === null && x.deposit === null));
+    const st: any = await wo.setStatus(o.id, 'EN_PROCESO', taller);
+    assert.strictEqual(st.status, 'EN_PROCESO');
+    // Notas: Diseño sí, Taller no
+    await assert.rejects(() => wo.updateNotes(o.id, { notes: 'x' }, taller), /diseño/);
+    const n: any = await wo.updateNotes(o.id, { notes: 'Usar logo nuevo', specs: { [o.items[0].id]: '1x2 m, lona front' } }, diseno);
+    assert.strictEqual(n.notes, 'Usar logo nuevo');
+    assert.strictEqual(n.items[0].specs, '1x2 m, lona front');
+    // Con seña: cambiar el total o cancelar pide la clave del dueño
+    await wo.collect(o.id, { amount: 2000, method: 'CASH', sessionId: session.id, key: 'r2' }, caja);
+    const masBarato = { clientId: o.clientId, items: [{ ...item, unitPrice: 4000 }] };
+    await assert.rejects(() => wo.save(o.id, masBarato, caja), (e: any) => e.getResponse?.().needsAdmin === true);
+    await assert.rejects(() => wo.save(o.id, { ...masBarato, adminPassword: 'mal' }, caja), /no es correcta/);
+    const editado: any = await wo.save(o.id, { ...masBarato, adminPassword: 'clave-del-duenio' }, caja);
+    assert.strictEqual(editado.total, 4000);
+    // Sin cambiar el total, editar no pide clave
+    await wo.save(o.id, { ...masBarato, notes: 'otra nota' }, caja);
+    await assert.rejects(() => wo.cancel(o.id, {}, caja), (e: any) => e.getResponse?.().needsAdmin === true);
+    const cancelado: any = await wo.cancel(o.id, {}, dueno);
+    assert.strictEqual(cancelado.status, 'CANCELADO', 'el dueño cancela sin clave');
+    // Sin seña, el mostrador cancela solo
+    const libre: any = await wo.save('wo-rol-0003', { clientName: 'Sin seña', items: [item] }, caja);
+    assert.strictEqual((await wo.cancel(libre.id, {}, caja)).status, 'CANCELADO');
+    // Quién hizo cada cosa
+    const h: any = await wo.findForUser(o.id, dueno);
+    const acciones = h.history.map((x: any) => `${x.action}:${x.who}`);
+    for (const a of ['CREATE:Mica', 'STATUS:Pedro Taller', 'NOTES:Lu Diseño', 'COLLECT:Mica', 'EDIT:Mica', 'CANCEL:Dueño']) assert.ok(acciones.includes(a), `historial con ${a}: ${acciones}`);
+    assert.ok(h.history.some((x: any) => x.action === 'EDIT' && x.byOwner), 'queda anotado que se usó la clave del dueño');
+    const hTaller: any = await wo.findForUser(o.id, taller);
+    assert.ok(hTaller.history.every((x: any) => !/\d{3}/.test(String(x.detail || ''))), 'el taller no ve importes en el historial');
   });
 
   await t('clientes: un empleado no cambia el saldo editando; el dueño sí', async () => {
