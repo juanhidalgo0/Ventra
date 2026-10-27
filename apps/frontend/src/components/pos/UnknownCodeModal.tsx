@@ -23,6 +23,10 @@ function parseAmount(raw: string) {
 
 const money = (raw: string) => raw.replace(/[^\d.,]/g, '');
 
+// El lector "tipea" el código y manda Enter: si cae en un campo de monto se guardaba
+// como precio ($7.622.201.492.717). 8 o más dígitos seguidos no es un monto de kiosco.
+const looksLikeBarcode = (raw: string) => /^\d{8,}$/.test(raw.trim());
+
 interface Props {
   code: string;
   /** Dueño o encargado: puede dar de alta productos */
@@ -128,7 +132,23 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
     onSell({ name: `${(cleanName || 'Artículo sin cargar').toUpperCase()} · ${code}`, price: priceNum, quantity: qtyNum });
   };
 
-  const submit = () => (mode === 'create' ? create() : sell());
+  const costRef = useRef<HTMLInputElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
+  const stockRef = useRef<HTMLInputElement>(null);
+
+  const submit = () => {
+    const amounts = mode === 'create'
+      ? [{ value: price, clear: setPrice, ref: priceRef, what: 'el precio' }, { value: cost, clear: setCost, ref: costRef, what: 'el costo' }, { value: stock, clear: setStock, ref: stockRef, what: 'la cantidad' }]
+      : [{ value: price, clear: setPrice, ref: priceRef, what: 'el precio' }, { value: qty, clear: setQty, ref: qtyRef, what: 'la cantidad' }];
+    const scanned = amounts.find((a) => looksLikeBarcode(a.value));
+    if (scanned) {
+      scanned.clear('');
+      scanned.ref.current?.focus();
+      toast.error(`Eso es un código de barras, no ${scanned.what}. Escribilo a mano.`, { id: 'barcode-as-amount' });
+      return;
+    }
+    return mode === 'create' ? create() : sell();
+  };
   const onEnter = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
@@ -203,13 +223,13 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
               <span className={label}>Costo <span className="font-normal text-slate-400">(opcional)</span></span>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3.5 flex items-center text-slate-400 font-semibold text-[17px] pointer-events-none">$</span>
-                <input inputMode="decimal" value={cost} onChange={(e) => setCost(money(e.target.value))} onKeyDown={onEnter} placeholder="0" className={`${input} pl-8`} />
+                <input ref={costRef} inputMode="decimal" value={cost} onChange={(e) => setCost(money(e.target.value))} onKeyDown={onEnter} placeholder="0" className={`${input} pl-8`} />
               </div>
             </label>
           ) : (
             <label className="block">
               <span className={label}>Cantidad</span>
-              <input inputMode="decimal" value={qty} onChange={(e) => setQty(money(e.target.value))} onKeyDown={onEnter} onFocus={(e) => e.target.select()} className={input} />
+              <input ref={qtyRef} inputMode="decimal" value={qty} onChange={(e) => setQty(money(e.target.value))} onKeyDown={onEnter} onFocus={(e) => e.target.select()} className={input} />
             </label>
           )}
         </div>
@@ -218,7 +238,7 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
           <div className="grid grid-cols-2 gap-3 mt-3">
             <label className="block">
               <span className={label}>¿Cuántos tenés? <span className="font-normal text-slate-400">(opcional)</span></span>
-              <input inputMode="decimal" value={stock} onChange={(e) => setStock(money(e.target.value))} onKeyDown={onEnter} placeholder="0" className={input} />
+              <input ref={stockRef} inputMode="decimal" value={stock} onChange={(e) => setStock(money(e.target.value))} onKeyDown={onEnter} placeholder="0" className={input} />
             </label>
             <label className="block">
               <span className={label}>Categoría <span className="font-normal text-slate-400">(opcional)</span></span>
