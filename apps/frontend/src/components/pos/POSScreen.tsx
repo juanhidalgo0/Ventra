@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
 import { holdLogout } from '../../utils/logoutHold';
+import { arqueoWantsZ, clearArqueoDraft, saveArqueoDraft } from '../../utils/arqueoDraft';
 import { useConfirm } from '../common/ConfirmDialog';
 import CategoryPickerModal from './CategoryPickerModal';
 import UpdateBadge from '../updater/UpdateBadge';
@@ -768,6 +769,8 @@ export default function POSScreen() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Con la ventana de cobro abierta solo responde esa ventana (Esc la cierra).
       if ((showPayment || shortcutsLocked()) && e.key !== 'Escape') return;
+      // El arqueo se cierra solo con su cruz: Esc no lo saca ni borra lo contado
+      if (showCierre) return;
       // Hotkeys are ordered by how often each action is used mid-shift (most
       // frequent on the easiest-to-reach keys), NOT by menu position. F11 is
       // reserved exclusively for fullscreen — never repurpose it.
@@ -1170,6 +1173,7 @@ export default function POSScreen() {
   };
   const arqueoDoneElsewhere = async () => {
     const withZ = generateZRef.current;
+    clearArqueoDraft(sessionToArqueoRef.current?.id);
     sessionToArqueoRef.current = null;
     setShowCierre(false);
     setSessionToArqueo(null);
@@ -1197,6 +1201,36 @@ export default function POSScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Cierre Z sin abrir la caja: cuando el último turno hizo un X por error, el Z junta
+  // todo lo cerrado desde el último Z sin tener que abrir (y cerrar) una caja vacía
+  const makeZWithoutOpening = async (pending: any) => {
+    const uncounted = (pending?.sessions || []).filter((s: any) => s.closingAmountCounted === null);
+    if (uncounted.length > 0) {
+      const mine = pendingArqueos.find((a: any) => uncounted.some((s: any) => s.id === a.id));
+      if (mine && uncounted.length === 1) {
+        // Falta solo el arqueo de este cajero: se hace ahora y al terminar sale el Z
+        saveArqueoDraft(mine.id, { withZ: true });
+        setSessionToArqueo(mine);
+        setGenerateZAfterArqueo(true);
+        setShowCierre(true);
+        return;
+      }
+      const who = uncounted.map((s: any) => `${s.user?.fullName || s.user?.username || 'Sin nombre'} (${s.terminalName})`).join(', ');
+      toast.error(`Antes del Cierre Z falta el arqueo de: ${who}`, { duration: 7000 });
+      focusSearch();
+      return;
+    }
+    const turns = pending?.sessionCount || 0;
+    const ok = await askConfirm({
+      title: '¿Hacer el Cierre Z?',
+      message: `Junta ${turns === 1 ? 'el turno cerrado' : `los ${turns} turnos cerrados`} desde el último Cierre Z. No hace falta abrir la caja.`,
+      confirmLabel: 'Hacer el Cierre Z',
+      cancelLabel: 'Cancelar',
+    });
+    if (ok) await generateZNow();
+    else focusSearch();
+  };
+
   const handleInstantClose = async (sessionId: string, doZ: boolean = false) => {
     try {
       await api.post(`/cash/${sessionId}/close`, { clientId: getClientId() });
@@ -1206,6 +1240,8 @@ export default function POSScreen() {
       setPendingArqueos(data);
       const sessionToArqueo = data.find((a: any) => a.id === sessionId);
       if (sessionToArqueo) {
+        // El Z elegido queda anotado: si se cierra la pantalla, al volver sigue siendo un Z
+        saveArqueoDraft(sessionId, { withZ: doZ });
         setSessionToArqueo(sessionToArqueo);
         setGenerateZAfterArqueo(doZ);
         setShowCierre(true);
@@ -1807,15 +1843,16 @@ export default function POSScreen() {
             </div>
             <button
               onClick={() => {
+                // Si en ese turno se había elegido el Cierre Z, se retoma como Z (no como un X)
                 setSessionToArqueo(pendingArqueos[0]);
-                setGenerateZAfterArqueo(false);
+                setGenerateZAfterArqueo(arqueoWantsZ(pendingArqueos[0].id));
                 setShowCierre(true);
               }}
               className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer z-10 whitespace-nowrap"
             >
-              Completar Arqueo Pendiente
+              {arqueoWantsZ(pendingArqueos[0].id) ? 'Seguir con el Cierre Z' : 'Completar Arqueo Pendiente'}
             </button>
-            {pendingArqueos.length === 1 && (
+            {pendingArqueos.length === 1 && !arqueoWantsZ(pendingArqueos[0].id) && (
               <button
                 onClick={() => {
                   setSessionToArqueo(pendingArqueos[0]);
@@ -3191,6 +3228,7 @@ export default function POSScreen() {
             onClose={() => {
               setShowCierre(false);
               setSessionToArqueo(null);
+              setGenerateZAfterArqueo(false);
               focusSearch();
             }} 
             onConfirm={async (data) => {
@@ -3362,6 +3400,7 @@ export default function POSScreen() {
           <AbrirCajaModal 
             key="abrir-caja-modal" 
             terminalName={terminalName} 
+            onMakeZ={inPractice() ? undefined : (pending) => { setShowAbrirCaja(false); makeZWithoutOpening(pending); }}
             onClose={() => { setShowAbrirCaja(false); focusSearch(); }} 
             onSuccess={(session) => {
               setCurrentSession(session);

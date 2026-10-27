@@ -11,6 +11,9 @@ import { holdLogout } from '../../utils/logoutHold';
 import { useOpeningFloat } from '../../utils/openingFloat';
 import MpReconcilePanel, { mpReconcileNote, useMpConnected, useMpReconcile } from '../cash-register/MpReconcilePanel';
 import { printReport } from '../../utils/ticketPrinter';
+import { useConfirm } from '../common/ConfirmDialog';
+import { lockShortcuts } from '../../utils/shortcutLock';
+import { readArqueoDraft, saveArqueoDraft, clearArqueoDraft } from '../../utils/arqueoDraft';
 
 interface CierreCajaModalProps {
   session: any;
@@ -24,13 +27,16 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const { user: currentUser } = useAuthStore();
   const [activeSession, setActiveSession] = useState(session);
   const openingFloat = useOpeningFloat();
-  const [step, setStep] = useState(1); // 1: Validar Gastos, 2: Arqueo Cash, 3: Arqueo Virtual, 4: Validación, 5: Confirmación, 6: Exito
-  const [bills, setBills] = useState<Record<number, number>>(
-    Object.fromEntries(denominations.map(d => [d, 0]))
-  );
+  // Lo que se había cargado antes de cerrar la pantalla o recargar (se retoma desde ahí)
+  const [draft] = useState(() => readArqueoDraft(session?.id));
+  const [step, setStep] = useState(() => Math.min(Math.max(Number(draft?.step) || 1, 1), 4)); // 1: Validar Gastos, 2: Arqueo Cash, 3: Arqueo Virtual, 4: Validación, 5: Confirmación, 6: Exito
+  const [bills, setBills] = useState<Record<number, number>>(() => ({
+    ...Object.fromEntries(denominations.map(d => [d, 0])),
+    ...(draft?.bills || {}),
+  }));
   const [posnetDeclarations, setPosnetDeclarations] = useState<Record<string, number>>({});
-  const [cloverInputs, setCloverInputs] = useState<number[]>([0]);
-  const [mpInputs, setMpInputs] = useState<number[]>([0, 0]);
+  const [cloverInputs, setCloverInputs] = useState<number[]>(() => (draft?.cloverInputs?.length ? draft.cloverInputs : [0]));
+  const [mpInputs, setMpInputs] = useState<number[]>(() => (draft?.mpInputs?.length ? draft.mpInputs : [0, 0]));
 
   useEffect(() => {
     const mpTotal = mpInputs.reduce((a, b) => a + (Number(b) || 0), 0);
@@ -41,7 +47,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
     });
   }, [cloverInputs, mpInputs]);
 
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(() => draft?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGastosModal, setShowGastosModal] = useState(false);
   const [editingGasto, setEditingGasto] = useState<any | null>(null);
@@ -51,6 +57,8 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   // Mientras dura el cierre no se cierra la sesión de esta terminal: se cierra recién
   // cuando el cajero sale del cartel (así puede imprimir el comprobante)
   useEffect(() => holdLogout(), []);
+  // Con el arqueo abierto, los atajos de la caja (F8, F9, Esc…) no hacen nada atrás
+  useEffect(() => lockShortcuts(), []);
 
   // Consumo de empleados del turno (sin cargo): solo informativo, no cambia ningún monto
   const [consumption, setConsumption] = useState<{ name: string; items: { name: string; quantity: number }[] }[]>([]);
@@ -108,12 +116,33 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   // de Mercado Pago, y en la validación se ve qué pago no tiene venta y al revés.
   const mpConnected = useMpConnected();
   const mpData = useMpReconcile(activeSession?.id, posnets, !!mpConnected);
-  const [mpManual, setMpManual] = useState(false);
+  const [mpManual, setMpManual] = useState(() => !!draft?.mpManual);
   // Si Mercado Pago no responde (sin internet), se vuelve a cargar a mano como antes
   const mpAuto = !!mpConnected && !mpManual && !mpData.error;
   useEffect(() => {
     if (mpAuto && mpData.result) setMpInputs([mpData.result.realForSession]);
   }, [mpAuto, mpData.result]);
+
+  // Se guarda lo cargado mientras se cuenta, y si este arqueo termina en un Cierre Z
+  useEffect(() => {
+    if (step >= 6) return;
+    saveArqueoDraft(activeSession?.id, { withZ: isFollowedByZ, step: Math.min(step, 4), bills, cloverInputs, mpInputs, mpManual, notes });
+  }, [activeSession?.id, isFollowedByZ, step, bills, cloverInputs, mpInputs, mpManual, notes]);
+
+  // Solo se cierra con la cruz (o Cancelar), y preguntando: un clic afuera o Esc no borran el conteo
+  const [askConfirm, confirmDialog] = useConfirm();
+  const requestClose = async () => {
+    if (step >= 6) { onClose(); return; }
+    const ok = await askConfirm({
+      title: isFollowedByZ ? '¿Salir del cierre del día?' : '¿Salir del arqueo?',
+      message: isFollowedByZ
+        ? 'Lo que contaste queda guardado en esta PC. El Cierre Z todavía no se hizo: retomalo desde el aviso de arqueo pendiente.'
+        : 'Lo que contaste queda guardado en esta PC. Retomalo desde el aviso de arqueo pendiente.',
+      confirmLabel: 'Salir',
+      cancelLabel: 'Seguir contando',
+    });
+    if (ok) onClose();
+  };
 
   // Calculate all session-related values with useMemo to prevent O(N) loops on every single state update (keypress)
   const sessionCalculations = useMemo(() => {
@@ -296,14 +325,11 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
       if (e.key === 'F9' && step >= 4) {
         e.preventDefault();
         handlePrintZReport();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step, cashToWithdraw, posnetDeclarations, notes, onClose]);
+  }, [step, cashToWithdraw, posnetDeclarations, notes]);
 
   // ── Presentación ─────────────────────────────────────────────────
   const STEPS = ['Gastos', 'Efectivo', 'Tarjetas y QR', 'Revisión'];
@@ -384,7 +410,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
   return (
-    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-0 sm:p-3" onClick={onClose}>
+    <MotionDiv {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-0 sm:p-3">
       <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.98, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} onClick={(e: any) => e.stopPropagation()} className="bg-white dark:bg-slate-900 sm:rounded-2xl w-full max-w-5xl shadow-2xl sm:border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col h-[100dvh] sm:h-[min(660px,calc(100dvh-24px))]">
         <style>{`
           @media print {
@@ -424,10 +450,10 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                 {step <= 4 ? 'Arqueo de caja' : step === 5 ? 'Cerrar el turno' : 'Turno cerrado'}
               </h2>
               <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                {[activeSession?.user?.fullName || activeSession?.user?.username, activeSession?.terminalName].filter(Boolean).join(' · ') || 'Turno actual'}
+                {[isFollowedByZ ? 'Cierre del día (Z)' : 'Cambio de turno (X)', activeSession?.user?.fullName || activeSession?.user?.username, activeSession?.terminalName].filter(Boolean).join(' · ')}
               </p>
             </div>
-            <button onClick={onClose} title="Cerrar (Esc)" className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+            <button onClick={requestClose} title="Cerrar" className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -1108,7 +1134,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
         {step < 6 && (
           <div className="px-4 sm:px-7 py-3 sm:py-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-white dark:bg-slate-900">
             <button
-              onClick={() => step > 1 ? setStep(step - 1) : onClose()}
+              onClick={() => step > 1 ? setStep(step - 1) : requestClose()}
               disabled={isSubmitting}
               className="px-4 py-2.5 rounded-xl text-[14px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
             >
@@ -1139,6 +1165,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                         notes: mpConnected && mpData.result ? [notes.trim(), mpReconcileNote(mpData.result)].filter(Boolean).join('\n') : notes,
                         bills,
                       });
+                      clearArqueoDraft(activeSession?.id);
                       setStep(6);
                     } catch (e) {
                       // Error is handled by parent, so we just reset submitting
@@ -1175,6 +1202,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
           />
         )}
       </AnimatePresence>
+      {confirmDialog}
     </MotionDiv>
   );
 }

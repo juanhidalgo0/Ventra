@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Unlock, Lock, Laptop, Banknote } from 'lucide-react';
+import { X, Unlock, Lock, Laptop, Banknote, FileOutput } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { useOpeningFloat } from '../../utils/openingFloat';
@@ -9,12 +9,27 @@ interface AbrirCajaModalProps {
   onClose: () => void;
   onSuccess: (session: any) => void;
   terminalName: string;
+  /** Hacer el Cierre Z de lo pendiente sin abrir la caja (recibe el resumen pendiente) */
+  onMakeZ?: (pending: any) => void;
 }
 
-export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: AbrirCajaModalProps) {
+export default function AbrirCajaModal({ onClose, onSuccess, terminalName, onMakeZ }: AbrirCajaModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const openingFloat = useOpeningFloat();
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
+
+  // Turnos cerrados que todavía no entraron en un Cierre Z (p. ej. el último hizo un X por error)
+  const [pendingZ, setPendingZ] = useState<any | null>(null);
+  useEffect(() => {
+    if (!onMakeZ) return;
+    api.get('/cash/z-report/pending', { silent: true } as any)
+      .then(({ data }) => setPendingZ(data && data.sessionCount > 0 ? data : null))
+      .catch(() => setPendingZ(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const pendingSince = pendingZ?.sessions?.[0]?.openedAt
+    ? new Date(pendingZ.sessions[0].openedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    : '';
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -103,6 +118,24 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName }: Abr
                 : 'El administrador todavía no lo definió (se carga en Configuración). Lo que quede en el cajón no se suma a las ventas.'}
             </p>
           </div>
+
+          {pendingZ && onMakeZ && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+              <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">
+                {pendingZ.sessionCount === 1 ? 'Hay 1 turno cerrado' : `Hay ${pendingZ.sessionCount} turnos cerrados`} sin Cierre Z{pendingSince ? ` (desde el ${pendingSince} h)` : ''}
+              </p>
+              <p className="text-[12.5px] text-amber-800/90 dark:text-amber-300/80 mt-0.5 leading-snug">
+                Si el último turno hizo un X en vez del Z, hacé el Cierre Z ahora, sin abrir la caja.
+              </p>
+              <button
+                onClick={() => onMakeZ(pendingZ)}
+                disabled={isSubmitting}
+                className="mt-2.5 w-full btn-secondary py-2.5 text-xs uppercase tracking-wider font-extrabold"
+              >
+                <FileOutput className="w-4 h-4" /> Hacer el Cierre Z sin abrir la caja
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
