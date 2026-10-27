@@ -1220,7 +1220,7 @@ export default function POSScreen() {
       focusSearch();
       return;
     }
-    const turns = pending?.sessionCount || 0;
+    const turns = pending?.allSessions?.length || pending?.sessionCount || 0;
     const ok = await askConfirm({
       title: '¿Hacer el Cierre Z?',
       message: `Junta ${turns === 1 ? 'el turno cerrado' : `los ${turns} turnos cerrados`} desde el último Cierre Z. No hace falta abrir la caja.`,

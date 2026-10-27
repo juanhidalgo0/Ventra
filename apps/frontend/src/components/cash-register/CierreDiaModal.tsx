@@ -17,6 +17,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
   const summary = JSON.parse(zReport.summary || '{}');
+  // Turnos que cerró el Z: todos los que entraron, también los que no tuvieron movimiento
+  const turnCount: number = zReport.sessions?.length || summary.sessionCount || 0;
   const pct1 = Number(localStorage.getItem('virtual1_surcharge') || '0');
   const pct2 = Number(localStorage.getItem('virtual2_surcharge') || '0');
 
@@ -361,7 +363,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             </div>
             <div>
               <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', display: 'block', marginBottom: '0.5mm' }}>Cantidad de Turnos Consolidados</span>
-              <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#000000' }}>{summary.sessionCount ?? zReport.sessions?.length ?? 0}</span>
+              <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#000000' }}>{turnCount}</span>
             </div>
             <div>
               <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', display: 'block', marginBottom: '0.5mm' }}>Generado por</span>
@@ -1016,7 +1018,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-slate-900 leading-tight">Cierre del Día (Reporte Z)</h3>
                 <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
-                  #Z-{zReport.id?.substring(0, 8).toUpperCase()} · {new Date(zReport.generatedAt).toLocaleString('es-AR')} · {summary.sessionCount ?? zReport.sessions?.length ?? 0} turno(s) · por {zReport.generatedBy?.fullName || 'Administrador'}
+                  #Z-{zReport.id?.substring(0, 8).toUpperCase()} · {new Date(zReport.generatedAt).toLocaleString('es-AR')} · {turnCount} turno(s) · por {zReport.generatedBy?.fullName || 'Administrador'}
                 </p>
               </div>
             </div>
@@ -1240,7 +1242,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">¡Día Cerrado con Éxito!</h3>
             <p className="text-slate-600 mb-8 max-w-sm">
-              Se ha generado el Reporte Z maestro consolidando <b>{summary.sessionCount ?? zReport.sessions?.length ?? 0}</b> turnos. Puedes imprimir el comprobante consolidado y los cierres a continuación.
+              Se ha generado el Reporte Z maestro consolidando <b>{turnCount}</b> {turnCount === 1 ? 'turno' : 'turnos'}. Puedes imprimir el comprobante consolidado y los cierres a continuación.
             </p>
             <div className="flex flex-col gap-4 w-full">
               <button disabled={!printReady} onClick={() => handlePrint('z-only')} className="w-full py-3.5 rounded-xl border border-rose-600 text-rose-600 font-bold transition-all hover:bg-rose-50 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">

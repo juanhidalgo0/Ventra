@@ -23,12 +23,14 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName, onMak
   useEffect(() => {
     if (!onMakeZ) return;
     api.get('/cash/z-report/pending', { silent: true } as any)
-      .then(({ data }) => setPendingZ(data && data.sessionCount > 0 ? data : null))
+      // También cuentan los turnos sin movimiento: el Z los cierra igual (si no, quedan colgados)
+      .then(({ data }) => setPendingZ(data && (data.allSessions?.length || 0) > 0 ? data : null))
       .catch(() => setPendingZ(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const pendingSince = pendingZ?.sessions?.[0]?.openedAt
-    ? new Date(pendingZ.sessions[0].openedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+  const pendingTurns: number = pendingZ?.allSessions?.length || 0;
+  const pendingSince = pendingZ?.allSessions?.[0]?.openedAt
+    ? new Date(pendingZ.allSessions[0].openedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
     : '';
 
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName, onMak
           {pendingZ && onMakeZ && (
             <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
               <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">
-                {pendingZ.sessionCount === 1 ? 'Hay 1 turno cerrado' : `Hay ${pendingZ.sessionCount} turnos cerrados`} sin Cierre Z{pendingSince ? ` (desde el ${pendingSince} h)` : ''}
+                {pendingTurns === 1 ? 'Hay 1 turno cerrado' : `Hay ${pendingTurns} turnos cerrados`} sin Cierre Z{pendingSince ? ` (desde el ${pendingSince} h)` : ''}
               </p>
               <p className="text-[12.5px] text-amber-800/90 dark:text-amber-300/80 mt-0.5 leading-snug">
                 Si el último turno hizo un X en vez del Z, hacé el Cierre Z ahora, sin abrir la caja.
