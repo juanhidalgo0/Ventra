@@ -951,8 +951,8 @@ export default function ProductsScreen() {
                     disabled: !isHardwareStore,
                   },
                   {
-                    label: 'Marketing y promociones',
-                    description: 'Carteles, combos y difusión',
+                    label: 'Grupos y carteles',
+                    description: 'Reimprimir por grupo, imágenes para redes y listas A4',
                     icon: <Megaphone className="w-3.5 h-3.5 text-purple-600" />,
                     onClick: () => navigate('/marketing'),
                   },

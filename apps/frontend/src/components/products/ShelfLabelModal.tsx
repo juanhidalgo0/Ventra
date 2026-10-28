@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Tag, Printer, Search, Plus, Minus, Trash2 } from 'lucide-react';
+import { X, Tag, Printer, Search, Plus, Minus, Trash2, Layers } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api, { resolveServerUrl } from '../../services/api';
+import { useMarketingStore } from '../../stores/marketingStore';
 import { SHELF_FORMATS, buildShelfDocument, type ShelfOptions, type ShelfProduct } from '../../utils/shelfLabels';
 
 interface Item { product: any; quantity: number }
@@ -41,6 +42,26 @@ export default function ShelfLabelModal({ onClose, initialProductIds, initialOff
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Grupos ("Cervezas"): se cargan enteros con el precio de hoy, o se guarda lo elegido como grupo
+  const { groups, fetchGroups, createGroup } = useMarketingStore();
+  useEffect(() => { fetchGroups(); }, [fetchGroups]);
+  const loadGroup = async (id: string) => {
+    const g = groups.find((x) => x.id === id);
+    if (!g) return;
+    // Los precios del grupo pueden ser viejos: se piden de nuevo
+    const list = await Promise.all(g.items.map((i) => api.get(`/products/${i.productId}`).then((r) => r.data).catch(() => null)));
+    const fresh = list.filter(Boolean);
+    setItems((prev) => [...prev, ...fresh.filter((p) => !prev.some((x) => x.product.id === p.id)).map((product) => ({ product, quantity: 1 }))]);
+    toast.success(`Se cargó "${g.name}": ${fresh.length} ${fresh.length === 1 ? 'producto' : 'productos'}`);
+  };
+  const saveAsGroup = async () => {
+    const name = window.prompt('Nombre del grupo (por ejemplo, Cervezas):')?.trim();
+    if (!name) return;
+    try {
+      await createGroup(name, undefined, items.map((i, order) => ({ productId: i.product.id, order })));
+      toast.success(`Grupo "${name}" guardado: la próxima vez lo cargás de un toque`);
+    } catch { toast.error('No se pudo guardar el grupo'); }
+  };
   const format = SHELF_FORMATS.find((f) => f.id === opts.formatId) || SHELF_FORMATS[0];
   const storeName = (() => { try { return localStorage.getItem('gd_store_name') || ''; } catch { return ''; } })();
 
@@ -162,6 +183,13 @@ export default function ShelfLabelModal({ onClose, initialProductIds, initialOff
           <div className="w-80 border-r border-slate-200 flex flex-col shrink-0">
             <div className="p-3 border-b border-slate-200 space-y-2.5">
               <div>
+                <p className="text-[11px] font-bold text-slate-500 mb-1 flex items-center gap-1"><Layers className="w-3.5 h-3.5" /> Grupo de productos</p>
+                <select value="" onChange={(e) => loadGroup(e.target.value)} className="w-full h-9 px-2 rounded-lg border border-slate-300 bg-white text-[12.5px] text-slate-800">
+                  <option value="">{groups.length ? 'Cargar un grupo (ej.: Cervezas)…' : 'Todavía no hay grupos'}</option>
+                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name} · {g.items.length}</option>)}
+                </select>
+              </div>
+              <div>
                 <p className="text-[11px] font-bold text-slate-500 mb-1">Tamaño</p>
                 <select value={opts.formatId} onChange={(e) => { setOpts({ ...opts, formatId: e.target.value }); setStartAt(1); }}
                   className="w-full h-9 px-2 rounded-lg border border-slate-300 bg-white text-[12.5px] font-semibold text-slate-800">
@@ -200,10 +228,13 @@ export default function ShelfLabelModal({ onClose, initialProductIds, initialOff
                 </div>
               ))}
             </div>
-            <div className="p-3 border-t border-slate-200 flex items-center gap-2">
-              <span className="text-[11.5px] text-slate-500 flex-1">{labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'}{pages ? ` · ${pages} ${format.kind === 'a4' ? (pages === 1 ? 'hoja' : 'hojas') : ''}` : ''}</span>
-              {items.length > 0 && <button onClick={() => setItems([])} className="text-[11.5px] font-semibold text-slate-500 hover:text-rose-600">Vaciar</button>}
-              <button onClick={print} disabled={!labels.length} className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold flex items-center gap-1.5 disabled:opacity-50">
+            <div className="p-3 border-t border-slate-200 space-y-2">
+              <div className="flex items-center gap-3 text-[11.5px]">
+                <span className="text-slate-500 flex-1">{labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'}{pages ? ` · ${pages} ${format.kind === 'a4' ? (pages === 1 ? 'hoja' : 'hojas') : ''}` : ''}</span>
+                {items.length > 0 && <button onClick={saveAsGroup} className="font-semibold text-slate-500 hover:text-rose-600" title="Para la próxima, cargarlos de un toque">Guardar como grupo</button>}
+                {items.length > 0 && <button onClick={() => setItems([])} className="font-semibold text-slate-500 hover:text-rose-600">Vaciar</button>}
+              </div>
+              <button onClick={print} disabled={!labels.length} className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50">
                 <Printer className="w-4 h-4" /> Imprimir
               </button>
             </div>
