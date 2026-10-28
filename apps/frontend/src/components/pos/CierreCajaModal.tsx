@@ -89,8 +89,18 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
     }
   };
 
+  // Confirmaciones con el modal de la app (salir del arqueo, borrar un gasto)
+  const [askConfirm, confirmDialog] = useConfirm();
+
   const handleDeleteGasto = async (id: string) => {
-    if (!window.confirm('¿Seguro que querés eliminar este gasto?')) return;
+    const ok = await askConfirm({
+      title: '¿Eliminar este gasto?',
+      message: 'Sale del turno y se vuelve a calcular lo que tiene que haber en la caja.',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Volver',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/cash/movement/${id}`);
       reloadSession();
@@ -130,7 +140,6 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   }, [activeSession?.id, isFollowedByZ, step, bills, cloverInputs, mpInputs, mpManual, notes]);
 
   // Solo se cierra con la cruz (o Cancelar), y preguntando: un clic afuera o Esc no borran el conteo
-  const [askConfirm, confirmDialog] = useConfirm();
   const requestClose = async () => {
     if (step >= 6) { onClose(); return; }
     const ok = await askConfirm({
