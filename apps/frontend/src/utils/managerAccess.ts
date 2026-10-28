@@ -9,8 +9,21 @@ import { useAuthStore } from '../stores/authStore';
  */
 export function useManagerAccess(): boolean {
   const role = useAuthStore((s) => s.user?.role);
+  const unlocked = useAdminUnlocked();
+  return role === 'ADMIN' || role === 'SUPERVISOR' || unlocked;
+}
+
+/** Lo mismo, solo para lo que es del dueño (por ejemplo GO Delivery en el menú) */
+export function useOwnerAccess(): boolean {
+  const role = useAuthStore((s) => s.user?.role);
+  const unlocked = useAdminUnlocked();
+  return role === 'ADMIN' || unlocked;
+}
+
+/** El dueño entró con el candado sobre la sesión de otro usuario (fuera de la caja) */
+function useAdminUnlocked(): boolean {
+  const role = useAuthStore((s) => s.user?.role);
   const { pathname } = useLocation();
-  if (role === 'ADMIN' || role === 'SUPERVISOR') return true;
   if (!role || pathname === '/pos' || pathname === '/') return false;
   try { return sessionStorage.getItem('admin_unlocked') === 'true'; } catch { return false; }
 }

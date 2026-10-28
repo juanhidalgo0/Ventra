@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useProductReviews } from '../products/ProductReviews';
 import { MessageCircle } from 'lucide-react';
 import { openAskBusiness } from '../common/AskBusiness';
+import { useOwnerAccess } from '../../utils/managerAccess';
 import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
@@ -112,14 +113,16 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
 
   // GO Delivery: la vinculación es de la cuenta (se sincroniza a todas las PCs), así que se le
   // pregunta a la caja en vez de depender de que esta PC haya abierto la pantalla de GO
+  // El dueño logueado o el dueño que entró con el candado sobre la sesión del cajero
+  const isOwner = useOwnerAccess();
   const [goLinked, setGoLinked] = useState(() => localStorage.getItem('go_linked') === '1');
   useEffect(() => {
-    if (user?.role !== 'ADMIN') return;
+    if (!isOwner) return;
     api.get('/go/status', { silent: true } as any).then(({ data }) => {
       setGoLinked(!!data?.linked);
       try { localStorage.setItem('go_linked', data?.linked ? '1' : '0'); } catch { /* sin almacenamiento */ }
     }).catch(() => { /* sin conexión: queda lo último que se supo */ });
-  }, [user?.role]);
+  }, [isOwner]);
 
   const ordersVisible = useOrdersVisible();
   const reviewCount = useProductReviews((s) => s.count);
@@ -200,7 +203,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           ]
         },
         // GO Delivery: con la cuenta vinculada (se vincula desde Configuración → Integraciones)
-        ...(user?.role === 'ADMIN' && goLinked ? [{ label: 'GO Delivery', icon: GoIcon, path: '/go' }] : []),
+        ...(isOwner && goLinked ? [{ label: 'GO Delivery', icon: GoIcon, path: '/go' }] : []),
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
