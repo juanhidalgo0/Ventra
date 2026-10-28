@@ -33,7 +33,7 @@ export function useAskSuggestions(): string[] {
   if (profile === 'GASTRONOMIA') return ['¿Cuánto vendí hoy?', '¿Qué es lo más pedido esta semana?', '¿A qué hora vendo más?', '¿Cómo viene la caja?', '¿Qué productos me dejan menos ganancia?'];
   if (profile === 'DISTRIBUIDORA') return ['¿Qué pedidos tengo para el reparto de mañana?', '¿Qué clientes dejaron de pedir?', '¿Quién me debe más?', '¿Qué tengo que reponer?', '¿Cuánto les debo a los proveedores?'];
   if (profile === 'IMPRENTA') return ['¿Qué encargos tengo para hoy?', '¿Hay encargos atrasados?', '¿Cuánto me falta cobrar de encargos?', '¿Cuánto vendí esta semana?'];
-  if (profile === 'NUTRICION') return ['¿Qué turnos tengo mañana?', '¿Quién faltó esta semana?', '¿Cuánto cobré online este mes?', '¿Cómo cargo una consulta?'];
+  if ((profile as string) === 'NUTRICION') return ['¿Qué turnos tengo mañana?', '¿Quién faltó esta semana?', '¿Cuánto cobré online este mes?', '¿Cómo cargo una consulta?'];
   return ['¿Cuánto vendí esta semana contra la pasada?', '¿Qué productos me dejan más ganancia este mes?', '¿Quién me debe más?', '¿Qué productos no se venden hace un mes?', '¿Qué día de la semana vendo más?'];
 }
 
