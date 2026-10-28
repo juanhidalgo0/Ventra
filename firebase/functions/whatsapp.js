@@ -19,6 +19,7 @@ const quota = require("./reminder-quota");
 const notify = require("./notify");
 const { publicUrl } = require("./store-slugs");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
+const waOwner = require("./wa-owner");
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 /**
@@ -335,7 +336,9 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
       for (const m of v.messages || []) {
         const payload = (m.button && m.button.payload) || (m.interactive && m.interactive.button_reply && m.interactive.button_reply.id);
         if (payload) jobs.push(onButton(db, token, m.from, payload));
-        else if (configured(token)) jobs.push(onText(db, token, m.from));
+        // El dueño que pregunta por su negocio (o vincula su WhatsApp); si no, un cliente de la agenda
+        else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, text) => sendText(token, to, text), m)
+          .then((handled) => (handled ? null : onText(db, token, m.from))));
       }
     }
   }
@@ -344,4 +347,4 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
   res.status(200).send("OK");
 }
 
-module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, WHEN };
+module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, configured, WHEN };

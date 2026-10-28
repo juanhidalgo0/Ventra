@@ -2134,6 +2134,42 @@ exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY], maxInstances: 10
   }
 });
 
+// ─── El dueño le pregunta a Ventra por WhatsApp (ver wa-owner.js) ───
+// La app pide el código para vincular el teléfono (con la vinculación del equipo); el webhook
+// de WhatsApp deja cada pregunta en ventra_wa_owner_inbox y esta tarea la contesta.
+const waOwner = require("./wa-owner");
+exports.ventraWaOwner = onRequest({ maxInstances: 10, timeoutSeconds: 30 }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret, action } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  try {
+    if (action === "status") return res.status(200).json(await waOwner.status(db, uid));
+    if (action === "code") return res.status(200).json(await waOwner.linkCode(db, uid));
+    if (action === "unlink") return res.status(200).json(await waOwner.unlink(db, uid));
+    return res.status(400).json({ error: "Acción inválida" });
+  } catch (err) {
+    logger.error(`Ventra WhatsApp del dueño (${uid}): error`, err);
+    return res.status(500).json({ error: "No se pudo completar" });
+  }
+});
+
+exports.ventraWaOwnerInbox = onDocumentCreated({
+  document: "ventra_wa_owner_inbox/{msgId}", secrets: [VENTRA_ANTHROPIC_KEY, VENTRA_WA_TOKEN, NEON_DATABASE_URL],
+  memory: "512MiB", timeoutSeconds: 120, maxInstances: 10, retry: false,
+}, async (event) => {
+  if (!event.data) return;
+  const token = String(VENTRA_WA_TOKEN.value() || "").trim();
+  if (!whatsapp.configured(token)) return;
+  const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+  await cloudSync.ensureSchema(sql);
+  await waOwner.processInbox(db, event.data.data(), {
+    ai, aiDeps: { db, logger, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
+    sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
+  });
+  await event.data.ref.delete().catch(() => {});
+});
+
 // ─── Catálogo compartido de códigos de barras (ver barcodes.js) ───
 const barcodes = require("./barcodes");
 exports.ventraBarcodes = onRequest({ maxInstances: 20, timeoutSeconds: 30, memory: "256MiB" }, async (req, res) => {

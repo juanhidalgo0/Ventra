@@ -357,8 +357,13 @@ async function priceList(client, body) {
 // después redacta la respuesta con los números que la PC le devuelve ("answer").
 
 const ASK_QUERIES = ["ventas", "productos", "sin_ventas", "stock_bajo", "stock_valorizado", "deudores", "cliente", "gastos", "compras"];
+// Por WhatsApp las consultas las corre la nube (insights-cloud.js), que suma dos más
+const ASK_QUERIES_WA = [...ASK_QUERIES, "stock", "caja"];
+const ASK_PLAN_WA_EXTRA = `
+- "stock": cuánto queda de un producto puntual. "buscar": el nombre (o parte) del producto o su código de barras.
+- "caja": las cajas abiertas ahora (cuánto vendió cada una, quién la abrió y el efectivo que debería haber) y los últimos cierres con su diferencia.`;
 
-const ASK_PLAN_SYSTEM = (today) => `Sos el asistente de datos de un comercio argentino que usa el sistema Ventra. El dueño hace una pregunta sobre su negocio y vos elegís qué consultas correr para responderla. Hoy es ${today} (zona horaria de Argentina).
+const ASK_PLAN_SYSTEM = (today, extra = "") => `Sos el asistente de datos de un comercio argentino que usa el sistema Ventra. El dueño hace una pregunta sobre su negocio y vos elegís qué consultas correr para responderla. Hoy es ${today} (zona horaria de Argentina).
 
 Consultas disponibles (podés pedir hasta 3; por ejemplo, para comparar dos períodos pedí la misma consulta con fechas distintas):
 - "ventas": total vendido, cantidad de ventas y ticket promedio entre desde y hasta. "agrupar": "ninguno", "dia", "semana", "mes", "dia_de_semana", "hora", "medio_de_pago" o "vendedor".
@@ -369,13 +374,13 @@ Consultas disponibles (podés pedir hasta 3; por ejemplo, para comparar dos per�
 - "deudores": clientes que deben (cuenta corriente), de mayor a menor. "limite".
 - "cliente": lo que compró un cliente entre desde y hasta, su saldo y sus productos más comprados. "buscar": el nombre del cliente.
 - "gastos": gastos de caja entre desde y hasta, agrupados por concepto.
-- "compras": compras a proveedores entre desde y hasta, por proveedor.
+- "compras": compras a proveedores entre desde y hasta, por proveedor.${extra}
 
 Fechas en formato AAAA-MM-DD; "hasta" incluye ese día. "Esta semana" empieza el lunes; "este mes" el día 1. Si no dice período y la consulta lo usa, tomá los últimos 30 días.
 Completá todos los campos de cada consulta: los que no usa van vacíos ("") o en 0.
 Si la pregunta no se puede responder con estas consultas (por ejemplo, algo que no es del negocio o datos que el sistema no tiene), devolvé "queries" vacío y explicá en "noSePuede" qué sí podés responder.`;
 
-const ASK_PLAN_SCHEMA = {
+const askPlanSchema = (list) => ({
   type: "object",
   properties: {
     queries: {
@@ -383,7 +388,7 @@ const ASK_PLAN_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          tipo: { type: "string", enum: ASK_QUERIES },
+          tipo: { type: "string", enum: list },
           desde: { type: "string" },
           hasta: { type: "string" },
           agrupar: { type: "string", enum: ["", "ninguno", "dia", "semana", "mes", "dia_de_semana", "hora", "medio_de_pago", "vendedor"] },
@@ -400,7 +405,7 @@ const ASK_PLAN_SCHEMA = {
   },
   required: ["queries", "noSePuede"],
   additionalProperties: false,
-};
+});
 
 const ASK_ANSWER_SYSTEM = `Sos el asistente de datos de un comercio argentino que usa Ventra. Respondé la pregunta del dueño con los datos que te paso (salen de su sistema; no inventes nada que no esté ahí).
 - Español rioplatense, con voseo, directo. Primero la respuesta en una o dos oraciones; después, si suma, una lista corta (hasta 8 renglones) con lo más importante.
@@ -411,14 +416,24 @@ const ASK_ANSWER_SYSTEM = `Sos el asistente de datos de un comercio argentino qu
 - Podés usar **negrita** para el número principal. Nada de tablas ni títulos.
 - Si ves algo para hacer (reponer un producto, cobrarle a un cliente), sugerilo en una oración al final.`;
 
+// Por WhatsApp: el formato de WhatsApp (un asterisco es negrita) y mensajes más cortos
+const ASK_ANSWER_WA_SYSTEM = ASK_ANSWER_SYSTEM
+  .replace("Podés usar **negrita** para el número principal. Nada de tablas ni títulos.",
+    "Es un mensaje de WhatsApp: corto (hasta 900 caracteres). Para negrita usá un asterisco de cada lado (*así*), nunca dos. Listas con guion. Nada de tablas, títulos ni links.");
+
 async function ask(client, body) {
   const question = String(body.question || "").trim().slice(0, 500);
   if (!question) throw new AiError(400, "EMPTY", "Escribí tu pregunta.");
+  const wa = body.channel === "whatsapp";
+  // La pregunta anterior (por WhatsApp): para entender "¿y ayer?" o "¿y la semana pasada?"
+  const before = wa && body.previous ? `Pregunta anterior del dueño (por si esta la continúa): ${String(body.previous).slice(0, 300)}
+
+` : "";
   if (body.step === "answer") {
     const data = JSON.stringify(body.data ?? null).slice(0, 30000);
     const msg = await client.messages.create({
       model: MODEL, max_tokens: 1500, output_config: { effort: "low" },
-      system: ASK_ANSWER_SYSTEM,
+      system: wa ? ASK_ANSWER_WA_SYSTEM : ASK_ANSWER_SYSTEM,
       messages: [{ role: "user", content: `Pregunta: ${question}\n\nDatos del sistema (JSON):\n${data}` }],
     });
     if (msg.stop_reason === "refusal") throw new AiError(422, "REFUSED", "No pude responder esa pregunta.");
@@ -428,14 +443,14 @@ async function ask(client, body) {
   const weekday = new Date().toLocaleDateString("es-AR", { timeZone: TZ, weekday: "long" });
   const msg = await client.messages.create({
     model: MODEL, max_tokens: 1500,
-    output_config: { effort: "low", format: { type: "json_schema", schema: ASK_PLAN_SCHEMA } },
-    system: ASK_PLAN_SYSTEM(`${weekday} ${today}`),
-    messages: [{ role: "user", content: question }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: askPlanSchema(wa ? ASK_QUERIES_WA : ASK_QUERIES) } },
+    system: ASK_PLAN_SYSTEM(`${weekday} ${today}`, wa ? ASK_PLAN_WA_EXTRA : ""),
+    messages: [{ role: "user", content: before + question }],
   });
   if (msg.stop_reason === "refusal") throw new AiError(422, "REFUSED", "No pude responder esa pregunta.");
   let out;
   try { out = JSON.parse(textOf(msg)); } catch { throw new AiError(502, "BAD_OUTPUT", "No entendí la pregunta. Probá decirla de otra forma."); }
-  out.queries = (out.queries || []).filter((q) => ASK_QUERIES.includes(q.tipo)).slice(0, 3);
+  out.queries = (out.queries || []).filter((q) => (wa ? ASK_QUERIES_WA : ASK_QUERIES).includes(q.tipo)).slice(0, 3);
   return { result: out, usage: msg.usage || {} };
 }
 
@@ -624,4 +639,4 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
   return { result: out.result, left: LIMITS[kind] - used - 1, leftToday: DAILY[kind] - usedToday - 1 };
 }
 
-module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, GO_CATEGORIES };
+module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

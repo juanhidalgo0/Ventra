@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { usePlanStore } from '../../stores/planStore';
 import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
+import AskWhatsApp from './AskWhatsApp';
 
 /** Lo abre cualquier pantalla (por ejemplo la paleta Ctrl+K) */
 export const openAskBusiness = () => window.dispatchEvent(new Event('ventra:ask-business'));
@@ -63,6 +64,8 @@ export default function AskBusiness({ compact = false }: { compact?: boolean }) 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [leftToday, setLeftToday] = useState<number | null>(null);
+  // Vincular el WhatsApp es cosa del dueño
+  const isOwner = useAuthStore((s) => s.user?.role) === 'ADMIN';
 
   const ask = async (q = question) => {
     const text = q.trim();
@@ -115,6 +118,7 @@ export default function AskBusiness({ compact = false }: { compact?: boolean }) 
       {leftToday !== null && leftToday <= 5 && !busy && (
         <p className="mt-2 text-[11.5px] text-slate-500">{leftToday > 0 ? `Te ${leftToday === 1 ? 'queda 1 pregunta' : `quedan ${leftToday} preguntas`} por hoy.` : 'Por hoy no quedan preguntas: mañana podés seguir.'}</p>
       )}
+      {isOwner && <AskWhatsApp />}
     </div>
   );
 }

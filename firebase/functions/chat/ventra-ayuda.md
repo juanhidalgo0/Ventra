@@ -17,6 +17,7 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 - Arriba hay un buscador de pantallas y acciones (**Ctrl + K**).
 - Arriba a la derecha, el botón **Ayuda** (en la caja está abajo a la izquierda, o con Ctrl + K → Ayuda): esta ayuda para preguntar, los recorridos guiados de la pantalla en la que estás y los atajos de teclado.
 - Al lado, **Preguntale a tu negocio** (dueño y encargados): preguntas sobre ventas, productos, stock, deudores, gastos y compras, respondidas con los números del sistema. También está en el inicio del celular y en Reportes.
+  - Abajo, **Preguntale por WhatsApp** (solo el dueño): **Vincular mi WhatsApp** muestra un QR (en el celular abre WhatsApp directo) con el mensaje "VINCULAR" y un código; se toca enviar y queda vinculado. Después se le escribe al número de Ventra (+54 9 221 204 8533) y contesta con los números de la caja, aunque la PC esté apagada (con lo último que mandó a la nube). Para dejar de usarlo: **Desvincular** ahí mismo o mandar DESVINCULAR por WhatsApp.
 
 ## Vender (Punto de Venta)
 - Primero se abre la caja: **F8** (o el botón de estado de caja arriba) → abrir caja con el efectivo inicial.

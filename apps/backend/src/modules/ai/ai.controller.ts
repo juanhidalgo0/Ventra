@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Request, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Post, Request, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
@@ -53,6 +53,25 @@ export class AiController {
   @Roles(...MANAGERS)
   ask(@Body('question') question: string) {
     return this.ai.ask(question, (queries) => this.insights.run(queries));
+  }
+
+  /** Preguntar por WhatsApp: el teléfono del dueño vinculado (solo el dueño lo ve y lo cambia) */
+  @Get('whatsapp')
+  @Roles('ADMIN')
+  whatsappStatus() {
+    return this.ai.whatsapp('status');
+  }
+
+  @Post('whatsapp/code')
+  @Roles('ADMIN')
+  whatsappCode() {
+    return this.ai.whatsapp('code');
+  }
+
+  @Post('whatsapp/unlink')
+  @Roles('ADMIN')
+  whatsappUnlink() {
+    return this.ai.whatsapp('unlink');
   }
 
   /** Ayuda dentro del sistema (cualquier usuario) */

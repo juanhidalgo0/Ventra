@@ -102,6 +102,24 @@ export class AiService {
     return { answer: String(result?.answer || ''), data, left, questionsLeftToday: leftToday === undefined ? undefined : Math.floor(leftToday / 2) };
   }
 
+  /**
+   * WhatsApp del dueño (función ventraWaOwner): ver si está vinculado, pedir el código para
+   * vincularlo (lo manda el dueño desde su teléfono al número de Ventra) o desvincularlo.
+   */
+  async whatsapp(action: 'status' | 'code' | 'unlink') {
+    const creds = this.subscription.getDeviceCredentials();
+    if (!creds) throw new BadRequestException('Para preguntar por WhatsApp, esta PC tiene que estar vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
+    try {
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraWaOwner`, { ...creds, action }, { timeout: 20_000 });
+      return data;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const message = err?.response?.data?.error;
+      if (status && message) throw new HttpException(message, status >= 500 ? 503 : status);
+      throw new ServiceUnavailableException('No se pudo conectar con Ventra. Revisá internet y probá de nuevo.');
+    }
+  }
+
   /** Ayuda adentro del sistema: cómo se hace algo en Ventra */
   async help(messages: { role: string; content: string }[], screen?: string) {
     const { result, left, leftToday } = await this.call('help', { messages: (messages || []).slice(-12), screen: String(screen || '').slice(0, 60) });
