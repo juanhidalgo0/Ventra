@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { create } from 'zustand';
 import { X, Check, Pencil, Trash2, Loader2, PackagePlus, ImageOff, ChevronRight } from 'lucide-react';
 import api, { resolveServerUrl } from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
+import { useManagerAccess } from '../../utils/managerAccess';
 import ProductModal from './ProductModal';
 
 /**
@@ -20,13 +20,12 @@ export const OPEN_REVIEWS_EVENT = 'ventra:open-product-reviews';
 /** Cuántos quedan por revisar: lo muestran el menú y las pantallas de Productos hasta que se revisan */
 export const useProductReviews = create<{ count: number }>(() => ({ count: 0 }));
 export const openProductReviews = () => window.dispatchEvent(new CustomEvent(OPEN_REVIEWS_EVENT));
-const canReview = (role?: string) => role === 'ADMIN' || role === 'SUPERVISOR';
 
 /** Cartel fijo arriba de Productos: se ve mientras haya alguno sin revisar */
 export function ProductReviewsBanner({ className = '' }: { className?: string }) {
   const count = useProductReviews((s) => s.count);
-  const role = useAuthStore((s) => s.user?.role);
-  if (!count || !canReview(role)) return null;
+  const allowed = useManagerAccess();
+  if (!count || !allowed) return null;
   return (
     <button onClick={openProductReviews} className={`w-full flex items-center gap-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left cursor-pointer hover:bg-amber-100/70 ${className}`}>
       <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0"><PackagePlus className="w-[18px] h-[18px]" /></span>
@@ -111,7 +110,8 @@ export function ProductReviewsSheet({ onClose }: { onClose: () => void }) {
 
 /** Avisa al dueño (y al encargado) cuando un empleado carga un producto nuevo desde la caja */
 export default function ProductReviewWatcher() {
-  const role = useAuthStore((s) => s.user?.role);
+  // También con el cajero logueado y el dueño adentro con el candado (la PC del local)
+  const allowed = useManagerAccess();
   const [open, setOpen] = useState(false);
   const first = useRef(true);
 
@@ -122,7 +122,7 @@ export default function ProductReviewWatcher() {
   }, []);
 
   useEffect(() => {
-    if (!canReview(role)) { useProductReviews.setState({ count: 0 }); return; }
+    if (!allowed) { useProductReviews.setState({ count: 0 }); return; }
     let alive = true;
     const check = async () => {
       try {
@@ -154,7 +154,7 @@ export default function ProductReviewWatcher() {
     const start = window.setTimeout(check, 4000);
     const t = window.setInterval(check, 30000);
     return () => { alive = false; window.clearTimeout(start); window.clearInterval(t); };
-  }, [role]);
+  }, [allowed]);
 
   return open ? <ProductReviewsSheet onClose={() => setOpen(false)} /> : null;
 }

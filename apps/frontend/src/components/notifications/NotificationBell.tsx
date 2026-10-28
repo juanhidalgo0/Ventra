@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarClock, PackageMinus, Wallet, Ban, FileWarning, CheckCheck } from 'lucide-react';
 import api from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
+import { useManagerAccess } from '../../utils/managerAccess';
 import { useFeature } from '../../stores/businessStore';
 import ExpiringProductsModal from '../dashboard/ExpiringProductsModal';
 import LowStockAlertsModal from '../dashboard/LowStockAlertsModal';
@@ -54,7 +54,6 @@ function notifyDesktop(items: Item[]) {
 
 /** Campanita con los avisos del comercio. Solo para administrador y encargado. */
 export default function NotificationBell({ className = '' }: { className?: string }) {
-  const role = useAuthStore((s) => s.user?.role);
   const expiryEnabled = useFeature('expiry');
   const navigate = useNavigate();
   const [items, setItems] = useState<Item[]>([]);
@@ -64,7 +63,8 @@ export default function NotificationBell({ className = '' }: { className?: strin
   const [showExpiring, setShowExpiring] = useState(false);
   const [showLowStock, setShowLowStock] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const allowed = role === 'ADMIN' || role === 'SUPERVISOR';
+  // Dueño o encargado, o el dueño adentro con el candado sobre la sesión del cajero
+  const allowed = useManagerAccess();
 
   const load = useCallback(async () => {
     try {
