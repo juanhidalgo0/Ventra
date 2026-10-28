@@ -25,9 +25,9 @@ const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); re
 const MODEL = "claude-haiku-5-5";
 // pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
 // (de una lista o de una boleta); ask: 2 usos por pregunta
-const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 400, help: 300, gocats: 200 };
+const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 40, help: 30, gocats: 60 };
+const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60 };
 // Haiku 5.5: $0,10 / $0,50 por millón (entrada / salida); cache: escritura 1,25x, lectura 0,1x
 const costOf = (u) => ((u.input_tokens || 0) * 0.1 + (u.cache_creation_input_tokens || 0) * 0.125
   + (u.cache_read_input_tokens || 0) * 0.01 + (u.output_tokens || 0) * 0.5) / 1e6;
@@ -591,8 +591,10 @@ async function goCategories(client, body) {
 
 // ─── Entrada ───
 
-async function handle({ db, logger, apiKey, client: injected }, uid, body) {
-  const kind = String(body && body.kind || "");
+async function handle({ db, logger, apiKey, client: injected, sql }, uid, body) {
+  // "agent" (la IA con herramientas) usa el mismo cupo que las preguntas
+  const kind = body && body.kind === "agent" ? "ask" : String(body && body.kind || "");
+  const agent = body && body.kind === "agent";
   if (!LIMITS[kind]) throw new AiError(400, "BAD_KIND", "Pedido inválido");
   if (!apiKey && !injected) throw new AiError(503, "NO_KEY", "La IA de Ventra no está disponible en este momento.");
   const ref = db.collection("ventra_ai_usage").doc(`${monthKey()}_${uid}`);
@@ -600,8 +602,8 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
   const [snap, daySnap] = await Promise.all([ref.get(), dayRef.get()]);
   const used = Number(snap.exists && snap.data()[kind]) || 0;
   const usedToday = Number(daySnap.exists && daySnap.data()[kind]) || 0;
-  // Una pregunta usa dos llamadas: si no entra la segunda, no se empieza
-  const need = kind === "ask" && body.step !== "answer" ? 2 : 1;
+  // Se cuenta por pregunta: el segundo paso de la versión vieja (redactar) no suma
+  const need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
   if (used + need > LIMITS[kind]) {
     const msgs = {
       order: `Llegaste a los ${LIMITS.order} pedidos leídos con IA de este mes. Se renueva el mes que viene.`,
@@ -622,8 +624,22 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
   const client = injected || anthropicClient({ apiKey, maxRetries: 2, timeout: 120 * 1000 });
   let out;
   try {
-    const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
-    out = await run(client, body);
+    if (agent) {
+      if (!sql) throw new AiError(503, "NO_DATA", "La IA no está disponible en este momento.");
+      const ctx = { uid, plan: body.plan || null, role: body.role === "SUPERVISOR" ? "SUPERVISOR" : "ADMIN", channel: body.channel === "whatsapp" ? "whatsapp" : "app", info: body.info || {}, history: body.history || [] };
+      const q = String(body.question || "").trim().slice(0, 500);
+      if (!q) throw new AiError(400, "EMPTY", "Escribí tu pregunta.");
+      const r = await require("./ai-agent").run({ client, sql, db, logger }, ctx, q);
+      out = { result: { answer: r.answer, misses: r.misses, rounds: r.rounds }, usage: r.usage };
+      // Lo que no supo responder queda para revisarlo cada semana (solo la pregunta y el motivo)
+      if (r.misses.length) {
+        await db.collection("ventra_ai_misses").doc(`${Date.now()}_${uid}_${Math.random().toString(36).slice(2, 7)}`)
+          .set({ uid, channel: ctx.channel, plan: ctx.plan, question: q, reasons: r.misses.slice(0, 5), at: Date.now() }).catch(() => {});
+      }
+    } else {
+      const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
+      out = await run(client, body);
+    }
   } catch (err) {
     if (err instanceof AiError) throw err;
     logger.warn(`Ventra IA (${uid}, ${kind}): ${err && err.message}`);
@@ -631,12 +647,12 @@ async function handle({ db, logger, apiKey, client: injected }, uid, body) {
   }
   // Solo cuenta lo que salió bien
   await ref.set({
-    [kind]: admin.firestore.FieldValue.increment(1),
+    [kind]: admin.firestore.FieldValue.increment(need),
     costUsd: admin.firestore.FieldValue.increment(costOf(out.usage)),
     uid, month: monthKey(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
-  await dayRef.set({ [kind]: admin.firestore.FieldValue.increment(1), uid, day: dayKey() }, { merge: true });
-  return { result: out.result, left: LIMITS[kind] - used - 1, leftToday: DAILY[kind] - usedToday - 1 };
+  await dayRef.set({ [kind]: admin.firestore.FieldValue.increment(need), uid, day: dayKey() }, { merge: true });
+  return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
 module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

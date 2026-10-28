@@ -51,27 +51,42 @@ export class AiController {
   /** Preguntale a tu negocio */
   @Post('ask')
   @Roles(...MANAGERS)
-  ask(@Body('question') question: string) {
-    return this.ai.ask(question, (queries) => this.insights.run(queries));
+  ask(@Body('question') question: string, @Body('history') history: any, @Request() req) {
+    return this.ai.ask(question, (queries) => this.insights.run(queries), { role: req.user?.role }, Array.isArray(history) ? history : []);
   }
 
-  /** Preguntar por WhatsApp: el teléfono del dueño vinculado (solo el dueño lo ve y lo cambia) */
+  /**
+   * Preguntar por WhatsApp: cada uno vincula su teléfono. El dueño, además, habilita a los
+   * encargados y puede desvincularlos (target = últimos 4 dígitos).
+   */
   @Get('whatsapp')
-  @Roles('ADMIN')
-  whatsappStatus() {
-    return this.ai.whatsapp('status');
+  @Roles(...MANAGERS)
+  whatsappStatus(@Request() req) {
+    return this.ai.whatsapp('status', req.user);
   }
 
   @Post('whatsapp/code')
-  @Roles('ADMIN')
-  whatsappCode() {
-    return this.ai.whatsapp('code');
+  @Roles(...MANAGERS)
+  whatsappCode(@Request() req) {
+    return this.ai.whatsapp('code', req.user);
   }
 
   @Post('whatsapp/unlink')
+  @Roles(...MANAGERS)
+  whatsappUnlink(@Body('target') target: string, @Request() req) {
+    return this.ai.whatsapp('unlink', req.user, req.user?.role === 'ADMIN' && target ? { target: String(target).slice(-4) } : {});
+  }
+
+  @Post('whatsapp/summary')
+  @Roles(...MANAGERS)
+  whatsappSummary(@Body() body: { enabled?: boolean; hour?: number }, @Request() req) {
+    return this.ai.whatsapp('summary', req.user, { summary: { enabled: !!body?.enabled, hour: Number(body?.hour) || 21 } });
+  }
+
+  @Post('whatsapp/supervisors')
   @Roles('ADMIN')
-  whatsappUnlink() {
-    return this.ai.whatsapp('unlink');
+  whatsappSupervisors(@Body('allowed') allowed: boolean, @Request() req) {
+    return this.ai.whatsapp('supervisors', req.user, { allowed: !!allowed });
   }
 
   /** Ayuda dentro del sistema (cualquier usuario) */

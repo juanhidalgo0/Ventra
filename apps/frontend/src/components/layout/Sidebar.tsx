@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useProductReviews } from '../products/ProductReviews';
+import { MessageCircle } from 'lucide-react';
+import { openAskBusiness } from '../common/AskBusiness';
 import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
@@ -184,6 +186,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           { label: agendaOnly ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
         ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
+        // Preguntarle a Ventra por WhatsApp: abre el panel de la IA en esa parte (no es una pantalla)
+        ...(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR' ? [{ label: 'Preguntale por WhatsApp', icon: MessageCircle, path: '#whatsapp', action: () => openAskBusiness({ whatsapp: true }), isNew: true }] : []),
         { label: 'Facturación', icon: Calculator, path: '/fiscal', soon: COMING_SOON.arcaInvoicing },
         { 
           label: 'Tienda Online', 
@@ -285,7 +289,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
               return (
                 <div key={item.label} className="space-y-0.5">
                   <button
-                    onClick={() => item.collapsible ? toggleGroup(item.label) : (item.path && handleSidebarClick(item.path))}
+                    onClick={() => (item as any).action ? (item as any).action() : item.collapsible ? toggleGroup(item.label) : (item.path && handleSidebarClick(item.path))}
                     className={`relative w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors group cursor-pointer ${itemActive ? 'text-rose-700 bg-rose-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'}`}
                   >
                     {itemActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-rose-600 rounded-r-full" />}
@@ -294,6 +298,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
                         <span className={`text-[13px] truncate ${itemActive ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
                         {(item as any).soon && <ComingSoonBadge className="ml-auto" />}
+                        {(item as any).isNew && <span className="ml-auto px-1.5 h-[18px] rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold flex items-center">Nuevo</span>}
                         {!!(item as any).badge && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-600 text-white text-[10.5px] font-bold flex items-center justify-center">{(item as any).badge}</span>}
                         {item.collapsible && (
                           <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isGroupExpanded ? 'rotate-180' : ''}`} />

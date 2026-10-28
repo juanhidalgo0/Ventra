@@ -123,6 +123,12 @@ const sendText = (token, to, text) => graph(token, `${PHONE_ID}/messages`, {
   messaging_product: "whatsapp", to, type: "text", text: { body: text, preview_url: true },
 });
 
+/** Plantilla aprobada con parámetros de texto (fuera de las 24 h desde el último mensaje de la persona) */
+const sendTemplate = (token, to, template, params) => graph(token, `${PHONE_ID}/messages`, {
+  messaging_product: "whatsapp", to, type: "template",
+  template: { name: template.name, language: { code: template.lang }, components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: param(p, 120) })) }] },
+});
+
 /** Link para que el cliente saque otro turno o hable con el comercio. */
 function storeLinks(store) {
   const slug = store && store.subdomain;
@@ -347,4 +353,4 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
   res.status(200).send("OK");
 }
 
-module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, configured, WHEN };
+module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, sendTemplate, configured, WHEN };

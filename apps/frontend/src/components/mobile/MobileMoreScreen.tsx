@@ -10,6 +10,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
 import PushCard from './PushCard';
+import AskWhatsApp from '../common/AskWhatsApp';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { useBusinessStore, menuAllows, hasFeature } from '../../stores/businessStore';
@@ -109,6 +110,8 @@ export default function MobileMoreScreen() {
       <div className="px-4 pt-5 space-y-6">
         <InstallAppCard />
         <PushCard />
+        {/* Preguntarle a Ventra por WhatsApp (dueño y encargados) */}
+        {(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR') && <div className="rounded-2xl bg-white border border-slate-200/80 px-4 pb-4 [&>div]:mt-0 [&>div]:border-t-0"><AskWhatsApp /></div>}
         {ordersVisible && (
           <button onClick={() => navigate('/pedidos')} className="w-full flex items-center gap-3 rounded-2xl bg-white border border-slate-200/80 p-4 text-left active:scale-[0.99] transition-transform">
             <span className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5" /></span>

@@ -93,9 +93,9 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     await assert.rejects(() => ai.handle({ db, logger, client }, "u5", { kind: "help", messages: [{ role: "user", content: "¿cómo cierro la caja?" }] }), /tope de consultas a la ayuda de hoy/);
     assert.strictEqual(client.calls.length, 0);
   });
-  await t("pregunta: reserva las dos llamadas y descarta consultas desconocidas", async () => {
+  await t("pregunta: cuenta una por pregunta (redactar no suma) y descarta consultas desconocidas", async () => {
     const db = fakeDb();
-    db.docs[`${today}_u6`] = { ask: ai.DAILY.ask - 1 };
+    db.docs[`${today}_u6`] = { ask: ai.DAILY.ask };
     await assert.rejects(() => ai.handle({ db, logger, client: fakeClient({ queries: [], noSePuede: "" }) }, "u6", { kind: "ask", question: "¿cuánto vendí?" }), /preguntas de hoy/);
     const db2 = fakeDb();
     const client = fakeClient({ queries: [{ tipo: "ventas", desde: "2026-10-01", hasta: "2026-10-23", agrupar: "ninguno", orden: "", buscar: "", limite: 0, dias: 0 }, { tipo: "borrar_todo", desde: "", hasta: "", agrupar: "", orden: "", buscar: "", limite: 0, dias: 0 }], noSePuede: "" });

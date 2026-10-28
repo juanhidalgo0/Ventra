@@ -2119,13 +2119,24 @@ exports.ventraFiscal = onRequest({ secrets: [ARCA_CREDENTIALS], maxInstances: 20
 // Pedido de WhatsApp → renglones del catálogo, y factura de compra por foto. Lo llama el
 // backend de la PC vinculada; la clave de Claude queda acá.
 const ai = require("./ai");
-exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY], maxInstances: 10, timeoutSeconds: 180, memory: "512MiB" }, async (req, res) => {
+const insightsCloud = require("./insights-cloud");
+exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY, NEON_DATABASE_URL], maxInstances: 10, timeoutSeconds: 180, memory: "512MiB" }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   const { deviceId, deviceSecret } = req.body || {};
   const uid = await deviceTenant(deviceId, deviceSecret);
   if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
   try {
-    const out = await ai.handle({ db, logger, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() }, uid, req.body);
+    let sql;
+    if (req.body && req.body.kind === "agent") {
+      sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+      await cloudSync.ensureSchema(sql);
+      // Sin datos de este comercio en la nube (PC sin sincronizar): la PC usa la versión anterior
+      if (!(await insightsCloud.lastSync(sql, uid))) return res.status(409).json({ error: "Sin datos en la nube", code: "NO_CLOUD_DATA" });
+      const acc = await db.collection("ventra_accounts").doc(uid).get();
+      req.body.plan = acc.exists ? acc.data().plan || null : null;
+      req.body.info = await insightsCloud.storeInfo(sql, uid).catch(() => ({}));
+    }
+    const out = await ai.handle({ db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() }, uid, req.body);
     return res.status(200).json({ ok: true, ...out });
   } catch (err) {
     if (err instanceof ai.AiError) return res.status(err.status).json({ error: err.message, code: err.code });
@@ -2134,21 +2145,26 @@ exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY], maxInstances: 10
   }
 });
 
-// ─── El dueño le pregunta a Ventra por WhatsApp (ver wa-owner.js) ───
+// ─── El dueño (y sus encargados) le pregunta a Ventra por WhatsApp (ver wa-owner.js) ───
 // La app pide el código para vincular el teléfono (con la vinculación del equipo); el webhook
-// de WhatsApp deja cada pregunta en ventra_wa_owner_inbox y esta tarea la contesta.
+// de WhatsApp deja cada pregunta en ventra_wa_owner_inbox y ventraWaOwnerInbox la contesta.
 const waOwner = require("./wa-owner");
 exports.ventraWaOwner = onRequest({ maxInstances: 10, timeoutSeconds: 30 }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   const { deviceId, deviceSecret, action } = req.body || {};
   const uid = await deviceTenant(deviceId, deviceSecret);
   if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  // Quién pide (lo dice el backend de la PC según la sesión): el dueño o un encargado
+  const who = { userId: String(req.body.userId || "") || null, role: req.body.role === "SUPERVISOR" ? "SUPERVISOR" : "ADMIN", name: String(req.body.userName || "").slice(0, 60) || null };
   try {
-    if (action === "status") return res.status(200).json(await waOwner.status(db, uid));
-    if (action === "code") return res.status(200).json(await waOwner.linkCode(db, uid));
-    if (action === "unlink") return res.status(200).json(await waOwner.unlink(db, uid));
+    if (action === "status") return res.status(200).json(await waOwner.status(db, uid, who));
+    if (action === "code") return res.status(200).json(await waOwner.linkCode(db, uid, who));
+    if (action === "unlink") return res.status(200).json(await waOwner.unlink(db, uid, who, req.body.target));
+    if (action === "summary") return res.status(200).json(await waOwner.setSummary(db, uid, who, req.body.summary));
+    if (action === "supervisors" && who.role === "ADMIN") return res.status(200).json(await waOwner.setSupervisors(db, uid, !!req.body.allowed));
     return res.status(400).json({ error: "Acción inválida" });
   } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
     logger.error(`Ventra WhatsApp del dueño (${uid}): error`, err);
     return res.status(500).json({ error: "No se pudo completar" });
   }
@@ -2164,10 +2180,49 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
   const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
   await cloudSync.ensureSchema(sql);
   await waOwner.processInbox(db, event.data.data(), {
-    ai, aiDeps: { db, logger, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
+    ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
     sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
   });
   await event.data.ref.delete().catch(() => {});
+});
+
+/** Resumen del día por WhatsApp, a la hora que pidió cada uno ("RESUMEN A LAS 21") */
+exports.ventraWaDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notify.TZ, secrets: [VENTRA_WA_TOKEN, NEON_DATABASE_URL] }, async () => {
+  const token = String(VENTRA_WA_TOKEN.value() || "").trim();
+  if (!whatsapp.configured(token)) return;
+  const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+  const sent = await waOwner.dailySummaries(db, {
+    sql, logger, track: (uid, fields) => usage.track(uid, fields),
+    sendText: (to, text) => whatsapp.sendText(token, to, text),
+    sendTemplate: (to, template, params) => whatsapp.sendTemplate(token, to, template, params),
+  });
+  await usage.flush();
+  if (sent) logger.info(`Resumen por WhatsApp: ${sent} enviados`);
+});
+
+/**
+ * Lo que la IA no supo responder en la semana, agrupado: queda en ventra_ai_misses_weekly/{día}
+ * para revisarlo y sumar las consultas que faltan. Los registros sueltos se borran a los 60 días.
+ */
+exports.ventraAiMissesWeekly = onSchedule({ schedule: "0 9 * * 1", timeZone: notify.TZ }, async () => {
+  const since = Date.now() - 7 * 86400000;
+  const snap = await db.collection("ventra_ai_misses").where("at", ">=", since).get();
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  const groups = new Map();
+  snap.forEach((d) => {
+    const m = d.data();
+    const k = norm(m.question).slice(0, 80);
+    const g = groups.get(k) || { question: m.question, count: 0, reasons: [], plans: [] };
+    g.count++;
+    for (const r of m.reasons || []) if (g.reasons.length < 3 && !g.reasons.includes(r)) g.reasons.push(r);
+    if (m.plan && !g.plans.includes(m.plan)) g.plans.push(m.plan);
+    groups.set(k, g);
+  });
+  const week = new Date().toLocaleDateString("en-CA", { timeZone: notify.TZ });
+  await db.collection("ventra_ai_misses_weekly").doc(week).set({ total: snap.size, top: [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 50), at: Date.now() });
+  const old = await db.collection("ventra_ai_misses").where("at", "<", Date.now() - 60 * 86400000).limit(400).get();
+  await Promise.all(old.docs.map((d) => d.ref.delete()));
+  logger.info(`IA: ${snap.size} preguntas sin respuesta esta semana (${groups.size} distintas)`);
 });
 
 // ─── Catálogo compartido de códigos de barras (ver barcodes.js) ───
