@@ -36,6 +36,7 @@ import BulkPriceModal from './BulkPriceModal';
 import PriceListModal from './PriceListModal';
 import PriceChangesLabelsModal from './PriceChangesLabelsModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
+import ShelfLabelModal from './ShelfLabelModal';
 import BarcodeLabelModal from './BarcodeLabelModal';
 import VentraImportModal from './VentraImportModal';
 import ToolbarMenu from '../common/ToolbarMenu';
@@ -90,6 +91,7 @@ export default function ProductsScreen() {
   };
   useEffect(() => { refreshImageReviewCount(); }, []);
   const [showGaveteroLabels, setShowGaveteroLabels] = useState(false);
+  const [showShelfLabels, setShowShelfLabels] = useState(false);
   const [showBarcodeLabels, setShowBarcodeLabels] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
@@ -924,6 +926,12 @@ export default function ProductsScreen() {
                 icon={<Tag className="w-3.5 h-3.5 text-slate-700" />}
                 items={[
                   {
+                    label: 'Etiquetas de góndola',
+                    description: 'Precio grande, precio por litro o kilo, con o sin foto',
+                    icon: <Tag className="w-3.5 h-3.5 text-rose-600" />,
+                    onClick: () => setShowShelfLabels(true),
+                  },
+                  {
                     label: 'Etiquetas con código',
                     description: 'Generar códigos internos e imprimir códigos de barra',
                     icon: <Barcode className="w-3.5 h-3.5 text-slate-600" />,
@@ -1740,6 +1748,8 @@ export default function ProductsScreen() {
           onBarcodesAssigned={() => loadProducts(true)}
         />
       )}
+
+      {showShelfLabels && <ShelfLabelModal onClose={() => setShowShelfLabels(false)} />}
 
       {showGaveteroLabels && (
         <GaveteroLabelModal

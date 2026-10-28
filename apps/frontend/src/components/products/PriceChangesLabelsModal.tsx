@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Tags, Loader2, ArrowRight } from 'lucide-react';
 import api from '../../services/api';
 import BarcodeLabelModal from './BarcodeLabelModal';
+import ShelfLabelModal from './ShelfLabelModal';
 
 const money = (n: number) => `$ ${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const PERIODS = [{ days: 1, label: 'Hoy' }, { days: 7, label: 'Últimos 7 días' }, { days: 30, label: 'Últimos 30 días' }];
@@ -16,7 +17,7 @@ export default function PriceChangesLabelsModal({ onClose, initialDays = 1 }: { 
   const [days, setDays] = useState(initialDays);
   const [rows, setRows] = useState<Change[] | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [printing, setPrinting] = useState(false);
+  const [printing, setPrinting] = useState<false | 'shelf' | 'barcode'>(false);
 
   useEffect(() => {
     setRows(null);
@@ -31,6 +32,15 @@ export default function PriceChangesLabelsModal({ onClose, initialDays = 1 }: { 
 
   const selected = (rows || []).filter((r) => checked[r.id]);
 
+  if (printing === 'shelf') {
+    return (
+      <ShelfLabelModal
+        initialProductIds={selected.map((r) => r.id)}
+        prevPrices={Object.fromEntries(selected.map((r) => [r.id, r.prevSalePrice]))}
+        onClose={onClose}
+      />
+    );
+  }
   if (printing) {
     return (
       <BarcodeLabelModal
@@ -88,8 +98,12 @@ export default function PriceChangesLabelsModal({ onClose, initialDays = 1 }: { 
         </div>
         <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
           <p className="text-[12px] text-slate-600"><b>{selected.length}</b> {selected.length === 1 ? 'etiqueta' : 'etiquetas'} con el precio nuevo</p>
-          <button onClick={() => setPrinting(true)} disabled={!selected.length}
-            className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50">Preparar etiquetas</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPrinting('barcode')} disabled={!selected.length}
+              className="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-sm font-semibold disabled:opacity-50">Con código de barras</button>
+            <button onClick={() => setPrinting('shelf')} disabled={!selected.length}
+              className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50">Etiquetas de góndola</button>
+          </div>
         </div>
       </div>
     </div>
