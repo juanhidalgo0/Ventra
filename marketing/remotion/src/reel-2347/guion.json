@@ -1,0 +1,63 @@
+{
+  "_idea": "23:47. El celular de Martina, peluquera, de noche: WhatsApp no para. Corte a negro. La misma hora, pero ahora reservan solas, pagan la seña y Ventra les recuerda. A la mañana, la agenda llena.",
+  "fps": 30,
+  "total": 900,
+  "escenas": {
+    "noche": [0, 330],
+    "negro": [330, 400],
+    "calma": [400, 625],
+    "manana": [625, 765],
+    "cierre": [765, 900]
+  },
+  "relojNoche": [[0, "23:47"], [125, "23:58"], [190, "00:26"], [245, "00:51"], [290, "01:14"]],
+  "caos": [
+    { "f": 18, "de": "Caro", "txt": "Holaa! tenés turno para mañana?" },
+    { "f": 60, "de": "Mica", "txt": "puede ser a las 5?" },
+    { "f": 96, "de": "Sole", "txt": "Mensaje de voz (0:47)", "voz": true },
+    { "f": 128, "de": "Caro", "txt": "o el viernes si no" },
+    { "f": 156, "de": "+54 9 221 548-0912", "txt": "Hola cuánto sale el balayage?" },
+    { "f": 180, "de": "Mica", "txt": "??" },
+    { "f": 201, "de": "Lu", "txt": "Perdón mañana no voy a poder ir" },
+    { "f": 220, "de": "Sole", "txt": "Mensaje de voz (1:12)", "voz": true },
+    { "f": 236, "de": "Agus", "txt": "me pasás los horarios del sábado" },
+    { "f": 250, "de": "Caro", "txt": "Martina??" },
+    { "f": 262, "de": "Vale", "txt": "tenés lugar hoy?" },
+    { "f": 273, "de": "Mica", "txt": "te mando audio" },
+    { "f": 283, "de": "Ro", "txt": "holaa" },
+    { "f": 292, "de": "Caro", "txt": "?" },
+    { "f": 300, "de": "Sole", "txt": "Mensaje de voz (0:31)", "voz": true },
+    { "f": 307, "de": "Agus", "txt": "dale avisame" },
+    { "f": 313, "de": "Lu", "txt": "perdóoon" },
+    { "f": 318, "de": "Vale", "txt": "Marti" },
+    { "f": 322, "de": "Mica", "txt": "holaaa" }
+  ],
+  "negro": { "f": 348, "txt": "Todas las noches." },
+  "calma": [
+    { "f": 440, "titulo": "Nuevo turno", "txt": "Caro reservó sola: viernes 17:00, corte y color." },
+    { "f": 492, "titulo": "Nuevo turno", "txt": "Mica reservó sola: jueves 18:30, brushing." },
+    { "f": 540, "titulo": "Seña pagada · $8.400", "txt": "Caro pagó con Mercado Pago." },
+    { "f": 584, "titulo": "Recordatorios enviados", "txt": "9 clientas de mañana, por WhatsApp." }
+  ],
+  "carteles": [
+    { "f": 420, "hasta": 532, "txt": "Ahora reservan solas." },
+    { "f": 532, "hasta": 578, "txt": "Pagan la seña." },
+    { "f": 578, "hasta": 625, "txt": "Y Ventra les avisa." },
+    { "f": 645, "hasta": 765, "txt": "Martina durmió.", "sigue": { "f": 690, "txt": "Su agenda, no." } }
+  ],
+  "agendaHoy": [
+    { "h": "09:00", "n": "Flor", "s": "Corte", "ok": true },
+    { "h": "10:00", "n": "Agus", "s": "Corte y barba", "ok": true },
+    { "h": "11:30", "n": "Vale", "s": "Color", "ok": true },
+    { "h": "13:00", "n": "Ro", "s": "Brushing", "ok": true },
+    { "h": "14:30", "n": "Sole", "s": "Balayage", "ok": true },
+    { "h": "16:30", "n": "Juli", "s": "Corte", "ok": false },
+    { "h": "17:30", "n": "Pau", "s": "Nutrición", "ok": true },
+    { "h": "18:30", "n": "Mica", "s": "Brushing", "ok": true },
+    { "h": "19:30", "n": "Euge", "s": "Corte", "ok": true }
+  ],
+  "sonido": {
+    "apagar": 330,
+    "despertador": 640,
+    "logo": 785
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "_idea": "Chau faltazos. Stop-motion de papel sobre una plancha de corte verde: la agenda del jueves llena de tachones rojos ('no vino'), letras recortadas '¿OTRA VEZ PLANTADA?'. Ventra les avisa por WhatsApp: a cada clienta le llega el recordatorio, toca 'Confirmo' y un sello CONFIRMÓ golpea la agenda. Cierre con etiquetas de rotuladora.",
+  "fps": 30,
+  "total": 990,
+  "pulso": 15,
+  "escenas": {
+    "faltazos": [0, 195],
+    "costo": [195, 270],
+    "giro": [270, 360],
+    "aviso": [360, 660],
+    "chau": [660, 780],
+    "cierre": [780, 990]
+  },
+
+  "agenda": {
+    "llega": 3,
+    "cintas": [18, 21],
+    "titulo": { "txt": "Jueves 9", "a": 21, "dur": 12 },
+    "filas": [
+      { "h": "10:00", "n": "Caro", "s": "corte", "a": 36 },
+      { "h": "11:30", "n": "Mica", "s": "brushing", "a": 45 },
+      { "h": "14:00", "n": "Sole", "s": "balayage", "a": 54 },
+      { "h": "16:00", "n": "Lu", "s": "color", "a": 63 },
+      { "h": "17:30", "n": "Vale", "s": "corte", "a": 72 }
+    ],
+    "tachones": [
+      { "fila": 0, "a": 90 },
+      { "fila": 1, "a": 105 },
+      { "fila": 3, "a": 120 }
+    ]
+  },
+  "plantada": { "lineas": ["¿OTRA VEZ", "PLANTADA?"], "a": 138, "cada": 2 },
+
+  "etiqueta": { "llega": 195, "lineas": [
+    { "txt": "3 faltazos", "a": 207, "dur": 12 },
+    { "txt": "= $45.000", "a": 222, "dur": 12 },
+    { "txt": "que no entraron.", "a": 237, "dur": 15 }
+  ] },
+
+  "giro": { "hoja": 270, "lineas": ["VENTRA LES", "AVISA POR", "WHATSAPP."], "a": 282, "cada": 2 },
+
+  "aviso": {
+    "telefono": 360,
+    "cintas": [375, 378],
+    "anotacion": { "txt": ["le llega sola,", "el día anterior", "a las 20 h"], "a": 390, "dur": 30, "flecha": 420 },
+    "clientas": [
+      { "n": "Caro", "fila": 0, "a": 378, "escribe": 36, "toque": 456, "sello": 465, "elige": "confirmo", "servicio": "corte", "hora": "10:00" },
+      { "n": "Mica", "fila": 1, "a": 474, "escribe": 10, "toque": 501, "sello": 510, "elige": "confirmo", "servicio": "brushing", "hora": "11:30" },
+      { "n": "Sole", "fila": 2, "a": 516, "escribe": 6, "toque": 533, "sello": 540, "elige": "confirmo", "servicio": "balayage", "hora": "14:00" },
+      { "n": "Lu", "fila": 3, "a": 546, "escribe": 6, "toque": 563, "sello": 570, "elige": "cambio", "servicio": "color", "hora": "16:00" },
+      { "n": "Vale", "fila": 4, "a": 576, "escribe": 6, "toque": 593, "sello": 600, "elige": "confirmo", "servicio": "corte", "hora": "17:30" }
+    ],
+    "mano": { "entra": 432, "sale": 612 },
+    "cero": { "txt": "0 faltazos", "a": 618, "dur": 12, "circulo": 630 }
+  },
+
+  "chau": { "lineas": ["CHAU", "FALTAZOS."], "a": 663, "cada": 3 },
+
+  "cierre": {
+    "logo": 783,
+    "etiquetas": [
+      { "txt": "VENTRA AGENDA PRO", "a": 790, "cada": 2, "cinta": "verde" },
+      { "txt": "RECORDATORIOS POR WHATSAPP", "a": 828, "cada": 1, "cinta": "negra" },
+      { "txt": "ELLOS CONFIRMAN SOLOS", "a": 858, "cada": 1, "cinta": "negra" },
+      { "txt": "$19.900 POR MES", "a": 882, "cada": 1, "cinta": "roja" }
+    ],
+    "mano": [
+      { "txt": "probalo gratis en", "a": 902, "dur": 14 },
+      { "txt": "ventra.store", "a": 917, "dur": 14 }
+    ],
+    "subrayado": 933
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "_": "Reel 'Un pedido real en Kiosco Paulos'. Tiempos en compases de la música (100 bpm, primer golpe a 0,29 s, compás = 72 cuadros). Cada clip toma [desde, hasta] segundos de una toma grabada con scripts/grabar-app.mjs y dura 'cuadros' en el video (se acelera lo necesario). 'foco': [x, y, zoom] en px de la pantalla grabada. Lo leen ReelPaulos.tsx y scripts/reel-paulos-audio.py.",
+  "fps": 30,
+  "primerGolpe": 0.29,
+  "golpe": 18,
+  "compasesCuerpo": 13,
+  "finalDesde": 122.69,
+  "finalDura": 4.55,
+  "escenas": {
+    "intro": [
+      0,
+      1.5
+    ],
+    "telefono": [
+      1.5,
+      6.5
+    ],
+    "caja": [
+      6.5,
+      10
+    ],
+    "seguimiento": [
+      10,
+      13
+    ],
+    "cierre": [
+      13,
+      99
+    ]
+  },
+  "clips": {
+    "telefono": [
+      {
+        "toma": "pedido",
+        "desde": 1.3,
+        "hasta": 5.0,
+        "cuadros": 90,
+        "foco": [
+          195,
+          330,
+          1.0
+        ]
+      },
+      {
+        "toma": "pedido",
+        "desde": 5.4,
+        "hasta": 10.6,
+        "cuadros": 96,
+        "foco": [
+          195,
+          300,
+          1.0
+        ]
+      },
+      {
+        "toma": "pedido",
+        "desde": 11.5,
+        "hasta": 14.6,
+        "cuadros": 60,
+        "foco": [
+          195,
+          520,
+          1.0
+        ]
+      },
+      {
+        "toma": "pedido",
+        "desde": 17.5,
+        "hasta": 21.0,
+        "cuadros": 60,
+        "foco": [
+          195,
+          600,
+          1.0
+        ]
+      },
+      {
+        "toma": "pedido",
+        "desde": 26.2,
+        "hasta": 29.0,
+        "cuadros": 54,
+        "foco": [
+          195,
+          640,
+          1.0
+        ]
+      }
+    ],
+    "caja": [
+      {
+        "toma": "caja",
+        "desde": 4.4,
+        "hasta": 7.3,
+        "cuadros": 60,
+        "foco": [
+          700,
+          260,
+          1.35
+        ]
+      },
+      {
+        "toma": "caja",
+        "desde": 7.4,
+        "hasta": 10.1,
+        "cuadros": 54,
+        "foco": [
+          980,
+          260,
+          1.45
+        ]
+      },
+      {
+        "toma": "caja",
+        "desde": 10.2,
+        "hasta": 15.5,
+        "cuadros": 78,
+        "foco": [
+          640,
+          400,
+          1.5
+        ]
+      },
+      {
+        "toma": "caja",
+        "desde": 15.6,
+        "hasta": 18.4,
+        "cuadros": 60,
+        "foco": [
+          640,
+          330,
+          1.55
+        ]
+      }
+    ],
+    "seguimiento": [
+      {
+        "toma": "seguimiento",
+        "desde": 1.2,
+        "hasta": 2.7,
+        "cuadros": 36,
+        "foco": [
+          195,
+          640,
+          1.0
+        ]
+      },
+      {
+        "toma": "seguimiento",
+        "desde": 3.0,
+        "hasta": 4.6,
+        "cuadros": 36,
+        "foco": [
+          195,
+          640,
+          1.0
+        ]
+      },
+      {
+        "toma": "seguimiento",
+        "desde": 6.4,
+        "hasta": 8.0,
+        "cuadros": 36,
+        "foco": [
+          195,
+          640,
+          1.0
+        ]
+      },
+      {
+        "toma": "seguimiento",
+        "desde": 9.8,
+        "hasta": 11.4,
+        "cuadros": 36,
+        "foco": [
+          195,
+          640,
+          1.0
+        ]
+      },
+      {
+        "toma": "seguimiento",
+        "desde": 13.3,
+        "hasta": 15.7,
+        "cuadros": 72,
+        "foco": [
+          195,
+          520,
+          1.0
+        ]
+      }
+    ]
+  }
+}

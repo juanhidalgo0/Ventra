@@ -1,0 +1,25 @@
+{
+  "name": "ventra-videos",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render",
+    "still": "remotion still"
+  },
+  "dependencies": {
+    "@remotion/captions": "^4.0.534",
+    "@remotion/cli": "^4.0.534",
+    "@remotion/media": "4.0.534",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "^4.0.534"
+  },
+  "devDependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@remotion/install-whisper-cpp": "^4.0.534",
+    "@types/react": "^19.3.0",
+    "ffmpeg-static": "^5.3.0",
+    "typescript": "^7.0.2"
+  }
+}

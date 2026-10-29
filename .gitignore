@@ -30,3 +30,15 @@ ventra-jwt-secrets.json
 
 # Copias movidas fuera del build (no van al repo)
 /backups-recuperados
+
+# Marketing: en el repo va solo el código de los videos (Remotion), sin grabaciones,
+# fotogramas, música ni videos renderizados (marketing/remotion/.gitignore saca out y whisper)
+marketing/*
+!marketing/remotion/
+marketing/remotion/public/
+# Documentos internos que no van a un repo público
+docs/auditoria-*.md
+docs/go-colores-repartidor/
+# Accesos y tokens sueltos
+IG ACCESS.txt
+release-token.txt

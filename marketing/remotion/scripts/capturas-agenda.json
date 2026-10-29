@@ -1,0 +1,66 @@
+{
+ "base": "http://localhost:5181/reel-tienda.html?plan=agenda_pro&rubro=pelu",
+ "ancho": 390,
+ "alto": 844,
+ "escala": 3,
+ "storage": {
+  "getting_started_hidden": "1",
+  "agenda_link_shared": "1",
+  "onboarding_done": "1",
+  "agenda_view": "day"
+ },
+ "tomas": [
+  {
+   "nombre": "agenda-hoy",
+   "ruta": "#/agenda",
+   "medir": [
+    "Confirmó por WhatsApp",
+    "Hoy, 9 de octubre"
+   ]
+  },
+  {
+   "nombre": "agenda-lista",
+   "ruta": "#/agenda",
+   "pasos": [
+    {
+     "scroll": "Hoy, 9 de octubre"
+    }
+   ],
+   "medir": [
+    "Confirmó por WhatsApp",
+    "Leyó el recordatorio"
+   ]
+  },
+  {
+   "nombre": "turno-flor",
+   "ruta": "#/agenda",
+   "pasos": [
+    {
+     "click": "Nicolás Díaz",
+     "espera": 1200
+    }
+   ],
+   "medir": [
+    "Confirmó por WhatsApp"
+   ]
+  },
+  {
+   "nombre": "config-recordatorios",
+   "ruta": "#/agenda",
+   "pasos": [
+    {
+     "click": "Configurar",
+     "espera": 1200
+    },
+    {
+     "scroll": "Recordatorios por WhatsApp"
+    }
+   ],
+   "medir": [
+    "Mandar recordatorios automáticos",
+    "El día anterior a las 20 h",
+    "Recordatorios de este mes"
+   ]
+  }
+ ]
+}
