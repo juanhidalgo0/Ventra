@@ -67,6 +67,9 @@ const logger = { warn() {}, error(...a) { console.log("   [error]", ...a); }, in
 const T = "tenant1";
 const NOW = Date.now();
 const today = new Date(NOW).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+// Hace una hora, pero siempre dentro de hoy (pasada la medianoche, una hora atrás es ayer)
+const startOfToday = Date.parse(`${today}T00:00:00-03:00`);
+const HOUR_AGO = Math.max(NOW - 3600e3, Math.min(startOfToday + 60e3, NOW - 1000));
 const q = (k = {}) => ({ tipo: "", desde: "", hasta: "", agrupar: "", orden: "", buscar: "", limite: 0, dias: 0, ...k });
 
 async function seed(pg) {
@@ -74,7 +77,7 @@ async function seed(pg) {
     CREATE TABLE sync_tenants (tenant_id text PRIMARY KEY, last_push_at timestamptz);`);
   const rows = [];
   const add = (tbl, id, data, tenant = T, deleted = false) => rows.push([tenant, tbl, id, JSON.stringify(data), deleted]);
-  const hourAgo = NOW - 3600e3;
+  const hourAgo = HOUR_AGO;
   // Fecha como texto de SQLite (UTC), como en tablas viejas
   const sqliteText = new Date(hourAgo).toISOString().replace("T", " ").slice(0, 19);
   add("users", "u1", { username: "ANA", full_name: "Ana" });
@@ -267,7 +270,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
       b2: { kind: "booking", dateKey: today, startMin: 660, customerName: "Mati", serviceName: "Corte", status: "CANCELLED", price: 8000 },
       b3: { kind: "block", dateKey: today, startMin: 700 },
     };
-    db.cols["ventra_stores/st1/orders"] = { o1: { createdAt: new Date(NOW - 3600e3), total: 5000, stage: "NEW", customerName: "Ana", items: [{ name: "Alfajor", quantity: 3 }] } };
+    db.cols["ventra_stores/st1/orders"] = { o1: { createdAt: new Date(HOUR_AGO), total: 5000, stage: "NEW", customerName: "Ana", items: [{ name: "Alfajor", quantity: 3 }] } };
     const { one } = insights.makeQueries(sql, T, { db });
     const b = await one(q({ tipo: "turnos" }));
     assert.strictEqual(b.turnos, 1);
