@@ -7,8 +7,9 @@ import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/on
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useWorkRole } from '../../services/workRole';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { usePOSStore, packOf } from '../../stores/posStore';
+import { usePOSStore, packOf, type CartItem } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { getClientId } from '../../utils/clientId';
@@ -74,13 +75,18 @@ interface Product {
 }
 interface Category { id: string; name: string; color: string; _count?: { products: number }; }
 
-// Beep sound for scanner success
-const playBeep = () => { try { const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = 1200; g.gain.value = 0.15; o.start(); o.stop(ctx.currentTime + 0.08); } catch {} };
+/** Buscar un código en el servidor: sin reintentos y con tope, la caja no puede quedar esperando */
+const LOOKUP_OPTS = { timeout: 5000, silent: true } as any;
 
-// Distinct error alarm for scanner failure
+// Al agregar un producto no suena nada: el lector ya hace su pitido (antes se creaba un
+// AudioContext nuevo en cada escaneo y no se cerraba nunca).
+
+// Alarma de código no encontrado. Un solo AudioContext para toda la caja.
+let errorAudio: AudioContext | null = null;
 const playErrorBeep = () => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = errorAudio || (errorAudio = new (window.AudioContext || (window as any).webkitAudioContext)());
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -672,7 +678,6 @@ export default function POSScreen() {
     } else {
       addItem(product, qty);
       setSearchQuery('');
-      playBeep();
       setSelectedProductIndex(-1);
       if (e?.currentTarget) {
         (e.currentTarget as HTMLElement).blur();
@@ -957,7 +962,6 @@ export default function POSScreen() {
             const matchingPromo = usePOSStore.getState().promotions.find(p => p.isActive && p.code && p.code.toLowerCase() === scannedCode.toLowerCase());
             if (matchingPromo) {
               addPromoToCart(matchingPromo, cachedProducts);
-              playBeep();
               focusConfirmBtn();
               return;
             }
@@ -967,7 +971,7 @@ export default function POSScreen() {
 
             let data = cachedMatch;
             if (!data) {
-              const res = await api.get(`/products/barcode/${scannedCode}`);
+              const res = await api.get(`/products/barcode/${scannedCode}`, LOOKUP_OPTS);
               data = res.data;
             }
 
@@ -979,7 +983,6 @@ export default function POSScreen() {
               setPromptQtyValue('');
             } else {
               addToCart(data);
-              playBeep();
               setTimeout(() => searchRef.current?.focus(), 50);
               checkPromoSuggestion(data);
             }
@@ -1071,6 +1074,35 @@ export default function POSScreen() {
       setIsLoading(false); 
     }
   };
+
+  /**
+   * Después de cobrar, el stock de lo vendido baja acá mismo. Antes se volvía a bajar y procesar
+   * el catálogo entero en cada venta, justo cuando el cajero escaneaba el primer producto del
+   * cliente siguiente (en una PC lenta con miles de productos, la caja se trababa).
+   */
+  const applySoldStock = (soldCart: CartItem[]) => {
+    const sold = new Map<string, number>();
+    const add = (id: string, qty: number) => sold.set(id, (sold.get(id) || 0) + qty);
+    for (const i of soldCart) {
+      const sign = i.isReturn ? -1 : 1;
+      if (i.isPromo && i.productsMetadata) i.productsMetadata.forEach((m) => add(m.productId, sign * m.quantity * i.quantity));
+      else add(i.productId, sign * i.quantity);
+    }
+    if (!sold.size) return;
+    const st = usePOSStore.getState();
+    st.setProducts(st.products.map((p: any) => (sold.has(p.id) && !p.unlimitedStock ? { ...p, stock: (Number(p.stock) || 0) - sold.get(p.id)! } : p)));
+  };
+  /** El catálogo completo (precios y stock de las otras cajas) se recarga cuando la caja está quieta */
+  const catalogRefreshTimer = useRef(0);
+  const scheduleCatalogRefresh = () => {
+    clearTimeout(catalogRefreshTimer.current);
+    catalogRefreshTimer.current = window.setTimeout(() => {
+      const run = () => loadProducts(true);
+      const idle = (window as any).requestIdleCallback;
+      if (idle) idle(run, { timeout: 10000 }); else run();
+    }, 20000);
+  };
+  useEffect(() => () => clearTimeout(catalogRefreshTimer.current), []);
 
   const handleOpenCaja = async () => {
     setIsOpeningCaja(true);
@@ -1506,28 +1538,34 @@ export default function POSScreen() {
     }
     if (e.key === 'Enter') {
       const codeClean = searchQuery.trim().toUpperCase();
+      if (!codeClean) {
+        // If search is empty and cart has items, open payment modal
+        if (cart.length > 0) openPayment();
+        return;
+      }
+      await processCode(codeClean, e.shiftKey);
+    }
+  };
+
+  /**
+   * Lo que se escribió o escaneó en el buscador y se confirmó con Enter: combo, producto en
+   * memoria (con cantidad adelante, "6" + código), y si no, se pregunta al servidor.
+   */
+  const processCode = async (codeClean: string, shiftKey: boolean) => {
       const code1 = (localStorage.getItem('virtual1_code') || 'VIRTUAL1').trim().toUpperCase();
       const code2 = (localStorage.getItem('virtual2_code') || 'VIRTUAL2').trim().toUpperCase();
 
       if (codeClean === '1') {
-        e.preventDefault();
         setSearchQuery('');
         setShowQuickSale(true);
         return;
       }
 
       if (codeClean === code1 || codeClean === code2) {
-        e.preventDefault();
         setSearchQuery('');
         setVirtualType(codeClean === code1 ? '1' : '2');
         setShowVirtualPrompt(true);
         setVirtualPromptValue('');
-        return;
-      }
-      
-      if (!codeClean) {
-        // If search is empty and cart has items, open payment modal
-        if (cart.length > 0) openPayment();
         return;
       }
 
@@ -1555,7 +1593,7 @@ export default function POSScreen() {
           for (let i = 1; i < codeClean.length; i++) {
             const prefix = codeClean.substring(0, i);
             const suffix = codeClean.substring(i);
-            if (/^\d+$/.test(prefix) && suffix.length >= 3) {
+            if (/^\d+$/.test(prefix) && prefix.length <= 3 && suffix.length >= 3) {
               // Try matching suffix to promo
               const promoMatch = promotions.find(p => p.isActive && p.code && p.code.toUpperCase() === suffix);
               if (promoMatch) {
@@ -1583,7 +1621,6 @@ export default function POSScreen() {
           addPromoToCart(matchingPromo, cachedProducts);
         }
         setSearchQuery('');
-        playBeep();
         focusSearch();
         return;
       }
@@ -1594,14 +1631,13 @@ export default function POSScreen() {
           setPricePromptProduct(matchedProduct);
           setPromptPriceValue('');
           setSearchQuery('');
-        } else if (e.shiftKey) {
+        } else if (shiftKey) {
           setQtyPromptProduct(matchedProduct);
           setPromptQtyValue('');
           setSearchQuery('');
         } else {
           addItem(matchedProduct, multiplier);
           setSearchQuery('');
-          playBeep();
           focusSearch();
           checkPromoSuggestion(matchedProduct);
         }
@@ -1614,12 +1650,12 @@ export default function POSScreen() {
         const queryToUse = targetCode || codeClean;
         let finalData = null;
         try {
-          const { data } = await api.get(`/products/barcode/${queryToUse}`);
+          const { data } = await api.get(`/products/barcode/${queryToUse}`, LOOKUP_OPTS);
           finalData = data;
         } catch {
           // If queryToUse failed, try the full codeClean just in case
           if (queryToUse !== codeClean) {
-            const { data } = await api.get(`/products/barcode/${codeClean}`);
+            const { data } = await api.get(`/products/barcode/${codeClean}`, LOOKUP_OPTS);
             finalData = data;
             multiplier = 1; // reset multiplier if direct match found
           }
@@ -1633,14 +1669,13 @@ export default function POSScreen() {
           setPricePromptProduct(finalData);
           setPromptPriceValue('');
           setSearchQuery('');
-        } else if (e.shiftKey) {
+        } else if (shiftKey) {
           setQtyPromptProduct(finalData);
           setPromptQtyValue('');
           setSearchQuery('');
         } else {
           addItem(finalData, multiplier);
           setSearchQuery('');
-          playBeep();
           focusSearch();
           checkPromoSuggestion(finalData);
         }
@@ -1652,8 +1687,65 @@ export default function POSScreen() {
       } finally {
         setIsCartBusy(false);
       }
-    }
   };
+
+  const processCodeRef = useRef(processCode);
+  processCodeRef.current = processCode;
+
+  // Lector de códigos con el buscador enfocado: el lector "escribe" 13 dígitos en pocos ms y
+  // cada uno redibujaba toda la caja (en una PC lenta, más de un segundo por código). La primera
+  // tecla entra normal; las que llegan pegadas se juntan sin tocar la pantalla y, con el Enter
+  // del lector, se busca el código entero. Si no llega el Enter (alguien tipeando muy rápido),
+  // lo juntado se pasa al buscador enseguida.
+  useEffect(() => {
+    const SCAN_GAP_MS = 35;
+    let last = 0;
+    let burst = '';
+    let flushTimer = 0;
+    // flushSync: el buscador queda con el texto ya puesto antes de que actúe la tecla siguiente
+    const flush = () => {
+      if (!burst) return;
+      const add = burst;
+      burst = '';
+      flushSync(() => setSearchQuery((prev) => prev + add));
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const input = searchRef.current;
+      if (!input || document.activeElement !== input || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Shift' || e.key === 'CapsLock') return; // algunos lectores mandan Shift en las letras
+      const now = performance.now();
+      const gap = now - last;
+      if (e.key === 'Enter') {
+        if (!burst) return; // tipeado a mano: lo resuelve handleBarcodeSearch
+        e.preventDefault();
+        e.stopPropagation();
+        clearTimeout(flushTimer);
+        const code = (input.value + burst).trim().toUpperCase();
+        burst = '';
+        last = 0;
+        setSearchQuery('');
+        processCodeRef.current(code, e.shiftKey);
+        return;
+      }
+      let ch = e.key.length === 1 ? e.key : '';
+      if (e.shiftKey && e.code.startsWith('Digit')) ch = e.code.slice(5);
+      if (!ch) {
+        // Borrar, flechas...: primero se pasa lo juntado, después actúa la tecla
+        clearTimeout(flushTimer);
+        flush();
+        return;
+      }
+      last = now;
+      if (gap > SCAN_GAP_MS && !burst) return; // primera tecla o tipeo a mano: entra normal
+      e.preventDefault();
+      e.stopPropagation();
+      burst += ch.toUpperCase();
+      clearTimeout(flushTimer);
+      flushTimer = window.setTimeout(flush, 60);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => { window.removeEventListener('keydown', onKey, true); clearTimeout(flushTimer); };
+  }, []);
 
   const handleAddPromoToCart = (promo: any) => {
     if (promo.type === 'FIXED_COMBO' && promo.products && promo.products.length > 0) {
@@ -1681,7 +1773,6 @@ export default function POSScreen() {
     }
 
     addPromoToCart(promo, cachedProducts);
-    playBeep();
   };
 
   const formatPrice = (price: number) => {
@@ -3136,10 +3227,11 @@ export default function POSScreen() {
               focusSearch(); 
             }} 
             onSuccess={() => { 
+              applySoldStock(usePOSStore.getState().cart);
               clearCart(); 
               setShowPayment(false); 
               setActivePaymentSurcharge(0);
-              loadProducts(true); 
+              scheduleCatalogRefresh();
               loadCurrentSession(); 
               focusSearch(); 
             }} 
@@ -3351,7 +3443,6 @@ export default function POSScreen() {
                 setReturnProductSelected(null);
                 setReturnSearchQuery('');
                 setReturnQty(1);
-                playBeep();
                 return;
               }
               handleProductAdd(variant);
@@ -3629,12 +3720,10 @@ export default function POSScreen() {
               // Al catálogo de la caja: el próximo escaneo ya lo encuentra
               setCachedProducts([product, ...usePOSStore.getState().products.filter((p: any) => p.id !== product.id)]);
               addItem(product, 1);
-              playBeep();
               setUnknownCode(null);
             }}
             onSell={({ name, price, quantity }) => {
               addToCart({ ...buildQuickSaleProduct(price), name, lineTag: unknownCode }, price, quantity);
-              playBeep();
               setUnknownCode(null);
             }}
           />
@@ -3645,7 +3734,6 @@ export default function POSScreen() {
             onClose={() => setShowQuickSale(false)}
             onConfirm={(price, qty) => {
               addToCart(buildQuickSaleProduct(price), price, qty);
-              playBeep();
               setShowQuickSale(false);
             }}
           />
@@ -3708,7 +3796,6 @@ export default function POSScreen() {
                             stock: 999999
                           };
                           addToCart(virtualProduct, finalPrice, 1);
-                          playBeep();
                           setShowVirtualPrompt(false);
                           setVirtualPromptValue('');
                           setTimeout(() => searchRef.current?.focus(), 50);
@@ -3740,7 +3827,6 @@ export default function POSScreen() {
                         stock: 999999
                       };
                       addToCart(virtualProduct, finalPrice, 1);
-                      playBeep();
                       setShowVirtualPrompt(false);
                       setVirtualPromptValue('');
                       setTimeout(() => searchRef.current?.focus(), 50);
@@ -3801,7 +3887,6 @@ export default function POSScreen() {
                         const price = parseFloat(promptPriceValue);
                         if (!isNaN(price) && price >= 0) {
                           addToCart(pricePromptProduct, price);
-                          playBeep();
                           setPricePromptProduct(null);
                           setTimeout(() => searchRef.current?.focus(), 50);
                           checkPromoSuggestion(pricePromptProduct);
@@ -3820,7 +3905,6 @@ export default function POSScreen() {
                     const price = parseFloat(promptPriceValue);
                     if (!isNaN(price) && price >= 0) {
                       addToCart(pricePromptProduct, price);
-                      playBeep();
                       setPricePromptProduct(null);
                       setTimeout(() => searchRef.current?.focus(), 50);
                       checkPromoSuggestion(pricePromptProduct);
@@ -3845,7 +3929,6 @@ export default function POSScreen() {
           const confirmQty = () => {
             if (!validQty) return;
             addToCart(qtyPromptProduct, undefined, qty);
-            playBeep();
             setQtyPromptProduct(null);
             setTimeout(() => searchRef.current?.focus(), 50);
             checkPromoSuggestion(qtyPromptProduct);
@@ -4215,7 +4298,6 @@ export default function POSScreen() {
             });
 
             addPromoToCart(comboVariantModalPromo, cachedProducts, metadata);
-            playBeep();
             setComboVariantModalPromo(null);
           };
 
@@ -4533,7 +4615,6 @@ export default function POSScreen() {
                   } else {
                     applySuggestedPromo(suggestedPromo.promo, cachedProducts);
                   }
-                  playBeep();
                   setSuggestedPromo(null);
                 }}
                 className="flex-1 bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 text-white py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center active:scale-95 shadow-sm"
