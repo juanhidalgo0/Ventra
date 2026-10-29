@@ -36,6 +36,8 @@ button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; 
 .dark .btn-ghost{ color:var(--on-dark); border-color:rgba(246,242,236,.25); }
 .btn-ghost:hover{ box-shadow:none; border-color:currentColor; }
 .btn-sm{ height:40px; padding:0 16px; font-size:14px; }
+.btn-line{ background:transparent; color:var(--on-dark); border:1px solid rgba(246,242,236,.28); }
+.btn-line:hover{ box-shadow:none; border-color:var(--on-dark); }
 .btn-block{ width:100%; }
 
 /* ---------- Nav ---------- */
@@ -163,6 +165,10 @@ li.off{ color:var(--ink-3); }
 .plan-box ul{ list-style:none; margin:24px 0 28px; padding:0; display:grid; gap:11px; }
 .plan-box li{ display:flex; gap:10px; align-items:flex-start; font-size:15.5px; }
 .ck{ flex:none; width:20px; height:20px; margin-top:2px; border-radius:50%; background:var(--mint-50); color:var(--pine); display:grid; place-items:center; }
+/* Así empezás, debajo de los planes */
+.howto{ list-style:none; margin:26px auto 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:10px 22px; font-size:14.5px; font-weight:600; color:var(--ink-2); }
+.howto li{ display:inline-flex; align-items:center; gap:8px; }
+.howto span{ width:24px; height:24px; border-radius:8px; background:var(--pine-850); color:var(--cream); display:grid; place-items:center; font-size:12.5px; font-weight:800; }
 .plan-alt{ text-align:center; color:var(--ink-2); font-size:15px; margin-top:22px; }
 .plan-alt a{ color:var(--pine); font-weight:650; text-decoration:underline; text-underline-offset:3px; }
 

@@ -36,7 +36,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 
 ## Cómo empezar
 - **Demo gratis**: app.ventra.store, sin registrarse ni tarjeta. Se elige qué plan probar y se usa con datos de ejemplo. La demo se reinicia sola cada pocas horas: no usarla para datos reales.
-- **Suscribirse**: en la página del plan, tocar el botón del plan, entrar con una cuenta de Google y pagar con Mercado Pago. Se pide el correo de la cuenta de Mercado Pago (tiene que ser el de Mercado Pago, aunque sea distinto del de Google).
+- **Suscribirse (crear la cuenta)**: en https://ventra.store/empezar (o el botón "Empezar" de cualquier página), en 4 pasos: 1) qué negocio tenés, 2) el plan, 3) entrar con una cuenta de Google (esa es la cuenta de Ventra, no hay otra contraseña), 4) poner el correo de la cuenta de Mercado Pago (tiene que ser el de Mercado Pago, aunque sea distinto del de Google) y pagar en Mercado Pago. Al volver, "Mi cuenta" muestra los pasos que siguen.
 - **Agenda y Tienda** se usan desde el navegador (web.ventra.store), en la compu o el celular. No hay que instalar nada.
 - **Full (caja del local)**: se puede usar desde el navegador (web.ventra.store) o instalar la app de Windows en la PC del local. La app se descarga desde "Mi cuenta" y la PC se vincula con un código de 8 caracteres. La versión instalada sigue vendiendo aunque se corte internet.
 - **Ayuda para arrancar**: el equipo de Ventra ayuda a pasar los productos y precios (por ejemplo desde una planilla de Excel). Se pide por WhatsApp.
@@ -106,6 +106,7 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 
 ## Contacto y datos
 - WhatsApp de Ventra (atención por personas del equipo): https://wa.me/5492212025603
+- Empezar / suscribirse: https://ventra.store/empezar
 - Mi cuenta (suscripción, cambio de plan, descarga de la app, vincular PC): https://ventra.store/cuenta.html
 - Demo: https://app.ventra.store
 - Páginas: inicio https://ventra.store/ · sistema de ventas https://ventra.store/sistema-de-ventas · tienda online https://ventra.store/tienda-online · agenda de turnos https://ventra.store/turnos · peluquerías https://ventra.store/peluquerias

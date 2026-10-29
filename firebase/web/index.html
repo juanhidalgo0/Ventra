@@ -86,7 +86,7 @@
   ]
 }
 </script>
-<link rel="stylesheet" href="/landing.css?v=3">
+<link rel="stylesheet" href="/landing.css?v=4">
 <style>
   /* ═════════ Home ═════════ */
 
@@ -247,9 +247,19 @@
   .prow span{ color:var(--ink-2); font-size:14.5px; }
   .prow .pr{ font-weight:750; font-size:18px; letter-spacing:-.02em; white-space:nowrap; color:var(--ink); }
   .prow .pr small{ color:var(--ink-3); font-weight:500; font-size:13px; }
-  .prow a{ color:var(--pine); font-weight:650; font-size:14px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+  .prow .acts{ display:flex; align-items:center; gap:14px; }
+  .prow .btn.go{ height:38px; padding:0 18px; text-decoration:none; color:var(--cream); }
+  .prow a.more{ color:var(--pine); font-weight:600; font-size:14px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+  .start-strip{ padding-bottom:24px; }
+  .start-steps{ list-style:none; margin:0 auto; padding:0; max-width:960px; display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+  .start-steps li{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); padding:22px; }
+  .start-steps .n{ width:36px; height:36px; border-radius:11px; background:var(--pine-850); color:var(--cream); display:grid; place-items:center; font-weight:800; margin-bottom:14px; }
+  .start-steps b{ display:block; font-size:18px; letter-spacing:-.02em; margin-bottom:4px; }
+  .start-steps p{ color:var(--ink-2); font-size:15px; }
+  .start-cta{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:26px; }
+  @media (max-width:760px){ .start-steps{ grid-template-columns:1fr; } .start-steps li{ display:grid; grid-template-columns:36px 1fr; gap:2px 14px; padding:18px; } .start-steps .n{ grid-row:span 2; margin:0; } .start-cta .btn{ width:100%; } }
   /* Celular: nombre y precio arriba, la descripción abajo a todo el ancho y después el link */
-  @media (max-width:700px){ .prow{ grid-template-columns:1fr auto; gap:4px 12px; align-items:baseline; } .prow > span:not(.pr){ grid-column:1 / -1; grid-row:2; } .prow .pr{ grid-column:2; grid-row:1; } .prow a{ grid-column:1 / -1; grid-row:3; justify-self:start; } }
+  @media (max-width:700px){ .prow{ grid-template-columns:1fr auto; gap:4px 12px; align-items:baseline; } .prow > span:not(.pr):not(.acts){ grid-column:1 / -1; grid-row:2; } .prow .pr{ grid-column:2; grid-row:1; } .prow .acts{ grid-column:1 / -1; grid-row:3; justify-content:space-between; margin-top:8px; } }
 
   .wa-fab{ position:fixed; right:18px; bottom:18px; z-index:40; width:56px; height:56px; border-radius:50%; display:grid; place-items:center; background:var(--wa); color:#fff; box-shadow:0 14px 30px -10px rgba(0,0,0,.45); transition:transform .3s var(--ease); }
   .wa-fab:hover{ transform:scale(1.06); }
@@ -271,7 +281,8 @@
     <a href="/" class="brand" aria-label="Ventra, inicio"><img src="/ventra-logo.png" alt="" width="32" height="32">Ventra</a>
     <div class="nav-right">
       <div id="authArea" class="auth-area"></div>
-      <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-sm btn-cream hide-s">Probar demo</a>
+      <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-sm btn-line hide-s">Probar demo</a>
+      <a href="/empezar" data-start data-track="start_nav" class="btn btn-sm btn-cream">Empezar</a>
     </div>
   </div>
 </header>
@@ -429,6 +440,21 @@
   </div>
 </section>
 
+<section id="como-empezar" class="start-strip">
+  <div class="shell">
+    <div class="sec-head center rv">
+      <span class="eyebrow"><i></i>Así empezás</span>
+      <h2>En 2 minutos estás usando Ventra.</h2>
+    </div>
+    <ol class="start-steps rv">
+      <li><span class="n">1</span><b>Elegí tu plan</b><p>Según cómo vendés: en tu local, por internet o con turnos.</p></li>
+      <li><span class="n">2</span><b>Entrá con Google</b><p>Tu cuenta de Ventra es tu cuenta de Google. Sin otra contraseña.</p></li>
+      <li><span class="n">3</span><b>Pagá con Mercado Pago</b><p>Mes a mes, sin permanencia. Volvés y empezás a vender.</p></li>
+    </ol>
+    <div class="start-cta rv"><a href="/empezar" data-start data-track="start_strip" class="btn">Empezar ahora <span class="arr"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a><a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-ghost">Probar la demo antes</a></div>
+  </div>
+</section>
+
 <section id="planes">
   <div class="shell">
     <div class="sec-head center rv">
@@ -439,16 +465,16 @@
     <div class="plan-table rv">
       <div class="pgroup">
         <h3>Para tu local</h3>
-        <div class="prow"><b>Ventra Full</b><span>Caja, stock, cuentas corrientes y reportes + tienda online con el mismo stock + agenda con recordatorios</span><span class="pr">$24.900 <small>/ mes</small></span><a href="/sistema-de-ventas#planes" data-track="card_local">Ver plan</a></div>
+        <div class="prow"><b>Ventra Full</b><span>Caja, stock, cuentas corrientes y reportes + tienda online con el mismo stock + agenda con recordatorios</span><span class="pr">$24.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/sistema-de-ventas#planes" data-track="card_local">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=full" data-start data-track="plan_full">Empezar</a></span></div>
       </div>
       <div class="pgroup">
         <h3>Para vender por internet</h3>
-        <div class="prow"><b>Ventra Tienda</b><span>Tienda online con pedidos por WhatsApp, sin comisión, y agenda incluida</span><span class="pr">$9.900 <small>/ mes</small></span><a href="/tienda-online#plan" data-track="card_online">Ver plan</a></div>
+        <div class="prow"><b>Ventra Tienda</b><span>Tienda online con pedidos por WhatsApp, sin comisión, y agenda incluida</span><span class="pr">$9.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/tienda-online#plan" data-track="card_online">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=tienda" data-start data-track="plan_tienda">Empezar</a></span></div>
       </div>
       <div class="pgroup">
         <h3>Para negocios con turnos</h3>
-        <div class="prow"><b>Ventra Agenda</b><span>Turnos online, página propia y recordatorio de WhatsApp con un toque</span><span class="pr">$9.900 <small>/ mes</small></span><a href="/turnos#plan" data-track="card_turnos">Ver plan</a></div>
-        <div class="prow"><b>Ventra Agenda Pro</b><span>Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes</span><span class="pr">$19.900 <small>/ mes</small></span><a href="/turnos#plan" data-track="card_turnos">Ver plan</a></div>
+        <div class="prow"><b>Ventra Agenda</b><span>Turnos online, página propia y recordatorio de WhatsApp con un toque</span><span class="pr">$9.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/turnos#plan" data-track="card_turnos">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=agenda" data-start data-track="plan_agenda">Empezar</a></span></div>
+        <div class="prow"><b>Ventra Agenda Pro</b><span>Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes</span><span class="pr">$19.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/turnos#plan" data-track="card_turnos">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=agenda_pro" data-start data-track="plan_agenda_pro">Empezar</a></span></div>
       </div>
     </div>
   </div>
@@ -470,11 +496,11 @@
   <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="shell">
     <span class="eyebrow"><i></i>Empezá hoy</span>
-    <h2>¿No sabés por dónde empezar?</h2>
-    <p>Contanos qué negocio tenés y te decimos qué plan te conviene. O probá la demo, sin registrarte.</p>
+    <h2>¿Arrancamos?</h2>
+    <p>Elegí tu plan y en 2 minutos estás vendiendo. ¿Dudas? Escribinos y te decimos qué plan te conviene.</p>
     <div class="hero-cta">
-      <a href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20qu%C3%A9%20plan%20de%20Ventra%20me%20conviene" target="_blank" rel="noopener" class="btn btn-cream">Escribinos por WhatsApp</a>
-      <a href="https://app.ventra.store" target="_blank" rel="noopener" class="btn btn-ghost">Probar la demo gratis</a>
+      <a href="/empezar" data-start data-track="start_final" class="btn btn-cream">Empezar ahora</a>
+      <a href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20qu%C3%A9%20plan%20de%20Ventra%20me%20conviene" target="_blank" rel="noopener" class="btn btn-ghost">Escribinos por WhatsApp</a>
     </div>
   </div>
 </section>
@@ -485,11 +511,16 @@
   <div class="shell foot">
     <a href="/" class="brand" style="color:var(--on-dark)"><img src="/ventra-logo.png" alt="" width="26" height="26">Ventra</a>
     <nav aria-label="Pie de página">
-      <a href="/sistema-de-ventas">Sistema de ventas</a><a href="/tienda-online">Tienda online</a><a href="/turnos">Agenda de turnos</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/cuenta.html">Mi cuenta</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
+      <a href="/empezar">Empezar</a><a href="/sistema-de-ventas">Sistema de ventas</a><a href="/tienda-online">Tienda online</a><a href="/turnos">Agenda de turnos</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/cuenta.html">Mi cuenta</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
     </nav>
     <small>© <span id="year">2026</span> Ventra</small>
   </div>
 </footer>
+
+<div class="dock" id="dock">
+  <span><b>Empezá con Ventra</b><small>En 2 minutos · sin permanencia</small></span>
+  <a href="/empezar" data-start data-track="start_dock" class="btn btn-cream btn-sm">Empezar</a>
+</div>
 
 <a class="wa-fab" href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Ventra" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp" title="Escribinos por WhatsApp">
   <svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1 2.5 5.9 5.9 0 0 0 1.2 3.1 13.5 13.5 0 0 0 5.2 4.6c2.9 1.1 2.9.8 3.4.7a2.9 2.9 0 0 0 1.9-1.3 2.4 2.4 0 0 0 .2-1.3c-.1-.2-.3-.3-.6-.4ZM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Zm0-21.6A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Z"/></svg>
@@ -512,6 +543,9 @@ document.getElementById('year').textContent = new Date().getFullYear();
   // Escenas animadas: se pausan cuando el hero no se ve (ahorra batería)
   var hero = document.getElementById('inicio');
   if (io && hero) new IntersectionObserver(function(es){ hero.classList.toggle('paused', !es[0].isIntersecting); }).observe(hero);
+  // Barra fija del celular: aparece al dejar atrás la portada
+  var dock = document.getElementById('dock');
+  if (dock) { var onScroll = function(){ dock.classList.toggle('show', scrollY > 640); }; addEventListener('scroll', onScroll, { passive:true }); onScroll(); }
   // Contador
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.querySelectorAll('[data-count]').forEach(function(el){
@@ -527,7 +561,7 @@ document.getElementById('year').textContent = new Date().getFullYear();
   });
 })();
 </script>
-<script src="/ventra-cuenta.js?v=3"></script>
+<script src="/ventra-cuenta.js?v=4"></script>
 <script src="/ventra-chat.js?v=1" defer></script>
 </body>
 </html>

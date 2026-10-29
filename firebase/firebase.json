@@ -61,13 +61,17 @@
           "destination": "/nutricionistas.html"
         },
         {
+          "source": "/empezar",
+          "destination": "/empezar.html"
+        },
+        {
           "source": "**",
           "function": { "functionId": "storePage", "region": "us-central1" }
         }
       ],
       "redirects": [
         {
-          "regex": "^/(peluquerias|tienda-online|sistema-de-ventas|turnos)\\.html$",
+          "regex": "^/(peluquerias|tienda-online|sistema-de-ventas|turnos|empezar)\\.html$",
           "destination": "/:1",
           "type": 301
         }

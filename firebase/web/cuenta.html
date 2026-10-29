@@ -86,6 +86,15 @@
   .steps{ margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
   .steps li{ display:flex; gap:12px; align-items:flex-start; font-size:13.5px; color:var(--ink-2); }
   .steps b{ color:var(--ink); }
+  .first{ border:2px solid var(--pine); }
+  .first h2{ margin-bottom:4px; }
+  .todo{ margin:16px 0 0; padding:0; list-style:none; display:grid; gap:14px; }
+  .todo li{ display:grid; grid-template-columns:28px 1fr; gap:2px 12px; align-items:start; }
+  .todo .tn{ grid-row:span 3; width:28px; height:28px; border-radius:9px; background:var(--sand); color:var(--ink); font-weight:750; font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .todo li.ok .tn{ background:var(--pine); color:#fff; }
+  .todo b{ font-size:15px; color:var(--ink); }
+  .todo p{ margin:0; font-size:13.5px; color:var(--ink-2); }
+  .todo .btn{ justify-self:start; margin-top:8px; height:40px; }
   .step-n{ width:24px; height:24px; border-radius:8px; background:var(--mint-50); color:var(--pine); font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 
   .code-row{ display:flex; gap:10px; margin-top:16px; }
@@ -139,6 +148,7 @@
       <h2>Ingresá a tu cuenta</h2>
       <p>Usá la misma cuenta de Google con la que te suscribiste a Ventra.</p>
       <button class="btn" id="loginBtn">Iniciar sesión con Google</button>
+      <p style="margin-top:14px;font-size:13.5px;color:var(--ink-2)">¿Todavía no tenés cuenta? <a href="/empezar" style="color:var(--pine);font-weight:600;text-decoration:underline;text-underline-offset:3px">Empezá acá</a>, en 2 minutos.</p>
     </section>
 
     <!-- Cargando -->
@@ -149,7 +159,14 @@
       <img src="/ventra-logo.png" alt="">
       <h2>Todavía no tenés un plan</h2>
       <p>Elegí un plan para usar Ventra en tu negocio. Podés probar la demo gratis antes.</p>
-      <a class="btn" href="/#planes">Ver planes</a>
+      <a class="btn" href="/empezar">Elegir mi plan</a>
+    </section>
+
+    <!-- Primeros pasos, al volver de pagar -->
+    <section class="card first hidden" id="startCard">
+      <h2>Tu Ventra en 3 pasos</h2>
+      <p class="lead" style="margin:0">Lo que sigue para empezar a vender hoy.</p>
+      <ol class="todo" id="todo"></ol>
     </section>
 
     <!-- Plan -->
@@ -170,7 +187,7 @@
       <div class="row">
         <a class="btn" id="openBtn" href="https://web.ventra.store">Abrir mi Ventra</a>
         <a class="btn ghost" id="panelBtn" href="/panel">Ver mis números</a>
-        <a class="btn ghost hidden" id="renewBtn" href="/#planes">Renovar suscripción</a>
+        <a class="btn ghost hidden" id="renewBtn" href="/empezar">Renovar suscripción</a>
       </div>
       <div class="hidden" id="renewRow"></div>
     </section>
@@ -246,7 +263,7 @@
     var STATE_LABEL = { ACTIVE:'Activa', GRACE:'En período de gracia', READ_ONLY:'Vencida · solo lectura', UNPAID:'Esperando el pago' };
 
     var $ = function(id){ return document.getElementById(id); };
-    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','planCard','remindersCard','changeCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
+    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','startCard','planCard','remindersCard','changeCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
     var fdate = function(d){ return d.toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' }); };
     var money = function(n){ return '$ ' + Number(n).toLocaleString('es-AR'); };
     var params = new URLSearchParams(location.search);
@@ -289,7 +306,7 @@
         ? '¡Gracias por suscribirte! Tu agenda ya está activa: tocá "Abrir mi agenda" para cargar tus servicios y horarios. No hace falta instalar nada.'
         : storeOnly
         ? '¡Gracias por suscribirte! Tu tienda ya está activa: tocá "Abrir mi tienda" para armarla. No hace falta instalar nada.'
-        : '¡Gracias por suscribirte! Tu cuenta ya está activa: descargá la app y vinculá tu PC.';
+        : '¡Gracias por suscribirte! Tu cuenta ya está activa: tocá "Abrir mi Ventra" y empezá a vender desde el navegador.';
       notice.className = 'notice ' + (fromCheckout && (s.state === 'ACTIVE' || s.state === 'UNPAID') ? 'THANKS' : s.state);
       if (fromPack && params.get('pack') !== 'error' && s.state !== 'READ_ONLY') {
         text = params.get('pack') === 'ok'
@@ -299,12 +316,44 @@
       }
       notice.textContent = text; notice.classList.toggle('hidden', !text);
       $('renewBtn').classList.toggle('hidden', !(s.state === 'GRACE' || s.state === 'READ_ONLY'));
+      if (PLANS[data.plan] && data.plan !== 'caja') $('renewBtn').href = '/empezar?plan=' + data.plan;
+      var welcome = renderStart(data, s.state, agendaOnly, storeOnly);
 
       $('heroTitle').textContent = fromCheckout ? '¡Bienvenido a Ventra!' : 'Mi cuenta';
       var extra = [];
       if (REMINDER_PLANS[data.plan]) { renderReminders(data.plan); extra.push('remindersCard'); }
       if (renderPlanChange(data)) extra.push('changeCard');
-      show((storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']).concat(extra));
+      show((welcome ? ['startCard'] : []).concat(storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']).concat(extra));
+    }
+
+    // ── Primeros pasos: al volver de pagar (y mientras dure esta pestaña) se muestra qué
+    // sigue. Full arranca en el navegador; instalar en la PC queda como opcional. ──
+    var WA_HELP = 'https://wa.me/5492212025603?text=' + encodeURIComponent('Hola, me acabo de suscribir a Ventra y quiero ayuda para arrancar');
+    function renderStart(data, state, agendaOnly, storeOnly){
+      try { if (fromCheckout) sessionStorage.setItem('ventra_welcome', '1'); } catch(e){}
+      var on = fromCheckout; try { on = on || sessionStorage.getItem('ventra_welcome') === '1'; } catch(e){}
+      if (!on || state === 'READ_ONLY') return false;
+      var paid = state === 'ACTIVE' || state === 'GRACE';
+      var steps = [{ ok:paid, t: paid ? 'Tu plan está activo' : 'Esperando la confirmación de Mercado Pago', p: paid ? (data.planName || 'Ventra') + ' ya está andando en tu cuenta.' : 'Suele tardar unos segundos. Esta página se actualiza sola.' }];
+      if (agendaOnly) steps.push({ t:'Abrí tu agenda', p:'Cargá tus servicios y horarios. No hace falta instalar nada.', a:'Abrir mi agenda', href:'https://web.ventra.store' }, { t:'Compartí tu link', p:'Ponelo en tu Instagram y mandalo por WhatsApp: tus clientes reservan solos.' });
+      else if (storeOnly) steps.push({ t:'Armá tu tienda', p:'Subí tus productos con fotos y precios. No hace falta instalar nada.', a:'Abrir mi tienda', href:'https://web.ventra.store' }, { t:'Compartí tu link', p:'En tu Instagram y por WhatsApp: los pedidos te llegan ordenados.' });
+      else steps.push({ t:'Empezá a vender ahora', p:'Abrí Ventra en el navegador con esta misma cuenta de Google y cargá tus productos.', a:'Abrir mi Ventra', href:'https://web.ventra.store' }, { t:'Instalá la caja en la PC (opcional)', p:'Para seguir vendiendo aunque se corte internet. Más abajo está la descarga y cómo vincularla.', a:'Ir a la descarga', href:'#downloadCard', ghost:true });
+      steps.push({ t:'¿Te ayudamos a pasar tus productos?', p:'Escribinos y te contesta alguien del equipo.', a:'Escribir por WhatsApp', href:WA_HELP, ghost:true, blank:true });
+      var ol = $('todo'); ol.innerHTML = '';
+      steps.forEach(function(st, i){
+        var li = document.createElement('li'); if (st.ok) li.className = 'ok';
+        var n = document.createElement('span'); n.className = 'tn'; n.textContent = st.ok ? '✓' : String(i + 1);
+        var b = document.createElement('b'); b.textContent = st.t;
+        var p = document.createElement('p'); p.textContent = st.p;
+        li.appendChild(n); li.appendChild(b); li.appendChild(p);
+        if (st.a && (paid || st.blank)) {
+          var a = document.createElement('a'); a.className = 'btn' + (st.ghost ? ' ghost' : ''); a.textContent = st.a; a.href = st.href;
+          if (st.blank) { a.target = '_blank'; a.rel = 'noopener'; }
+          li.appendChild(a);
+        }
+        ol.appendChild(li);
+      });
+      return true;
     }
 
     // ── Recordatorios: mismo cupo que firebase/functions/reminder-quota.js ──
@@ -438,15 +487,19 @@
       }).catch(function(){ window.open(a.href, target); });
     });
 
+    // En vivo: al volver de Mercado Pago el aviso del pago puede llegar unos segundos después,
+    // y la página pasa sola de "Esperando el pago" a "Activa"
+    var accUnsub = null;
     firebase.auth().onAuthStateChanged(function(user){
       $('who').textContent = user ? user.email : '';
       $('logoutBtn').classList.toggle('hidden', !user);
+      if (accUnsub) { accUnsub(); accUnsub = null; }
       if (!user) return show(['gateCard']);
       show(['loadingCard']);
-      firebase.firestore().collection('ventra_accounts').doc(user.uid).get().then(function(doc){
+      accUnsub = firebase.firestore().collection('ventra_accounts').doc(user.uid).onSnapshot(function(doc){
         if (!doc.exists) return show(['noPlanCard', 'downloadCard']);
         renderAccount(doc.data());
-      }).catch(function(){ show(['noPlanCard', 'downloadCard']); });
+      }, function(){ show(['noPlanCard', 'downloadCard']); });
     });
   })();
   </script>

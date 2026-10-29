@@ -102,7 +102,7 @@
   ]
 }
 </script>
-<link rel="stylesheet" href="/landing.css?v=3">
+<link rel="stylesheet" href="/landing.css?v=4">
 </head>
 <body>
 
@@ -111,7 +111,8 @@
     <a href="/" class="brand" aria-label="Ventra, inicio"><img src="/ventra-logo.png" alt="" width="32" height="32">Ventra</a>
     <div class="nav-right">
       <div id="authArea" class="auth-area"></div>
-      <a href="#plan" class="btn btn-sm btn-cream hide-s">Ver planes</a>
+      <a href="#plan" class="btn btn-sm btn-line hide-s">Ver planes</a>
+      <a href="/empezar?need=turnos" data-start data-track="start_nav" class="btn btn-sm btn-cream">Empezar</a>
     </div>
   </div>
 </header>
@@ -274,6 +275,11 @@
         <button type="button" class="btn btn-block plan-btn" data-plan="agenda_pro">Empezar con Agenda Pro</button>
       </div>
     </div>
+    <ol class="howto rv" aria-label="Así empezás">
+      <li><span>1</span>Elegí tu plan</li>
+      <li><span>2</span>Entrá con Google</li>
+      <li><span>3</span>Pagá con Mercado Pago y empezá</li>
+    </ol>
     <p class="fine" style="text-align:center;margin-top:18px">Sin permanencia: lo das de baja cuando quieras. Podés pasarte de un plan al otro desde Mi cuenta.</p>
     <p class="plan-alt rv">¿También vendés productos en el local (shampoo, ceras, tratamientos)? <a href="/sistema-de-ventas#planes">Ventra Full suma la caja y el stock</a>.</p>
   </div>
@@ -314,7 +320,7 @@
   <div class="shell foot">
     <a href="/" class="brand" style="color:var(--on-dark)"><img src="/ventra-logo.png" alt="" width="26" height="26">Ventra</a>
     <nav aria-label="Pie de página">
-      <a href="/sistema-de-ventas">Sistema de ventas</a><a href="/tienda-online">Tienda online</a><a href="/turnos">Agenda de turnos</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/#planes">Planes</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
+      <a href="/empezar">Empezar</a><a href="/sistema-de-ventas">Sistema de ventas</a><a href="/tienda-online">Tienda online</a><a href="/turnos">Agenda de turnos</a><a href="/peluquerias">Turnos para peluquerías</a><a href="/#planes">Planes</a><a href="/privacidad.html">Privacidad</a><a href="/terminos.html">Condiciones</a>
     </nav>
     <small>© <span id="year">2026</span> Ventra</small>
   </div>
@@ -322,7 +328,7 @@
 
 <div class="dock" id="dock">
   <span><b>Ventra Agenda · desde $9.900</b><small>Turnos con recordatorio por WhatsApp</small></span>
-  <a href="#plan" class="btn btn-cream btn-sm">Empezar</a>
+  <a href="/empezar?need=turnos" data-start data-track="start_dock" class="btn btn-cream btn-sm">Empezar</a>
 </div>
 
 <script>
@@ -396,7 +402,7 @@
 })();
 </script>
 <script src="/landing.js?v=1" defer></script>
-<script src="/ventra-cuenta.js?v=3"></script>
+<script src="/ventra-cuenta.js?v=4"></script>
 <script src="/ventra-chat.js?v=1" defer></script>
 </body>
 </html>
