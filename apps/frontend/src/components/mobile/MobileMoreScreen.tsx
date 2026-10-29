@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
   Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote, ClipboardList,
-  Printer,
+  Printer, ShieldAlert,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useOwnerAccess } from '../../utils/managerAccess';
 import { money } from './ui';
 import InstallAppCard from './InstallAppCard';
 import PushCard from './PushCard';
@@ -23,6 +24,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
     title: 'Plata',
     items: [
       { path: '/cash-control', label: 'Cajas', hint: 'Abiertas y cierres', icon: Wallet, tint: 'bg-rose-50 text-rose-700' },
+      { path: '/anulaciones', label: 'Anulaciones', hint: 'Lo que se saca del ticket', icon: ShieldAlert, tint: 'bg-red-50 text-red-700' },
       { path: '/gastos', label: 'Gastos', hint: 'Del mes', icon: Receipt, tint: 'bg-red-50 text-red-600' },
       { path: '/clients', label: 'Fiado', hint: 'Quién te debe', icon: Users, tint: 'bg-amber-50 text-amber-700' },
       { path: '/treasury', label: 'Tesorería', hint: 'Bancos y billeteras', icon: Landmark, tint: 'bg-sky-50 text-sky-700' },
@@ -59,6 +61,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
 export default function MobileMoreScreen() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const owner = useOwnerAccess();
   const [owed, setOwed] = useState<number | null>(null);
   const planFeatures = usePlanStore((s) => s.features);
   const intents = useBusinessStore((s) => s.intents);
@@ -67,6 +70,7 @@ export default function MobileMoreScreen() {
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
       && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && (i.path !== '/encargos' || hasFeature('workorders'))
+      && (i.path !== '/anulaciones' || owner)
       && !(i.noCaja && planFeatures.caja)
       // Solo turnos: agenda, clientes y cobros ya son pestañas
       && !(isAgendaOnly(planFeatures) && i.path.startsWith('/agenda'))) }))

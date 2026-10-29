@@ -24,6 +24,7 @@ const DEFAULT_PREFS = {
   mpUnmatched: true,   // entró un pago a Mercado Pago y no hay venta de MP de ese monto
   saleCancel: false,   // venta anulada (solo importes grandes)
   employeeConsumption: true, // un empleado registró un consumo propio
+  suspiciousVoid: true, // un cajero quitó productos del ticket de forma sospechosa (control de anulaciones)
   workOrderDue: true,  // encargos para entregar mañana o atrasados
   dailySummary: false, // resumen del día
   summaryHour: 21,
@@ -189,6 +190,25 @@ function messageFor(ev) {
         title: `Consumo de ${String(d.user || "un empleado").slice(0, 40)}: ${money(d.total)}`,
         body: items.slice(0, 4).join(", ") + (count > 4 ? ` y ${count - 4} más` : ""),
         url: "/#/employee-consumption", tag: "consumo-" + (d.saleId || Date.now()),
+      };
+    }
+    case "suspiciousVoid": {
+      const items = (Array.isArray(d.items) ? d.items : []).slice(0, 20);
+      if (!items.length) return null;
+      const first = items[0];
+      const who = (u) => String(u || "Un empleado").slice(0, 40);
+      const verb = {
+        CART_CLEARED: "vació un ticket de", HELD_CART_DELETED: "borró un ticket en espera de",
+        PRODUCT_DELETED: "borró un producto del catálogo:", PRODUCTS_BULK_DELETED: "borró productos del catálogo:",
+      }[first.action] || "quitó del ticket";
+      const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const people = [...new Set(items.map((i) => who(i.user)))];
+      return {
+        title: items.length === 1 ? `${who(first.user)} ${verb} ${money(first.amount)}` : `${items.length} anulaciones sospechosas (${money(total)})`,
+        body: items.length === 1
+          ? [String(first.reason || "").slice(0, 120), first.terminal ? String(first.terminal).slice(0, 40) : ""].filter(Boolean).join(" · ")
+          : `${people.slice(0, 3).join(", ")}${people.length > 3 ? " y otros" : ""}. ${String(first.reason || "").slice(0, 120)}`.trim(),
+        url: "/#/anulaciones", tag: "void-" + Date.now(),
       };
     }
     case "saleCancel":

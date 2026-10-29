@@ -50,6 +50,7 @@ import AcopioModal from './AcopioModal';
 import SubstitutesModal from './SubstitutesModal';
 import { toggleFullscreen } from '../../utils/fullscreen';
 import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from './posPractice';
+import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart, trailDeleteHeldCart } from '../../services/posTrail';
 import { registerTourActions, useTourStore } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
 import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
@@ -241,6 +242,8 @@ export default function POSScreen() {
   const [pendingArqueos, setPendingArqueos] = useState<any[]>([]);
   const [sessionToArqueo, setSessionToArqueo] = useState<any | null>(null);
   const [showPayment, setShowPayment] = useState(false);
+  // Abrir el cobro = ya se le estaba cobrando al cliente (lo usa el control de anulaciones)
+  useEffect(() => { if (showPayment) markTotalShown(); }, [showPayment]);
   const [showGastos, setShowGastos] = useState(false);
   const [showProveedores, setShowProveedores] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
@@ -336,6 +339,10 @@ export default function POSScreen() {
   useEffect(() => {
     terminalNameRef.current = terminalName;
   }, [terminalName]);
+
+  useEffect(() => {
+    setTrailContext({ sessionId: currentSession?.id || null, terminal: currentSession?.terminalName || terminalName, practice: currentSession?.id === PRACTICE_SESSION_ID });
+  }, [currentSession?.id, currentSession?.terminalName, terminalName]);
 
   useEffect(() => {
     api.get('/clients').then(res => setPosClients(res.data || [])).catch(() => {});
@@ -788,7 +795,7 @@ export default function POSScreen() {
       if (e.key === 'Delete' && e.shiftKey) {
         e.preventDefault();
         if (cart.length > 0) {
-          clearCart();
+          trailClearCart();
           toast.success('Ticket vaciado');
           focusSearch();
         }
@@ -858,7 +865,7 @@ export default function POSScreen() {
           updateQuantity(lastItem.cartKey, lastItem.quantity + step);
         } else if (e.key === '-' || e.code === 'NumpadSubtract') {
           e.preventDefault();
-          updateQuantity(lastItem.cartKey, lastItem.quantity - step);
+          trailSetQuantity(lastItem.cartKey, lastItem.quantity - step);
         }
       }
 
@@ -2029,7 +2036,7 @@ export default function POSScreen() {
             <span className="hidden lg:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
 
             {/* Versión nueva descargada: aviso discreto, no interrumpe */}
-            <NotificationBell />
+            <NotificationBell atTill />
             <UpdateBadge />
 
             {/* Buscar acciones (Ctrl+K) */}
@@ -2615,7 +2622,7 @@ export default function POSScreen() {
                 </button>
 
                 <button 
-                  onClick={() => clearCart()} 
+                  onClick={() => trailClearCart()} 
                   disabled={cart.length === 0}
                   className="text-xs font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
                   title="Vaciar todos los productos del ticket actual"
@@ -2932,7 +2939,7 @@ export default function POSScreen() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                            <button onClick={() => { updateQuantity(item.cartKey, item.quantity - (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
+                            <button onClick={() => { trailSetQuantity(item.cartKey, item.quantity - (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
                             {item.packSize ? (
                               <span className="min-w-8 px-0.5 text-center leading-none" title={`${item.quantity} unidades`}>
                                 <span className="block text-sm font-bold text-slate-900 dark:text-white">{Math.round((item.quantity / item.packSize) * 100) / 100}</span>
@@ -2955,7 +2962,7 @@ export default function POSScreen() {
                             )}
                             <p className="text-[15px] font-bold text-slate-900 dark:text-white leading-none tracking-[-0.02em]">{formatPrice(promoTotal)}</p>
                           </div>
-                          <button onClick={() => { removeFromCart(item.cartKey); focusSearch(); }} className="text-slate-400 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition-all p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg active:scale-90" title="Eliminar del carrito">
+                          <button onClick={() => { trailRemoveLine(item.cartKey); focusSearch(); }} className="text-slate-400 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition-all p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg active:scale-90" title="Eliminar del carrito">
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -4040,7 +4047,7 @@ export default function POSScreen() {
                 <button
                   type="button"
                   onClick={() => {
-                    deleteHeldCart(heldCartToDelete.id);
+                    trailDeleteHeldCart(heldCartToDelete.id);
                     setHeldCartToDelete(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer transition-all active:scale-95 shadow-md shadow-rose-600/20"

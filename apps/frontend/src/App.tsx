@@ -1,6 +1,7 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { useOwnerAccess } from './utils/managerAccess';
 import { usePOSStore } from './stores/posStore';
 import LoginPage from './components/auth/LoginPage';
 import ConnectionScreen from './components/auth/ConnectionScreen';
@@ -44,6 +45,7 @@ const PromosScreen = lazy(() => import('./components/products/PromosScreen'));
 const DashboardScreen = lazy(() => import('./components/dashboard/DashboardScreen'));
 const ReportsScreen = lazy(() => import('./components/dashboard/ReportsScreen'));
 const EmployeeConsumptionScreen = lazy(() => import('./components/reports/EmployeeConsumptionScreen'));
+const VoidControlScreen = lazy(() => import('./components/reports/VoidControlScreen'));
 const FiscalScreen = lazy(() => import('./components/dashboard/FiscalScreen'));
 const PurchasesScreen = lazy(() => import('./components/products/PurchasesScreen'));
 const StockControlScreen = lazy(() => import('./components/products/StockControlScreen'));
@@ -189,6 +191,13 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
   const isAdminUnlocked = sessionStorage.getItem('admin_unlocked') === 'true';
   return isAuthenticated && (user?.role === 'ADMIN' || isAdminUnlocked) ? <>{children}</> : <Navigate to="/pos" replace />;
+}
+
+/** Solo el dueño (con su cuenta o con el candado sobre la del cajero): nunca un encargado */
+function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuthStore();
+  const owner = useOwnerAccess();
+  return isAuthenticated && owner ? <>{children}</> : <Navigate to="/pos" replace />;
 }
 
 /** En el celular, dueño o empleado: la pantalla del celular */
@@ -695,6 +704,7 @@ export default function App() {
                     <Route path="/gastos" element={<OwnerMobileOr mobile={<MobileExpensesScreen />}><GastosScreen /></OwnerMobileOr>} />
                     <Route path="/reports" element={<OwnerMobileOr mobile={<MobileReportsScreen />}><ReportsScreen /></OwnerMobileOr>} />
                     <Route path="/employee-consumption" element={<EmployeeConsumptionScreen />} />
+                    <Route path="/anulaciones" element={<OwnerOnlyRoute><VoidControlScreen /></OwnerOnlyRoute>} />
                     
                     <Route path="/inventory" element={<ProductsScreen />} />
                     <Route path="/promos" element={<OwnerMobileOr mobile={<MobilePromosScreen />}><PromosScreen /></OwnerMobileOr>} />

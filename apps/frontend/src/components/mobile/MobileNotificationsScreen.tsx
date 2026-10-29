@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ShoppingBag, CalendarDays, CalendarClock, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon, Send } from 'lucide-react';
+import { ShoppingBag, CalendarDays, CalendarClock, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon, Send, ShieldAlert } from 'lucide-react';
 import { ScreenHeader, ListSkeleton } from './ui';
 import PushCard from './PushCard';
 import { loadNotifyPrefs, saveNotifyPrefs, pushState, testLocalNotification, testPushFromCloud, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
 
-type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue';
+type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue' | 'suspiciousVoid';
 
 const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: string }[] = [
   { key: 'orders', icon: ShoppingBag, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedidos online nuevos', text: 'Apenas un cliente hace un pedido en tu tienda.' },
@@ -17,6 +17,7 @@ const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: strin
   { key: 'expiry', icon: CalendarClock, tint: 'bg-amber-50 text-amber-700', title: 'Vencimientos', text: 'Una vez por día, si hay productos vencidos o por vencer.' },
   { key: 'mpUnmatched', icon: Wallet, tint: 'bg-sky-50 text-sky-700', title: 'Pagos de Mercado Pago sin venta', text: 'Si entra un pago a Mercado Pago y la venta se cargó con otro medio (o no se cargó).' },
   { key: 'invoiceFail', icon: FileWarning, tint: 'bg-red-50 text-red-700', title: 'Factura rechazada', text: 'Si ARCA no acepta una factura.' },
+  { key: 'suspiciousVoid', icon: ShieldAlert, tint: 'bg-red-50 text-red-700', title: 'Anulaciones sospechosas', text: 'Cuando un cajero saca productos del ticket de una forma que conviene revisar (por ejemplo, después de abrir el cobro). El cajero no se entera.' },
   { key: 'saleCancel', icon: Ban, tint: 'bg-slate-100 text-slate-700', title: 'Ventas anuladas', text: 'Cuando se anula una venta de $20.000 o más.' },
   { key: 'dailySummary', icon: Sunset, tint: 'bg-sky-50 text-sky-700', title: 'Resumen del día', text: 'Cuánto vendiste hoy, comparado con el mismo día de la semana pasada.' },
 ];

@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { PRODUCT_WITHOUT_IMAGE, productIdFromImageLink, productImageLink } from '../../database/product-select';
 import { consumeLotsFefo } from './lots.util';
+import { PosTrailService } from '../pos-trail/pos-trail.service';
 
 function getSearchVariants(token: string): string[] {
   const t = token.trim();
@@ -104,6 +105,7 @@ export class ProductsService {
     private firebaseSync: FirebaseSyncService,
     private syncImageService: SyncImageService,
     private shared: SharedCatalogService,
+    private trail: PosTrailService,
   ) {}
 
   private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean }): any {
@@ -985,9 +987,10 @@ export class ProductsService {
     return updatedProduct;
   }
 
-  async delete(id: string) {
+  async delete(id: string, userId?: string) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Producto no encontrado');
+    if (product.isActive) this.trail?.recordProductDeletion(userId, [product]);
     // Clear barcodes and delete additional barcodes to release unique constraints
     const updated = await this.prisma.product.update({ 
       where: { id }, 
@@ -1883,8 +1886,10 @@ export class ProductsService {
     return { count: result.count };
   }
 
-  async bulkDeleteAll() {
+  async bulkDeleteAll(userId?: string) {
     console.log('[ProductsService] Soft-deleting all products...');
+    const doomed = await this.prisma.product.findMany({ where: { isActive: true }, select: { id: true, name: true, stock: true, salePrice: true } });
+    this.trail?.recordProductDeletion(userId, doomed, true);
     
     // Delete all additional barcodes to release unique constraints
     await this.prisma.productBarcode.deleteMany({});
@@ -1901,16 +1906,17 @@ export class ProductsService {
     return { count: result.count };
   }
 
-  async bulkDeleteZeroNegative() {
+  async bulkDeleteZeroNegative(userId?: string) {
     console.log('[ProductsService] Soft-deleting products with zero or negative stock...');
     const products = await this.prisma.product.findMany({
       where: { 
         isActive: true,
         stock: { lte: 0 }
       },
-      select: { id: true, barcode: true }
+      select: { id: true, barcode: true, name: true, stock: true, salePrice: true }
     });
     const ids = products.map(p => p.id);
+    this.trail?.recordProductDeletion(userId, products, true);
 
     await this.prisma.productBarcode.deleteMany({
       where: { productId: { in: ids } }
@@ -1981,8 +1987,10 @@ export class ProductsService {
     return { count: result.count };
   }
 
-  async bulkDeleteSubset(ids: string[]) {
+  async bulkDeleteSubset(ids: string[], userId?: string) {
     console.log(`[ProductsService] Soft-deleting subset of ${ids.length} products...`);
+    const doomed = await this.prisma.product.findMany({ where: { id: { in: ids }, isActive: true }, select: { id: true, name: true, stock: true, salePrice: true } });
+    this.trail?.recordProductDeletion(userId, doomed, ids.length > 1);
     
     await this.prisma.productBarcode.deleteMany({
       where: { productId: { in: ids } }

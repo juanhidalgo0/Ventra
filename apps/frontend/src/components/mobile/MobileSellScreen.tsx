@@ -11,6 +11,7 @@ import { usePOSStore } from '../../stores/posStore';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ProductThumb, money, qty, parseAmount } from './ui';
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 import { useCashSession } from './useCashSession';
+import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart } from '../../services/posTrail';
 import { applySurcharges, getPaymentMethods } from './checkout';
 import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
 import { hasFeature } from '../../stores/businessStore';
@@ -31,6 +32,7 @@ export default function MobileSellScreen() {
     getFinalTotal, getTotal, getDiscounts, getItemCount, getCheckoutPayload, getCartItemsWithDiscounts, setProducts,
   } = usePOSStore();
   const cash = useCashSession();
+  useEffect(() => { setTrailContext({ sessionId: cash.session?.id || null, terminal: cash.session?.terminalName || cash.terminalName || 'Celular', practice: false }); }, [cash.session?.id, cash.session?.terminalName, cash.terminalName]);
   // Talles, metro/kilo, precio libre y bulto, como en la caja de la PC
   const rubro = useRubroAdd();
   const tapRef = useRef(rubro.tap);
@@ -42,6 +44,8 @@ export default function MobileSellScreen() {
   const [scanning, setScanning] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  // Abrir el cobro = ya se le estaba cobrando al cliente (control de anulaciones)
+  useEffect(() => { if (checkoutOpen) markTotalShown(); }, [checkoutOpen]);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Unidad de cada producto del carrito (metro, kilo, litro) para mostrarla
@@ -226,20 +230,20 @@ export default function MobileSellScreen() {
                     </p>
                   </div>
                   {item.isPromo ? (
-                    <button onClick={() => removeFromCart(item.cartKey)} className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center" aria-label="Quitar">
+                    <button onClick={() => trailRemoveLine(item.cartKey)} className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center" aria-label="Quitar">
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
                   ) : (
                     <Stepper
                       value={item.packSize ? item.quantity / item.packSize : item.quantity}
                       unit={item.packSize ? (item.quantity === item.packSize ? 'bulto' : 'bultos') : MEASURE[unitOf[item.productId]]?.short}
-                      onChange={(v) => (v <= 0 ? removeFromCart(item.cartKey) : updateQuantity(item.cartKey, item.packSize ? Math.round(v) * item.packSize : v))}
+                      onChange={(v) => (v <= 0 ? trailRemoveLine(item.cartKey) : trailSetQuantity(item.cartKey, item.packSize ? Math.round(v) * item.packSize : v))}
                     />
                   )}
                 </div>
               ))}
             </div>
-            <button onClick={() => { clearCart(); setCartOpen(false); }} className="mt-2 text-[13px] font-medium text-red-600 py-2">
+            <button onClick={() => { trailClearCart(); setCartOpen(false); }} className="mt-2 text-[13px] font-medium text-red-600 py-2">
               Vaciar carrito
             </button>
           </>

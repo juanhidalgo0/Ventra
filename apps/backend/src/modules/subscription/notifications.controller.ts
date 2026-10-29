@@ -1,6 +1,10 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../database/prisma.service';
+
+/** Avisos que ve solo el dueño: el control de anulaciones no puede aparecer en la campanita del cajero */
+const OWNER_ONLY = ['suspiciousVoid'];
+const visibleTo = (role?: string, atTill = false) => (role === 'ADMIN' && !atTill ? {} : { type: { notIn: OWNER_ONLY } });
 
 /** Campanita del POS / admin: historial de avisos de esta PC y estado en vivo. */
 @Controller('notifications')
@@ -9,10 +13,12 @@ export class NotificationsController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
-  async list() {
+  async list(@Request() req, @Query('till') till?: string) {
+    // till=1: la campanita de la caja (ver NotificationBell)
+    const where = visibleTo(req.user?.role, !!till);
     const [items, unread, lowStock] = await Promise.all([
-      this.prisma.appNotification.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }),
-      this.prisma.appNotification.count({ where: { readAt: null } }),
+      this.prisma.appNotification.findMany({ where, orderBy: { createdAt: 'desc' }, take: 50 }),
+      this.prisma.appNotification.count({ where: { ...where, readAt: null } }),
       this.prisma.$queryRawUnsafe<any[]>(
         `SELECT COUNT(*) AS n FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND min_stock > 0 AND stock <= min_stock;`,
       ),
@@ -34,8 +40,8 @@ export class NotificationsController {
   }
 
   @Post('read-all')
-  async readAll() {
-    await this.prisma.appNotification.updateMany({ where: { readAt: null }, data: { readAt: new Date() } });
+  async readAll(@Request() req, @Query('till') till?: string) {
+    await this.prisma.appNotification.updateMany({ where: { ...visibleTo(req.user?.role, !!till), readAt: null }, data: { readAt: new Date() } });
     return { ok: true };
   }
 

@@ -4,7 +4,7 @@ import { SubscriptionService } from '../../modules/subscription/subscription.ser
 // Con la suscripción vencida (pasada la gracia) la app queda en solo lectura:
 // se puede consultar todo, pero no vender ni registrar nada. Se permite lo
 // necesario para entrar, renovar/vincular y resguardar los datos (backups).
-const ALLOWED_WHEN_READ_ONLY = ['/api/auth/', '/api/subscription/', '/api/system/', '/api/sync/'];
+const ALLOWED_WHEN_READ_ONLY = ['/api/auth/', '/api/subscription/', '/api/system/', '/api/sync/', '/api/pos-trail'];
 
 // Lo que solo incluye el plan Caja (sistema de ventas). Con el plan Tienda se pueden
 // consultar, pero no registrar. Productos, stock, categorías y promociones son de los dos.

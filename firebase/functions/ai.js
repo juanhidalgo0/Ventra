@@ -463,6 +463,8 @@ let helpSystem = null;
 function helpSystemText() {
   if (helpSystem) return helpSystem;
   const read = (f) => fs.readFileSync(path.join(__dirname, "chat", f), "utf8");
+  // La ayuda la usan también los cajeros: lo marcado en la base (control de anulaciones) no lo ven
+  const HELP_HIDDEN = "<!-- fuera-de-la-ayuda -->";
   helpSystem = `Sos la ayuda de Ventra, el sistema de ventas y gestión, adentro del sistema. Hablás con el dueño o con un empleado de un comercio argentino que ya usa Ventra y no sabe cómo hacer algo.
 
 Cómo responder:
@@ -480,7 +482,7 @@ ${read("ventra-ayuda.md")}
 
 Base de conocimiento (qué hace Ventra, planes y precios):
 
-${read("ventra-kb.md")}`;
+${read("ventra-kb.md").split("\n").filter((l) => !l.includes(HELP_HIDDEN)).join("\n")}`;
   return helpSystem;
 }
 

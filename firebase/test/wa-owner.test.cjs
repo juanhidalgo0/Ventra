@@ -103,6 +103,11 @@ async function seed(pg) {
   add("work_orders", "w2", { number: 8, status: "ENTREGADO", due_at: NOW, total: 500, deposit: 500 });
   add("product_lots", "l1", { product_id: "coca225", quantity: 6, status: "ACTIVE", expires_at: NOW + 3 * 864e5 });
   add("product_lots", "l2", { product_id: "coca15", quantity: 2, status: "ACTIVE", expires_at: NOW + 90 * 864e5 });
+  // Control de anulaciones (la PC ya les puso el nivel)
+  add("audit_logs", "v1", { entity_type: "POS_VOID", action: "CART_CLEARED", created_at: hourAgo, new_values: JSON.stringify({ amount: 6000, level: "sospechoso", userName: "Ana" }) });
+  add("audit_logs", "v2", { entity_type: "POS_VOID", action: "ITEM_REMOVED", created_at: hourAgo, new_values: JSON.stringify({ amount: 1200, level: "revisar", userName: "Ana" }) });
+  add("audit_logs", "v3", { entity_type: "POS_VOID", action: "QTY_REDUCED", created_at: hourAgo, new_values: JSON.stringify({ amount: 900, level: "normal", userName: "Ana" }) });
+  add("audit_logs", "a1", { entity_type: "SALE", action: "CREATE", created_at: hourAgo, new_values: "{}" });
   add("cash_register_sessions", "cs1", { status: "OPEN", terminal_name: "Caja 1", user_id: "u1", opening_amount: 10000, opened_at: NOW - 5 * 3600e3 });
   for (const r of rows) await pg.query(`INSERT INTO sync_rows VALUES ($1, $2, $3, $4::jsonb, $5)`, r);
   await pg.query(`INSERT INTO sync_tenants VALUES ($1, $2)`, [T, new Date(NOW - 60e3).toISOString()]);
@@ -399,6 +404,8 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(await waOwner.dailySummaries(db, deps, at21), 1);
     assert.match(texts[0].x, /Hoy vendiste \$ 4\.500\* en 2 ventas/);
     assert.match(texts[0].x, /caja abierta/);
+    assert.match(texts[0].x, /Anulaciones: 3 \(\$ 8\.100 quitado de los tickets\), 1 sospechosa: Ana \(1\), 1 para revisar/);
+    assert.ok(!/Anulaciones/.test((await waOwner.summaryText(sql, T, at21, false)).text), "el encargado no ve el control de anulaciones");
     db.cols.ventra_wa_owners["5491122222222"].lastInboundAt = at21 - 30 * 3600e3;
     await waOwner.dailySummaries(db, deps, at21);
     assert.strictEqual(templates[0].tpl.name, "resumen_diario");

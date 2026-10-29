@@ -246,8 +246,11 @@ async function processInbox(db, item, deps, now = Date.now()) {
   }
 }
 
-/** Texto del resumen del día (ventas, comparación con el mismo día de la semana pasada, caja) */
-async function summaryText(sql, uid, now) {
+/**
+ * Texto del resumen del día (ventas, comparación con el mismo día de la semana pasada, caja).
+ * `owner`: lo recibe el dueño (no un encargado): suma el control de anulaciones.
+ */
+async function summaryText(sql, uid, now, owner = false) {
   const today = new Date(now).toLocaleDateString("en-CA", { timeZone: TZ });
   const lastWeek = new Date(Date.parse(today) - 7 * DAY_MS).toISOString().slice(0, 10);
   const [day, prev, cash, low] = await Promise.all([
@@ -264,6 +267,13 @@ async function summaryText(sql, uid, now) {
   const closedToday = cash.closed.filter((c) => c.closed_at && c.closed_at.slice(0, 10) >= lastWeek && new Date(c.closed_at).toLocaleDateString("en-CA", { timeZone: TZ }) === today);
   for (const c of closedToday.slice(0, 2)) if (c.difference !== null && Math.abs(c.difference) >= 1) lines.push(`- Cierre de ${c.cashier || "una caja"} con diferencia de ${money(c.difference)}`);
   if (low.length) lines.push(`- ${low.length} ${low.length === 1 ? "producto quedó" : "productos quedaron"} en el mínimo de stock`);
+  if (owner) {
+    const v = await dashboard.voids(sql, uid, today).catch(() => null);
+    if (v && (v.suspicious || v.review)) {
+      const who = Object.entries(v.byUser).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n} (${c})`).join(", ");
+      lines.push(`- Anulaciones: ${v.count} (${money(v.amount)} quitado de los tickets)${v.suspicious ? `, ${v.suspicious} sospechosa${v.suspicious > 1 ? "s" : ""}${who ? `: ${who}` : ""}` : ""}${v.review ? `, ${v.review} para revisar` : ""}. Miralas en Control de anulaciones.`);
+    }
+  }
   return { text: lines.join("\n"), total, count, pct, weekday };
 }
 
@@ -282,7 +292,7 @@ async function dailySummaries(db, deps, now = Date.now()) {
     if (!acc || !acc.active || acc.plan === "agenda" || acc.plan === "agenda_pro") continue;
     if (o.role === "SUPERVISOR" && !(await supervisorsAllowed(db, o.uid))) continue;
     try {
-      const s = await summaryText(deps.sql, o.uid, now);
+      const s = await summaryText(deps.sql, o.uid, now, o.role !== "SUPERVISOR");
       if (now - ms(o.lastInboundAt) < WINDOW_MS) {
         await deps.sendText(doc.id, `${s.text}\n\n_Para dejar de recibirlo, mandá SIN RESUMEN._`);
       } else {

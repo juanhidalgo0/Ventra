@@ -326,14 +326,14 @@ export class ProductsController {
 
   @Post('bulk-delete')
   @Roles('ADMIN')
-  bulkDelete() {
-    return this.productsService.bulkDeleteAll();
+  bulkDelete(@Request() req) {
+    return this.productsService.bulkDeleteAll(req.user?.sub);
   }
 
   @Post('bulk-delete-zero-negative')
   @Roles('ADMIN')
-  bulkDeleteZeroNegative() {
-    return this.productsService.bulkDeleteZeroNegative();
+  bulkDeleteZeroNegative(@Request() req) {
+    return this.productsService.bulkDeleteZeroNegative(req.user?.sub);
   }
 
   @Post('bulk-remove-images')
@@ -384,11 +384,11 @@ export class ProductsController {
 
   @Post('bulk-delete-subset')
   @Roles(...MANAGERS)
-  bulkDeleteSubset(@Body('ids') ids: string[]) {
+  bulkDeleteSubset(@Request() req, @Body('ids') ids: string[]) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       throw new BadRequestException('Se debe proporcionar una lista de IDs de productos.');
     }
-    return this.productsService.bulkDeleteSubset(ids);
+    return this.productsService.bulkDeleteSubset(ids, req.user?.sub);
   }
 
   @Post('bulk-update-category-subset')
@@ -425,7 +425,7 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.productsService.delete(id);
+  delete(@Request() req, @Param('id') id: string) {
+    return this.productsService.delete(id, req.user?.sub);
   }
 }

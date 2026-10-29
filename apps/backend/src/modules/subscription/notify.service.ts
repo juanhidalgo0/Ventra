@@ -7,7 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 
-type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue';
+type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue' | 'suspiciousVoid';
 interface QueuedEvent { type: EventType; data: any; at: number; tries: number }
 interface LowStockItem { id: string; name: string; stock: number; minStock: number }
 
@@ -189,6 +189,18 @@ export class NotifyService implements OnModuleDestroy {
 
 const money = (n: any) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 
+/** "Lucas quitó del ticket", "Lucas vació un ticket de"... (el monto va después) */
+export function voidVerb(action: string, user: string) {
+  const who = user || 'Un empleado';
+  switch (action) {
+    case 'CART_CLEARED': return `${who} vació un ticket de`;
+    case 'HELD_CART_DELETED': return `${who} borró un ticket en espera de`;
+    case 'PRODUCT_DELETED': return `${who} borró un producto del catálogo:`;
+    case 'PRODUCTS_BULK_DELETED': return `${who} borró productos del catálogo:`;
+    default: return `${who} quitó del ticket`;
+  }
+}
+
 /** Texto del aviso para la campanita (el del celular lo arma la nube con el mismo criterio). */
 export function localMessage(type: EventType, d: any): { title: string; body: string; url: string } | null {
   d = d || {};
@@ -259,6 +271,22 @@ export function localMessage(type: EventType, d: any): { title: string; body: st
           : `${items.length} encargos para entregar${late ? ` (${late} atrasados)` : ''}`,
         body: items.slice(0, 4).map((i) => `N° ${i.number} ${i.client}${i.when ? ` · ${i.when}` : ''}`).join(', ') + (items.length > 4 ? ` y ${items.length - 4} más` : ''),
         url: '/encargos',
+      };
+    }
+    case 'suspiciousVoid': {
+      const items: any[] = Array.isArray(d.items) ? d.items : [];
+      if (!items.length) return null;
+      const first = items[0];
+      const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const people = [...new Set(items.map((i) => i.user))];
+      return {
+        title: items.length === 1
+          ? `${voidVerb(first.action, first.user)} ${money(first.amount)}`
+          : `${items.length} anulaciones sospechosas (${money(total)})`,
+        body: items.length === 1
+          ? [first.reason, first.terminal].filter(Boolean).join(' · ')
+          : `${people.slice(0, 3).join(', ')}${people.length > 3 ? ' y otros' : ''}. ${first.reason || ''}`.trim(),
+        url: '/anulaciones',
       };
     }
     case 'employeeConsumption': {

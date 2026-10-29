@@ -48,10 +48,12 @@ export async function registerPushToken(): Promise<void> {
 export interface NotifyPrefs {
   orders: boolean; orderIdle: boolean; bookings: boolean; cashDiff: boolean; invoiceFail: boolean; lowStock: boolean; expiry: boolean; mpUnmatched: boolean;
   saleCancel: boolean; dailySummary: boolean; summaryHour: number; quietFrom: number; quietTo: number;
+  /** Control de anulaciones: un cajero quitó productos del ticket de forma sospechosa */
+  suspiciousVoid: boolean;
 }
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   orders: true, orderIdle: true, bookings: true, cashDiff: true, invoiceFail: true, lowStock: true, expiry: true, mpUnmatched: true,
-  saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8,
+  saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8, suspiciousVoid: true,
 };
 
 export async function loadNotifyPrefs(): Promise<NotifyPrefs> {

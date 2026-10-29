@@ -900,6 +900,7 @@ export class SalesService {
       this.prisma.cashRegisterSession.findMany({ where: { status: 'OPEN' }, select: { id: true, openingAmount: true } }),
       // Latest system audit movements
       this.prisma.auditLog.findMany({
+        where: { entityType: { not: 'POS_VOID' } },
         take: 6,
         orderBy: { createdAt: 'desc' },
         include: { user: { select: { fullName: true, username: true } } }

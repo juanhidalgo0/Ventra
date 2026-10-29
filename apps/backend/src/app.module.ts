@@ -30,6 +30,7 @@ import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiModule } from './modules/ai/ai.module';
 import { GoModule } from './modules/go/go.module';
+import { PosTrailModule } from './modules/pos-trail/pos-trail.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { GoModule } from './modules/go/go.module';
     SettingsModule,
     AiModule,
     GoModule,
+    PosTrailModule,
   ],
   providers: [
     {

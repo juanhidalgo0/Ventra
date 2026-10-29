@@ -187,6 +187,33 @@ async function lowStock(sql, tenantId) {
     LIMIT 30`, [tenantId]);
 }
 
+/**
+ * Control de anulaciones del día (quitas del ticket y productos borrados) con el nivel que les
+ * puso la PC al evaluarlas (new_values.level). Solo para el dueño: no se muestra a encargados.
+ */
+async function voids(sql, tenantId, day) {
+  const { from } = parseRange(day, day);
+  const rows = await run(sql, `
+    SELECT data->>'action' AS action, data->>'new_values' AS nv
+    FROM sync_rows
+    WHERE tenant_id = $1 AND tbl = 'audit_logs' AND NOT deleted AND data->>'entity_type' = 'POS_VOID'
+      AND ${ts("created_at")} >= ($2::date)::timestamp AT TIME ZONE '${TZ}'
+      AND ${ts("created_at")} <  ($2::date + 1)::timestamp AT TIME ZONE '${TZ}'`, [tenantId, from]);
+  const out = { count: 0, amount: 0, suspicious: 0, review: 0, byUser: {} };
+  for (const r of rows) {
+    let d = {};
+    try { d = JSON.parse(r.nv || "{}"); } catch (e) { /* fila rota */ }
+    out.count++;
+    if (!String(r.action).startsWith("PRODUCT")) out.amount += Number(d.amount) || 0;
+    if (d.level === "sospechoso") {
+      out.suspicious++;
+      const who = d.userName || "Sin usuario";
+      out.byUser[who] = (out.byUser[who] || 0) + 1;
+    } else if (d.level === "revisar") out.review++;
+  }
+  return out;
+}
+
 async function saleDetail(sql, tenantId, saleId) {
   const [items, payments] = await Promise.all([
     run(sql, `SELECT data->>'product_name' AS name, ${num("quantity")} AS qty, ${num("unit_price")} AS unit_price, ${num("total")} AS total
@@ -197,4 +224,4 @@ async function saleDetail(sql, tenantId, saleId) {
   return { items, payments };
 }
 
-module.exports = { overview, cash, lowStock, saleDetail, parseRange, TZ };
+module.exports = { overview, cash, lowStock, voids, saleDetail, parseRange, TZ };

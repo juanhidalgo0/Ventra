@@ -3,7 +3,7 @@ import { useProductReviews } from '../products/ProductReviews';
 import { MessageCircle } from 'lucide-react';
 import { openAskBusiness } from '../common/AskBusiness';
 import { useOwnerAccess, useManagerAccess } from '../../utils/managerAccess';
-import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun, Printer, ShieldAlert } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -182,6 +182,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         // Solo si el comercio permite que los empleados consuman (Configuración)
         ...(user?.role === 'ADMIN' && localStorage.getItem('employee_consumption') === '1' ? [{ label: 'Consumo propio', icon: Coffee, path: '/employee-consumption' }] : []),
+        // Control de anulaciones: solo el dueño, también con el candado (los cajeros no saben que existe)
+        ...(isOwner ? [{ label: 'Control de anulaciones', icon: ShieldAlert, path: '/anulaciones' }] : []),
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
         // Sin caja, los turnos se cobran en la agenda: clientes y cobros propios

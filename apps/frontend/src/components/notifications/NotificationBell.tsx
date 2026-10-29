@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarClock, PackageMinus, Wallet, Ban, FileWarning, CheckCheck } from 'lucide-react';
+import { Bell, CalendarClock, PackageMinus, Wallet, Ban, FileWarning, CheckCheck, ShieldAlert } from 'lucide-react';
 import api from '../../services/api';
 import { useManagerAccess } from '../../utils/managerAccess';
 import { useFeature } from '../../stores/businessStore';
@@ -20,6 +20,7 @@ const ICONS: Record<string, { icon: any; cls: string }> = {
   saleCancel: { icon: Ban, cls: 'bg-slate-100 text-slate-600' },
   invoiceFail: { icon: FileWarning, cls: 'bg-red-50 text-red-600' },
   mpUnmatched: { icon: Wallet, cls: 'bg-sky-50 text-sky-600' },
+  suspiciousVoid: { icon: ShieldAlert, cls: 'bg-red-50 text-red-600' },
 };
 
 function ago(date: string) {
@@ -52,8 +53,12 @@ function notifyDesktop(items: Item[]) {
   else if (Notification.permission !== 'denied') Notification.requestPermission().then((p) => { if (p === 'granted') show(); });
 }
 
-/** Campanita con los avisos del comercio. Solo para administrador y encargado. */
-export default function NotificationBell({ className = '' }: { className?: string }) {
+/**
+ * Campanita con los avisos del comercio. Solo para administrador y encargado.
+ * `atTill`: la de la caja. Ahí nunca salen los avisos que son solo del dueño (anulaciones
+ * sospechosas), aunque en la caja se haya entrado con la cuenta del dueño.
+ */
+export default function NotificationBell({ className = '', atTill = false }: { className?: string; atTill?: boolean }) {
   const expiryEnabled = useFeature('expiry');
   const navigate = useNavigate();
   const [items, setItems] = useState<Item[]>([]);
@@ -68,13 +73,13 @@ export default function NotificationBell({ className = '' }: { className?: strin
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/notifications', { silent: true } as any);
+      const { data } = await api.get('/notifications', { silent: true, params: atTill ? { till: 1 } : undefined } as any);
       setItems(data.items || []);
       setUnread(data.unread || 0);
       setLive(data.live || { expired: 0, soon: 0, lowStock: 0 });
       notifyDesktop(data.items || []);
     } catch { /* sin conexión: queda lo último */ }
-  }, []);
+  }, [atTill]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -109,7 +114,7 @@ export default function NotificationBell({ className = '' }: { className?: strin
     setOpen(next);
     if (next && unread > 0) {
       // Al abrir quedan leídos; el resaltado se ve hasta cerrar el panel
-      api.post('/notifications/read-all').then(() => setUnread(0)).catch(() => {});
+      api.post('/notifications/read-all', null, atTill ? { params: { till: 1 } } : undefined).then(() => setUnread(0)).catch(() => {});
     }
   };
 
