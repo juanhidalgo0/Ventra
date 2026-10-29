@@ -17,10 +17,12 @@ import { useConfirm } from '../common/ConfirmDialog';
 import PatientForm from './PatientForm';
 import ConsultaForm from './ConsultaForm';
 import EvolutionCharts from './EvolutionCharts';
+import PlanTab from './PlanTab';
+import { IntakeBanner, PacksCard, PortalModal, VideoModal, PortalIcon, VideoIcon } from './PatientExtras';
 import { useNutriStore, Stat, WeightDelta, TONE, SEX_LABEL, shortDate, initials, alertsOf } from './nutriUi';
 
-type Tab = 'resumen' | 'consultas' | 'mediciones' | 'historia' | 'turnos';
-const TABS: [Tab, string][] = [['resumen', 'Resumen'], ['consultas', 'Consultas'], ['mediciones', 'Mediciones'], ['historia', 'Historia clínica'], ['turnos', 'Turnos']];
+type Tab = 'resumen' | 'consultas' | 'plan' | 'mediciones' | 'historia' | 'turnos';
+const TABS: [Tab, string][] = [['resumen', 'Resumen'], ['consultas', 'Consultas'], ['plan', 'Plan alimentario'], ['mediciones', 'Mediciones'], ['historia', 'Historia clínica'], ['turnos', 'Turnos']];
 
 /** Ficha del paciente: resumen, consultas con su evolución, mediciones con gráficos, historia clínica y turnos. */
 export default function PatientScreen() {
@@ -33,6 +35,7 @@ export default function PatientScreen() {
   const [tab, setTab] = useState<Tab>('resumen');
   const [editing, setEditing] = useState(false);
   const [consulta, setConsulta] = useState<{ edit?: Consulta } | null>(null);
+  const [share, setShare] = useState<'portal' | 'video' | null>(null);
   const [ask, askDialog] = useConfirm();
 
   useEffect(() => { if (storeId) return subscribePatient(storeId, id, setP); }, [storeId, id]);
@@ -69,6 +72,8 @@ export default function PatientScreen() {
           <MessageCircle className="w-4.5 h-4.5" />{!mobile && 'WhatsApp'}
         </a>
       )}
+      <button onClick={() => setShare('portal')} title="Link del paciente: su plan, su evolución y la ficha previa" className={`h-10 ${mobile ? 'w-10 bg-white/15' : 'px-3.5 bg-white border border-slate-200 text-slate-700'} rounded-full flex items-center justify-center gap-1.5 text-[13px] font-semibold`}><PortalIcon className="w-4 h-4" />{!mobile && 'Su link'}</button>
+      <button onClick={() => setShare('video')} title="Videollamada" className={`h-10 w-10 rounded-full flex items-center justify-center ${mobile ? 'bg-white/15' : 'bg-white border border-slate-200 text-slate-600'}`}><VideoIcon className="w-4 h-4" /></button>
       <button onClick={() => setEditing(true)} title="Editar datos" className={`h-10 w-10 rounded-full flex items-center justify-center ${mobile ? 'bg-white/15' : 'bg-white border border-slate-200 text-slate-600'}`}><Pencil className="w-4 h-4" /></button>
       <button onClick={archive} title={p.archived ? 'Volver a activar' : 'Archivar'} className={`h-10 w-10 rounded-full flex items-center justify-center ${mobile ? 'bg-white/15' : 'bg-white border border-slate-200 text-slate-600'}`}>{p.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}</button>
     </div>
@@ -90,8 +95,10 @@ export default function PatientScreen() {
   const content = (
     <div className={`${mobile ? 'px-4 py-4 pb-24' : 'px-6 py-5 max-w-5xl w-full mx-auto'} space-y-3`}>
       {p.archived && <p className="rounded-xl bg-slate-100 text-slate-600 text-[13px] px-3 py-2.5">Paciente archivado. Su historia clínica sigue guardada.</p>}
-      {tab === 'resumen' && <Summary p={p} consultas={sorted} points={points} onNew={newConsulta} onTab={setTab} />}
+      {(tab === 'resumen' || tab === 'historia') && <IntakeBanner storeId={storeId!} p={p} />}
+      {tab === 'resumen' && <Summary storeId={storeId!} p={p} consultas={sorted} points={points} onNew={newConsulta} onTab={setTab} />}
       {tab === 'consultas' && <Consultas storeId={storeId!} p={p} list={sorted} onNew={newConsulta} onEdit={(c) => setConsulta({ edit: c })} />}
+      {tab === 'plan' && <PlanTab storeId={storeId!} p={p} consultas={sorted} />}
       {tab === 'mediciones' && <Measurements p={p} points={points} onNew={newConsulta} />}
       {tab === 'historia' && <History storeId={storeId!} p={p} />}
       {tab === 'turnos' && <Turnos storeId={storeId!} p={p} />}
@@ -102,6 +109,8 @@ export default function PatientScreen() {
     <>
       {askDialog}
       {editing && <PatientForm storeId={storeId!} patient={p} onClose={() => setEditing(false)} />}
+      {share === 'portal' && <PortalModal storeId={storeId!} p={p} onClose={() => setShare(null)} />}
+      {share === 'video' && <VideoModal storeId={storeId!} p={p} onClose={() => setShare(null)} />}
       {consulta && <ConsultaForm storeId={storeId!} patient={p} consultas={consultas} editing={consulta.edit} onClose={() => setConsulta(null)} />}
     </>
   );
@@ -111,7 +120,7 @@ export default function PatientScreen() {
       <div className="relative flex-1 min-h-0 flex flex-col">
         <ScreenHeader back title={p.name} subtitle={subtitle} action={actions}>{tabs}</ScreenHeader>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{content}</div>
-        {tab !== 'consultas' && tab !== 'historia' && (
+        {tab !== 'consultas' && tab !== 'historia' && tab !== 'plan' && (
           <button onClick={newConsulta} className="absolute right-4 bottom-4 z-20 h-12 pl-4 pr-5 rounded-full bg-rose-600 text-white text-[14px] font-bold shadow-lg inline-flex items-center gap-1.5 active:scale-95 transition-transform">
             <Plus className="w-5 h-5" /> Consulta
           </button>
@@ -143,7 +152,7 @@ export default function PatientScreen() {
   );
 }
 
-function Summary({ p, consultas, points, onNew, onTab }: { p: Patient; consultas: Consulta[]; points: ReturnType<typeof evolution>; onNew: () => void; onTab: (t: Tab) => void }) {
+function Summary({ storeId, p, consultas, points, onNew, onTab }: { storeId: string; p: Patient; consultas: Consulta[]; points: ReturnType<typeof evolution>; onNew: () => void; onTab: (t: Tab) => void }) {
   const today = localNow().dateKey;
   const age = ageOn(p.birthDate, today);
   const weight = latest(consultas, 'weight');
@@ -174,6 +183,7 @@ function Summary({ p, consultas, points, onNew, onTab }: { p: Patient; consultas
             <button onClick={() => onTab('historia')} className="h-11 px-5 rounded-xl bg-slate-100 text-slate-700 text-[14px] font-semibold">Completar historia clínica</button>
           </div>
         </div>
+        <PacksCard storeId={storeId} p={p} />
       </>
     );
   }
@@ -215,6 +225,7 @@ function Summary({ p, consultas, points, onNew, onTab }: { p: Patient; consultas
             )}
             {range && <p className="mt-1 text-[12px] text-slate-400">Peso con IMC normal para su talla: {fmt(range[0])} a {fmt(range[1])} kg.</p>}
           </div>
+          <PacksCard storeId={storeId} p={p} />
         </div>
       </div>
 

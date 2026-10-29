@@ -25,7 +25,7 @@ const SLUGS = "ventra_store_slugs";
  */
 const RESERVED = new Set(["admin", "panel", "instagram", "peluquerias", "tienda-online", "sistema-de-ventas", "turnos", "cuenta",
   "privacidad", "terminos", "index", "og", "tienda", "tiendas", "agenda", "app", "api", "ayuda", "blog", "precios", "planes", "login",
-  "registro", "soporte", "contacto", "ventra", "www", "turno", "reservas", "descargar"]);
+  "registro", "soporte", "contacto", "ventra", "www", "turno", "reservas", "descargar", "paciente", "nutricionistas"]);
 /** Link público del comercio. sub: 'turnos' abre directo la reserva; 'turno/<código>' es el link del turno de un cliente */
 function publicUrl(slug, sub = "") {
   const s = String(slug || "");

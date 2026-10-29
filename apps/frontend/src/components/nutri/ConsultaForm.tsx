@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import { ChevronDown, Lock } from 'lucide-react';
 import {
   createConsulta, updateConsulta, deleteConsulta, parseNum, bmi, bmiCategory, waistHipRatio, waistRisk, fatPctOf, sumFolds, ageOn, latest, byDate, fmt,
-  type Patient, type Consulta, type Measures,
+  defaultCoverage, hasObraSocial, activePack,
+  type Patient, type Consulta, type Measures, type Coverage,
 } from '../../services/nutri';
 import { localNow, addDays } from '../../services/agendaCore';
 import { Modal, input, label } from '../agenda/agendaUi';
@@ -38,6 +39,17 @@ export default function ConsultaForm({ storeId, patient: p, consultas, editing, 
   // Si alguna vez se midió, se abre solo: la nutricionista que usa pliegues o balanza los usa siempre
   const [openFolds, setOpenFolds] = useState([e, ...others].some((c) => c?.skinfolds && Object.keys(c.skinfolds).length));
   const [openBia, setOpenBia] = useState([e, ...others].some((c) => c?.bia && Object.keys(c.bia).length));
+  // Cómo se cubre: al cargarla se propone el pack con sesiones, la obra social o particular
+  const [coverage, setCoverage] = useState<Coverage>(() => e ? (e.coverage || { type: 'particular' }) : defaultCoverage(p));
+  const pack = activePack(p);
+  const coverageOptions: { key: string; text: string; value: Coverage }[] = [
+    { key: 'particular', text: 'Particular', value: { type: 'particular' } },
+    ...(hasObraSocial(p) ? [{ key: 'os', text: p.obraSocial!.trim(), value: defaultCoverage({ obraSocial: p.obraSocial, obraSocialNumber: p.obraSocialNumber, obraSocialPlan: p.obraSocialPlan }) }] : []),
+    ...(pack ? [{ key: 'pack', text: `${pack.name} (${pack.sessions - pack.used} libres)`, value: { type: 'pack', packId: pack.id, packName: pack.name } as Coverage }] : []),
+  ];
+  // Al corregir una consulta de pack, el pack sigue siendo una opción aunque ya no tenga sesiones libres
+  if (e?.coverage?.type === 'pack' && !coverageOptions.some((o) => o.key === 'pack')) coverageOptions.push({ key: 'pack', text: e.coverage.packName, value: e.coverage });
+  const coverageKey = coverage.type === 'particular' ? 'particular' : coverage.type === 'pack' ? 'pack' : 'os';
   const [saving, setSaving] = useState(false);
   const [ask, askDialog] = useConfirm();
   const set = (k: keyof typeof f) => (ev: { target: { value: string } }) => setF((x) => ({ ...x, [k]: ev.target.value }));
@@ -68,13 +80,14 @@ export default function ConsultaForm({ storeId, patient: p, consultas, editing, 
       assessment: f.assessment.trim() || undefined,
       plan: f.plan.trim() || undefined,
       nextControl: f.nextControl || undefined,
+      coverage,
     };
     if (!Object.values(measures).some((v) => v != null && (typeof v !== 'object' || Object.values(v).some((x) => x != null))) && !data.assessment && !data.plan && !data.progress) {
       return toast.error('Cargá alguna medida o escribí la evolución');
     }
     setSaving(true);
     try {
-      if (e) await updateConsulta(storeId, p.id, e.id, data);
+      if (e) await updateConsulta(storeId, p.id, e.id, data, e);
       else await createConsulta(storeId, p.id, data);
       toast.success(e ? 'Consulta corregida' : 'Consulta guardada');
       onClose();
@@ -87,7 +100,7 @@ export default function ConsultaForm({ storeId, patient: p, consultas, editing, 
   const remove = async () => {
     if (!e || !(await ask({ title: 'Borrar esta consulta', message: 'Se borra con sus mediciones. Solo se puede durante las primeras 24 h.', confirmLabel: 'Borrar', danger: true }))) return;
     setSaving(true);
-    try { await deleteConsulta(storeId, p.id, e.id); toast.success('Consulta borrada'); onClose(); }
+    try { await deleteConsulta(storeId, p.id, e); toast.success('Consulta borrada'); onClose(); }
     catch { toast.error('No se pudo borrar'); setSaving(false); }
   };
 
@@ -208,6 +221,18 @@ export default function ConsultaForm({ storeId, patient: p, consultas, editing, 
           </div>
           <input type="date" value={f.nextControl} min={f.dateKey || today} onChange={set('nextControl')} className={input} />
         </div>
+        {coverageOptions.length > 1 && (
+          <div>
+            <label className={label}>Cómo se cubre</label>
+            <div className="flex flex-wrap gap-1.5">
+              {coverageOptions.map((o) => (
+                <button key={o.key} type="button" onClick={() => setCoverage(o.value)}
+                  className={`h-9 px-3.5 rounded-full text-[13px] font-semibold border ${coverageKey === o.key ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'}`}>{o.text}</button>
+              ))}
+            </div>
+            {coverage.type === 'pack' && !e && <p className="mt-1.5 text-[12px] text-slate-500">Se descuenta una sesión del pack.</p>}
+          </div>
+        )}
         {!e && (
           <p className="flex items-start gap-2 text-[12px] text-slate-500"><Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Podés corregirla durante 24 horas. Después queda guardada en la historia clínica y solo se le agregan notas.</p>
         )}

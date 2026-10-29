@@ -95,7 +95,7 @@ const VENTRA_ORIGINS = [/^https:\/\/([a-z0-9-]+\.)*ventra\.store$/, /^https:\/\/
 // la caja. Se guarda en la cuenta y viaja en la licencia para que la app arranque con ese rubro.
 const SIGNUP_RUBROS = new Set([
   "peluqueria", "barberia", "unas", "estetica", "salud", "clases", "profesionales", "mascotas", "taller", "deportes",
-  "kiosco", "ferreteria", "ropa", "gastronomia", "multirubro",
+  "kiosco", "ferreteria", "ropa", "gastronomia", "multirubro", "nutricion",
 ]);
 const cleanUtm = (utm) => {
   if (!utm || typeof utm !== "object") return null;
@@ -2285,4 +2285,20 @@ exports.ventraInstagram = onRequest({ cors: VENTRA_ORIGINS, memory: "512MiB", ma
     logger.error("Instagram: error en el panel", err);
     return res.status(500).json({ error: "No se pudo completar" });
   }
+});
+
+// ─── Consultorio de nutrición: portal del paciente y aviso de controles (ver nutri-portal.js) ───
+const nutriPortal = require("./nutri-portal");
+
+// tienda.ventra.store/paciente#<token>: el paciente ve su plan y su evolución, y manda la ficha previa
+exports.nutriPortal = onRequest({ cors: true, maxInstances: 10, memory: "256MiB" }, (req, res) =>
+  nutriPortal.handle(db, req, res, { notifyOwner: (uid, msg, storeId) => notify.sendToAccount(db, uid, "nutri", msg, { storeId }) }));
+
+// A las 9: a cada nutricionista, los controles de mañana y pasado que todavía no recordó
+exports.nutriControlReminders = onSchedule({ schedule: "0 9 * * *", timeZone: notify.TZ }, async () => {
+  const due = await nutriPortal.controlsDue(db);
+  for (const { ownerUid, storeId, list } of due) {
+    await notify.sendToAccount(db, ownerUid, "nutri", nutriPortal.controlsMessage(list), { storeId }).catch((err) => logger.warn("nutriControlReminders", ownerUid, err.message));
+  }
+  logger.info(`nutriControlReminders: ${due.length} consultorios avisados`);
 });

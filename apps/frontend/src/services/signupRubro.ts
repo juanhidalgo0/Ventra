@@ -15,6 +15,8 @@ const CAJA_RUBROS: Record<string, BusinessProfile> = {
   multirubro: 'MULTIRUBRO',
   distribuidora: 'DISTRIBUIDORA',
   imprenta: 'IMPRENTA',
+  // Consultorio: no vende, da turnos (ver intentForRubro)
+  nutricion: 'NUTRICION',
 };
 
 /** Perfil de la caja que corresponde al rubro, si es un rubro de venta. */
@@ -27,4 +29,4 @@ export const agendaTemplateForRubro = (rubro: string | null | undefined): string
 
 /** Qué vino a hacer, según la landing: un rubro de turnos marca "Dar turnos". */
 export const intentForRubro = (rubro: string | null | undefined): BusinessIntent | null =>
-  profileForRubro(rubro) ? 'mostrador' : agendaTemplateForRubro(rubro) ? 'turnos' : null;
+  rubro === 'nutricion' ? 'turnos' : profileForRubro(rubro) ? 'mostrador' : agendaTemplateForRubro(rubro) ? 'turnos' : null;

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ShoppingBag, CalendarDays, CalendarClock, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon, Send, ShieldAlert } from 'lucide-react';
+import { ShoppingBag, CalendarDays, CalendarClock, Timer, Wallet, FileWarning, PackageMinus, Ban, Sunset, Moon, Send, ShieldAlert, Stethoscope } from 'lucide-react';
+import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 import { ScreenHeader, ListSkeleton } from './ui';
 import PushCard from './PushCard';
 import { loadNotifyPrefs, saveNotifyPrefs, pushState, testLocalNotification, testPushFromCloud, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
 
-type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue' | 'suspiciousVoid';
+type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue' | 'suspiciousVoid' | 'nutri';
 
 const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: string }[] = [
   { key: 'orders', icon: ShoppingBag, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedidos online nuevos', text: 'Apenas un cliente hace un pedido en tu tienda.' },
   { key: 'orderIdle', icon: Timer, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedido sin atender', text: 'Si pasan 15 minutos y nadie lo empezó a preparar.' },
   { key: 'bookings', icon: CalendarDays, tint: 'bg-rose-50 text-rose-700', title: 'Turnos', text: 'Cuando un cliente reserva, confirma o cancela un turno.' },
+  { key: 'nutri', icon: Stethoscope, tint: 'bg-rose-50 text-rose-700', title: 'Pacientes', text: 'Cuando un paciente completa su ficha previa, y a la mañana los controles de los próximos días para recordarles.' },
   { key: 'workOrderDue', icon: CalendarClock, tint: 'bg-rose-50 text-rose-700', title: 'Encargos para entregar', text: 'El día antes de la fecha de entrega y si un encargo se atrasa.' },
   { key: 'cashDiff', icon: Wallet, tint: 'bg-red-50 text-red-700', title: 'Cierre de caja con diferencia', text: 'Cuando el efectivo contado no coincide con el esperado.' },
   { key: 'lowStock', icon: PackageMinus, tint: 'bg-amber-50 text-amber-700', title: 'Stock mínimo', text: 'Cuando un producto llega a su stock mínimo. Se agrupan en un solo aviso y cada producto avisa una vez hasta que lo repongas.' },
@@ -28,6 +30,7 @@ const hh = (h: number) => `${String(h).padStart(2, '0')}:00`;
 /** Qué notificaciones recibe el dueño en el celular, y el horario de silencio. */
 export default function MobileNotificationsScreen() {
   const [prefs, setPrefs] = useState<NotifyPrefs | null>(null);
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
 
   useEffect(() => {
     loadNotifyPrefs().then(setPrefs).catch(() => { setPrefs(DEFAULT_NOTIFY_PREFS); toast.error('No se pudieron cargar tus preferencias'); });
@@ -82,7 +85,7 @@ export default function MobileNotificationsScreen() {
         {!prefs ? <ListSkeleton rows={6} /> : (
           <>
             <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100">
-              {ITEMS.map(({ key, icon: Icon, tint, title, text }) => (
+              {ITEMS.filter((i) => i.key !== 'nutri' || consultorio).map(({ key, icon: Icon, tint, title, text }) => (
                 <button key={key} onClick={() => change({ [key]: !prefs[key] } as Partial<NotifyPrefs>)} className="w-full flex items-center gap-3 p-4 text-left">
                   <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tint}`}><Icon className="w-[18px] h-[18px]" /></span>
                   <span className="flex-1 min-w-0">

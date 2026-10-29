@@ -57,6 +57,10 @@
           "destination": "/turnos.html"
         },
         {
+          "source": "/nutricionistas",
+          "destination": "/nutricionistas.html"
+        },
+        {
           "source": "**",
           "function": { "functionId": "storePage", "region": "us-central1" }
         }
@@ -88,6 +92,10 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {
+          "source": "/paciente",
+          "destination": "/paciente.html"
+        },
         {
           "source": "**",
           "function": { "functionId": "storePage", "region": "us-central1" }

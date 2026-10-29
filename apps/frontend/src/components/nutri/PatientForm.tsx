@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { createPatient, updatePatient, parseNum, ACTIVITY, type Patient, type Activity, type Sex } from '../../services/nutri';
+import { createPatient, updatePatient, parseNum, hasObraSocial, ACTIVITY, type Patient, type Activity, type Sex } from '../../services/nutri';
 import { localNow } from '../../services/agendaCore';
 import { Modal, input, label } from '../agenda/agendaUi';
 import { SEX_LABEL } from './nutriUi';
@@ -25,6 +25,8 @@ export default function PatientForm({ storeId, patient, prefill, onClose, onSave
     birthDate: p?.birthDate || '',
     sex: (p?.sex || '') as Sex | '',
     obraSocial: p?.obraSocial || '',
+    obraSocialNumber: p?.obraSocialNumber || '',
+    obraSocialPlan: p?.obraSocialPlan || '',
     occupation: p?.occupation || '',
     goal: p?.goal || '',
     goalWeight: p?.goalWeight != null ? String(p.goalWeight).replace('.', ',') : '',
@@ -44,6 +46,8 @@ export default function PatientForm({ storeId, patient, prefill, onClose, onSave
       birthDate: f.birthDate || undefined,
       sex: f.sex || undefined,
       obraSocial: f.obraSocial.trim() || undefined,
+      obraSocialNumber: hasObraSocial(f) ? f.obraSocialNumber.trim() || undefined : undefined,
+      obraSocialPlan: hasObraSocial(f) ? f.obraSocialPlan.trim() || undefined : undefined,
       occupation: f.occupation.trim() || undefined,
       goal: f.goal.trim() || undefined,
       goalWeight: parseNum(f.goalWeight),
@@ -103,6 +107,18 @@ export default function PatientForm({ storeId, patient, prefill, onClose, onSave
             <input value={f.occupation} onChange={set('occupation')} maxLength={60} className={input} />
           </div>
         </div>
+        {hasObraSocial(f) && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>N° de afiliado</label>
+              <input value={f.obraSocialNumber} onChange={set('obraSocialNumber')} maxLength={40} className={input} />
+            </div>
+            <div>
+              <label className={label}>Plan</label>
+              <input value={f.obraSocialPlan} onChange={set('obraSocialPlan')} maxLength={40} placeholder="Ej.: 310" className={input} />
+            </div>
+          </div>
+        )}
         <div>
           <label className={label}>Email</label>
           <input type="email" value={f.email} onChange={set('email')} maxLength={80} className={input} />

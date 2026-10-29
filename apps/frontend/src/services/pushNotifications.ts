@@ -50,10 +50,12 @@ export interface NotifyPrefs {
   saleCancel: boolean; dailySummary: boolean; summaryHour: number; quietFrom: number; quietTo: number;
   /** Control de anulaciones: un cajero quitó productos del ticket de forma sospechosa */
   suspiciousVoid: boolean;
+  /** Consultorio de nutrición: un paciente mandó su ficha previa y controles para recordar */
+  nutri: boolean;
 }
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   orders: true, orderIdle: true, bookings: true, cashDiff: true, invoiceFail: true, lowStock: true, expiry: true, mpUnmatched: true,
-  saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8, suspiciousVoid: true,
+  saleCancel: false, dailySummary: false, summaryHour: 21, quietFrom: 23, quietTo: 8, suspiciousVoid: true, nutri: true,
 };
 
 export async function loadNotifyPrefs(): Promise<NotifyPrefs> {

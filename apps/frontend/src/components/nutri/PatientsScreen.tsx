@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, UserPlus, Stethoscope, CalendarClock, AlertTriangle, ChevronRight, WifiOff } from 'lucide-react';
-import { subscribePatients, daysBetween, ageOn, fmt, type Patient } from '../../services/nutri';
-import { subscribeClients, localNow, nextOf, type AgendaClient } from '../../services/agenda';
+import { Search, UserPlus, Stethoscope, CalendarClock, AlertTriangle, ChevronRight, WifiOff, BellRing, MessageCircle, FileSpreadsheet } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { subscribePatients, daysBetween, ageOn, fmt, controlsToRemind, reminderText, whenLabel, markReminded, type Patient } from '../../services/nutri';
+import { loadStoreConfig } from '../../services/onlineStore';
+import { publicStoreUrl } from '../../utils/storeLinks';
+import { subscribeClients, localNow, nextOf, waPhone, type AgendaClient } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, HeaderAction } from '../mobile/ui';
 import PatientForm from './PatientForm';
@@ -35,12 +38,26 @@ export default function PatientsScreen() {
 
   useEffect(() => { if (storeId) return subscribePatients(storeId, setPatients, () => setPatients([])); }, [storeId]);
   useEffect(() => { if (storeId) return subscribeClients(storeId, setClients, () => setClients([])); }, [storeId]);
+  // Link de reservas para el recordatorio del control (si la página de turnos está publicada)
+  const [bookingUrl, setBookingUrl] = useState<string | undefined>();
+  useEffect(() => {
+    if (!storeId) return;
+    loadStoreConfig(storeId).then((c) => setBookingUrl(c.isPublished && c.subdomain ? publicStoreUrl(c.subdomain, 'turnos') : undefined)).catch(() => {});
+  }, [storeId]);
 
   const today = localNow().dateKey;
   const all = patients || [];
   const active = all.filter((p) => !p.archived);
   const late = active.filter((p) => overdue(p, today));
   const seenThisMonth = active.filter((p) => p.lastVisit?.startsWith(today.slice(0, 7))).length;
+  const toRemind = controlsToRemind(active, today);
+  const remind = (p: Patient) => {
+    const from = (() => { try { return localStorage.getItem('gd_store_name') || ''; } catch { return ''; } })();
+    const text = reminderText(p, today, { from, bookingUrl });
+    if (p.phone) window.open(`https://wa.me/${waPhone(p.phone)}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    else { navigator.clipboard?.writeText(text).catch(() => {}); toast.success('Sin teléfono: copiamos el mensaje'); }
+    if (storeId) markReminded(storeId, p).catch(() => {});
+  };
 
   // Turnos de la agenda sin ficha (por teléfono o nombre, la misma clave que usa la agenda)
   const withFile = new Set(all.map((p) => p.agendaKey).filter(Boolean));
@@ -68,6 +85,23 @@ export default function PatientsScreen() {
     </div>
   ) : (
     <div className={`${mobile ? 'px-4 py-4 pb-24' : 'p-6 max-w-5xl w-full mx-auto'} space-y-3`}>
+      {toRemind.length > 0 && filter !== 'ARCHIVED' && (
+        <div className="rounded-2xl bg-white border border-emerald-200 p-3.5">
+          <p className="flex items-center gap-1.5 text-[13px] font-bold text-slate-900"><BellRing className="w-4 h-4 text-emerald-600" /> Para recordarles el control</p>
+          <div className="mt-1.5 divide-y divide-slate-100">
+            {toRemind.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 py-2">
+                <button onClick={() => open(p.id)} className="flex-1 min-w-0 text-left">
+                  <span className="block text-[13.5px] font-semibold text-slate-800 truncate">{p.name}</span>
+                  <span className="block text-[12px] text-slate-500">Control {whenLabel(p.nextControl!, today)}</span>
+                </button>
+                <button onClick={() => remind(p)} className="h-9 px-3 rounded-full bg-[#1FAF55] text-white text-[12.5px] font-semibold inline-flex items-center gap-1.5 shrink-0"><MessageCircle className="w-3.5 h-3.5" /> Recordar</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {noFile.length > 0 && filter !== 'ARCHIVED' && (
         <div className="rounded-2xl bg-white border border-slate-200/80 p-3.5">
           <p className="flex items-center gap-1.5 text-[13px] font-bold text-slate-900"><CalendarClock className="w-4 h-4 text-rose-600" /> Tienen turno y todavía no tienen ficha</p>
@@ -162,7 +196,10 @@ export default function PatientsScreen() {
           <p className="text-[13px] text-slate-500">{subtitle}</p>
         </div>
         {storeId && (
-          <button onClick={() => setCreating({})} className="h-11 px-4 rounded-xl bg-rose-600 text-white text-[14px] font-semibold inline-flex items-center gap-2 shrink-0"><UserPlus className="w-4.5 h-4.5" /> Nuevo paciente</button>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => navigate('/pacientes/obras-sociales')} className="h-11 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-[14px] font-semibold inline-flex items-center gap-2"><FileSpreadsheet className="w-4.5 h-4.5" /> Obras sociales</button>
+            <button onClick={() => setCreating({})} className="h-11 px-4 rounded-xl bg-rose-600 text-white text-[14px] font-semibold inline-flex items-center gap-2"><UserPlus className="w-4.5 h-4.5" /> Nuevo paciente</button>
+          </div>
         )}
       </div>
       {body}

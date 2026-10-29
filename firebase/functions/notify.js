@@ -26,6 +26,7 @@ const DEFAULT_PREFS = {
   employeeConsumption: true, // un empleado registró un consumo propio
   suspiciousVoid: true, // un cajero quitó productos del ticket de forma sospechosa (control de anulaciones)
   workOrderDue: true,  // encargos para entregar mañana o atrasados
+  nutri: true,         // consultorio de nutrición: ficha previa recibida y controles para recordar
   dailySummary: false, // resumen del día
   summaryHour: 21,
   quietFrom: 23,       // horario de silencio (salvo pedidos)

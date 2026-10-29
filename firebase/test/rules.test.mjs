@@ -181,3 +181,30 @@ test('nutri: pasadas 24 h la consulta queda fija y solo se le agregan notas al f
   await assertSucceeds(updateDoc(ref, { addenda: [{ at: 1, text: 'primera nota' }, { at: 2, text: 'nueva' }] }));
   await assertFails(updateDoc(nutri(as('intruso'), 'p1/consultas/vieja'), { addenda: [{ at: 1, text: 'primera nota' }, { at: 2, text: 'x' }, { at: 3, text: 'y' }] }));
 });
+
+test('nutri: planes, alimentos, plantillas y cobros de packs, solo el dueño', async () => {
+  await seedConsultas();
+  await assertSucceeds(setDoc(nutri(as('posA'), 'p1/planes/a'), { title: 'Descenso', status: 'active', meals: [] }));
+  await assertSucceeds(updateDoc(nutri(as('posA'), 'p1/planes/a'), { title: 'Descenso de peso' }));
+  await assertSucceeds(deleteDoc(nutri(as('posA'), 'p1/planes/a')));
+  await assertFails(getDoc(nutri(as('intruso'), 'p1/planes/a')));
+  for (const col of ['nutri_foods', 'nutri_templates', 'nutri_payments']) {
+    await assertSucceeds(setDoc(doc(as('posA'), `ventra_stores/owned/${col}/x`), { name: 'x' }));
+    await assertFails(getDoc(doc(as('intruso'), `ventra_stores/owned/${col}/x`)));
+    await assertFails(getDoc(doc(as(null), `ventra_stores/owned/${col}/x`)));
+  }
+});
+test('nutri: el link del portal lo crea solo el dueño y nadie más lo lee', async () => {
+  const token = 'abcdefghijkmnopqrstuvwx';
+  const data = (uid, storeId = 'owned') => ({ ownerUid: uid, storeId, patientId: 'p1', createdAt: serverTimestamp() });
+  await assertFails(setDoc(doc(as('intruso'), `nutri_portal/${token}`), data('intruso')));
+  await assertFails(setDoc(doc(as('intruso'), `nutri_portal/${token}`), data('posA')));
+  await assertFails(setDoc(doc(as('posA'), 'nutri_portal/corto'), data('posA')));
+  await assertFails(setDoc(doc(as('posA'), `nutri_portal/${token}`), { ...data('posA'), extra: 1 }));
+  await assertSucceeds(setDoc(doc(as('posA'), `nutri_portal/${token}`), data('posA')));
+  await assertSucceeds(getDoc(doc(as('posA'), `nutri_portal/${token}`)));
+  await assertFails(getDoc(doc(as('intruso'), `nutri_portal/${token}`)));
+  await assertFails(getDoc(doc(as(null), `nutri_portal/${token}`)));
+  await assertFails(updateDoc(doc(as('posA'), `nutri_portal/${token}`), { patientId: 'p2' }));
+  await assertSucceeds(deleteDoc(doc(as('posA'), `nutri_portal/${token}`)));
+});

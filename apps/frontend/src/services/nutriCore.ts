@@ -95,9 +95,36 @@ export interface Consulta extends Measures {
   /** Indicaciones y objetivos hasta el próximo control */
   plan?: string;
   nextControl?: string;
+  /** Cómo se cubrió: particular, obra social (con los datos de ese día) o una sesión de un pack */
+  coverage?: Coverage;
   addenda?: Addendum[];
   createdAt?: any;
 }
+
+export type Coverage =
+  | { type: 'particular' }
+  | { type: 'obra_social'; name: string; number?: string; plan?: string }
+  | { type: 'pack'; packId: string; packName: string };
+
+/** Pack de consultas pagado por adelantado (se descuenta una sesión por consulta) */
+export interface Pack { id: string; name: string; sessions: number; used: number; price: number; method: string; dateKey: string; paidAt: number }
+
+/** Ficha previa que completa el paciente desde su link, antes de la primera consulta */
+export const INTAKE_FIELDS: { key: HistoryKey; label: string; placeholder: string }[] = [
+  { key: 'reason', label: '¿Por qué querés hacer la consulta? ¿Qué te gustaría lograr?', placeholder: 'Ej.: bajar de peso, comer más ordenado, mejorar el colesterol' },
+  { key: 'pathologies', label: '¿Tenés alguna enfermedad o problema de salud?', placeholder: 'Ej.: hipotiroidismo, presión alta, diabetes' },
+  { key: 'medication', label: '¿Tomás alguna medicación o suplemento?', placeholder: 'Ej.: levotiroxina, vitamina D' },
+  { key: 'allergies', label: '¿Tenés alergias a algún alimento?', placeholder: 'Ej.: maní, mariscos' },
+  { key: 'intolerances', label: '¿Algún alimento te cae mal?', placeholder: 'Ej.: la leche me inflama' },
+  { key: 'physicalActivity', label: '¿Hacés actividad física? ¿Cuál y cuántas veces por semana?', placeholder: 'Ej.: camino 30 minutos 3 veces' },
+  { key: 'sleep', label: '¿Cuántas horas dormís?', placeholder: 'Ej.: 6 horas, me despierto cansada' },
+  { key: 'water', label: '¿Cuánta agua tomás por día? ¿Y otras bebidas?', placeholder: 'Ej.: 1 litro de agua y gaseosa en las comidas' },
+  { key: 'eating', label: 'Contanos qué comiste ayer, desde que te levantaste', placeholder: 'Desayuno: … Almuerzo: … Merienda: … Cena: …' },
+  { key: 'likes', label: '¿Qué comidas te gustan?', placeholder: 'Ej.: pastas, frutas, carne' },
+  { key: 'dislikes', label: '¿Qué no comés o no te gusta?', placeholder: 'Ej.: pescado; soy vegetariana' },
+];
+
+export interface Intake { at: number; data: ClinicalHistory; reviewed?: boolean }
 
 export interface PatientSummary {
   visits: number;
@@ -124,6 +151,17 @@ export interface Patient extends Partial<PatientSummary> {
   goalWeight?: number;
   activity?: Activity;
   history?: ClinicalHistory;
+  /** Número de afiliado y plan de la obra social o prepaga */
+  obraSocialNumber?: string;
+  obraSocialPlan?: string;
+  packs?: Pack[];
+  /** Link del portal del paciente (nutri_portal/{token}) */
+  portalToken?: string;
+  /** Sala de videollamada para las consultas online */
+  videoLink?: string;
+  intake?: Intake;
+  /** Para qué control ya se le mandó el recordatorio (la fecha del control) */
+  remindedFor?: string;
   /** Clave del cliente en la agenda (ver clientKeyOf en agendaCore): une al paciente con sus turnos */
   agendaKey?: string | null;
   archived?: boolean;
@@ -307,3 +345,83 @@ export function parseNum(v: string | number | undefined | null): number | undefi
 
 export const fmt = (n: number | null | undefined, d = 1) =>
   n == null ? '—' : n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: d });
+
+// ─── Packs, obra social y recordatorios ───
+
+/** "Particular", "Ninguna", "-" y vacío no son una obra social */
+export const hasObraSocial = (p: Pick<Patient, 'obraSocial'>) => !!p.obraSocial && !/^(particular|ninguna|no|no tiene|-+)$/i.test(p.obraSocial.trim());
+
+/** El pack del que se descuenta la próxima consulta: el más viejo con sesiones libres */
+export function activePack(p: Pick<Patient, 'packs'>): Pack | null {
+  return [...(p.packs || [])].sort((a, b) => a.paidAt - b.paidAt).find((k) => k.used < k.sessions) || null;
+}
+
+/** Cobertura que se propone al cargar la consulta: pack con sesiones, si no obra social, si no particular */
+export function defaultCoverage(p: Pick<Patient, 'packs' | 'obraSocial' | 'obraSocialNumber' | 'obraSocialPlan'>): Coverage {
+  const pack = activePack(p);
+  if (pack) return { type: 'pack', packId: pack.id, packName: pack.name };
+  if (hasObraSocial(p)) {
+    const c: Coverage = { type: 'obra_social', name: p.obraSocial!.trim() };
+    if (p.obraSocialNumber?.trim()) c.number = p.obraSocialNumber.trim();
+    if (p.obraSocialPlan?.trim()) c.plan = p.obraSocialPlan.trim();
+    return c;
+  }
+  return { type: 'particular' };
+}
+
+/** Suma o devuelve una sesión del pack (al cargar o borrar la consulta). Nunca baja de 0 ni pasa del total. */
+export function applyPackSession(packs: Pack[] | undefined, packId: string, delta: 1 | -1): Pack[] {
+  return (packs || []).map((k) => (k.id === packId ? { ...k, used: Math.max(0, Math.min(k.sessions, k.used + delta)) } : k));
+}
+
+export const coverageLabel = (c?: Coverage) => (!c || c.type === 'particular' ? 'Particular' : c.type === 'pack' ? c.packName : c.name);
+
+/** Controles para recordar: dentro de los próximos `days` días, sin recordatorio mandado para esa fecha. */
+export function controlsToRemind<T extends Pick<Patient, 'nextControl' | 'remindedFor' | 'archived'>>(list: T[], todayKey: string, days = 3): T[] {
+  return list
+    .filter((p) => !p.archived && !!p.nextControl && p.nextControl >= todayKey && daysBetween(todayKey, p.nextControl) <= days && p.remindedFor !== p.nextControl)
+    .sort((a, b) => a.nextControl!.localeCompare(b.nextControl!));
+}
+
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** "hoy", "mañana" o "el jueves 30/10" */
+export function whenLabel(dateKey: string, todayKey: string): string {
+  const d = daysBetween(todayKey, dateKey);
+  if (d === 0) return 'hoy';
+  if (d === 1) return 'mañana';
+  const [y, m, day] = dateKey.split('-').map(Number);
+  return `el ${WEEKDAYS[new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay()]} ${day}/${m}`;
+}
+
+/** Mensaje de WhatsApp para recordar el control */
+export function reminderText(p: Pick<Patient, 'name' | 'nextControl'>, todayKey: string, opts: { from?: string; bookingUrl?: string } = {}): string {
+  const name = p.name.trim().split(/\s+/)[0];
+  const when = p.nextControl ? whenLabel(p.nextControl, todayKey) : 'pronto';
+  return [
+    `Hola ${name}! Te recuerdo que ${when} te toca el control de nutrición.`,
+    opts.bookingUrl ? `Si todavía no tenés turno, lo reservás acá: ${opts.bookingUrl}` : 'Avisame qué día y horario te queda bien.',
+    opts.from || '',
+  ].filter(Boolean).join('\n');
+}
+
+/** Sala de videollamada nueva (Jitsi Meet: sin cuenta ni app, se abre en el navegador) */
+export function newVideoLink(rand = () => Math.random().toString(36).slice(2, 8)): string {
+  return `https://meet.jit.si/ventra-consulta-${rand()}${rand()}`;
+}
+
+/**
+ * Pasa la ficha previa a la historia clínica: completa lo vacío y, donde ya había algo escrito,
+ * lo agrega abajo marcado como respuesta del paciente.
+ */
+export function mergeIntake(history: ClinicalHistory | undefined, intake: ClinicalHistory): ClinicalHistory {
+  const out: ClinicalHistory = { ...(history || {}) };
+  for (const [k, v] of Object.entries(intake) as [HistoryKey, string | undefined][]) {
+    const text = v?.trim();
+    if (!text) continue;
+    const prev = out[k]?.trim();
+    if (!prev) out[k] = text;
+    else if (!prev.includes(text)) out[k] = `${prev}\n(Ficha previa) ${text}`;
+  }
+  return out;
+}

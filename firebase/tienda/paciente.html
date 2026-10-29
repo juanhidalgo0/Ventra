@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0f766e">
+<title>Tu espacio de nutrición</title>
+<style>
+  :root { --bg: #f4f7f6; --card: #fff; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --accent: #0f766e; --accent-soft: #ecfdf5; --warn: #b45309; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+  header { display: flex; align-items: center; gap: 12px; padding: 6px 2px 14px; }
+  header img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; background: #fff; }
+  header .biz { font-weight: 700; font-size: 16px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  h1 { font-size: 24px; margin: 4px 2px 14px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 12px; font-weight: 650; font-size: 14.5px; text-decoration: none; border: 0; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.wa { background: #1faf55; color: #fff; }
+  .btn.ghost { background: #f1f5f9; color: var(--ink); }
+  .btn:disabled { opacity: .6; }
+  .next { display: flex; align-items: center; gap: 12px; }
+  .next .big { font-size: 18px; font-weight: 700; }
+  .muted { color: var(--muted); font-size: 13.5px; }
+  .meal { border-top: 1px solid var(--line); padding: 10px 0; }
+  .meal:first-of-type { border-top: 0; padding-top: 0; }
+  .meal b { font-size: 15px; }
+  .meal ul { margin: 6px 0 0; padding: 0 0 0 18px; }
+  .meal li { margin: 2px 0; }
+  .note { font-style: italic; color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .stat { background: #f8fafc; border-radius: 12px; padding: 8px 10px; }
+  .stat .v { font-weight: 700; font-size: 18px; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  .good { color: #047857; } .meh { color: var(--warn); }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
+  textarea { width: 100%; min-height: 64px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #f8fafc; font: inherit; resize: vertical; }
+  textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .pill { display: inline-block; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .center { text-align: center; padding: 48px 12px; }
+  .spin { width: 28px; height: 28px; border: 3px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: s 0.8s linear infinite; margin: 0 auto; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  svg text { font-size: 11px; fill: var(--muted); }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 18px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main id="app"><div class="center"><div class="spin"></div></div></main>
+<script>
+(function () {
+  var API = 'https://us-central1-ventra-9cba5.cloudfunctions.net/nutriPortal';
+  // Mismas preguntas que INTAKE_FIELDS en apps/frontend/src/services/nutriCore.ts
+  var FIELDS = [
+    ['reason', '¿Por qué querés hacer la consulta? ¿Qué te gustaría lograr?', 'Ej.: bajar de peso, comer más ordenado, mejorar el colesterol'],
+    ['pathologies', '¿Tenés alguna enfermedad o problema de salud?', 'Ej.: hipotiroidismo, presión alta, diabetes'],
+    ['medication', '¿Tomás alguna medicación o suplemento?', 'Ej.: levotiroxina, vitamina D'],
+    ['allergies', '¿Tenés alergias a algún alimento?', 'Ej.: maní, mariscos'],
+    ['intolerances', '¿Algún alimento te cae mal?', 'Ej.: la leche me inflama'],
+    ['physicalActivity', '¿Hacés actividad física? ¿Cuál y cuántas veces por semana?', 'Ej.: camino 30 minutos 3 veces'],
+    ['sleep', '¿Cuántas horas dormís?', 'Ej.: 6 horas, me despierto cansada'],
+    ['water', '¿Cuánta agua tomás por día? ¿Y otras bebidas?', 'Ej.: 1 litro de agua y gaseosa en las comidas'],
+    ['eating', 'Contanos qué comiste ayer, desde que te levantaste', 'Desayuno: … Almuerzo: … Merienda: … Cena: …'],
+    ['likes', '¿Qué comidas te gustan?', 'Ej.: pastas, frutas, carne'],
+    ['dislikes', '¿Qué no comés o no te gusta?', 'Ej.: pescado; soy vegetariana'],
+  ];
+  var WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  var MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var app = document.getElementById('app');
+  var token = (location.hash || '').replace(/^#/, '').trim();
+  var data = null;
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function num(n, d) { return Number(n).toLocaleString('es-AR', { maximumFractionDigits: d == null ? 1 : d }); }
+  function longDate(k) { var p = k.split('-').map(Number); var dt = new Date(Date.UTC(p[0], p[1] - 1, p[2], 12)); return WEEKDAYS[dt.getUTCDay()] + ' ' + p[2] + ' de ' + MONTHS[p[1] - 1]; }
+  function shortDate(k) { var p = k.split('-'); return +p[2] + '/' + +p[1]; }
+  function todayKey() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }); }
+  function daysTo(k) { return Math.round((Date.parse(k + 'T12:00:00Z') - Date.parse(todayKey() + 'T12:00:00Z')) / 864e5); }
+
+  // Medida casera: misma cuenta que household() en nutriPlan.ts
+  function nice(n) { var q = Math.round(n * 4) / 4, w = Math.floor(q), f = { '0.25': '¼', '0.5': '½', '0.75': '¾' }[String(q - w)]; return f ? (w ? w + f : f) : String(w); }
+  function household(i) {
+    if (!i.measure || !i.unitGrams || !(i.grams > 0)) return null;
+    var parts = i.measure.split(' '), lead = parts.shift(), m = lead.match(/^(\d+)\/(\d+)$/);
+    var base = m ? Number(m[1]) / Number(m[2]) : /^\d+$/.test(lead) ? Number(lead) : null;
+    if (base == null || !parts.length) return null;
+    var amount = base * i.grams / i.unitGrams;
+    return amount < 0.25 ? null : nice(amount) + ' ' + parts.join(' ');
+  }
+  function itemLine(i) {
+    if (!(i.grams > 0)) return esc(i.name);
+    var h = household(i);
+    return h ? '<b>' + esc(h) + '</b> · ' + esc(i.name) + ' <span class="muted">(' + Math.round(i.grams) + ' g)</span>' : esc(i.name) + ' · ' + Math.round(i.grams) + ' g';
+  }
+
+  function chart(points) {
+    var pts = points.filter(function (p) { return p.w; });
+    if (pts.length < 2) return '';
+    var W = 600, H = 180, L = 36, R = 12, T = 12, B = 26;
+    var ws = pts.map(function (p) { return p.w; }), min = Math.min.apply(null, ws), max = Math.max.apply(null, ws);
+    if (max - min < 2) { min -= 1; max += 1; }
+    var x = function (i) { return L + (W - L - R) * (i / (pts.length - 1)); };
+    var y = function (v) { return T + (H - T - B) * (1 - (v - min) / (max - min)); };
+    var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.w).toFixed(1); }).join(' ');
+    var dots = pts.map(function (p, i) { return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.w).toFixed(1) + '" r="4" fill="#0f766e"/>'; }).join('');
+    var labels = pts.map(function (p, i) { return (pts.length <= 8 || i === 0 || i === pts.length - 1) ? '<text x="' + x(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + shortDate(p.d) + '</text>' : ''; }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Evolución del peso">' +
+      '<text x="4" y="' + (y(max) + 4) + '">' + num(max) + '</text><text x="4" y="' + (y(min) + 4) + '">' + num(min) + '</text>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="#e2e8f0"/>' +
+      '<path d="' + path + '" fill="none" stroke="#0f766e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>' + dots + labels + '</svg>';
+  }
+
+  function render() {
+    var d = data, b = d.business, html = '';
+    html += '<header>' + (b.logo ? '<img src="' + esc(b.logo) + '" alt="">' : '') + '<div><div class="biz">' + esc(b.name) + '</div><div class="sub">Tu espacio de nutrición</div></div></header>';
+    html += '<h1>Hola' + (d.patient.firstName ? ' ' + esc(d.patient.firstName) : '') + '</h1>';
+
+    // Próximo control, videollamada y contacto
+    var actions = '';
+    if (d.video) actions += '<a class="btn primary" href="' + esc(d.video) + '" target="_blank" rel="noopener">Entrar a la videollamada</a>';
+    if (b.bookingUrl) actions += '<a class="btn ghost" href="' + esc(b.bookingUrl) + '" target="_blank" rel="noopener">Reservar turno</a>';
+    if (b.phone) actions += '<a class="btn wa" href="https://wa.me/' + esc(String(b.phone).replace(/\D/g, '')) + '" target="_blank" rel="noopener">Escribir por WhatsApp</a>';
+    if (d.nextControl || actions) {
+      html += '<section class="card">';
+      if (d.nextControl) {
+        var n = daysTo(d.nextControl);
+        html += '<div class="next"><div><div class="muted">Tu próximo control</div><div class="big">' + (n === 0 ? 'Hoy' : n === 1 ? 'Mañana' : longDate(d.nextControl).replace(/^./, function (c) { return c.toUpperCase(); })) + '</div></div></div>';
+      }
+      if (actions) html += '<div class="row" style="margin-top:' + (d.nextControl ? 12 : 0) + 'px">' + actions + '</div>';
+      html += '</section>';
+    }
+
+    // Ficha previa: hasta que la nutricionista la revisa
+    if (!d.intake.reviewed) html += intakeForm();
+
+    // Plan vigente
+    if (d.plan) {
+      var p = d.plan;
+      html += '<section class="card"><h2>' + esc(p.title) + (p.kcal ? ' <span class="pill">' + num(p.kcal, 0) + ' kcal</span>' : '') + '</h2>';
+      p.meals.forEach(function (m) {
+        if (!m.items.length && !m.note) return;
+        html += '<div class="meal"><b>' + esc(m.name) + '</b>' + (m.time ? ' <span class="muted">· ' + esc(m.time) + '</span>' : '') +
+          '<ul>' + m.items.map(function (i) { return '<li>' + itemLine(i) + '</li>'; }).join('') + '</ul>' +
+          (m.note ? '<div class="note">' + esc(m.note) + '</div>' : '') + '</div>';
+      });
+      if (p.recommendations) html += '<div class="meal"><b>Recomendaciones</b><p style="margin:6px 0 0;white-space:pre-line">' + esc(p.recommendations) + '</p></div>';
+      html += '</section>';
+    } else if (d.intake.reviewed) {
+      html += '<section class="card"><h2>Tu plan alimentario</h2><p class="muted">Cuando tu nutricionista te arme el plan, lo vas a ver acá.</p></section>';
+    }
+
+    // Evolución
+    var ev = d.evolution.filter(function (p) { return p.w; });
+    if (ev.length) {
+      var first = ev[0], last = ev[ev.length - 1], diff = Math.round((last.w - first.w) * 10) / 10;
+      var wantsUp = d.patient.goalWeight && d.patient.goalWeight > first.w;
+      var good = wantsUp ? diff > 0 : diff < 0;
+      html += '<section class="card"><h2>Tu evolución</h2><div class="stats">' +
+        '<div class="stat"><div class="v">' + num(last.w) + ' kg</div><div class="l">Último peso (' + shortDate(last.d) + ')</div></div>' +
+        '<div class="stat"><div class="v ' + (diff === 0 ? '' : good ? 'good' : 'meh') + '">' + (diff > 0 ? '+' : diff < 0 ? '−' : '') + num(Math.abs(diff)) + ' kg</div><div class="l">Desde el ' + shortDate(first.d) + '</div></div>' +
+        '<div class="stat"><div class="v">' + (d.patient.goalWeight ? num(d.patient.goalWeight) + ' kg' : (last.bmi ? num(last.bmi) : '—')) + '</div><div class="l">' + (d.patient.goalWeight ? 'Tu objetivo' : 'IMC') + '</div></div>' +
+        '</div>' + chart(ev) + '</section>';
+    }
+    html += '<footer>Hecho con <a href="https://ventra.store/nutricionistas" target="_blank" rel="noopener">Ventra</a></footer>';
+    app.innerHTML = html;
+    var form = document.getElementById('intake');
+    if (form) form.addEventListener('submit', sendIntake);
+  }
+
+  function intakeForm() {
+    var prev = data.intake.data || {};
+    var sent = data.intake.done;
+    var h = '<section class="card"><h2>' + (sent ? 'Tu ficha previa' : 'Antes de la consulta') + '</h2>' +
+      '<p class="muted">' + (sent ? 'Ya la mandaste. Si querés, podés corregirla hasta que tu nutricionista la revise.' : 'Contanos un poco de vos: así la primera consulta rinde más. Completá lo que quieras, nada es obligatorio.') + '</p>' +
+      '<form id="intake">';
+    FIELDS.forEach(function (f) {
+      h += '<label for="f-' + f[0] + '">' + esc(f[1]) + '</label><textarea id="f-' + f[0] + '" name="' + f[0] + '" maxlength="2000" placeholder="' + esc(f[2]) + '">' + esc(prev[f[0]] || '') + '</textarea>';
+    });
+    h += '<div style="margin-top:16px"><button class="btn primary" type="submit" style="width:100%">' + (sent ? 'Guardar los cambios' : 'Mandar a mi nutricionista') + '</button></div></form></section>';
+    return h;
+  }
+
+  function sendIntake(e) {
+    e.preventDefault();
+    var form = e.target, btn = form.querySelector('button'), body = {};
+    FIELDS.forEach(function (f) { body[f[0]] = form.elements[f[0]].value; });
+    if (!FIELDS.some(function (f) { return body[f[0]].trim(); })) { alert('Escribí al menos una respuesta.'); return; }
+    btn.disabled = true; btn.textContent = 'Mandando…';
+    fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: token, intake: body }) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'server'); return j; }); })
+      .then(function () { data.intake = { done: true, reviewed: false, data: body }; render(); window.scrollTo(0, 0); flash('¡Listo! Tu nutricionista ya la tiene.'); })
+      .catch(function (err) { btn.disabled = false; btn.textContent = 'Probar de nuevo'; alert(err.message === 'already-reviewed' ? 'Tu nutricionista ya revisó tu ficha. Si querés agregar algo, contáselo en la consulta.' : 'No se pudo mandar. Revisá la conexión y probá de nuevo.'); });
+  }
+
+  function flash(text) {
+    var el = document.createElement('div');
+    el.textContent = text;
+    el.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:12px;font-weight:600;z-index:9;box-shadow:0 8px 24px rgba(0,0,0,.2)';
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 3500);
+  }
+
+  function fail(text) { app.innerHTML = '<div class="center"><h2>' + esc(text) + '</h2><p class="muted">Pedile un link nuevo a tu nutricionista.</p></div>'; }
+
+  if (!token) return fail('Este link está incompleto');
+  fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: token }) })
+    .then(function (r) { if (r.status === 404) throw new Error('nf'); if (!r.ok) throw new Error('server'); return r.json(); })
+    .then(function (j) { data = j; document.title = (j.patient.firstName ? j.patient.firstName + ' · ' : '') + j.business.name; render(); })
+    .catch(function (err) { fail(err.message === 'nf' ? 'Este link ya no está activo' : 'No pudimos cargar tu información'); });
+})();
+</script>
+</body>
+</html>

@@ -576,7 +576,7 @@ var PATH=location.pathname.split('/').filter(Boolean).map(function(x){ try{ retu
 function pathSlug(){ return window.__PREVIEW_SLUG||PATH[0]||''; }
 /* Direcciones del sitio de Ventra: un comercio que tenga una sigue con tienda.ventra.store (misma lista que
    firebase/functions/store-slugs.js y apps/frontend/src/utils/storeLinks.ts) */
-var RESERVED_SLUGS={admin:1,panel:1,instagram:1,peluquerias:1,'tienda-online':1,'sistema-de-ventas':1,turnos:1,cuenta:1,privacidad:1,terminos:1,index:1,og:1,tienda:1,tiendas:1,agenda:1,app:1,api:1,ayuda:1,blog:1,precios:1,planes:1,login:1,registro:1,soporte:1,contacto:1,ventra:1,www:1,turno:1,reservas:1,descargar:1};
+var RESERVED_SLUGS={admin:1,panel:1,instagram:1,peluquerias:1,'tienda-online':1,'sistema-de-ventas':1,turnos:1,cuenta:1,privacidad:1,terminos:1,index:1,og:1,tienda:1,tiendas:1,agenda:1,app:1,api:1,ayuda:1,blog:1,precios:1,planes:1,login:1,registro:1,soporte:1,contacto:1,ventra:1,www:1,turno:1,reservas:1,descargar:1,paciente:1,nutricionistas:1};
 /* Link público del comercio (sub: 'turnos' o 'turno/<código>') */
 function publicLink(sub){
   var s=(S.cfg&&S.cfg.subdomain)||'', e=encodeURIComponent(s);

@@ -83,6 +83,7 @@ const AgendaClientsScreen = lazy(() => import('./components/agenda/AgendaClients
 const AgendaPaymentsScreen = lazy(() => import('./components/agenda/AgendaPaymentsScreen'));
 const PatientsScreen = lazy(() => import('./components/nutri/PatientsScreen'));
 const PatientScreen = lazy(() => import('./components/nutri/PatientScreen'));
+const ObrasSocialesScreen = lazy(() => import('./components/nutri/ObrasSocialesScreen'));
 const MobileSettingsScreen = lazy(() => import('./components/mobile/MobileSettingsScreen'));
 const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSettingsScreen').then((m) => ({ default: m.MobileSettingsSection })));
 
@@ -724,6 +725,7 @@ export default function App() {
                     <Route path="/agenda/clientes" element={<AdminRoute><AgendaClientsScreen /></AdminRoute>} />
                     <Route path="/agenda/cobros" element={<AdminRoute><AgendaPaymentsScreen /></AdminRoute>} />
                     <Route path="/pacientes" element={<AdminRoute><PatientsScreen /></AdminRoute>} />
+                    <Route path="/pacientes/obras-sociales" element={<AdminRoute><ObrasSocialesScreen /></AdminRoute>} />
                     <Route path="/pacientes/:id" element={<AdminRoute><PatientScreen /></AdminRoute>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
                     <Route path="/go" element={<AdminRoute><GoScreen /></AdminRoute>} />

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Banknote, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Banknote, Clock, Package } from 'lucide-react';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { subscribeBookings, subscribePaidBetween, localNow, addDays, weekday, dayLabel, hhmm, startAtMs, PAY_METHODS, type Booking } from '../../services/agenda';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
 import { depositPaid, paidInFull } from '../../services/agendaCore';
+import { subscribeNutriPayments, type NutriPayment } from '../../services/nutri';
+import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 
 const DEPOSIT_METHOD = 'Mercado Pago (online)';
 const msOf = (t: any) => (t?.toMillis ? t.toMillis() : 0);
@@ -55,6 +57,9 @@ export default function AgendaPaymentsScreen() {
   const [anchor, setAnchor] = useState(today);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [paidList, setPaidList] = useState<Booking[] | null>(null);
+  // Consultorio: los packs de consultas se cobran en la ficha del paciente y suman acá
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
+  const [packs, setPacks] = useState<NutriPayment[]>([]);
   const [from, to] = rangeOf(period, anchor);
   // La plata cuenta el día que entró (cobro o pago online), no el día del turno: así cuadra con la caja y con Mercado Pago
   const fromMs = startAtMs(from, 0), toMs = startAtMs(to, 24 * 60);
@@ -71,6 +76,10 @@ export default function AgendaPaymentsScreen() {
     setPaidList(null);
     return subscribePaidBetween(storeId, fromMs, toMs, setPaidList, () => setPaidList([]));
   }, [storeId, fromMs, toMs]);
+  useEffect(() => {
+    if (!storeId || !consultorio) return setPacks([]);
+    return subscribeNutriPayments(storeId, from, to, setPacks);
+  }, [storeId, consultorio, from, to]);
 
   const data = useMemo(() => {
     // Lo que entró en el período de cada turno: el cobro y lo pagado online por Mercado Pago. Lo pagado online que hay
@@ -83,8 +92,10 @@ export default function AgendaPaymentsScreen() {
     });
     const paid = rows.filter((r) => r.pay !== null || r.online > 0).sort((x, y) => x.b.dateKey.localeCompare(y.b.dateKey) || x.b.startMin - y.b.startMin);
     const refunds = rows.filter((r) => r.refund > 0);
-    const total = paid.reduce((s, r) => s + r.amount, 0);
+    const packTotal = packs.reduce((s, k) => s + (Number(k.amount) || 0), 0);
+    const total = paid.reduce((s, r) => s + r.amount, 0) + packTotal;
     const byMethod = new Map<string, number>();
+    for (const k of packs) byMethod.set(k.method, (byMethod.get(k.method) || 0) + (Number(k.amount) || 0));
     const byStaff = new Map<string, number>();
     for (const r of paid) {
       if (r.pay !== null && r.b.payment) byMethod.set(r.b.payment.method, (byMethod.get(r.b.payment.method) || 0) + r.pay);
@@ -96,9 +107,9 @@ export default function AgendaPaymentsScreen() {
     const unpaid = (bookings || []).filter((b) => b.kind === 'booking' && !b.payment && !paidInFull(b) && (b.status === 'DONE' || ((b.status === 'CONFIRMED' || b.status === 'PENDING') && b.dateKey < today)));
     const methods = [...PAY_METHODS, ...[...byMethod.keys()].filter((m) => !PAY_METHODS.includes(m))]
       .map((m) => [m, byMethod.get(m) || 0] as const).filter(([, v]) => v > 0);
-    return { paid, refunds, total, methods, staff: [...byStaff].sort((a, b) => b[1] - a[1]), unpaid };
+    return { paid, refunds, total, methods, staff: [...byStaff].sort((a, b) => b[1] - a[1]), unpaid, packs: [...packs].sort((a, b) => b.paidAt - a.paidAt) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings, paidList, today, fromMs, toMs]);
+  }, [bookings, paidList, packs, today, fromMs, toMs]);
   const loading = bookings === null || paidList === null;
 
   const subtitle = loading ? 'Cargando…' : `${money(data.total)} cobrado · ${data.paid.length} turno${data.paid.length === 1 ? '' : 's'}`;
@@ -182,6 +193,27 @@ export default function AgendaPaymentsScreen() {
                 <span className="w-24 shrink-0 text-red-800 tabular-nums">{dayLabel(b.dateKey, true)}</span>
                 <span className="flex-1 min-w-0 truncate text-red-950 font-medium">{b.customerName} · {b.serviceName}</span>
                 <span className="shrink-0 tabular-nums text-red-900">{money(refund)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data.packs.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
+          <p className="px-4 pt-4 pb-2 text-[14px] font-bold text-slate-900">Packs de consultas</p>
+          <div className="divide-y divide-slate-100">
+            {data.packs.map((k) => (
+              <div key={k.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="w-9 h-9 rounded-full bg-rose-50 text-rose-700 flex items-center justify-center shrink-0"><Package className="w-4 h-4" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[14px] font-semibold text-slate-900 truncate">{k.patientName}</span>
+                  <span className="block text-[12.5px] text-slate-500 truncate">{dayLabel(k.dateKey, true)} · {k.concept}</span>
+                </span>
+                <span className="text-right shrink-0">
+                  <span className="block text-[14px] font-bold text-slate-900 tabular-nums">{money(k.amount)}</span>
+                  <span className="block text-[11.5px] text-slate-500">{k.method}</span>
+                </span>
               </div>
             ))}
           </div>

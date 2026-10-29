@@ -46,6 +46,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
   {
     title: 'Negocio',
     items: [
+      { path: '/pacientes/obras-sociales', label: 'Obras sociales', hint: 'Consultas del mes', icon: FileText, tint: 'bg-sky-50 text-sky-700' },
       { path: '/reports', label: 'Reportes', hint: 'Análisis', icon: BarChart3, tint: 'bg-sky-50 text-sky-700' },
       { path: '/fiscal', label: 'Facturación', hint: 'ARCA', icon: FileText, tint: 'bg-slate-100 text-slate-700' },
       { path: '/online-store', label: 'Tienda online', hint: 'Tu catálogo web', icon: Store, tint: 'bg-emerald-50 text-emerald-700' },
@@ -72,6 +73,7 @@ export default function MobileMoreScreen() {
       && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && (i.path !== '/encargos' || hasFeature('workorders'))
       && (i.path !== '/anulaciones' || owner)
+      && (i.path !== '/pacientes/obras-sociales' || consultorio)
       && !(i.noCaja && planFeatures.caja && !consultorio)
       // Solo turnos (o consultorio): agenda, clientes y cobros ya son pestañas
       && !((isAgendaOnly(planFeatures) || consultorio) && i.path.startsWith('/agenda'))) }))

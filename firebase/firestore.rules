@@ -56,6 +56,18 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
+    // Link del portal de un paciente de nutrición: lo crea el dueño del consultorio y lo lee la
+    // función nutriPortal (con permisos propios). Nadie más lo ve: el token es la llave.
+    match /nutri_portal/{token} {
+      allow create: if signedIn() && token.size() >= 20
+        && request.resource.data.keys().hasOnly(['ownerUid', 'storeId', 'patientId', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.storeId is string && request.resource.data.patientId is string
+        && get(/databases/$(database)/documents/ventra_stores/$(request.resource.data.storeId)).data.get('ownerUid', null) == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
+    }
+
     match /ventra_stores/{storeId} {
       function isOwner() {
         return signedIn() && resource.data.get('ownerUid', null) == request.auth.uid;
@@ -135,6 +147,22 @@ service cloud.firestore {
             && (fresh() || onlyAddsNote());
           allow delete: if storeOwner() && fresh();
         }
+
+        // Planes alimentarios: se corrigen y se reemplazan (el vigente lo ve el paciente en su link)
+        match /planes/{planId} {
+          allow read, write: if storeOwner();
+        }
+      }
+
+      // Alimentos y plantillas de planes propios del consultorio, y cobros de packs de consultas
+      match /nutri_foods/{foodId} {
+        allow read, write: if storeOwner();
+      }
+      match /nutri_templates/{templateId} {
+        allow read, write: if storeOwner();
+      }
+      match /nutri_payments/{paymentId} {
+        allow read, write: if storeOwner();
       }
 
       // Horarios ocupados por día (sin datos personales), para mostrar los libres.

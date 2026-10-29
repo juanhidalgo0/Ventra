@@ -6,7 +6,7 @@
  */
 export const RESERVED_SLUGS = new Set(['admin', 'panel', 'instagram', 'peluquerias', 'tienda-online', 'sistema-de-ventas', 'turnos', 'cuenta',
   'privacidad', 'terminos', 'index', 'og', 'tienda', 'tiendas', 'agenda', 'app', 'api', 'ayuda', 'blog', 'precios', 'planes', 'login',
-  'registro', 'soporte', 'contacto', 'ventra', 'www', 'turno', 'reservas', 'descargar']);
+  'registro', 'soporte', 'contacto', 'ventra', 'www', 'turno', 'reservas', 'descargar', 'paciente', 'nutricionistas']);
 
 /** Dominio del link según la dirección (para mostrar "ventra.store/" delante del campo) */
 export const storeHost = (slug?: string | null) => (slug && RESERVED_SLUGS.has(slug) ? 'tienda.ventra.store' : 'ventra.store');
