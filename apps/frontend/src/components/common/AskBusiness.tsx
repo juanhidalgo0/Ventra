@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, Loader2, SendHorizontal, X } from 'lucide-react';
 import api from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
+import { useManagerAccess } from '../../utils/managerAccess';
 import { usePlanStore } from '../../stores/planStore';
 import { useBusinessStore, type BusinessProfile } from '../../stores/businessStore';
 import AskWhatsApp from './AskWhatsApp';
@@ -12,8 +12,8 @@ export const openAskBusiness = (opts: { whatsapp?: boolean } = {}) => window.dis
 
 /** Dueño o encargado, en cualquier plan: la IA busca en ventas, stock, turnos o pedidos según lo que tenga el comercio */
 export function useCanAskBusiness() {
-  const role = useAuthStore((s) => s.user?.role) || '';
-  return ['ADMIN', 'SUPERVISOR'].includes(role);
+  // También el dueño que entró con el candado sobre la sesión del cajero (la PC del local)
+  return useManagerAccess();
 }
 
 /** Los límites de preguntas (ver LIMITS/DAILY de ask en firebase/functions/ai.js) */

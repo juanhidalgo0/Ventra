@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Loader2, MessageCircle, Check, ChevronDown } from 'lucide-react';
 import api from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
+import { useOwnerAccess } from '../../utils/managerAccess';
 
 interface Status {
   linked: boolean; phone?: string; questions?: number; number?: string;
@@ -22,8 +22,7 @@ const HOURS = Array.from({ length: 16 }, (_, i) => i + 8);
  * ni ganancias) y cada uno puede pedir el resumen del día a la hora que quiera.
  */
 export default function AskWhatsApp({ defaultOpen = false }: { defaultOpen?: boolean }) {
-  const role = useAuthStore((s) => s.user?.role);
-  const isOwner = role === 'ADMIN';
+  const isOwner = useOwnerAccess();
   const [open, setOpen] = useState(defaultOpen);
   const [status, setStatus] = useState<Status | null>(null);
   const [code, setCode] = useState<Code | null>(null);

@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useProductReviews } from '../products/ProductReviews';
 import { MessageCircle } from 'lucide-react';
 import { openAskBusiness } from '../common/AskBusiness';
-import { useOwnerAccess } from '../../utils/managerAccess';
+import { useOwnerAccess, useManagerAccess } from '../../utils/managerAccess';
 import { ShoppingCart, ClipboardList, Sun, Printer } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
@@ -115,6 +115,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   // pregunta a la caja en vez de depender de que esta PC haya abierto la pantalla de GO
   // El dueño logueado o el dueño que entró con el candado sobre la sesión del cajero
   const isOwner = useOwnerAccess();
+  const isManager = useManagerAccess();
   const [goLinked, setGoLinked] = useState(() => localStorage.getItem('go_linked') === '1');
   useEffect(() => {
     if (!isOwner) return;
@@ -190,7 +191,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         // Preguntarle a Ventra por WhatsApp: abre el panel de la IA en esa parte (no es una pantalla)
-        ...(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR' ? [{ label: 'Preguntale por WhatsApp', icon: MessageCircle, path: '#whatsapp', action: () => openAskBusiness({ whatsapp: true }), isNew: true }] : []),
+        ...(isManager ? [{ label: 'Preguntale por WhatsApp', icon: MessageCircle, path: '#whatsapp', action: () => openAskBusiness({ whatsapp: true }), isNew: true }] : []),
         { label: 'Facturación', icon: Calculator, path: '/fiscal', soon: COMING_SOON.arcaInvoicing },
         { 
           label: 'Tienda Online', 
