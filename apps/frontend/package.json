@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:nutri": "npx tsx scripts/test-nutri.ts"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",

@@ -3,7 +3,7 @@ import { useProductReviews } from '../products/ProductReviews';
 import { MessageCircle } from 'lucide-react';
 import { openAskBusiness } from '../common/AskBusiness';
 import { useOwnerAccess, useManagerAccess } from '../../utils/managerAccess';
-import { ShoppingCart, ClipboardList, Sun, Printer, ShieldAlert } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Sun, Printer, Stethoscope, ShieldAlert } from 'lucide-react';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { useAuthStore } from '../../stores/authStore';
 import { 
@@ -41,7 +41,7 @@ import api from '../../services/api';
 import { MangoLogo as BrandLogo } from '../common/MangoLogo';
 import { hasFeature, useBusinessStore } from '../../stores/businessStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
-import { menuAllows } from '../../stores/businessStore';
+import { menuAllows, isConsultorio } from '../../stores/businessStore';
 import { ComingSoonBadge } from '../common/ComingSoon';
 import { COMING_SOON } from '../../utils/comingSoon';
 import { isProductionRole } from '../../services/workRole';
@@ -132,6 +132,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const planFeatures = usePlanStore((s) => s.features);
   const intents = useBusinessStore((s) => s.intents);
   const agendaOnly = isAgendaOnly(planFeatures);
+  // Nutricionista: no vende, el sistema gira alrededor de los pacientes
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
   // Botón principal y subtítulo según lo que hace el comercio con Ventra
   // Distribuidora: la caja es la venta de mostrador; el inicio es "Hoy"
   const distrib = hasFeature('preorders');
@@ -139,6 +141,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
   const production = user?.role !== 'ADMIN' && isProductionRole(user?.workRole);
   const home = production
     ? { path: '/encargos', label: 'Encargos', icon: Printer, subtitle: 'Trabajos para hacer' }
+    : consultorio
+    ? { path: '/pacientes', label: 'Pacientes', icon: Stethoscope, subtitle: 'Consultorio de nutrición' }
     : planFeatures.caja
     ? { path: '/pos', label: distrib ? 'Venta de mostrador' : 'Punto de Venta', icon: ShoppingBag, subtitle: distrib ? 'Distribuidora' : 'Sistema de ventas' }
     : agendaOnly
@@ -185,11 +189,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         // Control de anulaciones: solo el dueño, también con el candado (los cajeros no saben que existe)
         ...(isOwner ? [{ label: 'Control de anulaciones', icon: ShieldAlert, path: '/anulaciones' }] : []),
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
-        ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
-        // Sin caja, los turnos se cobran en la agenda: clientes y cobros propios
-        ...(user?.role === 'ADMIN' && !planFeatures.caja && planFeatures.agenda ? [
+        ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: consultorio ? 'Agenda' : 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
+        // Sin caja (o en un consultorio), los turnos se cobran en la agenda: clientes y cobros propios
+        ...(user?.role === 'ADMIN' && (!planFeatures.caja || consultorio) && planFeatures.agenda ? [
           { label: agendaOnly ? 'Clientes' : 'Clientes de la agenda', icon: Users, path: '/agenda/clientes' },
-          { label: agendaOnly ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
+          { label: agendaOnly || consultorio ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
         ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         // Preguntarle a Ventra por WhatsApp: abre el panel de la IA en esa parte (no es una pantalla)
@@ -271,7 +275,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             {!isCollapsed && <span>{home.label}</span>}
           </button>
 
-          {planFeatures.caja && !production && <button
+          {planFeatures.caja && !consultorio && !production && <button
             onClick={() => handleSidebarClick('/dashboard')}
             className={`relative w-full flex items-center gap-3 px-3 h-9 rounded-lg font-medium text-[13.5px] transition-colors cursor-pointer ${isActive('/dashboard') ? 'bg-rose-50 text-rose-700 font-semibold' : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'}`}
           >

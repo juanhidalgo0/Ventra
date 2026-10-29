@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote, Truck, Printer } from 'lucide-react';
-import { useBusinessStore } from '../../stores/businessStore';
+import { Home, ShoppingCart, ArrowLeftRight, Package, LayoutGrid, ChevronLeft, Store, ClipboardList, CalendarDays, Users, Banknote, Truck, Printer, Stethoscope } from 'lucide-react';
+import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 import { useWorkRole } from '../../services/workRole';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
@@ -39,6 +39,7 @@ const SCREEN_TITLES: Record<string, string> = {
   '/agenda': 'Agenda',
   '/agenda/clientes': 'Clientes',
   '/agenda/cobros': 'Cobros',
+  '/pacientes': 'Pacientes',
   '/notificaciones': 'Notificaciones',
   '/settings': 'Configuración',
 };
@@ -77,6 +78,14 @@ const AGENDA_TABS = [
   { path: '/mas', label: 'Más', icon: LayoutGrid },
 ];
 
+/** Nutricionista: los pacientes son el inicio; no hay caja ni productos. */
+const NUTRI_TABS = [
+  { path: '/pacientes', label: 'Pacientes', icon: Stethoscope },
+  { path: '/agenda', label: 'Agenda', icon: CalendarDays },
+  { path: '/agenda/cobros', label: 'Cobros', icon: Banknote },
+  { path: '/mas', label: 'Más', icon: LayoutGrid },
+];
+
 type Tab = { path: string; label: string; icon: any };
 
 /**
@@ -93,9 +102,9 @@ export function useMobileFocus(active = true) {
 }
 const isTab = (tabs: Tab[], pathname: string) => tabs.some((t) => t.path === pathname);
 /** Pantallas de "Más" que ya tienen su versión móvil (traen su propio encabezado con "volver"). */
-export const NATIVE_MOBILE_PATHS = ['/preventa', '/reparto', '/informes', '/encargos', '/hoy', '/empezar', '/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/notificaciones'];
+export const NATIVE_MOBILE_PATHS = ['/preventa', '/reparto', '/informes', '/encargos', '/hoy', '/empezar', '/cash-control', '/gastos', '/clients', '/suppliers', '/stock-control', '/purchases', '/promos', '/treasury', '/reports', '/fiscal', '/settings', '/online-store', '/pedidos', '/agenda', '/agenda/clientes', '/agenda/cobros', '/pacientes', '/notificaciones'];
 /** Las pantallas que no son pestañas se abren desde "Más" y la marcan activa. */
-const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : '/mas');
+const tabFor = (tabs: Tab[], pathname: string) => tabs.find((t) => pathname === t.path)?.path ?? (pathname === '/inventory' ? '/products' : pathname.startsWith('/pacientes/') ? '/pacientes' : '/mas');
 
 const PULL_LIMIT = 80;
 
@@ -160,11 +169,12 @@ export default function MobileShell({ children, tabs: staffTabs }: { children: R
   const { pathname } = useLocation();
   const distrib = useBusinessStore((s) => !!s.features.preorders);
   const workorders = useBusinessStore((s) => !!s.features.workorders);
-  const planTabs = usePlanStore((s) => (s.features.caja ? (distrib ? DISTRIB_TABS : workorders ? WORKORDER_TABS : TABS) : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
+  const planTabs = usePlanStore((s) => (consultorio && s.features.agenda ? NUTRI_TABS : s.features.caja ? (distrib ? DISTRIB_TABS : workorders ? WORKORDER_TABS : TABS) : isAgendaOnly(s.features) ? AGENDA_TABS : TIENDA_TABS));
   const tabs: Tab[] = staffTabs || planTabs;
   const focus = useFocus((s) => s.n > 0);
   const active = tabFor(tabs, pathname);
-  const inTab = isTab(tabs, pathname) || NATIVE_MOBILE_PATHS.includes(pathname) || pathname.startsWith('/settings/');
+  const inTab = isTab(tabs, pathname) || NATIVE_MOBILE_PATHS.includes(pathname) || pathname.startsWith('/settings/') || pathname.startsWith('/pacientes/');
   const scrollsItself = pathname === '/inicio' || pathname === '/mas';
   const { pull, reloading, handlers } = usePullToReload();
 

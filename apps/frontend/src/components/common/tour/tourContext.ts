@@ -71,6 +71,11 @@ export const AGENDA_WORDS: Record<AgendaKind, AgendaWords> = {
     consejo: { title: 'Confirmá vos cada turno', body: 'Si preferís revisar quién reserva, apagá **Confirmar automáticamente**: los turnos online quedan **Por confirmar** hasta que los aceptes.' },
     servicios: 'La **primera consulta** suele llevar más tiempo que un control: cargalas como servicios separados.',
   },
+  nutricion: {
+    ...BASE, title: 'tu consultorio', cliente: 'paciente', clientes: 'pacientes', ejemplo: 'una primera consulta', bloqueo: 'un congreso o una capacitación',
+    consejo: { title: 'Primera consulta y controles', body: 'La **primera consulta** lleva más tiempo (historia clínica y mediciones): cargala aparte de los **controles**, que son más cortos.' },
+    servicios: 'Si hacés **controles online**, cargalos como un servicio aparte: así el paciente elige cómo quiere atenderse.',
+  },
   clases: {
     ...BASE, title: 'tus clases', cliente: 'alumno', clientes: 'alumnos', staff: 'docentes', staffUno: 'docente', turno: 'clase', turnos: 'clases', ejemplo: 'una clase de prueba', bloqueo: 'feriados o vacaciones',
     consejo: { title: 'Clases de prueba', body: 'Ofrecé una **clase de prueba** corta: es la forma más fácil de que un alumno nuevo **reserve por primera vez** desde tu link.' },

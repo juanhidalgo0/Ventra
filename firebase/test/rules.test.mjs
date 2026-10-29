@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, limit, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, query, where, limit, getDocs, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 let env;
 before(async () => {
@@ -133,4 +133,51 @@ test('cuentas: cada usuario lee solo la suya y nadie escribe', async () => {
 test('aviso de versión: lectura pública, escritura prohibida', async () => {
   await assertSucceeds(getDoc(doc(as(null), 'ventra_desktop/latest_version')));
   await assertFails(setDoc(doc(as('cualquiera'), 'ventra_desktop/latest_version'), { version: '9.9.9' }));
+});
+
+// ─── Consultorio de nutrición: datos de salud, solo el dueño; la historia clínica no se borra ───
+const nutri = (db, path) => doc(db, `ventra_stores/owned/nutri_patients/${path}`);
+const twoDaysAgo = () => Timestamp.fromMillis(Date.now() - 2 * 864e5);
+const seedConsultas = () => env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(nutri(db, 'p1'), { name: 'Laura', visits: 2 });
+  await setDoc(nutri(db, 'p1/consultas/vieja'), { dateKey: '2026-08-20', weight: 82, createdAt: twoDaysAgo(), addenda: [{ at: 1, text: 'primera nota' }] });
+  await setDoc(nutri(db, 'p1/consultas/nueva'), { dateKey: '2026-10-22', weight: 78, createdAt: Timestamp.now() });
+});
+
+test('nutri: el dueño crea y lee pacientes; nadie más los ve', async () => {
+  await assertSucceeds(setDoc(nutri(as('posA'), 'p2'), { name: 'Ana' }));
+  await assertSucceeds(getDoc(nutri(as('posA'), 'p2')));
+  await assertFails(getDoc(nutri(as('intruso'), 'p2')));
+  await assertFails(getDoc(nutri(as(null), 'p2')));
+  await assertFails(setDoc(nutri(as('intruso'), 'p3'), { name: 'X' }));
+});
+test('nutri: un paciente no se borra (se archiva)', async () => {
+  await seedConsultas();
+  await assertFails(deleteDoc(nutri(as('posA'), 'p1')));
+  await assertSucceeds(updateDoc(nutri(as('posA'), 'p1'), { archived: true }));
+});
+test('nutri: la consulta nace con la hora del servidor', async () => {
+  await seedConsultas();
+  await assertSucceeds(addDoc(collection(as('posA'), 'ventra_stores/owned/nutri_patients/p1/consultas'), { dateKey: '2026-10-22', createdAt: serverTimestamp() }));
+  await assertFails(addDoc(collection(as('posA'), 'ventra_stores/owned/nutri_patients/p1/consultas'), { dateKey: '2026-10-22', createdAt: twoDaysAgo() }));
+  await assertFails(addDoc(collection(as('intruso'), 'ventra_stores/owned/nutri_patients/p1/consultas'), { dateKey: '2026-10-22', createdAt: serverTimestamp() }));
+});
+test('nutri: en las primeras 24 h la consulta se corrige y se borra', async () => {
+  await seedConsultas();
+  await assertSucceeds(updateDoc(nutri(as('posA'), 'p1/consultas/nueva'), { weight: 77.5 }));
+  await assertFails(updateDoc(nutri(as('posA'), 'p1/consultas/nueva'), { createdAt: twoDaysAgo() }));
+  await assertSucceeds(deleteDoc(nutri(as('posA'), 'p1/consultas/nueva')));
+});
+test('nutri: pasadas 24 h la consulta queda fija y solo se le agregan notas al final', async () => {
+  await seedConsultas();
+  const ref = nutri(as('posA'), 'p1/consultas/vieja');
+  await assertFails(updateDoc(ref, { weight: 80 }));
+  await assertFails(deleteDoc(ref));
+  // Cambiar una nota anterior, o aprovechar la nota para tocar otro campo: no
+  await assertFails(updateDoc(ref, { addenda: [{ at: 1, text: 'cambiada' }, { at: 2, text: 'nueva' }] }));
+  await assertFails(updateDoc(ref, { weight: 80, addenda: [{ at: 1, text: 'primera nota' }, { at: 2, text: 'nueva' }] }));
+  await assertFails(updateDoc(ref, { addenda: [] }));
+  await assertSucceeds(updateDoc(ref, { addenda: [{ at: 1, text: 'primera nota' }, { at: 2, text: 'nueva' }] }));
+  await assertFails(updateDoc(nutri(as('intruso'), 'p1/consultas/vieja'), { addenda: [{ at: 1, text: 'primera nota' }, { at: 2, text: 'x' }, { at: 3, text: 'y' }] }));
 });

@@ -15,6 +15,7 @@ export const AGENDA_TEMPLATES: AgendaTemplate[] = [
   { id: 'unas', emoji: '💅', title: 'Uñas', services: [s('Esmaltado semipermanente', 60), s('Kapping', 75), s('Esculpidas', 120), s('Retiro', 30), s('Pedicuría', 60)] },
   { id: 'estetica', emoji: '✨', title: 'Estética', services: [s('Limpieza facial', 60), s('Perfilado de cejas', 20), s('Lifting de pestañas', 60), s('Depilación', 30), s('Masajes', 60)] },
   { id: 'salud', emoji: '🩺', title: 'Salud', services: [s('Primera consulta', 45), s('Consulta de control', 30), s('Sesión', 45)] },
+  { id: 'nutricion', emoji: '🥗', title: 'Nutrición', services: [s('Primera consulta', 60), s('Control', 30), s('Control online (videollamada)', 30)] },
   { id: 'clases', emoji: '📚', title: 'Clases', services: [s('Clase individual', 60), s('Clase de prueba', 30)] },
   { id: 'profesionales', emoji: '💼', title: 'Profesionales', services: [s('Primera consulta', 60), s('Asesoría', 45), s('Reunión de seguimiento', 30)] },
   { id: 'mascotas', emoji: '🐾', title: 'Mascotas', services: [s('Baño', 60), s('Baño y corte', 90), s('Consulta veterinaria', 30), s('Vacunación', 15)] },

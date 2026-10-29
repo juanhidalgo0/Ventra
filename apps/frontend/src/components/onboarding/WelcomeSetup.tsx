@@ -6,7 +6,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import {
-  useBusinessStore, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, PROFILE_LABELS, type BusinessIntent, type BusinessProfile,
+  useBusinessStore, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, PROFILE_LABELS, isConsultorio, type BusinessIntent, type BusinessProfile,
 } from '../../stores/businessStore';
 import { setStoreSetting, whenStoreSettingsReady } from '../../services/storeSettings';
 import { useTourStore } from '../common/tour/tourStore';
@@ -137,9 +137,11 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
     setStoreSetting('onboarding_done', '1');
     close();
     toast.success('¡Listo! Te dejamos los primeros pasos para arrancar', { duration: 5000 });
+    if (profile && isConsultorio(profile)) return navigate('/pacientes');
     navigate(intents.includes('mostrador') ? (mobile ? '/inicio' : '/pos') : intents.includes('online') ? '/tienda' : '/agenda');
   };
 
+  const consultorio = !!profile && isConsultorio(profile);
   const toggle = (i: BusinessIntent) => setChosen((c) => (c.includes(i) ? c.filter((x) => x !== i) : [...c, i]));
   const canNext = step === 'intent' ? chosen.length > 0 : step === 'rubro' ? !!profile : name.trim().length >= 2;
 
@@ -192,8 +194,8 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
           {step === 'rubro' && (
             <>
-              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">{rubroOnly ? 'Antes de seguir: ¿qué vendés?' : '¿Qué vendés?'}</h2>
-              <p className="mt-1.5 text-[14px] text-slate-500">Activamos las funciones de tu rubro (talles y colores, venta por metro, vencimientos…) y te mostramos cómo usarlas. Lo podés cambiar después en Configuración.</p>
+              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">{rubroOnly ? 'Antes de seguir: ¿cuál es tu rubro?' : '¿Cuál es tu rubro?'}</h2>
+              <p className="mt-1.5 text-[14px] text-slate-500">Activamos las funciones de tu rubro (talles y colores, venta por metro, vencimientos, pacientes…) y te mostramos cómo usarlas. Lo podés cambiar después en Configuración.</p>
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((p) => {
                   const info = PROFILE_LABELS[p];
@@ -215,11 +217,11 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
           {step === 'name' && (
             <>
-              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">¿Cómo se llama tu comercio?</h2>
-              <p className="mt-1.5 text-[14px] text-slate-500">Sale en tus tickets, notas de venta, remitos y facturas, en los cierres de caja y en la app del celular.</p>
+              <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">{consultorio ? '¿Cómo se llama tu consultorio?' : '¿Cómo se llama tu comercio?'}</h2>
+              <p className="mt-1.5 text-[14px] text-slate-500">{consultorio ? 'Sale en tu página de turnos, en los mensajes a tus pacientes y en tus facturas.' : 'Sale en tus tickets, notas de venta, remitos y facturas, en los cierres de caja y en la app del celular.'}</p>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
                 onKeyDown={(e) => { if (e.key === 'Enter' && name.trim().length >= 2) finish(); }}
-                placeholder="Ej.: Almacén Don Pepe"
+                placeholder={consultorio ? 'Ej.: Lic. Ana Pérez · Nutrición' : 'Ej.: Almacén Don Pepe'}
                 className="mt-5 w-full h-14 px-4 rounded-2xl bg-slate-50 border-2 border-slate-200 text-[17px] font-semibold text-slate-900 outline-none focus:border-rose-500 focus:bg-white" />
             </>
           )}

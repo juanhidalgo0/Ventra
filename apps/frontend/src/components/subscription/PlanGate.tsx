@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Lock, Store, ShoppingCart, CalendarDays, Package } from 'lucide-react';
 import { usePlanStore, planAllows, planAreaOf, planHome } from '../../stores/planStore';
+import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 
 const UPGRADE_URL = 'https://ventra.store/cuenta.html';
 
@@ -20,6 +21,7 @@ function openUpgrade() {
 export default function PlanGate({ mobile, children }: { mobile: boolean; children: React.ReactNode }) {
   const { pathname } = useLocation();
   const { features, planName, load, loaded } = usePlanStore();
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
 
   useEffect(() => {
     load();
@@ -33,6 +35,9 @@ export default function PlanGate({ mobile, children }: { mobile: boolean; childr
   if (!loaded && planAreaOf(pathname)) {
     return <div className="flex-1 flex items-center justify-center"><span className="w-7 h-7 border-[3px] border-rose-600 border-t-transparent rounded-full animate-spin" /></div>;
   }
+
+  // Un consultorio no vende: las pantallas de inicio de la caja llevan a los pacientes
+  if (consultorio && ['/', '/pos', '/inicio', '/tienda'].includes(pathname)) return <Navigate to="/pacientes" replace />;
 
   if (planAllows(features, pathname)) return <>{children}</>;
 

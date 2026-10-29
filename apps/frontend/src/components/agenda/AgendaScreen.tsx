@@ -8,6 +8,7 @@ import {
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { loadStoreConfig, saveStoreConfig, resolveStoreId, isSubdomainAvailable, StoreOwnedElsewhereError, dayRanges, withRanges, type StoreConfig, type DayHours } from '../../services/onlineStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
+import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 import { setStoreSetting } from '../../services/storeSettings';
 import { AGENDA_TEMPLATES, detectAgendaKind, type AgendaTemplate } from '../../services/agendaTemplates';
 import { agendaTemplateForRubro } from '../../services/signupRubro';
@@ -37,6 +38,13 @@ import { GettingStartedCard } from '../onboarding/GettingStarted';
 import { COMING_SOON, comingSoon } from '../../utils/comingSoon';
 import PageLook from './PageLook';
 import { ComingSoonBadge } from '../common/ComingSoon';
+
+/** Los turnos se cobran en la agenda (y no en la caja) sin caja en el plan, o en un consultorio, que no usa la caja. */
+const useChargesHere = () => {
+  const noCaja = usePlanStore((s) => !s.features.caja);
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
+  return noCaja || consultorio;
+};
 
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -274,8 +282,8 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   const strip = Array.from({ length: 7 }, (_, i) => addDays(day, i - 3));
   // Lo que suman los turnos del día que siguen en pie (sin los que no vinieron ni los que todavía esperan el pago)
   const dayIncome = visible.filter((b) => b.kind === 'booking' && b.status !== 'NO_SHOW' && b.status !== 'AWAITING_PAYMENT').reduce((s, b) => s + (Number(b.price) || 0), 0);
-  // Sin caja, los turnos se cobran acá: se muestra cuánto entró del total del día
-  const canCharge = usePlanStore((s) => !s.features.caja);
+  // Sin caja (o en un consultorio, que no usa la caja), los turnos se cobran acá: se muestra cuánto entró del total del día
+  const canCharge = useChargesHere();
   const dayCharged = visible.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0);
 
   if (!agenda.services.length || !staff.length) {
@@ -476,7 +484,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   const [busy, setBusy] = useState(false);
   const [charging, setCharging] = useState(false);
   const [ask, askDialog] = useConfirm();
-  const canCharge = usePlanStore((s) => !s.features.caja);
+  const canCharge = useChargesHere();
   const st = STATUS[b.status];
   const act = async (status: BookingStatus, msg: string) => {
     setBusy(true);
@@ -1240,8 +1248,9 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
     });
     toast.success('Listo: revisá las duraciones, poné tus precios y guardá');
   };
-  // El rubro con el que se suscribió (landing /peluquerias…) va primero y marcado
-  const signupTemplate = agendaTemplateForRubro(usePlanStore((s) => s.signupRubro));
+  // El rubro con el que se suscribió (landing /peluquerias…), o el consultorio de nutrición, va primero y marcado
+  const fromSignup = agendaTemplateForRubro(usePlanStore((s) => s.signupRubro));
+  const signupTemplate = useBusinessStore((s) => isConsultorio(s.profile)) ? 'nutricion' : fromSignup;
   const templates = signupTemplate
     ? [...AGENDA_TEMPLATES].sort((x, y) => Number(y.id === signupTemplate) - Number(x.id === signupTemplate))
     : AGENDA_TEMPLATES;

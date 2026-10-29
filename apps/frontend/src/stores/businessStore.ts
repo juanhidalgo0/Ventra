@@ -35,6 +35,7 @@ const readIntents = (): BusinessIntent[] | null => {
 /** Si una pantalla va en el menú: la incluye el plan y el comercio la usa. */
 export function menuAllows(features: PlanFeatures, intents: BusinessIntent[] | null, path: string) {
   if (!planAllows(features, path)) return false;
+  if (isConsultorio(useBusinessStore.getState().profile) && CONSULTORIO_HIDDEN.some((p) => path === p || path.startsWith(p + '/'))) return false;
   if (!intents) return true;
   for (const [intent, paths] of Object.entries(INTENT_PATHS) as [BusinessIntent, string[]][]) {
     if (!intents.includes(intent) && paths.some((p) => path === p || path.startsWith(p + '/'))) return false;
@@ -60,12 +61,13 @@ export type BusinessFeature =
   | 'bulk'           // Venta por bulto (cajas, packs, fardos) además de por unidad
   | 'delivery'       // Nota de venta y remito en hoja A4, localidad de los clientes
   | 'preorders'      // Preventa: los vendedores toman pedidos en el celular
-  | 'workorders';    // Encargos: trabajos a pedido con seña, fecha de entrega y estados
+  | 'workorders'     // Encargos: trabajos a pedido con seña, fecha de entrega y estados
+  | 'patients';      // Pacientes: historia clínica y mediciones (consultorio de nutrición)
 
-export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA';
+export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'patients',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -81,6 +83,7 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   delivery:       { title: 'Nota de venta y remito', description: 'Imprimir nota de venta y remito en hoja A4 para el reparto, con la localidad del cliente.' },
   workorders:     { title: 'Encargos', description: 'Trabajos a pedido con seña, fecha de entrega y prioridad: pendiente, en proceso, listo y entregado, con comprobante para el cliente y aviso por WhatsApp.' },
   preorders:      { title: 'Preventa y reparto', description: 'Los vendedores toman pedidos en el celular (también sin señal), se arman los repartos con hoja de carga y de ruta, y en la caja se cobran.' },
+  patients:       { title: 'Pacientes', description: 'Ficha de cada paciente con historia clínica, consultas y mediciones (peso, IMC, pliegues, % de grasa) con gráficos de evolución.' },
 };
 
 export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
@@ -91,6 +94,7 @@ export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants', 'expiry'],
   DISTRIBUIDORA: ['bulk', 'delivery', 'preorders', 'expiry'],
   IMPRENTA: ['workorders', 'quotes'],
+  NUTRICION: ['patients'],
 };
 
 export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: string; description: string }> = {
@@ -129,7 +133,27 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     title: 'Distribuidora / Mayorista',
     description: 'Venta por bulto o por unidad a comercios, con nota de venta y remito en A4 para el reparto.',
   },
+  NUTRICION: {
+    emoji: '🥗',
+    title: 'Nutricionista / Consultorio',
+    description: 'Sin caja ni productos: pacientes con historia clínica, mediciones y gráficos de evolución, turnos y cobro de las consultas.',
+  },
 };
+
+/**
+ * Rubros que no venden: el sistema deja de ser una caja y gira alrededor de los pacientes.
+ * Se esconde todo lo de vender (caja, productos, tienda online) y el inicio son los pacientes.
+ */
+export const isConsultorio = (profile: BusinessProfile) => profile === 'NUTRICION';
+
+/** Lo que un consultorio no usa: vender, stock y tienda online (la facturación sí: cobra consultas). */
+const CONSULTORIO_HIDDEN = [
+  '/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard',
+  '/earnings-division', '/quotes', '/inicio', '/employee-consumption', '/anulaciones', '/informes', '/encargos', '/preventa', '/reparto', '/hoy',
+  '/products', '/inventory', '/promos', '/stock-control', '/stock-audit', '/tienda', '/online-store', '/pedidos',
+  // Los clientes de la agenda son los pacientes
+  '/agenda/clientes',
+];
 
 const PROFILE_KEY = 'business_profile';
 const FEATURES_KEY = 'business_features';
@@ -200,6 +224,10 @@ export const useBusinessStore = create<BusinessState>((set, get) => ({
   setProfile: (profile) => {
     const features = featuresOfProfile(profile);
     persist(profile, features);
+    // Un consultorio solo da turnos; al volver a un rubro que vende, se le devuelve todo
+    const was = get().profile;
+    if (isConsultorio(profile) && !isConsultorio(was)) get().setIntents(['turnos']);
+    else if (!isConsultorio(profile) && isConsultorio(was)) get().setIntents(ALL_INTENTS);
     set({ profile, features });
     // Demo pública: cada rubro se muestra con sus productos y ejemplos (encargos, pedidos…)
     if (IS_DEMO_BUILD) import('../demo/session').then((m) => m.loadDemoRubro(profile));
@@ -228,6 +256,3 @@ export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStor
 /** Igual que `hasFeature` pero re-renderiza cuando se cambia la configuración. */
 export const useFeature = (feature: BusinessFeature): boolean =>
   useBusinessStore((s) => s.features[feature]);
-
-/** Rubros que no venden (consultorio): el sistema gira alrededor de los pacientes. */
-export const isConsultorio = (profile: string) => profile === 'NUTRICION';

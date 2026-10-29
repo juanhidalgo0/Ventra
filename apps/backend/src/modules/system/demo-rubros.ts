@@ -12,7 +12,7 @@ import { DEMO_PRODUCTS, DEMO_CATEGORY_COLORS } from './demo-reset.service';
  * Volver a un rubro ya elegido reactiva lo suyo, sin duplicar nada.
  */
 
-export const DEMO_PROFILES = ['KIOSKO', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA'] as const;
+export const DEMO_PROFILES = ['KIOSKO', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA', 'NUTRICION'] as const;
 export type DemoProfile = typeof DEMO_PROFILES[number];
 
 interface Item {
@@ -131,6 +131,8 @@ const CATALOGS: Record<Exclude<DemoProfile, 'KIOSKO'>, Item[]> = {
     { name: 'TAZA SUBLIMADA', price: 9500, category: 'Sellos y regalos', stock: 20 },
     { name: 'REMERA SUBLIMADA', price: 15000, category: 'Sellos y regalos', stock: 15 },
   ],
+  // Nutricionista: no vende. Sin productos; los pacientes viven en la nube (en la demo, en el navegador)
+  NUTRICION: [],
 };
 
 const skuPrefix = (profile: DemoProfile) => `DEMO-${profile}-`;

@@ -14,7 +14,7 @@ import PushCard from './PushCard';
 import AskWhatsApp from '../common/AskWhatsApp';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
-import { useBusinessStore, menuAllows, hasFeature } from '../../stores/businessStore';
+import { useBusinessStore, menuAllows, hasFeature, isConsultorio } from '../../stores/businessStore';
 
 /** noCaja: solo sin sistema de ventas (con caja, los turnos se cobran en el POS). */
 interface Tile { path: string; label: string; hint: string; icon: any; tint: string; noCaja?: boolean }
@@ -65,15 +65,16 @@ export default function MobileMoreScreen() {
   const [owed, setOwed] = useState<number | null>(null);
   const planFeatures = usePlanStore((s) => s.features);
   const intents = useBusinessStore((s) => s.intents);
+  const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
   // Solo las secciones que incluye el plan (Caja / Tienda / Full)
   const sections = SECTIONS
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
       && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && (i.path !== '/encargos' || hasFeature('workorders'))
       && (i.path !== '/anulaciones' || owner)
-      && !(i.noCaja && planFeatures.caja)
-      // Solo turnos: agenda, clientes y cobros ya son pestañas
-      && !(isAgendaOnly(planFeatures) && i.path.startsWith('/agenda'))) }))
+      && !(i.noCaja && planFeatures.caja && !consultorio)
+      // Solo turnos (o consultorio): agenda, clientes y cobros ya son pestañas
+      && !((isAgendaOnly(planFeatures) || consultorio) && i.path.startsWith('/agenda'))) }))
     .filter((s) => s.items.length > 0);
 
   // Un dato vivo en el encabezado: cuánto te deben por fiado

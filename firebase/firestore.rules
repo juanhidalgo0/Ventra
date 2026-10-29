@@ -110,6 +110,33 @@ service cloud.firestore {
       match /agenda_clients/{clientId} {
         allow read, write: if storeOwner();
       }
+      // Consultorio de nutrición: datos de salud, solo el dueño. La historia clínica se guarda
+      // (ley 26.529): el paciente no se borra, se archiva.
+      match /nutri_patients/{patientId} {
+        allow read, create, update: if storeOwner();
+        allow delete: if false;
+
+        // Una consulta se corrige o se borra solo en las primeras 24 h. Después queda fija y
+        // solo se le agregan notas al final (addenda), sin tocar las anteriores.
+        match /consultas/{consultaId} {
+          function fresh() {
+            return request.time < resource.data.createdAt + duration.value(24, 'h');
+          }
+          function onlyAddsNote() {
+            let before = resource.data.get('addenda', []);
+            let after = request.resource.data.addenda;
+            return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['addenda'])
+              && after is list && after.size() == before.size() + 1 && after.size() <= 50
+              && after[0:before.size()] == before;
+          }
+          allow read: if storeOwner();
+          allow create: if storeOwner() && request.resource.data.createdAt == request.time;
+          allow update: if storeOwner() && request.resource.data.createdAt == resource.data.createdAt
+            && (fresh() || onlyAddsNote());
+          allow delete: if storeOwner() && fresh();
+        }
+      }
+
       // Horarios ocupados por día (sin datos personales), para mostrar los libres.
       // Los mantiene la función ventraBookingWritten.
       match /agenda_busy/{dateKey} {
