@@ -16,6 +16,25 @@ import { escapeHtml } from '../../utils/escapeHtml';
 import { MpSessionControl } from './MpReconcilePanel';
 import { printReport } from '../../utils/ticketPrinter';
 
+/**
+ * Día de calendario en la hora de la PC (AAAA-MM-DD). Con toISOString el día era el de
+ * Greenwich: desde las 21 h "hoy" pasaba a ser mañana y los turnos de la noche caían en otro día.
+ */
+const dayKey = (d: string | number | Date) => {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Un turno cuenta en todos los días en que estuvo abierto, no solo en el que se abrió: si no,
+ * el turno de la noche que cierra a la madrugada, o una caja que quedó abierta de un día para
+ * otro, no aparecían en el día en que se cerraron.
+ */
+const sessionSpan = (s: { openedAt: string; closedAt?: string | null }) => ({
+  from: dayKey(s.openedAt),
+  to: dayKey(s.closedAt || Date.now()),
+});
+
 export default function CashControlScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
@@ -23,9 +42,9 @@ export default function CashControlScreen() {
   const [filterMode, setFilterMode] = useState<'all' | 'month' | 'day' | 'range'>('all');
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [selectedDay, setSelectedDay] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDay, setSelectedDay] = useState<string>(dayKey(new Date()));
+  const [startDate, setStartDate] = useState<string>(dayKey(new Date()));
+  const [endDate, setEndDate] = useState<string>(dayKey(new Date()));
   const [sellerFilter, setSellerFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSession, setSelectedSession] = useState<any>(null);
@@ -434,19 +453,18 @@ export default function CashControlScreen() {
   const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
   const filteredSessions = sessions.filter(s => {
-    const date = new Date(s.openedAt);
+    const span = sessionSpan(s);
     let matchesDate = false;
-    
+
     if (filterMode === 'all') {
       matchesDate = true;
     } else if (filterMode === 'month') {
-      matchesDate = date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
+      const month = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+      matchesDate = span.from.slice(0, 7) <= month && span.to.slice(0, 7) >= month;
     } else if (filterMode === 'day') {
-      const dayStr = date.toISOString().split('T')[0];
-      matchesDate = dayStr === selectedDay;
+      matchesDate = span.from <= selectedDay && span.to >= selectedDay;
     } else if (filterMode === 'range') {
-      const dayStr = date.toISOString().split('T')[0];
-      matchesDate = dayStr >= startDate && dayStr <= endDate;
+      matchesDate = span.from <= endDate && span.to >= startDate;
     }
 
     const matchesSeller = sellerFilter === 'all' || s.user?.id === sellerFilter;
@@ -469,10 +487,9 @@ export default function CashControlScreen() {
     } else if (filterMode === 'month') {
       matchesDate = date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
     } else if (filterMode === 'day') {
-      const dayStr = date.toISOString().split('T')[0];
-      matchesDate = dayStr === selectedDay;
+      matchesDate = dayKey(date) === selectedDay;
     } else if (filterMode === 'range') {
-      const dayStr = date.toISOString().split('T')[0];
+      const dayStr = dayKey(date);
       matchesDate = dayStr >= startDate && dayStr <= endDate;
     }
 
@@ -489,8 +506,8 @@ export default function CashControlScreen() {
     return filteredSessions.filter(s => {
       if (localCashier !== 'all' && s.user?.id !== localCashier) return false;
       if (localDay) {
-        const openedDay = new Date(s.openedAt).toISOString().split('T')[0];
-        if (openedDay !== localDay) return false;
+        const span = sessionSpan(s);
+        if (span.from > localDay || span.to < localDay) return false;
       }
       return true;
     });
@@ -500,8 +517,9 @@ export default function CashControlScreen() {
     return [...locallyFilteredSessions]
       .filter(s => s.closedAt)
       .sort((a, b) => {
-        const timeA = new Date(a.openedAt).getTime();
-        const timeB = new Date(b.openedAt).getTime();
+        // Por cierre: el turno que quedó abierto desde otro día aparece junto a los que cerraron con él
+        const timeA = new Date(a.closedAt).getTime();
+        const timeB = new Date(b.closedAt).getTime();
         return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
       });
   }, [locallyFilteredSessions, sortOrder]);
@@ -511,7 +529,7 @@ export default function CashControlScreen() {
       .filter(z => {
         if (localCashier !== 'all' && z.generatedBy?.id !== localCashier && z.generatedById !== localCashier) return false;
         if (localDay) {
-          const generatedDay = new Date(z.generatedAt).toISOString().split('T')[0];
+          const generatedDay = dayKey(z.generatedAt);
           if (generatedDay !== localDay) return false;
         }
         return true;
