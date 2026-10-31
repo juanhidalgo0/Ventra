@@ -293,8 +293,8 @@
   .nav .btn-ghost{ color:inherit; border-color:currentColor; border-color:rgba(127,127,127,.35); }
   .nav:not(.scrolled) .btn-primary-nav, .nav.on-dark .btn-primary-nav{ --bg:var(--cream); --fg:var(--pine-900); }
   .auth-area{ display:flex; align-items:center; }
-  .auth-btn{ display:flex; align-items:center; gap:8px; height:40px; padding:0 14px; border-radius:999px; font-size:14px; opacity:.85; transition:opacity .2s, background-color .2s; }
-  .auth-btn:hover{ opacity:1; background:rgba(127,127,127,.12); }
+  .auth-btn{ display:inline-flex; align-items:center; height:40px; padding:0 16px; border-radius:999px; border:1px solid currentColor; font-size:14px; font-weight:650; letter-spacing:-.01em; white-space:nowrap; transition:background-color .2s; }
+  .auth-btn:hover{ background:rgba(127,127,127,.12); }
   .auth-user{ display:flex; align-items:center; gap:8px; font-size:14px; padding-right:6px; }
   .auth-user img{ width:28px; height:28px; border-radius:50%; }
   .auth-user button{ font-size:13px; opacity:.65; text-decoration:underline; text-underline-offset:3px; }
@@ -312,7 +312,13 @@
     .nav-links, .nav-right .hide-m{ display:none; }
     .burger{ display:grid; }
   }
-  @media (max-width:480px){ .nav-right .auth-area{ display:none; } }
+  @media (max-width:480px){
+    .nav-inner{ gap:8px; }
+    .nav-right{ gap:6px; }
+    .auth-btn, .nav .btn-sm{ padding:0 12px; font-size:13.5px; }
+    .nav-right .auth-user img, .nav-right .auth-user button, .nav-right .auth-first{ display:none; }
+  }
+  @media (max-width:400px){ .nav .brand{ font-size:0; gap:0; } }
   .mobile-menu{
     position:fixed; inset:0; z-index:55; background:var(--pine-900); color:var(--on-dark);
     padding:110px 24px 32px; display:flex; flex-direction:column; gap:6px;
@@ -1952,6 +1958,6 @@
 })();
 </script>
 
-<script src="/ventra-cuenta.js?v=4"></script>
+<script src="/ventra-cuenta.js?v=5"></script>
 <script src="/ventra-chat.js?v=1" defer></script>
 </body></html>

@@ -39,13 +39,15 @@
   ]
 }
 </script>
-<link rel="stylesheet" href="/landing.css?v=4">
+<link rel="stylesheet" href="/landing.css?v=5">
 <style>
   body{ background:var(--paper); }
   .top{ background:var(--pine-900); color:var(--on-dark); }
   .top .nav-inner{ height:64px; }
   .top .help{ font-size:14px; color:var(--on-dark-2); display:inline-flex; align-items:center; gap:8px; }
   .top .help:hover{ color:var(--on-dark); }
+  .top .nav-right{ gap:14px; }
+  @media (max-width:560px){ .top .help span{ display:none; } .top .help svg{ width:22px; height:22px; } }
   .wrap{ max-width:620px; margin:0 auto; padding:28px 16px 120px; }
 
   /* Pasos arriba */
@@ -146,9 +148,12 @@
 <header class="top">
   <div class="shell nav-inner">
     <a href="/" class="brand" aria-label="Ventra, inicio"><img src="/ventra-logo.png" alt="" width="32" height="32">Ventra</a>
-    <a class="help" href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20empezar%20con%20Ventra%20y%20tengo%20una%20duda" target="_blank" rel="noopener">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>¿Dudas? Escribinos
-    </a>
+    <div class="nav-right">
+      <a class="help" href="https://wa.me/5492212025603?text=Hola%2C%20quiero%20empezar%20con%20Ventra%20y%20tengo%20una%20duda" target="_blank" rel="noopener" aria-label="¿Dudas? Escribinos">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg><span>¿Dudas? Escribinos</span>
+      </a>
+      <div id="authArea" class="auth-area"></div>
+    </div>
   </div>
 </header>
 
@@ -205,7 +210,7 @@
     <h1 id="t3">Creá tu cuenta</h1>
     <p class="sub">Tu cuenta de Ventra es tu cuenta de Google. Un toque y listo.</p>
     <div class="box" id="authOut">
-      <button type="button" class="gbtn" id="gBtn">
+      <button type="button" class="gbtn" id="gBtn" data-google-login>
         <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 16.3 3 9.7 7.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.6 0 10.7-2.1 14.5-5.6l-6.7-5.6C29.7 35.5 27 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.6 40.6 16.2 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.7 5.6C41.1 36.5 45 30.8 45 24c0-1.4-.1-2.7-.4-3.5z"/></svg>
         Continuar con Google
       </button>
@@ -259,7 +264,8 @@
   </div>
 </footer>
 
-<script src="/ventra-cuenta.js?v=4"></script>
+<script src="/ventra-cuenta.js?v=5"></script>
+<script src="/en-la-app.js?v=1"></script>
 <script>
 (function(){
   var PLANS = {

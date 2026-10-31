@@ -147,7 +147,8 @@
       <img src="/ventra-logo.png" alt="">
       <h2>Ingresá a tu cuenta</h2>
       <p>Usá la misma cuenta de Google con la que te suscribiste a Ventra.</p>
-      <button class="btn" id="loginBtn">Iniciar sesión con Google</button>
+      <button class="btn" id="loginBtn" data-google-login>Iniciar sesión con Google</button>
+      <p class="msg err" id="loginMsg"></p>
       <p style="margin-top:14px;font-size:13.5px;color:var(--ink-2)">¿Todavía no tenés cuenta? <a href="/empezar" style="color:var(--pine);font-weight:600;text-decoration:underline;text-underline-offset:3px">Empezá acá</a>, en 2 minutos.</p>
     </section>
 
@@ -158,8 +159,9 @@
     <section class="card gate hidden" id="noPlanCard">
       <img src="/ventra-logo.png" alt="">
       <h2>Todavía no tenés un plan</h2>
-      <p>Elegí un plan para usar Ventra en tu negocio. Podés probar la demo gratis antes.</p>
+      <p>Entraste con <b id="noPlanEmail"></b>. Si te suscribiste con otro correo, entrá con esa cuenta. Si no, elegí un plan para usar Ventra en tu negocio.</p>
       <a class="btn" href="/empezar">Elegir mi plan</a>
+      <p style="margin-top:14px;font-size:14px"><button type="button" id="otherAccountBtn" style="color:var(--pine);font-weight:600;text-decoration:underline;text-underline-offset:3px">Entrar con otra cuenta</button></p>
     </section>
 
     <!-- Primeros pasos, al volver de pagar -->
@@ -465,7 +467,25 @@
     // Sesión
     var provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt:'select_account' });
-    $('loginBtn').onclick = function(){ firebase.auth().signInWithPopup(provider).catch(function(){ firebase.auth().signInWithRedirect(provider); }); };
+    var LOGIN_ERROR = 'No se pudo entrar con Google. Probá de nuevo o escribinos por WhatsApp al 221 202-5603.';
+    function loginFailed(err){
+      if (!err || /popup-closed|cancelled-popup/.test(err.code || '')) return;
+      console.error('Ventra auth error:', err);
+      $('loginMsg').textContent = LOGIN_ERROR;
+      show(['gateCard']);
+    }
+    function login(){
+      $('loginMsg').textContent = '';
+      // Si el celular bloquea la ventana de Google, entra por redirección
+      firebase.auth().signInWithPopup(provider).catch(function(err){
+        if (/popup-blocked|operation-not-supported|web-storage/.test(err.code || '')) return firebase.auth().signInWithRedirect(provider);
+        throw err;
+      }).catch(loginFailed);
+    }
+    $('loginBtn').onclick = login;
+    // Al volver de la redirección: sin esto, un error dejaba la página igual y sin explicación
+    firebase.auth().getRedirectResult().catch(loginFailed);
+    $('otherAccountBtn').onclick = function(){ firebase.auth().signOut().then(login); };
     $('logoutBtn').onclick = function(){ firebase.auth().signOut(); };
 
     show(['loadingCard']);
@@ -492,6 +512,7 @@
     var accUnsub = null;
     firebase.auth().onAuthStateChanged(function(user){
       $('who').textContent = user ? user.email : '';
+      $('noPlanEmail').textContent = user ? user.email : '';
       $('logoutBtn').classList.toggle('hidden', !user);
       if (accUnsub) { accUnsub(); accUnsub = null; }
       if (!user) return show(['gateCard']);
@@ -503,5 +524,6 @@
     });
   })();
   </script>
+  <script src="/en-la-app.js?v=1"></script>
 </body>
 </html>

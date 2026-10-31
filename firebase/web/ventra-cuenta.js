@@ -14,7 +14,6 @@
   };
   var DEMO_URL = 'https://app.ventra.store';
   var CREATE_SUBSCRIPTION_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/createVentraSubscription";
-  var GOOGLE_ICON = '<svg width="15" height="15" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.9 5.1 29.7 3 24 3 16.3 3 9.7 7.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.6 0 10.7-2.1 14.5-5.6l-6.7-5.6C29.7 35.5 27 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.6 40.6 16.2 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.7 5.6C41.1 36.5 45 30.8 45 24c0-1.4-.1-2.7-.4-3.5z"/></svg>';
   var authAreas = [document.getElementById('authArea'), document.getElementById('authAreaMobile')];
   var auth = null, loading = null, firstState = null;
 
@@ -114,7 +113,8 @@
       // Vigente o dentro de los 7 días de gracia
       if (!until || Date.now() > until.getTime() + 7 * 864e5) return;
       // Ya es cliente: "Empezar" no tiene sentido, lo lleva a su cuenta
-      document.querySelectorAll('a[data-start]').forEach(function(a){ a.href = '/cuenta.html'; a.textContent = 'Mi cuenta'; a.removeAttribute('data-start'); });
+      // (arriba ya está "Mi cuenta" al lado, no hace falta repetirlo)
+      document.querySelectorAll('a[data-start]').forEach(function(a){ a.href = '/cuenta.html'; a.textContent = 'Mi cuenta'; a.removeAttribute('data-start'); if (a.closest('.nav')) a.style.display = 'none'; });
       document.querySelectorAll('a[href="' + DEMO_URL + '"]').forEach(function(a){
         a.href = WEB_APP_URL;
         var arrow = a.querySelector('.arr');
@@ -129,33 +129,21 @@
       if (!area) return;
       area.innerHTML = '';
       if (!user) {
-        var b = document.createElement('button');
-        b.type = 'button'; b.className = 'auth-btn'; b.innerHTML = GOOGLE_ICON + 'Iniciar sesión';
-        b.addEventListener('click', function(){ signIn(); });
+        // Como en cualquier web: lleva a la página de entrar, y de ahí a la cuenta
+        var b = document.createElement('a');
+        b.className = 'auth-btn'; b.href = '/cuenta.html'; b.textContent = 'Iniciar sesión';
         area.appendChild(b);
         return;
       }
       var wrap = document.createElement('div'); wrap.className = 'auth-user';
       if (user.photoURL) { var img = document.createElement('img'); img.src = user.photoURL; img.alt = ''; img.referrerPolicy = 'no-referrer'; wrap.appendChild(img); }
       var name = document.createElement('a'); name.className = 'auth-name'; name.href = '/cuenta.html'; name.title = 'Mi cuenta';
-      name.textContent = (user.displayName || user.email || '').split(' ')[0] + ' · Mi cuenta';
+      var first = document.createElement('span'); first.className = 'auth-first';
+      first.textContent = (user.displayName || user.email || '').split(' ')[0] + ' · ';
+      name.appendChild(first); name.appendChild(document.createTextNode('Mi cuenta'));
       var out = document.createElement('button'); out.type = 'button'; out.textContent = 'Salir';
       out.addEventListener('click', function(){ auth.signOut(); });
       wrap.appendChild(name); wrap.appendChild(out); area.appendChild(wrap);
-    });
-  }
-
-  function signIn(){
-    // A popup must open inside the click itself. If the SDK is already loaded we
-    // can do that; otherwise the click's "user gesture" is gone by the time it
-    // loads, so use a full-page redirect instead (the chosen plan survives it).
-    var viaPopup = !!auth;
-    return ensureFirebase().then(function(){
-      var provider = new firebase.auth.GoogleAuthProvider();
-      return viaPopup ? auth.signInWithPopup(provider) : auth.signInWithRedirect(provider);
-    }).catch(function(err){
-      console.error('Ventra auth error:', err);
-      alert('No se pudo iniciar sesión con Google. Probá de nuevo.');
     });
   }
 
@@ -211,9 +199,6 @@
   });
 
   renderAuthArea(null);
-  // Hovering or focusing a sign-in button warms the SDK up before the click lands.
-  document.addEventListener('pointerover', function(e){ if (e.target.closest && e.target.closest('.auth-btn')) ensureFirebase().catch(function(){}); }, { passive:true });
-  document.addEventListener('focusin', function(e){ if (e.target.closest && e.target.closest('.auth-btn')) ensureFirebase().catch(function(){}); });
   // Plan de prueba oculto (solo administradores): ventra.store/?plan=prueba
   try {
     if (page !== 'empezar' && new URLSearchParams(location.search).get('plan') === 'prueba') location.replace('/empezar?plan=prueba');
