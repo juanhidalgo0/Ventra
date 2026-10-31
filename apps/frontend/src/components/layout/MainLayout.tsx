@@ -475,8 +475,6 @@ export default function MainLayout({ children }: Props) {
         </main>
       </div>
 
-      {/* Ayuda: recorridos guiados y atajos de la pantalla actual */}
-      {isPOS && <HelpMenu pathname={location.pathname} placement="floating" />}
       <GuidedTour />
       <OfflineStartBanner />
       <ClientPreview />

@@ -62,12 +62,13 @@ export type BusinessFeature =
   | 'delivery'       // Nota de venta y remito en hoja A4, localidad de los clientes
   | 'preorders'      // Preventa: los vendedores toman pedidos en el celular
   | 'workorders'     // Encargos: trabajos a pedido con seña, fecha de entrega y estados
+  | 'clientorders'   // Encargos en la caja: revistas y demás que llegan, se avisa y se retiran
   | 'patients';      // Pacientes: historia clínica y mediciones (consultorio de nutrición)
 
 export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'patients',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'clientorders', 'patients',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -82,6 +83,7 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   bulk:           { title: 'Venta por bulto', description: 'Vender por caja, pack o fardo con su propio precio, o suelto por unidad.' },
   delivery:       { title: 'Nota de venta y remito', description: 'Imprimir nota de venta y remito en hoja A4 para el reparto, con la localidad del cliente.' },
   workorders:     { title: 'Encargos', description: 'Trabajos a pedido con seña, fecha de entrega y prioridad: pendiente, en proceso, listo y entregado, con comprobante para el cliente y aviso por WhatsApp.' },
+  clientorders:   { title: 'Encargos en la caja', description: 'Revistas, diarios y otros artículos que el cliente encarga: el cajero lo anota desde la caja con sus datos y una seña opcional, le avisa cuando llega y cobra la diferencia cuando lo retira.' },
   preorders:      { title: 'Preventa y reparto', description: 'Los vendedores toman pedidos en el celular (también sin señal), se arman los repartos con hoja de carga y de ruta, y en la caja se cobran.' },
   patients:       { title: 'Pacientes', description: 'Ficha de cada paciente con historia clínica, consultas y mediciones (peso, IMC, pliegues, % de grasa) con gráficos de evolución.' },
 };

@@ -37,6 +37,7 @@ const PreventaScreen = lazy(() => import('./components/preorders/PreventaScreen'
 const RepartoScreen = lazy(() => import('./components/reparto/RepartoScreen'));
 const DistribReportsScreen = lazy(() => import('./components/distribuidora/DistribReportsScreen'));
 const WorkOrdersScreen = lazy(() => import('./components/workorders/WorkOrdersScreen'));
+const QuotesScreen = lazy(() => import('./components/pos/QuotesScreen'));
 const HoyScreen = lazy(() => import('./components/distribuidora/HoyScreen'));
 const StartChooser = lazy(() => import('./components/distribuidora/StartChooser'));
 const GastosScreen = lazy(() => import('./components/cash-register/GastosScreen'));
@@ -701,6 +702,7 @@ export default function App() {
                     <Route path="/reparto" element={<RepartoScreen />} />
                     <Route path="/informes" element={<DistribReportsScreen />} />
                     <Route path="/encargos" element={<WorkOrdersScreen />} />
+                    <Route path="/quotes" element={<QuotesScreen />} />
                     <Route path="/hoy" element={<HoyScreen />} />
                     <Route path="/empezar" element={<StartChooser />} />
                     <Route path="/historial" element={<OwnerMobileOr mobile={<MobileMovementsScreen />}><HistorialScreen /></OwnerMobileOr>} />
@@ -729,7 +731,7 @@ export default function App() {
                     <Route path="/pacientes/:id" element={<AdminRoute><PatientScreen /></AdminRoute>} />
                     <Route path="/online-store/metrics" element={<OnlineStoreMetricsScreen />} />
                     <Route path="/go" element={<AdminRoute><GoScreen /></AdminRoute>} />
-                    <Route path="/earnings-division" element={<EarningsDivisionScreen />} />
+                    <Route path="/earnings-division" element={<OwnerOnlyRoute><EarningsDivisionScreen /></OwnerOnlyRoute>} />
                     <Route path="/stock-audit" element={<StockAuditScreen />} />
                     <Route path="/suppliers" element={<OwnerMobileOr mobile={<MobileSuppliersScreen />}><SuppliersScreen /></OwnerMobileOr>} />
                     <Route path="/fiscal" element={COMING_SOON.arcaInvoicing

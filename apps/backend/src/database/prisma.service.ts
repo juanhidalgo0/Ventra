@@ -798,6 +798,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               CONSTRAINT "quote_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products" ("id") ON DELETE SET NULL ON UPDATE CASCADE
             );
           `);
+          const quoteColumns: any[] = await this.$queryRawUnsafe(`PRAGMA table_info("quotes");`);
+          if (!quoteColumns.some(c => c.name === 'discount')) {
+            await this.$executeRawUnsafe(`ALTER TABLE "quotes" ADD COLUMN "discount" REAL NOT NULL DEFAULT 0;`);
+          }
+          const quoteItemColumns: any[] = await this.$queryRawUnsafe(`PRAGMA table_info("quote_items");`);
+          if (!quoteItemColumns.some(c => c.name === 'specs')) {
+            await this.$executeRawUnsafe(`ALTER TABLE "quote_items" ADD COLUMN "specs" TEXT;`);
+          }
         } catch (err) {
           console.error('[PrismaService] Failed to ensure quotes tables:', err);
         }

@@ -693,6 +693,7 @@ model Quote {
   clientPhone  String?     @map("client_phone")
   userId       String      @map("user_id")
   total        Float
+  discount     Float       @default(0)
   status       String      @default("PENDING") // PENDING | CONVERTED | EXPIRED | CANCELLED
   validUntil   DateTime?   @map("valid_until")
   notes        String?
@@ -712,6 +713,7 @@ model QuoteItem {
   quoteId     String   @map("quote_id")
   productId   String?  @map("product_id")
   productName String   @map("product_name")
+  specs       String?
   unitPrice   Float    @map("unit_price")
   quantity    Float
   subtotal    Float

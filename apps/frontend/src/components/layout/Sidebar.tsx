@@ -196,6 +196,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           { label: agendaOnly || consultorio ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
         ] : []),
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
+        ...(isOwner ? [{ label: 'División de ganancias', icon: Users2, path: '/earnings-division' }] : []),
         // Preguntarle a Ventra por WhatsApp: abre el panel de la IA en esa parte (no es una pantalla)
         ...(isManager ? [{ label: 'Preguntale por WhatsApp', icon: MessageCircle, path: '#whatsapp', action: () => openAskBusiness({ whatsapp: true }), isNew: true }] : []),
         { label: 'Facturación', icon: Calculator, path: '/fiscal', soon: COMING_SOON.arcaInvoicing },

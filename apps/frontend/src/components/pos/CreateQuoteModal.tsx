@@ -4,6 +4,7 @@ import { FileText, X, Check, Share2, Printer, Calendar, User, Phone, CheckCircle
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { CartItem } from '../../stores/posStore';
+import { QuotePreview, quoteWhatsappUrl, storeNameOfQuote } from './QuoteDocument';
 
 interface CreateQuoteModalProps {
   cart: CartItem[];
@@ -19,8 +20,9 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
   const [validityDays, setValidityDays] = useState(7);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdQuote, setCreatedQuote] = useState<any>(null);
+  const [showSheet, setShowSheet] = useState(false);
 
-  const storeName = localStorage.getItem('store_name') || 'Ferretería & Corralón';
+  const storeName = storeNameOfQuote();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +46,8 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
         clientPhone: customerPhone.trim() || undefined,
         notes: notes.trim() || undefined,
         validDays: validityDays,
+        // El total que se ve en pantalla, con las promos: el presupuesto dice lo mismo
+        finalTotal: total,
         items
       });
 
@@ -55,31 +59,6 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const generateWhatsAppUrl = () => {
-    if (!createdQuote) return '#';
-    const lines = [
-      '*PRESUPUESTO - ' + storeName.toUpperCase() + '*',
-      'N° ' + createdQuote.quoteNumber,
-      'Cliente: ' + createdQuote.clientName,
-      'Fecha: ' + new Date(createdQuote.createdAt).toLocaleDateString('es-AR'),
-      'Validez: ' + validityDays + ' días',
-      '--------------------------------',
-      ...createdQuote.items.map((i: any) => 
-        '• ' + i.quantity + 'x ' + (i.productName || i.product?.name || 'Item') + ' - $' + Number(i.subtotal).toLocaleString('es-AR')
-      ),
-      '--------------------------------',
-      '*TOTAL: $' + Number(createdQuote.total).toLocaleString('es-AR') + '*',
-    ];
-    if (createdQuote.notes) {
-      lines.push('Notas: ' + createdQuote.notes);
-    }
-    lines.push('\nPrecios sujetos a modificaciones sin previo aviso.');
-
-    const cleanPhone = (createdQuote.clientPhone || '').replace(/\D/g, '');
-    const phoneParam = cleanPhone ? 'phone=' + (cleanPhone.startsWith('54') ? cleanPhone : '54' + cleanPhone) + '&' : '';
-    return 'https://api.whatsapp.com/send?' + phoneParam + 'text=' + encodeURIComponent(lines.join('\n'));
   };
 
   const handlePrint = () => {
@@ -125,7 +104,9 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 {createdQuote ? 'Presupuesto Creado' : 'Nuevo Presupuesto / Cotización'}
               </h2>
               <p className="text-xs text-slate-500">
-                {cart.length} artículos por un total de ${Number(total).toLocaleString('es-AR')}
+                {createdQuote
+                  ? `${createdQuote.items.length} artículos por un total de $${Number(createdQuote.total).toLocaleString('es-AR')}`
+                  : `${cart.length} artículos por un total de $${Number(total).toLocaleString('es-AR')}`}
               </p>
             </div>
           </div>
@@ -235,9 +216,9 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-3 gap-3 pt-2">
               <a
-                href={generateWhatsAppUrl()}
+                href={quoteWhatsappUrl(createdQuote)}
                 target="_blank"
                 rel="noreferrer"
                 className="p-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
@@ -252,7 +233,16 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 className="p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
               >
                 <Printer className="w-5 h-5" />
-                <span>Imprimir Recibo</span>
+                <span>Imprimir Ticket</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSheet(true)}
+                className="p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              >
+                <FileText className="w-5 h-5" />
+                <span>Hoja A4</span>
               </button>
             </div>
 
@@ -270,7 +260,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
           <div id="printable-quote" style={{ display: 'none' }}>
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', fontFamily: 'monospace', fontSize: '8pt', color: '#000', gap: '8px' }}>
               <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px' }}>
-                <h4 style={{ margin: 0, fontSize: '11pt', fontWeight: 'bold' }}>{storeName.toUpperCase()}</h4>
+                {storeName && <h4 style={{ margin: 0, fontSize: '11pt', fontWeight: 'bold' }}>{storeName.toUpperCase()}</h4>}
                 <p style={{ margin: 0, fontWeight: 'bold', fontSize: '9pt', marginTop: '2px' }}>COTIZACIÓN / PRESUPUESTO</p>
                 <p style={{ margin: 0, fontSize: '7pt', color: '#555' }}>DOCUMENTO NO VÁLIDO COMO FACTURA</p>
               </div>
@@ -300,6 +290,13 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 ))}
               </div>
 
+              {createdQuote.discount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>DESCUENTO:</span>
+                  <span>-${Number(createdQuote.discount).toLocaleString('es-AR')}</span>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: 'bold', paddingTop: '4px' }}>
                 <span>TOTAL ESTIMADO:</span>
                 <span>${Number(createdQuote.total).toLocaleString('es-AR')}</span>
@@ -318,6 +315,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
           </div>
         )}
       </motion.div>
+      {showSheet && createdQuote && <QuotePreview quote={createdQuote} onClose={() => setShowSheet(false)} />}
     </div>
   );
 }

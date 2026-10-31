@@ -1264,68 +1264,54 @@ export class SalesService {
     };
   }
 
-  async getConsolidatedMetrics(email: string, from?: string, to?: string) {
-    // 1. Get Ventra (POS) metrics
-    const posSalesFilter: any = {
-      status: 'COMPLETED'
-    };
-    if (from || to) {
-      posSalesFilter.createdAt = {};
-      if (from) posSalesFilter.createdAt.gte = new Date(from);
-      if (to) posSalesFilter.createdAt.lte = new Date(to);
-    }
+  /**
+   * Ganancia a repartir entre los socios: ventas menos costo de lo vendido menos gastos.
+   * No entra lo que no es venta (cobros de cuenta corriente y señas: lo vendido ya se contó,
+   * y las cargas virtuales). Pagar mercadería tampoco es gasto acá: ya está en el costo.
+   */
+  async getProfitSplit(from?: string, to?: string) {
+    const createdAt: any = {};
+    if (from) createdAt.gte = new Date(from);
+    if (to) createdAt.lte = new Date(to);
+    const NOT_SALES = ['PAGO_CTA_CTE', 'VIRTUAL_LOAD_1', 'VIRTUAL_LOAD_2'];
 
-    const posSales = await this.prisma.sale.findMany({
-      where: posSalesFilter,
-      include: {
-        items: {
-          include: {
-            product: { select: { costPrice: true } }
-          }
+    const [sales, movements] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: { status: 'COMPLETED', createdAt },
+        select: { total: true, items: { select: { productId: true, quantity: true, total: true, product: { select: { costPrice: true } } } } },
+      }),
+      this.prisma.cashMovement.findMany({ where: { type: 'EXPENSE', createdAt }, select: { amount: true, description: true } }),
+    ]);
+
+    let revenue = 0;
+    let cost = 0;
+    let salesCount = 0;
+    let noCostRevenue = 0;
+    const noCostProducts = new Set<string>();
+    for (const sale of sales) {
+      const counted = sale.items.filter((i) => !NOT_SALES.includes(i.productId));
+      if (!counted.length) continue;
+      salesCount++;
+      // El total de la venta, para que cuente el descuento general del ticket
+      revenue += sale.total - sale.items.filter((i) => NOT_SALES.includes(i.productId)).reduce((s, i) => s + i.total, 0);
+      for (const item of counted) {
+        const unitCost = item.product?.costPrice || 0;
+        cost += unitCost * item.quantity;
+        if (unitCost <= 0 && item.total > 0) {
+          noCostRevenue += item.total;
+          noCostProducts.add(item.productId);
         }
       }
-    });
-
-    let posBilling = 0;
-    let posCost = 0;
-    for (const sale of posSales) {
-      for (const item of sale.items) {
-        if (item.productId === 'VIRTUAL_LOAD_1' || item.productId === 'VIRTUAL_LOAD_2') {
-          continue;
-        }
-        posBilling += item.total;
-        posCost += (item.product?.costPrice || 0) * item.quantity;
-      }
     }
-    const posNetProfit = posBilling - posCost;
 
-    // 2. Get GoDelivery (Online App) metrics
-    const goMetrics = await this.getGoDeliveryMetrics(email, from, to);
+    let expenses = 0;
+    let goodsPayments = 0;
+    for (const m of movements) {
+      if (/^\[Mercader|PAGO PROVEEDOR/i.test(m.description || '')) goodsPayments += m.amount;
+      else expenses += m.amount;
+    }
 
-    const consolidatedBilling = posBilling + goMetrics.totalRevenue + goMetrics.totalCommissions + goMetrics.totalDelivery;
-    const consolidatedNetProfit = posNetProfit + goMetrics.netProfit + goMetrics.totalCommissions + goMetrics.totalDelivery;
-
-    return {
-      pos: {
-        billing: posBilling,
-        cost: posCost,
-        netProfit: posNetProfit,
-        count: posSales.length
-      },
-      go: {
-        billing: goMetrics.totalRevenue,
-        cost: goMetrics.totalCost,
-        netProfit: goMetrics.netProfit,
-        commissions: goMetrics.totalCommissions,
-        delivery: goMetrics.totalDelivery,
-        count: goMetrics.totalOrders
-      },
-      consolidated: {
-        billing: consolidatedBilling,
-        netProfit: consolidatedNetProfit,
-        splitPerPartner: consolidatedNetProfit / 3
-      }
-    };
+    return { revenue, cost, expenses, goodsPayments, profit: revenue - cost - expenses, salesCount, noCostRevenue, noCostProducts: noCostProducts.size };
   }
 }
 

@@ -181,10 +181,11 @@ export class WorkOrdersService implements OnModuleInit, OnModuleDestroy {
     const receivedAt = data?.receivedAt && !isNaN(new Date(data.receivedAt).getTime()) ? new Date(data.receivedAt) : undefined;
     const notes = data?.notes ? String(data.notes).slice(0, 2000) : null;
 
-    // Con seña cobrada, cambiar el total (precio o descuento) lo autoriza el dueño
+    // Con seña cobrada, cambiar el total (precio o descuento) lo autoriza el dueño.
+    // Poner el precio por primera vez no: una seña se puede dejar sin saber cuánto va a salir.
     const before = await this.db.workOrder.findUnique({ where: { id } });
     let ownerKey = false;
-    if (before && OPEN.includes(before.status) && before.deposit > 0 && Math.abs(total - before.total) > 0.009) {
+    if (before && OPEN.includes(before.status) && before.deposit > 0 && before.total > 0 && Math.abs(total - before.total) > 0.009) {
       ownerKey = await this.assertOwner(user, data?.adminPassword, 'Cambiar el precio de un encargo con seña');
     }
 
@@ -202,6 +203,8 @@ export class WorkOrdersService implements OnModuleInit, OnModuleDestroy {
           include: INCLUDE,
         });
       }
+      // Viene de un presupuesto: el cliente lo aceptó
+      if (data?.quoteId) await tx.quote.updateMany({ where: { id: String(data.quoteId), status: { in: ['PENDING', 'EXPIRED'] } }, data: { status: 'CONVERTED' } });
       const range = await numberRange(tx);
       const last = await tx.workOrder.findFirst({ where: { number: { gte: range.from, lt: range.to } }, orderBy: { number: 'desc' } });
       return tx.workOrder.create({
@@ -287,7 +290,8 @@ export class WorkOrdersService implements OnModuleInit, OnModuleDestroy {
     if (!order.clientId) throw new BadRequestException('Para cobrar una seña, el encargo tiene que tener cliente');
     const amount = round2(Number(data?.amount) || 0);
     if (!(amount > 0)) throw new BadRequestException('Poné cuánto deja de seña');
-    if (amount > round2(order.total - order.deposit) + 0.009) throw new BadRequestException('La seña no puede ser mayor que lo que falta pagar');
+    // Sin precio todavía (total 0) no hay contra qué comparar: el tope se controla al ponerle precio
+    if (order.total > 0 && amount > round2(order.total - order.deposit) + 0.009) throw new BadRequestException('La seña no puede ser mayor que lo que falta pagar');
     const method = String(data?.method || 'CASH');
     const key = String(data?.key || '').replace(/[^\w-]/g, '').slice(0, 40) || `${Date.now()}`;
     const saleId = `sena-${id}-${key}`;

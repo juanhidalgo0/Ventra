@@ -39,11 +39,11 @@ function coversSomething(root: HTMLElement, rect: DOMRect) {
 
 /**
  * Botón de Ayuda: recorridos guiados de la pantalla, atajos y la ayuda con IA.
- * header: en la barra de arriba (todas las pantallas menos la caja), así no tapa nada.
- * floating: abajo a la izquierda en la caja; si queda encima de un botón o un campo, se esconde
+ * header: en la barra de arriba, así no tapa nada. iconOnly: solo el ícono, para la barra de la caja.
+ * floating: abajo a la izquierda; si queda encima de un botón o un campo, se esconde
  * (se sigue abriendo con Ctrl+K → Ayuda).
  */
-export default function HelpMenu({ pathname, placement }: { pathname: string; placement: 'header' | 'floating' }) {
+export default function HelpMenu({ pathname, placement, iconOnly }: { pathname: string; placement: 'header' | 'floating'; iconOnly?: boolean }) {
   const entries = ROUTE_HELP[pathname] || [];
   const shortcuts = ROUTE_SHORTCUTS[pathname];
   const start = useTourStore((s) => s.start);
@@ -169,7 +169,18 @@ export default function HelpMenu({ pathname, placement }: { pathname: string; pl
               )}
         </div>
 
-        {!floating ? (
+        {iconOnly ? (
+          <button
+            ref={buttonRef}
+            onClick={onButton}
+            title="Ayuda"
+            aria-label="Ayuda"
+            aria-expanded={open}
+            className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors active:scale-95 cursor-pointer shrink-0 ${open ? 'bg-rose-50 text-rose-700' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
+            <GraduationCap strokeWidth={2.25} className="w-4 h-4" />
+          </button>
+        ) : !floating ? (
           <button
             ref={buttonRef}
             onClick={onButton}

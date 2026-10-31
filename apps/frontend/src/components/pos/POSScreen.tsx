@@ -46,6 +46,8 @@ import AbrirCajaModal from './AbrirCajaModal';
 import CobroCtaCteModal from './CobroCtaCteModal';
 import CalculatorModal from './CalculatorModal';
 import CreateQuoteModal from './CreateQuoteModal';
+import ClientOrdersModal from './ClientOrdersModal';
+import HelpMenu from '../common/tour/HelpMenu';
 import QuotesListModal from './QuotesListModal';
 import AcopioModal from './AcopioModal';
 import SubstitutesModal from './SubstitutesModal';
@@ -263,6 +265,8 @@ export default function POSScreen() {
   const [showAcopios, setShowAcopios] = useState(false);
   const [substituteProduct, setSubstituteProduct] = useState<any | null>(null);
   const canQuote = useFeature('quotes');
+  const usesClientOrders = useFeature('clientorders');
+  const [showClientOrders, setShowClientOrders] = useState(false);
   const canAcopio = useFeature('acopio');
   const canTradePrice = useFeature('tradePricing');
   const canSubstitute = useFeature('substitutes');
@@ -1878,7 +1882,7 @@ export default function POSScreen() {
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
   const [headerMode, setHeaderMode] = useState<0 | 1 | 2>(0);
   const headerNeedRef = useRef<number[]>([0, 0]);
-  const headerKey = `${ordersVisible}|${canQuote}|${canAcopio}|${!!currentSession}|${newOnlineOrders > 0}|${goOrders.length > 0}`;
+  const headerKey = `${ordersVisible}|${usesClientOrders}|${canQuote}|${canAcopio}|${!!currentSession}|${newOnlineOrders > 0}|${goOrders.length > 0}`;
   const headerKeyRef = useRef(headerKey);
   useLayoutEffect(() => {
     const el = headerActionsEl;
@@ -2037,6 +2041,15 @@ export default function POSScreen() {
             </button>
           )}
 
+          {/* Encargos en la caja: se prende o se apaga en Configuración → Funciones activas */}
+          {usesClientOrders && (
+            <button onClick={() => setShowClientOrders(true)} className={`${hdrBtn} bg-orange-600 hover:bg-orange-700`}>
+              <ClipboardList strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              {hdrLabel('Encargos', 'Encargos')}
+              {headerMode !== 0 && <span className={hdrTip}>Encargos de clientes</span>}
+            </button>
+          )}
+
           {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
           {ordersVisible && (
             <button onClick={() => setShowOnlineOrders(true)} className={`${hdrBtn} bg-rose-600 hover:bg-rose-700`}>
@@ -2129,6 +2142,9 @@ export default function POSScreen() {
             {/* Versión nueva descargada: aviso discreto, no interrumpe */}
             <NotificationBell atTill />
             <UpdateBadge />
+
+            {/* Ayuda en la barra: flotante se escondía cuando tenía un producto debajo */}
+            <HelpMenu pathname="/pos" placement="header" iconOnly />
 
             {/* Buscar acciones (Ctrl+K) */}
             <button
@@ -3405,10 +3421,8 @@ export default function POSScreen() {
             cart={cart}
             total={getFinalTotal()}
             onClose={() => setShowCreateQuote(false)}
-            onSuccess={() => {
-              clearCart();
-              setShowCreateQuote(false);
-            }}
+            // La ventana queda abierta: ahí se manda por WhatsApp o se imprime
+            onSuccess={() => clearCart()}
           />
         )}
         {showCategoryPicker && (
@@ -3448,6 +3462,12 @@ export default function POSScreen() {
               handleProductAdd(variant);
             }}
             onClose={() => { setVariantGroupToPick(null); setExchangeSource(null); focusSearch(); }}
+          />
+        )}
+        {showClientOrders && (
+          <ClientOrdersModal
+            sessionId={currentSession?.id}
+            onClose={() => { setShowClientOrders(false); focusSearch(); }}
           />
         )}
         {showQuotesList && (

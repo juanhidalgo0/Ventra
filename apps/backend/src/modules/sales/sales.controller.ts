@@ -88,15 +88,11 @@ export class SalesController {
     return this.salesService.getGoDeliveryMetrics(email, from, to);
   }
 
-  @Get('consolidated-metrics')
+  @Get('profit-split')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
-  getConsolidatedMetrics(
-    @Query('email') email: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string
-  ) {
-    return this.salesService.getConsolidatedMetrics(email, from, to);
+  getProfitSplit(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.salesService.getProfitSplit(from, to);
   }
 
   /** Rango de números de esta caja y el próximo (para la numeración de las hojas impresas) */

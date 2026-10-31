@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { nodeIndex } from '../sync/numbering';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
@@ -47,9 +48,12 @@ export class QuotesService {
     userId: string;
     notes?: string;
     validDays?: number;
+    /** Lo que muestra la pantalla, con las promos ya descontadas: la diferencia queda como descuento */
+    finalTotal?: number;
     items: Array<{
       productId?: string;
       productName: string;
+      specs?: string;
       unitPrice: number;
       quantity: number;
     }>;
@@ -70,7 +74,10 @@ export class QuotesService {
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + (data.validDays || 7));
 
-    const total = (data.items || []).reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const gross = (data.items || []).reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const finalTotal = Number(data.finalTotal);
+    const discount = Number.isFinite(finalTotal) && finalTotal >= 0 ? Math.max(0, Math.round((gross - finalTotal) * 100) / 100) : 0;
+    const total = gross - discount;
 
     // Promos o productos borrados no existen en products: el ítem se guarda igual, sin el vínculo
     const askedIds = [...new Set((data.items || []).map((i) => i.productId).filter(Boolean))] as string[];
@@ -86,6 +93,7 @@ export class QuotesService {
         clientPhone: data.clientPhone || null,
         userId: data.userId,
         total: Math.round(total * 100) / 100,
+        discount,
         status: 'PENDING',
         validUntil,
         notes: data.notes || null,
@@ -93,6 +101,7 @@ export class QuotesService {
           create: (data.items || []).map(item => ({
             productId: item.productId && existingIds.has(item.productId) ? item.productId : null,
             productName: item.productName,
+            specs: item.specs ? String(item.specs).trim().slice(0, 1000) : null,
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             subtotal: Math.round(item.unitPrice * item.quantity * 100) / 100,
@@ -106,18 +115,35 @@ export class QuotesService {
     });
   }
 
-  async updateStatus(id: string, status: 'PENDING' | 'CONVERTED' | 'EXPIRED' | 'CANCELLED') {
+  async updateStatus(id: string, status: 'PENDING' | 'CONVERTED' | 'EXPIRED' | 'CANCELLED', user?: { sub?: string }) {
     if (!['PENDING', 'CONVERTED', 'EXPIRED', 'CANCELLED'].includes(status)) throw new BadRequestException('Estado inválido');
-    return (this.prisma as any).quote.update({
+    const quote = await (this.prisma as any).quote.update({
       where: { id },
       data: { status },
       include: { items: true }
     });
+    await this.log(user?.sub, id, 'STATUS', { quoteNumber: quote.quoteNumber, status });
+    return quote;
   }
 
-  async delete(id: string) {
-    return (this.prisma as any).quote.delete({
-      where: { id }
-    });
+  /** Borrar no deja rastro en la lista: lo autoriza el dueño (o un empleado con su clave) y queda anotado quién fue */
+  async delete(id: string, user?: { sub?: string; role?: string }, adminPassword?: string) {
+    const quote = await this.findOne(id);
+    let ownerKey = false;
+    if (user?.role !== 'ADMIN') {
+      const pass = String(adminPassword || '');
+      if (!pass) throw new ForbiddenException({ message: 'Borrar un presupuesto lo autoriza el dueño: hace falta la clave del administrador', needsAdmin: true });
+      const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { passwordHash: true } });
+      for (const a of admins) if (await bcrypt.compare(pass, a.passwordHash)) { ownerKey = true; break; }
+      if (!ownerKey) throw new ForbiddenException({ message: 'La clave del administrador no es correcta', needsAdmin: true });
+    }
+    await (this.prisma as any).quote.delete({ where: { id } });
+    await this.log(user?.sub, id, 'DELETE', { quoteNumber: quote.quoteNumber, total: quote.total, clientName: quote.clientName, ownerKey });
+    return { ok: true };
+  }
+
+  private log(userId: string | undefined, id: string, action: string, extra: any) {
+    return (this.prisma as any).auditLog.create({ data: { userId: userId || null, entityType: 'QUOTE', entityId: id, action, newValues: JSON.stringify(extra) } })
+      .catch(() => {});
   }
 }

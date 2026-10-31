@@ -1,66 +1,54 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
-  Calculator, 
-  TrendingUp, 
-  Smartphone, 
-  Store, 
-  DollarSign, 
-  Calendar, 
-  RefreshCw, 
-  AlertCircle,
-  Users2
-} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Minus, Plus, RefreshCw, Trash2, Users2 } from 'lucide-react';
 import api from '../../services/api';
-import toast from 'react-hot-toast';
 import { setStoreSetting } from '../../services/storeSettings';
+import { PageHeader, Panel, Segmented, ui } from '../ui/Page';
 
-interface SystemStats {
-  billing: number;
+interface ProfitSplit {
+  revenue: number;
   cost: number;
-  netProfit: number;
-  commissions?: number;
-  delivery?: number;
-  count: number;
+  expenses: number;
+  goodsPayments: number;
+  profit: number;
+  salesCount: number;
+  noCostRevenue: number;
+  noCostProducts: number;
 }
+interface Partner { name: string; percentage: number }
+type Period = 'month' | 'lastMonth' | 'custom';
 
-interface ConsolidatedStats {
-  billing: number;
-  netProfit: number;
-  splitPerPartner: number;
-}
+const MAX_PARTNERS = 20;
+const money = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
-interface ConsolidatedMetricsResponse {
-  pos: SystemStats;
-  go: SystemStats;
-  consolidated: ConsolidatedStats;
-}
+/** Partes iguales que suman justo 100: el último socio se lleva los centésimos que sobran. */
+const equalShares = (count: number) => {
+  const base = Math.floor((100 / count) * 100) / 100;
+  return Array.from({ length: count }, (_, i) => (i === count - 1 ? round2(100 - base * (count - 1)) : base));
+};
 
+const readPartners = (): Partner[] => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('earnings_division_partners') || 'null');
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch { /* config corrupta: los valores de siempre */ }
+  return [{ name: 'Socio 1', percentage: 50 }, { name: 'Socio 2', percentage: 50 }];
+};
+
+const dayInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * División de ganancias: cuánto le toca a cada socio de lo que ganó el negocio en el período.
+ * Los socios y sus porcentajes son del comercio: viajan a las otras cajas.
+ */
 export default function EarningsDivisionScreen() {
-  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [period, setPeriod] = useState<Period>('month');
+  const [fromDate, setFromDate] = useState(() => { const d = new Date(); return dayInput(new Date(d.getFullYear(), d.getMonth(), 1)); });
+  const [toDate, setToDate] = useState(() => dayInput(new Date()));
+  const [data, setData] = useState<ProfitSplit | null>(null);
   const [loading, setLoading] = useState(false);
-  const [metrics, setMetrics] = useState<ConsolidatedMetricsResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  interface PartnerConfig {
-    name: string;
-    percentage: number;
-  }
-
-  const [partners, setPartners] = useState<PartnerConfig[]>(() => {
-    const saved = localStorage.getItem('earnings_division_partners');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return [
-      { name: 'Socio 1', percentage: 33.33 },
-      { name: 'Socio 2', percentage: 33.33 },
-      { name: 'Socio 3', percentage: 33.34 }
-    ];
-  });
+  const [error, setError] = useState(false);
+  const [partners, setPartners] = useState<Partner[]>(readPartners);
 
   // Se guarda cuando se cambian los socios, no al abrir (los valores por defecto pisaban los de otra caja)
   const partnersTouched = useRef(false);
@@ -69,364 +57,154 @@ export default function EarningsDivisionScreen() {
     partnersTouched.current = true;
   }, [partners]);
 
-  const handlePartnerCountChange = (count: number) => {
-    const validCount = Math.max(1, Math.min(10, count));
-    setPartners(prev => {
-      if (prev.length === validCount) return prev;
-      if (prev.length < validCount) {
-        const added: PartnerConfig[] = Array.from({ length: validCount - prev.length }, (_, i) => ({
-          name: `Socio ${prev.length + i + 1}`,
-          percentage: 0
-        }));
-        return [...prev, ...added];
-      } else {
-        return prev.slice(0, validCount);
-      }
-    });
-  };
-
-  const handleDistributeEqually = () => {
-    const count = partners.length;
-    const baseVal = parseFloat((100 / count).toFixed(2));
-    const newPartners = partners.map((p, idx) => {
-      if (idx === count - 1) {
-        const currentSum = baseVal * (count - 1);
-        const remainder = parseFloat((100 - currentSum).toFixed(2));
-        return { ...p, percentage: remainder };
-      }
-      return { ...p, percentage: baseVal };
-    });
-    setPartners(newPartners);
-  };
-
-  const googleUserStr = localStorage.getItem('google_authenticated_user');
-  const googleUser = googleUserStr ? JSON.parse(googleUserStr) : null;
-  const email = googleUser?.email;
-
-  const loadMetrics = async () => {
-    if (!email) {
-      setError('No hay ninguna cuenta de Google vinculada. Por favor, conéctela en la configuración de la tienda.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    let fromStr = '';
-    let toStr = '';
-
-    const today = new Date();
-    if (period === 'today') {
-      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      fromStr = startOfToday.toISOString();
-    } else if (period === 'week') {
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - 7);
-      fromStr = startOfWeek.toISOString();
-    } else if (period === 'month') {
-      const startOfMonth = new Date(today);
-      startOfMonth.setMonth(today.getMonth() - 1);
-      fromStr = startOfMonth.toISOString();
-    } else if (period === 'custom') {
-      if (fromDate) fromStr = new Date(fromDate).toISOString();
-      if (toDate) {
-        const endOfToDate = new Date(toDate);
-        endOfToDate.setHours(23, 59, 59, 999);
-        toStr = endOfToDate.toISOString();
-      }
-    }
-
-    try {
-      const { data } = await api.get('/sales/consolidated-metrics', {
-        params: { email, from: fromStr, to: toStr }
-      });
-      setMetrics(data);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.message || 'Error al obtener las métricas consolidadas.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMetrics();
+  const range = useMemo(() => {
+    const now = new Date();
+    if (period === 'month') return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
+    if (period === 'lastMonth') return { from: new Date(now.getFullYear(), now.getMonth() - 1, 1), to: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999) };
+    if (!fromDate || !toDate) return null;
+    return { from: new Date(`${fromDate}T00:00:00`), to: new Date(`${toDate}T23:59:59.999`) };
   }, [period, fromDate, toDate]);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(val);
+  const load = () => {
+    if (!range) return;
+    setLoading(true);
+    setError(false);
+    api.get('/sales/profit-split', { params: { from: range.from.toISOString(), to: range.to.toISOString() } })
+      .then(({ data }) => setData(data))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, [range]);
+
+  const setCount = (count: number) => {
+    const next = Math.max(1, Math.min(MAX_PARTNERS, count));
+    setPartners((prev) => {
+      if (next === prev.length) return prev;
+      if (next < prev.length) return prev.slice(0, next);
+      return [...prev, ...Array.from({ length: next - prev.length }, (_, i) => ({ name: `Socio ${prev.length + i + 1}`, percentage: 0 }))];
+    });
+  };
+  const update = (i: number, patch: Partial<Partner>) => setPartners((prev) => prev.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const shareEqually = () => {
+    const shares = equalShares(partners.length);
+    setPartners((prev) => prev.map((p, i) => ({ ...p, percentage: shares[i] })));
   };
 
-  if (!email) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-6 bg-slate-50">
-        <div className="card max-w-md p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-4 border border-amber-100">
-            <AlertCircle className="w-7 h-7" />
-          </div>
-          <h3 className="text-base font-black text-slate-800 uppercase tracking-wider">Tienda Online Desconectada</h3>
-          <p className="text-xs text-slate-700 font-bold mt-2 leading-relaxed">
-            Debes vincular una cuenta de Google en esta terminal desde la configuración de la Tienda Online para poder sincronizar y ver el consolidado financiero con GoDelivery.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const sum = round2(partners.reduce((s, p) => s + (p.percentage || 0), 0));
+  const valid = Math.abs(sum - 100) < 0.01;
+  // A pérdida no se reparte nada: cada socio queda en cero y se avisa arriba
+  const toShare = Math.max(0, data?.profit || 0);
 
   return (
-    <div className="h-full flex flex-col gap-6 bg-slate-50 p-6 overflow-y-auto custom-scrollbar pb-16">
-      {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0">
-        <div className="flex items-center gap-4 text-left">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-inner">
-            <Calculator className="w-6 h-6 animate-pulse-soft" />
-          </div>
-          <div>
-            <h3 className="text-base font-black text-slate-800">Consolidado y División de Ganancias</h3>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] mt-0.5">Auditoría consolidada de tienda física y app móvil entre socios</p>
-          </div>
-        </div>
+    <div className="h-full overflow-y-auto bg-slate-50">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <PageHeader
+          title="División de ganancias"
+          description="Cuánto le corresponde a cada socio de lo que ganó el negocio."
+          actions={<button onClick={load} disabled={loading} className={`${ui.btn} ${ui.btnSecondary}`}><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualizar</button>}
+        />
 
-        <button 
-          onClick={loadMetrics}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-400 bg-white text-xs font-extrabold uppercase tracking-wider text-slate-650 hover:bg-slate-50 transition-all cursor-pointer"
-        >
-          <RefreshCw className={`w-4 h-4 text-slate-700 ${loading ? 'animate-spin' : ''}`} />
-          <span>Actualizar</span>
-        </button>
-      </div>
-
-      {/* Period Selector */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="flex bg-slate-100 border border-slate-400 rounded-xl p-1 shrink-0">
-          <button 
-            onClick={() => setPeriod('today')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'today' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
-          >
-            Hoy
-          </button>
-          <button 
-            onClick={() => setPeriod('week')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'week' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
-          >
-            7 Días
-          </button>
-          <button 
-            onClick={() => setPeriod('month')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'month' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
-          >
-            30 Días
-          </button>
-          <button 
-            onClick={() => setPeriod('custom')} 
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${period === 'custom' ? 'bg-white text-rose-650 shadow-sm' : 'text-slate-700 hover:text-slate-800'}`}
-          >
-            Personalizado
-          </button>
-        </div>
-
-        {period === 'custom' && (
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <input 
-              type="date" 
-              value={fromDate} 
-              onChange={(e) => setFromDate(e.target.value)} 
-              className="bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none" 
-            />
-            <span className="text-xs font-black text-slate-600 uppercase">al</span>
-            <input 
-              type="date" 
-              value={toDate} 
-              onChange={(e) => setToDate(e.target.value)} 
-              className="bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none" 
-            />
-          </div>
-        )}
-      </div>
-
-      {error ? (
-        <div className="bg-rose-50 border border-rose-150 p-4 rounded-xl text-rose-700 text-xs font-bold flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      ) : loading ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-12">
-          <div className="w-12 h-12 border-4 border-rose-100 border-t-rose-600 rounded-full animate-spin mb-4" />
-          <p className="text-xs font-black uppercase tracking-wider text-slate-600">Consolidando bases de datos física y digital...</p>
-        </div>
-      ) : metrics ? (
-        <div className="space-y-6">
-          {/* Main Consolidated Output */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Consolidated Card */}
-            <div className="bg-gradient-to-tr from-slate-900 via-rose-950 to-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col justify-between border border-rose-500/20 text-left">
-              <div>
-                <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Total Combinado Consolidado</span>
-                <h2 className="text-4xl font-black mt-2 leading-none">{formatCurrency(metrics.consolidated.billing)}</h2>
-                <p className="text-xs text-slate-600 font-bold mt-2">Facturación consolidada (POS + App Go + Comisiones + Repartos)</p>
-              </div>
-              <div className="mt-8 pt-4 border-t border-white/10 flex justify-between items-center">
-                <div>
-                  <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block">Ganancia Neta Consolidada</span>
-                  <span className="text-2xl font-black text-emerald-400">{formatCurrency(metrics.consolidated.netProfit)}</span>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-                  <DollarSign className="w-5 h-5" />
-                </div>
-              </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <Segmented<Period> options={[{ id: 'month', label: 'Este mes' }, { id: 'lastMonth', label: 'Mes pasado' }, { id: 'custom', label: 'Elegir fechas' }]} value={period} onChange={setPeriod} />
+          {period === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input type="date" aria-label="Desde" className={ui.field} value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)} />
+              <span className="text-[13px] text-slate-500">al</span>
+              <input type="date" aria-label="Hasta" className={ui.field} value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} />
             </div>
+          )}
+        </div>
 
-            {/* Split per partner Output */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-150 shadow-sm flex flex-col justify-between text-left space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100">
-                    <Users2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-800">División de Utilidades</h4>
-                    <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-0.5">Configuración personalizada de socios</p>
-                  </div>
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">No se pudo calcular la ganancia. Probá de nuevo con Actualizar.</div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 items-start">
+          <Panel className="lg:col-span-2" title="Ganancia del período">
+            {!data ? (
+              <p className="py-6 text-center text-[13px] text-slate-500">{loading ? 'Calculando…' : 'Sin datos'}</p>
+            ) : (
+              <div className="space-y-2 text-[14px]">
+                <Row label={`Ventas (${data.salesCount})`} value={money(data.revenue)} />
+                <Row label="Costo de lo vendido" value={`− ${money(data.cost)}`} />
+                <Row label="Gastos del negocio" value={`− ${money(data.expenses)}`} />
+                <div className="flex items-baseline justify-between gap-3 pt-2.5 border-t border-slate-200">
+                  <span className="font-semibold text-slate-900">{data.profit < 0 ? 'Pérdida' : 'Ganancia a repartir'}</span>
+                  <span className={`text-[22px] font-bold tabular-nums tracking-tight ${data.profit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{money(data.profit)}</span>
                 </div>
-              </div>
-
-              {/* Controls */}
-              <div className="flex items-end justify-between gap-4 shrink-0">
-                <div className="flex-1">
-                  <label className="text-[9px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Cantidad de Socios</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={partners.length}
-                    onChange={e => handlePartnerCountChange(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:bg-white focus:border-rose-500 transition-all"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleDistributeEqually}
-                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-650 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border-0 cursor-pointer"
-                >
-                  Equitativo
-                </button>
-              </div>
-
-              {/* Partners List */}
-              <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar flex-1">
-                {partners.map((partner, idx) => (
-                  <div key={idx} className="flex items-center gap-3 bg-slate-50 border border-slate-150 rounded-xl p-2">
-                    <input
-                      type="text"
-                      value={partner.name}
-                      placeholder={`Socio ${idx + 1}`}
-                      onChange={e => {
-                        const updated = [...partners];
-                        updated[idx].name = e.target.value;
-                        setPartners(updated);
-                      }}
-                      className="flex-1 bg-white border border-slate-400 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:border-rose-500 uppercase"
-                    />
-                    <div className="w-20 relative flex items-center">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="any"
-                        value={partner.percentage}
-                        onChange={e => {
-                          const updated = [...partners];
-                          updated[idx].percentage = parseFloat(e.target.value) || 0;
-                          setPartners(updated);
-                        }}
-                        className="w-full bg-white border border-slate-400 rounded-lg pl-2 pr-6 py-1 text-xs font-bold text-right outline-none focus:border-rose-500"
-                      />
-                      <span className="absolute right-2 text-xs font-bold text-slate-600 pointer-events-none">%</span>
-                    </div>
-                    <div className="w-28 text-right font-extrabold text-xs text-slate-700">
-                      {formatCurrency(metrics.consolidated.netProfit * (partner.percentage / 100))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Validation Badge */}
-              <div className="pt-3 flex items-center justify-between border-t border-slate-300 shrink-0">
-                <span className="text-[10px] font-black text-slate-600 uppercase">Suma Total</span>
-                {Math.abs(partners.reduce((sum, p) => sum + p.percentage, 0) - 100) < 0.01 ? (
-                  <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-250 px-2.5 py-1 rounded-full uppercase">
-                    Distribución Válida (100%)
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-black text-rose-600 bg-rose-50 border border-rose-250 px-2.5 py-1 rounded-full uppercase">
-                    Suma: {partners.reduce((sum, p) => sum + p.percentage, 0).toFixed(2)}% (Debe ser 100%)
-                  </span>
+                <p className="text-[12.5px] text-slate-500 leading-relaxed pt-1">
+                  Incluye lo vendido fiado y usa el costo actual de cada producto.
+                  {data.goodsPayments > 0 && ` Los ${money(data.goodsPayments)} pagados en mercadería no se restan como gasto porque ya están en el costo.`}
+                </p>
+                {data.noCostProducts > 0 && (
+                  <p className="flex gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] font-medium text-amber-800 leading-relaxed">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{money(data.noCostRevenue)} en ventas de {data.noCostProducts} {data.noCostProducts === 1 ? 'producto' : 'productos'} sin costo cargado: la ganancia real es menor. Cargá los costos antes de repartir.</span>
+                  </p>
                 )}
               </div>
-            </div>
-          </div>
+            )}
+          </Panel>
 
-          {/* Detailed Breakdown POS vs GoDelivery */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* POS Card */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4 text-left">
-              <h4 className="text-[10.5px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-300 pb-3">
-                <Store className="w-4 h-4 text-rose-500" /> Ventra POS (Tienda Física y Web)
-              </h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Ventas Brutas</span>
-                  <span className="text-lg font-black text-slate-800">{formatCurrency(metrics.pos.billing)}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Transacciones</span>
-                  <span className="text-lg font-black text-slate-800">{metrics.pos.count}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner col-span-2">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Utilidad Neta del POS</span>
-                  <span className="text-lg font-black text-emerald-600">{formatCurrency(metrics.pos.netProfit)}</span>
-                </div>
+          <Panel
+            className="lg:col-span-3"
+            title="Socios"
+            icon={Users2}
+            action={<button onClick={shareEqually} className={`${ui.btn} ${ui.btnSecondary}`}>Partes iguales</button>}
+          >
+            <div className="flex items-center justify-between gap-3 pb-3">
+              <span className="text-[13px] font-medium text-slate-600">Cantidad de socios</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setCount(partners.length - 1)} disabled={partners.length <= 1} aria-label="Un socio menos" className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center justify-center cursor-pointer"><Minus className="w-4 h-4 text-slate-600" /></button>
+                <span className="w-9 text-center text-[15px] font-bold text-slate-900 tabular-nums">{partners.length}</span>
+                <button onClick={() => setCount(partners.length + 1)} disabled={partners.length >= MAX_PARTNERS} aria-label="Un socio más" className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center justify-center cursor-pointer"><Plus className="w-4 h-4 text-slate-600" /></button>
               </div>
             </div>
 
-            {/* GoDelivery Card */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4 text-left">
-              <h4 className="text-[10.5px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-300 pb-3">
-                <Smartphone className="w-4 h-4 text-rose-500" /> Go Delivery (Aplicación Móvil)
-              </h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Ventas Digitales</span>
-                  <span className="text-lg font-black text-slate-800">{formatCurrency(metrics.go.billing)}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Pedidos</span>
-                  <span className="text-lg font-black text-slate-800">{metrics.go.count}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner col-span-2 flex justify-between items-center">
-                  <div>
-                    <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Comisiones Cobradas a Comercios</span>
-                    <span className="text-sm font-extrabold text-rose-600">{formatCurrency(metrics.go.commissions || 0)}</span>
+            <div className="space-y-2">
+              {partners.map((p, i) => (
+                <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-slate-200 p-2">
+                  <input
+                    aria-label={`Nombre del socio ${i + 1}`}
+                    className={`${ui.field} flex-1 min-w-[140px]`}
+                    value={p.name}
+                    placeholder={`Socio ${i + 1}`}
+                    onChange={(e) => update(i, { name: e.target.value })}
+                  />
+                  <div className="relative w-24 shrink-0">
+                    <input
+                      aria-label={`Porcentaje de ${p.name || `socio ${i + 1}`}`}
+                      type="number" min="0" max="100" step="any"
+                      className={`${ui.field} w-full pr-6 text-right`}
+                      placeholder="0"
+                      value={p.percentage || ''}
+                      onChange={(e) => update(i, { percentage: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[13px] text-slate-400 pointer-events-none">%</span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Liquidaciones a Repartidores</span>
-                    <span className="text-sm font-extrabold text-rose-600">{formatCurrency(metrics.go.delivery || 0)}</span>
-                  </div>
+                  <p className="flex-1 sm:flex-none sm:w-32 text-right text-[16px] font-bold text-slate-900 tabular-nums">{money(toShare * ((p.percentage || 0) / 100))}</p>
+                  {partners.length > 1 && (
+                    <button onClick={() => setPartners((prev) => prev.filter((_, j) => j !== i))} aria-label={`Quitar a ${p.name || `socio ${i + 1}`}`} className="w-8 h-8 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 flex items-center justify-center shrink-0 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  )}
                 </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-400 shadow-inner col-span-2">
-                  <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block mb-1">Utilidad Neta de la App (Ventas)</span>
-                  <span className="text-lg font-black text-emerald-600">{formatCurrency(metrics.go.netProfit)}</span>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
+
+            <p className={`mt-3 rounded-xl px-3 py-2 text-[13px] font-medium ${valid ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+              {valid ? 'Los porcentajes suman 100%.' : sum < 100 ? `Suman ${sum}%: falta repartir ${round2(100 - sum)}%.` : `Suman ${sum}%: sobran ${round2(sum - 100)}%.`}
+            </p>
+          </Panel>
         </div>
-      ) : (
-        <div className="bg-white p-8 rounded-2xl border border-slate-150 shadow-sm text-center">
-          <p className="text-xs text-slate-700 font-bold uppercase">No se pudieron recuperar datos de consolidado</p>
-        </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-slate-600">{label}</span>
+      <span className="font-semibold text-slate-900 tabular-nums">{value}</span>
     </div>
   );
 }

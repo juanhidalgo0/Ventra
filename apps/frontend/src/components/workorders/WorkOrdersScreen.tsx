@@ -19,6 +19,9 @@ import { WorkOrderReceipt, PRIORITY_LABEL } from './WorkOrderReceipt';
 import { waNumber, dayDiff, dueLabel } from './workOrderUtils';
 import { useWorkRole, isProductionRole } from '../../services/workRole';
 import { useConfirm } from '../common/ConfirmDialog';
+import { useFeature } from '../../stores/businessStore';
+import QuotesListModal from '../pos/QuotesListModal';
+import { QuotePreview } from '../pos/QuoteDocument';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -53,6 +56,8 @@ export default function WorkOrdersScreen() {
   const [openId, setOpenId] = useState<string | null>(params.get('id'));
   // Taller y Diseño: ven los trabajos y los mueven, sin precios ni cobros
   const production = isProductionRole(useWorkRole());
+  const canQuote = useFeature('quotes') && !production;
+  const [showQuotes, setShowQuotes] = useState(false);
 
   const load = () => {
     api.get('/work-orders', { params: { status: filter === 'ACTIVOS' ? 'ACTIVOS' : filter, search: search.trim() || undefined } })
@@ -103,8 +108,10 @@ export default function WorkOrdersScreen() {
   }, [orders, filter]);
 
   if (editing) {
-    return <WorkOrderEditor initial={editing} onExit={(saved) => { setEditing(null); if (saved) { load(); setOpenId(saved.id); } }} />;
+    return <WorkOrderEditor initial={editing} canQuote={canQuote} onExit={(saved) => { setEditing(null); if (saved) { load(); setOpenId(saved.id); } }} />;
   }
+
+  const quotesList = showQuotes && <QuotesListModal onClose={() => setShowQuotes(false)} onToWorkOrder={(draft) => setEditing({ ...blankOrder(), ...draft })} />;
 
   const filters: { id: Filter; label: string; count?: number }[] = [
     { id: 'ACTIVOS', label: 'Para entregar', count: stats.count },
@@ -150,7 +157,12 @@ export default function WorkOrdersScreen() {
   if (phone) {
     return (
       <div className="h-full flex flex-col bg-slate-50">
-        <ScreenHeader title="Encargos" subtitle={subtitle} action={production ? undefined : <HeaderAction icon={Plus} label="Nuevo" onClick={() => setEditing(blankOrder())} />}>
+        <ScreenHeader title="Encargos" subtitle={subtitle} action={production ? undefined : (
+          <div className="flex items-center gap-2">
+            {canQuote && <HeaderAction icon={FileText} label="Presupuestos" onClick={() => setShowQuotes(true)} />}
+            <HeaderAction icon={Plus} label="Nuevo" onClick={() => setEditing(blankOrder())} />
+          </div>
+        )}>
           <div className="space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -172,6 +184,7 @@ export default function WorkOrdersScreen() {
           {list}
         </div>
         {detail}
+        {quotesList}
       </div>
     );
   }
@@ -179,7 +192,12 @@ export default function WorkOrdersScreen() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
-        <PageHeader title="Encargos" description={production ? 'Los trabajos para hacer, ordenados por fecha de entrega.' : 'Los trabajos a pedido, ordenados por fecha de entrega.'} actions={newButton} />
+        <PageHeader title="Encargos" description={production ? 'Los trabajos para hacer, ordenados por fecha de entrega.' : 'Los trabajos a pedido, ordenados por fecha de entrega.'} actions={(
+          <>
+            {canQuote && <button onClick={() => setShowQuotes(true)} className={`${ui.btn} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}><FileText className="w-4 h-4" /> Presupuestos</button>}
+            {newButton}
+          </>
+        )} />
         <div className={`grid grid-cols-2 ${production ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-3`}>
           <StatCard label="Atrasados" value={stats.late} icon={AlertTriangle} tone={stats.late ? 'danger' : 'neutral'} valueTone={stats.late ? 'danger' : 'neutral'} hint="Ya pasó la fecha de entrega" />
           <StatCard label="Para hoy" value={stats.today} icon={CalendarClock} tone="brand" hint="Se entregan hoy" />
@@ -196,6 +214,7 @@ export default function WorkOrdersScreen() {
         {list}
       </div>
       {detail}
+      {quotesList}
     </div>
   );
 }
@@ -265,7 +284,7 @@ function toDraft(o: any) {
 }
 const atLocal = (days: number, hour = 18) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, 0, 0, 0); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 
-function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: any | null) => void }) {
+function WorkOrderEditor({ initial, canQuote, onExit }: { initial: any; canQuote?: boolean; onExit: (saved: any | null) => void }) {
   useMobileFocus();
   const phone = useSmallScreen();
   const products = usePOSStore((s) => s.products);
@@ -283,9 +302,13 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
   const [method, setMethod] = useState('CASH');
   const [productQuery, setProductQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [askValidity, setAskValidity] = useState(false);
+  const [savedQuote, setSavedQuote] = useState<any | null>(null);
   const [askOwnerKey, ownerKeyPanel] = useOwnerKey();
   const cash = useCashSession();
   const methods = useMemo(() => [...getPaymentMethods().filter((m) => m.id !== 'DEBT'), { id: 'TRANSFERENCIA', name: 'Transferencia' }], []);
+  // Un encargo nuevo escrito a mano también se puede guardar como presupuesto (no uno que ya viene de otro lado)
+  const canSaveAsQuote = canQuote && initial.isNew && !initial.source && !initial.quoteId;
 
   useEffect(() => { api.get('/clients', { silent: true } as any).then(({ data }) => setClients(Array.isArray(data) ? data : data?.data || [])).catch(() => {}); }, []);
 
@@ -318,6 +341,7 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
         ...(client ? { clientId: client.id } : { clientName: clientName.trim(), clientPhone: clientPhone.trim() }),
         ...(initial.source ? { source: initial.source, onlineOrderId: initial.onlineOrderId } : {}),
+        ...(initial.quoteId ? { quoteId: initial.quoteId } : {}),
       };
       let data: any;
       try {
@@ -338,6 +362,37 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
       onExit(data);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'No se pudo guardar el encargo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quoteItems = () => lines
+    .map((l) => ({ productId: l.productId || undefined, productName: l.description.trim(), specs: l.specs.trim() || undefined, quantity: parseAmount(l.quantity), unitPrice: parseAmount(l.unitPrice) || 0 }))
+    .filter((l) => l.productName && l.quantity > 0);
+
+  const startQuote = () => {
+    if (!quoteItems().length) { toast.error('Cargá al menos un trabajo con su cantidad'); return; }
+    if (!client && !clientName.trim()) { toast.error('Elegí el cliente o cargá uno nuevo'); return; }
+    if (parseAmount(deposit) > 0) { toast.error('La seña se cobra cuando se pasa a encargo: borrala para guardar el presupuesto'); return; }
+    setAskValidity(true);
+  };
+
+  const saveQuote = async (validDays: number) => {
+    setSaving(true);
+    try {
+      const { data } = await api.post('/quotes', {
+        clientName: client ? client.name : clientName.trim(),
+        clientPhone: (client ? client.phone : clientPhone.trim()) || undefined,
+        notes: notes.trim() || undefined,
+        validDays,
+        items: quoteItems(),
+      });
+      toast.success(`Presupuesto ${data.quoteNumber} guardado`);
+      setAskValidity(false);
+      setSavedQuote(data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo guardar el presupuesto');
     } finally {
       setSaving(false);
     }
@@ -478,11 +533,26 @@ function WorkOrderEditor({ initial, onExit }: { initial: any; onExit: (saved: an
           <p className="text-[12px] text-slate-500">Total</p>
           <p className="text-[20px] font-bold text-slate-900 tabular-nums">{money(total)}</p>
         </div>
+        {canSaveAsQuote && (
+          <button onClick={startQuote} disabled={saving} className="h-12 px-4 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-[14px] font-bold flex items-center gap-2 cursor-pointer">
+            <FileText className="w-4 h-4" /> Presupuesto
+          </button>
+        )}
         <button onClick={save} disabled={saving} className="h-12 px-6 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[15px] font-bold flex items-center gap-2 cursor-pointer">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Guardar encargo
         </button>
       </div>
       {ownerKeyPanel}
+      {askValidity && (
+        <Panel title="¿Hasta cuándo vale el presupuesto?" onClose={() => setAskValidity(false)}>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {[3, 7, 15, 30].map((d) => (
+              <button key={d} disabled={saving} onClick={() => saveQuote(d)} className="h-12 rounded-xl border-2 border-slate-200 text-[14px] font-semibold text-slate-700 hover:border-rose-500 disabled:opacity-50 cursor-pointer">{d} días</button>
+            ))}
+          </div>
+        </Panel>
+      )}
+      {savedQuote && <QuotePreview quote={savedQuote} onClose={() => onExit(null)} />}
     </div>
   );
 }

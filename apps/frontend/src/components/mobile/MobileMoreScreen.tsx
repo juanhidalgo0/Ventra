@@ -28,6 +28,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
       { path: '/gastos', label: 'Gastos', hint: 'Del mes', icon: Receipt, tint: 'bg-red-50 text-red-600' },
       { path: '/clients', label: 'Fiado', hint: 'Quién te debe', icon: Users, tint: 'bg-amber-50 text-amber-700' },
       { path: '/treasury', label: 'Tesorería', hint: 'Bancos y billeteras', icon: Landmark, tint: 'bg-sky-50 text-sky-700' },
+      { path: '/earnings-division', label: 'Socios', hint: 'División de ganancias', icon: Users, tint: 'bg-emerald-50 text-emerald-700' },
     ],
   },
   {
@@ -72,7 +73,7 @@ export default function MobileMoreScreen() {
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
       && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && (i.path !== '/encargos' || hasFeature('workorders'))
-      && (i.path !== '/anulaciones' || owner)
+      && ((i.path !== '/anulaciones' && i.path !== '/earnings-division') || owner)
       && (i.path !== '/pacientes/obras-sociales' || consultorio)
       && !(i.noCaja && planFeatures.caja && !consultorio)
       // Solo turnos (o consultorio): agenda, clientes y cobros ya son pestañas

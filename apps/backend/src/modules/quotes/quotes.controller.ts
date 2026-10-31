@@ -26,12 +26,12 @@ export class QuotesController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: 'PENDING' | 'CONVERTED' | 'EXPIRED' | 'CANCELLED') {
-    return this.quotesService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body('status') status: 'PENDING' | 'CONVERTED' | 'EXPIRED' | 'CANCELLED', @Request() req: any) {
+    return this.quotesService.updateStatus(id, status, req.user);
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.quotesService.delete(id);
+  delete(@Param('id') id: string, @Body('adminPassword') adminPassword: string, @Request() req: any) {
+    return this.quotesService.delete(id, req.user, adminPassword);
   }
 }
