@@ -20,6 +20,7 @@ import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
 import PointChargeOverlay from './PointChargeOverlay';
 import { useAuthStore } from '../../stores/authStore';
 import { COMING_SOON } from '../../utils/comingSoon';
+import { applyManualSurcharge, manualSurchargeNote, parseSurchargeValue, type ManualSurcharge } from '../mobile/checkout';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -147,6 +148,23 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     api.get('/surcharges').then(res => setSurcharges(res.data)).catch(() => {});
   }, []);
 
+  /** Recargo puesto a mano al cobrar: monto fijo o porcentaje sobre el ticket, con motivo opcional */
+  const [manualSurcharge, setManualSurcharge] = useState<ManualSurcharge | null>(null);
+  const [surchargeEditor, setSurchargeEditor] = useState<{ mode: 'FIXED' | 'PCT'; value: string; reason: string } | null>(null);
+  const surchargeEditorRef = useRef(false);
+  surchargeEditorRef.current = !!surchargeEditor;
+  const manualSurchargeAllowed = !isDebtPayment && !practice;
+  const applySurchargeEditor = () => {
+    if (!surchargeEditor) return;
+    const value = parseSurchargeValue(surchargeEditor.mode, surchargeEditor.value);
+    if (!Number.isFinite(value) || value <= 0) { setManualSurcharge(null); setSurchargeEditor(null); return; }
+    if (surchargeEditor.mode === 'PCT' && value > 1000) { toast.error('El porcentaje es demasiado alto'); return; }
+    setManualSurcharge({ mode: surchargeEditor.mode, value, reason: surchargeEditor.reason.trim().slice(0, 60) });
+    setSurchargeEditor(null);
+  };
+  const applySurchargeEditorRef = useRef(applySurchargeEditor);
+  applySurchargeEditorRef.current = applySurchargeEditor;
+
   const processingRef = useRef(false);
   // Confirmación del consumo propio (dentro del cobro, con el estilo de la app). Mientras está
   // abierta, Enter confirma y Escape cancela: no finalizan la venta ni cierran el cobro.
@@ -250,24 +268,34 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       return { ...item };
     });
     
-    const finalTotal = total + totalSurcharge;
-    
+    // Recargo a mano (barra, servicio, envío): repartido entre los productos
+    const { items: finalItems, manualTotal } = applyManualSurcharge(baseItems, adjustedItems, products, manualSurcharge);
+
+    const finalTotal = Math.round((total + totalSurcharge + manualTotal) * 100) / 100;
+
     return {
-      adjustedItems,
+      adjustedItems: finalItems,
       finalTotal,
       totalSurcharge,
+      manualTotal,
       surchargedProductsList
     };
   };
 
-  const { adjustedItems, finalTotal, totalSurcharge, surchargedProductsList } = getAdjustedTotalAndItems();
+  const { adjustedItems, finalTotal, totalSurcharge, manualTotal, surchargedProductsList } = getAdjustedTotalAndItems();
 
   useEffect(() => {
-    onSurchargeChange?.(totalSurcharge);
+    onSurchargeChange?.(totalSurcharge + manualTotal);
     return () => {
       onSurchargeChange?.(0);
     };
-  }, [totalSurcharge, onSurchargeChange]);
+  }, [totalSurcharge, manualTotal, onSurchargeChange]);
+
+  /** Notas de la venta: Mesa / Para llevar / Delivery (gastronomía) y el recargo a mano */
+  const saleNotes = () => {
+    const gastro = useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : '';
+    return [gastro, manualSurchargeNote(manualSurcharge, manualTotal, formatPrice)].filter(Boolean).join('\n') || undefined;
+  };
 
   const disableChangeCalc = localStorage.getItem('pos_disable_change_calculator') === 'true';
   const perfMode = localStorage.getItem('performance_mode') === 'true';
@@ -359,6 +387,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         e.stopImmediatePropagation();
         if (e.key === 'Enter') registerConsumptionRef.current();
         else if (e.key === 'Escape') setAskConsumption(false);
+        return;
+      }
+      // Escribiendo el recargo: los números son el monto, Enter lo aplica y Escape lo cierra
+      if (surchargeEditorRef.current) {
+        if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); applySurchargeEditorRef.current(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); setSurchargeEditor(null); }
         return;
       }
       const now = Date.now();
@@ -722,8 +756,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           orderId: usePOSStore.getState().activeOrder?.id,
           // Pedido de GO cobrado en el mostrador: queda unido a esta venta
           goOrderId: usePOSStore.getState().activeGoOrder?.id,
-          // Gastronomía: Mesa / Para llevar / Delivery, impreso en el ticket
-          notes: useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : undefined,
+          // Gastronomía: Mesa / Para llevar / Delivery, y el recargo a mano: impresos en el ticket
+          notes: saleNotes(),
         });
         if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
         // Turnos de la agenda que iban en el ticket: quedan cobrados con este medio
@@ -760,6 +794,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           orderId: usePOSStore.getState().activeOrder?.id,
           // Pedido de GO cobrado en el mostrador: queda unido a esta venta
           goOrderId: usePOSStore.getState().activeGoOrder?.id,
+          notes: saleNotes(),
           queuedAt: new Date().toISOString()
         };
         const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales_queue') || '[]');
@@ -774,6 +809,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           total: finalTotal,
           createdAt: new Date().toISOString(),
           paymentMethodSummary: paymentType,
+          notes: saleNotes(),
           items: adjustedItems.map(ai => ({
             productName: (ai as any).productName || products?.find((p: any) => p.id === ai.productId)?.name || 'Producto',
             quantity: ai.quantity,
@@ -1074,7 +1110,8 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         className="card relative bg-white dark:bg-slate-900 w-full max-w-xl p-4 md:p-5 h-[85vh] sm:h-auto max-h-[90vh] sm:max-h-[95vh] flex flex-col shadow-xl rounded-2xl border border-slate-200 dark:border-slate-800 outline-none"
         tabIndex={-1}
         ref={(el: any) => {
-          if (el && !isProcessing && !showSuccess && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
+          // Mientras se escribe el recargo, el foco queda en sus casilleros
+          if (el && !isProcessing && !showSuccess && !surchargeEditor && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
             el.focus();
           }
         }}
@@ -1105,6 +1142,58 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             <p className="text-[10px] font-semibold text-slate-400 mb-1 uppercase tracking-[0.2em]">Total a Cobrar</p>
             <p className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">{formatPrice(finalTotal)}</p>
           </div>
+
+          {manualSurchargeAllowed && (surchargeEditor ? (
+            <div className="p-3 rounded-2xl border-2 border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/25 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-xl border border-amber-300 dark:border-amber-800 overflow-hidden shrink-0">
+                  {(['FIXED', 'PCT'] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => setSurchargeEditor({ ...surchargeEditor, mode: m })}
+                      className={`px-3 py-2 text-sm font-black cursor-pointer ${surchargeEditor.mode === m ? 'bg-amber-500 text-white' : 'bg-white dark:bg-slate-900 text-amber-800 dark:text-amber-300'}`}>
+                      {m === 'FIXED' ? '$' : '%'}
+                    </button>
+                  ))}
+                </div>
+                <input autoFocus inputMode="decimal" value={surchargeEditor.value}
+                  onChange={(e) => setSurchargeEditor({ ...surchargeEditor, value: e.target.value.replace(/[^\d.,]/g, '') })}
+                  placeholder={surchargeEditor.mode === 'FIXED' ? 'Monto del recargo' : 'Porcentaje'}
+                  className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold text-base outline-none focus:ring-2 focus:ring-amber-400" />
+              </div>
+              <input value={surchargeEditor.reason} maxLength={60}
+                onChange={(e) => setSurchargeEditor({ ...surchargeEditor, reason: e.target.value })}
+                placeholder="Motivo (opcional): Barra, servicio, envío..."
+                className="w-full px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setSurchargeEditor(null)}
+                  className="h-9 px-3 rounded-xl border border-slate-300 dark:border-slate-600 text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 cursor-pointer">
+                  Cancelar <span className="ml-1 text-[11px] text-slate-400 font-mono">Esc</span>
+                </button>
+                <button type="button" onClick={applySurchargeEditor}
+                  className="h-9 px-3 rounded-xl text-[13px] font-bold text-white bg-amber-500 hover:bg-amber-600 cursor-pointer">
+                  Aplicar recargo <span className="ml-1 text-[11px] text-white/70 font-mono">Enter</span>
+                </button>
+              </div>
+            </div>
+          ) : manualSurcharge && manualTotal > 0 ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border-2 border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/25">
+              <span className="text-sm text-amber-950 dark:text-amber-100 truncate">
+                <b>Recargo {manualSurcharge.mode === 'PCT' ? `${manualSurcharge.value}%` : ''}</b>
+                {manualSurcharge.reason ? ` · ${manualSurcharge.reason}` : ''}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="font-mono font-black text-amber-700 dark:text-amber-300">+{formatPrice(manualTotal)}</span>
+                <button type="button" onClick={() => setSurchargeEditor({ mode: manualSurcharge.mode, value: String(manualSurcharge.value), reason: manualSurcharge.reason })}
+                  className="px-2 py-1 rounded-lg text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 cursor-pointer">Cambiar</button>
+                <button type="button" onClick={() => setManualSurcharge(null)} title="Quitar el recargo"
+                  className="p-1 rounded-lg text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 cursor-pointer"><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setSurchargeEditor({ mode: 'FIXED', value: '', reason: '' })}
+              className="w-full py-2 px-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:border-amber-400 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer transition-colors">
+              + Agregar recargo ($ o %)
+            </button>
+          ))}
 
           <div className="space-y-3">
             {finalTotal >= 0 ? (

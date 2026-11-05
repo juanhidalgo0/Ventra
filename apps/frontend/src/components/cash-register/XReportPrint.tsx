@@ -1,3 +1,4 @@
+import { manualSurchargeOfNotes } from '../mobile/checkout';
 import { createPortal } from 'react-dom';
 
 /**
@@ -98,6 +99,11 @@ export default function XReportPrint({ session }: { session: any }) {
   const data = parseXSession(session);
   if (!data) return null;
   const consumption = shiftConsumption(session);
+  // Recargos puestos a mano al cobrar (barra, servicio...): ya están dentro de las ventas
+  const manualSurcharges = (session.sales || [])
+    .map((sale: any) => ({ sale, rec: manualSurchargeOfNotes(sale.notes) }))
+    .filter((x: any) => x.rec) as { sale: any; rec: { amount: number; reason: string } }[];
+  const manualSurchargeTotal = manualSurcharges.reduce((t, x) => t + x.rec.amount, 0);
   const cashSales = data.summary.paymentBreakdown?.CASH || 0;
   const cloverSales = data.summary.paymentBreakdown?.CLOVER || 0;
   const mpSales = data.summary.paymentBreakdown?.MERCADOPAGO || 0;
@@ -403,6 +409,30 @@ export default function XReportPrint({ session }: { session: any }) {
                   </tr>
                 )))}
               </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Recargos a mano del turno (informativo: ya están sumados en las ventas) */}
+        {manualSurcharges.length > 0 && (
+          <div style={{ marginBottom: '2.5mm' }}>
+            <h3 style={{ fontSize: '9px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #000000', paddingBottom: '1mm', marginBottom: '1.5mm' }}>Recargos al cobrar (incluidos en las ventas)</h3>
+            <table style={{ width: '100%', fontSize: '8.5px', borderCollapse: 'collapse', color: '#000000' }}>
+              <tbody>
+                {manualSurcharges.map(({ sale, rec }) => (
+                  <tr key={sale.id} style={{ borderBottom: '1px solid #000000' }}>
+                    <td style={{ padding: '2px 3px' }}>Ticket #{String(sale.saleNumber ?? '').padStart(6, '0')}</td>
+                    <td style={{ padding: '2px 3px' }}>{rec.reason || 'Sin motivo'}</td>
+                    <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(rec.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 'bold' }}>
+                  <td colSpan={2} style={{ padding: '2px 3px', textTransform: 'uppercase' }}>Total recargos:</td>
+                  <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(manualSurchargeTotal)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}

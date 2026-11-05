@@ -126,7 +126,7 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
         <div style={{ border: '2px solid #000', padding: '4px 6px', margin: '4px 0' }}>
           <div style={{ textAlign: 'center', fontSize: '12pt', fontWeight: 'bold' }}>{String(createdSale.notes).split('\n')[0]}</div>
           {/* Aclaraciones de la comanda ("1x Pizza muzzarella: sin aceitunas") */}
-          {String(createdSale.notes).split('\n').slice(1).map((line: string, i: number) => (
+          {String(createdSale.notes).split('\n').slice(1).filter((line: string) => !line.startsWith('Recargo +')).map((line: string, i: number) => (
             <div key={i} style={{ fontSize: '7.5pt', fontWeight: 'bold', marginTop: '2px' }}>» {line}</div>
           ))}
         </div>
@@ -194,6 +194,10 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
             ))}
           </>
         )}
+        {/* Recargo puesto a mano al cobrar: ya está sumado en los importes de arriba */}
+        {String(createdSale.notes || '').split('\n').filter((line: string) => line.startsWith('Recargo +')).map((line: string, i: number) => (
+          <div key={`rec-${i}`} style={{ fontSize: '7.5pt', fontWeight: 'normal' }}>Incluye {line.charAt(0).toLowerCase() + line.slice(1)}</div>
+        ))}
         <div style={{ ...row, fontSize: '10pt', fontWeight: 900, borderTop: '1px dashed #000', paddingTop: '4px' }}>
           <span>TOTAL:</span>
           <span>{formatPrice(total)}</span>

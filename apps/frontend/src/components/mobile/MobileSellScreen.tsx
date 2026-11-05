@@ -12,7 +12,7 @@ import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, Emp
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 import { useCashSession } from './useCashSession';
 import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart } from '../../services/posTrail';
-import { applySurcharges, getPaymentMethods } from './checkout';
+import { applySurcharges, applyManualSurcharge, getPaymentMethods, manualSurchargeNote, parseSurchargeValue, type ManualSurcharge } from './checkout';
 import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
 import { hasFeature } from '../../stores/businessStore';
 import { packOf } from '../../stores/posStore';
@@ -353,18 +353,32 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
   const [surcharges, setSurcharges] = useState<any[]>([]);
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState<{ total: number; change: number; number?: number } | null>(null);
+  // Recargo puesto a mano (barra, servicio, envío): $ fijo o % sobre el ticket
+  const [manual, setManual] = useState<ManualSurcharge | null>(null);
+  const [manualEdit, setManualEdit] = useState<{ mode: 'FIXED' | 'PCT'; value: string; reason: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setMethod('CASH'); setReceived(''); setClientId(''); setClientSearch(''); setDone(null);
+    setMethod('CASH'); setReceived(''); setClientId(''); setClientSearch(''); setDone(null); setManual(null); setManualEdit(null);
     api.get('/surcharges').then((r) => setSurcharges(r.data || [])).catch(() => setSurcharges([]));
   }, [open]);
 
-  const { items, totalSurcharge } = useMemo(
-    () => (open ? applySurcharges(buildItems(), products, surcharges, method) : { items: [], totalSurcharge: 0 }),
-    [open, method, surcharges, total],
-  );
-  const finalTotal = Math.round((total + totalSurcharge) * 100) / 100;
+  const { items, totalSurcharge, manualTotal } = useMemo(() => {
+    if (!open) return { items: [] as any[], totalSurcharge: 0, manualTotal: 0 };
+    const base = buildItems();
+    const withMethod = applySurcharges(base, products, surcharges, method);
+    const withManual = applyManualSurcharge(base, withMethod.items, products, manual);
+    return { items: withManual.items, totalSurcharge: withMethod.totalSurcharge, manualTotal: withManual.manualTotal };
+  }, [open, method, surcharges, total, manual]);
+  const finalTotal = Math.round((total + totalSurcharge + manualTotal) * 100) / 100;
+  const applyManual = () => {
+    if (!manualEdit) return;
+    const value = parseSurchargeValue(manualEdit.mode, manualEdit.value);
+    if (!Number.isFinite(value) || value <= 0) { setManual(null); setManualEdit(null); return; }
+    if (manualEdit.mode === 'PCT' && value > 1000) { toast.error('El porcentaje es demasiado alto'); return; }
+    setManual({ mode: manualEdit.mode, value, reason: manualEdit.reason.trim().slice(0, 60) });
+    setManualEdit(null);
+  };
   const receivedAmount = parseAmount(received);
   const change = method === 'CASH' && receivedAmount > finalTotal ? receivedAmount - finalTotal : 0;
   const cashShort = method === 'CASH' && received !== '' && receivedAmount < finalTotal;
@@ -397,6 +411,7 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         payments: [{ method, amount: finalTotal }],
         clientId: needsClient ? clientId : undefined,
         appliedPromotions: appliedPromos(),
+        notes: manualSurchargeNote(manual, manualTotal, money),
       });
       navigator.vibrate?.([20, 40, 20]);
       haptic([20, 40, 30]);
@@ -450,6 +465,47 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         <p className="text-[36px] font-bold text-slate-900 tabular-nums tracking-tight leading-tight">{money(finalTotal)}</p>
         {totalSurcharge > 0 && <p className="text-[12px] text-amber-700">Incluye {money(totalSurcharge)} de recargo por el medio de pago</p>}
       </div>
+
+      {manualEdit ? (
+        <div className="mt-2 p-3 rounded-2xl border border-amber-300 bg-amber-50 space-y-2">
+          <div className="flex gap-2">
+            <div className="flex rounded-xl border border-amber-300 overflow-hidden shrink-0">
+              {(['FIXED', 'PCT'] as const).map((m) => (
+                <button key={m} onClick={() => setManualEdit({ ...manualEdit, mode: m })}
+                  className={`w-11 h-11 text-[15px] font-bold ${manualEdit.mode === m ? 'bg-amber-500 text-white' : 'bg-white text-amber-800'}`}>
+                  {m === 'FIXED' ? '$' : '%'}
+                </button>
+              ))}
+            </div>
+            <input autoFocus inputMode="decimal" value={manualEdit.value}
+              onChange={(e) => setManualEdit({ ...manualEdit, value: e.target.value.replace(/[^\d.,]/g, '') })}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyManual(); }}
+              placeholder={manualEdit.mode === 'FIXED' ? 'Monto' : 'Porcentaje'}
+              className="flex-1 min-w-0 h-11 px-3 rounded-xl border border-amber-300 bg-white text-[16px] font-semibold tabular-nums outline-none" />
+          </div>
+          <input value={manualEdit.reason} maxLength={60} onChange={(e) => setManualEdit({ ...manualEdit, reason: e.target.value })}
+            placeholder="Motivo (opcional): Barra, servicio..."
+            className="w-full h-11 px-3 rounded-xl border border-amber-200 bg-white text-[16px] outline-none" />
+          <div className="flex gap-2">
+            <button onClick={() => setManualEdit(null)} className="flex-1 h-10 rounded-xl border border-slate-300 bg-white text-[13.5px] font-medium text-slate-700">Cancelar</button>
+            <button onClick={applyManual} className="flex-1 h-10 rounded-xl bg-amber-500 text-[13.5px] font-semibold text-white">Aplicar recargo</button>
+          </div>
+        </div>
+      ) : manual && manualTotal > 0 ? (
+        <div className="mt-2 flex items-center justify-between gap-2 px-3 h-11 rounded-2xl border border-amber-300 bg-amber-50">
+          <span className="text-[13px] text-amber-900 truncate"><b>Recargo{manual.mode === 'PCT' ? ` ${manual.value}%` : ''}</b>{manual.reason ? ` · ${manual.reason}` : ''}</span>
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="text-[13.5px] font-bold text-amber-800 tabular-nums">+{money(manualTotal)}</span>
+            <button onClick={() => setManualEdit({ mode: manual.mode, value: String(manual.value), reason: manual.reason })} className="px-2 h-8 text-[12.5px] font-semibold text-amber-800">Cambiar</button>
+            <button onClick={() => setManual(null)} aria-label="Quitar el recargo" className="w-8 h-8 flex items-center justify-center text-amber-800"><X className="w-4 h-4" /></button>
+          </span>
+        </div>
+      ) : (
+        <button onClick={() => setManualEdit({ mode: 'FIXED', value: '', reason: '' })}
+          className="mt-2 w-full h-10 rounded-2xl border border-dashed border-slate-300 text-[13px] font-medium text-slate-500">
+          + Agregar recargo ($ o %)
+        </button>
+      )}
 
       <p className="mt-3 mb-2 text-[12.5px] font-medium text-slate-500">Medio de pago</p>
       <div className="grid grid-cols-2 gap-2">

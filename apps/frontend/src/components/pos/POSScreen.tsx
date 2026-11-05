@@ -3096,7 +3096,7 @@ export default function POSScreen() {
                 {activePaymentSurcharge > 0 && (
                   <div className="flex items-center justify-between text-xs font-bold text-amber-600 dark:text-amber-400 animate-in slide-in-from-bottom-1">
                     <span className="flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Recargo Método de Pago
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Recargo
                     </span>
                     <span className="font-bold">+{formatPrice(activePaymentSurcharge)}</span>
                   </div>
