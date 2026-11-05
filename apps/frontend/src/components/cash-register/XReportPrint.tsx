@@ -1,4 +1,4 @@
-import { manualSurchargeOfNotes } from '../mobile/checkout';
+import { manualSurchargeOfNotes, SERVICE_PRODUCT_ID } from '../mobile/checkout';
 import { createPortal } from 'react-dom';
 
 /**
@@ -104,6 +104,10 @@ export default function XReportPrint({ session }: { session: any }) {
     .map((sale: any) => ({ sale, rec: manualSurchargeOfNotes(sale.notes) }))
     .filter((x: any) => x.rec) as { sale: any; rec: { amount: number; reason: string } }[];
   const manualSurchargeTotal = manualSurcharges.reduce((t, x) => t + x.rec.amount, 0);
+  // Cargos por servicio (barra, armado...): ingreso aparte de la venta de productos
+  const serviceLines = (session.sales || []).flatMap((sale: any) =>
+    (sale.items || []).filter((it: any) => it.productId === SERVICE_PRODUCT_ID).map((it: any) => ({ sale, name: it.productName, total: Number(it.total) || 0 })));
+  const servicesIncome = serviceLines.reduce((t: number, x: any) => t + x.total, 0);
   const cashSales = data.summary.paymentBreakdown?.CASH || 0;
   const cloverSales = data.summary.paymentBreakdown?.CLOVER || 0;
   const mpSales = data.summary.paymentBreakdown?.MERCADOPAGO || 0;
@@ -409,6 +413,30 @@ export default function XReportPrint({ session }: { session: any }) {
                   </tr>
                 )))}
               </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Ingresos por servicios del turno (informativo: ya están sumados en las ventas) */}
+        {serviceLines.length > 0 && (
+          <div style={{ marginBottom: '2.5mm' }}>
+            <h3 style={{ fontSize: '9px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1.5px solid #000000', paddingBottom: '1mm', marginBottom: '1.5mm' }}>Ingresos por servicios (incluidos en las ventas)</h3>
+            <table style={{ width: '100%', fontSize: '8.5px', borderCollapse: 'collapse', color: '#000000' }}>
+              <tbody>
+                {serviceLines.map((x: any, i: number) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #000000' }}>
+                    <td style={{ padding: '2px 3px' }}>Ticket #{String(x.sale.saleNumber ?? '').padStart(6, '0')}</td>
+                    <td style={{ padding: '2px 3px' }}>{x.name}</td>
+                    <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(x.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 'bold' }}>
+                  <td colSpan={2} style={{ padding: '2px 3px', textTransform: 'uppercase' }}>Total servicios:</td>
+                  <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(servicesIncome)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}

@@ -110,7 +110,7 @@ export class ProductsService {
 
   private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean }): any {
     // Hide the internal "Venta Rápida" product from inventory lists.
-    const where: any = { id: { not: 'VENTA_RAPIDA' } };
+    const where: any = { id: { notIn: ['VENTA_RAPIDA', 'SERVICIO'] } };
     if (params?.isActive !== undefined) {
       where.isActive = params.isActive;
     } else {
@@ -308,7 +308,7 @@ export class ProductsService {
   async getPOSCatalog(updatedAfter?: string) {
     // "Venta Rápida" is opened with code "1" / F1, never shown as a catalog card.
     // "Pago de cuenta corriente" es interno (lo usan los cobros de fiado): no se vende tocándolo.
-    const where: any = { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } };
+    const where: any = { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'] } };
     if (updatedAfter) {
       const date = new Date(updatedAfter);
       if (!isNaN(date.getTime())) {

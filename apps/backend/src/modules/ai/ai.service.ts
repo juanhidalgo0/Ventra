@@ -57,7 +57,7 @@ export class AiService {
    */
   async parseOrder(text: string, files: { buffer: Buffer; mimetype?: string }[]) {
     const products = await this.prisma.product.findMany({
-      where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } },
+      where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'] } },
       select: { id: true, name: true, unitsPerPack: true, salePrice: true, packPrice: true, stock: true },
     });
     const images = await this.shrink(files, 1600);

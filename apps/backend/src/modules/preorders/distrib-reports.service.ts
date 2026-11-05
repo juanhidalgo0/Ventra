@@ -143,7 +143,7 @@ export class DistribReportsService {
     });
     const bySupplier = new Map<string, any>();
     for (const p of products) {
-      if (['VENTA_RAPIDA', 'PAGO_CTA_CTE'].includes(p.id)) continue;
+      if (['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'].includes(p.id)) continue;
       const committed = need.get(p.id) || 0;
       const missing = committed + (p.minStock || 0) - (p.stock || 0);
       if (missing <= 1e-9) continue;

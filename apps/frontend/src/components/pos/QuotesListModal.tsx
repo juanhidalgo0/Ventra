@@ -1,3 +1,4 @@
+import { buildServiceProduct, SERVICE_PRODUCT_ID } from '../mobile/checkout';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, X, Search, ShoppingCart, Share2, Trash2, RefreshCw, Ban, Printer, ClipboardList, AlertTriangle, KeyRound } from 'lucide-react';
@@ -22,7 +23,9 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 const moneyOf = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR');
 /** Renglón con un producto del catálogo (las promos, lo borrado y la venta rápida no lo tienen) */
-const isLinked = (item: any) => !!item.product && item.product.id !== QUICK_SALE_PRODUCT_ID;
+const isLinked = (item: any) => !!item.product && item.product.id !== QUICK_SALE_PRODUCT_ID && item.product.id !== SERVICE_PRODUCT_ID;
+/** Renglón que no es un producto del catálogo ni un cargo por servicio (entra como venta rápida) */
+const isLoose = (item: any) => !isLinked(item) && item.productId !== SERVICE_PRODUCT_ID;
 const priceChanged = (item: any) => isLinked(item) && Math.abs(Number(item.product.salePrice) - item.unitPrice) > 0.009;
 
 type QuoteAction = 'cart' | 'order';
@@ -70,7 +73,10 @@ export default function QuotesListModal({ onClose, onLoadCart, onToWorkOrder }: 
     clearCart();
     quote.items.forEach((item: any) => {
       const name = `${item.productName || item.product?.name || 'Item'}${item.specs ? ` (${String(item.specs).slice(0, 80)})` : ''}`;
-      if (isLinked(item)) {
+      if (item.productId === SERVICE_PRODUCT_ID) {
+        // Cargo por servicio: siempre con el precio del presupuesto (no tiene precio de lista)
+        addToCart({ ...buildServiceProduct(item.unitPrice), name, lineTag: item.id }, item.unitPrice, item.quantity);
+      } else if (isLinked(item)) {
         addToCart({ ...item.product, name }, todayPrices ? undefined : item.unitPrice, item.quantity);
       } else {
         // Sin producto en el catálogo: entra como venta rápida, con su nombre y su precio
@@ -107,7 +113,7 @@ export default function QuotesListModal({ onClose, onLoadCart, onToWorkOrder }: 
       toast.error('Este presupuesto no tiene productos');
       return;
     }
-    const needsReview = quote.status === 'EXPIRED' || quote.items.some(priceChanged) || (action === 'cart' && quote.items.some((i: any) => !isLinked(i)));
+    const needsReview = quote.status === 'EXPIRED' || quote.items.some(priceChanged) || (action === 'cart' && quote.items.some(isLoose));
     if (needsReview) { setReview({ quote, action }); return; }
     if (action === 'cart') loadToCart(quote, false);
     else toWorkOrder(quote, false);
@@ -331,7 +337,7 @@ export default function QuotesListModal({ onClose, onLoadCart, onToWorkOrder }: 
       {review && (() => {
         const { quote, action } = review;
         const changed = quote.items.filter(priceChanged);
-        const unlinked = action === 'cart' ? quote.items.filter((i: any) => !isLinked(i)) : [];
+        const unlinked = action === 'cart' ? quote.items.filter(isLoose) : [];
         const todayTotal = quote.items.reduce((s: number, i: any) => s + (isLinked(i) ? Number(i.product.salePrice) : i.unitPrice) * i.quantity, 0);
         return (
           <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">

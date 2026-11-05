@@ -53,7 +53,8 @@ export function applyManualSurcharge<T extends { productId: string; quantity: nu
   surcharge: ManualSurcharge | null,
 ) {
   const priceOf = (item: T) => item.price ?? (products?.find((p: any) => p.id === item.productId)?.salePrice || 0);
-  const lineBase = (item: T) => Math.max(0, priceOf(item) * item.quantity - (item.discount || 0));
+  // Los cargos por servicio no llevan recargo
+  const lineBase = (item: T) => (item.productId === 'SERVICIO' ? 0 : Math.max(0, priceOf(item) * item.quantity - (item.discount || 0)));
   const baseSum = baseItems.reduce((s, it) => s + lineBase(it), 0);
   if (!surcharge || !(surcharge.value > 0) || baseSum <= 0) return { items: adjustedItems, manualTotal: 0 };
   let manualTotal = 0;
@@ -103,4 +104,22 @@ export function manualSurchargeOfNotes(notes?: string | null): { amount: number;
   const amount = Number(m[1].replace(/\./g, '').replace(',', '.'));
   const reason = line.includes(' · ') ? line.slice(line.indexOf(' · ') + 3) : '';
   return Number.isFinite(amount) && amount > 0 ? { amount, reason } : null;
+}
+
+/** Producto interno de los cargos por servicio (barra, armado, envío): sin stock ni costo */
+export const SERVICE_PRODUCT_ID = 'SERVICIO';
+export type ServiceCharge = { name: string; amount: number };
+
+/** Los cargos por servicio como renglones del ticket: van aparte de los productos y sin recargos */
+export function serviceItems(services: ServiceCharge[]) {
+  return services
+    .filter((s) => s.amount > 0)
+    .map((s) => ({ productId: SERVICE_PRODUCT_ID, productName: s.name.trim() || 'Cargo por servicio', quantity: 1, discount: 0, price: Math.round(s.amount * 100) / 100 }));
+}
+export const servicesTotal = (services: ServiceCharge[]) =>
+  Math.round(services.reduce((t, s) => t + (s.amount > 0 ? s.amount : 0), 0) * 100) / 100;
+
+/** El producto interno de servicio para sumarlo al ticket (al pasar un presupuesto a la caja) */
+export function buildServiceProduct(price: number) {
+  return { id: SERVICE_PRODUCT_ID, name: 'Cargo por servicio', barcode: null, salePrice: price, categoryId: null, unlimitedStock: true, stock: 999999 };
 }

@@ -322,6 +322,8 @@ export default function POSScreen() {
   });
   const [heldCartToDelete, setHeldCartToDelete] = useState<{ id: string; clientName: string } | null>(null);
   const [activePaymentSurcharge, setActivePaymentSurcharge] = useState(0);
+  // Cargos por servicio puestos en el cobro (se suman al total mientras está abierto)
+  const [activeServices, setActiveServices] = useState(0);
 
   const quickCounterProducts = useMemo(() => {
     return cachedProducts.filter((p: any) => 
@@ -3101,9 +3103,15 @@ export default function POSScreen() {
                     <span className="font-bold">+{formatPrice(activePaymentSurcharge)}</span>
                   </div>
                 )}
+                {activeServices > 0 && (
+                  <div className="flex items-center justify-between text-xs font-bold text-sky-700 dark:text-sky-400 animate-in slide-in-from-bottom-1">
+                    <span>Servicios</span>
+                    <span className="font-bold">+{formatPrice(activeServices)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-700/70">
                   <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Total</span>
-                  <span key={getFinalTotal() + activePaymentSurcharge} className="anim-bump text-[34px] sm:text-[40px] leading-none font-extrabold text-slate-950 dark:text-white tracking-[-0.03em]">{formatPrice(getFinalTotal() + activePaymentSurcharge)}</span>
+                  <span key={getFinalTotal() + activePaymentSurcharge + activeServices} className="anim-bump text-[34px] sm:text-[40px] leading-none font-extrabold text-slate-950 dark:text-white tracking-[-0.03em]">{formatPrice(getFinalTotal() + activePaymentSurcharge + activeServices)}</span>
                 </div>
               </div>
 
@@ -3237,16 +3245,17 @@ export default function POSScreen() {
             total={getFinalTotal()} 
             sessionId={currentSession?.id} 
             onSurchargeChange={setActivePaymentSurcharge}
+            onServicesChange={setActiveServices}
             onClose={() => { 
               setShowPayment(false); 
-              setActivePaymentSurcharge(0);
+              setActivePaymentSurcharge(0); setActiveServices(0);
               focusSearch(); 
             }} 
             onSuccess={() => { 
               applySoldStock(usePOSStore.getState().cart);
               clearCart(); 
               setShowPayment(false); 
-              setActivePaymentSurcharge(0);
+              setActivePaymentSurcharge(0); setActiveServices(0);
               scheduleCatalogRefresh();
               loadCurrentSession(); 
               focusSearch(); 

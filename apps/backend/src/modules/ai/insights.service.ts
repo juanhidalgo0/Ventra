@@ -159,7 +159,7 @@ export class InsightsService {
     const sold = await this.prisma.saleItem.findMany({ where: { sale: { createdAt: { gte: since } } }, select: { productId: true }, distinct: ['productId'] });
     const soldIds = new Set(sold.map((s) => s.productId));
     const products = await this.prisma.product.findMany({
-      where: { isActive: true, stock: { gt: 0 }, id: { notIn: ['VENTA_RAPIDA', ...SKIP_PRODUCTS] } },
+      where: { isActive: true, stock: { gt: 0 }, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', ...SKIP_PRODUCTS] } },
       select: { id: true, name: true, stock: true, costPrice: true },
     });
     const rows = products.filter((p) => !soldIds.has(p.id)).map((p) => ({ producto: p.name, stock: r2(p.stock), plataParada: r2(p.stock * p.costPrice) }));
@@ -169,7 +169,7 @@ export class InsightsService {
 
   private async lowStock() {
     const products = await this.prisma.product.findMany({
-      where: { isActive: true, unlimitedStock: false, id: { notIn: ['VENTA_RAPIDA', ...SKIP_PRODUCTS] } },
+      where: { isActive: true, unlimitedStock: false, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', ...SKIP_PRODUCTS] } },
       select: { name: true, stock: true, minStock: true },
     });
     const rows = products.filter((p) => p.stock <= 0 || (p.minStock > 0 && p.stock <= p.minStock))
@@ -180,7 +180,7 @@ export class InsightsService {
 
   private async stockValue() {
     const products = await this.prisma.product.findMany({
-      where: { isActive: true, unlimitedStock: false, stock: { gt: 0 }, id: { notIn: ['VENTA_RAPIDA', ...SKIP_PRODUCTS] } },
+      where: { isActive: true, unlimitedStock: false, stock: { gt: 0 }, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', ...SKIP_PRODUCTS] } },
       select: { stock: true, costPrice: true, salePrice: true },
     });
     const cost = products.reduce((a, p) => a + p.stock * p.costPrice, 0);

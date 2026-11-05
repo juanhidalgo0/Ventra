@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, X, Check, Share2, Printer, Calendar, User, Phone, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { CartItem } from '../../stores/posStore';
 import { QuotePreview, quoteWhatsappUrl, storeNameOfQuote } from './QuoteDocument';
+import { applyManualSurcharge, parseSurchargeValue, serviceItems, servicesTotal, type ServiceCharge } from '../mobile/checkout';
 
 interface CreateQuoteModalProps {
   cart: CartItem[];
@@ -24,6 +25,35 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
 
   const storeName = storeNameOfQuote();
 
+  // Precio de evento: recargo $ o % repartido en los productos (el cliente ve cada uno a su precio)
+  const [surchargeMode, setSurchargeMode] = useState<'FIXED' | 'PCT'>('PCT');
+  const [surchargeValue, setSurchargeValue] = useState('');
+  // Cargos por servicio (barra, armado, traslado): renglones con nombre y monto
+  const [services, setServices] = useState<ServiceCharge[]>([]);
+  const [serviceName, setServiceName] = useState('');
+  const [serviceAmount, setServiceAmount] = useState('');
+
+  const surchargeNumber = parseSurchargeValue(surchargeMode, surchargeValue);
+  const surcharge = Number.isFinite(surchargeNumber) && surchargeNumber > 0 ? { mode: surchargeMode, value: surchargeNumber, reason: '' } : null;
+  const { quoteItems, surchargeTotal } = useMemo(() => {
+    const base = cart.map((item) => ({ productId: item.productId, productName: item.name, price: item.price, quantity: item.quantity, discount: 0 }));
+    const { items, manualTotal } = applyManualSurcharge(base, base, [], surcharge);
+    return {
+      quoteItems: [...items, ...serviceItems(services)].map((i) => ({ productId: i.productId, productName: i.productName, unitPrice: i.price as number, quantity: i.quantity })),
+      surchargeTotal: manualTotal,
+    };
+  }, [cart, surchargeMode, surchargeValue, services]);
+  const serviceTotal = servicesTotal(services);
+  const quoteTotal = Math.round((total + surchargeTotal + serviceTotal) * 100) / 100;
+
+  const addService = () => {
+    const amount = parseSurchargeValue('FIXED', serviceAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Poné el monto del servicio'); return; }
+    setServices((list) => [...list, { name: serviceName.trim().slice(0, 80) || 'Cargo por servicio', amount }]);
+    setServiceName('');
+    setServiceAmount('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
@@ -33,21 +63,17 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
 
     setIsSubmitting(true);
     try {
-      // Mismos nombres que el servidor (clientName, unitPrice, productName...): con otros el guardado fallaba
-      const items = cart.map(item => ({
-        productId: item.productId,
-        productName: item.name,
-        unitPrice: item.price,
-        quantity: item.quantity,
-      }));
+      // Mismos nombres que el servidor (clientName, unitPrice, productName...): con otros el guardado fallaba.
+      // Los productos ya llevan su parte del recargo y los servicios van al final.
+      const items = quoteItems;
 
       const res = await api.post('/quotes', {
         clientName: customerName.trim(),
         clientPhone: customerPhone.trim() || undefined,
         notes: notes.trim() || undefined,
         validDays: validityDays,
-        // El total que se ve en pantalla, con las promos: el presupuesto dice lo mismo
-        finalTotal: total,
+        // El total que se ve en pantalla, con las promos, el recargo y los servicios: el presupuesto dice lo mismo
+        finalTotal: quoteTotal,
         items
       });
 
@@ -106,7 +132,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
               <p className="text-xs text-slate-500">
                 {createdQuote
                   ? `${createdQuote.items.length} artículos por un total de $${Number(createdQuote.total).toLocaleString('es-AR')}`
-                  : `${cart.length} artículos por un total de $${Number(total).toLocaleString('es-AR')}`}
+                  : `${cart.length} artículos por un total de $${Number(quoteTotal).toLocaleString('es-AR')}`}
               </p>
             </div>
           </div>
@@ -170,6 +196,57 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                   </select>
                 </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Recargo</label>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-slate-300 overflow-hidden shrink-0">
+                  {(['PCT', 'FIXED'] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => setSurchargeMode(m)}
+                      className={`px-2.5 py-1.5 text-xs font-black cursor-pointer ${surchargeMode === m ? 'bg-amber-500 text-white' : 'bg-white text-slate-600'}`}>
+                      {m === 'FIXED' ? '$' : '%'}
+                    </button>
+                  ))}
+                </div>
+                <input inputMode="decimal" value={surchargeValue} onChange={(e) => setSurchargeValue(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder={surchargeMode === 'PCT' ? 'Ej: 40 (precio de evento)' : 'Monto a sumar'}
+                  className="flex-1 min-w-0 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-amber-500" />
+                {surchargeTotal > 0 && <span className="text-xs font-bold text-amber-700 shrink-0">+${Number(surchargeTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>}
+              </div>
+
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider self-start pt-2">Servicios</label>
+              <div className="space-y-1.5 min-w-0">
+                {services.map((sv, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                    <span className="text-xs font-semibold text-slate-800 truncate">{sv.name}</span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs font-bold text-sky-700">${Number(sv.amount).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                      <button type="button" onClick={() => setServices((list) => list.filter((_, j) => j !== i))} title="Quitar el servicio"
+                        className="p-0.5 rounded text-slate-400 hover:text-rose-600 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-1.5">
+                  <input value={serviceName} maxLength={80} onChange={(e) => setServiceName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addService(); } }}
+                    placeholder="Ej: Servicio de barra 5 hs"
+                    className="flex-1 min-w-0 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500" />
+                  <input inputMode="decimal" value={serviceAmount} onChange={(e) => setServiceAmount(e.target.value.replace(/[^\d.,]/g, ''))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addService(); } }}
+                    placeholder="$ monto"
+                    className="w-24 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-sky-500" />
+                  <button type="button" onClick={addService} disabled={!serviceAmount.trim()}
+                    className="px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer">Agregar</button>
+                </div>
+              </div>
+
+              {(surchargeTotal > 0 || serviceTotal > 0) && (
+                <>
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Total</span>
+                  <span className="text-sm font-black text-slate-900 text-right">${Number(quoteTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                </>
+              )}
             </div>
 
             <div>

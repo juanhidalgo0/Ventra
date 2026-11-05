@@ -12,7 +12,7 @@ import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, Emp
 import BarcodeScanner, { canScanBarcodes } from './BarcodeScanner';
 import { useCashSession } from './useCashSession';
 import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart } from '../../services/posTrail';
-import { applySurcharges, applyManualSurcharge, getPaymentMethods, manualSurchargeNote, parseSurchargeValue, type ManualSurcharge } from './checkout';
+import { applySurcharges, applyManualSurcharge, getPaymentMethods, manualSurchargeNote, parseSurchargeValue, serviceItems, servicesTotal, type ManualSurcharge, type ServiceCharge } from './checkout';
 import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
 import { hasFeature } from '../../stores/businessStore';
 import { packOf } from '../../stores/posStore';
@@ -356,10 +356,13 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
   // Recargo puesto a mano (barra, servicio, envío): $ fijo o % sobre el ticket
   const [manual, setManual] = useState<ManualSurcharge | null>(null);
   const [manualEdit, setManualEdit] = useState<{ mode: 'FIXED' | 'PCT'; value: string; reason: string } | null>(null);
+  // Cargos por servicio (barra, armado, envío): renglones con nombre y monto, sin stock ni costo
+  const [services, setServices] = useState<ServiceCharge[]>([]);
+  const [serviceEdit, setServiceEdit] = useState<{ name: string; amount: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setMethod('CASH'); setReceived(''); setClientId(''); setClientSearch(''); setDone(null); setManual(null); setManualEdit(null);
+    setMethod('CASH'); setReceived(''); setClientId(''); setClientSearch(''); setDone(null); setManual(null); setManualEdit(null); setServices([]); setServiceEdit(null);
     api.get('/surcharges').then((r) => setSurcharges(r.data || [])).catch(() => setSurcharges([]));
   }, [open]);
 
@@ -368,9 +371,17 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
     const base = buildItems();
     const withMethod = applySurcharges(base, products, surcharges, method);
     const withManual = applyManualSurcharge(base, withMethod.items, products, manual);
-    return { items: withManual.items, totalSurcharge: withMethod.totalSurcharge, manualTotal: withManual.manualTotal };
-  }, [open, method, surcharges, total, manual]);
-  const finalTotal = Math.round((total + totalSurcharge + manualTotal) * 100) / 100;
+    return { items: [...withManual.items, ...serviceItems(services)], totalSurcharge: withMethod.totalSurcharge, manualTotal: withManual.manualTotal };
+  }, [open, method, surcharges, total, manual, services]);
+  const serviceTotal = servicesTotal(services);
+  const finalTotal = Math.round((total + totalSurcharge + manualTotal + serviceTotal) * 100) / 100;
+  const applyService = () => {
+    if (!serviceEdit) return;
+    const amount = parseSurchargeValue('FIXED', serviceEdit.amount);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Poné el monto del servicio'); return; }
+    setServices((list) => [...list, { name: serviceEdit.name.trim().slice(0, 80) || 'Cargo por servicio', amount }]);
+    setServiceEdit(null);
+  };
   const applyManual = () => {
     if (!manualEdit) return;
     const value = parseSurchargeValue(manualEdit.mode, manualEdit.value);
@@ -504,6 +515,37 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         <button onClick={() => setManualEdit({ mode: 'FIXED', value: '', reason: '' })}
           className="mt-2 w-full h-10 rounded-2xl border border-dashed border-slate-300 text-[13px] font-medium text-slate-500">
           + Agregar recargo ($ o %)
+        </button>
+      )}
+
+      {services.map((sv, i) => (
+        <div key={i} className="mt-2 flex items-center justify-between gap-2 px-3 h-11 rounded-2xl border border-sky-300 bg-sky-50">
+          <span className="text-[13px] text-sky-900 truncate"><b>Servicio</b> · {sv.name}</span>
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="text-[13.5px] font-bold text-sky-800 tabular-nums">+{money(sv.amount)}</span>
+            <button onClick={() => setServices((list) => list.filter((_, j) => j !== i))} aria-label="Quitar el servicio" className="w-8 h-8 flex items-center justify-center text-sky-800"><X className="w-4 h-4" /></button>
+          </span>
+        </div>
+      ))}
+      {serviceEdit ? (
+        <div className="mt-2 p-3 rounded-2xl border border-sky-300 bg-sky-50 space-y-2">
+          <input autoFocus value={serviceEdit.name} maxLength={80} onChange={(e) => setServiceEdit({ ...serviceEdit, name: e.target.value })}
+            placeholder="Qué servicio: barra, armado, envío..."
+            className="w-full h-11 px-3 rounded-xl border border-sky-300 bg-white text-[16px] outline-none" />
+          <input inputMode="decimal" value={serviceEdit.amount}
+            onChange={(e) => setServiceEdit({ ...serviceEdit, amount: e.target.value.replace(/[^\d.,]/g, '') })}
+            onKeyDown={(e) => { if (e.key === 'Enter') applyService(); }}
+            placeholder="Monto del servicio"
+            className="w-full h-11 px-3 rounded-xl border border-sky-300 bg-white text-[16px] font-semibold tabular-nums outline-none" />
+          <div className="flex gap-2">
+            <button onClick={() => setServiceEdit(null)} className="flex-1 h-10 rounded-xl border border-slate-300 bg-white text-[13.5px] font-medium text-slate-700">Cancelar</button>
+            <button onClick={applyService} className="flex-1 h-10 rounded-xl bg-sky-600 text-[13.5px] font-semibold text-white">Agregar servicio</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setServiceEdit({ name: '', amount: '' })}
+          className="mt-2 w-full h-10 rounded-2xl border border-dashed border-slate-300 text-[13px] font-medium text-slate-500">
+          + Cargo por servicio
         </button>
       )}
 

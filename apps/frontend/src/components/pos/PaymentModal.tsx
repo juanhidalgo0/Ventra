@@ -20,7 +20,7 @@ import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
 import PointChargeOverlay from './PointChargeOverlay';
 import { useAuthStore } from '../../stores/authStore';
 import { COMING_SOON } from '../../utils/comingSoon';
-import { applyManualSurcharge, manualSurchargeNote, parseSurchargeValue, type ManualSurcharge } from '../mobile/checkout';
+import { applyManualSurcharge, manualSurchargeNote, parseSurchargeValue, serviceItems, servicesTotal, type ManualSurcharge, type ServiceCharge } from '../mobile/checkout';
 
 // Native Web Audio API chime for sale completion (Zero external audio file dependencies)
 function playSaleSuccessSound() {
@@ -65,7 +65,7 @@ function playSaleSuccessSound() {
   }
 }
 
-export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange, practice }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void; /** Modo práctica del recorrido: muestra un cobro en efectivo y nunca registra la venta */ practice?: boolean }) {
+export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange, onServicesChange, practice }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void; /** Total de los cargos por servicio, para mostrarlo en la caja */ onServicesChange?: (amount: number) => void; /** Modo práctica del recorrido: muestra un cobro en efectivo y nunca registra la venta */ practice?: boolean }) {
   const storeName = (localStorage.getItem('gd_store_name') || 'Ventra POS').toUpperCase();
   const { cart, getCartItemsWithDiscounts, getCheckoutPayload, products, setLastSale } = usePOSStore();
   useAutoTour('payment', !isDebtPayment && !practice);
@@ -151,8 +151,11 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
   /** Recargo puesto a mano al cobrar: monto fijo o porcentaje sobre el ticket, con motivo opcional */
   const [manualSurcharge, setManualSurcharge] = useState<ManualSurcharge | null>(null);
   const [surchargeEditor, setSurchargeEditor] = useState<{ mode: 'FIXED' | 'PCT'; value: string; reason: string } | null>(null);
+  // Cargos por servicio (barra, armado, envío): renglones con nombre y monto, sin stock ni costo
+  const [services, setServices] = useState<ServiceCharge[]>([]);
+  const [serviceEditor, setServiceEditor] = useState<{ index: number | null; name: string; amount: string } | null>(null);
   const surchargeEditorRef = useRef(false);
-  surchargeEditorRef.current = !!surchargeEditor;
+  surchargeEditorRef.current = !!surchargeEditor || !!serviceEditor;
   const manualSurchargeAllowed = !isDebtPayment && !practice;
   const applySurchargeEditor = () => {
     if (!surchargeEditor) return;
@@ -162,8 +165,17 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     setManualSurcharge({ mode: surchargeEditor.mode, value, reason: surchargeEditor.reason.trim().slice(0, 60) });
     setSurchargeEditor(null);
   };
+  const applyServiceEditor = () => {
+    if (!serviceEditor) return;
+    const amount = parseSurchargeValue('FIXED', serviceEditor.amount);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Poné el monto del servicio'); return; }
+    const item = { name: serviceEditor.name.trim().slice(0, 80) || 'Cargo por servicio', amount };
+    setServices((list) => (serviceEditor.index === null ? [...list, item] : list.map((sv, i) => (i === serviceEditor.index ? item : sv))));
+    setServiceEditor(null);
+  };
+  // Enter aplica el editor que esté abierto (recargo o servicio)
   const applySurchargeEditorRef = useRef(applySurchargeEditor);
-  applySurchargeEditorRef.current = applySurchargeEditor;
+  applySurchargeEditorRef.current = serviceEditor ? applyServiceEditor : applySurchargeEditor;
 
   const processingRef = useRef(false);
   // Confirmación del consumo propio (dentro del cobro, con el estilo de la app). Mientras está
@@ -269,27 +281,33 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     });
     
     // Recargo a mano (barra, servicio, envío): repartido entre los productos
-    const { items: finalItems, manualTotal } = applyManualSurcharge(baseItems, adjustedItems, products, manualSurcharge);
+    const { items: withManual, manualTotal } = applyManualSurcharge(baseItems, adjustedItems, products, manualSurcharge);
+    // Los servicios van al final, aparte de los productos y sin recargos
+    const finalItems = manualSurchargeAllowed ? [...withManual, ...serviceItems(services)] : withManual;
+    const serviceTotal = manualSurchargeAllowed ? servicesTotal(services) : 0;
 
-    const finalTotal = Math.round((total + totalSurcharge + manualTotal) * 100) / 100;
+    const finalTotal = Math.round((total + totalSurcharge + manualTotal + serviceTotal) * 100) / 100;
 
     return {
       adjustedItems: finalItems,
       finalTotal,
       totalSurcharge,
       manualTotal,
+      serviceTotal,
       surchargedProductsList
     };
   };
 
-  const { adjustedItems, finalTotal, totalSurcharge, manualTotal, surchargedProductsList } = getAdjustedTotalAndItems();
+  const { adjustedItems, finalTotal, totalSurcharge, manualTotal, serviceTotal, surchargedProductsList } = getAdjustedTotalAndItems();
 
   useEffect(() => {
     onSurchargeChange?.(totalSurcharge + manualTotal);
+    onServicesChange?.(serviceTotal);
     return () => {
       onSurchargeChange?.(0);
+      onServicesChange?.(0);
     };
-  }, [totalSurcharge, manualTotal, onSurchargeChange]);
+  }, [totalSurcharge, manualTotal, serviceTotal, onSurchargeChange, onServicesChange]);
 
   /** Notas de la venta: Mesa / Para llevar / Delivery (gastronomía) y el recargo a mano */
   const saleNotes = () => {
@@ -392,7 +410,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
       // Escribiendo el recargo: los números son el monto, Enter lo aplica y Escape lo cierra
       if (surchargeEditorRef.current) {
         if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); applySurchargeEditorRef.current(); }
-        else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); setSurchargeEditor(null); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); setSurchargeEditor(null); setServiceEditor(null); }
         return;
       }
       const now = Date.now();
@@ -1095,6 +1113,13 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
     );
   }
 
+  const addServiceButton = (
+    <button type="button" onClick={() => setServiceEditor({ index: null, name: '', amount: '' })}
+      className="w-full py-2 px-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:border-sky-400 hover:text-sky-700 dark:hover:text-sky-300 cursor-pointer transition-colors">
+      + Cargo por servicio
+    </button>
+  );
+
   // Con maquinita Point, lo de Mercado Pago se cobra ahí antes de registrar la venta
   const goesToPoint = pointTerminals.length > 0 && buildPayments().some(p => p.method && isMercadoPagoMethod(p.method, posnets));
 
@@ -1111,7 +1136,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
         tabIndex={-1}
         ref={(el: any) => {
           // Mientras se escribe el recargo, el foco queda en sus casilleros
-          if (el && !isProcessing && !showSuccess && !surchargeEditor && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
+          if (el && !isProcessing && !showSuccess && !surchargeEditor && !serviceEditor && paymentType !== 'CASH' && paymentType !== 'MIXED' && paymentType !== 'DEBT') {
             el.focus();
           }
         }}
@@ -1189,11 +1214,56 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
               </div>
             </div>
           ) : (
-            <button type="button" onClick={() => setSurchargeEditor({ mode: 'FIXED', value: '', reason: '' })}
-              className="w-full py-2 px-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:border-amber-400 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer transition-colors">
-              + Agregar recargo ($ o %)
-            </button>
+            <div className={`grid ${serviceEditor ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
+              <button type="button" onClick={() => setSurchargeEditor({ mode: 'FIXED', value: '', reason: '' })}
+                className="w-full py-2 px-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:border-amber-400 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer transition-colors">
+                + Agregar recargo ($ o %)
+              </button>
+              {!serviceEditor && addServiceButton}
+            </div>
           ))}
+
+          {manualSurchargeAllowed && services.map((sv, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border-2 border-sky-300 dark:border-sky-800/80 bg-sky-50 dark:bg-sky-950/25">
+              <span className="text-sm text-sky-950 dark:text-sky-100 truncate"><b>Servicio</b> · {sv.name}</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="font-mono font-black text-sky-700 dark:text-sky-300">+{formatPrice(sv.amount)}</span>
+                <button type="button" onClick={() => setServiceEditor({ index: i, name: sv.name, amount: String(sv.amount) })}
+                  className="px-2 py-1 rounded-lg text-xs font-bold text-sky-800 dark:text-sky-200 hover:bg-sky-100 dark:hover:bg-sky-900/50 cursor-pointer">Cambiar</button>
+                <button type="button" onClick={() => setServices((list) => list.filter((_, j) => j !== i))} title="Quitar el servicio"
+                  className="p-1 rounded-lg text-sky-800 dark:text-sky-200 hover:bg-sky-100 dark:hover:bg-sky-900/50 cursor-pointer"><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+          ))}
+
+          {manualSurchargeAllowed && serviceEditor && (
+            <div className="p-3 rounded-2xl border-2 border-sky-300 dark:border-sky-800/80 bg-sky-50 dark:bg-sky-950/25 space-y-2.5">
+              <input autoFocus value={serviceEditor.name} maxLength={80}
+                onChange={(e) => setServiceEditor({ ...serviceEditor, name: e.target.value })}
+                placeholder="Qué servicio: Servicio de barra, armado, envío..."
+                className="w-full px-3 py-2 rounded-xl border border-sky-300 dark:border-sky-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm outline-none focus:ring-2 focus:ring-sky-400" />
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-2 rounded-xl bg-sky-500 text-white text-sm font-black shrink-0">$</span>
+                <input inputMode="decimal" value={serviceEditor.amount}
+                  onChange={(e) => setServiceEditor({ ...serviceEditor, amount: e.target.value.replace(/[^\d.,]/g, '') })}
+                  placeholder="Monto del servicio"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-sky-300 dark:border-sky-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold text-base outline-none focus:ring-2 focus:ring-sky-400" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setServiceEditor(null)}
+                  className="h-9 px-3 rounded-xl border border-slate-300 dark:border-slate-600 text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 cursor-pointer">
+                  Cancelar <span className="ml-1 text-[11px] text-slate-400 font-mono">Esc</span>
+                </button>
+                <button type="button" onClick={applyServiceEditor}
+                  className="h-9 px-3 rounded-xl text-[13px] font-bold text-white bg-sky-600 hover:bg-sky-700 cursor-pointer">
+                  {serviceEditor.index === null ? 'Agregar servicio' : 'Guardar'} <span className="ml-1 text-[11px] text-white/70 font-mono">Enter</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Con el recargo puesto o abierto, el botón de servicio va solo debajo */}
+          {manualSurchargeAllowed && !serviceEditor && (surchargeEditor || (manualSurcharge && manualTotal > 0)) && addServiceButton}
 
           <div className="space-y-3">
             {finalTotal >= 0 ? (

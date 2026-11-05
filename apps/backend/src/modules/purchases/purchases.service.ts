@@ -1153,7 +1153,7 @@ export class PurchasesService {
     const DAYS_SOLD = 30;
     const COVER_DAYS = 14;
     const products = await this.prisma.product.findMany({
-      where: { isActive: true, unlimitedStock: false, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } },
+      where: { isActive: true, unlimitedStock: false, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'] } },
       include: {
         supplier: { select: { id: true, name: true, phone: true, email: true, contact: true } },
         category: { select: { id: true, name: true } },

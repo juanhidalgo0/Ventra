@@ -79,6 +79,17 @@ export class QuotesService {
     const discount = Number.isFinite(finalTotal) && finalTotal >= 0 ? Math.max(0, Math.round((gross - finalTotal) * 100) / 100) : 0;
     const total = gross - discount;
 
+    // Cargo por servicio: el producto interno se crea si todavía no existe (igual que al vender)
+    if ((data.items || []).some((i) => i.productId === 'SERVICIO')) {
+      const sv = await this.prisma.product.findUnique({ where: { id: 'SERVICIO' } });
+      if (!sv) {
+        const barcodeTaken = await this.prisma.product.findUnique({ where: { barcode: 'SERVICIO' } });
+        await this.prisma.product.create({ data: { id: 'SERVICIO', name: 'Cargo por servicio', barcode: barcodeTaken ? null : 'SERVICIO', salePrice: 0, costPrice: 0, stock: 999999, unlimitedStock: true, isActive: true } });
+      } else if (!sv.isActive) {
+        await this.prisma.product.update({ where: { id: 'SERVICIO' }, data: { isActive: true } });
+      }
+    }
+
     // Promos o productos borrados no existen en products: el ítem se guarda igual, sin el vínculo
     const askedIds = [...new Set((data.items || []).map((i) => i.productId).filter(Boolean))] as string[];
     const found = askedIds.length

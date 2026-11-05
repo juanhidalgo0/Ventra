@@ -34,79 +34,164 @@ export function quoteWhatsappUrl(quote: any) {
   return `https://api.whatsapp.com/send?${phone ? `phone=${phone}&` : ''}text=${encodeURIComponent(lines.join('\n'))}`;
 }
 
-const th = { textAlign: 'left', padding: '5px 6px', borderBottom: '1.5px solid #000', fontSize: '8.5pt', textTransform: 'uppercase', letterSpacing: '0.03em' } as const;
-const td = { padding: '6px', borderBottom: '1px solid #d4d4d4', fontSize: '10pt', verticalAlign: 'top' } as const;
+// Colores de la hoja: tinta oscura, un gris para lo secundario y un fondo muy suave para las
+// bandas (se ven bien en pantalla, en el PDF y en una impresora en blanco y negro)
+const INK = '#111827';
+const MUTED = '#6b7280';
+const LINE = '#e5e7eb';
+const BAND = '#f3f4f6';
+const ACCENT = '#1f2937';
+const label = { fontSize: '7pt', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: MUTED } as const;
+const cell = { padding: '7px 8px', fontSize: '9.5pt', verticalAlign: 'top', borderBottom: `1px solid ${LINE}` } as const;
+const headCell = { padding: '7px 8px', fontSize: '7.5pt', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fff', background: ACCENT, textAlign: 'left' } as const;
 const right = { textAlign: 'right' } as const;
+const isService = (it: any) => it.productId === 'SERVICIO' || it.product?.id === 'SERVICIO';
 
-/** Presupuesto en una hoja A4 */
+/** Renglones de una sección de la tabla (productos o servicios), numerados desde `from` */
+function QuoteRows({ items, from }: { items: any[]; from: number }) {
+  return (
+    <>
+      {items.map((it: any, i: number) => (
+        <tr key={it.id || i} style={{ background: i % 2 ? '#fafafa' : '#fff' }}>
+          <td style={{ ...cell, color: MUTED, width: '26px' }}>{from + i}</td>
+          <td style={cell}>
+            <div style={{ fontWeight: 600, color: INK }}>{it.productName || it.product?.name || 'Item'}</div>
+            {it.specs && <div style={{ fontSize: '8.5pt', color: MUTED, whiteSpace: 'pre-wrap', marginTop: '2px' }}>{it.specs}</div>}
+          </td>
+          <td style={{ ...cell, ...right }}>{qty(it.quantity)}</td>
+          <td style={{ ...cell, ...right, color: '#374151' }}>{money(it.unitPrice)}</td>
+          <td style={{ ...cell, ...right, fontWeight: 700, color: INK }}>{money(it.subtotal)}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/** Presupuesto en una hoja A4: con el logo y los datos del comercio, listo para mandar al cliente */
 export function QuoteSheet({ quote, emisor, paper }: { quote: any; emisor: Emisor; paper?: boolean }) {
+  const items: any[] = quote.items || [];
+  const products = items.filter((it) => !isService(it));
+  const services = items.filter(isService);
+  const productsTotal = products.reduce((t, it) => t + (Number(it.subtotal) || 0), 0);
+  const servicesTotalAmount = services.reduce((t, it) => t + (Number(it.subtotal) || 0), 0);
   const gross = (quote.total || 0) + (quote.discount || 0);
+  const sections = products.length > 0 && services.length > 0;
+  const contact = [emisor.domicilio, emisor.phone && `Tel. ${emisor.phone}`].filter(Boolean);
+  const fiscal = [emisor.cuit && `CUIT ${emisor.cuit}`, emisor.iibb && `IIBB ${emisor.iibb}`].filter(Boolean);
+  const sectionRow = (title: string) => (
+    <tr>
+      <td colSpan={5} style={{ padding: '9px 8px 5px', fontSize: '7.5pt', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: ACCENT, borderBottom: `1.5px solid ${ACCENT}` }}>{title}</td>
+    </tr>
+  );
+
   return (
     <section data-sheet="presupuesto" style={{
-      width: '100%', color: '#000', background: '#fff', fontFamily: 'Arial, Helvetica, sans-serif', boxSizing: 'border-box',
-      ...(paper ? { width: '210mm', minHeight: '297mm', padding: '14mm', boxShadow: '0 4px 18px rgba(15,23,42,.18)', borderRadius: '2px', margin: '0 auto' } : {}),
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', borderBottom: '1.5px solid #000', paddingBottom: '8px' }}>
-        <div>
-          <div style={{ fontSize: '16pt', fontWeight: 800 }}>{emisor.name}</div>
-          {emisor.razonSocial && emisor.razonSocial !== emisor.name && <div style={{ fontSize: '9pt' }}>{emisor.razonSocial}</div>}
-          <div style={{ fontSize: '9pt' }}>{[emisor.domicilio, emisor.phone && `Tel. ${emisor.phone}`].filter(Boolean).join(' · ')}</div>
+      width: '100%', color: INK, background: '#fff', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+      ...(paper ? { width: '210mm', minHeight: '297mm', padding: '15mm 16mm 12mm', boxShadow: '0 4px 18px rgba(15,23,42,.18)', borderRadius: '2px', margin: '0 auto' } : {}),
+    } as any}>
+      {/* Encabezado: el comercio (con su logo) y el número del presupuesto */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+          {emisor.logo && <img src={emisor.logo} alt="" style={{ width: 'auto', height: 'auto', maxWidth: '50mm', maxHeight: '22mm', objectFit: 'contain', flexShrink: 0 }} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: emisor.logo ? '14pt' : '18pt', fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.01em' }}>{emisor.name}</div>
+            {emisor.razonSocial && emisor.razonSocial !== emisor.name && <div style={{ fontSize: '8.5pt', color: '#374151', marginTop: '2px' }}>{emisor.razonSocial}</div>}
+            {contact.length > 0 && <div style={{ fontSize: '8.5pt', color: MUTED, marginTop: '3px' }}>{contact.join('  ·  ')}</div>}
+            {fiscal.length > 0 && <div style={{ fontSize: '8pt', color: MUTED, marginTop: '1px' }}>{fiscal.join('  ·  ')}</div>}
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '14pt', fontWeight: 800 }}>PRESUPUESTO</div>
-          <div style={{ fontSize: '11pt', fontWeight: 700 }}>{quote.quoteNumber}</div>
-          <div style={{ fontSize: '8pt', marginTop: '2px' }}>No válido como factura</div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: '20pt', fontWeight: 800, letterSpacing: '0.08em', color: ACCENT, lineHeight: 1 }}>PRESUPUESTO</div>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginTop: '5px' }}>N° {quote.quoteNumber}</div>
+          <div style={{ fontSize: '7.5pt', color: MUTED, marginTop: '2px' }}>Documento no válido como factura</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: '10pt', marginTop: '10px' }}>
-        <div><b>Cliente:</b> {quote.clientName || '—'}</div>
-        <div><b>Teléfono:</b> {quote.clientPhone || '—'}</div>
-        <div><b>Fecha:</b> {day(quote.createdAt)}</div>
-        <div><b>Válido hasta:</b> {day(quote.validUntil)}</div>
+      <div style={{ height: '3px', background: ACCENT, marginTop: '12px' }} />
+
+      {/* Cliente y fechas */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '12px', marginTop: '12px' }}>
+        <div style={{ background: BAND, borderRadius: '6px', padding: '10px 12px' }}>
+          <div style={label}>Preparado para</div>
+          <div style={{ fontSize: '12pt', fontWeight: 700, marginTop: '3px' }}>{quote.clientName || '—'}</div>
+          {quote.clientPhone && <div style={{ fontSize: '9pt', color: '#374151', marginTop: '2px' }}>Tel. {quote.clientPhone}</div>}
+        </div>
+        <div style={{ background: BAND, borderRadius: '6px', padding: '10px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+          <div>
+            <div style={label}>Fecha</div>
+            <div style={{ fontSize: '10pt', fontWeight: 600, marginTop: '3px' }}>{day(quote.createdAt)}</div>
+          </div>
+          <div>
+            <div style={label}>Válido hasta</div>
+            <div style={{ fontSize: '10pt', fontWeight: 600, marginTop: '3px' }}>{day(quote.validUntil)}</div>
+          </div>
+        </div>
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '14px' }}>
+      {/* Detalle */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '16px' }}>
         <thead>
           <tr>
-            <th style={th}>Trabajo / artículo</th>
-            <th style={{ ...th, ...right, width: '60px' }}>Cant.</th>
-            <th style={{ ...th, ...right, width: '95px' }}>Precio</th>
-            <th style={{ ...th, ...right, width: '100px' }}>Importe</th>
+            <th style={{ ...headCell, width: '26px', borderTopLeftRadius: '4px' }}>#</th>
+            <th style={headCell}>Descripción</th>
+            <th style={{ ...headCell, ...right, width: '52px' }}>Cant.</th>
+            <th style={{ ...headCell, ...right, width: '92px' }}>P. unitario</th>
+            <th style={{ ...headCell, ...right, width: '98px', borderTopRightRadius: '4px' }}>Importe</th>
           </tr>
         </thead>
         <tbody>
-          {(quote.items || []).map((it: any) => (
-            <tr key={it.id}>
-              <td style={td}>
-                <div style={{ fontWeight: 700 }}>{it.productName || it.product?.name || 'Item'}</div>
-                {it.specs && <div style={{ fontSize: '9pt', whiteSpace: 'pre-wrap' }}>{it.specs}</div>}
-              </td>
-              <td style={{ ...td, ...right }}>{qty(it.quantity)}</td>
-              <td style={{ ...td, ...right }}>{money(it.unitPrice)}</td>
-              <td style={{ ...td, ...right, fontWeight: 700 }}>{money(it.subtotal)}</td>
-            </tr>
-          ))}
+          {sections && sectionRow('Productos')}
+          <QuoteRows items={products} from={1} />
+          {sections && sectionRow('Servicios')}
+          <QuoteRows items={services} from={products.length + 1} />
         </tbody>
       </table>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: '10.5pt', minWidth: '66mm' }}>
-          <tbody>
-            {quote.discount > 0 && (
-              <>
-                <tr><td style={{ padding: '2px 6px' }}>Subtotal</td><td style={{ padding: '2px 6px', ...right }}>{money(gross)}</td></tr>
-                <tr><td style={{ padding: '2px 6px' }}>Descuento</td><td style={{ padding: '2px 6px', ...right }}>- {money(quote.discount)}</td></tr>
-              </>
-            )}
-            <tr><td style={{ padding: '5px 6px', borderTop: '1.5px solid #000', fontWeight: 800 }}>TOTAL</td><td style={{ padding: '5px 6px', borderTop: '1.5px solid #000', ...right, fontWeight: 800 }}>{money(quote.total)}</td></tr>
-          </tbody>
-        </table>
+      {/* Totales */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginTop: '14px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {quote.notes && (
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: '6px', padding: '9px 12px' }}>
+              <div style={label}>Observaciones</div>
+              <div style={{ fontSize: '9pt', color: '#374151', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{quote.notes}</div>
+            </div>
+          )}
+        </div>
+        <div style={{ width: '74mm', flexShrink: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5pt' }}>
+            <tbody>
+              {sections && (
+                <>
+                  <tr><td style={{ padding: '3px 8px', color: MUTED }}>Productos</td><td style={{ padding: '3px 8px', ...right }}>{money(productsTotal)}</td></tr>
+                  <tr><td style={{ padding: '3px 8px', color: MUTED }}>Servicios</td><td style={{ padding: '3px 8px', ...right }}>{money(servicesTotalAmount)}</td></tr>
+                </>
+              )}
+              {quote.discount > 0 && (
+                <>
+                  {!sections && <tr><td style={{ padding: '3px 8px', color: MUTED }}>Subtotal</td><td style={{ padding: '3px 8px', ...right }}>{money(gross)}</td></tr>}
+                  <tr><td style={{ padding: '3px 8px', color: MUTED }}>Descuento</td><td style={{ padding: '3px 8px', ...right }}>- {money(quote.discount)}</td></tr>
+                </>
+              )}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', background: ACCENT, color: '#fff', borderRadius: '6px', padding: '9px 12px', marginTop: '6px' }}>
+            <span style={{ fontSize: '8.5pt', fontWeight: 700, letterSpacing: '0.12em' }}>TOTAL</span>
+            <span style={{ fontSize: '15pt', fontWeight: 800 }}>{money(quote.total)}</span>
+          </div>
+        </div>
       </div>
 
-      {quote.notes && <div style={{ fontSize: '9.5pt', marginTop: '12px', whiteSpace: 'pre-wrap' }}><b>Notas:</b> {quote.notes}</div>}
-      <div style={{ marginTop: '14px', fontSize: '8pt', color: '#444' }}>Los precios están sujetos a variación sin previo aviso pasada la fecha de validez.</div>
-      <div style={{ marginTop: '10px', textAlign: 'center', fontSize: '7pt', color: '#888' }}>Sistema Ventra · ventra.store</div>
+      {/* Condiciones y pie: en la hoja del PDF queda abajo de todo */}
+      <div style={{ marginTop: paper ? 'auto' : '18px', paddingTop: '18px' }}>
+        <div style={{ fontSize: '8pt', color: MUTED, lineHeight: 1.5 }}>
+          Presupuesto válido hasta el {day(quote.validUntil)}. Pasada esa fecha, los precios pueden cambiar sin previo aviso.
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', borderTop: `1px solid ${LINE}`, marginTop: '10px', paddingTop: '7px', fontSize: '7.5pt', color: '#9ca3af' }}>
+          <span>{[emisor.name, ...contact].join('  ·  ')}</span>
+          <span style={{ flexShrink: 0 }}>Hecho con Ventra · ventra.store</span>
+        </div>
+      </div>
     </section>
   );
 }

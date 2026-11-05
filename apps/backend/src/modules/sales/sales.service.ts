@@ -148,7 +148,7 @@ export class SalesService {
       
       // Ensure virtual products exist in the database
       for (const id of productIds) {
-        if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE' || id === 'VENTA_RAPIDA') {
+        if (id === 'VIRTUAL_LOAD_1' || id === 'VIRTUAL_LOAD_2' || id === 'PAGO_CTA_CTE' || id === 'VENTA_RAPIDA' || id === 'SERVICIO') {
           const exists = await tx.product.findUnique({ where: { id } });
           if (exists && !exists.isActive) {
             await tx.product.update({ where: { id }, data: { isActive: true } });
@@ -160,6 +160,8 @@ export class SalesService {
             // Venta rápida (código "1" / F1 en el POS): precio libre, sin stock.
             // Se recrea sola si se borra la base, así el atajo nunca deja de andar.
             else if (id === 'VENTA_RAPIDA') virtualName = 'Venta Rápida';
+            // Cargo por servicio (barra, armado, envío): nombre y precio los pone el cajero, sin stock ni costo
+            else if (id === 'SERVICIO') virtualName = 'Cargo por servicio';
 
             await tx.product.create({
               data: {
@@ -809,7 +811,7 @@ export class SalesService {
     if (type === 'valorizacion') {
       const [r] = await this.prisma.$queryRawUnsafe<any[]>(`
         SELECT COALESCE(SUM(cost_price * stock), 0) AS cost, COALESCE(SUM(sale_price * stock), 0) AS sale, COALESCE(SUM(stock), 0) AS items
-        FROM products WHERE is_active = 1 AND id <> 'VENTA_RAPIDA' AND stock > 0`);
+        FROM products WHERE is_active = 1 AND id NOT IN ('VENTA_RAPIDA', 'SERVICIO') AND stock > 0`);
       const totalCost = num(r?.cost), totalSale = num(r?.sale);
       return {
         totalCost,

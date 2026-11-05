@@ -57,7 +57,7 @@ export class ProductMatcherService {
   constructor(private prisma: PrismaService, private ai: AiService) {}
 
   async catalog() {
-    return this.prisma.product.findMany({ where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'PAGO_CTA_CTE'] } }, select: PRODUCT_SELECT });
+    return this.prisma.product.findMany({ where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'] } }, select: PRODUCT_SELECT });
   }
 
   private async learned(supplierId?: string | null): Promise<Map<string, string>> {

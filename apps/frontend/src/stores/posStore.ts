@@ -994,8 +994,8 @@ export const usePOSStore = create<POSState>()(
         addExplodedItem(item.half.a, item.quantity * 0.5, 0, item.half.pa, item.categoryId);
         addExplodedItem(item.half.b, item.quantity * 0.5, 0, item.half.pb, item.categoryId);
       } else {
-        // Venta rápida con nombre propio (código escaneado que no estaba cargado): la venta lo guarda así
-        const named = item.productId === 'VENTA_RAPIDA' && item.name && item.name !== 'VENTA RÁPIDA' ? item.name : undefined;
+        // Venta rápida con nombre propio (código escaneado que no estaba cargado) y cargos por servicio: la venta los guarda así
+        const named = (item.productId === 'VENTA_RAPIDA' && item.name && item.name !== 'VENTA RÁPIDA') || (item.productId === 'SERVICIO' && item.name) ? item.name : undefined;
         addExplodedItem(item.productId, item.quantity, discountsMap[item.productId] || 0, item.price, item.categoryId, item.packSize, named);
       }
     });
