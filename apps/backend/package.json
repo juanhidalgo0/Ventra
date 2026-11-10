@@ -16,7 +16,8 @@
     "test:stock": "npx tsx scripts/test-stock.ts",
     "test:boletas": "npx tsx scripts/test-boletas.ts",
     "test:auth": "npx tsx scripts/test-auth.ts",
-    "test:anulaciones": "npx tsx scripts/test-void-score.ts"
+    "test:anulaciones": "npx tsx scripts/test-void-score.ts",
+    "test:precios": "npx tsx scripts/test-price-editor.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

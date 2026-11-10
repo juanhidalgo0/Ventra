@@ -361,6 +361,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               "image_source" TEXT,
               "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             );`);
+            // Aumentar precios por grupos: cada guardado con los precios de antes, para "Deshacer
+            // último aumento" (ver price-editor.service). Se sincroniza sola: se puede deshacer
+            // desde otra caja.
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "price_batches" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "created_at" INTEGER NOT NULL,
+              "user_id" TEXT,
+              "user_name" TEXT,
+              "label" TEXT,
+              "count" INTEGER NOT NULL DEFAULT 0,
+              "items" TEXT NOT NULL,
+              "undone_at" INTEGER
+            );`);
             // La foto de dónde salió (enlace): al confirmarlo el dueño, va al catálogo compartido
             const reviewCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(product_reviews)`);
             if (!reviewCols.some((c) => c.name === 'image_source')) await this.$executeRawUnsafe(`ALTER TABLE product_reviews ADD COLUMN image_source TEXT DEFAULT NULL;`);

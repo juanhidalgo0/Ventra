@@ -70,7 +70,7 @@ function ConfirmDialog({ opts, onClose }: { opts: ConfirmOptions | null; onClose
               <Icon className="w-5 h-5" />
             </div>
             <h2 id="confirm-title" className="mt-4 text-[17px] font-bold text-slate-900 tracking-tight">{opts.title}</h2>
-            {opts.message && <p className="mt-1.5 text-[14px] text-slate-600 leading-relaxed">{opts.message}</p>}
+            {opts.message && <p className="mt-1.5 text-[14px] text-slate-600 leading-relaxed whitespace-pre-line">{opts.message}</p>}
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" onClick={() => onClose(false)} className="h-10 px-4 rounded-xl border border-slate-300 text-[14px] font-semibold text-slate-700 hover:bg-slate-50">
                 {opts.cancelLabel || 'Cancelar'}

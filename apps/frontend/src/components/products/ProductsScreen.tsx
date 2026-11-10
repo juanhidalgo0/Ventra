@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
-import BulkPriceModal from './BulkPriceModal';
+import PriceEditorModal from './PriceEditorModal';
 import PriceListModal from './PriceListModal';
 import PriceChangesLabelsModal from './PriceChangesLabelsModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
@@ -908,8 +908,8 @@ export default function ProductsScreen() {
                     onClick: () => setShowPriceList(true),
                   },
                   {
-                    label: 'Ajuste masivo por %',
-                    description: 'Aumentar o descontar precios por proveedor, rubro o marca',
+                    label: 'Aumentar precios',
+                    description: 'Por grupos, con % distintos o a mano, y se puede deshacer',
                     icon: <Percent className="w-3.5 h-3.5 text-rose-500" />,
                     onClick: () => setShowBulkPriceModal(true),
                   },
@@ -1730,9 +1730,10 @@ export default function ProductsScreen() {
       )}
 
       {showBulkPriceModal && (
-        <BulkPriceModal
+        <PriceEditorModal
           onClose={() => setShowBulkPriceModal(false)}
-          onSuccess={() => loadProducts(true)}
+          onSaved={() => loadProducts(true)}
+          onPrintLabels={() => setShowPriceChangeLabels(true)}
         />
       )}
 

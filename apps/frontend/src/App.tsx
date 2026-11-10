@@ -391,10 +391,26 @@ export default function App() {
       setProducts(usePOSStore.getState().products.map(p => p.id === updatedProd.id ? processed : p));
     };
 
+    // Aumentar precios / Deshacer: llegan solo los precios nuevos de cada producto
+    const handlePricesUpdated = (list: any[]) => {
+      if (!Array.isArray(list) || !list.length) return;
+      const byId = new Map(list.map((p) => [p.id, p]));
+      const current = usePOSStore.getState().products;
+      if (!current.some((p) => byId.has(p.id))) return;
+      setProducts(current.map((p) => {
+        const c = byId.get(p.id);
+        if (!c) return p;
+        const { id: _id, ...prices } = c;
+        return { ...p, ...prices };
+      }));
+    };
+
     wsService.on('product:updated', handleProductUpdated);
+    wsService.on('products:prices-updated', handlePricesUpdated);
 
     return () => {
       wsService.off('product:updated', handleProductUpdated);
+      wsService.off('products:prices-updated', handlePricesUpdated);
     };
   }, [isAuthenticated, setProducts]);
 

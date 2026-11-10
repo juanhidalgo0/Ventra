@@ -93,6 +93,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.to()?.emit('product:updated', product);
   }
 
+  /**
+   * Cambiaron precios de varios productos (Aumentar precios, Deshacer): cada caja abierta los
+   * actualiza en su lista sin bajar el catálogo entero. Lleva solo id y precios.
+   */
+  emitPricesUpdated(list: { id: string; salePrice?: number; costPrice?: number; wholesalePrice?: number | null; tradePrice?: number | null; packPrice?: number | null }[]) {
+    this.to()?.emit('products:prices-updated', list);
+    this.to()?.emit('products:bulk-updated', { count: list.length });
+  }
+
   emitImportProgress(data: { 
     progress: number; 
     total: number; 

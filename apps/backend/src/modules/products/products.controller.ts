@@ -6,6 +6,7 @@ import { SyncImageService } from './sync-image.service';
 import { SharedCatalogService } from './shared-catalog.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
+import { PriceEditorService } from './price-editor.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import * as path from 'path';
@@ -24,6 +25,7 @@ export class ProductsController {
     private syncImageService: SyncImageService,
     private ventraImport: VentraImportService,
     private hardwareImages: HardwareImageService,
+    private priceEditor: PriceEditorService,
   ) {}
 
   @Get()
@@ -90,6 +92,31 @@ export class ProductsController {
   @Get('low-stock-ids')
   getLowStockIds() {
     return this.productsService.getLowStockIds();
+  }
+
+  // --- Aumentar precios por grupos (pantalla "Aumentar precios") ---
+  @Get('price-editor')
+  @Roles(...MANAGERS)
+  priceEditorSearch(@Query() q: any) {
+    return this.priceEditor.search({ search: q.search, brandId: q.brandId, categoryId: q.categoryId, supplierId: q.supplierId, staleDays: Number(q.staleDays) || 0 });
+  }
+
+  @Get('price-editor/last')
+  @Roles(...MANAGERS)
+  priceEditorLast() {
+    return this.priceEditor.lastBatch();
+  }
+
+  @Post('price-editor/apply')
+  @Roles(...MANAGERS)
+  priceEditorApply(@Request() req, @Body() body: any) {
+    return this.priceEditor.apply(body, req.user?.sub);
+  }
+
+  @Post('price-editor/undo/:batchId')
+  @Roles(...MANAGERS)
+  priceEditorUndo(@Request() req, @Param('batchId') batchId: string) {
+    return this.priceEditor.undo(batchId, req.user?.sub);
   }
 
   /** Productos que cambiaron de precio de venta en los últimos días (para reimprimir etiquetas) */
