@@ -325,13 +325,13 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
   await t("un número que no está vinculado sigue como antes (clientes de la agenda)", async () => {
     assert.strictEqual(await waOwner.onMessage(db, send, msg("5491199999999", "hola, ¿cuánto vendí?"), NOW), false);
   });
-  await t("la pregunta queda en la bandeja una sola vez aunque Meta reintente; audios no", async () => {
+  await t("la pregunta queda en la bandeja una sola vez aunque Meta reintente; lo que no es texto ni audio, no", async () => {
     const m = msg("5491122222222", "¿cuánto vendí hoy?", "wamid.ABC");
     assert.strictEqual(await waOwner.onMessage(db, send, m, NOW), true);
     assert.strictEqual(await waOwner.onMessage(db, send, m, NOW), true);
     assert.deepStrictEqual(Object.keys(inbox()), ["wamid.ABC"]);
-    await waOwner.onMessage(db, send, { from: "5491122222222", id: "wamid.AUD", type: "audio" }, NOW);
-    assert.match(sent.at(-1).text, /solo entiendo mensajes escritos/);
+    await waOwner.onMessage(db, send, { from: "5491122222222", id: "wamid.STK", type: "sticker" }, NOW);
+    assert.match(sent.at(-1).text, /entiendo mensajes escritos y audios/);
   });
   await t("responde con los datos, formato WhatsApp, sin aviso si los datos son frescos", async () => {
     const client = agentClient([{ name: "ventas", input: { desde: today, hasta: today } }]);

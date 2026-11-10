@@ -123,6 +123,29 @@ const sendText = (token, to, text) => graph(token, `${PHONE_ID}/messages`, {
   messaging_product: "whatsapp", to, type: "text", text: { body: text, preview_url: true },
 });
 
+/** Bytes de un archivo que mandaron (audio, foto): Meta da un link que se baja con el token. null si no se pudo. */
+async function downloadMedia(token, mediaId, maxBytes = 10 * 1024 * 1024) {
+  if (!mediaId) return null;
+  const meta = await fetch(`${GRAPH}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!meta.ok) return null;
+  const { url, file_size: size } = await meta.json().catch(() => ({}));
+  if (!url || Number(size) > maxBytes) return null;
+  const file = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!file.ok) return null;
+  const buf = Buffer.from(await file.arrayBuffer());
+  return buf.length > maxBytes ? null : buf;
+}
+
+/** Mensaje con hasta 3 botones de respuesta (dentro de las 24 h). buttons: [{ id, title (hasta 20) }] */
+const sendButtons = (token, to, text, buttons) => graph(token, `${PHONE_ID}/messages`, {
+  messaging_product: "whatsapp", to, type: "interactive",
+  interactive: {
+    type: "button",
+    body: { text: String(text).slice(0, 1024) },
+    action: { buttons: buttons.slice(0, 3).map((b) => ({ type: "reply", reply: { id: String(b.id).slice(0, 256), title: String(b.title).slice(0, 20) } })) },
+  },
+});
+
 /** Plantilla aprobada con parámetros de texto (fuera de las 24 h desde el último mensaje de la persona) */
 const sendTemplate = (token, to, template, params) => graph(token, `${PHONE_ID}/messages`, {
   messaging_product: "whatsapp", to, type: "template",
@@ -341,7 +364,8 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
       for (const s of v.statuses || []) jobs.push(onStatus(db, s));
       for (const m of v.messages || []) {
         const payload = (m.button && m.button.payload) || (m.interactive && m.interactive.button_reply && m.interactive.button_reply.id);
-        if (payload) jobs.push(onButton(db, token, m.from, payload));
+        // Los botones de los cambios de precios del dueño ("wo|…") los atiende wa-owner.js
+        if (payload && !String(payload).startsWith("wo|")) jobs.push(onButton(db, token, m.from, payload));
         // El dueño que pregunta por su negocio (o vincula su WhatsApp); si no, un cliente de la agenda
         else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, text) => sendText(token, to, text), m)
           .then((handled) => (handled ? null : onText(db, token, m.from))));
@@ -353,4 +377,4 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
   res.status(200).send("OK");
 }
 
-module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, sendTemplate, configured, WHEN };
+module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, sendTemplate, sendButtons, downloadMedia, configured, WHEN };

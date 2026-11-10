@@ -17,6 +17,7 @@ const insights = require("./insights-cloud");
 const agent = require("./ai-agent");
 const dashboard = require("./dashboard");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
+const edits = require("./wa-owner-edits");
 
 /** Número de WhatsApp de Ventra (el de los recordatorios de turnos) */
 const VENTRA_WA = "5492212048533";
@@ -120,6 +121,12 @@ async function account(db, uid, now) {
 const SUMMARY_ON = /^(?:mandame (?:el )?)?resumen(?: del d[ií]a| diario)?(?: todos los d[ií]as)?(?: a las)?\s*(\d{1,2})\s*(?:h|hs|horas)?$/i;
 const SUMMARY_OFF = /^(?:sin|sacar|cancelar|parar|desactivar|no quiero(?: el)?|basta de(?:l)?)\s+(?:el\s+)?resumen/i;
 
+// "sí" / "no" para un cambio pendiente, escrito o dicho en un audio ("Sí, dale.")
+const EDIT_YES = /^(?:si+|dale|ok|okey|confirmo|confirmar|confirmado|de una|hacelo|si dale|dale si|si confirmo|si hacelo|si por favor)$/;
+const EDIT_NO = /^(?:no|cancelo|cancelar|cancelalo|deja|dejalo|nada|no gracias|no cancelalo|no dejalo)$/;
+const plainWords = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+const editAnswer = (s) => { const w = plainWords(s); return EDIT_YES.test(w) ? "ok" : EDIT_NO.test(w) ? "no" : null; };
+
 /**
  * Un mensaje que llegó al número de Ventra. Devuelve true si era de alguien vinculado (o para
  * vincularse) y ya quedó atendido; false para que siga como antes (clientes de la agenda).
@@ -164,6 +171,21 @@ async function onMessage(db, send, m, now = Date.now()) {
   if (!owner.exists) return false;
   const o = owner.data();
   await owner.ref.set({ lastInboundAt: now }, { merge: true });
+  // Botones de un cambio de precios (Confirmar / Cancelar / Deshacer): payload "wo|acción|id"
+  const button = String((m.interactive && m.interactive.button_reply && m.interactive.button_reply.id) || "");
+  if (button.startsWith("wo|")) {
+    const [, action, editId] = button.split("|");
+    await enqueue({ uid: o.uid, type: "edit", action, editId });
+    return true;
+  }
+  // "sí" / "no" escrito con un cambio esperando confirmación
+  if (o.pendingEdit && now - Number(o.pendingEditAt || 0) < edits.PENDING_MS) {
+    const answer = editAnswer(text);
+    if (answer) {
+      await enqueue({ uid: o.uid, type: "edit", action: answer, editId: o.pendingEdit });
+      return true;
+    }
+  }
   if (/^desvincular$/i.test(text)) {
     await owner.ref.delete();
     await send(from, "Listo, este WhatsApp ya no está vinculado a tu negocio. Para volver a usarlo, vinculalo de nuevo desde Ventra.");
@@ -178,8 +200,13 @@ async function onMessage(db, send, m, now = Date.now()) {
       : "Listo, ya no te mando el resumen del día. Para volver a recibirlo, mandá por ejemplo *RESUMEN A LAS 21*.");
     return true;
   }
+  // Audios (notas de voz): se transcriben en processInbox, que tiene tiempo y las claves
+  if (m.type === "audio" && m.audio && m.audio.id) {
+    await enqueue({ uid: o.uid, type: "audio", mediaId: String(m.audio.id), mime: String(m.audio.mime_type || "") });
+    return true;
+  }
   if (!text) {
-    await send(from, "Por ahora solo entiendo mensajes escritos. Escribime tu pregunta, por ejemplo: ¿cuánto vendí hoy?");
+    await send(from, "Por ahora entiendo mensajes escritos y audios. Escribime o mandame un audio con tu pregunta, por ejemplo: ¿cuánto vendí hoy?");
     return true;
   }
   await enqueue({ uid: o.uid, type: "question", text: text.slice(0, 500) });
@@ -221,23 +248,56 @@ async function processInbox(db, item, deps, now = Date.now()) {
       await ownerRef.delete();
       return send(from, "El dueño del comercio desactivó las preguntas por WhatsApp para los encargados.");
     }
+    // Confirmar, cancelar o deshacer un cambio de precios (solo el dueño)
+    const doEdit = async (action, editId, prefix = "") => {
+      if (o.role === "SUPERVISOR") return send(from, "Los cambios de precios por WhatsApp los hace solo el dueño.");
+      const r = await edits.act(db, { action, id: editId, from, uid, sql, afterWrite: deps.afterWrite }, now);
+      if (o.pendingEdit === editId && action !== "undo") await ownerRef.set({ pendingEdit: null }, { merge: true });
+      if (r.undo && deps.sendButtons) return deps.sendButtons(from, prefix + r.text, [{ id: `wo|undo|${r.undo}`, title: "Deshacer" }]);
+      return send(from, prefix + r.text);
+    };
+    if (item.type === "edit") return doEdit(item.action, item.editId);
+
+    // Audio → texto. Se le muestra lo que se entendió, así sabe qué se respondió (o qué se va a cambiar)
+    let text = String(item.text || "");
+    let heardNote = "";
+    if (item.type === "audio") {
+      const out = deps.transcribe
+        ? await deps.transcribe(item.mediaId, item.mime, uid).catch((err) => { if (logger) logger.warn(`Audio por WhatsApp (${uid}): ${err && err.message}`); return null; })
+        : null;
+      if (!out || !out.text) return send(from, "No pude entender el audio. Probá de nuevo hablando cerca del teléfono (hasta un minuto) o escribímelo.");
+      text = out.text.slice(0, 500);
+      heardNote = `🎤 _${text.length > 160 ? `${text.slice(0, 160)}…` : text}_\n\n`;
+      const answer = o.pendingEdit && now - Number(o.pendingEditAt || 0) < edits.PENDING_MS ? editAnswer(text) : null;
+      if (answer) return doEdit(answer, o.pendingEdit, heardNote);
+    }
+
     const info = await insights.storeInfo(sql, uid).catch(() => ({}));
 
     if (item.type === "welcome") {
       const hi = o.role === "SUPERVISOR" ? `¡Listo${o.name ? `, ${o.name}` : ""}! Ya podés preguntarme por ${info.name || "el negocio"}.` : `¡Listo! Ya podés preguntarme por ${info.name || "tu negocio"} cuando quieras.`;
-      return send(from, `${hi}\n\n${agent.welcome({ plan: acc.plan, profile: info.profile, daily: ai.DAILY.ask, monthly: ai.LIMITS.ask })}\n\nSi querés, te mando el resumen del día: escribime *RESUMEN A LAS 21* (o la hora que quieras). Para dejar de usar esto, mandá *DESVINCULAR*.`);
+      const canEdit = o.role !== "SUPERVISOR" && !["agenda", "agenda_pro", "tienda"].includes(acc.plan) && !!deps.sendButtons;
+      const editTip = canEdit ? "\n\nTambién podés cambiar precios: por ejemplo *subí la Coca 1,5 a 2800* o *subí 10% las gaseosas*. Antes de tocar nada te pido que confirmes." : "";
+      return send(from, `${hi}\n\n${agent.welcome({ plan: acc.plan, profile: info.profile, daily: ai.DAILY.ask, monthly: ai.LIMITS.ask })}${editTip}\n\nSi querés, te mando el resumen del día: escribime *RESUMEN A LAS 21* (o la hora que quieras). Para dejar de usar esto, mandá *DESVINCULAR*.`);
     }
 
     // La pregunta anterior si fue hace poco: para "¿y ayer?"
     const history = o.lastQuestion && now - ms(o.lastAt) < 30 * 60 * 1000 ? [{ q: o.lastQuestion, a: o.lastAnswer || "" }] : [];
-    const out = await ai.handle(aiDeps, uid, {
-      kind: "agent", channel: "whatsapp", question: item.text, history, plan: acc.plan, role: o.role || "ADMIN", info,
+    // El dueño puede pedir cambios de precios (si este despliegue manda botones)
+    const editing = o.role !== "SUPERVISOR" && deps.sendButtons ? edits.session(sql, uid) : null;
+    const out = await ai.handle({ ...aiDeps, edits: editing }, uid, {
+      kind: "agent", channel: "whatsapp", question: text, history, plan: acc.plan, role: o.role || "ADMIN", info,
     });
+    if (editing && editing.plan) {
+      const editId = await edits.save(db, { uid, from, userId: o.userId, plan: editing.plan }, now);
+      await ownerRef.set({ lastQuestion: text, lastAnswer: "(propuesta de cambio de precios)", lastAt: now, questions: (Number(o.questions) || 0) + 1, pendingEdit: editId, pendingEditAt: now }, { merge: true });
+      return deps.sendButtons(from, edits.previewText(editing.plan, heardNote), [{ id: `wo|ok|${editId}`, title: "Confirmar" }, { id: `wo|no|${editId}`, title: "Cancelar" }]);
+    }
     const last = acc.plan === "agenda" || acc.plan === "agenda_pro" ? null : await insights.lastSync(sql, uid).catch(() => null);
     const answer = waFormat(out.result && out.result.answer);
     const note = acc.plan === "agenda" || acc.plan === "agenda_pro" ? "" : freshnessNote(last, now);
-    await ownerRef.set({ lastQuestion: item.text, lastAnswer: answer.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
-    return send(from, (answer + note + leftNote(out.leftToday)).slice(0, 4000));
+    await ownerRef.set({ lastQuestion: text, lastAnswer: answer.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
+    return send(from, (heardNote + answer + note + leftNote(out.leftToday)).slice(0, 4000));
   } catch (err) {
     // Topes y errores de la IA: su mensaje ya está escrito para la persona
     if (ai && ai.AiError && err instanceof ai.AiError) return send(from, err.message);

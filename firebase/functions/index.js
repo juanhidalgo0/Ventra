@@ -2152,6 +2152,7 @@ exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY, NEON_DATABASE_URL
 // La app pide el código para vincular el teléfono (con la vinculación del equipo); el webhook
 // de WhatsApp deja cada pregunta en ventra_wa_owner_inbox y ventraWaOwnerInbox la contesta.
 const waOwner = require("./wa-owner");
+const speech = require("./speech-to-text");
 exports.ventraWaOwner = onRequest({ maxInstances: 10, timeoutSeconds: 30 }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   const { deviceId, deviceSecret, action } = req.body || {};
@@ -2185,7 +2186,18 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
   await waOwner.processInbox(db, event.data.data(), {
     ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
     sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
+    sendButtons: (to, text, buttons) => whatsapp.sendButtons(token, to, text, buttons),
+    afterWrite: (uid, head, gen) => syncHead.afterWrite(uid, head, gen),
+    // Notas de voz: se bajan de Meta y se pasan a texto (Google Speech-to-Text del proyecto)
+    transcribe: async (mediaId, mime, uid) => {
+      const buf = await whatsapp.downloadMedia(token, mediaId);
+      if (!buf) return null;
+      const out = await speech.transcribeAudio(buf, { logger, label: "WhatsApp del dueño" });
+      if (out && out.seconds) usage.track(uid, { waAudioSeconds: out.seconds });
+      return out;
+    },
   });
+  await usage.flush();
   await event.data.ref.delete().catch(() => {});
 });
 

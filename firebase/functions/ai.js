@@ -593,7 +593,7 @@ async function goCategories(client, body) {
 
 // ─── Entrada ───
 
-async function handle({ db, logger, apiKey, client: injected, sql }, uid, body) {
+async function handle({ db, logger, apiKey, client: injected, sql, edits }, uid, body) {
   // "agent" (la IA con herramientas) usa el mismo cupo que las preguntas
   const kind = body && body.kind === "agent" ? "ask" : String(body && body.kind || "");
   const agent = body && body.kind === "agent";
@@ -631,7 +631,7 @@ async function handle({ db, logger, apiKey, client: injected, sql }, uid, body) 
       const ctx = { uid, plan: body.plan || null, role: body.role === "SUPERVISOR" ? "SUPERVISOR" : "ADMIN", channel: body.channel === "whatsapp" ? "whatsapp" : "app", info: body.info || {}, history: body.history || [] };
       const q = String(body.question || "").trim().slice(0, 500);
       if (!q) throw new AiError(400, "EMPTY", "Escribí tu pregunta.");
-      const r = await require("./ai-agent").run({ client, sql, db, logger }, ctx, q);
+      const r = await require("./ai-agent").run({ client, sql, db, logger, edits }, ctx, q);
       out = { result: { answer: r.answer, misses: r.misses, rounds: r.rounds }, usage: r.usage };
       // Lo que no supo responder queda para revisarlo cada semana (solo la pregunta y el motivo)
       if (r.misses.length) {
