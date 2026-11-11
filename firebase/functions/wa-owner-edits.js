@@ -41,9 +41,9 @@ const run = (sql, text, params) => (typeof sql.query === "function" ? sql.query(
 
 const TOOL = {
   name: "cambiar_productos",
-  description: "Prepara cambios de precio de venta o activar/ocultar productos. NO cambia nada: el sistema le manda al dueño la lista con botones para confirmar. "
+  description: "Prepara cambios de precio de venta, costo o activar/ocultar productos. NO cambia nada: el sistema le manda al dueño la lista con botones para confirmar. "
     + "cambios: uno por producto, con buscar (nombre, parte del nombre o código de barras; o el id que devolvió esta herramienta) y lo que cambia: "
-    + "precio (precio final de venta), porcentaje (ej. 10 para subir 10%, -5 para bajar 5%) o activo (false para ocultarlo de la venta, true para volver a activarlo). "
+    + "precio (precio final de venta), porcentaje (ej. 10 para subir 10%, -5 para bajar 5%) costo (nuevo costo), costo_porcentaje (subir o bajar el costo en %) o activo (false para ocultarlo de la venta, true para volver a activarlo). Se pueden combinar en el mismo producto. "
     + "Para todos los de una categoría: categoria y porcentaje, sin cambios. redondeo: múltiplo para los precios calculados con porcentaje (si no se dice, de a $ 10).",
   input_schema: {
     type: "object",
@@ -52,7 +52,7 @@ const TOOL = {
         type: "array",
         items: {
           type: "object",
-          properties: { buscar: { type: "string" }, precio: { type: "number" }, porcentaje: { type: "number" }, activo: { type: "boolean" } },
+          properties: { buscar: { type: "string" }, precio: { type: "number" }, porcentaje: { type: "number" }, costo: { type: "number" }, costo_porcentaje: { type: "number" }, activo: { type: "boolean" } },
           required: ["buscar"],
           additionalProperties: false,
         },
@@ -65,7 +65,8 @@ const TOOL = {
   },
 };
 
-const SYSTEM_NOTE = `- Podés cambiar precios de venta y activar u ocultar productos con cambiar_productos. Esa herramienta solo prepara el cambio: el sistema le manda al dueño la lista con botones para confirmar. Si devuelve listo, respondé solo una oración corta como "Te paso los cambios para que los confirmes" (sin repetir la lista y sin decir que ya se cambió). Si devuelve dudas (varios productos parecidos o ninguno), preguntá cuál con las opciones que trae. El stock, el costo y los productos nuevos no se cambian por acá: decile que lo haga desde Ventra.`;
+const SYSTEM_NOTE = `- Podés cambiar precios de venta, costos y activar u ocultar productos con cambiar_productos. Esa herramienta solo prepara el cambio: el sistema le manda al dueño la lista con botones para confirmar. Si devuelve listo, respondé solo una oración corta como "Te paso los cambios para que los confirmes" (sin repetir la lista y sin decir que ya se cambió). Si devuelve dudas (varios productos parecidos o ninguno), preguntá cuál con las opciones que trae. El stock y los productos nuevos todavía no se cambian por acá: decile que lo haga desde Ventra.
+- "Precio de costo", "costo", "lo que me sale" o "lo que lo pago" es SIEMPRE costo, nunca precio. "Precio" a secas, "precio de venta" o "a cuánto lo vendo" es precio. Si no queda claro cuál de los dos quiere, preguntá antes de llamar a la herramienta.`;
 
 /** Precio calculado con porcentaje, redondeado al múltiplo (por defecto $ 10, o $ 1 si es menos de $ 100) */
 function withPercent(price, pct, step) {
@@ -77,7 +78,7 @@ function withPercent(price, pct, step) {
 /** Productos vigentes con lo justo para buscar (sin traer la fila entera) */
 async function listProducts(sql, uid) {
   return run(sql, `SELECT id, data->>'name' AS name, data->>'barcode' AS barcode, data->>'sku' AS sku, data->>'sale_price' AS price,
-      data->>'is_active' AS active, data->>'unit' AS unit, data->>'category_id' AS category_id
+      data->>'cost_price' AS cost, data->>'is_active' AS active, data->>'unit' AS unit, data->>'category_id' AS category_id
     FROM sync_rows WHERE tenant_id = $1 AND tbl = 'products' AND NOT deleted AND id <> ALL($2)`, [uid, SKIP_PRODUCTS]);
 }
 
@@ -114,24 +115,29 @@ async function prepare(sql, uid, input = {}) {
   let catName = null;
   const put = (p, change) => {
     const oldPrice = r2(num(p.price) || 0);
+    const oldCost = r2(num(p.cost) || 0);
     const oldActive = p.active === null || yes(p.active);
     const prev = items.get(p.id);
     let newPrice = prev ? prev.newPrice : oldPrice;
+    let newCost = prev ? prev.newCost : oldCost;
     let newActive = prev ? prev.newActive : oldActive;
     if (Number.isFinite(num(change.precio))) newPrice = r2(num(change.precio));
     else if (Number.isFinite(num(change.porcentaje))) newPrice = withPercent(oldPrice, change.porcentaje, step);
+    if (Number.isFinite(num(change.costo))) newCost = r2(num(change.costo));
+    else if (Number.isFinite(num(change.costo_porcentaje))) newCost = r2(oldCost * (1 + num(change.costo_porcentaje) / 100));
     if (typeof change.activo === "boolean") newActive = change.activo;
-    items.set(p.id, { id: p.id, name: p.name, unit: unitOf(p), oldPrice, newPrice, oldActive, newActive });
+    items.set(p.id, { id: p.id, name: p.name, unit: unitOf(p), oldPrice, newPrice, oldCost, newCost, oldActive, newActive });
   };
 
   for (const c of changes) {
-    const hasChange = Number.isFinite(num(c.precio)) || Number.isFinite(num(c.porcentaje)) || typeof c.activo === "boolean";
-    if (!hasChange) { doubts.push({ buscado: c.buscar, problema: "No dice qué cambiar (precio, porcentaje o activo)" }); continue; }
+    const hasChange = ["precio", "porcentaje", "costo", "costo_porcentaje"].some((k) => Number.isFinite(num(c[k]))) || typeof c.activo === "boolean";
+    if (!hasChange) { doubts.push({ buscado: c.buscar, problema: "No dice qué cambiar (precio, porcentaje, costo o activo)" }); continue; }
+    if (Number.isFinite(num(c.costo)) && num(c.costo) < 0) { doubts.push({ buscado: c.buscar, problema: "El costo no puede ser negativo" }); continue; }
     if (Number.isFinite(num(c.precio)) && !(num(c.precio) > 0)) { doubts.push({ buscado: c.buscar, problema: "El precio tiene que ser mayor a 0" }); continue; }
     const f = findOne(products, c.buscar);
     if (f.product) { put(f.product, c); continue; }
     if (f.options) {
-      doubts.push({ buscado: c.buscar, problema: "Hay varios parecidos: preguntale cuál", opciones: f.options.slice(0, MAX_OPTIONS).map((p) => ({ id: p.id, producto: p.name, precio: r2(num(p.price) || 0), activo: p.active === null || yes(p.active) })), total: f.options.length });
+      doubts.push({ buscado: c.buscar, problema: "Hay varios parecidos: preguntale cuál", opciones: f.options.slice(0, MAX_OPTIONS).map((p) => ({ id: p.id, producto: p.name, precio: r2(num(p.price) || 0), costo: r2(num(p.cost) || 0), activo: p.active === null || yes(p.active) })), total: f.options.length });
     } else {
       doubts.push({ buscado: c.buscar, problema: "No encontré ese producto" });
     }
@@ -157,7 +163,7 @@ async function prepare(sql, uid, input = {}) {
   }
 
   if (doubts.length) return { result: { listo: false, dudas: doubts } };
-  const list = [...items.values()].filter((i) => i.newPrice !== i.oldPrice || i.newActive !== i.oldActive);
+  const list = [...items.values()].filter((i) => i.newPrice !== i.oldPrice || i.newCost !== i.oldCost || i.newActive !== i.oldActive);
   if (!list.length) return { result: { listo: false, dudas: [{ problema: items.size ? "Los productos ya tienen esos valores: no hay nada para cambiar" : "No dijo qué productos cambiar" }] } };
   const plan = { items: list.slice(0, MAX_PRODUCTS), category: catName, percent: Number.isFinite(num(input.porcentaje)) ? num(input.porcentaje) : null };
   return {
@@ -174,6 +180,9 @@ function previewText(plan, prefix = "") {
     const u = i.unit ? ` /${i.unit}` : "";
     const parts = [];
     if (i.newPrice !== i.oldPrice) parts.push(`${money(i.oldPrice)} → *${money(i.newPrice)}*${u}`);
+    if (i.newCost !== undefined && i.newCost !== i.oldCost) parts.push(`costo ${money(i.oldCost)} → *${money(i.newCost)}*${u}`);
+    // Precio por debajo del costo después del cambio: se avisa (puede ser un error de tipeo)
+    if (i.newCost !== undefined && i.newCost > 0 && i.newPrice > 0 && i.newPrice < i.newCost) parts.push("⚠️ queda por debajo del costo");
     if (i.newActive !== i.oldActive) parts.push(i.newActive ? "*se vuelve a vender*" : "*se oculta de la venta*");
     lines.push(`- ${i.name}: ${parts.join(", ")}`);
   }
@@ -218,9 +227,12 @@ async function write({ sql, uid, userId, afterWrite, now = Date.now(), via = "Wh
     const d = byId.get(it.id);
     if (!d) { skipped.push({ ...it, why: "ya no existe" }); continue; }
     const price = r2(num(d.sale_price) || 0);
+    const cost = r2(num(d.cost_price) || 0);
     const active = d.is_active === null || d.is_active === undefined || yes(d.is_active);
-    if (price !== it.from.price || active !== it.from.active) { skipped.push({ ...it, why: "lo cambiaron mientras tanto" }); continue; }
-    const data = { ...d, sale_price: it.to.price, is_active: sameKind(d.is_active, it.to.active) };
+    // Propuestas guardadas antes de que existiera el costo: no lo traen y no lo tocan
+    const costMoves = it.from.cost !== undefined && it.to.cost !== undefined;
+    if (price !== it.from.price || active !== it.from.active || (costMoves && cost !== it.from.cost)) { skipped.push({ ...it, why: "lo cambiaron mientras tanto" }); continue; }
+    const data = { ...d, sale_price: it.to.price, is_active: sameKind(d.is_active, it.to.active), ...(costMoves ? { cost_price: it.to.cost } : {}) };
     if (typeof d.updated_at === "number") data.updated_at = now;
     rows.push({ t: "products", id: it.id, d: data, ts: now });
     if (it.to.price !== it.from.price && user) {
@@ -230,8 +242,8 @@ async function write({ sql, uid, userId, afterWrite, now = Date.now(), via = "Wh
     const aid = crypto.randomUUID();
     rows.push({ t: "audit_logs", id: aid, ts: now, d: {
       id: aid, user_id: user, entity_type: "PRODUCT", entity_id: it.id, action: "UPDATE",
-      old_values: JSON.stringify({ salePrice: it.from.price, isActive: it.from.active }),
-      new_values: JSON.stringify({ salePrice: it.to.price, isActive: it.to.active, via }),
+      old_values: JSON.stringify({ salePrice: it.from.price, ...(costMoves ? { costPrice: it.from.cost } : {}), isActive: it.from.active }),
+      new_values: JSON.stringify({ salePrice: it.to.price, ...(costMoves ? { costPrice: it.to.cost } : {}), isActive: it.to.active, via }),
       ip_address: null, terminal: via, created_at: now,
     } });
     done.push(it);
@@ -244,8 +256,8 @@ async function write({ sql, uid, userId, afterWrite, now = Date.now(), via = "Wh
   return { done, skipped };
 }
 
-const asWrite = (i) => ({ id: i.id, name: i.name, unit: i.unit, from: { price: i.oldPrice, active: i.oldActive }, to: { price: i.newPrice, active: i.newActive } });
-const asUndo = (i) => ({ id: i.id, name: i.name, unit: i.unit, from: { price: i.newPrice, active: i.newActive }, to: { price: i.oldPrice, active: i.oldActive } });
+const asWrite = (i) => ({ id: i.id, name: i.name, unit: i.unit, from: { price: i.oldPrice, cost: i.oldCost, active: i.oldActive }, to: { price: i.newPrice, cost: i.newCost, active: i.newActive } });
+const asUndo = (i) => ({ id: i.id, name: i.name, unit: i.unit, from: { price: i.newPrice, cost: i.newCost, active: i.newActive }, to: { price: i.oldPrice, cost: i.oldCost, active: i.oldActive } });
 
 /** Guarda la propuesta para confirmarla con los botones. Devuelve el id. */
 async function save(db, { uid, from, userId, plan }, now = Date.now()) {

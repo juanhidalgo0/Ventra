@@ -314,6 +314,29 @@ function readBody(req, limit = 64 * 1024) {
   });
 }
 
+// ── Bot de WhatsApp del dueño (ver bot-gateway.js) ─────
+/** Da de alta la caja en la nube de un comercio que nunca entró (lo pide el bot) */
+async function provisionForBot(uid) {
+  const r = await fetch(`${CFG.functionsUrl}/ventraCloudAccess`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cloud-secret': CFG.hostSecret },
+    body: JSON.stringify({ botUid: uid, needCredentials: true }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.deviceId || data.uid !== uid) throw Object.assign(new Error(data.error || 'No se pudo preparar la caja en la nube'), { status: r.status || 500 });
+  fs.mkdirSync(tenantDir(uid), { recursive: true });
+  fs.writeFileSync(credsFile(uid), JSON.stringify({ deviceId: data.deviceId, deviceSecret: data.deviceSecret }), { mode: 0o600 });
+  log(`Bot: caja en la nube dada de alta para ${uid}`);
+}
+const bot = require('./bot-gateway').createBotGateway({
+  hostSecret: CFG.hostSecret,
+  ensureTenant,
+  supportKey: (uid) => tenants.get(uid)?.supportKey,
+  hasCreds: (uid) => fs.existsSync(credsFile(uid)),
+  isBootstrapped,
+  provision: provisionForBot,
+  log,
+});
+
 // ── Servidor ───────────────────────────────────────────
 const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 const PREPARING_HTML = fs.readFileSync(path.join(__dirname, 'preparing.html'), 'utf8');
@@ -371,6 +394,11 @@ const server = http.createServer(async (req, res) => {
       setCookie(res, '', 0); res.writeHead(302, { Location: 'https://ventra.store/admin' }); return res.end();
     }
     if (url === '/_ventra/logout') { setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
+    // El bot de WhatsApp del dueño (solo la función de Ventra, con el secreto compartido)
+    if (url === '/_ventra/bot' && req.method === 'POST') {
+      const r = await bot.handle(req.headers, await readBody(req, 256 * 1024));
+      return sendJson(res, r.status, r.json);
+    }
 
     if (!url.startsWith('/api/') && isPublicAsset(url)) return serveStatic(req, res);
 

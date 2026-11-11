@@ -136,6 +136,32 @@ async function downloadMedia(token, mediaId, maxBytes = 10 * 1024 * 1024) {
   return buf.length > maxBytes ? null : buf;
 }
 
+/** Marca el mensaje como leído y muestra "escribiendo…" (hasta que llega la respuesta o 25 s). No falla nunca. */
+const markTyping = (token, messageId) => (messageId
+  ? graph(token, `${PHONE_ID}/messages`, { messaging_product: "whatsapp", status: "read", message_id: messageId, typing_indicator: { type: "text" } }).catch(() => null)
+  : Promise.resolve(null));
+
+/**
+ * Lista desplegable (menú). sections: [{ title, rows: [{ id, title (≤24), description (≤72) }] }],
+ * hasta 10 renglones en total. button: el texto del botón que la abre (≤20).
+ */
+const sendList = (token, to, text, button, sections) => graph(token, `${PHONE_ID}/messages`, {
+  messaging_product: "whatsapp", to, type: "interactive",
+  interactive: {
+    type: "list",
+    body: { text: String(text).slice(0, 1024) },
+    action: {
+      button: String(button).slice(0, 20),
+      sections: sections.map((s) => ({ title: String(s.title).slice(0, 24), rows: s.rows.map((r) => ({ id: String(r.id).slice(0, 200), title: String(r.title).slice(0, 24), ...(r.description ? { description: String(r.description).slice(0, 72) } : {}) })) })),
+    },
+  },
+});
+
+/** Imagen por link (Meta la baja de ahí) con texto opcional */
+const sendImage = (token, to, link, caption) => graph(token, `${PHONE_ID}/messages`, {
+  messaging_product: "whatsapp", to, type: "image", image: { link, ...(caption ? { caption: String(caption).slice(0, 1024) } : {}) },
+});
+
 /** Mensaje con hasta 3 botones de respuesta (dentro de las 24 h). buttons: [{ id, title (hasta 20) }] */
 const sendButtons = (token, to, text, buttons) => graph(token, `${PHONE_ID}/messages`, {
   messaging_product: "whatsapp", to, type: "interactive",
@@ -367,8 +393,10 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
         // Los botones de los cambios de precios del dueño ("wo|…") los atiende wa-owner.js
         if (payload && !String(payload).startsWith("wo|")) jobs.push(onButton(db, token, m.from, payload));
         // El dueño que pregunta por su negocio (o vincula su WhatsApp); si no, un cliente de la agenda
-        else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, text) => sendText(token, to, text), m)
-          .then((handled) => (handled ? null : onText(db, token, m.from))));
+        else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, text) => sendText(token, to, text), m, Date.now(), {
+          typing: (id) => markTyping(token, id),
+          sendList: (to, text, button, sections) => sendList(token, to, text, button, sections),
+        }).then((handled) => (handled ? null : onText(db, token, m.from))));
       }
     }
   }
@@ -377,4 +405,4 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
   res.status(200).send("OK");
 }
 
-module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, sendTemplate, sendButtons, downloadMedia, configured, WHEN };
+module.exports = { remindersRun, hook, dueReminders, reminderMoment, dayText, waNumber, sendText, sendTemplate, sendButtons, sendImage, sendList, markTyping, downloadMedia, configured, WHEN };

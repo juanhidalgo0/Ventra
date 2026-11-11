@@ -308,6 +308,69 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     db.cols[waOwner.OWNERS][PHONE].pendingEdit = null;
   });
 
+  // ── Costo ──
+  await t("costo: cambia solo el costo (el precio de venta queda igual) y se puede deshacer", async () => {
+    const r = await edits.prepare(sql, T, { cambios: [{ buscar: "coca 2,25", costo: 3000 }] });
+    const price0 = (await product(sql, "coca225")).sale_price;
+    assert.deepStrictEqual(r.plan.items.map((i) => [i.oldCost, i.newCost, i.oldPrice, i.newPrice]), [[1500, 3000, price0, price0]]);
+    const text = edits.previewText(r.plan);
+    assert.match(text, /COCA-COLA 2,25 L: costo \$ 1\.500 → \*\$ 3\.000\*, ⚠️ queda por debajo del costo/);
+    assert.ok(!/: \$ [\d.]+ →/.test(text), "no muestra cambio de precio de venta");
+    await say("el costo de la coca 2,25 ahora es 3000", "c1", editClient({ cambios: [{ buscar: "coca 2,25", costo: 3000 }] }), NOW + 1000e3);
+    const editId = last().buttons[0].id.split("|")[2];
+    await tap(`wo|ok|${editId}`, "cb1", PHONE, NOW + 1001e3);
+    let p = await product(sql, "coca225");
+    assert.deepStrictEqual([p.cost_price, p.sale_price], [3000, price0]);
+    const audit = (await cloudSync.run(sql, `SELECT data FROM sync_rows WHERE tenant_id = $1 AND tbl = 'audit_logs' ORDER BY seq DESC LIMIT 1`, [T]))[0].data;
+    assert.strictEqual(JSON.parse(audit.new_values).costPrice, 3000);
+    await tap(last().buttons[0].id, "cb2", PHONE, NOW + 1002e3);
+    p = await product(sql, "coca225");
+    assert.deepStrictEqual([p.cost_price, p.sale_price], [1500, price0]);
+  });
+  await t("costo y precio juntos, y costo con porcentaje", async () => {
+    const r = await edits.prepare(sql, T, { cambios: [{ buscar: "sprite", costo: 900, precio: 1800 }, { buscar: "alfajor triple", costo_porcentaje: 10 }] });
+    const by = Object.fromEntries(r.plan.items.map((i) => [i.id, i]));
+    assert.deepStrictEqual([by.sprite.newCost, by.sprite.newPrice], [900, 1800]);
+    assert.strictEqual(by.alfajor, undefined, "sin costo cargado, el porcentaje no inventa uno");
+  });
+  await t("la IA recibe la regla: costo nunca es precio", async () => {
+    const c = editClient(null);
+    await agent.run({ client: c, sql, edits: edits.session(sql, T) }, { uid: T, plan: null, info: {}, role: "ADMIN", channel: "whatsapp" }, "hola");
+    assert.match(c.reqs[0].system[0].text, /SIEMPRE costo, nunca precio/);
+    const tool = c.reqs[0].tools.find((x) => x.name === "cambiar_productos");
+    assert.ok(tool.input_schema.properties.cambios.items.properties.costo);
+  });
+  await t("propuestas guardadas antes del costo siguen funcionando (no tocan el costo)", async () => {
+    const id = "viejaa1";
+    db.cols[edits.EDITS][id] = { uid: T, from: PHONE, userId: "u-duenio", status: "pending", createdAt: NOW + 1100e3,
+      items: [{ id: "sprite", name: "SPRITE 1,5 L", unit: "", oldPrice: 1710, newPrice: 1750, oldActive: true, newActive: true }] };
+    const before = (await product(sql, "sprite")).cost_price;
+    await tap(`wo|ok|${id}`, "old1", PHONE, NOW + 1101e3);
+    assert.match(last().text, /Listo, cambié SPRITE/);
+    const p = await product(sql, "sprite");
+    assert.deepStrictEqual([p.sale_price, p.cost_price], [1750, before]);
+  });
+
+  // ── Audios: idioma ──
+  await t("transcripción: si Google no acepta el idioma, prueba la siguiente combinación y la recuerda", async () => {
+    const speech = require("../functions/speech-to-text");
+    const tried = [];
+    const fakeFetch = async (url, opts) => {
+      const cfg = JSON.parse(opts.body).config;
+      tried.push(`${cfg.model}/${cfg.languageCodes[0]}`);
+      if (cfg.model === "long") return { ok: false, status: 400, text: async () => 'The language "es-US" is not supported by the model "long"' };
+      return { ok: true, json: async () => ({ results: [{ alternatives: [{ transcript: "Subí la coca a dos mil" }] }], metadata: { totalBilledDuration: "3s" } }) };
+    };
+    const out = await speech.transcribeAudio(Buffer.from("x"), { fetchImpl: fakeFetch, token: "t", project: "p" });
+    assert.deepStrictEqual([out.text, out.seconds, out.model], ["Subí la coca a dos mil", 3, "short/es-US"]);
+    assert.deepStrictEqual(tried, ["long/es-US", "short/es-US"]);
+    tried.length = 0;
+    await speech.transcribeAudio(Buffer.from("x"), { fetchImpl: fakeFetch, token: "t", project: "p" });
+    assert.deepStrictEqual(tried, ["short/es-US"], "la segunda vez va directo a la que anduvo");
+    const fail = await speech.transcribeAudio(Buffer.from("x"), { fetchImpl: async () => ({ ok: false, status: 403, text: async () => "PERMISSION_DENIED" }), token: "t", project: "p", logger: { warn() {} } });
+    assert.strictEqual(fail, null);
+  });
+
   await t("bienvenida del dueño: cuenta que puede cambiar precios", async () => {
     await waOwner.processInbox(db, { from: PHONE, uid: T, type: "welcome" }, deps(null), NOW);
     assert.match(last().text, /También podés cambiar precios/);

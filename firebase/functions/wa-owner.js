@@ -18,6 +18,17 @@ const agent = require("./ai-agent");
 const dashboard = require("./dashboard");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
 const edits = require("./wa-owner-edits");
+const menu = require("./wa-owner-menu");
+// Imágenes (sharp, Chromium): se cargan recién cuando se usan, así una pregunta común arranca rápido
+let promoMod = null, brandMod = null;
+const promo = new Proxy({}, { get: (t, k) => (promoMod || (promoMod = require("./promo-images")))[k] });
+const brandKit = new Proxy({}, { get: (t, k) => (brandMod || (brandMod = require("./promo-images/brand")))[k] });
+const ventraApi = require("./ventra-api");
+
+/** Cuánto tiempo después de mandar imágenes se puede elegir escribiendo "la 2" */
+const PICK_MS = 3 * 60 * 60 * 1000;
+/** Cuánto vale una foto que mandó como "la última foto" (para usarla de logo o de producto) */
+const PHOTO_MS = 2 * 60 * 60 * 1000;
 
 /** Número de WhatsApp de Ventra (el de los recordatorios de turnos) */
 const VENTRA_WA = "5492212048533";
@@ -126,12 +137,23 @@ const EDIT_YES = /^(?:si+|dale|ok|okey|confirmo|confirmar|confirmado|de una|hace
 const EDIT_NO = /^(?:no|cancelo|cancelar|cancelalo|deja|dejalo|nada|no gracias|no cancelalo|no dejalo)$/;
 const plainWords = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 const editAnswer = (s) => { const w = plainWords(s); return EDIT_YES.test(w) ? "ok" : EDIT_NO.test(w) ? "no" : null; };
+// "la 2", "la segunda", "2", "la 1 me gusta" → número de opción
+const PICK_RE = /^(?:la\s+|opcion\s+|quiero\s+la\s+|me\s+quedo\s+con\s+la\s+)?(1|2|3|uno|dos|tres|primera|segunda|tercera)(?:\s+(?:me gusta|va|esa|dale|porfa|por favor))?$/;
+const PICK_N = { 1: 1, 2: 2, 3: 3, uno: 1, dos: 2, tres: 3, primera: 1, segunda: 2, tercera: 3 };
+/** Lo último que quedó esperando "sí"/"no": un cambio de precios o una operación del sistema */
+function pendingOf(o, now) {
+  const edit = o.pendingEdit && now - Number(o.pendingEditAt || 0) < edits.PENDING_MS ? { kind: "edit", id: o.pendingEdit, at: Number(o.pendingEditAt) } : null;
+  const op = o.pendingOp && now - Number(o.pendingOpAt || 0) < ventraApi.PENDING_MS ? { kind: "op", id: o.pendingOp, at: Number(o.pendingOpAt) } : null;
+  if (edit && op) return edit.at > op.at ? edit : op;
+  return edit || op;
+}
+const pickAnswer = (s) => { const m = PICK_RE.exec(plainWords(s)); return m ? PICK_N[m[1]] : null; };
 
 /**
  * Un mensaje que llegó al número de Ventra. Devuelve true si era de alguien vinculado (o para
  * vincularse) y ya quedó atendido; false para que siga como antes (clientes de la agenda).
  */
-async function onMessage(db, send, m, now = Date.now()) {
+async function onMessage(db, send, m, now = Date.now(), io = {}) {
   const from = String(m.from || "");
   const text = m.type === "text" && m.text ? String(m.text.body || "").trim() : "";
   const id = String(m.id || `${from}-${now}`).replace(/[^\w.-]/g, "_").slice(0, 150);
@@ -170,7 +192,25 @@ async function onMessage(db, send, m, now = Date.now()) {
   const owner = await db.collection(OWNERS).doc(from).get();
   if (!owner.exists) return false;
   const o = owner.data();
+  // "Escribiendo…" enseguida: el dueño ve que el bot ya está en eso
+  if (io.typing && m.id) io.typing(m.id);
   await owner.ref.set({ lastInboundAt: now }, { merge: true });
+
+  // Menú: "MENÚ" abre la lista; elegir un renglón la atiende la bandeja (o abre "Más opciones")
+  const listId = String((m.interactive && m.interactive.list_reply && m.interactive.list_reply.id) || "");
+  const openMenu = async (page = "main") => {
+    if (!io.sendList) { await enqueue({ uid: o.uid, type: "menu", option: page === "mas" ? "mas" : "__open" }); return true; }
+    const acc = await account(db, o.uid, now);
+    await io.sendList(from, page === "mas" ? "Más opciones:" : menu.MENU_TEXT, page === "mas" ? "Más opciones" : "Ver opciones", menu.sections({ plan: acc && acc.plan, role: o.role, page }));
+    return true;
+  };
+  if (listId.startsWith("m|")) {
+    const option = listId.slice(2);
+    if (option === "mas") return openMenu("mas");
+    await enqueue({ uid: o.uid, type: "menu", option });
+    return true;
+  }
+  if (menu.MENU_RE.test(text)) return openMenu();
   // Botones de un cambio de precios (Confirmar / Cancelar / Deshacer): payload "wo|acción|id"
   const button = String((m.interactive && m.interactive.button_reply && m.interactive.button_reply.id) || "");
   if (button.startsWith("wo|")) {
@@ -178,11 +218,29 @@ async function onMessage(db, send, m, now = Date.now()) {
     await enqueue({ uid: o.uid, type: "edit", action, editId });
     return true;
   }
-  // "sí" / "no" escrito con un cambio esperando confirmación
-  if (o.pendingEdit && now - Number(o.pendingEditAt || 0) < edits.PENDING_MS) {
+  // Operación del sistema (Confirmar / Cancelar): "wx|ok|id"
+  if (button.startsWith("wx|")) {
+    const [, action, opId] = button.split("|");
+    await enqueue({ uid: o.uid, type: "op", action, opId });
+    return true;
+  }
+  // Elegir una de las imágenes de promo: botón "wi|pick|id|n" o "la 2" escrito
+  if (button.startsWith("wi|")) {
+    const [, , jobId, n] = button.split("|");
+    await enqueue({ uid: o.uid, type: "pick", jobId, n: Number(n) });
+    return true;
+  }
+  const pickN = o.lastImage && o.lastImage.id && now - Number(o.lastImage.at || 0) < PICK_MS ? pickAnswer(text) : null;
+  if (pickN) {
+    await enqueue({ uid: o.uid, type: "pick", jobId: o.lastImage.id, n: pickN });
+    return true;
+  }
+  // "sí" / "no" escrito con algo esperando confirmación: lo último que se propuso
+  const pend = pendingOf(o, now);
+  if (pend) {
     const answer = editAnswer(text);
     if (answer) {
-      await enqueue({ uid: o.uid, type: "edit", action: answer, editId: o.pendingEdit });
+      await enqueue(pend.kind === "op" ? { uid: o.uid, type: "op", action: answer, opId: pend.id } : { uid: o.uid, type: "edit", action: answer, editId: pend.id });
       return true;
     }
   }
@@ -205,8 +263,13 @@ async function onMessage(db, send, m, now = Date.now()) {
     await enqueue({ uid: o.uid, type: "audio", mediaId: String(m.audio.id), mime: String(m.audio.mime_type || "") });
     return true;
   }
+  // Fotos: el logo del comercio o la foto de un producto para las imágenes de promos
+  if (m.type === "image" && m.image && m.image.id) {
+    await enqueue({ uid: o.uid, type: "image", mediaId: String(m.image.id), mime: String(m.image.mime_type || ""), caption: String(m.image.caption || "").slice(0, 500) });
+    return true;
+  }
   if (!text) {
-    await send(from, "Por ahora entiendo mensajes escritos y audios. Escribime o mandame un audio con tu pregunta, por ejemplo: ¿cuánto vendí hoy?");
+    await send(from, "Por ahora entiendo mensajes escritos, audios y fotos. Escribime o mandame un audio con tu pregunta, por ejemplo: ¿cuánto vendí hoy?");
     return true;
   }
   await enqueue({ uid: o.uid, type: "question", text: text.slice(0, 500) });
@@ -232,6 +295,8 @@ const leftNote = (leftToday) => (typeof leftToday === "number" && leftToday <= 5
  * con sql), sql, send, logger }. Si algo falla, la persona recibe un mensaje claro.
  */
 async function processInbox(db, item, deps, now = Date.now()) {
+  // El aviso que mantiene la función despierta (ventraWaWarm): no hace nada
+  if (item.type === "warm") return null;
   const { from, uid } = item;
   const { ai, aiDeps, sql, send, logger } = deps;
   try {
@@ -240,11 +305,11 @@ async function processInbox(db, item, deps, now = Date.now()) {
     // Se desvinculó (o vinculó otro teléfono) entre que llegó el mensaje y ahora
     if (!owner.exists || owner.data().uid !== uid) return null;
     const o = owner.data();
-    const acc = await account(db, uid, now);
+    const [acc, supervisorOk] = await Promise.all([account(db, uid, now), o.role === "SUPERVISOR" ? supervisorsAllowed(db, uid) : true]);
     if (!acc || !acc.active) {
       return send(from, "El plan de Ventra de este comercio está vencido, así que no puedo leer los datos del negocio. Cuando se renueve, seguimos.");
     }
-    if (o.role === "SUPERVISOR" && !(await supervisorsAllowed(db, uid))) {
+    if (o.role === "SUPERVISOR" && !supervisorOk) {
       await ownerRef.delete();
       return send(from, "El dueño del comercio desactivó las preguntas por WhatsApp para los encargados.");
     }
@@ -258,6 +323,77 @@ async function processInbox(db, item, deps, now = Date.now()) {
     };
     if (item.type === "edit") return doEdit(item.action, item.editId);
 
+    // Operación del sistema (en la caja en la nube): confirmar o cancelar
+    const doOp = async (action, opId, prefix = "") => {
+      if (o.role === "SUPERVISOR") return send(from, "Las operaciones del sistema por WhatsApp las hace solo el dueño.");
+      if (!deps.ventraApi) return send(from, "Por ahora no puedo hacer operaciones del sistema por acá.");
+      if (action === "ok") await send(from, `${prefix}⏳ Haciéndolo en tu caja…`);
+      const r = await ventraApi.act(db, deps.ventraApi, { action, id: opId, from, uid }, now);
+      if (o.pendingOp === opId) await ownerRef.set({ pendingOp: null }, { merge: true });
+      return send(from, (action === "ok" ? "" : prefix) + r.text);
+    };
+    if (item.type === "op") return doOp(item.action, item.opId);
+
+    // ── Menú ──
+    if (item.type === "menu") {
+      const option = item.option;
+      if (option === "__open" || option === "mas") {
+        if (!deps.sendList) return send(from, "Escribime o mandame un audio con lo que necesites.");
+        return deps.sendList(from, option === "mas" ? "Más opciones:" : menu.MENU_TEXT, option === "mas" ? "Más opciones" : "Ver opciones", menu.sections({ plan: acc.plan, role: o.role, page: option === "mas" ? "mas" : "main" }));
+      }
+      const opt = menu.OPTIONS[option];
+      if (!opt) return send(from, "No entendí esa opción. Escribí *MENÚ* para verlas de nuevo.");
+      if (opt.write && o.role === "SUPERVISOR") return send(from, "Eso lo hace el dueño. Podés pedirme cualquier dato del negocio.");
+      if (opt.kind === "hacer") {
+        await ownerRef.set({ menuIntent: { id: option, at: now } }, { merge: true });
+        return send(from, opt.ask);
+      }
+      const text = await menu.quick(option, { sql, db, uid, role: o.role, now, summaryText }).catch((err) => { if (logger) logger.warn(`Menú (${uid}, ${option}): ${err && err.message}`); return null; });
+      const last = await insights.lastSync(sql, uid).catch(() => null);
+      return send(from, `${text || "No pude traer ese dato ahora. Probá de nuevo en un rato."}${freshnessNote(last, now)}\n\n_Escribí *MENÚ* para ver más opciones._`.slice(0, 4000));
+    }
+
+    // ── Imágenes de promos (solo el dueño, y si este despliegue puede mandar imágenes) ──
+    const imagesOn = o.role !== "SUPERVISOR" && !!(deps.sendImage && deps.bucket && deps.sendButtons);
+    const loadKit = () => brandKit.load({ sql, db, bucket: deps.bucket }, uid);
+    let lastPhoto = o.lastPhoto && now - Number(o.lastPhoto.at || 0) < PHOTO_MS ? o.lastPhoto.path : null;
+
+    /** Arma las imágenes del pedido y las manda, con los botones para elegir */
+    const sendImages = async (plan, kit, prefix = "") => {
+      const n = plan.style ? 1 : brandKit.STYLES.length;
+      if (!(await promo.allow(db, uid, n, now))) return send(from, `${prefix}Llegaste al tope de ${promo.DAILY_LIMIT} imágenes por hoy. Mañana seguimos.`);
+      await send(from, `${prefix}🎨 ${n > 1 ? `Armando ${n} opciones con el estilo de *${kit.name}*` : "Armando la imagen"}… tardo unos segundos.`);
+      const r = await promo.generate({ db, bucket: deps.bucket, uid, kit, logger, renderImpl: deps.renderImpl }, plan, { from, now });
+      if (r.missing) return send(from, `No tengo foto de ${r.missing.join(" ni de ")}. Mandame una foto y decime *usala para ${r.missing[0]}*.`);
+      for (const [i, v] of r.variants.entries()) await deps.sendImage(from, v.url, n > 1 ? `Opción ${i + 1} · ${promo.STYLE_NAMES[v.style]}` : "");
+      await ownerRef.set({ lastImage: { id: r.id, at: now, productos: plan.products.map((p) => p.name), precio: plan.price || null, estilos: r.variants.map((v) => v.style), formato: plan.format, textos: plan.texts || {}, elegido: plan.style || null } }, { merge: true });
+      if (n > 1) {
+        return deps.sendButtons(from, "¿Cuál te gusta? Elegí una y te la mando también para historias. Si querés cambios, decímelos (por ejemplo: *la 1 pero con el precio más grande*).",
+          r.variants.map((v, i) => ({ id: `wi|pick|${r.id}|${i + 1}`, title: `La ${i + 1}` })));
+      }
+      return send(from, "¿Te sirve? Si querés cambios, decímelos y la ajusto.");
+    };
+    /** El pedido que quedó esperando el nombre o el logo: si ya está todo, lo arma */
+    const continuePending = async (kit, pending) => {
+      if (!pending || !pending.input || kit.needs.length) return null;
+      await brandKit.save(db, uid, { pendingRequest: null });
+      const r = await promo.prepare({ sql }, uid, kit, pending.input, lastPhoto);
+      if (!r.plan) return send(from, "Ya tengo todo lo de tu marca. Pedime de nuevo la imagen y te la armo.");
+      return sendImages(r.plan, kit, "Ahora sí, ");
+    };
+
+    if (item.type === "pick") {
+      if (!imagesOn) return null;
+      const kit = await loadKit();
+      const r = await promo.pick({ db, bucket: deps.bucket, uid, kit, logger, renderImpl: deps.renderImpl }, item.jobId, item.n, { from, now });
+      if (r.error) return send(from, r.error);
+      if (r.already) return send(from, "Esa ya la elegiste 👍 Si querés cambios, decímelos.");
+      await ownerRef.set({ lastImage: { ...(o.lastImage || {}), elegido: r.style } }, { merge: true });
+      await send(from, `¡Buenísimo! Anoto que te gusta el estilo *${promo.STYLE_NAMES[r.style]}*: las próximas te lo muestro primero.${r.extra ? ` Acá la tenés también para ${r.extra.format === "story" ? "historias y estados" : "publicar"}.` : ""}`);
+      if (r.extra) await deps.sendImage(from, r.extra.url, "");
+      return null;
+    }
+
     // Audio → texto. Se le muestra lo que se entendió, así sabe qué se respondió (o qué se va a cambiar)
     let text = String(item.text || "");
     let heardNote = "";
@@ -268,8 +404,32 @@ async function processInbox(db, item, deps, now = Date.now()) {
       if (!out || !out.text) return send(from, "No pude entender el audio. Probá de nuevo hablando cerca del teléfono (hasta un minuto) o escribímelo.");
       text = out.text.slice(0, 500);
       heardNote = `🎤 _${text.length > 160 ? `${text.slice(0, 160)}…` : text}_\n\n`;
-      const answer = o.pendingEdit && now - Number(o.pendingEditAt || 0) < edits.PENDING_MS ? editAnswer(text) : null;
-      if (answer) return doEdit(answer, o.pendingEdit, heardNote);
+      const pend = pendingOf(o, now);
+      const answer = pend ? editAnswer(text) : null;
+      if (answer) return pend.kind === "op" ? doOp(answer, pend.id, heardNote) : doEdit(answer, pend.id, heardNote);
+    }
+
+    // Foto: si estaba esperando el logo, es el logo; si no, queda como "la última foto"
+    if (item.type === "image") {
+      if (!imagesOn) return send(from, "Por ahora no puedo usar fotos por acá. Escribime o mandame un audio.");
+      const buf = deps.download ? await deps.download(item.mediaId).catch(() => null) : null;
+      if (!buf) return send(from, "No pude abrir la foto. Probá mandarla de nuevo.");
+      const path = await promo.savePhoto(deps.bucket, uid, buf, now);
+      await ownerRef.set({ lastPhoto: { path, at: now } }, { merge: true });
+      lastPhoto = path;
+      const known = await brandKit.learned(db, uid);
+      if (known.awaitingLogo && !item.caption) {
+        await brandKit.save(db, uid, await promo.saveLogo({ db, bucket: deps.bucket, uid }, path));
+        const kit = await loadKit();
+        const vivid = (kit.logoColors && kit.logoColors.vivid) || [];
+        await send(from, `¡Gracias! Guardé el logo${vivid.length ? " y saqué sus colores para las imágenes" : ""}. Si querés otros colores, decime cuáles.`);
+        if (kit.needs.includes("nombre")) return send(from, "¿Cómo se llama el comercio? Así lo pongo en las imágenes.");
+        return continuePending(kit, known.pendingRequest);
+      }
+      if (!item.caption) {
+        return send(from, "📷 Recibí la foto. ¿Qué hago con ella? Puedo usarla como *logo* del comercio o para la imagen de un producto (por ejemplo: *usala para el Fernet Branca*).");
+      }
+      text = item.caption;
     }
 
     const info = await insights.storeInfo(sql, uid).catch(() => ({}));
@@ -277,15 +437,26 @@ async function processInbox(db, item, deps, now = Date.now()) {
     if (item.type === "welcome") {
       const hi = o.role === "SUPERVISOR" ? `¡Listo${o.name ? `, ${o.name}` : ""}! Ya podés preguntarme por ${info.name || "el negocio"}.` : `¡Listo! Ya podés preguntarme por ${info.name || "tu negocio"} cuando quieras.`;
       const canEdit = o.role !== "SUPERVISOR" && !["agenda", "agenda_pro", "tienda"].includes(acc.plan) && !!deps.sendButtons;
-      const editTip = canEdit ? "\n\nTambién podés cambiar precios: por ejemplo *subí la Coca 1,5 a 2800* o *subí 10% las gaseosas*. Antes de tocar nada te pido que confirmes." : "";
-      return send(from, `${hi}\n\n${agent.welcome({ plan: acc.plan, profile: info.profile, daily: ai.DAILY.ask, monthly: ai.LIMITS.ask })}${editTip}\n\nSi querés, te mando el resumen del día: escribime *RESUMEN A LAS 21* (o la hora que quieras). Para dejar de usar esto, mandá *DESVINCULAR*.`);
+      const editTip = canEdit ? "\n\nTambién podés cambiar precios y costos: por ejemplo *subí la Coca 1,5 a 2800*, *el costo del alfajor ahora es 650* o *subí 10% las gaseosas*. Antes de tocar nada te pido que confirmes." : "";
+      const imageTip = canEdit && deps.sendImage ? "\n\nY te armo imágenes para tus promos con tu logo y tus colores: *haceme una imagen del Fernet con precio* o *armá la promo de un Fernet más una Coca a 22900*." : "";
+      return send(from, `${hi}\n\n${agent.welcome({ plan: acc.plan, profile: info.profile, daily: ai.DAILY.ask, monthly: ai.LIMITS.ask })}${editTip}${imageTip}\n\nEscribí *MENÚ* cuando quieras para ver las opciones.\n\nSi querés, te mando el resumen del día: escribime *RESUMEN A LAS 21* (o la hora que quieras). Para dejar de usar esto, mandá *DESVINCULAR*.`);
     }
 
+    // Venía de elegir una opción "hacer" del menú: lo que escribe va con esa intención
+    if (o.menuIntent && o.menuIntent.id && now - Number(o.menuIntent.at || 0) < menu.INTENT_MS && item.type !== "welcome") {
+      text = menu.withIntent(o.menuIntent.id, text);
+      await ownerRef.set({ menuIntent: null }, { merge: true });
+    }
     // La pregunta anterior si fue hace poco: para "¿y ayer?"
     const history = o.lastQuestion && now - ms(o.lastAt) < 30 * 60 * 1000 ? [{ q: o.lastQuestion, a: o.lastAnswer || "" }] : [];
     // El dueño puede pedir cambios de precios (si este despliegue manda botones)
     const editing = o.role !== "SUPERVISOR" && deps.sendButtons ? edits.session(sql, uid) : null;
-    const out = await ai.handle({ ...aiDeps, edits: editing }, uid, {
+    const known = imagesOn ? await brandKit.learned(db, uid).catch(() => null) : null;
+    const imaging = imagesOn
+      ? promo.session({ sql, db, bucket: deps.bucket, uid, from, lastPhoto, last: o.lastImage || null, kit: known ? { ...known, name: known.name || info.name || null, needs: [] } : {}, loadKit })
+      : null;
+    const operating = o.role !== "SUPERVISOR" && deps.ventraApi && deps.sendButtons ? ventraApi.session({ api: deps.ventraApi, uid }) : null;
+    const out = await ai.handle({ ...aiDeps, edits: editing, images: imaging, api: operating }, uid, {
       kind: "agent", channel: "whatsapp", question: text, history, plan: acc.plan, role: o.role || "ADMIN", info,
     });
     if (editing && editing.plan) {
@@ -293,11 +464,33 @@ async function processInbox(db, item, deps, now = Date.now()) {
       await ownerRef.set({ lastQuestion: text, lastAnswer: "(propuesta de cambio de precios)", lastAt: now, questions: (Number(o.questions) || 0) + 1, pendingEdit: editId, pendingEditAt: now }, { merge: true });
       return deps.sendButtons(from, edits.previewText(editing.plan, heardNote), [{ id: `wo|ok|${editId}`, title: "Confirmar" }, { id: `wo|no|${editId}`, title: "Cancelar" }]);
     }
+    if (operating && operating.op) {
+      const opId = await ventraApi.save(db, { uid, from, op: operating.op }, now);
+      await ownerRef.set({ lastQuestion: text, lastAnswer: `(propuesta: ${operating.op.summary})`.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1, pendingOp: opId, pendingOpAt: now }, { merge: true });
+      return deps.sendButtons(from, ventraApi.confirmText(operating.op, heardNote), [{ id: `wx|ok|${opId}`, title: "Confirmar" }, { id: `wx|no|${opId}`, title: "Cancelar" }]);
+    }
+    if (imaging && imaging.plan) {
+      await ownerRef.set({ lastQuestion: text, lastAnswer: "(le armé imágenes de promo)", lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
+      if (known && known.pendingRequest) await brandKit.save(db, uid, { pendingRequest: null });
+      // "La 1 pero con…": pedir cambios sobre una opción también es elegirla (cuenta el voto una vez)
+      const prev = o.lastImage;
+      if (imaging.plan.style && prev && !prev.elegido && (prev.estilos || []).includes(imaging.plan.style) && now - Number(prev.at || 0) < PICK_MS) {
+        await brandKit.recordPick(db, uid, imaging.kit, imaging.plan.style);
+        await ownerRef.set({ lastImage: { ...prev, elegido: imaging.plan.style } }, { merge: true });
+      }
+      return sendImages(imaging.plan, imaging.kit, heardNote);
+    }
     const last = acc.plan === "agenda" || acc.plan === "agenda_pro" ? null : await insights.lastSync(sql, uid).catch(() => null);
     const answer = waFormat(out.result && out.result.answer);
     const note = acc.plan === "agenda" || acc.plan === "agenda_pro" ? "" : freshnessNote(last, now);
     await ownerRef.set({ lastQuestion: text, lastAnswer: answer.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
-    return send(from, (heardNote + answer + note + leftNote(out.leftToday)).slice(0, 4000));
+    const day = new Date(now).toLocaleDateString("en-CA", { timeZone: TZ });
+    const menuHint = o.menuHintDay !== day ? "\n\n_Escribí *MENÚ* para ver todo lo que puedo hacer._" : "";
+    if (menuHint) await ownerRef.set({ menuHintDay: day }, { merge: true });
+    await send(from, (heardNote + answer + note + menuHint + leftNote(out.leftToday)).slice(0, 4000));
+    // Completó el nombre o el logo con un pedido de imagen esperando: lo arma ahora
+    if (imaging && imaging.brandSaved && known && known.pendingRequest) return continuePending(imaging.kit, known.pendingRequest);
+    return null;
   } catch (err) {
     // Topes y errores de la IA: su mensaje ya está escrito para la persona
     if (ai && ai.AiError && err instanceof ai.AiError) return send(from, err.message);

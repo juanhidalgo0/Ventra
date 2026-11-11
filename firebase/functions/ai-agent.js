@@ -118,15 +118,21 @@ const addUsage = (a, u = {}) => { for (const k of ["input_tokens", "output_token
  */
 async function run(deps, ctx, question) {
   const { client, sql, db, logger } = deps;
-  // Cambiar precios por WhatsApp (wa-owner-edits.js): solo el dueño, solo por WhatsApp y con caja
-  const edits = deps.edits && ctx.channel === "whatsapp" && ctx.role !== "SUPERVISOR" && groupsFor(ctx.plan).has("caja") ? deps.edits : null;
-  const tools = edits ? [...toolsFor(ctx), edits.tool] : toolsFor(ctx);
+  // Herramientas que escriben (wa-owner-edits.js: precios; promo-images: imágenes): solo el dueño,
+  // solo por WhatsApp y con caja. Cada sesión trae sus herramientas, su nota y cómo atenderlas.
+  const allowed = ctx.channel === "whatsapp" && ctx.role !== "SUPERVISOR" && groupsFor(ctx.plan).has("caja");
+  const extras = allowed ? [deps.edits, deps.images, deps.api].filter(Boolean) : [];
+  // Operar el sistema necesita más pasos (buscar, ver, consultar, operar)
+  const maxRounds = Math.max(MAX_ROUNDS, ...extras.map((s) => Number(s.rounds) || 0));
+  const extraTool = new Map();
+  for (const s of extras) for (const t of s.tools || [s.tool]) extraTool.set(t.name, s);
+  const tools = [...toolsFor(ctx), ...[...extraTool.keys()].map((n) => { const s = extraTool.get(n); return (s.tools || [s.tool]).find((t) => t.name === n); })];
   const byName = new Map(tools.map((t) => [t.name, t]));
   const apiTools = tools.map(({ name, description, input_schema }) => ({ name, description, input_schema }));
   apiTools[apiTools.length - 1] = { ...apiTools[apiTools.length - 1], cache_control: { type: "ephemeral" } };
   const today = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
   const weekday = new Date().toLocaleDateString("es-AR", { timeZone: TZ, weekday: "long" });
-  const system = [{ type: "text", text: systemText({ ...ctx, today, weekday }, edits ? edits.systemNote : "") }];
+  const system = [{ type: "text", text: systemText({ ...ctx, today, weekday }, extras.map((s) => s.systemNote).join("\n")) }];
   const { one } = insights.makeQueries(sql, ctx.uid, { db });
 
   // Las dos preguntas anteriores, para entender "¿y ayer?" sin mandar toda la charla
@@ -142,7 +148,7 @@ async function run(deps, ctx, question) {
   let rounds = 0;
   for (;;) {
     rounds++;
-    const last = rounds >= MAX_ROUNDS;
+    const last = rounds >= maxRounds;
     const msg = await client.messages.create({
       model: MODEL, max_tokens: 2500, system, messages,
       tools: apiTools, tool_choice: { type: last ? "none" : "auto" },
@@ -162,7 +168,7 @@ async function run(deps, ctx, question) {
       try {
         if (!t) out = { error: "Herramienta desconocida" };
         else if (c.name === "ayuda_ventra") out = { guia: helpGuide() };
-        else if (edits && c.name === edits.tool.name) out = await edits.run(c.input);
+        else if (extraTool.has(c.name)) { const s = extraTool.get(c.name); out = s.call ? await s.call(c.name, c.input || {}) : await s.run(c.input); }
         else if (c.name === "sin_respuesta") { misses.push(String((c.input && c.input.motivo) || "").slice(0, 300)); out = { ok: true }; }
         else {
           const r = await one({ tipo: t.tipo || c.name, ...(c.input || {}) });

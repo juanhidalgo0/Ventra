@@ -716,10 +716,15 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
     return res.status(401).json({ error: "Anfitrión no autorizado" });
   }
 
-  const { idToken, supportTicket, needCredentials } = req.body || {};
+  const { idToken, supportTicket, needCredentials, botUid } = req.body || {};
   let user;
   let supportAdmin = null;
-  if (supportTicket) {
+  if (botUid) {
+    // El bot de WhatsApp del dueño (wa-owner.js → ventra-api) usa la caja en la nube del comercio:
+    // el anfitrión ya probó el secreto y el teléfono del dueño ya está vinculado a este comercio
+    if (!/^[A-Za-z0-9_-]{6,128}$/.test(String(botUid))) return res.status(400).json({ error: "Comercio inválido" });
+    user = { uid: String(botUid), email: null };
+  } else if (supportTicket) {
     // Entrada de soporte desde ventra.store/admin: pase de un solo uso y 2 minutos
     const ref = db.collection("ventra_support_tickets").doc(sha256(String(supportTicket)));
     try {
@@ -2174,11 +2179,14 @@ exports.ventraWaOwner = onRequest({ maxInstances: 10, timeoutSeconds: 30 }, asyn
   }
 });
 
+// 2 GiB y 5 minutos: arma imágenes de promos con Chromium (promo-images/render.js)
 exports.ventraWaOwnerInbox = onDocumentCreated({
-  document: "ventra_wa_owner_inbox/{msgId}", secrets: [VENTRA_ANTHROPIC_KEY, VENTRA_WA_TOKEN, NEON_DATABASE_URL],
-  memory: "512MiB", timeoutSeconds: 120, maxInstances: 10, retry: false,
+  document: "ventra_wa_owner_inbox/{msgId}", secrets: [VENTRA_ANTHROPIC_KEY, VENTRA_WA_TOKEN, NEON_DATABASE_URL, CLOUD_HOST_SECRET],
+  memory: "2GiB", cpu: 1, timeoutSeconds: 300, maxInstances: 10, retry: false,
 }, async (event) => {
   if (!event.data) return;
+  // El despertador (ventraWaWarm): solo mantiene la función lista; no toca Neon (que se duerma)
+  if (event.data.data().type === "warm") { await event.data.ref.delete().catch(() => {}); return; }
   const token = String(VENTRA_WA_TOKEN.value() || "").trim();
   if (!whatsapp.configured(token)) return;
   const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
@@ -2187,6 +2195,12 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
     ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
     sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
     sendButtons: (to, text, buttons) => whatsapp.sendButtons(token, to, text, buttons),
+    sendImage: (to, link, caption) => whatsapp.sendImage(token, to, link, caption),
+    sendList: (to, text, button, sections) => whatsapp.sendList(token, to, text, button, sections),
+    download: (mediaId) => whatsapp.downloadMedia(token, mediaId),
+    bucket: admin.storage().bucket(),
+    // Operaciones del sistema en la caja en la nube del comercio (ventra-api + apps/cloud-host/bot-gateway.js)
+    ventraApi: String(CLOUD_HOST_SECRET.value() || "").trim() ? require("./ventra-api").client({ secret: String(CLOUD_HOST_SECRET.value()).trim() }) : null,
     afterWrite: (uid, head, gen) => syncHead.afterWrite(uid, head, gen),
     // Notas de voz: se bajan de Meta y se pasan a texto (Google Speech-to-Text del proyecto)
     transcribe: async (mediaId, mime, uid) => {
@@ -2199,6 +2213,17 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
   });
   await usage.flush();
   await event.data.ref.delete().catch(() => {});
+});
+
+/**
+ * Mantiene despiertas la entrada del WhatsApp y la bandeja del dueño (de 7 a 2 h): sin esto, el
+ * primer mensaje después de un rato tarda ~5 s más en arrancar. No despierta Neon.
+ */
+exports.ventraWaWarm = onSchedule({ schedule: "*/10 0-1,7-23 * * *", timeZone: notify.TZ }, async () => {
+  await Promise.allSettled([
+    db.collection("ventra_wa_owner_inbox").doc(`warm_${Date.now()}`).set({ type: "warm", at: Date.now() }),
+    fetch("https://us-central1-ventra-9cba5.cloudfunctions.net/agendaWaHook", { method: "GET" }),
+  ]);
 });
 
 /** Resumen del día por WhatsApp, a la hora que pidió cada uno ("RESUMEN A LAS 21") */
