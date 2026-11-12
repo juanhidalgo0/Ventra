@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Trash2, Info, Flag } from 'lucide-react';
 import api from '../../services/api';
 import NewPurchaseScreen from './NewPurchaseScreen';
 import { photosFor } from './ScanJobPanel';
@@ -14,6 +14,7 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
   const [rows, setRows] = useState<any[] | null>(null);
   const [active, setActive] = useState<string>(ids[0]);
   const [doneIds, setDoneIds] = useState<string[]>([]);
+  const [reported, setReported] = useState<string[]>([]);
 
   const load = async () => {
     try {
@@ -77,6 +78,19 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
     }
   };
 
+  /** "Leyó mal": un toque avisa a Ventra (con lo que quiera contar); no cambia nada de la compra */
+  const misread = async () => {
+    const note = window.prompt('¿Qué leyó mal? (opcional: por ejemplo "las cantidades de la yerba", "faltó un renglón")', '');
+    if (note === null) return;
+    try {
+      await api.post(`/purchases/${current.id}/misread`, { note });
+      setReported((r) => [...r, current.id]);
+      toast.success('Gracias: le avisamos a Ventra para que la próxima boleta de este proveedor salga bien.', { duration: 6000 });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo avisar. Probá de nuevo.');
+    }
+  };
+
   const why: string[] = current.draft?.why || [];
   const check = current.draft?.check;
   const st = stateOf(current);
@@ -99,6 +113,13 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
             );
           })}
         </div>
+        {st !== 'done' && current.draft && (
+          <button onClick={misread} disabled={!!current.draft.misreadAt || reported.includes(current.id)}
+            title="Avisale a Ventra que la IA leyó mal esta boleta: la revisan para que la próxima salga bien"
+            className="shrink-0 h-8 px-2.5 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 inline-flex items-center gap-1 cursor-pointer disabled:cursor-default">
+            <Flag className="w-3.5 h-3.5" /> {current.draft.misreadAt || reported.includes(current.id) ? 'Avisado' : 'Leyó mal'}
+          </button>
+        )}
         <span className="shrink-0 text-[12px] font-semibold text-slate-500 hidden md:block">{open.length ? `Faltan ${open.length} de ${rows.length}` : 'Todas revisadas'}</span>
       </div>
 

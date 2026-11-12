@@ -42,3 +42,6 @@ docs/go-colores-repartidor/
 # Accesos y tokens sueltos
 IG ACCESS.txt
 release-token.txt
+
+# Banco de pruebas de boletas (fotos de muestras reales y resultados): nunca al repo
+.boletas-eval/

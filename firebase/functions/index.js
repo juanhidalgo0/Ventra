@@ -1187,6 +1187,9 @@ exports.ventraAdmin = onRequest(
     try {
       // Uso del WhatsApp del dueño: teléfonos vinculados, mensajes del mes y lo que no supo contestar
       if (action === "waBot") return res.status(200).json(await require("./wa-owner-stats").report(db));
+      // Boletas: avisos "Leyó mal" de los comercios y seguimiento del lector (invoice-admin.js)
+      if (action === "boletas") return res.status(200).json(await require("./invoice-admin").report(db, { days: Math.min(180, Math.max(7, Number(days) || 30)) }));
+      if (action === "boletasSeen") return res.status(200).json(await require("./invoice-admin").markSeen(db, req.body.id));
       // Mails automáticos (bienvenida, recordatorios y avisos de gracia): última pasada y envíos
       if (action === "emailBot") return res.status(200).json(await require("./signup-emails").report(db));
       // Un mail del registro, completo (asunto y HTML), para verlo tal cual le llegó

@@ -509,6 +509,38 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(db.docs[id].confirmed.untouched, true);
   });
 
+  await t("Leyó mal: marca solo las muestras propias y deja el aviso para el admin, sin cupo", async () => {
+    const db = fakeDb();
+    db.docs.sample001 = { uid: "u30", read: {} };
+    db.docs.sample002 = { uid: "otro", read: {} };
+    const out = await ai.handle({ db, logger }, "u30", { kind: "invoice", stage: "misread", sampleIds: ["sample001", "sample002"], note: "faltó un renglón", info: { supplierName: "DISTRI", invoiceNumber: "1-2", items: 5, why: ["1 renglón dudoso"] } });
+    assert.strictEqual(out.result.flagged, 1);
+    assert.strictEqual(db.docs.sample001.flagged, true);
+    assert.ok(!db.docs.sample002.flagged);
+    const aviso = db.docs[out.result.id];
+    assert.strictEqual(aviso.note, "faltó un renglón");
+    assert.strictEqual(aviso.seen, false);
+    // Sin muestras (interruptor apagado) el aviso llega igual
+    const sin = await ai.handle({ db, logger }, "u30", { kind: "invoice", stage: "misread", sampleIds: [], info: { supplierName: "OTRO" } });
+    assert.strictEqual(db.docs[sin.result.id].supplierName, "OTRO");
+  });
+
+  await t("admin Boletas: sin tocar por proveedor, escaladas, costo y los que peor se leen", async () => {
+    const stats = require("../functions/invoice-admin").stats;
+    const row = (uid, at, sup, untouched, models, extra = {}) => ({ uid, cuit: "30", costUsd: 0.02, models, read: { items: [{ total: "1" }, { total: "2" }] }, confirmedAt: at, confirmed: { supplierName: sup, invoiceNumber: String(at), untouched, items: [{}, {}] }, ...extra });
+    const s = stats([
+      row("a", 1, "MALO", false, ["claude-haiku-5-5", "claude-sonnet-5-5"]), row("a", 2, "MALO", false, ["claude-haiku-5-5"], { flagged: true }),
+      row("a", 3, "BUENO", true, ["claude-haiku-5-5"]), row("b", 4, "BUENO", true, ["claude-haiku-5-5"]),
+      { uid: "a", read: {}, confirmed: null },
+    ]);
+    assert.strictEqual(s.invoices, 4);
+    assert.strictEqual(s.untouchedPct, 50);
+    assert.strictEqual(s.escalatedPct, 25);
+    assert.strictEqual(s.suppliers[0].supplier, "MALO");
+    assert.strictEqual(s.suppliers[0].flagged, 1);
+    assert.deepStrictEqual(s.worst.map((w) => w.supplier), ["MALO"]);
+  });
+
   await t("impuestos internos: la IA los informa aparte y llegan al comprobante", async () => {
     assert.ok(ai.INVOICE_ONE_PROMPT.includes("impuestosInternos"));
     const g = ai.finishInvoices([{ image: 0, ...read({ invoiceNumber: "0001-00000001", totalFacturaAPagar: "1.331,00", ivaTotal: "210,00", otrosImpuestos: "121", impuestosInternos: "121", items: [it("CERVEZA", 1, "1.000,00")] }) }]);

@@ -1089,6 +1089,8 @@ async function goCategories(client, body) {
 async function handle({ db, logger, apiKey, client: injected, sql, edits, images, api, bucket = null, unlimited = false }, uid, body) {
   // La caja confirmó una compra escaneada: lo que quedó va a sus muestras (invoice-samples.js). Sin IA ni cupo.
   if (body && body.kind === "invoice" && body.stage === "confirm") return { result: await samples.confirm(db, uid, body), left: null };
+  // "Leyó mal": marca las muestras y avisa al dueño de Ventra (admin → Boletas). Sin IA ni cupo.
+  if (body && body.kind === "invoice" && body.stage === "misread") return { result: await samples.flagMisread(db, uid, body), left: null };
   // "agent" (la IA con herramientas) usa el mismo cupo que las preguntas
   const kind = body && body.kind === "agent" ? "ask" : String(body && body.kind || "");
   const agent = body && body.kind === "agent";
@@ -1173,4 +1175,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, applyQr, cleanQr, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, applyQr, cleanQr, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

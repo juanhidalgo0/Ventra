@@ -1222,6 +1222,22 @@ export class PurchasesService {
   }
 
   /**
+   * "Leyó mal" (tanda 2.3): el comercio avisa desde la revisión que la IA leyó mal esta boleta. La nube
+   * marca sus muestras (se evalúan primero) y le avisa al dueño de Ventra en el admin. No cambia la compra.
+   */
+  async reportMisread(id: string, note?: string) {
+    const draft = (await this.drafts([id])).get(id);
+    if (!draft) throw new BadRequestException('Solo se puede avisar de una boleta escaneada que está por revisar.');
+    if (draft.misreadAt) return { ok: true, already: true };
+    await this.ai.call('invoice', {
+      stage: 'misread', sampleIds: Array.isArray(draft.sampleIds) ? draft.sampleIds : [], note: String(note || '').slice(0, 500),
+      info: { supplierName: draft.matchedSupplier?.name || draft.supplierName || '', supplierCuit: draft.supplierCuit || '', invoiceNumber: draft.invoiceNumber || '', items: (draft.items || []).length, why: draft.why || [] },
+    }, { timeoutMs: 30_000 });
+    await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...draft, misreadAt: Date.now() }), id);
+    return { ok: true };
+  }
+
+  /**
    * Lo que quedó al confirmar es la respuesta correcta de las muestras de esa boleta (tanda 1.1 del
    * plan de boletas). En segundo plano: nunca frena ni rompe la compra; sin muestras no manda nada.
    */

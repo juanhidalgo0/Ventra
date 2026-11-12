@@ -117,4 +117,30 @@ async function confirm(db, uid, body) {
   return { updated };
 }
 
-module.exports = { enabled, save, confirm, readSummary, resetCache, COL, PREFIX };
+/**
+ * "Leyó mal" (tanda 2.3): el comercio avisa desde la revisión que la IA leyó mal una boleta. Marca sus
+ * muestras (se evalúan primero) y deja el aviso para el dueño de Ventra en el admin (pestaña Boletas),
+ * aunque no haya muestras (interruptor apagado): proveedor, número y lo que escribió el comercio.
+ */
+const MISREADS = "ventra_invoice_misreads";
+async function flagMisread(db, uid, body) {
+  const ids = [...new Set((Array.isArray(body && body.sampleIds) ? body.sampleIds : []).map(String).filter((s) => /^[\w-]{6,60}$/.test(s)))].slice(0, 60);
+  let flagged = 0;
+  for (const id of ids) {
+    const ref = db.collection(COL).doc(id);
+    const snap = await ref.get().catch(() => null);
+    if (!snap || !snap.exists || snap.data().uid !== String(uid)) continue;
+    await ref.set({ flagged: true, flaggedAt: Date.now(), flagNote: str(body.note, 500) }, { merge: true });
+    flagged++;
+  }
+  const i = (body && body.info) || {};
+  const id = `${Date.now()}_${String(uid).slice(0, 12)}`;
+  await db.collection(MISREADS).doc(id).set({
+    uid: String(uid), at: Date.now(), seen: false, note: str(body && body.note, 500), sampleIds: ids, samples: flagged,
+    supplierName: str(i.supplierName, 120), supplierCuit: digits(i.supplierCuit).slice(0, 11), invoiceNumber: str(i.invoiceNumber, 40),
+    items: Number(i.items) || 0, why: (Array.isArray(i.why) ? i.why : []).slice(0, 6).map((w) => str(w, 200)),
+  });
+  return { id, flagged };
+}
+
+module.exports = { enabled, save, confirm, flagMisread, readSummary, resetCache, COL, PREFIX, MISREADS };

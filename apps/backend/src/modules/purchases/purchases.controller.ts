@@ -43,6 +43,12 @@ export class PurchasesController {
     return this.purchasesService.deleteOne(id);
   }
 
+  /** "Leyó mal": avisa a Ventra que la IA leyó mal esta boleta escaneada (no cambia la compra) */
+  @Post(':id/misread')
+  reportMisread(@Param('id') id: string, @Body() body: { note?: string }) {
+    return this.purchasesService.reportMisread(id, body?.note);
+  }
+
   /** Deshacer una boleta confirmada: stock, costos y precios como estaban (dueño o encargado) */
   @Post(':id/undo')
   @UseGuards(RolesGuard)

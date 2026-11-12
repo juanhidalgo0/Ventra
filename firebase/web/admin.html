@@ -267,6 +267,15 @@
   .misses li{ font-size:13px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .misses li .q{ display:block; color:var(--ink); }
   .misses li .m{ display:block; margin-top:4px; font-size:11.5px; color:var(--ink-3); }
+  .aifix{ list-style:none; margin:12px 0 0; padding:0; display:grid; gap:10px; }
+  .aifix li{ border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; }
+  .aifix .q{ font-size:13px; color:var(--ink); }
+  .aifix .tag{ display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; margin-right:6px; background:var(--mint-50); color:var(--pine); }
+  .aifix .tag.falta_dato{ background:#fff7e6; color:#92400e; }
+  .aifix .tag.ignorar{ background:#f1f5f9; color:#475569; }
+  .aifix textarea{ width:100%; min-height:62px; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font:inherit; font-size:13px; resize:vertical; box-sizing:border-box; }
+  .aifix .acts{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .aifix .n{ font-size:11.5px; color:var(--ink-3); margin-top:4px; }
   .cost-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
   .cost-kpis .kpi{ padding:14px 16px; } .cost-kpis .kpi-value{ font-size:22px; }
   td.neg{ color:var(--red); font-weight:600; } td.pos{ color:var(--pine); font-weight:600; }
@@ -423,6 +432,7 @@
         <a href="#soporte" data-view="soporte">Soporte <b class="tbadge hot hidden" id="tbSoporte"></b></a>
         <a href="#mails" data-view="mails">Mails <b class="tbadge hot hidden" id="tbMails"></b></a>
         <a href="#bot" data-view="bot">WhatsApp del dueño</a>
+        <a href="#boletas" data-view="boletas">Boletas <b class="tbadge hot hidden" id="tbBoletas"></b></a>
         <a href="#costos" data-view="costos">Costos</a>
       </div>
     </nav>
@@ -540,6 +550,29 @@
       </details>
     </div>
 
+    <!-- ═══ Boletas: lo que los comercios marcan "Leyó mal" y cómo viene leyendo la IA ═══ -->
+    <div class="view" data-view="boletas" id="bolSection">
+      <div class="page-head">
+        <div><h1>Boletas</h1><div class="sub" id="bolSub">Cargando…</div></div>
+        <button class="btn" id="bolRefresh">Actualizar</button>
+      </div>
+      <div class="cost-kpis" id="bolKpis"></div>
+      <div class="panel" style="margin-top:12px">
+        <h2>Leyó mal</h2>
+        <div class="panel-sub">Lo que marcan los comercios al revisar una boleta. Esas muestras se evalúan primero (node eval-boletas/eval.js --muestras --leyo-mal).</div>
+        <ul class="aifix" id="bolMisreads"></ul>
+      </div>
+      <div class="table-wrap cards" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Proveedor</th><th class="r">Boletas</th><th class="r">Sin tocar</th><th class="r">Renglones corregidos</th><th class="r">Leyó mal</th><th class="r">Escaló</th><th class="r">Costo por boleta</th></tr></thead>
+          <tbody id="bolRows"></tbody>
+        </table>
+      </div>
+      <details class="howto"><summary>¿De dónde salen estos números?</summary>
+        <p>De las boletas confirmadas con muestra guardada (interruptor <b>ventra_config/invoiceSamples</b>). "Sin tocar": el comercio confirmó sin corregir nada. "Escaló": la tuvo que releer Sonnet u Opus. Los avisos "Leyó mal" llegan aunque las muestras estén apagadas.</p>
+      </details>
+    </div>
+
     <!-- ═══ WhatsApp del dueño ═══ -->
     <div class="view" data-view="bot" id="waSection">
       <div class="page-head">
@@ -550,6 +583,14 @@
       <div class="wab-use">
         <div class="panel"><h2>Qué le piden</h2><div class="panel-sub">Este mes, todos los comercios juntos</div><div class="bars" id="waBars"></div></div>
         <div class="panel"><h2>Lo que no supo contestar</h2><div class="panel-sub">Últimos 30 días, por WhatsApp</div><ul class="misses" id="waMisses"></ul></div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div><h2>Arreglos para el bot</h2><div class="panel-sub" id="aiFixSub">Cada lunes una IA lee lo que no supo contestar (y los "No me sirvió") y propone qué enseñarle. Lo que aprobás lo aprende para todos los comercios.</div></div>
+          <button class="btn sm" id="aiFixRun" type="button">Revisar ahora</button>
+        </div>
+        <ul class="aifix" id="aiFixList"></ul>
+        <details class="howto" style="margin-top:12px"><summary id="aiKnowSum">Lo que ya aprendió</summary><ul class="aifix" id="aiKnowList"></ul></details>
       </div>
       <div class="table-wrap cards" style="margin-top:12px">
         <table>
@@ -685,7 +726,7 @@
     }
 
     // ── Secciones (pestañas): una por vez, con la dirección (#clientes, #soporte…) para volver o compartir ──
-    var VIEWS = ['resumen', 'clientes', 'soporte', 'mails', 'bot', 'costos'];
+    var VIEWS = ['resumen', 'clientes', 'soporte', 'mails', 'bot', 'boletas', 'costos'];
     var view = null;
     function showView(name, keepScroll){
       if (VIEWS.indexOf(name) < 0) name = 'resumen';
@@ -739,6 +780,7 @@
         data = d; merge(); render(); showApp();
         if (!stats) loadStats();
         loadWaBot();
+        loadBoletas();
         loadMailBot();
         loadSupport();
       }).catch(function(err){
@@ -1427,11 +1469,87 @@
       var h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h';
       var d = Math.round(h / 24); return d === 1 ? 'ayer' : 'hace ' + d + ' días';
     }
+    // ── Boletas (invoice-admin.js) ──
+    var bolBusy = false;
+    function loadBoletas(){
+      if (bolBusy) return; bolBusy = true; $('bolRefresh').disabled = true;
+      api('POST', { action:'boletas', days:30 }).then(renderBoletas).catch(function(err){ console.error('Boletas', err); $('bolSub').textContent = 'No se pudieron cargar las boletas.'; })
+        .then(function(){ bolBusy = false; $('bolRefresh').disabled = false; });
+    }
+    function renderBoletas(r){
+      var st = r.stats || {};
+      $('bolSub').textContent = 'Últimos ' + r.days + ' días · ' + (st.invoices || 0) + ' boletas confirmadas con muestra';
+      var tb = $('tbBoletas'); tb.textContent = r.unseen || ''; tb.classList.toggle('hidden', !r.unseen);
+      var kpi = function(label, value, sub){ return '<div class="kpi"><div class="kpi-label">' + esc(label) + '</div><div class="kpi-value num">' + esc(value) + '</div>' + (sub ? '<div class="kpi-foot">' + esc(sub) + '</div>' : '') + '</div>'; };
+      $('bolKpis').innerHTML = kpi('Sin tocar', st.untouchedPct == null ? '—' : st.untouchedPct + '%', (st.untouched || 0) + ' de ' + (st.invoices || 0)) +
+        kpi('Cargadas solas', String(st.auto || 0)) + kpi('Renglones corregidos', String(st.correctedLines || 0)) +
+        kpi('Escalaron', st.escalatedPct == null ? '—' : st.escalatedPct + '%', 'Sonnet u Opus') + kpi('Costo por boleta', st.costPerInvoice == null ? '—' : 'US$ ' + st.costPerInvoice) +
+        kpi('Leyó mal sin ver', String(r.unseen || 0));
+      var mis = r.misreads || [];
+      $('bolMisreads').innerHTML = mis.length ? mis.map(function(m){
+        return '<li data-id="' + esc(m.id) + '"' + (m.seen ? ' style="opacity:.6"' : '') + '><div class="q"><b>' + esc(m.supplierName || 'Proveedor sin nombre') + '</b>' + (m.invoiceNumber ? ' · N° ' + esc(m.invoiceNumber) : '') + ' <span class="small">· ' + esc(m.shop) + ' · ' + waAgo(m.at) + '</span></div>' +
+          (m.note ? '<div class="n">“' + esc(m.note) + '”</div>' : '') +
+          '<div class="n">' + (m.samples ? m.samples + (m.samples === 1 ? ' foto guardada' : ' fotos guardadas') : 'Sin foto guardada (muestras apagadas)') + (m.items ? ' · ' + m.items + ' renglones' : '') + ((m.why || []).length ? ' · ' + esc(m.why.join(', ')) : '') + '</div>' +
+          (m.seen ? '' : '<div class="acts"><button class="btn sm" data-act="seen" type="button">Visto</button></div>') + '</li>';
+      }).join('') : '<li class="small">Ningún comercio marcó una boleta como mal leída.</li>';
+      var sup = st.suppliers || [];
+      $('bolRows').innerHTML = sup.length ? sup.map(function(b){
+        return '<tr><td>' + esc(b.supplier) + (b.cuit ? ' <span class="small">' + esc(b.cuit) + '</span>' : '') + '</td><td class="r">' + b.invoices + '</td><td class="r">' + b.untouchedPct + '%</td><td class="r">' + b.corrected + '</td><td class="r">' + b.flagged + '</td><td class="r">' + b.escalated + '</td><td class="r">US$ ' + b.costPerInvoice + '</td></tr>';
+      }).join('') : '<tr><td colspan="7" class="small">Todavía no hay boletas confirmadas con muestra.</td></tr>';
+    }
+    $('bolRefresh').addEventListener('click', loadBoletas);
+    $('bolMisreads').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-act="seen"]'); if (!b) return;
+      b.disabled = true;
+      api('POST', { action:'boletasSeen', id: b.closest('li').getAttribute('data-id') }).then(loadBoletas).catch(function(){ b.disabled = false; });
+    });
+
     function loadWaBot(){
       if (waBusy) return; waBusy = true; $('waRefresh').disabled = true;
+      loadAiFix();
       api('POST', { action:'waBot' }).then(renderWaBot).catch(function(err){ console.error('WhatsApp del dueño', err); $('waSub').textContent = 'No se pudo cargar el uso del WhatsApp.'; })
         .then(function(){ waBusy = false; $('waRefresh').disabled = false; });
     }
+    // Arreglos para el bot (ai-review.js): aprobar, corregir o descartar lo que propone la IA
+    var AI_TIPO = { conocimiento:'Enseñarle', falta_dato:'Falta programar', ignorar:'Ignorar' };
+    function loadAiFix(){
+      api('POST', { action:'aiReview' }).then(renderAiFix).catch(function(err){ console.error('Arreglos del bot', err); $('aiFixList').innerHTML = '<li class="small">No se pudieron cargar las propuestas.</li>'; });
+    }
+    function renderAiFix(r){
+      var pend = (r.proposals || []).filter(function(p){ return p.status === 'pending'; });
+      $('aiFixList').innerHTML = pend.length ? pend.map(function(p){
+        var teach = p.tipo === 'conocimiento';
+        return '<li data-id="' + esc(p.id) + '"><div class="q"><span class="tag ' + esc(p.tipo) + '">' + esc(AI_TIPO[p.tipo] || p.tipo) + '</span>“' + esc(p.question) + '”' + (p.count > 1 ? ' <span class="small">· ' + p.count + ' veces</span>' : '') + '</div>' +
+          (p.nota ? '<div class="n">' + esc(p.nota) + '</div>' : '') +
+          (teach ? '<textarea aria-label="Lo que aprende el bot">' + esc(p.texto) + '</textarea>' : '<div class="n" style="color:var(--ink)">' + esc(p.texto) + '</div>') +
+          '<div class="acts">' + (teach ? '<button class="btn sm primary" data-act="approve" type="button">Aprobar</button>' : '<button class="btn sm" data-act="reject" type="button">Listo, anotado</button>') +
+          (teach ? '<button class="btn sm" data-act="reject" type="button">Descartar</button>' : '') + '</div></li>';
+      }).join('') : '<li class="small">No hay propuestas pendientes' + (r.at ? ' · última revisión ' + waAgo(r.at) : '') + '.</li>';
+      var know = r.knowledge || [];
+      $('aiKnowSum').textContent = 'Lo que ya aprendió (' + know.length + ')';
+      $('aiKnowList').innerHTML = know.length ? know.slice().reverse().map(function(k){
+        return '<li data-id="' + esc(k.id) + '"><div class="q">' + esc(k.text) + '</div>' + (k.question ? '<div class="n">Por: “' + esc(k.question) + '” · ' + waAgo(k.at) + '</div>' : '') +
+          '<div class="acts"><button class="btn sm" data-act="remove" type="button">Sacar</button></div></li>';
+      }).join('') : '<li class="small">Todavía nada.</li>';
+    }
+    function aiFixClick(e){
+      var b = e.target.closest('button[data-act]'); if (!b) return;
+      var li = b.closest('li'); var id = li.getAttribute('data-id'); var act = b.getAttribute('data-act');
+      var ta = li.querySelector('textarea');
+      if (act === 'remove' && !confirm('¿Sacarle esto al bot?')) return;
+      b.disabled = true;
+      api('POST', { action:'aiReviewDecide', id:id, decision:act, texto: ta ? ta.value : undefined })
+        .then(function(res){ if (res && res.error) { alert(res.error); b.disabled = false; return; } loadAiFix(); })
+        .catch(function(){ alert('No se pudo guardar'); b.disabled = false; });
+    }
+    $('aiFixList').addEventListener('click', aiFixClick);
+    $('aiKnowList').addEventListener('click', aiFixClick);
+    $('aiFixRun').addEventListener('click', function(){
+      var b = $('aiFixRun'); b.disabled = true; b.textContent = 'Revisando…';
+      api('POST', { action:'aiReviewRun' }).then(function(res){ if (res && res.note) alert(res.note); loadAiFix(); })
+        .catch(function(){ alert('No se pudo revisar ahora'); })
+        .then(function(){ b.disabled = false; b.textContent = 'Revisar ahora'; });
+    });
     function renderWaBot(w){
       var monthName = new Date(w.month + '-15T12:00:00').toLocaleDateString('es-AR', { month:'long', year:'numeric' });
       $('waSub').textContent = 'Mes de ' + monthName + ' · se actualiza al abrir el panel';
@@ -1694,6 +1812,18 @@
     // ── Datos de demostración (solo con ?demo) ──────
     function demoApi(method, body, part){
       if (method === 'POST' && body && body.action === 'waBot') return Promise.resolve(demoWaBot());
+      if (method === 'POST' && body && body.action === 'aiReview') return Promise.resolve({ at: Date.now() - 2 * 864e5, proposals: [
+        { id:'p1', status:'pending', tipo:'conocimiento', count:3, question:'¿Cómo cambio el precio de costo de un producto?', nota:'La guía lo explica pero no lo encontró', texto:'Si preguntan cómo cambiar el costo de un producto, explicá: Productos → Inventario, tocá el producto y cambiá "Costo". También se actualiza solo al confirmar una compra.' },
+        { id:'p2', status:'pending', tipo:'falta_dato', count:2, question:'¿Cuánto gané en octubre sacando los gastos del local?', nota:'No hay consulta de ganancia neta con gastos fijos', texto:'Sumar una consulta de ganancia del mes menos los gastos cargados.' } ],
+        knowledge: [ { id:'k1', text:'Si preguntan por el cierre Z, explicá que se hace en Caja & Tesorería → Control de Caja → Cerrar caja.', question:'¿Dónde hago el cierre Z?', at: Date.now() - 9 * 864e5 } ] });
+      if (method === 'POST' && body && (body.action === 'aiReviewDecide' || body.action === 'aiReviewRun')) return Promise.resolve({ ok:true });
+      if (method === 'POST' && body && body.action === 'boletas') return Promise.resolve({ days:30, unseen:1,
+        misreads:[ { id:'m1', shop:'kiosco.lucia@gmail.com', supplierName:'DISTRIBUIDORA LOS ALAMOS S.A.', invoiceNumber:'0004-00012877', note:'Las cantidades de la yerba están mal, eran 2 bultos', samples:1, items:6, why:['1 renglón dudoso'], at: Date.now() - 3 * 36e5, seen:false },
+          { id:'m2', shop:'ferreteria.central@gmail.com', supplierName:'BEBIDAS DEL VALLE', invoiceNumber:'0007-00056002', note:'', samples:0, items:4, why:[], at: Date.now() - 50 * 36e5, seen:true } ],
+        stats:{ invoices:42, untouched:29, untouchedPct:69, auto:6, escalatedPct:21, costPerInvoice:0.018, correctedLines:23,
+          suppliers:[ { supplier:'BEBIDAS DEL VALLE S.A.', cuit:'30714446785', invoices:6, untouched:2, untouchedPct:33, corrected:9, flagged:1, escalated:3, costPerInvoice:0.041 },
+            { supplier:'DISTRIBUIDORA LOS ALAMOS S.A.', cuit:'30715551239', invoices:14, untouched:11, untouchedPct:79, corrected:5, flagged:1, escalated:2, costPerInvoice:0.012 },
+            { supplier:'MAYORISTA EL PUENTE SRL', cuit:'30716662345', invoices:22, untouched:16, untouchedPct:73, corrected:9, flagged:0, escalated:4, costPerInvoice:0.015 } ] } });
       if (method === 'POST' && body && body.action === 'emailBot') return Promise.resolve(demoMailBot());
       if (method === 'POST' && body && body.action === 'emailView') return Promise.resolve(demoMailView(body.logId));
       if (method === 'POST') return Promise.resolve({ ok:true });

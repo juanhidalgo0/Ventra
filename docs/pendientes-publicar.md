@@ -23,6 +23,28 @@ Orden para publicar (con tu OK):
 
 Para prender las muestras: crear en Firestore `ventra_config/invoiceSamples` con `{ enabled: false, uids: ["<tu uid>"] }` (solo tu cuenta). Para todos (`enabled: true`) **hace falta antes actualizar los términos** y decidir cuánto tiempo se guardan.
 
+### Regla del lector de boletas (tanda 2.4)
+
+**Ningún cambio a `firebase/functions/ai.js` (lectura de boletas) se publica sin correr la evaluación y sin que el acierto se mantenga o suba:**
+
+```
+cd firebase/functions
+node eval-boletas/eval.js --fabricadas          (boletas fabricadas: siempre)
+node eval-boletas/eval.js --muestras --bajar    (muestras reales confirmadas, cuando haya)
+```
+
+Si baja contra la línea de base, el comando lo dice ("no publicar") y termina con error. Las marcadas "Leyó mal" se evalúan primero (`--leyo-mal`). Necesita `VENTRA_ANTHROPIC_KEY` en la terminal; muestra el costo estimado y pregunta antes de gastar.
+
+## 0b. Boletas — tanda 2 (12/11/2026, lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Comando de evaluación con informe por hoja, proveedor y forma de foto; corridas y línea de base en `.boletas-eval/` (fuera de git) | `firebase/functions/eval-boletas/eval.js`, `compare.js` |
+| 10 boletas fabricadas (A, B, C, ticket, remito, presupuesto, a mano, bebidas "bultos,unidades", IVA mezclado con descuento, impuestos internos) × 6 fotos (limpia, girada, borrosa, sombra, cortada, papel atrás) | `eval-boletas/fabricadas.js`, `generar.js` (usa el Chrome de la PC) |
+| Botón "Leyó mal" en la revisión → marca las muestras y avisa en el admin, pestaña **Boletas** | `ReviewTabs`, `purchases.service.ts` (`reportMisread`), `invoice-samples.js`, `invoice-admin.js`, `index.js` (acciones `boletas`), `web/admin.html` |
+
+Para publicar: funciones `ventraAi` y `ventraAdmin`, la web (admin.html) y la caja. **Todavía no corrí la evaluación con la IA de verdad** (cuesta ~US$ 0,60 las 60 fotos): hace falta tu OK y la clave en la terminal. Esa primera corrida queda como línea de base.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |
