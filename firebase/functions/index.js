@@ -1190,6 +1190,8 @@ exports.ventraAdmin = onRequest(
       // Boletas: avisos "Leyó mal" de los comercios y seguimiento del lector (invoice-admin.js)
       if (action === "boletas") return res.status(200).json(await require("./invoice-admin").report(db, { days: Math.min(180, Math.max(7, Number(days) || 30)) }));
       if (action === "boletasSeen") return res.status(200).json(await require("./invoice-admin").markSeen(db, req.body.id));
+      // Lecciones de proveedores a prueba (lesson-trials.js): probarlas ahora, con tope de gasto
+      if (action === "lessonsTrial") return res.status(200).json(await runLessonTrials({ budgetUsd: 0.6 }));
       // Mails automáticos (bienvenida, recordatorios y avisos de gracia): última pasada y envíos
       if (action === "emailBot") return res.status(200).json(await require("./signup-emails").report(db));
       // Un mail del registro, completo (asunto y HTML), para verlo tal cual le llegó
@@ -2275,6 +2277,17 @@ exports.ventraWaWarm = onSchedule({ schedule: "*/10 0-1,7-23 * * *", timeZone: n
     db.collection("ventra_wa_owner_inbox").doc(`warm_${Date.now()}`).set({ type: "warm", at: Date.now() }),
     fetch("https://us-central1-ventra-9cba5.cloudfunctions.net/agendaWaHook", { method: "GET" }),
   ]);
+});
+
+/** Lecciones de proveedores a prueba: con y sin, sobre boletas confirmadas (lesson-trials.js) */
+async function runLessonTrials(opts = {}) {
+  const key = String(VENTRA_ANTHROPIC_KEY.value() || "").trim();
+  if (!key) return { spentUsd: 0, report: [], note: "Sin clave de la IA" };
+  return require("./lesson-trials").run({ db, bucket: admin.storage().bucket(), client: ai.anthropicClient({ apiKey: key, maxRetries: 2, timeout: 180 * 1000 }), ai, logger }, opts);
+}
+exports.ventraLessonTrialsWeekly = onSchedule({ schedule: "0 10 * * 1", timeZone: notify.TZ, secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 540, memory: "1GiB" }, async () => {
+  const r = await runLessonTrials().catch((err) => { logger.warn(`Lecciones a prueba: ${err.message}`); return null; });
+  if (r) logger.info(`Lecciones a prueba: US$ ${r.spentUsd}, ${r.report.filter((x) => x.decision).length} probadas`);
 });
 
 /** Resumen del día por WhatsApp, a la hora que pidió cada uno ("RESUMEN A LAS 21") */

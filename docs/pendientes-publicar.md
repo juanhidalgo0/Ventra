@@ -56,6 +56,15 @@ Para publicar: funciones `ventraAi` y `ventraAdmin`, la web (admin.html) y la ca
 
 Para publicar: función **ventraBarcodes** (antes que la caja) y la caja.
 
+## 0d. Boletas — tanda 4 (lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Lecciones a prueba: con 3+ boletas confirmadas de ese proveedor se lee con y sin cada lección nueva; se adopta (para todos) o se descarta (para nadie). Cada lunes 10 h (tope US$ 2) y botón "Probar ahora" en admin → Boletas (tope US$ 0,60) | `firebase/functions/lesson-trials.js`, `supplier-lessons.js`, `index.js` (`ventraLessonTrialsWeekly`, acción `lessonsTrial`) |
+| Ficha fija del proveedor (precios con o sin IVA, bultos o unidades, columna U.B., código interno, "bultos,unidades"), armada con las boletas confirmadas y metida en la primera lectura | `supplier-lessons.js` (`profileFrom`, `updateProfile`), `invoice-samples.js` |
+
+Para publicar: funciones `ventraAi`, `ventraAdmin`, **`ventraLessonTrialsWeekly` (nueva)** y la web (admin.html). Ojo: la ficha y las pruebas usan las muestras, así que no hacen nada hasta prender `ventra_config/invoiceSamples`.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

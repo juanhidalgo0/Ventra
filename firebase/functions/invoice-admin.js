@@ -65,6 +65,8 @@ async function report(db, { days = 30 } = {}) {
     misreads: misreads.map((m) => ({ ...m, shop: accounts.get(m.uid) || m.uid })),
     unseen: misreads.filter((m) => !m.seen).length,
     stats: stats(smp.docs.map((d) => d.data())),
+    // Lecciones de cada proveedor con su estado (a prueba, adoptada, descartada) y la ficha (tanda 4)
+    lessons: await require("./lesson-trials").list(db).catch(() => []),
   };
 }
 

@@ -541,6 +541,82 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.deepStrictEqual(s.worst.map((w) => w.supplier), ["MALO"]);
   });
 
+  // ── Tanda 4: lecciones a prueba y ficha del proveedor ──
+  const lessonsMod = require("../functions/supplier-lessons");
+  const trials = require("../functions/lesson-trials");
+  /** Firestore falso con colecciones, where("campo","==",v) y limit */
+  const colDb = () => {
+    const cols = {};
+    const col = (name) => {
+      cols[name] = cols[name] || {};
+      const docs = cols[name];
+      const ref = (id) => ({ id, get: async () => ({ id, exists: !!docs[id], data: () => docs[id] }), set: async (v, o) => { docs[id] = o && o.merge ? { ...(docs[id] || {}), ...v } : v; } });
+      const query = (filters = []) => ({
+        where: (f, op, v) => query([...filters, [f, v]]), limit: () => query(filters), orderBy: () => query(filters),
+        get: async () => ({ docs: Object.entries(docs).filter(([, d]) => filters.every(([f, v]) => d[f] === v)).map(([id, d]) => ({ id, exists: true, data: () => d })) }),
+      });
+      return { doc: ref, ...query() };
+    };
+    return { cols, collection: col, getAll: (...refs) => Promise.all(refs.map((r) => r.get())) };
+  };
+
+  await t("lección que empeora la lectura: queda descartada sola y el admin la ve así", async () => {
+    const db = colDb();
+    const CUIT = "30714446785";
+    const BAD = "La columna CANT. viene en docenas.";
+    await db.collection("ventra_supplier_lessons").doc(CUIT).set({ name: "BEBIDAS DEL VALLE", lessons: [{ text: BAD, by: ["a"], at: 1, status: "candidate" }] });
+    // 3 boletas confirmadas de ese proveedor: 10 aguas a $ 100 c/u
+    for (const k of [1, 2, 3]) {
+      await db.collection("ventra_invoice_samples").doc(`smp00${k}`).set({ uid: "a", cuit: CUIT, storagePath: `invoice_samples/a/${k}.jpg`, confirmedAt: k, read: { pageNumber: 0 },
+        confirmed: { supplierCuit: CUIT, invoiceNumber: `1-${k}`, total: 1210, items: [{ name: "AGUA 2 L", code: "5001", quantity: 10, cost: 100, buyFormat: "UNIT" }] } });
+    }
+    const bucket = { file: () => ({ download: async () => [Buffer.from("FOTO")] }) };
+    // La IA lee bien sin la lección; con la lección, multiplica por 12
+    const client = { messages: { stream: (req) => {
+      const bad = JSON.stringify(req.messages).includes("docenas");
+      const r = read({ supplierCuit: "30-71444678-5", invoiceNumber: "1-1", totalFacturaAPagar: "1.210,00", ivaTotal: "210,00", items: [{ ...it("AGUA 2 L", bad ? 120 : 10, "1.000,00"), sku: "5001" }] });
+      return { finalMessage: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(r) }], usage: { input_tokens: 100, output_tokens: 50 } }) };
+    } } };
+    const out = await trials.run({ db, bucket, client, ai, logger });
+    assert.strictEqual(out.report[0].decision, "discarded", JSON.stringify(out.report));
+    const saved = (await db.collection("ventra_supplier_lessons").doc(CUIT).get()).data().lessons[0];
+    assert.strictEqual(saved.status, "discarded");
+    assert.ok(saved.trial.without > saved.trial.with);
+    // Descartada: ya no la usa nadie, ni el comercio que la escribió
+    assert.strictEqual(lessonsMod.usable(saved, "a"), false);
+    // El admin la ve descartada
+    const adm = await trials.list(db);
+    assert.strictEqual(adm[0].lessons[0].status, "discarded");
+    // Con menos de 3 boletas no se prueba (sigue la regla de los dos comercios)
+    const db2 = colDb();
+    await db2.collection("ventra_supplier_lessons").doc(CUIT).set({ lessons: [{ text: BAD, by: ["a"], status: "candidate" }] });
+    const out2 = await trials.run({ db: db2, bucket, client, ai, logger });
+    assert.ok(out2.report[0].skipped, "sin muestras suficientes");
+    assert.strictEqual(lessonsMod.usable({ text: "x", by: ["a"], status: "candidate" }, "a"), true);
+    assert.strictEqual(lessonsMod.usable({ text: "x", by: ["a"], status: "adopted" }, "b"), true, "adoptada: la usan todos");
+  });
+
+  await t("ficha del proveedor: se arma con las boletas confirmadas y entra en la primera lectura", async () => {
+    const r1 = { precios: "sin iva", verified: "total", items: [
+      { name: "AGUA SIN GAS 2 L X 6", sku: "5001", packageQuantity: 3, unitsPerPack: 1, total: "21.600" },
+      { name: "CERVEZA RUBIA LATA X 24", sku: "5007", packageQuantity: 2, unitsPerPack: 1, total: "57.600" },
+      { name: "GASEOSA LIMA X 8", sku: "5013", packageQuantity: 0.5, unitsPerPack: 1, total: "5.600" } ] };
+    const conf = { items: [{ name: "AGUA SIN GAS 2 L X 6", code: "5001", quantity: 18, buyFormat: "UNIT" }, { name: "CERVEZA RUBIA LATA X 24", code: "5007", quantity: 48, buyFormat: "UNIT" }, { name: "GASEOSA LIMA X 8", code: "5013", quantity: 4, buyFormat: "UNIT" }] };
+    const obs = lessonsMod.profileFrom(r1, conf);
+    assert.deepStrictEqual(obs, { precios: "sin iva", columnaUB: false, cantidad: "bultos", formatoCantidad: "bultos,unidades", codigoInterno: true });
+    // Un voto por comercio, gana la mayoría
+    const db = colDb();
+    await lessonsMod.updateProfile(db, "30714446785", "a", obs);
+    await lessonsMod.updateProfile(db, "30714446785", "b", { ...obs, precios: "finales" });
+    const p = await lessonsMod.updateProfile(db, "30714446785", "c", obs);
+    assert.strictEqual(p.fields.precios, "sin iva");
+    assert.strictEqual(p.shops, 3);
+    // Entra en la lectura aunque no haya lecciones
+    const m = await lessonsMod.forCuits(db, "z", ["30714446785"]);
+    const hint = lessonsMod.hintText(m);
+    assert.ok(hint.includes("SIN IVA") && hint.includes("bultos,unidades") && hint.includes("va en sku"), hint);
+  });
+
   await t("impuestos internos: la IA los informa aparte y llegan al comprobante", async () => {
     assert.ok(ai.INVOICE_ONE_PROMPT.includes("impuestosInternos"));
     const g = ai.finishInvoices([{ image: 0, ...read({ invoiceNumber: "0001-00000001", totalFacturaAPagar: "1.331,00", ivaTotal: "210,00", otrosImpuestos: "121", impuestosInternos: "121", items: [it("CERVEZA", 1, "1.000,00")] }) }]);

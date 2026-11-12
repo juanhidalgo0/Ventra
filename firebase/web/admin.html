@@ -562,6 +562,13 @@
         <div class="panel-sub">Lo que marcan los comercios al revisar una boleta. Esas muestras se evalúan primero (node eval-boletas/eval.js --muestras --leyo-mal).</div>
         <ul class="aifix" id="bolMisreads"></ul>
       </div>
+      <div class="panel" style="margin-top:12px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div><h2>Lecciones por proveedor</h2><div class="panel-sub">Cada lección nueva queda a prueba: con 3 o más boletas confirmadas de ese proveedor se lee con y sin ella (cada lunes) y queda adoptada o descartada sola.</div></div>
+          <button class="btn sm" id="lesRun" type="button">Probar ahora</button>
+        </div>
+        <ul class="aifix" id="lesList"></ul>
+      </div>
       <div class="table-wrap cards" style="margin-top:12px">
         <table>
           <thead><tr><th>Proveedor</th><th class="r">Boletas</th><th class="r">Sin tocar</th><th class="r">Renglones corregidos</th><th class="r">Leyó mal</th><th class="r">Escaló</th><th class="r">Costo por boleta</th></tr></thead>
@@ -1492,12 +1499,29 @@
           '<div class="n">' + (m.samples ? m.samples + (m.samples === 1 ? ' foto guardada' : ' fotos guardadas') : 'Sin foto guardada (muestras apagadas)') + (m.items ? ' · ' + m.items + ' renglones' : '') + ((m.why || []).length ? ' · ' + esc(m.why.join(', ')) : '') + '</div>' +
           (m.seen ? '' : '<div class="acts"><button class="btn sm" data-act="seen" type="button">Visto</button></div>') + '</li>';
       }).join('') : '<li class="small">Ningún comercio marcó una boleta como mal leída.</li>';
+      var LES = { candidate:'A prueba', adopted:'Adoptada', discarded:'Descartada' };
+      var FICHA = { precios:'precios', cantidad:'cantidad', columnaUB:'columna U.B.', formatoCantidad:'formato', codigoInterno:'código interno' };
+      var les = r.lessons || [];
+      $('lesList').innerHTML = les.length ? les.map(function(s){
+        var f = s.profile ? Object.keys(s.profile).map(function(k){ return (FICHA[k] || k) + ': ' + (s.profile[k] === true ? 'sí' : s.profile[k] === false ? 'no' : s.profile[k]); }).join(' · ') : '';
+        return '<li><div class="q"><b>' + esc(s.name || 'Proveedor') + '</b> <span class="small">CUIT ' + esc(s.cuit) + '</span></div>' + (f ? '<div class="n">Ficha (' + s.shops + ' comercios): ' + esc(f) + '</div>' : '') +
+          s.lessons.map(function(l){ return '<div class="n" style="color:var(--ink)"><span class="tag ' + (l.status === 'adopted' ? 'conocimiento' : l.status === 'discarded' ? 'ignorar' : 'falta_dato') + '">' + esc(LES[l.status] || l.status) + '</span> ' + esc(l.text) +
+            (l.trial ? ' <span class="small">· probada ' + waAgo(l.trial.at) + ': con ' + l.trial.with + ' / sin ' + l.trial.without + ' (' + l.trial.docs + ' boletas)</span>' : '') + '</div>'; }).join('') + '</li>';
+      }).join('') : '<li class="small">Todavía no hay lecciones de proveedores.</li>';
       var sup = st.suppliers || [];
       $('bolRows').innerHTML = sup.length ? sup.map(function(b){
         return '<tr><td>' + esc(b.supplier) + (b.cuit ? ' <span class="small">' + esc(b.cuit) + '</span>' : '') + '</td><td class="r">' + b.invoices + '</td><td class="r">' + b.untouchedPct + '%</td><td class="r">' + b.corrected + '</td><td class="r">' + b.flagged + '</td><td class="r">' + b.escalated + '</td><td class="r">US$ ' + b.costPerInvoice + '</td></tr>';
       }).join('') : '<tr><td colspan="7" class="small">Todavía no hay boletas confirmadas con muestra.</td></tr>';
     }
     $('bolRefresh').addEventListener('click', loadBoletas);
+    $('lesRun').addEventListener('click', function(){
+      var b = $('lesRun'); b.disabled = true; b.textContent = 'Probando…';
+      api('POST', { action:'lessonsTrial' }).then(function(res){
+        var done = (res.report || []).filter(function(x){ return x.decision; });
+        alert(done.length ? done.length + ' lecciones probadas (US$ ' + res.spentUsd + ').' : 'No había lecciones con boletas suficientes para probar' + (res.note ? ' (' + res.note + ')' : '') + '.');
+        loadBoletas();
+      }).catch(function(){ alert('No se pudo probar ahora'); }).then(function(){ b.disabled = false; b.textContent = 'Probar ahora'; });
+    });
     $('bolMisreads').addEventListener('click', function(e){
       var b = e.target.closest('button[data-act="seen"]'); if (!b) return;
       b.disabled = true;
@@ -1817,7 +1841,12 @@
         { id:'p2', status:'pending', tipo:'falta_dato', count:2, question:'¿Cuánto gané en octubre sacando los gastos del local?', nota:'No hay consulta de ganancia neta con gastos fijos', texto:'Sumar una consulta de ganancia del mes menos los gastos cargados.' } ],
         knowledge: [ { id:'k1', text:'Si preguntan por el cierre Z, explicá que se hace en Caja & Tesorería → Control de Caja → Cerrar caja.', question:'¿Dónde hago el cierre Z?', at: Date.now() - 9 * 864e5 } ] });
       if (method === 'POST' && body && (body.action === 'aiReviewDecide' || body.action === 'aiReviewRun')) return Promise.resolve({ ok:true });
+      if (method === 'POST' && body && body.action === 'lessonsTrial') return Promise.resolve({ spentUsd: 0.21, report:[{ decision:'adopted' }] });
       if (method === 'POST' && body && body.action === 'boletas') return Promise.resolve({ days:30, unseen:1,
+        lessons:[ { cuit:'30714446785', name:'BEBIDAS DEL VALLE S.A.', shops:3, profile:{ precios:'sin iva', cantidad:'bultos', columnaUB:false, formatoCantidad:'bultos,unidades', codigoInterno:true },
+          lessons:[ { text:'La cantidad "0,04" son 0 bultos y 4 unidades.', status:'adopted', shops:2, trial:{ at: Date.now() - 2 * 864e5, with:58, without:41, docs:4 } },
+            { text:'Los precios ya incluyen impuestos internos.', status:'discarded', shops:1, trial:{ at: Date.now() - 2 * 864e5, with:37, without:41, docs:4 } },
+            { text:'El renglón "ENVASES" no es un producto.', status:'candidate', shops:1, trial:null } ] } ],
         misreads:[ { id:'m1', shop:'kiosco.lucia@gmail.com', supplierName:'DISTRIBUIDORA LOS ALAMOS S.A.', invoiceNumber:'0004-00012877', note:'Las cantidades de la yerba están mal, eran 2 bultos', samples:1, items:6, why:['1 renglón dudoso'], at: Date.now() - 3 * 36e5, seen:false },
           { id:'m2', shop:'ferreteria.central@gmail.com', supplierName:'BEBIDAS DEL VALLE', invoiceNumber:'0007-00056002', note:'', samples:0, items:4, why:[], at: Date.now() - 50 * 36e5, seen:true } ],
         stats:{ invoices:42, untouched:29, untouchedPct:69, auto:6, escalatedPct:21, costPerInvoice:0.018, correctedLines:23,

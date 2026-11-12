@@ -113,6 +113,10 @@ async function confirm(db, uid, body) {
     if (!snap || !snap.exists || snap.data().uid !== String(uid)) continue;
     await ref.set({ confirmed, confirmedAt: Date.now() }, { merge: true });
     updated++;
+    // Ficha del proveedor (tanda 4.2): lo que se ve del formato en esta hoja, contra lo confirmado
+    const s = snap.data();
+    const cuit = confirmed.supplierCuit || s.cuit;
+    if (cuit) await require("./supplier-lessons").updateProfile(db, cuit, uid, require("./supplier-lessons").profileFrom(s.read, confirmed)).catch(() => {});
   }
   return { updated };
 }
