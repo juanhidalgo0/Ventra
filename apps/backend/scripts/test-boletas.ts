@@ -9,6 +9,8 @@ import * as assert from 'assert';
 import * as XLSX from 'xlsx';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { readInvoiceFile, InvoiceReadError } from '../src/modules/purchases/invoice-reader';
+import { isBarcode, barcodeProblem, splitInvoiceCodes } from '../src/modules/purchases/invoice-reader/barcode-check';
+import { SyncImageService } from '../src/modules/products/sync-image.service';
 
 let fallas = 0;
 let ok = 0;
@@ -307,6 +309,131 @@ async function main() {
 
   await t('archivo que no es boleta: rechaza con un mensaje claro', async () => {
     await assert.rejects(readInvoiceFile(Buffer.from('hola'), 'foto.jpg', 'image/jpeg'), (e: any) => e instanceof InvoiceReadError);
+  });
+
+  // ─── Código de barras o código del proveedor ───
+
+  /** EAN-13 con el dígito verificador bien puesto */
+  const ean = (first12: string) => {
+    const sum = first12.split('').map(Number).reverse().reduce((a, x, i) => a + x * (i % 2 === 0 ? 3 : 1), 0);
+    return first12 + ((10 - (sum % 10)) % 10);
+  };
+  /** El mismo, con el último dígito cambiado (mal leído) */
+  const typo = (code: string) => code.slice(0, -1) + ((Number(code.slice(-1)) + 1) % 10);
+  // La columna "ARTICULO" de la factura de Ricardo Nini S.A. (Nini mayorista), tal cual (08/10/2026)
+  const NINI = ['1000014274', '000005341002', '000003863001', '1000000905', '1000113987', '1000100600001', '1000012424003',
+    '1000003639001', '1000006852', '1000106262', '1000109697', '1000105255', '1000104962', '1000000539', '1000106802',
+    '1000108704', '1000001077003', '1000014464', '1000001077002', '1000001077004', '1000012521004', '1000009507',
+    '1000005744', '1000009506', '1000006446', '000106691', '000106690', '000003160002'];
+
+  await t('códigos de Nini: ninguno es código de barras, quedan como código del proveedor', async () => {
+    for (const where of ['sku', 'barcode'] as const) {
+      const out = splitInvoiceCodes(NINI.map((c) => ({ [where]: c })));
+      assert.deepStrictEqual(out.map((r) => r.barcode).filter(Boolean), [], `la IA los puso en ${where}`);
+      assert.deepStrictEqual(out.map((r) => r.sku), NINI, 'el código del proveedor no se pierde');
+    }
+    for (const c of ['1000014274', '000005341002', '1000106262', '000003160002']) assert.ok(!isBarcode(c), `${c}: ${barcodeProblem(c)}`);
+  });
+
+  await t('uno que pasa el dígito verificador de casualidad no se cuela si la columna es de códigos internos', async () => {
+    // 1000012521004 cumple el dígito verificador, pero el resto de la columna de Nini no
+    assert.ok(isBarcode('1000012521004'), 'solo, pasaría');
+    const out = splitInvoiceCodes(NINI.map((sku) => ({ sku })));
+    assert.deepStrictEqual(out[NINI.indexOf('1000012521004')], { barcode: '', sku: '1000012521004' });
+  });
+
+  await t('EAN de verdad: van como código de barras aunque la IA los ponga en el SKU', async () => {
+    const real = [ean('779089500010'), ean('779040000123'), ean('789100002045'), ean('750100011211'), '96385074'];
+    for (const c of real) assert.ok(isBarcode(c), `${c}: ${barcodeProblem(c)}`);
+    const out = splitInvoiceCodes(real.map((sku) => ({ sku })));
+    assert.deepStrictEqual(out.map((r) => r.barcode), real);
+    assert.deepStrictEqual(out.map((r) => r.sku), ['', '', '', '', '']);
+    // Dos columnas: código del proveedor y EAN
+    const both = splitInvoiceCodes([{ sku: 'A-15', barcode: real[0] }, { sku: '00231', barcode: real[1] }, { sku: '7', barcode: real[2] }]);
+    assert.deepStrictEqual(both, [{ barcode: real[0], sku: 'A-15' }, { barcode: real[1], sku: '00231' }, { barcode: real[2], sku: '7' }]);
+  });
+
+  await t('una columna de EAN con un renglón mal leído: los buenos quedan, el malo va como código', async () => {
+    const good = [ean('779089500010'), ean('779040000123'), ean('779000000777'), ean('779111111222')];
+    const bad = typo(ean('779555000111'));
+    const out = splitInvoiceCodes([...good, bad].map((barcode) => ({ barcode })));
+    assert.deepStrictEqual(out.slice(0, 4).map((r) => r.barcode), good);
+    assert.deepStrictEqual(out[4], { barcode: '', sku: bad });
+  });
+
+  await t('no es código de barras: largo, verificador, prefijos internos, ceros y patrones', async () => {
+    const malos: [string, RegExp][] = [
+      ['12345', /dígitos/], ['1000014274', /10 dígitos/], ['77908950001', /11 dígitos/], [typo(ean('779089500010')), /verificador/],
+      [ean('200000123456'), /interno/], [ean('290123456789'), /interno/], [ean('020123456789'), /interno/], [ean('050000000001'), /cupones/],
+      [ean('990000000001'), /cupones/], [ean('000005341000'), /ceros/], ['0000000000000', /iguales/], ['12345670', /seguidos/],
+      ['ABC-123', /letras/], ['', /vacío/],
+    ];
+    for (const [c, why] of malos) {
+      const p = barcodeProblem(c);
+      assert.ok(p, `${c} no debería pasar`);
+      assert.ok(why.test(p!), `${c}: ${p}`);
+    }
+  });
+
+  // ─── Foto automática de los productos de la compra ───
+
+  /** SyncImageService con la base y las búsquedas de mentira: anota qué buscó y qué guardó */
+  const fotos = (products: { id: string; name: string; barcode: string | null; imageUrl: string | null }[], found: { byCode?: Record<string, string>; byName?: Record<string, string> }) => {
+    const log = { codes: [] as string[], names: [] as string[], saved: {} as Record<string, string> };
+    const missing = (p: any) => !p.imageUrl || p.imageUrl.includes('unsplash');
+    const prisma: any = {
+      product: {
+        findMany: async ({ where }: any) => products.filter((p) => where.id.in.includes(p.id) && missing(p)),
+        updateMany: async ({ where, data }: any) => {
+          const p = products.find((x) => x.id === where.id);
+          if (!p || (where.OR && !missing(p))) return { count: 0 };
+          p.imageUrl = data.imageUrl; log.saved[p.id] = data.imageUrl;
+          return { count: 1 };
+        },
+        findUnique: async ({ where }: any) => ({ ...products.find((x) => x.id === where.id), stock: 0, salePrice: 0, minStock: 0, category: null }),
+      },
+    };
+    const svc = new SyncImageService(prisma, { emitProductUpdated: () => {} } as any,
+      { compressRemoteImageToBase64: async (u: string) => `b64:${u}`, syncProductToFirestore: async () => {} } as any, {} as any);
+    (svc as any).lookupBarcode = async (code: string) => {
+      log.codes.push(code);
+      const url = found.byCode?.[code] || null;
+      return { name: null, imageUrl: url, source: url ? 'carrefour' : null, candidates: url ? [{ imageUrl: url, source: 'carrefour', name: null, doubtful: false }] : [] };
+    };
+    const byName = async (n: string) => { log.names.push(n); return found.byName?.[n] || null; };
+    for (const m of ['fetchImageFromCarrefourByName', 'fetchImageFromDiaByName', 'fetchImageFromChangoMasByName', 'fetchImageFromJumboByName', 'fetchImageFromFarmacityByName']) (svc as any)[m] = byName;
+    return { svc, log };
+  };
+
+  await t('foto automática: por código de barras real, por nombre si no hay, sin pisar las que ya tienen', async () => {
+    const real = ean('779089500010');
+    const { svc, log } = fotos([
+      { id: 'a', name: 'Coca Cola 2,25 L', barcode: real, imageUrl: null },
+      { id: 'b', name: 'Whiskas pescado 1 kg', barcode: null, imageUrl: '' },
+      { id: 'c', name: 'Billiken gotitas 35 g', barcode: null, imageUrl: 'data:image/jpeg;base64,YA' },
+      { id: 'd', name: 'Producto raro', barcode: null, imageUrl: null },
+    ], { byCode: { [real]: 'https://x/coca.jpg' }, byName: { 'Whiskas pescado 1 kg': 'https://x/whiskas.jpg' } });
+    const n = await svc.autoPhotos(['a', 'b', 'c', 'd', 'a']);
+    assert.strictEqual(n, 2);
+    assert.deepStrictEqual(log.saved, { a: 'b64:https://x/coca.jpg', b: 'b64:https://x/whiskas.jpg' });
+    assert.ok(!log.names.includes('Coca Cola 2,25 L'), 'con el código ya alcanzó');
+    assert.ok(!log.names.includes('Billiken gotitas 35 g'), 'el que tiene foto no se busca');
+  });
+
+  await t('foto automática: un código interno (Nini) no se busca como código de barras, va por el nombre', async () => {
+    const { svc, log } = fotos([{ id: 'n', name: 'Pantene sh. prov. hid. fort 200 ml', barcode: '1000109697', imageUrl: null }],
+      { byName: { 'Pantene sh. prov. hid. fort 200 ml': 'https://x/pantene.jpg' } });
+    assert.strictEqual(await svc.autoPhotos(['n']), 1);
+    assert.deepStrictEqual(log.codes, []);
+    assert.strictEqual(log.saved.n, 'b64:https://x/pantene.jpg');
+  });
+
+  await t('foto automática: si el código no trae foto, prueba con el nombre', async () => {
+    const real = ean('779040000123');
+    const { svc, log } = fotos([{ id: 'p', name: 'Sugus max 525 g', barcode: real, imageUrl: null }], { byName: { 'Sugus max 525 g': 'https://x/sugus.jpg' } });
+    assert.strictEqual(await svc.autoPhotos(['p']), 1);
+    assert.deepStrictEqual(log.codes, [real]);
+    assert.strictEqual(log.saved.p, 'b64:https://x/sugus.jpg');
   });
 
   console.log(`\n${ok} bien, ${fallas} con falla`);

@@ -71,6 +71,12 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(doc.costUsd > 0);
     assert.ok(client.calls[0].messages[0].content.at(-1).text.includes("121"), "ancla el total");
   });
+  await t("factura: la IA sabe que el código del mayorista (ARTICULO de Nini) va en sku, no en barcode", async () => {
+    const client = fakeClient({ rawTableTranscription: "", supplierName: "Prov", invoiceNumber: "A-1", date: "2026-10-23", totalFacturaAPagar: "100", items: [] });
+    await ai.handle({ db: fakeDb(), logger, client }, "u9", { kind: "invoice", images: [{ mediaType: "image/jpeg", data: "abc" }] }).catch(() => {});
+    const system = JSON.stringify(client.calls[0].system);
+    assert.ok(/ARTICULO/.test(system) && /1000014274/.test(system) && /nunca en \\"barcode\\"/.test(system), "regla del código interno en el prompt");
+  });
   await t("la IA se niega: error para cargarlo a mano, no cuenta", async () => {
     const db = fakeDb();
     await assert.rejects(() => ai.handle({ db, logger, client: fakeClient({}, "refusal") }, "u4", { kind: "order", text: "pedido", catalog }), /Cargalo a mano/);

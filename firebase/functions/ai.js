@@ -143,7 +143,7 @@ Reglas:
 5. "packageQuantity" es la cantidad de bultos de la columna CANTIDAD (o unidades si se vende suelto). "unitsPerPack" son las unidades por bulto, solo si hay una columna de unidades por bulto ("U.B.", "Unid. x bulto"); si no, 1. Columnas como "Presentación" ("1 de 30 UN", "1 de 100 GR", "4 x 1u.") describen el envase, no son unidades por bulto: no las uses. Control: si CANTIDAD x precio unitario da el total de la línea, la cantidad ya está en unidades y unitsPerPack es 1.
 6. "total" es el total neto de la línea, tal cual está impreso (por ejemplo "6.528,97"). Nunca pongas el precio unitario como total.
 7. Controlá: la suma de los totales con IVA (x1,21) y los descuentos del pie tiene que dar el total de la factura ("totalFacturaAPagar"). Si no da, revisá la alineación y corregí.
-8. "barcode" solo si aparece un código de barras (EAN) del producto; "sku" el código interno del proveedor si hay. Si no, vacíos.
+8. "barcode" solo si la boleta trae una columna de código de barras (EAN de 13 u 8 dígitos, casi siempre empieza con 779 en productos argentinos). La columna "ARTICULO", "CÓDIGO" o "Cód." de un mayorista o distribuidor (por ejemplo 1000014274 o 000005341002) es su código interno: va en "sku", nunca en "barcode". Ante la duda, "sku". Si no hay, vacíos.
 9. "date" en formato AAAA-MM-DD.
 10. "supplierCuit": el CUIT de quien EMITE la factura (el proveedor, arriba junto a su razón social), con guiones (30-12345678-9). NO el del cliente o comprador. Si no se ve, vacío.
 11. "subtotalNeto": el subtotal o importe neto gravado impreso al pie, ANTES de IVA, percepciones e impuestos (por ejemplo "Subtotal", "Neto gravado", "Importe neto"), tal cual está impreso. Si la factura no lo muestra (ticket, factura B o C con todo incluido), vacío.`;

@@ -6,18 +6,12 @@ import { validCuit } from '../purchases/invoice-reader/invoice-parser';
 export const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2').replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ').trim();
 /**
- * Código de barras (EAN-8, UPC-12, EAN-13, GTIN-14) con su dígito verificador correcto. El SKU
- * (código interno del proveedor o del comercio) es otra cosa, aunque sea un número largo: nunca
- * se mezclan.
+ * Código de barras de producto de verdad (dígito verificador, largo, prefijo GS1 y patrones de código
+ * interno: ver invoice-reader/barcode-check). El SKU (código interno del proveedor o del comercio) es
+ * otra cosa, aunque sea un número largo: nunca se mezclan.
  */
-export function isBarcode(code: string) {
-  const c = String(code || '').trim();
-  if (!/^(\d{8}|\d{12,14})$/.test(c)) return false;
-  const digits = c.split('').map(Number);
-  const check = digits.pop()!;
-  const sum = digits.reverse().reduce((a, d, i) => a + d * (i % 2 === 0 ? 3 : 1), 0);
-  return (10 - (sum % 10)) % 10 === check;
-}
+export { isBarcode } from '../purchases/invoice-reader/barcode-check';
+import { isBarcode } from '../purchases/invoice-reader/barcode-check';
 export const codeKey = (s: string) => String(s || '').toUpperCase().replace(/[\s.\-_/]/g, '').replace(/^0+/, '');
 /** Palabras del nombre, sin los puntos de las abreviaturas ("alf.") ni la cantidad del bulto ("x24") */
 const words = (s: string) => norm(s).split(' ').map((w) => w.replace(/^\.+|\.+$/g, '')).filter((w) => w.length > 1 && !/^(de|la|el|con|sin|x|por|en|y)$/.test(w) && !/^x\d+$/.test(w));

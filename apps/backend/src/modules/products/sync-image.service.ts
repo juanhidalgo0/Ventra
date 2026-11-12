@@ -4,6 +4,14 @@ import { EventsGateway } from '../../websockets/events.gateway';
 import { FirebaseSyncService } from './firebase-sync.service';
 import { SharedCatalogService } from './shared-catalog.service';
 import axios from 'axios';
+import { isBarcode } from '../purchases/invoice-reader/barcode-check';
+
+/** Sin foto: vacía o la foto genérica de antes */
+const MISSING_IMAGE = [
+  { imageUrl: null },
+  { imageUrl: '' },
+  { imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80' },
+];
 
 /** Un resultado de la búsqueda por código: de qué fuente, con qué nombre y foto */
 export interface BarcodeHit { source: string; name: string | null; imageUrl: string | null; exact: boolean }
@@ -908,6 +916,79 @@ export class SyncImageService {
 
     console.log(`[SyncImageService] Finished. Assigned ${successCount}/${totalProducts} images.`);
     return { successCount, totalProcessed: totalProducts };
+  }
+
+  /**
+   * La foto de un producto sin que nadie la elija: por código de barras si es uno de verdad (lo
+   * confirmado por otros comercios y los supermercados por código exacto, solo la foto confiable, no
+   * las dudosas de Bing), y si no hay código o no apareció, por el nombre en los supermercados.
+   */
+  async findPhoto(barcode: string | null | undefined, name: string | null | undefined): Promise<string | null> {
+    if (barcode && isBarcode(barcode)) {
+      const r = await this.lookupBarcode(barcode).catch(() => null);
+      const sure = r?.candidates.find((c) => c.imageUrl === r.imageUrl && !c.doubtful)?.imageUrl;
+      if (sure) return sure;
+    }
+    const n = String(name || '').trim();
+    if (!n) return null;
+    return this.runSearchersInParallel([
+      () => this.fetchImageFromCarrefourByName(n),
+      () => this.fetchImageFromDiaByName(n),
+      () => this.fetchImageFromChangoMasByName(n),
+      () => this.fetchImageFromJumboByName(n),
+      () => this.fetchImageFromFarmacityByName(n),
+    ]);
+  }
+
+  /**
+   * Foto automática para los productos de una compra (boleta escaneada o cargada a mano): los nuevos
+   * y los que ya estaban sin foto. Los que tienen foto no se tocan, y si el dueño le pone una mientras
+   * se busca, queda la del dueño. Corre de a pocos; devuelve cuántas puso.
+   */
+  async autoPhotos(productIds: string[]): Promise<number> {
+    const ids = [...new Set(productIds.filter(Boolean))];
+    if (!ids.length) return 0;
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids }, OR: MISSING_IMAGE },
+      select: { id: true, name: true, barcode: true },
+    });
+    let done = 0;
+    for (let i = 0; i < products.length; i += 4) {
+      await Promise.all(products.slice(i, i + 4).map(async (p) => {
+        const url = await this.findPhoto(p.barcode, p.name).catch(() => null);
+        if (url && await this.savePhoto(p.id, url, true)) done++;
+      }));
+    }
+    if (done) console.log(`[SyncImageService] Fotos automáticas de la compra: ${done}/${products.length}`);
+    return done;
+  }
+
+  /** Comprime la foto, la guarda y avisa a la caja y a la nube. onlyIfMissing: no pisa una foto puesta */
+  private async savePhoto(productId: string, url: string, onlyIfMissing = false): Promise<string | null> {
+    try {
+      const compressedUrl = await this.firebaseSync.compressRemoteImageToBase64(url);
+      if (!compressedUrl) return null;
+      const { count } = await this.prisma.product.updateMany({
+        where: onlyIfMissing ? { id: productId, OR: MISSING_IMAGE } : { id: productId },
+        data: { imageUrl: compressedUrl },
+      });
+      if (!count) return null;
+      this.events.emitProductUpdated({ id: productId, imageUrl: compressedUrl });
+      const product = await this.prisma.product.findUnique({ where: { id: productId }, include: { category: true } });
+      if (product) {
+        await this.firebaseSync.syncProductToFirestore(product.barcode || product.id, product.stock, product.salePrice, {
+          name: product.name,
+          description: product.description || '',
+          categoryName: product.category?.name || 'Varios',
+          minStock: product.minStock,
+          imageUrl: compressedUrl,
+        }).catch(() => {});
+      }
+      return compressedUrl;
+    } catch (err: any) {
+      console.error(`[SyncImageService] Failed to save product image:`, err.message);
+      return null;
+    }
   }
 
   async assignImageToSingleProduct(productId: string, barcode: string): Promise<string | null> {

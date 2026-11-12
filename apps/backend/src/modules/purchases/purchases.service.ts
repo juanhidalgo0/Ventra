@@ -3,6 +3,8 @@ import { ProductMatcherService, isBarcode } from '../ai/product-matcher.service'
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
+import { SyncImageService } from '../products/sync-image.service';
+import { splitInvoiceCodes } from './invoice-reader/barcode-check';
 import axios from 'axios';
 import { Jimp } from 'jimp';
 import * as XLSX from 'xlsx';
@@ -249,7 +251,24 @@ export class PurchasesService {
     private firebaseSync: FirebaseSyncService,
     private ai: AiService,
     private matcher: ProductMatcherService,
+    private syncImage: SyncImageService,
   ) {}
+
+  /**
+   * Cada producto de la compra que no tiene foto queda con una, sin que el dueño la elija: por código
+   * de barras real o por el nombre (SyncImageService.autoPhotos). En segundo plano: no frena la carga.
+   */
+  private photosFor(purchaseId: string) {
+    if (!this.syncImage) return;
+    setImmediate(async () => {
+      try {
+        const items = await (this.prisma as any).purchaseItem.findMany({ where: { purchaseId }, select: { productId: true } });
+        await this.syncImage.autoPhotos(items.map((i: any) => i.productId));
+      } catch (e: any) {
+        console.error('[Compras] Fotos automáticas:', e?.message || e);
+      }
+    });
+  }
 
   async pending() {
     const rows = await (this.prisma as any).purchase.findMany({
@@ -513,6 +532,7 @@ export class PurchasesService {
       });
     }
 
+    this.photosFor(purchase.id);
     return purchase;
   }
 
@@ -626,15 +646,11 @@ export class PurchasesService {
       else totalsOk = false;
     }
 
-    const rows = rawItems.map((it) => {
-      // Código de barras y SKU son distintos: el EAN va al código de barras y el código del
-      // proveedor al SKU, aunque la IA los haya puesto cambiados o repetidos
-      const rawBarcode = it.barcode ? String(it.barcode).trim() : '';
-      const rawSku = it.sku ? String(it.sku).trim() : '';
-      const barcode = isBarcode(rawBarcode) ? rawBarcode : isBarcode(rawSku) ? rawSku : '';
-      const sku = rawSku && rawSku !== barcode ? rawSku : (!isBarcode(rawBarcode) ? rawBarcode : '');
-      return { barcode, sku, code: sku, name: String(it.name || '').trim() };
-    });
+    // Código de barras y SKU son distintos: el EAN va al código de barras y el código del proveedor
+    // al SKU, aunque la IA los haya puesto cambiados. Se mira la columna entera: la de "ARTICULO" de
+    // Nini (1000014274, 000005341002) es de códigos internos aunque alguno pase el control de casualidad
+    const codes = splitInvoiceCodes(rawItems.map((it) => ({ barcode: it.barcode, sku: it.sku })));
+    const rows = rawItems.map((it, i) => ({ ...codes[i], code: codes[i].sku, name: String(it.name || '').trim() }));
     const { matches, candidates } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
 
     const roundUp = (n: number) => (settings.round ? Math.ceil(n / settings.round - 1e-9) * settings.round : Math.round(n * 100) / 100);
@@ -1057,6 +1073,7 @@ export class PurchasesService {
       });
     }
 
+    this.photosFor(id);
     return purchase;
   }
 
