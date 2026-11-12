@@ -33,8 +33,8 @@ t("renglón que falta, de más y total que no se leyó", () => {
   assert.deepStrictEqual(r.lines.extra, ["BOLSA"]);
   assert.strictEqual(r.header.total, false);
 });
-t("precios finales: el costo se compara sin IVA; los descuentos negativos no son renglones", () => {
-  const e = { total: 0, items: [{ name: "GALLETITAS", quantity: 10, unitsPerPack: 1, cost: 100 }] };
+t("precios finales: el costo se compara sin IVA; los descuentos negativos se reparten como en la caja", () => {
+  const e = { total: 0, items: [{ name: "GALLETITAS", quantity: 10, unitsPerPack: 1, cost: 95.87 }] };
   const r = cmp.comparePage(e, { precios: "finales", items: [{ name: "GALLETITAS", packageQuantity: 10, unitsPerPack: 1, total: "1.210" }, { name: "BONIF", packageQuantity: 1, total: "-50" }] });
   assert.strictEqual(r.perfect, true, JSON.stringify(r.lines));
 });

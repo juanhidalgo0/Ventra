@@ -156,7 +156,8 @@ async function main() {
         const { reads, models, cost } = await readCase(simulated ? simulatedClient(c) : client, c);
         const info = { id: c.id, supplier: c.supplier, models, costUsd: cost };
         const r = c.files.length > 1 ? cmp.compareDocument(c.expected, reads, info) : cmp.comparePage(c.expected, reads[0], info);
-        results.push({ ...r, kind: c.kind || null, flagged: !!c.flagged });
+        // Las lecturas crudas quedan en la corrida: si cambia la comparación, se recalcula sin volver a pagar
+        results.push({ ...r, kind: c.kind || null, flagged: !!c.flagged, reads });
       } catch (err) {
         results.push({ ...cmp.comparePage(c.expected, { error: err.message }, { id: c.id, supplier: c.supplier }), error: err.message });
       }

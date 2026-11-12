@@ -35,6 +35,8 @@ node eval-boletas/eval.js --muestras --bajar    (muestras reales confirmadas, cu
 
 Si baja contra la línea de base, el comando lo dice ("no publicar") y termina con error. Las marcadas "Leyó mal" se evalúan primero (`--leyo-mal`). Necesita `VENTRA_ANTHROPIC_KEY` en la terminal; muestra el costo estimado y pregunta antes de gastar.
 
+**Línea de base (12/11/2026, IA de verdad, 60 fotos fabricadas, US$ 0,23):** 49 de 60 perfectas (81,7%). Limpia, con sombra y con otro papel atrás: 100%. Girada 90%, borrosa 80%. Cortada 20%: esperable, falta el pie y el lector no inventa el total (la boleta queda para revisar). Los errores reales que quedan: el CUIT en fotos borrosas (2 de 10) y, en una foto girada de un presupuesto, leyó que los precios no tenían IVA. Escaló a Sonnet 2 veces y a Opus 1. Ojo: la IA varía un poco de una corrida a otra, así que una baja de una sola boleta puede ser ruido; ante la duda, correr de nuevo.
+
 ## 0b. Boletas — tanda 2 (12/11/2026, lista, sin publicar)
 
 | Qué | Dónde |

@@ -72,6 +72,10 @@ function comparePage(expected, read, info = {}) {
   const finales = read && read.precios === "finales";
   const lines = (read && !read.error ? read.items || [] : [])// Descuentos (negativos) no son productos; un remito trae los renglones en $0 pero con cantidad
     .filter((it) => num(it.total) > 0 || (num(it.total) === 0 && Number(it.packageQuantity) > 0)).map((it) => readLine(it, finales));
+  // Como la caja (scanOne): los descuentos en negativo se reparten entre los renglones según su importe
+  const gross = lines.reduce((t, l) => t + l.total, 0);
+  const disc = (read && !read.error ? read.items || [] : []).filter((it) => num(it.total) < 0).reduce((t, it) => t - num(it.total), 0);
+  if (gross > 0 && disc > 0 && disc < gross) { const f = (gross - disc) / gross; for (const l of lines) l.cost *= f; }
   const exp = (expected.items || []).map((e) => ({ ...e, quantity: Number(e.quantity) || 0, unitsPerPack: Number(e.unitsPerPack) || 1, cost: Number(e.cost) || 0 }));
   const { pairs, extra } = pairLines(exp, lines);
   const fields = { quantity: [0, 0], unitsPerPack: [0, 0], cost: [0, 0], code: [0, 0] };
@@ -80,15 +84,20 @@ function comparePage(expected, read, info = {}) {
     const k = pairs[i];
     if (k === undefined) return;
     const r = lines[k];
-    const q = near(r.units, e.quantity, 0, 0.01), u = r.unitsPerPack === e.unitsPerPack || e.unitsPerPack === 0;
-    const c = e.cost > 0 ? near(r.cost, e.cost, 0.03, 0.5) : true;
-    const hasCode = !!(e.code || e.barcode);
-    const cd = !hasCode || (e.code && (r.code === digits(e.code))) || (e.barcode && r.barcode === digits(e.barcode));
+    // Como la caja (unitsInName): "AGUA 2 L X 6" leído como 3 bultos de 1 son 18 unidades de a 6
+    const inName = Number((String(r.name).match(/\bx\s*(\d{1,3})\b/i) || [])[1]) || 0;
+    const v = r.unitsPerPack <= 1 && inName > 1 && near(r.units * inName, e.quantity, 0, 0.01) ? { ...r, units: r.units * inName, unitsPerPack: inName, cost: r.cost / inName } : r;
+    const q = near(v.units, e.quantity, 0, 0.01), u = v.unitsPerPack === e.unitsPerPack || e.unitsPerPack === 0;
+    const c = e.cost > 0 ? near(v.cost, e.cost, 0.03, 0.5) : true;
+    // El código vale en cualquiera de las dos columnas: la caja pone el EAN en barcode y el interno en SKU (splitInvoiceCodes)
+    const codes = [e.code, e.barcode].map(digits).filter(Boolean);
+    const hasCode = codes.length > 0;
+    const cd = !hasCode || codes.some((x) => x === r.code || x === r.barcode);
     fields.quantity[0] += q; fields.quantity[1]++;
     fields.unitsPerPack[0] += u; fields.unitsPerPack[1]++;
     fields.cost[0] += c; fields.cost[1]++;
     if (hasCode) { fields.code[0] += !!cd; fields.code[1]++; }
-    if (!q || !u || !c || !cd) wrong.push({ name: e.name, expected: { quantity: e.quantity, unitsPerPack: e.unitsPerPack, cost: round(e.cost) }, read: { quantity: r.units, unitsPerPack: r.unitsPerPack, cost: round(r.cost) } });
+    if (!q || !u || !c || !cd) wrong.push({ name: e.name, expected: { quantity: e.quantity, unitsPerPack: e.unitsPerPack, cost: round(e.cost), code: codes[0] || "" }, read: { quantity: v.units, unitsPerPack: v.unitsPerPack, cost: round(v.cost), code: r.code || r.barcode } });
   });
   const missing = exp.filter((_, i) => pairs[i] === undefined).map((e) => e.name);
   const header = {
