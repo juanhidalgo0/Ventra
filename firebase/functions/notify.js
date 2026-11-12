@@ -26,6 +26,7 @@ const DEFAULT_PREFS = {
   employeeConsumption: true, // un empleado registró un consumo propio
   suspiciousVoid: true, // un cajero quitó productos del ticket de forma sospechosa (control de anulaciones)
   workOrderDue: true,  // encargos para entregar mañana o atrasados
+  purchaseToApprove: true, // un empleado escaneó una boleta y espera que el dueño la apruebe (boletas, tanda 6.3)
   nutri: true,         // consultorio de nutrición: ficha previa recibida y controles para recordar
   dailySummary: false, // resumen del día
   summaryHour: 21,
@@ -193,6 +194,12 @@ function messageFor(ev) {
         url: "/#/employee-consumption", tag: "consumo-" + (d.saleId || Date.now()),
       };
     }
+    case "purchaseToApprove":
+      return {
+        title: `Boleta para aprobar: ${String(d.supplier || "proveedor").slice(0, 60)}`,
+        body: `${String(d.user || "Un empleado").slice(0, 40)} la escaneó · ${Number(d.items) || 0} productos · ${money(d.total)}${Array.isArray(d.why) && d.why.length ? ` · ${String(d.why[0]).slice(0, 120)}` : ""}. Revisala y confirmala desde el celular.`,
+        url: "/#/purchases", tag: "boleta-" + (d.purchaseId || Date.now()),
+      };
     case "suspiciousVoid": {
       const items = (Array.isArray(d.items) ? d.items : []).slice(0, 20);
       if (!items.length) return null;

@@ -278,6 +278,30 @@ async function main() {
     await assert.rejects(() => purchases.confirmCreditNote(nc2.id, { supplierId: prov.id, userId: admin.id, total: 605 }), /ya fue cargada/);
   });
 
+  await t('automático por proveedor: 5 boletas sin tocar lo ofrecen; una corregida lo apaga', async () => {
+    const p = await nuevo('AGUA AUTO', 0, { costPrice: 500, salePrice: 1000 });
+    const prov = await prisma.supplier.create({ data: { name: 'Aguas del Sur' } });
+    // Con buscador y nube mudos: confirmar aprende códigos y manda correcciones (acá no hacen nada)
+    const purchases = new PurchasesService(prisma, mute(), mute(), mute());
+    const boleta = async (qty: number, confirmQty: number) => {
+      const pend = await prisma.purchase.create({ data: { supplierId: prov.id, userId: admin.id, total: 0, status: 'PENDING', paymentStatus: 'OWED' } });
+      await prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ items: [{ name: 'AGUA 2L', quantity: qty, cost: 413.22 }] }), pend.id);
+      return purchases.confirmPending(pend.id, { supplierId: prov.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: confirmQty, cost: 413.22, source: { name: 'AGUA 2L' } }] } as any);
+    };
+    for (let k = 1; k <= 4; k++) assert.ok(!(await boleta(6, 6) as any).offerAuto, `la ${k}ª todavía no`);
+    const fifth: any = await boleta(6, 6);
+    assert.strictEqual(fifth.offerAuto?.supplierId, prov.id, 'a la 5ª se ofrece');
+    await purchases.setSupplierAuto(prov.id, true);
+    assert.strictEqual(await purchases.supplierAuto(prov.id), true);
+    // Una boleta que hubo que corregir (la cantidad) apaga el automático
+    await boleta(6, 12);
+    assert.strictEqual(await purchases.supplierAuto(prov.id), false);
+    // Si el dueño dijo que no, no se vuelve a ofrecer en la misma racha
+    for (let k = 1; k <= 5; k++) await boleta(6, 6);
+    await purchases.setSupplierAuto(prov.id, false);
+    assert.ok(!(await boleta(6, 6) as any).offerAuto);
+  });
+
   await t('deshacer boleta: un precio que cambiaron después no se pisa', async () => {
     const p = await nuevo('ACEITE', 0, { costPrice: 500, salePrice: 1000 });
     const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 600 }] });

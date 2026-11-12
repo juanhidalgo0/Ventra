@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { Sheet, PrimaryButton, money } from './ui';
 import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
+import { enqueueScan, isOffline } from '../../utils/scanQueue';
 
 /** Cómo se cargan las boletas (Compras): JSON en el ajuste del comercio purchase_auto */
 export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
@@ -54,6 +55,14 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
       setResult(data);
       onDone();
     } catch (err: any) {
+      // Sin conexión: la boleta queda guardada en el teléfono y se manda sola cuando vuelva (tanda 6.4)
+      if (isOffline(err) && await enqueueScan(photos)) {
+        toast.success('Sin conexión: la boleta quedó en espera y se manda sola cuando vuelva internet.', { duration: 8000 });
+        reset();
+        onDone();
+        onClose();
+        return;
+      }
       toast.error(err?.response?.data?.message || 'No se pudo leer la boleta. Probá de nuevo.', { duration: 8000 });
     } finally {
       setBusy(false);

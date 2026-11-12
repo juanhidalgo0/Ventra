@@ -1,6 +1,7 @@
 import { AiService } from '../ai/ai.service';
 import { ProductMatcherService, isBarcode } from '../ai/product-matcher.service';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
+import { NotifyService } from '../subscription/notify.service';
 import { PrismaService } from '../../database/prisma.service';
 import { FirebaseSyncService } from '../products/firebase-sync.service';
 import { SyncImageService } from '../products/sync-image.service';
@@ -330,6 +331,8 @@ export class PurchasesService {
     private ai: AiService,
     private matcher: ProductMatcherService,
     private syncImage: SyncImageService,
+    // Aviso al celular del dueño cuando un empleado escanea una boleta (tanda 6.3)
+    @Optional() private notifier?: NotifyService,
   ) {}
 
   /**
@@ -733,6 +736,51 @@ export class PurchasesService {
     return out;
   }
 
+  /**
+   * Aprobar desde el celular (tanda 6.3): un empleado escaneó una boleta y quedó para revisar → al
+   * dueño le llega el aviso al celular. Si la escaneó el dueño (o con el candado), no hace falta.
+   */
+  private async askOwner(userId: string | undefined, d: { supplier: string; items: number; total: number; purchaseId: string; why: string[] }) {
+    if (!userId || !this.notifier) return;
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, fullName: true } }).catch(() => null);
+    if (!u || u.role === 'ADMIN') return;
+    this.notifier.enqueue('purchaseToApprove', { ...d, user: u.fullName, why: d.why.slice(0, 3) });
+  }
+
+  // ─── Automático por proveedor (tanda 6.2) ───
+  /** ¿Las boletas de este proveedor se cargan solas? */
+  async supplierAuto(supplierId?: string | null): Promise<boolean> {
+    if (!supplierId) return false;
+    const r = await this.prisma.$queryRawUnsafe<{ scan_auto: number | null }[]>(`SELECT scan_auto FROM suppliers WHERE id = ?`, supplierId).catch(() => []);
+    return Number(r[0]?.scan_auto) === 1;
+  }
+
+  /**
+   * Una boleta escaneada de este proveedor se confirmó: sin tocar nada suma a la racha; si hubo que
+   * corregir, la racha vuelve a 0 y, si se cargaban solas, se apaga (y se avisa). Devuelve la oferta
+   * "¿Cargar solas las de este proveedor?" cuando la racha llega a 5 (si no la rechazó antes).
+   */
+  async scanStreak(supplierId: string, untouched: boolean) {
+    const rows = await this.prisma.$queryRawUnsafe<{ name: string; scan_auto: number | null; scan_streak: number | null; scan_auto_declined: number | null }[]>(
+      `SELECT name, scan_auto, scan_streak, scan_auto_declined FROM suppliers WHERE id = ?`, supplierId);
+    const s = rows[0];
+    if (!s) return null;
+    if (!untouched) {
+      await this.prisma.$executeRawUnsafe(`UPDATE suppliers SET scan_streak = 0, scan_auto = 0, scan_auto_declined = 0 WHERE id = ?`, supplierId);
+      if (Number(s.scan_auto) === 1) await this.notify('Carga automática apagada', `Las boletas de ${s.name} ya no se cargan solas: una necesitó corrección. Cuando vuelvan a salir bien, te lo ofrecemos de nuevo.`);
+      return null;
+    }
+    const streak = (Number(s.scan_streak) || 0) + 1;
+    await this.prisma.$executeRawUnsafe(`UPDATE suppliers SET scan_streak = ? WHERE id = ?`, streak, supplierId);
+    return streak >= 5 && Number(s.scan_auto) !== 1 && Number(s.scan_auto_declined) !== 1 ? { supplierId, name: s.name, streak } : null;
+  }
+
+  /** El dueño contestó la oferta: sí (se cargan solas) o no (no se vuelve a ofrecer hasta otra racha con corrección) */
+  async setSupplierAuto(supplierId: string, enabled: boolean) {
+    await this.prisma.$executeRawUnsafe(`UPDATE suppliers SET scan_auto = ?, scan_auto_declined = ? WHERE id = ?`, enabled ? 1 : 0, enabled ? 0 : 1, supplierId);
+    return { ok: true, enabled };
+  }
+
   /** ¿Ya se sabe algo de este proveedor? (códigos aprendidos o alguna compra confirmada) */
   private async supplierHasHistory(supplierId?: string | null): Promise<boolean> {
     if (!supplierId) return false;
@@ -804,6 +852,11 @@ export class PurchasesService {
     if (out.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
     why.push(...(base.qrNotes || []), ...this.docNotes(base));
     // Las hojas que faltaban de una factura que está en "Por revisar": se suman a esa (antes decía "ya estaba cargada")
+    // Proveedor con carga automática y boleta limpia: se carga sola como desde el celular (tanda 6.2)
+    if (!why.length && base.check?.ok === true && await this.supplierAuto(base.matchedSupplier?.id)) {
+      const auto: any = await this.scanOne(doc, { readCheck: null, readInfo: null, sourceLabel: 'Escaneado automáticamente con IA.', isExcel: false, userId, opts: { inline: false } });
+      if (auto.status === 'COMPLETED') return { ...out, ...auto, why: [] };
+    }
     const same = await this.findSameInvoice(base.matchedSupplier?.id, base.invoiceNumber);
     if (same?.status === 'PENDING') {
       const old = (await this.drafts([same.id])).get(same.id);
@@ -1057,7 +1110,8 @@ export class PurchasesService {
     // y productos nuevos). Si no, queda para revisar en la PC, sin crear nada.
     const doubts = items.filter((it) => it.doubtful);
     const why: string[] = [];
-    if (!settings.auto) why.push('la carga automática está apagada');
+    // La carga automática: la general, o la de este proveedor (tanda 6.2: después de 5 boletas sin tocar)
+    if (!settings.auto && !(await this.supplierAuto(supplier?.id))) why.push('la carga automática está apagada');
     if (totalsOk !== true) why.push(totalsOk === false ? 'los renglones no suman el total de la boleta' : 'no se pudo leer el total de la boleta');
     if (doubts.length) why.push(`${doubts.length} ${doubts.length === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
     if (!items.length) why.push('no hay productos');
@@ -1133,6 +1187,7 @@ export class PurchasesService {
       },
     });
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
+    await this.askOwner(userId, { supplier: supplier?.name || parsedData.supplierName || '', items: items.length, total: printedTotal, purchaseId: pending.id, why });
     return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
   }
 
@@ -1364,10 +1419,13 @@ export class PurchasesService {
       if (draft) this.confirmSamples(draft, data, {});
       return r;
     }
-    const result = await this.confirmPendingInner(id, { ...data, docType: draft?.docType || null } as any);
+    const result: any = await this.confirmPendingInner(id, { ...data, docType: draft?.docType || null } as any);
     if (draft?.items?.length) this.learnFromCorrections(draft, data).catch(() => { /* aprender nunca frena la compra */ });
-    if (draft) this.confirmSamples(draft, data, { untouched: !this.correctionsOf(draft, data.items || []).length && (data.items || []).length === (draft.items || []).length });
-    return result;
+    const untouched = !!draft && !this.correctionsOf(draft, data.items || []).length && (data.items || []).length === (draft.items || []).length;
+    if (draft) this.confirmSamples(draft, data, { untouched });
+    // Racha de boletas de este proveedor confirmadas sin tocar nada: a las 5, se ofrece cargarlas solas
+    const offerAuto = draft?.items?.length ? await this.scanStreak(data.supplierId, untouched).catch(() => null) : null;
+    return offerAuto ? { ...result, offerAuto } : result;
   }
 
   /**

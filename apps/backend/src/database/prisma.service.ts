@@ -392,6 +392,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             const supplierCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(suppliers)`);
             if (!supplierCols.some((c) => c.name === 'cuit')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN cuit TEXT DEFAULT NULL;`);
             if (!supplierCols.some((c) => c.name === 'payment_days')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN payment_days INTEGER DEFAULT NULL;`);
+            // Boletas que se cargan solas por proveedor (tanda 6.2): prendido, racha de boletas sin tocar y si el dueño dijo que no
+            if (!supplierCols.some((c) => c.name === 'scan_auto')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN scan_auto INTEGER DEFAULT 0;`);
+            if (!supplierCols.some((c) => c.name === 'scan_streak')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN scan_streak INTEGER DEFAULT 0;`);
+            if (!supplierCols.some((c) => c.name === 'scan_auto_declined')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN scan_auto_declined INTEGER DEFAULT 0;`);
             const purchaseCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(purchases)`);
             if (!purchaseCols.some((c) => c.name === 'draft')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN draft TEXT DEFAULT NULL;`);
             // "Deshacer boleta": cómo estaba cada producto antes de confirmar la compra (costo, precios, si era nuevo)

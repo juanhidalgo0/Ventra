@@ -78,6 +78,17 @@ Antes de cambiar, se probó cómo se comportaba: **un remito en $ 0 dejaba el co
 
 Para publicar: `ventraAi` (con la evaluación de boletas antes, por la regla) y la caja.
 
+## 0f. Boletas — tanda 6 (lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Revisar solo lo dudoso: "34 renglones bien, 3 para mirar", lo que está bien plegado, el control del total a la vista y el motivo de cada duda (Enter salta entre dudas) | `NewPurchaseScreen` (pantalla de compras; la caja y el cobro no cambian) |
+| Automático por proveedor: a las 5 boletas seguidas confirmadas sin tocar, ofrece "¿Cargar solas las de este proveedor?"; se apaga solo si una necesita corrección. El interruptor general sigue | `purchases.service.ts` (`scanStreak`, `supplierAuto`), columnas `scan_auto`/`scan_streak` en proveedores |
+| Aprobar desde el celular: aviso nuevo "Boleta para aprobar" cuando un empleado escanea; el dueño (o encargado) confirma las limpias desde Compras en el celular | `notify.service.ts`, `firebase/functions/notify.js`, `MobilePurchasesScreen`, `MobileNotificationsScreen` |
+| Sin internet: en la PC las fotos quedan en espera en disco (`ventra-scan-queue/`) y se leen solas; en el celular quedan en el teléfono y se mandan al volver la conexión | `scan-jobs.service.ts`, `ScanJobPanel`, `utils/scanQueue.ts`, `ScanInvoiceSheet` |
+
+Para publicar: función **ventraNotify** (el aviso nuevo) y la caja (PC y web).
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

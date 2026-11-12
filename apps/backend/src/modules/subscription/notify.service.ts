@@ -7,7 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 
-type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue' | 'suspiciousVoid';
+type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue' | 'suspiciousVoid' | 'purchaseToApprove';
 interface QueuedEvent { type: EventType; data: any; at: number; tries: number }
 interface LowStockItem { id: string; name: string; stock: number; minStock: number }
 
@@ -273,6 +273,13 @@ export function localMessage(type: EventType, d: any): { title: string; body: st
         url: '/encargos',
       };
     }
+    // Un empleado escaneó una boleta y quedó para aprobar (tanda 6.3 de boletas)
+    case 'purchaseToApprove':
+      return {
+        title: `Boleta para aprobar: ${d.supplier || 'proveedor'}`,
+        body: `${d.user || 'Un empleado'} la escaneó · ${Number(d.items) || 0} productos · ${money(d.total)}${Array.isArray(d.why) && d.why.length ? ` · ${d.why[0]}` : ''}`,
+        url: '/purchases',
+      };
     case 'suspiciousVoid': {
       const items: any[] = Array.isArray(d.items) ? d.items : [];
       if (!items.length) return null;

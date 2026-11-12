@@ -151,6 +151,14 @@ export class PurchasesController {
     return this.purchasesService.pendingFromPreview(body?.preview, req.user.sub, body?.via === 'fotos' ? 'fotos' : body?.via === 'celular' ? 'el celular' : 'WhatsApp');
   }
 
+  /** "¿Cargar solas las boletas de este proveedor?": la respuesta del dueño (o encargado) */
+  @Post('supplier-auto')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPERVISOR')
+  setSupplierAuto(@Body() body: { supplierId: string; enabled: boolean }) {
+    return this.purchasesService.setSupplierAuto(String(body?.supplierId || ''), !!body?.enabled);
+  }
+
   /** Nota de crédito por revisar: resta deuda y, si se devolvió mercadería, stock (no toca precios) */
   @Post(':id/credit-note')
   confirmCreditNote(@Param('id') id: string, @Body() data: any, @Request() req) {

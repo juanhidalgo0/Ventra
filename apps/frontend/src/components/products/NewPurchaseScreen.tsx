@@ -80,6 +80,9 @@ interface PurchaseItem {
   total: number;
   buyFormat: string;
   unitsPerPack: number;
+  /** Renglón de una boleta escaneada que hay que mirar, y por qué (tanda 6.1: se revisa solo lo dudoso) */
+  doubtful?: boolean;
+  reasons?: string[];
   /** Producto nuevo de una boleta: los parecidos que ya tenés, para asociarlo en vez de crearlo */
   candidates?: { id: string; name: string }[];
   /** El renglón leído de la boleta (para asociarlo a un producto existente) */
@@ -278,6 +281,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const remitoMatch = initialPurchase?.draft?.remitoMatch || null;
   const [asRemitoInvoice, setAsRemitoInvoice] = useState(true);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  // Revisar solo lo dudoso (tanda 6.1): lo que está bien queda plegado; el control del total, a la vista
+  const [scanCheck, setScanCheck] = useState<{ ok: boolean | null; message: string; printed: number | null } | null>(null);
+  const [showAllRows, setShowAllRows] = useState(false);
   useEffect(() => {
     try { if (sessionStorage.getItem(OPEN_SCAN_KEY) === '1') { sessionStorage.removeItem(OPEN_SCAN_KEY); if (!initialPurchase) setShowScanModal(true); } } catch { /* nada */ }
   }, []);
@@ -795,6 +801,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     isNew: true,
     candidates: item.candidates?.length ? item.candidates : undefined,
     scanned: item,
+    doubtful: true,
+    reasons: Array.isArray(item.reasons) && item.reasons.length ? item.reasons : ['producto nuevo'],
     source: { code: item.sku || undefined, name: item.name },
     newProductData: {
       name: productName,
@@ -846,6 +854,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       toast.error(`Ojo: esta boleta ya se cargó el ${new Date(data.duplicate.createdAt).toLocaleDateString('es-AR')}${data.duplicate.status === 'PENDING' ? ' (está en "Por revisar")' : ''}. Si la confirmás de nuevo, se suma dos veces el stock.`, { duration: 15000 });
     }
     setFirstSupplier(!!data.firstFromSupplier);
+    setScanCheck(data.check ? { ok: data.check.ok, message: data.check.message || '', printed: Number(data.printedTotal) > 0 ? Number(data.printedTotal) : null } : null);
+    setShowAllRows(false);
     if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
     if (data.date) setDate(data.date);
     if (data.matchedSupplier) {
@@ -872,6 +882,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
           barcode: item.product.barcode || item.barcode || '',
           sku: item.product.sku || item.sku || '',
           name: item.name || item.product.name,
+          doubtful: !!item.doubtful,
+          reasons: Array.isArray(item.reasons) ? item.reasons : [],
           categoryName: item.product.category?.name || '-',
           brandName: item.product.brand?.name || '-',
           variant: '-',
@@ -1256,7 +1268,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     try {
       const url = initialPurchase ? `/purchases/${initialPurchase.id}/confirm` : '/purchases';
       const method = initialPurchase ? 'put' : 'post';
-      await api[method](url, {
+      const saved = await api[method](url, {
         supplierId: selectedSupplier.id,
         invoiceNumber,
         ...(remitoMatch && asRemitoInvoice ? { fromRemitoId: remitoMatch.id } : {}),
@@ -1296,6 +1308,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       });
       toast.success('Compra registrada con éxito');
       clearDraft();
+      // Las últimas 5 boletas de este proveedor salieron sin tocar nada: ofrecer que se carguen solas (tanda 6.2)
+      const offer = (saved as any)?.data?.offerAuto;
+      if (offer?.supplierId) {
+        const yes = window.confirm(`Las últimas ${offer.streak} boletas de ${offer.name} salieron perfectas: las confirmaste sin tocar nada.\n\n¿Cargar solas las próximas de este proveedor? (Suma stock, costos y precios manteniendo tu margen. Se apaga sola si una necesita corrección.)`);
+        api.post('/purchases/supplier-auto', { supplierId: offer.supplierId, enabled: yes }).then(() => { if (yes) toast.success(`Listo: las boletas de ${offer.name} se cargan solas`); }).catch(() => {});
+      }
       (onConfirmed || onBack)();
     } catch (err) {
       toast.error('Error al registrar compra');
@@ -1303,6 +1321,14 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       setIsSubmitting(false);
     }
   };
+
+  // Revisar solo lo dudoso (tanda 6.1)
+  const scanReview = items.some((i) => Array.isArray(i.reasons));
+  const lookRows = items.filter((i) => i.isNew || i.doubtful);
+  const okCount = items.length - lookRows.length;
+  const foldOk = scanReview && !showAllRows && okCount > 0 && lookRows.length > 0;
+  const rowsTotalWithIva = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0) * (useIvaGlobal ? 1.21 : 1);
+  const pesosFmt = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
 
   return (
     <motion.div 
@@ -2192,10 +2218,27 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
               onSetBarcode={(row, bc) => setItems((prev) => prev.map((it) => rowId(it) === rowId(row) ? { ...it, barcode: bc, newProductData: it.newProductData ? { ...it.newProductData, barcode: bc } : it.newProductData } : it))} />
           )}
           {showDuplicates && <DuplicatesModal onClose={() => setShowDuplicates(false)} />}
+          {scanReview && (
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[14px] font-bold text-slate-800">
+                <span className="text-emerald-700">{okCount} {okCount === 1 ? 'renglón bien' : 'renglones bien'}</span>, <span className={lookRows.length ? 'text-amber-700' : 'text-slate-500'}>{lookRows.length} para mirar</span>
+              </span>
+              {scanCheck && (
+                <span className={`text-[12.5px] font-semibold ${scanCheck.ok ? 'text-emerald-700' : scanCheck.ok === false ? 'text-red-700' : 'text-slate-500'}`}>
+                  {scanCheck.ok ? `✓ Suma ${pesosFmt(rowsTotalWithIva)} = total impreso${scanCheck.printed ? ` ${pesosFmt(scanCheck.printed)}` : ''}` : scanCheck.message}
+                </span>
+              )}
+              {okCount > 0 && lookRows.length > 0 && (
+                <button type="button" onClick={() => setShowAllRows((v) => !v)} className="ml-auto h-8 px-3 rounded-lg border border-slate-300 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+                  {showAllRows ? 'Ocultar los que están bien' : `Ver los ${okCount} que están bien`}
+                </button>
+              )}
+            </div>
+          )}
           {/* Products Table */}
           <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
              <PurchaseItemsTable<PurchaseItem>
-               items={items}
+               items={foldOk ? lookRows : items}
                useIva={useIvaGlobal}
                expiryEnabled={expiryEnabled}
                netCostOf={netCostOf}
@@ -2208,6 +2251,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                onCreateBrand={createBrandFor}
                renderNameExtras={(item) => (
                  <>
+                   {item.doubtful && item.reasons?.length && !(item.isNew && item.reasons.length === 1 && item.reasons[0] === 'producto nuevo') ? <p className="text-[11.5px] text-amber-700 mt-0.5">Mirar: {item.reasons.join(', ')}</p> : null}
                    {item.isNew && item.candidates?.length ? <CandidateChips candidates={item.candidates} onPick={(id) => associateNewRow(item, id)} /> : null}
                    {!item.isNew && costInsights[item.productId] && <CostInsight info={costInsights[item.productId]} />}
                  </>

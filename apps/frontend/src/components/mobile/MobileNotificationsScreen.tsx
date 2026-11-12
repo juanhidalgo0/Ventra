@@ -6,7 +6,7 @@ import { ScreenHeader, ListSkeleton } from './ui';
 import PushCard from './PushCard';
 import { loadNotifyPrefs, saveNotifyPrefs, pushState, testLocalNotification, testPushFromCloud, DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from '../../services/pushNotifications';
 
-type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue' | 'suspiciousVoid' | 'nutri';
+type BoolKey = 'orders' | 'orderIdle' | 'bookings' | 'cashDiff' | 'invoiceFail' | 'lowStock' | 'expiry' | 'mpUnmatched' | 'saleCancel' | 'dailySummary' | 'workOrderDue' | 'suspiciousVoid' | 'nutri' | 'purchaseToApprove';
 
 const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: string }[] = [
   { key: 'orders', icon: ShoppingBag, tint: 'bg-emerald-50 text-emerald-700', title: 'Pedidos online nuevos', text: 'Apenas un cliente hace un pedido en tu tienda.' },
@@ -14,6 +14,7 @@ const ITEMS: { key: BoolKey; icon: any; tint: string; title: string; text: strin
   { key: 'bookings', icon: CalendarDays, tint: 'bg-rose-50 text-rose-700', title: 'Turnos', text: 'Cuando un cliente reserva, confirma o cancela un turno.' },
   { key: 'nutri', icon: Stethoscope, tint: 'bg-rose-50 text-rose-700', title: 'Pacientes', text: 'Cuando un paciente completa su ficha previa, y a la mañana los controles de los próximos días para recordarles.' },
   { key: 'workOrderDue', icon: CalendarClock, tint: 'bg-rose-50 text-rose-700', title: 'Encargos para entregar', text: 'El día antes de la fecha de entrega y si un encargo se atrasa.' },
+  { key: 'purchaseToApprove', icon: FileWarning, tint: 'bg-amber-50 text-amber-700', title: 'Boletas para aprobar', text: 'Cuando un empleado escanea la boleta de un proveedor: la revisás y la confirmás desde el celular.' },
   { key: 'cashDiff', icon: Wallet, tint: 'bg-red-50 text-red-700', title: 'Cierre de caja con diferencia', text: 'Cuando el efectivo contado no coincide con el esperado.' },
   { key: 'lowStock', icon: PackageMinus, tint: 'bg-amber-50 text-amber-700', title: 'Stock mínimo', text: 'Cuando un producto llega a su stock mínimo. Se agrupan en un solo aviso y cada producto avisa una vez hasta que lo repongas.' },
   { key: 'expiry', icon: CalendarClock, tint: 'bg-amber-50 text-amber-700', title: 'Vencimientos', text: 'Una vez por día, si hay productos vencidos o por vencer.' },

@@ -21,16 +21,18 @@ export const OPEN_REVIEW_EVENT = 'ventra:open-review';
 
 export interface ScanJobView {
   id: string;
-  status: 'reading' | 'grouping' | 'done' | 'error';
+  status: 'reading' | 'grouping' | 'done' | 'error' | 'waiting';
   createdAt: number;
   finishedAt: number | null;
   total: number;
   done: number;
-  photos: { index: number; name: string; state: 'queued' | 'reading' | 'done' | 'failed'; found?: { supplierName: string; invoiceNumber: string; pageNumber: number; pageCount: number; items: number; issue?: string }; error?: string }[];
+  photos: { index: number; name: string; state: 'queued' | 'reading' | 'done' | 'failed' | 'waiting'; found?: { supplierName: string; invoiceNumber: string; pageNumber: number; pageCount: number; items: number; issue?: string }; error?: string }[];
   documents: { purchaseId: string | null; status: string; supplierName: string; invoiceNumber: string; docType: string; images: number[]; items: number; ok: boolean | null; message: string; why: string[] }[];
   error: string | null;
   limitMessage: string | null;
   left: number | null;
+  /** Fotos esperando internet (tanda 6.4): se leen solas cuando vuelve la conexión */
+  waiting?: number;
 }
 
 interface ScanJobState {
@@ -82,7 +84,7 @@ export async function startScanJob(files: File[], manualTotal?: string) {
   return data as ScanJobView;
 }
 
-const running = (j: ScanJobView | null) => !!j && (j.status === 'reading' || j.status === 'grouping');
+const running = (j: ScanJobView | null) => !!j && (j.status === 'reading' || j.status === 'grouping' || j.status === 'waiting');
 const mmss = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const docLabel = (d: ScanJobView['documents'][number]) => `${d.supplierName || 'Proveedor sin nombre'}${d.invoiceNumber ? ` N° ${d.invoiceNumber}` : ''}`;
 
@@ -110,7 +112,7 @@ export default function ScanJobPanel() {
         setJob(data);
         if (!running(data) && running(was)) finished(data);
       } catch { /* sin conexión un momento: se reintenta */ }
-    }, 1500);
+    }, job?.status === 'waiting' ? 15000 : 1500);
     const tick = window.setInterval(() => setNow(Date.now()), 1000);
     return () => { window.clearInterval(t); window.clearInterval(tick); };
   }, [job?.id, job?.status]);
@@ -148,7 +150,7 @@ export default function ScanJobPanel() {
     return (
       <button onClick={() => setOpen(true)} className="fixed left-4 bottom-4 z-[170] h-11 pl-3 pr-4 rounded-full bg-slate-900 text-white text-[13px] font-bold shadow-lg inline-flex items-center gap-2 cursor-pointer hover:bg-slate-800">
         <Loader2 className="w-4 h-4 animate-spin keep-animated" />
-        {job.status === 'grouping' ? 'Juntando las hojas…' : `Leyendo boletas ${job.done} de ${job.total}`}
+        {job.status === 'waiting' ? 'Sin internet: boletas en espera' : job.status === 'grouping' ? 'Juntando las hojas…' : `Leyendo boletas ${job.done} de ${job.total}`}
       </button>
     );
   }
@@ -164,7 +166,7 @@ export default function ScanJobPanel() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-[16px] font-bold text-slate-800">
-              {job.status === 'reading' ? 'Leyendo tus boletas' : job.status === 'grouping' ? 'Juntando las hojas de cada factura' : job.status === 'error' ? 'No se pudieron leer' : 'Listo: ya las leí'}
+              {job.status === 'waiting' ? 'Sin internet: quedaron en espera' : job.status === 'reading' ? 'Leyendo tus boletas' : job.status === 'grouping' ? 'Juntando las hojas de cada factura' : job.status === 'error' ? 'No se pudieron leer' : 'Listo: ya las leí'}
             </h3>
             <p className="text-[13px] text-slate-500 mt-0.5">
               {running(job)
@@ -213,6 +215,7 @@ export default function ScanJobPanel() {
                 <p className="text-[13.5px] font-semibold text-slate-800">Foto {p.index + 1}</p>
                 <p className={`text-[12.5px] ${p.state === 'failed' ? 'text-[#b91c1c]' : 'text-slate-500'}`}>
                   {p.state === 'queued' && 'En espera'}
+                  {p.state === 'waiting' && 'Sin internet: se lee sola cuando vuelva la conexión (podés cerrar Ventra, sigue en la PC)'}
                   {p.state === 'reading' && 'Leyendo renglón por renglón… si algo no cierra, la vuelvo a leer'}
                   {p.state === 'done' && p.found && <>
                     {p.found.supplierName || 'Proveedor'}{p.found.pageCount > 1 ? ` · hoja ${p.found.pageNumber || '?'} de ${p.found.pageCount}` : ''} · {p.found.items} productos

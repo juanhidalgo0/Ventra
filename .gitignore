@@ -45,3 +45,6 @@ release-token.txt
 
 # Banco de pruebas de boletas (fotos de muestras reales y resultados): nunca al repo
 .boletas-eval/
+
+# Boletas que esperan internet en la PC (fotos de clientes): nunca al repo
+ventra-scan-queue/

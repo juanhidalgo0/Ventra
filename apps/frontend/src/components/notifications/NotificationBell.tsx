@@ -21,6 +21,7 @@ const ICONS: Record<string, { icon: any; cls: string }> = {
   invoiceFail: { icon: FileWarning, cls: 'bg-red-50 text-red-600' },
   mpUnmatched: { icon: Wallet, cls: 'bg-sky-50 text-sky-600' },
   suspiciousVoid: { icon: ShieldAlert, cls: 'bg-red-50 text-red-600' },
+  purchaseToApprove: { icon: FileWarning, cls: 'bg-amber-50 text-amber-600' },
 };
 
 function ago(date: string) {

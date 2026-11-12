@@ -567,6 +567,39 @@ async function main() {
     assert.strictEqual(r.matches[0], null);
   });
 
+  await t('sin internet: la foto queda en espera (en disco) y se lee sola cuando vuelve la conexión', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ScanJobsService } = require('../src/modules/purchases/scan-jobs.service');
+    const { ServiceUnavailableException } = require('@nestjs/common');
+    let online = false;
+    const calls: string[] = [];
+    const ai: any = {
+      shrink: async (files: any[]) => files.map(() => ({ mediaType: 'image/jpeg', data: 'AAAA' })),
+      call: async (_k: string, body: any) => {
+        calls.push(body.stage);
+        if (!online) throw new ServiceUnavailableException('sin internet');
+        if (body.stage === 'page') return { result: { read: { image: body.index, supplierName: 'PROV', invoiceNumber: '1-9', items: [{ name: 'SAL', packageQuantity: 1, total: '100' }] } } };
+        return { result: { documents: [{ supplierName: 'PROV', items: [{ name: 'SAL' }], images: [0] }] } };
+      },
+    };
+    const saved: any[] = [];
+    const purchases: any = { supplierCuits: async () => [], saveScannedDocument: async (d: any) => { saved.push(d); return { purchaseId: 'P1', status: 'PENDING', supplierName: 'PROV', items: [{}] }; }, notify: async () => {} };
+    const svc = new ScanJobsService(ai, purchases);
+    const job = svc.start([{ buffer: Buffer.from('x'), mimetype: 'image/jpeg', originalname: 'a.jpg' }], 'u1');
+    await new Promise((r) => setTimeout(r, 50));
+    let v = svc.get(job.id, 'u1');
+    assert.strictEqual(v.status, 'waiting');
+    assert.strictEqual(v.photos[0].state, 'waiting');
+    assert.strictEqual(v.waiting, 1);
+    // Vuelve internet: se lee sola y queda en Por revisar
+    online = true;
+    await svc.retryWaiting();
+    v = svc.get(job.id, 'u1');
+    assert.strictEqual(v.status, 'done');
+    assert.strictEqual(saved.length, 1);
+    assert.strictEqual(v.documents[0].purchaseId, 'P1');
+  });
+
   await t('hojas que faltan: se suman a la factura pendiente y se controla el total', async () => {
     const old = { pageCount: 3, missingPageNumbers: [3], missingPages: 1, printedTotal: null, sampleIds: ['s1'], why: ['faltan hojas (3)', '1 renglón dudoso'],
       items: [{ name: 'A', total: 4000 }, { name: 'B', total: 3000 }] };
