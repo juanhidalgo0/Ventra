@@ -112,11 +112,14 @@ async function processId(id) {
   return (await db.collection("ventra_ig_inbox").doc(id).get()).data();
 }
 const thread = async (id) => (await db.collection("ventra_ig_threads").doc(id).get()).data() || {};
-const sentTo = (id) => calls.filter((c) => c.p === "me/messages" && c.body.recipient.id === id);
+// Mensajes del bot a esa conversación, sin la presentación de Ventri (esa se prueba aparte)
+const sentAll = (id) => calls.filter((c) => c.p === "me/messages" && c.body.recipient.id === id);
+const isIntro = (c) => c.body.message.text === ig.VENTRI_DM;
+const sentTo = (id) => sentAll(id).filter((c) => !isIntro(c));
 const adminUser = { email: "juanhidalgobass@gmail.com" };
 
 async function clear() {
-  for (const col of ["ventra_private", "ventra_ig_inbox", "ventra_ig_threads", "ventra_ig_posts", "ventra_ig_daily", "ventra_ig_media", "ventra_chat_usage"]) {
+  for (const col of ["ventra_private", "ventra_ig_inbox", "ventra_ig_threads", "ventra_ig_people", "ventra_ig_posts", "ventra_ig_daily", "ventra_ig_media", "ventra_chat_usage"]) {
     const s = await db.collection(col).get();
     await Promise.all(s.docs.map((d) => d.ref.delete()));
   }
@@ -142,6 +145,18 @@ async function clear() {
     ok(ig.containerParams({ type: "reel", caption: "x", coverUrl: "c" }, { url: "u", kind: "video" }).media_type === "REELS", "contenedor de reel");
     ok(ig.containerParams({ type: "carousel" }, { url: "u", kind: "image" }, { child: true }).is_carousel_item === true, "pieza de carrusel");
     ok(ig.containerParams({ type: "story" }, { url: "u", kind: "image" }).media_type === "STORIES" && !("caption" in ig.containerParams({ type: "story" }, { url: "u", kind: "image" })), "historia sin texto");
+    ok(ig.withoutGreeting("¡Hola! Para turnos va Agenda.") === "Para turnos va Agenda." && ig.withoutGreeting("Hola Juan, sí se puede") === "Sí se puede"
+      && ig.withoutGreeting("Buenas tardes! 👋 te cuento") === "Te cuento" && ig.withoutGreeting("Holaaa") === "Holaaa" && ig.withoutGreeting("¡Hola!") === "¡Hola!"
+      && ig.withoutGreeting("Hola, gracias por pasarte.") === "Gracias por pasarte.", "saca el saludo del principio sin comerse el resto");
+    ok(ig.SYSTEM.includes("Ventri") && ig.SYSTEM.includes("inteligencia artificial") && !ig.SYSTEM.includes("asistente automático"), "el prompt dice que es Ventri, una IA");
+    ok(ig.SYSTEM.includes("guía de venta por rubro") && ig.SYSTEM.includes("Función estrella: tu negocio en tu WhatsApp") && ig.SYSTEM.includes("Ventra por dentro") && ig.SYSTEM.includes("menos de 300 caracteres"), "el prompt trae la guía de venta, el bot de WhatsApp, la ayuda y respuestas cortas");
+    const fu = ig.funnelFor([
+      { messages: [{ by: "user" }, { by: "bot", text: "Mirá [botón: Probar demo gratis]" }], lead: { intent: "listo_para_comprar" } },
+      { messages: [{ by: "user" }, { by: "bot", text: "Hola" }], lead: { intent: "interesado" }, needsHumanWhy: "Posible venta" },
+      { messages: [{ by: "user" }], needsHumanWhy: "Mandó un adjunto" },
+      { messages: [{ by: "bot", text: "solo el bot" }] },
+    ], [{ updatedAt: admin.firestore.Timestamp.now(), status: "active" }, { updatedAt: admin.firestore.Timestamp.now(), status: "pending_payment" }, { updatedAt: admin.firestore.Timestamp.fromMillis(0), status: "active" }], Date.now() - 30 * 864e5);
+    ok(JSON.stringify(fu) === JSON.stringify({ conversations: 3, answered: 2, linked: 1, interested: 2, ready: 1, handedOff: 1, signups: 2, paid: 1 }), "embudo: conversaciones, botón, interés, derivadas y altas de los últimos 30 días", fu);
     ok(ig.SYSTEM.includes("Nunca escribas links") && ig.SYSTEM.includes("el más usado") && ig.SYSTEM.includes("Base de conocimiento") && ig.SYSTEM.length > 5000, "el prompt incluye ventas, botones en vez de links y la base");
   }
 
@@ -173,6 +188,7 @@ async function clear() {
     await ig.adminAction(db, { action: "autopilot", enabled: false }, adminUser);
     ok((await ig.overview(db, { aiReady: true })).autopilot.enabled === false, "apagar el piloto automático");
     const ov = await ig.overview(db, { aiReady: true });
+    ok(ov.funnel && ov.funnel.conversations === 0 && ov.funnel.signups === 0, "el panel trae el embudo", ov.funnel);
     ok(ov.connected && ov.username === "ventra.store" && ov.webhookUrl.includes("ventraIgHook") && !("token" in ov), "overview sin datos secretos", Object.keys(ov));
   }
 
@@ -216,6 +232,10 @@ async function clear() {
     ok(it.status === "replied" && s.length === 1, "contesta el mensaje", it);
     ok(s[0] && !s[0].body.message.text.includes("**"), "la respuesta sale sin markdown", s[0] && s[0].body.message.text);
     ok(s[0] && s[0].token.startsWith("IGAAtoken2"), "usa el token guardado");
+    const all2 = sentAll("u2");
+    ok(all2.length === 2 && isIntro(all2[0]) && !all2[1].body.message.text.startsWith("Hola"), "la primera vez se presenta Ventri en un mensaje aparte y la respuesta no repite el saludo", all2.map((c) => c.body.message.text));
+    const t2 = await thread("u2");
+    ok(t2.ventriAt && t2.messages[1].by === "bot" && t2.messages[1].text === ig.VENTRI_DM && t2.botMids.length === 2, "la presentación queda en la charla y su id como del bot", t2);
     const ai = state.aiCalls[state.aiCalls.length - 1];
     ok(ai.model === "claude-haiku-5-5" && ai.output_config.effort === "low" && ai.output_config.format.type === "json_schema" && !("fallbacks" in ai), "pide a Haiku 5.5 con salida estructurada y esfuerzo bajo");
     ok(ai.system[0].cache_control && ai.messages[ai.messages.length - 1].content.startsWith("[canal: dm]"), "base cacheada y canal indicado");
@@ -233,6 +253,15 @@ async function clear() {
     await deliver(echoEvent("u2", "mid.bot.race", s[0].body.message.text));
     it = await processId(inboxId("mid.bot.race"));
     ok(it.status === "bot-echo", "eco adelantado reconocido por el texto", it);
+    await deliver(echoEvent("u2", "mid.intro.echo", ig.VENTRI_DM));
+    it = await processId(inboxId("mid.intro.echo"));
+    ok(it.status === "bot-echo" && !(await thread("u2")).pausedUntil, "el eco de la presentación no pausa el bot", it);
+    await deliver(dmEvent("u2", "mid.2b", "y para kiosco?"));
+    state.aiQueue.push({ action: "reply", text: "¡Hola! Para kiosco va Full.", topic: "precio", rubro: "kiosco", intent: "interesado" });
+    it = await processId(inboxId("mid.2b"));
+    const lastAi = state.aiCalls[state.aiCalls.length - 1].messages;
+    ok(lastAi[lastAi.length - 1].content.includes("[rubro ya conocido: peluquería]"), "la IA recibe el rubro que ya contó", lastAi[lastAi.length - 1].content);
+    ok(it.status === "replied" && sentAll("u2").filter(isIntro).length === 1 && sentTo("u2").slice(-1)[0].body.message.text === "¡Hola! Para kiosco va Full.", "la segunda vez no se vuelve a presentar", sentAll("u2").map((c) => c.body.message.text));
 
     // Varios mensajes seguidos: una sola respuesta con todo junto
     const before = state.aiCalls.length;
@@ -278,6 +307,11 @@ async function clear() {
     it = await processId(inboxId("mid.4"));
     t = await thread("u4");
     ok(it.status === "handoff" && t.needsHuman && t.pausedUntil.toMillis() > Date.now() + 23 * 3600e3 && sentTo("u4").length === 1, "derivación: avisa, marca y pausa 24 h", t);
+    ok(sentTo("u4")[0].body.message.text === "Perdón por eso, una persona del equipo te responde por acá.", "si la IA ya avisó que pasa al equipo, no se agrega el aviso fijo", sentTo("u4")[0].body.message.text);
+    await deliver(dmEvent("u4b", "mid.4b", "quiero hacer un canje"));
+    state.aiQueue.push({ action: "handoff", text: "¡Qué bueno que nos escribas!", topic: "canje", rubro: "", intent: "ninguna" });
+    await processId(inboxId("mid.4b"));
+    ok(sentTo("u4b")[0].body.message.text === "¡Qué bueno que nos escribas!\n\n" + ig.HANDOFF_NOTICE, "derivación sin aviso: se agrega que pasa al equipo", sentTo("u4b")[0].body.message.text);
 
     // Quiere comprar: sigue atendiendo pero queda marcado
     await deliver(dmEvent("u5", "mid.5", "dale, como pago el Full?"));
@@ -317,13 +351,14 @@ async function clear() {
     await deliver(dmEvent("u7", "mid.7", "algo raro"));
     state.aiQueue.push({ __raw: "no es json" });
     it = await processId(inboxId("mid.7"));
-    ok(it.status === "handoff" && (await thread("u7")).needsHuman && sentTo("u7").length === 0, "respuesta inválida de la IA: no manda nada y queda para el dueño", it);
+    ok(it.status === "handoff" && (await thread("u7")).needsHuman && sentTo("u7").length === 1 && sentTo("u7")[0].body.message.text === ig.HANDOFF_NOTICE, "respuesta inválida de la IA: avisa que pasa al equipo y queda para el dueño", sentTo("u7").map((c) => c.body.message));
     await deliver(dmEvent("u8", "mid.8", "hola"));
     state.aiQueue.push({ __throw: true }, { __throw: true });
     it = await processId(inboxId("mid.8"));
     ok(it.status === "error" && (await thread("u8")).needsHumanWhy === "Falló la IA", "IA caída: queda para el dueño", it);
 
     // Instagram no deja mandar
+    await db.collection("ventra_ig_threads").doc("u9").set({ ventriAt: admin.firestore.Timestamp.now() });
     await deliver(dmEvent("u9", "mid.9", "hola"));
     state.failNext["POST me/messages"] = { message: "outside of allowed window", code: 10, status: 400 };
     it = await processId(inboxId("mid.9"));
@@ -381,8 +416,11 @@ async function clear() {
     let it = await processId("c_C1");
     const rep = calls.filter((c) => c.p === "C1/replies");
     ok(it.status === "replied" && rep.length === 1 && rep[0].body.message.includes("$9.900"), "responde el comentario en público", it);
+    ok(rep[0].body.message.startsWith(ig.VENTRI_COMMENT + " Desde $9.900"), "primer comentario de la persona: se presenta Ventri en público", rep[0].body.message);
+    ok((await db.collection("ventra_ig_people").doc("u_pepe").get()).exists, "queda anotado que a pepe ya se le presentó");
     const priv = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C1");
     const privTpl = priv[0] && priv[0].body.message.attachment;
+    ok(privTpl && privTpl.payload.text.startsWith(ig.VENTRI_PRIVATE + "\n\nAgenda sale $9.900"), "el privado del comentario también se presenta, en el mismo mensaje", privTpl && privTpl.payload.text);
     ok(priv.length === 1 && privTpl && privTpl.payload.text.includes("$9.900") && privTpl.payload.buttons[0].url.includes("utm_medium=comentario") && it.privateReply, "manda el mensaje privado del comentario con botón", it);
     const pt = await thread("igsid_C1");
     ok(pt.messages && pt.messages.length === 2 && pt.messages[0].by === "user" && pt.messages[0].text.includes("cuánto sale?") && pt.messages[1].by === "bot" && pt.botMids.length === 1, "la charla privada arranca con el comentario como contexto", pt);
@@ -393,6 +431,7 @@ async function clear() {
     state.aiQueue.push({ action: "reply", text: "¡Genial! Para barbería va Agenda.", topic: "agenda", rubro: "barbería", intent: "interesado" });
     pe = await processId(inboxId("mid.priv.reply"));
     const ctx = state.aiCalls[state.aiCalls.length - 1].messages;
+    ok(sentAll("igsid_C1").filter(isIntro).length === 0 && (await thread("igsid_C1")).ventriAt, "en el chat que sigue al comentario no se vuelve a presentar");
     ok(pe.status === "replied" && ctx.length === 3 && ctx[0].content.includes("cuánto sale?") && ctx[1].role === "assistant", "cuando contesta, la IA tiene el contexto del comentario", ctx);
     const aiReq = state.aiCalls.find((c) => c.messages[0].content.includes("[canal: comment]") && c.messages[0].content.includes("cuánto sale?"));
     ok(aiReq && aiReq.messages[0].content.includes("Turnos con recordatorio"), "la IA ve el texto de la publicación");
@@ -410,6 +449,7 @@ async function clear() {
     state.aiQueue.push({ action: "reply", text: "¡Sí! La tienda online es ideal para ropa.", topic: "tienda online", rubro: "ropa", intent: "interesado" });
     it = await processId("c_C9");
     ok(it.status === "replied" && calls.some((c) => c.p === "C1/replies" && c.body.message.includes("ropa")), "respuesta a una respuesta va al comentario principal", it);
+    ok(calls.filter((c) => c.p === "C1/replies").slice(-1)[0].body.message === ig.VENTRI_COMMENT + " ¡Sí! La tienda online es ideal para ropa.", "otra persona: también se presenta", calls.filter((c) => c.p === "C1/replies").slice(-1)[0].body.message);
     ok(state.aiCalls[state.aiCalls.length - 1].messages[0].content.includes("Caption traída de Instagram"), "busca el texto de la publicación si no lo tiene");
     // Repetido por webhook y por revisión: una sola vez
     await deliver({ object: "instagram", entry: [{ id: IG_ID, time: now, changes: [{ field: "comments", value: { id: "C1", text: "cuánto sale?", from: { id: "2", username: "pepe" }, media: { id: "M1" } } }] }] });
@@ -432,6 +472,11 @@ async function clear() {
     state.aiQueue.push({ action: "reply", text: "¡Gracias, Lu!", dm: "", botones: [], topic: "elogio", rubro: "", intent: "ninguna" });
     it = await processId("c_C12");
     ok(!it.privateReply && !calls.some((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C12"), "sin promesa de privado no manda privado", it);
+    // La misma persona vuelve a comentar (con otra mayúscula): ya no se presenta
+    await deliver({ object: "instagram", entry: [{ id: IG_ID, time: now, changes: [{ field: "comments", value: { id: "C13", text: "y para kiosco?", from: { id: "2", username: "Pepe" }, media: { id: "M1" } } }] }] });
+    state.aiQueue.push({ action: "reply", text: "¡Hola! Para kiosco va Full.", dm: "", botones: [], topic: "precio", rubro: "kiosco", intent: "consulta" });
+    it = await processId("c_C13");
+    ok(it.status === "replied" && calls.filter((c) => c.p === "C13/replies")[0].body.message === "¡Hola! Para kiosco va Full.", "segundo comentario de la misma persona: no se presenta de nuevo", it);
   }
 
   console.log("Publicaciones");

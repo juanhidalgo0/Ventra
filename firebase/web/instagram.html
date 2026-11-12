@@ -73,6 +73,8 @@
   .field{ display:flex; flex-direction:column; gap:5px; margin-top:10px; }
   .field label{ font-size:12px; font-weight:600; color:var(--ink-2); }
   .field input, .field textarea{ width:100%; border:1px solid var(--line); border-radius:12px; padding:9px 12px; background:#fff; font-size:13px; }
+  #srForm select, #srForm input{ border:1px solid var(--line); border-radius:12px; padding:7px 10px; background:#fff; font-size:13px; }
+  #srForm select:focus, #srForm input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
   .field textarea{ min-height:150px; resize:vertical; line-height:1.45; }
   .field input:focus, .field textarea:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
   .copy{ display:flex; gap:8px; align-items:center; margin-top:6px; }
@@ -135,6 +137,7 @@
   td a{ color:var(--pine); text-decoration:none; font-weight:600; }
   .cap-cell{ max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .learn{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:14px; }
+  .learn.learn-1{ grid-template-columns:minmax(0,1fr); max-width:620px; }
   .learn h3{ margin:0 0 6px; font-size:12px; font-weight:600; color:var(--ink-2); }
   .bar-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; margin:4px 0; }
   .bar-row .lbl{ width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -219,6 +222,9 @@
           <tbody id="mediaRows"></tbody>
         </table>
       </div>
+      <div class="learn learn-1">
+        <div><h3>Embudo de Ventri (30 días)</h3><div id="lFunnel"></div></div>
+      </div>
       <div class="learn">
         <div><h3>Lo que más preguntan (30 días)</h3><div id="lTopics"></div></div>
         <div><h3>Rubros que escriben</h3><div id="lRubros"></div></div>
@@ -234,6 +240,20 @@
       <div class="toggle" style="border-top:0;padding-top:0">
         <div><div class="t">Piloto automático</div><div class="small" id="autoText">El agente crea las publicaciones de la semana y las programa solo, con al menos 12 h de anticipación y hasta 5 por semana. Mientras tanto aparecen en "Programadas" y las podés frenar o descartar.</div></div>
         <label class="switch"><input type="checkbox" id="autoPilot" aria-label="Publicar sin mi aprobación"><span></span></label>
+      </div>
+      <div class="toggle">
+        <div style="flex:1;min-width:0">
+          <div class="t">Reel repetido en historias</div>
+          <div class="small">Vuelve a subir un reel como historia una vez cada 24 h, durante los días que elijas. Con "El último que publique", cuando sale un reel nuevo arranca de cero con ese.</div>
+          <div id="srForm" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
+            <select id="srReel" aria-label="Reel a repetir" style="flex:1 1 220px;min-width:0;max-width:100%"></select>
+            <label class="small" style="display:flex;align-items:center;gap:6px">Durante <input type="number" id="srDays" min="1" max="30" style="width:64px" aria-label="Días"> días</label>
+            <button class="btn sm" id="srSave" type="button">Guardar</button>
+            <button class="btn sm" id="srRestart" type="button">Empezar de nuevo</button>
+          </div>
+          <div class="small" id="srState" style="margin-top:6px"></div>
+        </div>
+        <label class="switch"><input type="checkbox" id="srOn" aria-label="Repetir el reel en historias"><span></span></label>
       </div>
       <div class="small" id="postsHelp"></div>
       <div class="posts" id="posts"></div>
@@ -330,6 +350,7 @@
         ? 'Lo programado por el piloto automático sale a su hora (hora de Argentina). Si algo no te gusta, tocá "Frenar" antes.'
         : 'Nada sale sin tu aprobación. Lo aprobado se publica a su hora (hora de Argentina), con unos minutos de margen.';
       $('botDm').disabled = $('botComments').disabled = !d.connected;
+      renderStoryRepeat(d);
       var pct = Math.min(100, 100 * d.usage.costUsd / d.usage.limitUsd);
       $('spendText').textContent = 'Este mes: ' + d.usage.dm + ' respuestas a mensajes y ' + d.usage.comments + ' a comentarios · gasto de IA US$ ' + d.usage.costUsd.toFixed(2) + ' de ' + d.usage.limitUsd + ' (compartido con el asistente de la web)';
       $('spendBar').style.width = pct + '%';
@@ -402,6 +423,19 @@
       $('lTopics').innerHTML = bars(l.topics);
       $('lRubros').innerHTML = bars(l.rubros);
       $('lIntents').innerHTML = bars(l.intents, INTENT);
+      renderFunnel(d.funnel);
+    }
+    function renderFunnel(f){
+      if (!f || !f.conversations) { $('lFunnel').innerHTML = '<div class="empty">Todavía sin conversaciones en los últimos 30 días.</div>'; return; }
+      var steps = [
+        ['Conversaciones', f.conversations], ['Ventri contestó', f.answered], ['Recibieron un botón', f.linked],
+        ['Interesados', f.interested], ['Quieren comprar', f.ready], ['Pasaron a una persona', f.handedOff],
+      ];
+      if (f.signups != null) steps.push(['Empezaron el alta', f.signups], ['Pagaron', f.paid]);
+      var pct = function(n){ return f.conversations ? ' <span class="small">' + Math.round(100 * n / f.conversations) + '%</span>' : ''; };
+      $('lFunnel').innerHTML = steps.map(function(x){
+        return '<div class="bar-row"><span class="lbl">' + esc(x[0]) + '</span><span class="b"><i style="width:' + (100 * x[1] / f.conversations) + '%"></i></span><span class="n">' + fmt(x[1]) + pct(x[1]) + '</span></div>';
+      }).join('') + '<div class="small" style="margin-top:6px">"Empezaron el alta" cuenta a quienes llegaron a la web desde un botón de Instagram y empezaron la suscripción en esa misma visita.</div>';
     }
 
     function postCard(p){
@@ -468,6 +502,36 @@
       if (on && !confirm('Con el piloto automático, lo que cree el agente se publica sin tu aprobación (con al menos 12 h para frenarlo). ¿Lo prendés?')) { $('autoPilot').checked = false; return; }
       act({ action:'autopilot', enabled:on }, on ? 'Piloto automático prendido' : 'Piloto automático apagado');
     });
+    function renderStoryRepeat(d){
+      var sr = d.storyRepeat || { enabled:false, mediaId:null, days:7, maxDays:30, current:null };
+      var reels = (d.media || []).filter(function(m){ return m.type === 'reel'; });
+      var opts = '<option value="">El último que publique</option>' + reels.map(function(m){
+        return '<option value="' + esc(m.id) + '">' + esc(fwhen(m.at) + ' · ' + (m.caption || 'Reel sin texto')) + '</option>';
+      }).join('');
+      // El elegido puede no estar entre los últimos 12: se agrega igual para no perderlo
+      if (sr.mediaId && !reels.some(function(m){ return m.id === sr.mediaId; })) opts += '<option value="' + esc(sr.mediaId) + '">' + esc((sr.current && sr.current.caption) || 'Reel elegido') + '</option>';
+      $('srReel').innerHTML = opts;
+      $('srReel').value = sr.mediaId || '';
+      $('srDays').value = sr.days; $('srDays').max = sr.maxDays;
+      $('srOn').checked = !!sr.enabled;
+      $('srOn').disabled = $('srSave').disabled = $('srRestart').disabled = !d.connected;
+      var c = sr.current, st = '';
+      if (c) {
+        var reel = c.permalink ? '<a href="' + esc(c.permalink) + '" target="_blank" rel="noopener">' + esc(c.caption || 'el reel') + '</a>' : esc(c.caption || 'el reel');
+        st = 'Lleva ' + c.count + ' de ' + sr.days + ' historias de ' + reel + ' · la última ' + esc(ago(c.lastAt));
+        if (sr.enabled && c.count < sr.days && c.nextAt) st += ' · la próxima ' + esc(fwhen(c.nextAt));
+        if (c.count >= sr.days) st += ' · terminó' + (sr.mediaId ? '' : ' (sigue con el próximo reel que publiques)');
+      } else if (sr.enabled) st = 'La primera historia sale en los próximos minutos.';
+      $('srState').innerHTML = st;
+    }
+    function saveStoryRepeat(restart){
+      var days = Number($('srDays').value);
+      act({ action:'storyRepeat', enabled:$('srOn').checked, mediaId:$('srReel').value, days:days, restart:!!restart },
+        restart ? 'Empieza de nuevo: la primera historia sale en unos minutos' : $('srOn').checked ? 'Historias del reel guardadas' : 'Historias del reel apagadas');
+    }
+    $('srOn').addEventListener('change', function(){ saveStoryRepeat(false); });
+    $('srSave').addEventListener('click', function(){ saveStoryRepeat(false); });
+    $('srRestart').addEventListener('click', function(){ if (confirm('¿Empezar la cuenta de cero? La primera historia sale en los próximos minutos.')) saveStoryRepeat(true); });
     function saveBots(){ act({ action:'bots', dm:$('botDm').checked, comments:$('botComments').checked }, 'Listo'); }
     $('botDm').addEventListener('change', saveBots);
     $('botComments').addEventListener('change', saveBots);
@@ -518,7 +582,9 @@
       var img = function(t, bg){ return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="100%" height="100%" fill="' + bg + '"/><text x="80" y="700" font-family="sans-serif" font-size="90" font-weight="700" fill="#F6F2EC">' + t + '</text></svg>'); };
       if (!demo) demo = {
         connected:true, username:'ventra.store', expiresAt:iso(now + 48 * 864e5), webhookUrl:'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraIgHook', verifyToken:'3f9c1e0b7a2d4c6e8f1a3b5c7d9e0f12', hasAppSecret:false, subscribed:'messages,comments',
-        bots:{ dm:true, comments:false }, autopilot:{ enabled:true, leadHours:12, perWeek:5 }, aiReady:true, commentsCheckedAt:iso(now - 3 * 60000), lastError:null, lastErrorAt:null,
+        bots:{ dm:true, comments:false }, autopilot:{ enabled:true, leadHours:12, perWeek:5 },
+        storyRepeat:{ enabled:true, mediaId:null, days:7, maxDays:30, current:{ mediaId:'m1', count:3, lastAt:iso(now - 5 * 3600e3), nextAt:iso(now + 19 * 3600e3), permalink:'https://www.instagram.com/', caption:'Chau faltazos: el turno se confirma solo por WhatsApp' } },
+        aiReady:true, commentsCheckedAt:iso(now - 3 * 60000), lastError:null, lastErrorAt:null,
         usage:{ costUsd:1.84, limitUsd:50, dm:96, comments:31 },
         posts:[
           { id:'p1', type:'carousel', caption:'¿Tu kiosco cierra la caja a ojo? 👀\n\nCon Ventra el arqueo te dice al peso cuánto tiene que haber.\n\nProbalo gratis, link en la bio.\n\n#kiosco #almacen #sistemadeventas', note:'Carrusel de dolor → solución para dueños de kiosco. Martes 19 h es el mejor horario de las últimas semanas.', media:[{ url:img('Cierre de caja', '#08362A'), kind:'image' }, { url:img('Arqueo al peso', '#167160'), kind:'image' }, { url:img('Probalo gratis', '#0A4736'), kind:'image' }], status:'draft', publishAt:iso(now + 3 * 864e5), createdAt:iso(now - 3600e3) },
@@ -540,12 +606,18 @@
           { id:'m2', type:'carousel', caption:'5 errores al cerrar la caja del kiosco', at:iso(now - 5 * 864e5), permalink:'https://www.instagram.com/', likes:88, comments:9, metrics:{ reach:2600, views:4100, saved:61, shares:12, total_interactions:170, follows:9 }, ours:true },
           { id:'m3', type:'image', caption:'Ventra: caja, tienda y turnos', at:iso(now - 9 * 864e5), permalink:'https://www.instagram.com/', likes:31, comments:2, metrics:{ reach:980, views:1300, saved:3, shares:1, total_interactions:37, follows:1 }, ours:false }
         ],
+        funnel:{ conversations:84, answered:80, linked:52, interested:31, ready:7, handedOff:6, signups:4, paid:3 },
         learned:{ topics:[{ name:'precio', n:41 }, { name:'agenda', n:27 }, { name:'tienda online', n:15 }, { name:'facturación', n:9 }, { name:'soporte', n:4 }], rubros:[{ name:'peluquería', n:22 }, { name:'kiosco', n:14 }, { name:'ropa', n:9 }, { name:'estética', n:6 }], intents:[{ name:'consulta', n:38 }, { name:'interesado', n:29 }, { name:'listo_para_comprar', n:7 }, { name:'soporte', n:4 }] }
       };
       if (method === 'GET') return Promise.resolve(JSON.parse(JSON.stringify(demo)));
       var p = demo.posts.filter(function(x){ return x.id === body.id; })[0];
       if (body.action === 'bots') demo.bots = { dm:body.dm, comments:body.comments };
       if (body.action === 'autopilot') demo.autopilot.enabled = body.enabled;
+      if (body.action === 'storyRepeat') {
+        var sr = demo.storyRepeat, changed = (sr.mediaId || '') !== (body.mediaId || '');
+        Object.assign(sr, { enabled:body.enabled, mediaId:body.mediaId || null, days:body.days });
+        if (changed || body.restart) sr.current = null;
+      }
       if (body.action === 'resolve') demo.handoffs = demo.handoffs.filter(function(h){ return h.thread !== body.thread; });
       if (p && (body.action === 'update' || body.action === 'approve')) { if (body.caption != null) p.caption = body.caption; if (body.publishAt) p.publishAt = new Date(body.publishAt).toISOString(); if (body.action === 'approve') { p.status = 'approved'; if (!p.publishAt) p.publishAt = iso(now); } }
       if (p && body.action === 'unapprove') p.status = 'draft';
