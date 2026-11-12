@@ -1792,7 +1792,7 @@ const SITE_EVENTS = new Set([
   "view_empezar", "start_nav", "start_hero", "start_strip", "start_final", "start_dock",
   "signup_negocio", "signup_plan", "signup_google", "signup_pago",
 ]);
-exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, memory: "128MiB" }, async (req, res) => {
+exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, memory: "256MiB" }, async (req, res) => {
   let e = "";
   try { e = String((typeof req.body === "string" ? JSON.parse(req.body) : req.body || {}).e || ""); } catch { e = ""; }
   if (req.method !== "POST" || !SITE_EVENTS.has(e)) return res.status(204).end();

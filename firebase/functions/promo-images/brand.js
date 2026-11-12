@@ -50,6 +50,23 @@ function luminance(h) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 const inkOn = (bg) => (luminance(bg) > 0.45 ? "#0b0b0b" : "#ffffff");
+/** Contraste WCAG entre dos colores (1 a 21) */
+function contrast(a, b) {
+  const x = luminance(a), y = luminance(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+/** El acento va escrito sobre el fondo oscuro ("Ahorrás", etiqueta, precio): 3 a 1 como mínimo (letra grande) */
+const READABLE = 3;
+/** El mismo tono, aclarado de a poco hasta que se lea sobre `bg` */
+function readableOn(h, bg) {
+  const c = rgbOf(h);
+  if (!c || contrast(h, bg) >= READABLE) return h;
+  for (let t = 0.1; t <= 1; t += 0.1) {
+    const m = hex(...c.map((v) => v + (255 - v) * t));
+    if (contrast(m, bg) >= READABLE) return m;
+  }
+  return "#ffffff";
+}
 
 /** Nombres de colores que el dueño puede prohibir ("nada de rojo") → rango de tono */
 const HUES = { rojo: [345, 15], naranja: [15, 40], amarillo: [40, 65], verde: [65, 170], celeste: [170, 200], azul: [200, 255], violeta: [255, 290], rosa: [290, 345] };
@@ -107,10 +124,14 @@ function palette({ store = {}, logo = null, tweaks = {} }) {
   const ok = (c) => c && rgbOf(c) && !isBanned(c, banned);
   const chosen = [store.primaryColor, store.secondaryColor].map((c) => String(c || "").toLowerCase()).filter((c) => rgbOf(c) && !DEFAULT_STORE_COLORS.has(c));
   const candidates = [tweaks.accent, ...chosen, ...((logo && logo.vivid) || []), ...SPARE_ACCENTS].filter(ok);
-  const accent = candidates[0] || "#f2b705";
-  const accent2 = candidates.find((c) => c !== accent && Math.abs(hsl(rgbOf(c))[0] - hsl(rgbOf(accent))[0]) > 40) || "#ffffff";
   const dark = (logo && logo.dark) || "#0b0b0b";
   const light = (logo && logo.light) || "#ffffff";
+  // Lo que eligió el dueño (por WhatsApp o en la tienda online) se respeta, aclarado si hace falta;
+  // si no, el primer color del logo o de reserva que se lea sobre el fondo: el violeta del logo de
+  // Paulos sobre el violeta oscuro del mismo logo dejaba el "Ahorrás" invisible
+  const own = [tweaks.accent, ...chosen].find(ok) || null;
+  const accent = readableOn(own || candidates.find((c) => contrast(c, dark) >= READABLE) || candidates[0] || "#f2b705", dark);
+  const accent2 = candidates.find((c) => c !== accent && Math.abs(hsl(rgbOf(c))[0] - hsl(rgbOf(accent))[0]) > 40) || "#ffffff";
   return { dark, light, accent, accent2, accentInk: inkOn(accent), accent2Ink: inkOn(accent2) };
 }
 
@@ -215,4 +236,4 @@ async function recordPick(db, uid, kit, style) {
   await save(db, uid, { picks, lastPick: { style, at: Date.now() } });
 }
 
-module.exports = { load, learned, palette, logoColors, styleOrder, describe, save, learnRule, recordPick, isBanned, inkOn, luminance, rgbOf, dataUrlBuffer, STYLES, KITS, HUES };
+module.exports = { load, learned, palette, logoColors, styleOrder, describe, save, learnRule, recordPick, isBanned, inkOn, luminance, contrast, rgbOf, hslOf: (h) => hsl(rgbOf(h)), dataUrlBuffer, STYLES, KITS, HUES };

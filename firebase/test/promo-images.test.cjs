@@ -152,7 +152,21 @@ const t = async (name, fn) => { try { const r = await fn(); if (r === "skip") { 
     const p = brand.palette({ logo: lc });
     assert.strictEqual(p.accent, lc.vivid[0]);
     assert.strictEqual(p.accentInk, "#0b0b0b", "texto oscuro sobre amarillo");
-    assert.strictEqual(brand.palette({ store: { primaryColor: "#7b2cbf" }, logo: lc }).accent, "#7b2cbf");
+    // El violeta de la tienda se respeta, aclarado lo justo para leerse sobre el fondo oscuro
+    const violet = brand.palette({ store: { primaryColor: "#7b2cbf" }, logo: lc }).accent;
+    assert.ok(brand.contrast(violet, lc.dark) >= 3, `se lee sobre el fondo (${violet})`);
+    const [vh] = brand.hslOf(violet), [oh] = brand.hslOf("#7b2cbf");
+    assert.ok(Math.abs(vh - oh) < 6, `sigue siendo violeta (${violet})`);
+    assert.strictEqual(brand.palette({ store: { primaryColor: "#f2b705" }, logo: lc }).accent, "#f2b705", "si ya se lee, no se toca");
+  });
+  await t("paleta: el acento siempre se lee sobre el fondo (logo violeta sobre violeta oscuro, como Paulos)", async () => {
+    const lc = await brand.logoColors(logo);
+    const purple = { dark: "#450058", light: "#f8f9f9", vivid: ["#570667", "#8a1fa0"] };
+    const p = brand.palette({ logo: purple });
+    assert.ok(brand.contrast(p.accent, purple.dark) >= 3, `el "Ahorrás" se lee (${p.accent} sobre ${purple.dark})`);
+    assert.notStrictEqual(p.accent, "#570667", "salta el violeta del logo que no se lee");
+    const asked = brand.palette({ logo: purple, tweaks: { accent: "#570667" } });
+    assert.ok(brand.contrast(asked.accent, purple.dark) >= 3, `el que pidió el dueño, aclarado (${asked.accent})`);
     assert.strictEqual(brand.palette({ store: { primaryColor: "#0E6E52" }, logo: lc }).accent, lc.vivid[0], "el color de fábrica de la tienda no cuenta");
     const noYellow = brand.palette({ logo: lc, tweaks: { bannedColors: ["amarillo"] } });
     assert.ok(!brand.isBanned(noYellow.accent, ["amarillo"]) && !brand.isBanned(noYellow.accent2, ["amarillo"]));
