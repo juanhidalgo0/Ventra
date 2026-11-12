@@ -2151,7 +2151,17 @@ exports.ventraFiscal = onRequest({ secrets: [ARCA_CREDENTIALS], maxInstances: 20
 // backend de la PC vinculada; la clave de Claude queda acá.
 const ai = require("./ai");
 const insightsCloud = require("./insights-cloud");
-exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY, NEON_DATABASE_URL], maxInstances: 10, timeoutSeconds: 180, memory: "512MiB" }, async (req, res) => {
+// El comercio del dueño de Ventra (cuenta de ADMIN_EMAILS) usa la IA sin topes. Se recuerda 10 minutos por instancia.
+const adminTenantCache = new Map();
+async function isAdminTenant(uid) {
+  const hit = adminTenantCache.get(uid);
+  if (hit && hit.at > Date.now() - 10 * 60 * 1000) return hit.yes;
+  let yes = false;
+  try { yes = isAdmin(await admin.auth().getUser(uid)); } catch { /* uid que no es una cuenta: con topes */ }
+  adminTenantCache.set(uid, { yes, at: Date.now() });
+  return yes;
+}
+exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY, NEON_DATABASE_URL], maxInstances: 10, timeoutSeconds: 300, memory: "512MiB" }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   const { deviceId, deviceSecret } = req.body || {};
   const uid = await deviceTenant(deviceId, deviceSecret);
@@ -2167,7 +2177,9 @@ exports.ventraAi = onRequest({ secrets: [VENTRA_ANTHROPIC_KEY, NEON_DATABASE_URL
       req.body.plan = acc.exists ? acc.data().plan || null : null;
       req.body.info = await insightsCloud.storeInfo(sql, uid).catch(() => ({}));
     }
-    const out = await ai.handle({ db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() }, uid, req.body);
+    const unlimited = await isAdminTenant(uid);
+    // bucket: las muestras de boletas (invoice-samples.js), solo con su interruptor prendido
+    const out = await ai.handle({ db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim(), unlimited, bucket: admin.storage().bucket() }, uid, req.body);
     return res.status(200).json({ ok: true, ...out });
   } catch (err) {
     if (err instanceof ai.AiError) return res.status(err.status).json({ error: err.message, code: err.code });

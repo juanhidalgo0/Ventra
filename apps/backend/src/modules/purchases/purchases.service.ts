@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { createPurchaseLot } from '../products/lots.util';
 import { InvoiceReadError, isPdfFile, isSheetFile, readInvoiceFile, type ParsedInvoice } from './invoice-reader';
+import { readArcaQr, qrKind, qrTotalPesos, type ArcaQr } from './invoice-reader/arca-qr';
 
 /**
  * Precio de venta de un producto que ya existe cuando cambia su costo: el que se eligió en la
@@ -36,8 +37,85 @@ export function scaledPrices(product: { salePrice: number; packPrice?: number | 
   return out;
 }
 
+/**
+ * "Deshacer boleta" (plan de boletas, tanda 1.6): cómo estaba cada producto antes de la compra.
+ * Se guarda en purchases.undo_info al confirmar. Si el mismo producto viene en dos renglones, vale
+ * el "antes" del primero y el "después" del último.
+ */
+export interface UndoRow {
+  id: string;
+  created: boolean;
+  before: { costPrice: number; salePrice: number; packPrice: number | null; wholesalePrice: number | null; tradePrice: number | null; isActive: boolean; supplierId: string | null };
+  after: { costPrice: number; salePrice: number };
+  barcodeSet?: string;
+}
+export function noteUndo(rows: Map<string, UndoRow>, product: any, created: boolean, update: { costPrice: number; salePrice: number }, barcodeSet?: string) {
+  const prev = rows.get(product.id);
+  if (prev) { prev.after = { costPrice: update.costPrice, salePrice: update.salePrice }; if (barcodeSet) prev.barcodeSet = barcodeSet; return; }
+  rows.set(product.id, {
+    id: product.id, created,
+    before: { costPrice: product.costPrice, salePrice: product.salePrice, packPrice: product.packPrice ?? null, wholesalePrice: product.wholesalePrice ?? null, tradePrice: product.tradePrice ?? null, isActive: !!product.isActive, supplierId: product.supplierId ?? null },
+    after: { costPrice: update.costPrice, salePrice: update.salePrice },
+    ...(barcodeSet ? { barcodeSet } : {}),
+  });
+}
+
+/**
+ * Hojas que faltaban (tanda 1.7): una factura quedó en "Por revisar" con "faltan las hojas 3 y 4" y
+ * después se escanean esas hojas. Se suman a la pendiente si las hojas nuevas son justo de las que
+ * faltaban (si repiten una que ya estaba, se duplicarían renglones: no se junta). Si lo nuevo es la
+ * factura entera, reemplaza a la pendiente. Devuelve el borrador nuevo o null si no corresponde. Pura.
+ */
+export function mergeMissingPages(old: any, add: any): any | null {
+  const oldMissing: number[] = (Array.isArray(old?.missingPageNumbers) ? old.missingPageNumbers : []).map(Number).filter((n: number) => n > 0);
+  if (!oldMissing.length && !(Number(old?.missingPages) > 0)) return null;
+  const count = Math.max(Number(old?.pageCount) || 0, Number(add?.pageCount) || 0);
+  const addMissing: number[] = (Array.isArray(add?.missingPageNumbers) ? add.missingPageNumbers : []).map(Number);
+  const addComplete = !(Number(add?.missingPages) > 0) && !addMissing.length;
+  // Llegó la factura entera: reemplaza a la que tenía hojas de menos
+  if (addComplete && count > 1) return { ...add, sampleIds: [...(old.sampleIds || []), ...(add.sampleIds || [])] };
+  if (!oldMissing.length || !(count > 1) || Number(add?.unnumberedPages) > 0) return null;
+  const addHave = Array.from({ length: count }, (_, k) => k + 1).filter((n) => !addMissing.includes(n));
+  if (!addHave.length || addHave.some((n) => !oldMissing.includes(n))) return null;
+  const remaining = oldMissing.filter((n) => !addHave.includes(n));
+  const items = [...(old.items || []), ...(add.items || [])];
+  const printed = Number(add.printedTotal) > 0 ? Number(add.printedTotal) : Number(old.printedTotal) || 0;
+  const sum = items.reduce((s: number, it: any) => s + (Number(it.total) || 0), 0);
+  const near = (a: number, b: number) => b > 0 && Math.abs(a - b) <= Math.max(50, b * 0.02);
+  const ok = printed > 0 ? near(sum * 1.21, printed) || near(sum, printed) : null;
+  const check = remaining.length
+    ? { ok: false, missingPages: true, message: `Faltan ${remaining.length === 1 ? 'la hoja' : 'las hojas'} ${listJoin(remaining.map(String))} (de ${count}): el total se controla cuando estén todas.`, details: [] }
+    : ok === null ? null
+      : { ok, message: ok ? 'Con las hojas que faltaban, los renglones suman el total de la boleta.' : `Con todas las hojas, los renglones suman $ ${Math.round(sum * 1.21).toLocaleString('es-AR')} con IVA y la boleta dice $ ${Math.round(printed).toLocaleString('es-AR')}: revisá cantidades, precios y descuentos.`, details: [] };
+  const keep = (w: string) => !/^falta|^los renglones no suman|^no se pudo leer el total/.test(w);
+  const why = [
+    ...new Set([...(old.why || []), ...(add.why || [])].filter(keep)),
+    ...(check?.missingPages ? [`faltan hojas (${remaining.join(', ')})`] : check?.ok === false ? ['los renglones no suman el total de la boleta'] : !check ? ['no se pudo leer el total de la boleta'] : []),
+  ];
+  return {
+    ...old, items, check, why, printedTotal: printed || old.printedTotal,
+    missingPageNumbers: remaining, missingPages: remaining.length, pageCount: count,
+    photoIssues: [...(old.photoIssues || []), ...(add.photoIssues || [])],
+    sampleIds: [...(old.sampleIds || []), ...(add.sampleIds || [])],
+    mergedPages: [...(old.mergedPages || []), ...addHave],
+  };
+}
+
 /** Nombre de un producto nuevo tal como vino en la boleta, prolijo */
 const niceName = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+/** ["4","5","6"] → "4, 5 y 6" */
+const listJoin = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+
+/**
+ * Unidades por bulto escritas en el nombre, como las ponen las distribuidoras de bebidas:
+ * "COCA-COLA 600*12 PET" → 12, "1000*08 VR" → 8, "MONSTER 473ML*6L" → 6. Solo con "*" pegado a un
+ * tamaño: "Pan Viena X6" o "Lactal X350gr" son la presentación, no bultos. 0 si no hay.
+ */
+export function unitsInName(name: string): number {
+  const m = /\b\d{2,4}(?:[.,]\d+)?\s*(?:ml|cc|lts?|l|grs?|g|kg)?\s*\*\s*0?(\d{1,2})(?!\d)/i.exec(String(name || ''));
+  const n = m ? Number(m[1]) : 0;
+  return n >= 2 && n <= 48 ? n : 0;
+}
 
 function normalizeHeaderCell(s: any): string {
   return String(s || '')
@@ -298,7 +376,21 @@ export class PurchasesService {
       orderBy: { createdAt: 'desc' },
     });
     const drafts = await this.drafts(rows.filter((p: any) => p.status === 'PENDING').map((p: any) => p.id));
-    return rows.map((p: any) => (drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p));
+    const undo = await this.undoable(rows.filter((p: any) => p.status === 'COMPLETED').slice(0, 900).map((p: any) => p.id));
+    return rows.map((p: any) => ({ ...(drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p), canUndo: undo.has(p.id) }));
+  }
+
+  /** Algunas compras con sus renglones leídos (las pestañas de "Revisar boletas"), en el orden pedido */
+  async findByIds(ids: string[]) {
+    const list = [...new Set(ids.map(String).filter(Boolean))].slice(0, 100);
+    if (!list.length) return [];
+    const rows = await (this.prisma as any).purchase.findMany({
+      where: { id: { in: list } },
+      include: { supplier: true, user: { select: { fullName: true } }, items: true },
+    });
+    const drafts = await this.drafts(rows.filter((p: any) => p.status === 'PENDING').map((p: any) => p.id));
+    const byId = new Map(rows.map((p: any) => [p.id, drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p]));
+    return list.map((id) => byId.get(id)).filter(Boolean);
   }
 
   async create(data: {
@@ -344,6 +436,8 @@ export class PurchasesService {
 
     const learned: { code?: string; name?: string; productId: string }[] = [];
     const priceRound = (await this.scanSettings()).round;
+    const undo = new Map<string, UndoRow>();
+    const createdIds = new Set<string>();
     const purchase = await this.prisma.$transaction(async (tx) => {
       // 1. Create Purchase
       const newPurchase = await (tx as any).purchase.create({
@@ -405,14 +499,16 @@ export class PurchasesService {
               include: { category: true }
             });
             productId = newProduct.id;
+            createdIds.add(newProduct.id);
           }
         }
 
         if (item.source && productId) learned.push({ ...item.source, productId });
         // El EAN de la boleta, si el producto no tenía código de barras y nadie más lo usa
+        let barcodeSet: string | undefined;
         if (item.setBarcode && isBarcode(item.setBarcode) && productId) {
           const owner = await tx.product.findUnique({ where: { barcode: item.setBarcode }, select: { id: true } });
-          if (!owner) await tx.product.updateMany({ where: { id: productId, OR: [{ barcode: null }, { barcode: '' }] }, data: { barcode: item.setBarcode } });
+          if (!owner && (await tx.product.updateMany({ where: { id: productId, OR: [{ barcode: null }, { barcode: '' }] }, data: { barcode: item.setBarcode } })).count) barcodeSet = item.setBarcode;
         }
 
         const product = await tx.product.findUnique({ 
@@ -454,6 +550,8 @@ export class PurchasesService {
           ...(product.supplierId ? {} : { supplierId: data.supplierId }),
           isActive: true // Reactivate if soft-deleted
         };
+
+        noteUndo(undo, product, createdIds.has(product.id), updateData, barcodeSet);
 
         if (item.newProductData) {
           if (item.newProductData.categoryId) {
@@ -508,6 +606,7 @@ export class PurchasesService {
       }
     }
 
+      if (undo.size) await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = ? WHERE id = ?`, JSON.stringify({ v: 1, at: Date.now(), rows: [...undo.values()] }), newPurchase.id);
       return newPurchase;
     });
 
@@ -591,8 +690,14 @@ export class PurchasesService {
       // tiene ninguna clave: pide con su vinculación y el comercio tiene un tope de facturas por mes.
       // Cada foto se lee sola: pueden ser comprobantes distintos (dos facturas, un remito y la nota de
       // otro proveedor). La nube junta las páginas del mismo comprobante y relee el que no cierra.
-      const images = await this.ai.shrink(files, 2000);
-      const { result } = await this.ai.call('invoice', { images, manualTotal: manualTotal ?? null, multi: true });
+      // QR de ARCA de cada foto, leído sobre la original (achicada no se lee): total, CUIT, número y tipo exactos
+      const qrs = await Promise.all(files.map((f) => readArcaQr(f.buffer)));
+      if (manualTotal === undefined && files.length === 1 && qrs[0] && qrTotalPesos(qrs[0]) > 0) manualTotal = qrTotalPesos(qrs[0]);
+      const supplierCuits = await this.supplierCuits();
+      // Hasta 6 fotos van juntas; más, de a una (stage "page") y después se juntan: sin tope de fotos
+      const result = files.length > 6
+        ? await this.readPhotosByPage(files, qrs, supplierCuits)
+        : (await this.ai.call('invoice', { images: await this.ai.shrink(files, 2000), manualTotal: manualTotal ?? null, multi: true, supplierCuits, qrs })).result;
       // Nube con la versión anterior: devuelve un solo comprobante
       const docs: any[] = Array.isArray(result?.documents) ? result.documents : [result];
       const usable = docs.filter((d) => d?.items?.length);
@@ -612,6 +717,82 @@ export class PurchasesService {
     return this.scanOne(parsedData, { readCheck, readInfo, sourceLabel, isExcel, userId, opts });
   }
 
+  /** Muchas fotos (WhatsApp, más de 6): cada una se lee sola en la nube, de a 6, y al final se juntan */
+  private async readPhotosByPage(files: Express.Multer.File[], qrs: (ArcaQr | null)[], supplierCuits: string[]) {
+    const reads: any[] = new Array(files.length).fill(null);
+    let next = 0;
+    const worker = async () => {
+      while (next < files.length) {
+        const i = next++;
+        try {
+          const [image] = await this.ai.shrink([files[i]], 2000);
+          const qr = qrs[i] || null;
+          const anchor = qr && qrTotalPesos(qr) > 0 ? qrTotalPesos(qr) : null;
+          const { result } = await this.ai.call('invoice', { stage: 'page', image, index: i, manualTotal: anchor, supplierCuits, qr }, { timeoutMs: 290_000 });
+          reads[i] = result?.read || { image: i, error: 'No se pudo leer', items: [] };
+        } catch (err: any) {
+          // El tope del mes o del día corta todo; una foto que falla no
+          if (err?.getStatus?.() === 429) throw err;
+          reads[i] = { image: i, error: err?.message || 'No se pudo leer', items: [] };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, files.length) }, worker));
+    if (!reads.some((r) => r && !r.error && (r.items || []).length)) throw new BadRequestException('No encontramos productos en las fotos. Probá con fotos más nítidas, de frente y con buena luz.');
+    const { result } = await this.ai.call('invoice', { stage: 'group', reads: reads.filter(Boolean) });
+    return result;
+  }
+
+  /**
+   * Lo que dice el QR de ARCA que hay que mirar: una nota de crédito o de débito no es una compra común,
+   * y una factura a nombre de otro CUIT no es de este comercio (solo si se sabe el CUIT propio).
+   */
+  async qrNotes(qr: any): Promise<string[]> {
+    if (!qr) return [];
+    const notes: string[] = [];
+    const kind = qr.kind || qrKind(qr);
+    if (kind === 'nota de crédito') notes.push('es una nota de crédito (lo dice el QR de ARCA): no es una compra y no tiene que sumar stock');
+    else if (kind === 'nota de débito') notes.push('es una nota de débito (lo dice el QR de ARCA)');
+    const rec = String(qr.nroDocRec || '').replace(/\D/g, '');
+    if (Number(qr.tipoDocRec) === 80 && rec.length === 11) {
+      const own = (await this.matcher.ownCuits().catch(() => [] as string[])).filter((c) => c.length === 11);
+      if (own.length && !own.includes(rec)) notes.push(`esta factura está a nombre de otro (CUIT ${rec.slice(0, 2)}-${rec.slice(2, 10)}-${rec.slice(10)})`);
+    }
+    return notes;
+  }
+
+  /**
+   * Un comprobante que ya leyó la IA hoja por hoja (lectura en segundo plano, ver ScanJobsService) →
+   * queda en "Por revisar" con lo leído y por qué hay que mirarlo. Nada de stock ni costos todavía.
+   */
+  async saveScannedDocument(doc: any, userId?: string) {
+    const base: any = await this.scanOne(doc, { readCheck: null, readInfo: null, sourceLabel: 'Escaneado automáticamente con IA.', isExcel: false, userId, opts: { inline: true } });
+    const out = { ...base, docType: doc.docType || 'factura', images: Array.isArray(doc.images) ? doc.images : null, reread: !!doc.reread };
+    const why: string[] = [];
+    if (base.check?.missingPages) why.push(base.missingPageNumbers?.length ? `faltan hojas (${base.missingPageNumbers.join(', ')})` : `${base.missingPages === 1 ? 'falta 1 hoja' : `faltan ${base.missingPages} hojas`}`);
+    if (doc.unnumberedPages) why.push(doc.unnumberedPages === 1 ? 'en una foto no se ve qué número de hoja es' : `en ${doc.unnumberedPages} fotos no se ve qué número de hoja es`);
+    else if (base.check && base.check.ok === false) why.push('los renglones no suman el total de la boleta');
+    else if (!base.check) why.push('no se pudo leer el total de la boleta');
+    const doubts = (base.items || []).filter((it: any) => it.doubtful).length;
+    if (doubts) why.push(`${doubts} ${doubts === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
+    if (base.strayNumber) why.push('no tiene número propio: el que se veía era de otra factura de atrás');
+    if (base.photoIssues?.length) why.push(`la foto tiene partes que no se ven bien (${base.photoIssues.map((p: any) => p.issue).join('; ')})`);
+    if (out.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
+    why.push(...(base.qrNotes || []));
+    // Las hojas que faltaban de una factura que está en "Por revisar": se suman a esa (antes decía "ya estaba cargada")
+    const same = await this.findSameInvoice(base.matchedSupplier?.id, base.invoiceNumber);
+    if (same?.status === 'PENDING') {
+      const old = (await this.drafts([same.id])).get(same.id);
+      const merged = old ? mergeMissingPages(old, { ...out, why }) : null;
+      if (merged) {
+        await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ?, total = ? WHERE id = ?`, JSON.stringify(merged), Number(merged.printedTotal) || 0, same.id);
+        return { ...merged, purchaseId: same.id, status: 'PENDING', mergedPages: true };
+      }
+    }
+    const r = await this.pendingFromPreview(out, userId, 'escaneo', why);
+    return { ...out, why, purchaseId: r.purchaseId, status: r.status };
+  }
+
   /**
    * Un comprobante ya leído (de un PDF, una planilla o una o varias fotos) → proveedor, productos
    * encontrados, control de totales y costos. inline: vista previa. Si no (celular): se carga solo si
@@ -627,8 +808,35 @@ export class PurchasesService {
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
     // adentro (factura B/C, ticket), la suma da el total. Así se sabe también si los precios lo traen.
-    const rawItems: any[] = parsedData.items || [];
-    const lineTotals = rawItems.map((it) => parseArgentineNumber(it.total));
+    // Renglones en $0 (un cambio de mercadería, "PEDIDO AC DIGITAL", una promo sin precio): no se compran,
+    // y antes se ofrecían como productos nuevos para crear. Quedan anotados para avisarlos.
+    const allItems: any[] = parsedData.items || [];
+    const isFree = (it: any) => parseArgentineNumber(it.total) === 0;
+    const skippedLines = allItems.filter(isFree).map((it) => String(it.name || '').trim()).filter(Boolean);
+    // Descuentos en negativo ("LIMPIEZA DEL HOGAR 15%", bonificaciones): se reparten entre los productos
+    // en proporción a su importe, así la boleta cierra y el costo de cada uno es lo que se pagó de verdad
+    const discounts = allItems.filter((it) => parseArgentineNumber(it.total) < 0);
+    const rawItems: any[] = allItems.filter((it) => parseArgentineNumber(it.total) > 0);
+    // Un descuento que dice su % y da justo ese % de un solo producto (mejor si con la misma cantidad) es de
+    // ese producto: Vital "LIMPIEZA DEL HOGAR 15%" 4 un = 15% del SKIP x4 (2026-11-12). El resto se reparte.
+    const own = rawItems.map((it) => parseArgentineNumber(it.total));
+    const pooled: number[] = [];
+    for (const d of discounts) {
+      const amount = -parseArgentineNumber(d.total);
+      const pct = Number((String(d.name || '').match(/(\d+(?:[.,]\d+)?)\s*%/) || [])[1]?.replace(',', '.')) / 100;
+      let target = -1;
+      if (pct > 0 && pct < 1) {
+        const fits = rawItems.map((_, i) => i).filter((i) => own[i] > amount && Math.abs(parseArgentineNumber(rawItems[i].total) * pct - amount) <= Math.max(2, amount * 0.01));
+        const sameQty = fits.filter((i) => Number(rawItems[i].quantity) > 0 && Number(rawItems[i].quantity) === Number(d.quantity));
+        target = sameQty.length === 1 ? sameQty[0] : fits.length === 1 ? fits[0] : -1;
+      }
+      if (target >= 0) own[target] -= amount;
+      else pooled.push(amount);
+    }
+    const gross = own.reduce((s, v) => s + v, 0);
+    const discountTotal = pooled.reduce((s, v) => s + v, 0);
+    const discountFactor = gross > 0 && discountTotal > 0 && discountTotal < gross ? (gross - discountTotal) / gross : 1;
+    const lineTotals = own.map((v) => v * discountFactor);
     const sum = lineTotals.reduce((a, b) => a + b, 0);
     const printed = parseArgentineNumber(parsedData.totalFacturaAPagar);
     const subtotal = parseArgentineNumber(parsedData.subtotalNeto);
@@ -645,6 +853,27 @@ export class PurchasesService {
       else if (near(sum, printed)) { totalsOk = true; netFactor = 1 / 1.21; }
       else totalsOk = false;
     }
+    // Si el total no lo confirma (falta una hoja, no se ve el pie) vale lo que leyó la IA: una lista de precios
+    // "Exento" o una factura B trae precios finales y no hay que sumarles el 21% (cervezas, 2026-11-12)
+    if (totalsOk !== true && netFactor === 1 && parsedData.precios === 'finales') netFactor = 1 / 1.21;
+    // Con el IVA y las percepciones impresos la cuenta es exacta: el 2% de arriba dejaba pasar un descuento
+    // olvidado que las percepciones tapaban (Vital, 2026-11-12). Solo puede pasar de "cierra" a "no cierra".
+    const ivaPrinted = parseArgentineNumber(parsedData.ivaTotal);
+    const otherTaxes = Math.max(0, parseArgentineNumber(parsedData.otrosImpuestos));
+    const tight = (a: number, b: number) => b > 0 && Math.abs(a - b) <= Math.max(20, b * 0.005);
+    if (!readCheck && totalsOk === true && ivaPrinted > 0 && printed > 0
+      && !tight(sum + ivaPrinted + otherTaxes, printed) && !tight(sum, printed) && !(subtotal > 0 && tight(sum, subtotal))) totalsOk = false;
+    // Y al revés: con percepciones grandes (Vital: IIBB + IVA 3%) la cuenta x 1,21 no da, pero la exacta sí
+    if (!readCheck && totalsOk === false && ivaPrinted > 0 && printed > 0 && tight(sum + ivaPrinted + otherTaxes, printed)) totalsOk = true;
+    // Faltan hojas (dice "hoja 1 de 6" y llegaron 3): el total no se puede controlar todavía
+    const missingPageNumbers: number[] = Array.isArray(parsedData.missingPageNumbers) ? parsedData.missingPageNumbers.map(Number).filter((n: number) => n > 0) : [];
+    // Hojas sin número legible: se sabe cuántas faltan, no cuáles
+    const missingCount = missingPageNumbers.length || Math.max(0, Number(parsedData.missingPages) || 0);
+    if (missingCount) totalsOk = null;
+    // Impuestos internos (bebidas, cigarrillos): son costo, no se recuperan como el IVA o las percepciones.
+    // Antes quedaban afuera del costo. Con precios sin IVA, se reparten entre los renglones según su importe.
+    const internalTaxes = Math.max(0, parseArgentineNumber(parsedData.impuestosInternos));
+    const internalFactor = internalTaxes > 0 && netFactor === 1 && sum > 0 && internalTaxes < sum * 0.6 ? 1 + internalTaxes / sum : 1;
 
     // Código de barras y SKU son distintos: el EAN va al código de barras y el código del proveedor
     // al SKU, aunque la IA los haya puesto cambiados. Se mira la columna entera: la de "ARTICULO" de
@@ -660,7 +889,7 @@ export class PurchasesService {
       const p: any = m?.product || null;
       let unitsPerPackVal = Number(it.unitsPerPack) || 1;
       let quantityVal = (Number(it.packageQuantity) || 1) * unitsPerPackVal;
-      const netTotal = lineTotals[i] * netFactor;
+      const netTotal = lineTotals[i] * netFactor * internalFactor;
       // Vino como unidades pero el precio es del bulto entero (el producto trae N por bulto y el
       // costo queda N veces más cerca del que tenía): se pasa a unidades
       let packFixed = false;
@@ -673,16 +902,32 @@ export class PurchasesService {
           packFixed = true;
         }
       }
+      // "COCA-COLA 600*12" x 2 son 2 bultos de 12 = 24 botellas: el stock y el costo van por unidad.
+      // Si el producto ya existe, solo cuando el costo por unidad queda más cerca del que tenía.
+      let packFromName = 0;
+      const nameUpp = !packFixed && unitsPerPackVal === 1 ? unitsInName(r.name) : 0;
+      if (nameUpp > 1 && quantityVal > 0 && netTotal > 0) {
+        const asUnit = (netTotal / quantityVal) * 1.21;
+        const fits = !p || !(p.costPrice > 0) || Math.abs(Math.log(asUnit / nameUpp / p.costPrice)) < Math.abs(Math.log(asUnit / p.costPrice));
+        if (fits) { unitsPerPackVal = nameUpp; quantityVal *= nameUpp; packFromName = nameUpp; }
+      }
       const netCost = quantityVal > 0 ? netTotal / quantityVal : 0;
       const costWithIva = netCost * 1.21;
       const changePct = p && p.costPrice > 0 ? Math.round((costWithIva / p.costPrice - 1) * 1000) / 10 : null;
       // Precio de venta sugerido: mantiene el margen del producto, o el margen de siempre si es nuevo
-      const suggestedSalePrice = p
+      // Si el dueño anotó a mano el precio de venta al lado del renglón, manda ese
+      const handPrice = parseArgentineNumber(it.handPrice);
+      const handOk = handPrice > 0 && handPrice > costWithIva * 0.8 && handPrice < costWithIva * 20;
+      const suggestedSalePrice = handOk ? handPrice : p
         ? (p.costPrice > 0 && settings.keepMargin ? roundUp(p.salePrice * (costWithIva / p.costPrice)) : p.salePrice)
         : roundUp(costWithIva * (1 + settings.margin / 100));
       const reasons: string[] = [];
       if (!(quantityVal > 0) || !(netCost > 0)) reasons.push('no se leyó la cantidad o el precio');
       if (m?.confidence === 'baja') reasons.push('no es seguro que sea ese producto');
+      // La IA controla cada renglón: cantidad × precio unitario tiene que dar el total de la línea
+      if (it.lineOk === false) reasons.push('la cantidad por el precio no da el total del renglón: comparalo con la foto');
+      // Hoja sin total para controlar y lecturas que no coincidieron en este renglón
+      if (it.unsure) reasons.push('la IA lo leyó distinto en dos lecturas: comparalo con la foto');
       // No está, pero hay alguno parecido: puede ser tuyo con otro nombre. No se crea solo (sería un duplicado)
       if (!p && candidates[i]?.length) reasons.push(`puede que ya lo tengas (¿${candidates[i][0].name}?)`);
       if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
@@ -693,12 +938,14 @@ export class PurchasesService {
         name: r.name,
         quantity: quantityVal,
         unitsPerPack: unitsPerPackVal,
+        packFromName,
         presentationType: 'UNIT',
         cost: parseFloat(netCost.toFixed(2)),
         total: parseFloat(netTotal.toFixed(2)),
         match: m ? { by: m.by, confidence: m.confidence } : null,
         changePct,
         suggestedSalePrice,
+        handPrice: handOk ? handPrice : null,
         doubtful: reasons.length > 0,
         reasons,
         packFixed,
@@ -713,21 +960,54 @@ export class PurchasesService {
     const base = {
       supplierName: parsedData.supplierName || '',
       matchedSupplier: supplier ? { id: supplier.id, name: supplier.name } : null,
+      // Para aprender del proveedor al confirmar (supplier-lessons.js)
+      supplierCuit: parsedData.supplierCuit || readInfo?.supplierCuit || null,
       invoiceNumber: parsedData.invoiceNumber || '',
       date: parsedData.date || new Date().toISOString().split('T')[0],
       items,
-      check: readCheck || (totalsOk === null ? null : {
+      check: readCheck || (missingCount ? {
+        ok: false,
+        missingPages: true,
+        message: `${missingPageNumbers.length
+          ? `Faltan ${missingPageNumbers.length === 1 ? 'la hoja' : 'las hojas'} ${listJoin(missingPageNumbers.map(String))}`
+          : `${missingCount === 1 ? 'Falta 1 hoja' : `Faltan ${missingCount} hojas`}`}${parsedData.pageCount ? ` (de ${parsedData.pageCount})` : ''}: el total se controla cuando estén todas. Sacales foto y escaneá todas juntas, o revisá lo que llegó y confirmalo.`,
+        details: [],
+      } : totalsOk === null ? null : {
         ok: totalsOk,
-        message: totalsOk ? 'Los renglones suman el total de la boleta.' : `Los renglones suman $ ${Math.round(sum * 1.21).toLocaleString('es-AR')} con IVA y la boleta dice $ ${Math.round(printed).toLocaleString('es-AR')}: revisá cantidades y precios.`,
+        message: totalsOk ? 'Los renglones suman el total de la boleta.' : `Los renglones suman $ ${Math.round(sum * 1.21 * netFactor).toLocaleString('es-AR')} con IVA y la boleta dice $ ${Math.round(printed).toLocaleString('es-AR')}: revisá cantidades, precios y descuentos.`,
         details: [],
       }),
       invoice: readInfo,
+      // Total a pagar impreso (con percepciones e impuestos). Un remito sin precios: $ 0, no es deuda
+      printedTotal: printed > 0 ? printed : ((parsedData.docType || readInfo?.docType) === 'remito' ? 0 : null),
+      skippedLines,
+      // Descuentos de la boleta repartidos entre los productos (para avisarlo en la revisión)
+      // Impuestos internos sumados al costo de los renglones (para avisarlo en la revisión)
+      internalTaxesApplied: internalFactor !== 1 ? Math.round(internalTaxes * 100) / 100 : null,
+      discountsApplied: discounts.length && sum > 0 ? { total: Math.round(-discounts.reduce((t, it) => t + parseArgentineNumber(it.total), 0) * 100) / 100, lines: discounts.map((it) => String(it.name || '').trim()) } : null,
       pricesIncludeIva: netFactor !== 1,
       duplicate,
       // Varias fotos: qué tipo de comprobante es, cuáles fotos son suyas y si la IA tuvo que releerlo
       docType: parsedData.docType || readInfo?.docType || null,
       images: Array.isArray(parsedData.images) ? parsedData.images : null,
       reread: !!parsedData.reread,
+      // Cómo se verificó la lectura: contra el total impreso, con dos lecturas iguales por hoja, o no se pudo
+      verified: parsedData.verified || null,
+      missingPages: Number(parsedData.missingPages) || 0,
+      missingPageNumbers,
+      // "Hoja 1 de 6": para sumar después las hojas que faltan (mergeMissingPages)
+      pageCount: Number(parsedData.pageCount) || 0,
+      // Contado en la boleta: al revisarla arranca como pagada
+      paymentSuggested: parsedData.condicionVenta === 'contado' ? 'PAID' : parsedData.condicionVenta === 'cuenta corriente' ? 'OWED' : null,
+      // Hoja que tenía el número de otra factura asomando atrás (se separó)
+      strayNumber: parsedData.strayNumber || null,
+      // Fotos que se leyeron con partes que no se ven bien
+      photoIssues: Array.isArray(parsedData.photoIssues) ? parsedData.photoIssues : [],
+      // QR de ARCA (si se leyó) y lo que hay que mirar por él
+      qr: parsedData.qr || null,
+      qrNotes: await this.qrNotes(parsedData.qr),
+      // Muestras de la nube de estas hojas: al confirmar se les manda lo que quedó (invoice-samples.js)
+      sampleIds: Array.isArray(parsedData.sampleIds) ? parsedData.sampleIds.map(String).slice(0, 60) : [] as string[],
     };
 
     // En la PC la boleta se revisa en la misma pantalla: no se guarda nada todavía
@@ -744,10 +1024,11 @@ export class PurchasesService {
     if (doubts.length) why.push(`${doubts.length} ${doubts.length === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
     if (!items.length) why.push('no hay productos');
     if (base.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
+    why.push(...base.qrNotes);
 
     const supplierId = supplier?.id || (await this.matcher.findSupplier('Proveedor sin nombre', true))!.id;
     const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
-    const printedTotal = printed > 0 ? printed : sum * 1.21 * netFactor;
+    const printedTotal = printed > 0 ? printed : base.docType === 'remito' ? 0 : sum * 1.21 * netFactor;
 
     if (!why.length) {
       const purchase = await this.create({
@@ -791,6 +1072,10 @@ export class PurchasesService {
         .map((it) => `${it.product!.name} +${String(it.changePct).replace('.', ',')}%`);
       await this.notify('Boleta cargada sola',
         `${supplier?.name || parsedData.supplierName || 'Proveedor'}: ${items.length} productos, ${updatedPrices} precios actualizados${newIds.size ? `, ${newIds.size} productos nuevos para revisar` : ''}.${raises.length ? ` Aumentos: ${raises.join(', ')}.` : ''}`);
+      this.confirmSamples(base, {
+        supplierId, invoiceNumber: parsedData.invoiceNumber, manualTotal: printedTotal,
+        items: items.map((it) => ({ productId: it.product?.id, quantity: it.quantity, cost: it.cost, buyFormat: 'UNIT', source: { code: it.sku, name: it.name }, newProductData: it.product ? undefined : { name: niceName(it.name), barcode: it.barcode } })),
+      }, { auto: true });
       return { ...base, status: 'COMPLETED', purchaseId: purchase.id, auto: true, newProducts: newIds.size, updatedPrices };
     }
 
@@ -815,7 +1100,7 @@ export class PurchasesService {
    * ya se leyó (la vista previa de scan-invoice-json), sin volver a leerla con IA ni crear nada. La PC
    * la ve en Compras y avisa al toque (ScannedPurchasesWatcher).
    */
-  async pendingFromPreview(preview: any, userId?: string, via = 'WhatsApp') {
+  async pendingFromPreview(preview: any, userId?: string, via = 'WhatsApp', whyOverride?: string[]) {
     const items = Array.isArray(preview?.items) ? preview.items : [];
     if (!items.length) throw new BadRequestException('La boleta no tiene renglones');
     const known = preview?.matchedSupplier?.id
@@ -826,23 +1111,29 @@ export class PurchasesService {
     if (duplicate) return { status: 'DUPLICATE', purchaseId: duplicate.id };
     const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
     const sum = items.reduce((s: number, it: any) => s + (Number(it?.total) || (Number(it?.quantity) || 0) * (Number(it?.cost) || 0)), 0);
-    const printed = Number(preview?.invoice?.totals?.total) || 0;
-    const total = printed > 0 ? printed : sum * 1.21;
+    // Lo que dice la boleta que se paga (con percepciones); un remito en $ 0 no deja deuda
+    const printed = preview?.printedTotal != null ? Number(preview.printedTotal) : Number(preview?.invoice?.totals?.total) || 0;
+    const total = printed > 0 || preview?.printedTotal === 0 ? printed : sum * 1.21;
     const pending = await (this.prisma as any).purchase.create({
       data: {
         supplierId, userId: resolvedUser, invoiceNumber: preview?.invoiceNumber || null, total,
-        status: 'PENDING', paymentStatus: 'OWED', notes: via === 'fotos' ? 'Otro comprobante de las fotos escaneadas: falta revisarlo.' : `Mandada por ${via}: falta revisarla.`,
+        status: 'PENDING', paymentStatus: 'OWED', notes: via === 'escaneo' ? 'Escaneada con IA: falta revisarla.' : via === 'fotos' ? 'Otro comprobante de las fotos escaneadas: falta revisarlo.' : `Mandada por ${via}: falta revisarla.`,
       },
     });
     const { status: _s, purchaseId: _p, others: _o, failedImages: _f, documentsFound: _d, ...base } = preview || {};
+    const why = whyOverride || [via === 'fotos' ? 'venía en las mismas fotos que otro comprobante' : `la mandaste por ${via} para revisarla en la PC`, ...(base.docType === 'remito' ? ['es un remito: los precios suelen venir en la factura'] : [])];
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`,
-      JSON.stringify({ ...base, matchedSupplier: base.matchedSupplier || { id: supplierId, name: base.supplierName || '' }, why: [via === 'fotos' ? 'venía en las mismas fotos que otro comprobante' : `la mandaste por ${via} para revisarla en la PC`] }), pending.id);
+      JSON.stringify({ ...base, matchedSupplier: base.matchedSupplier || { id: supplierId, name: base.supplierName || '' }, why }), pending.id);
     return { status: 'PENDING', purchaseId: pending.id, items: items.length };
   }
 
   /** Una compra del mismo proveedor con el mismo número de boleta (sin contar las anuladas) */
   private async findSameInvoice(supplierId: string | null | undefined, invoiceNumber?: string | null) {
-    const digits = (s: string) => String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+    // "0010-00000094" y "00010-94" son la misma: punto de venta y número, sin los ceros de adelante
+    const digits = (s: string) => {
+      const parts = String(s || '').split(/\D+/).filter(Boolean);
+      return parts.length >= 2 ? `${Number(parts[parts.length - 2])}-${Number(parts[parts.length - 1])}` : String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+    };
     const target = digits(invoiceNumber || '');
     if (!supplierId || target.length < 3) return null;
     const rows = await (this.prisma as any).purchase.findMany({
@@ -911,11 +1202,105 @@ export class PurchasesService {
     };
   }
 
-  private async notify(title: string, body: string) {
+  async notify(title: string, body: string) {
     await this.prisma.appNotification.create({ data: { type: 'purchaseAuto', title, body, url: '/purchases' } }).catch(() => {});
   }
 
-  async confirmPending(id: string, data: {
+  /**
+   * Confirmar una boleta por revisar. Si era una lectura de la IA y el dueño corrigió algo, esas
+   * correcciones se mandan a la nube para que aprenda cómo viene la boleta de ese proveedor
+   * (firebase/functions/supplier-lessons.js): la próxima, de cualquier comercio, se lee mejor.
+   */
+  async confirmPending(id: string, data: Parameters<PurchasesService['confirmPendingInner']>[1]) {
+    const row = await this.prisma.$queryRawUnsafe<{ draft: string | null; supplier_id: string }[]>(`SELECT draft, supplier_id FROM purchases WHERE id = ?`, id).catch(() => []);
+    let draft: any = null;
+    try { draft = row[0]?.draft ? JSON.parse(row[0].draft) : null; } catch { /* sin borrador */ }
+    const result = await this.confirmPendingInner(id, data);
+    if (draft?.items?.length) this.learnFromCorrections(draft, data).catch(() => { /* aprender nunca frena la compra */ });
+    if (draft) this.confirmSamples(draft, data, { untouched: !this.correctionsOf(draft, data.items || []).length && (data.items || []).length === (draft.items || []).length });
+    return result;
+  }
+
+  /**
+   * Lo que quedó al confirmar es la respuesta correcta de las muestras de esa boleta (tanda 1.1 del
+   * plan de boletas). En segundo plano: nunca frena ni rompe la compra; sin muestras no manda nada.
+   */
+  confirmSamples(draft: any, data: { supplierId?: string; invoiceNumber?: string; manualTotal?: number; items?: any[] }, flags: { auto?: boolean; untouched?: boolean } = {}) {
+    const sampleIds: string[] = Array.isArray(draft?.sampleIds) ? draft.sampleIds.filter(Boolean) : [];
+    if (!sampleIds.length) return;
+    setImmediate(async () => {
+      try {
+        const items = data.items || [];
+        const ids = [...new Set(items.map((it: any) => it.productId).filter(Boolean))] as string[];
+        const prods = ids.length ? await this.prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, barcode: true, unitsPerPack: true } }) : [];
+        const byId = new Map(prods.map((p) => [p.id, p]));
+        const sup = data.supplierId ? await this.prisma.$queryRawUnsafe<{ cuit: string | null; name: string }[]>(`SELECT cuit, name FROM suppliers WHERE id = ?`, data.supplierId).catch(() => []) : [];
+        await this.ai.call('invoice', {
+          stage: 'confirm', sampleIds,
+          confirmed: {
+            supplierCuit: String(draft.supplierCuit || sup[0]?.cuit || ''), supplierName: sup[0]?.name || draft.matchedSupplier?.name || draft.supplierName || '',
+            invoiceNumber: data.invoiceNumber || draft.invoiceNumber || '', date: draft.date || '', total: Number(data.manualTotal) || 0, docType: draft.docType || '',
+            auto: !!flags.auto, untouched: !!flags.untouched || !!flags.auto,
+            items: items.map((it: any) => {
+              const p: any = it.productId ? byId.get(it.productId) : null;
+              return {
+                name: it.source?.name || it.newProductData?.name || p?.name || '', code: it.source?.code || '',
+                barcode: p?.barcode || it.newProductData?.barcode || it.setBarcode || '', quantity: Number(it.quantity) || 0,
+                unitsPerPack: Number(p?.unitsPerPack || it.newProductData?.unitsPerPack) || 1, cost: Number(it.cost) || 0, buyFormat: it.buyFormat || 'UNIT',
+                productId: it.productId || '', productName: p?.name || it.newProductData?.name || '', isNew: !it.productId,
+              };
+            }),
+          },
+        }, { timeoutMs: 30_000 });
+      } catch { /* las muestras nunca frenan la compra */ }
+    });
+  }
+
+  /** Lo que la IA leyó contra lo que el dueño confirmó: las diferencias que valen como lección */
+  correctionsOf(draft: any, items: { quantity: number; cost: number; buyFormat?: string; source?: { name?: string } }[]) {
+    const diffs: { renglon: string; leido: string; corregido: string }[] = [];
+    const confirmed = new Map<string, { quantity: number; cost: number; buyFormat?: string }>();
+    for (const it of items || []) if (it.source?.name) confirmed.set(String(it.source.name).trim().toUpperCase(), it);
+    const money = (n: number) => `$ ${Math.round(n * 100) / 100}`;
+    for (const d of draft.items || []) {
+      const name = String(d.name || '').trim();
+      if (!name) continue;
+      const c = confirmed.get(name.toUpperCase());
+      if (!c) { diffs.push({ renglon: name, leido: `${d.quantity} u. a ${money(d.cost)} c/u`, corregido: 'el dueño sacó este renglón (no era un producto o estaba de más)' }); continue; }
+      if (c.buyFormat === 'PACK') continue; // en bultos no se puede comparar renglón por renglón
+      const qtyChanged = Math.abs((Number(c.quantity) || 0) - (Number(d.quantity) || 0)) > 0.01;
+      const dc = Number(d.cost) || 0, cc = Number(c.cost) || 0;
+      const costChanged = dc > 0 && cc > 0 && Math.abs(cc / dc - 1) > 0.03;
+      if (qtyChanged || costChanged) {
+        diffs.push({
+          renglon: name,
+          leido: `${d.quantity} u. a ${money(dc)} c/u (sin IVA)`,
+          corregido: `${c.quantity} u. a ${money(cc)} c/u (sin IVA)${costChanged ? `, el costo x${(cc / dc).toFixed(3)}` : ''}${qtyChanged ? `, la cantidad x${((Number(c.quantity) || 0) / (Number(d.quantity) || 1)).toFixed(2)}` : ''}`,
+        });
+      }
+    }
+    return diffs.slice(0, 25);
+  }
+
+  private async learnFromCorrections(draft: any, data: { supplierId: string; items?: any[] }) {
+    const diffs = this.correctionsOf(draft, data.items || []);
+    if (!diffs.length) return;
+    let cuit = String(draft.supplierCuit || '').replace(/\D/g, '');
+    if (!cuit) {
+      const s = await this.prisma.$queryRawUnsafe<{ cuit: string | null }[]>(`SELECT cuit FROM suppliers WHERE id = ?`, data.supplierId).catch(() => []);
+      cuit = String(s[0]?.cuit || '').replace(/\D/g, '');
+    }
+    if (!cuit) return;
+    await this.ai.call('lesson', { supplierCuit: cuit, supplierName: draft.matchedSupplier?.name || draft.supplierName || '', diffs });
+  }
+
+  /** CUIT de los proveedores del comercio: la nube suma lo aprendido de ellos al leer una boleta */
+  async supplierCuits(): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ cuit: string }[]>(`SELECT cuit FROM suppliers WHERE cuit IS NOT NULL AND cuit <> '' LIMIT 60`).catch(() => []);
+    return rows.map((r) => String(r.cuit).replace(/\D/g, '')).filter((c) => c.length === 11);
+  }
+
+  async confirmPendingInner(id: string, data: {
     supplierId: string;
     userId: string;
     invoiceNumber?: string;
@@ -950,6 +1335,7 @@ export class PurchasesService {
       : (data.items || []).reduce((acc, item) => acc + (item.quantity * item.cost), 0) * 1.21;
     const priceRound = (await this.scanSettings()).round;
     const productsToSync: { barcode: string; newStock: number; salePrice: number; name: string; description: string; categoryName: string; minStock: number; imageUrl: string }[] = [];
+    const undo = new Map<string, UndoRow>();
 
     const purchase = await this.prisma.$transaction(async (tx) => {
       const current = await (tx as any).purchase.findUnique({ where: { id }, select: { status: true } });
@@ -1016,6 +1402,7 @@ export class PurchasesService {
             ...(product.supplierId ? {} : { supplierId: data.supplierId }),
             isActive: true
           };
+          noteUndo(undo, product, false, updateData);
 
           await tx.product.update({
             where: { id: productId },
@@ -1052,6 +1439,7 @@ export class PurchasesService {
         }
       }
 
+      if (undo.size) await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = ? WHERE id = ?`, JSON.stringify({ v: 1, at: Date.now(), rows: [...undo.values()] }), id);
       return updatedPurchase;
     });
 
@@ -1110,6 +1498,68 @@ export class PurchasesService {
         });
       }
     }
+  }
+
+  /**
+   * Deshacer una boleta confirmada (tanda 1.6): saca el stock que sumó (y sus lotes), vuelve costo y
+   * precios de venta a como estaban, y oculta los productos que creó si nunca se vendieron. Lo que
+   * alguien cambió a mano después (otro precio) no se pisa: se avisa. La compra queda anulada (no se
+   * borra) y deja de contar como deuda. Las compras confirmadas antes de esto no tienen con qué volver
+   * los precios: para esas está Eliminar (solo saca el stock).
+   */
+  async undoPurchase(id: string) {
+    const purchase: any = await this.prisma.purchase.findUnique({ where: { id }, include: { items: { include: { product: { select: PRODUCT_WITHOUT_IMAGE } } } } });
+    if (!purchase) throw new NotFoundException('Compra no encontrada');
+    if (purchase.status !== 'COMPLETED') throw new BadRequestException('Solo se puede deshacer una compra confirmada.');
+    const raw = await this.prisma.$queryRawUnsafe<{ undo_info: string | null }[]>(`SELECT undo_info FROM purchases WHERE id = ?`, id).catch(() => []);
+    let info: { rows: UndoRow[] } | null = null;
+    try { info = raw[0]?.undo_info ? JSON.parse(raw[0].undo_info) : null; } catch { info = null; }
+    if (!info?.rows?.length) throw new BadRequestException('Esta compra se confirmó antes de que existiera "Deshacer boleta" y no guardó los precios de antes. Podés eliminarla (saca el stock) y corregir los precios a mano.');
+    const near = (a: number, b: number) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005;
+    const report = { restored: 0, hidden: 0, keptChanged: [] as string[], keptNew: [] as string[] };
+    const touched: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const again = await tx.purchase.findUnique({ where: { id }, select: { status: true } });
+      if (again?.status !== 'COMPLETED') throw new BadRequestException('Esta compra ya se deshizo.');
+      await tx.productLot.updateMany({ where: { purchaseId: id, status: 'ACTIVE' }, data: { status: 'REMOVED' } });
+      await this.revertPurchaseStock(tx, purchase);
+      for (const row of info!.rows) {
+        const p: any = await tx.product.findUnique({ where: { id: row.id }, select: { id: true, name: true, stock: true, costPrice: true, salePrice: true, barcode: true } });
+        if (!p) continue;
+        touched.push(p.id);
+        const data: any = {};
+        if (row.barcodeSet && p.barcode === row.barcodeSet) data.barcode = null;
+        if (row.created) {
+          // Producto que trajo esta boleta: se oculta si nunca se vendió (si se vendió, queda: tiene historia)
+          const sold = await tx.saleItem.count({ where: { productId: p.id } });
+          if (!sold && !(p.stock > 0)) { data.isActive = false; report.hidden++; } else report.keptNew.push(p.name);
+        } else if (near(p.costPrice, row.after.costPrice) && near(p.salePrice, row.after.salePrice)) {
+          Object.assign(data, {
+            costPrice: row.before.costPrice, salePrice: row.before.salePrice,
+            packPrice: row.before.packPrice, wholesalePrice: row.before.wholesalePrice, tradePrice: row.before.tradePrice,
+            isActive: row.before.isActive, supplierId: row.before.supplierId,
+          });
+          report.restored++;
+        } else report.keptChanged.push(p.name);
+        if (Object.keys(data).length) await tx.product.update({ where: { id: p.id }, data });
+      }
+      const stamp = new Date().toLocaleDateString('es-AR');
+      await tx.purchase.update({ where: { id }, data: { status: 'CANCELLED', notes: `${purchase.notes ? `${purchase.notes} · ` : ''}Boleta deshecha el ${stamp}: se sacó el stock y volvieron los precios de antes.`.slice(0, 1000) } });
+      await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = NULL WHERE id = ?`, id);
+    });
+    // La tienda y GoDelivery ven el stock y los precios de vuelta
+    const after = touched.length ? await this.prisma.product.findMany({ where: { id: { in: touched } }, select: { id: true, barcode: true, stock: true, salePrice: true, name: true } }) : [];
+    for (const p of after) this.firebaseSync?.syncProductToFirestore(p.barcode || p.id, p.stock, p.salePrice, { name: p.name }).catch(() => {});
+    return { success: true, ...report };
+  }
+
+  /** ¿Se puede deshacer? (para mostrar el botón): solo las confirmadas que guardaron cómo estaba todo */
+  private async undoable(ids: string[]): Promise<Set<string>> {
+    if (!ids.length) return new Set();
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM purchases WHERE undo_info IS NOT NULL AND status = 'COMPLETED' AND id IN (${ids.map(() => '?').join(',')})`, ...ids,
+    ).catch((): any[] => []);
+    return new Set(rows.map((r) => r.id));
   }
 
   async deleteOne(id: string) {

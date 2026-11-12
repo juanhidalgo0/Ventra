@@ -789,7 +789,7 @@ export default function ProductsScreen() {
       {/* Los que cargaron los empleados en la caja: a la vista hasta revisarlos */}
       <ProductReviewsBanner className="shrink-0" />
       {/* Cargar la mercadería con la boleta del proveedor (foto por WhatsApp o desde la PC) */}
-      <InvoiceScanCard className="shrink-0" onUploadPc={() => { requestInvoiceScan(); navigate('/purchases'); }} />
+      <InvoiceScanCard className="shrink-0" startClosed onUploadPc={() => { requestInvoiceScan(); navigate('/purchases'); }} />
       {/* Search and Global Filters */}
       <div className="card p-5 space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">

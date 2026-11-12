@@ -28,6 +28,11 @@ function overlap(ws: string[], other: string[]) {
   return n;
 }
 
+/** Hasta este tamaño el catálogo va entero a la IA; más grande, solo los parecidos a cada renglón */
+const AI_FULL_CATALOG = 2000;
+/** Candidatos por renglón sin encontrar que van a la IA con un catálogo grande */
+const AI_PER_ROW = 30;
+
 export const PRODUCT_SELECT = {
   id: true, name: true, barcode: true, sku: true, supplierId: true, costPrice: true, salePrice: true, packPrice: true,
   wholesalePrice: true, tradePrice: true, unitsPerPack: true, taxRate: true, listPrice: true, discount1: true, discount2: true, discount3: true,
@@ -95,7 +100,7 @@ export class ProductMatcherService {
   }
 
   /** CUIT del propio comercio (facturación y datos de las hojas): no es el del proveedor */
-  private async ownCuits(): Promise<string[]> {
+  async ownCuits(): Promise<string[]> {
     const out: string[] = [];
     const fiscal = await this.prisma.fiscalConfig.findFirst({ select: { cuit: true } }).catch(() => null);
     if (fiscal?.cuit) out.push(fiscal.cuit.replace(/\D/g, ''));
@@ -189,9 +194,14 @@ export class ProductMatcherService {
     const missing = rows.map((r, i) => ({ r, i })).filter((x) => !matches[x.i]).slice(0, 400);
     if (opts.useAi !== false && missing.length && products.length) {
       try {
+        // Catálogo chico: va entero, como siempre. Grande: antes iban los primeros 4.000 y el resto
+        // quedaba fuera de alcance (un comercio con 5.771 productos). Ahora, por cada renglón sin
+        // encontrar, sus 30 más parecidos; a la IA va la unión de esos candidatos.
+        const pool = products.length <= AI_FULL_CATALOG ? products : this.aiCandidates(missing.map((x) => x.r.name), index);
+        if (!pool.length) throw new Error('sin candidatos');
         const { result } = await this.ai.call('match', {
           items: missing.map((x) => ({ name: x.r.name, code: x.r.code })),
-          catalog: products.slice(0, 4000).map((p) => ({ id: p.id, name: p.name })),
+          catalog: pool.map((p) => ({ id: p.id, name: p.name })),
         });
         for (const m of result?.matches || []) {
           const target = missing[Number(m.i)];
@@ -207,31 +217,56 @@ export class ProductMatcherService {
     // Los que no se encontraron: los 3 más parecidos, para elegir con un toque (el dueño decide)
     const candidates: any[][] = rows.map((r, i) => (matches[i] ? [] : this.similar(r.name, index)));
 
+    // Un producto no se asigna a dos renglones (se queda el más seguro), salvo que los dos coincidan por
+    // código de barras, lo aprendido del proveedor o su código interno: es el mismo producto facturado en
+    // dos renglones (otro precio, una promo, otra hoja), y antes el segundo quedaba sin asociar.
     const rank: Record<Confidence, number> = { alta: 3, media: 2, baja: 1 };
-    const owner = new Map<string, number>();
+    const byCode = (m: Match) => m.by === 'barcode' || m.by === 'learned' || m.by === 'code';
+    const owner = new Map<string, number[]>();
     matches.forEach((m, i) => {
       if (!m) return;
       const prev = owner.get(m.product.id);
-      if (prev === undefined) { owner.set(m.product.id, i); return; }
-      if (rank[m.confidence] > rank[matches[prev]!.confidence]) { matches[prev] = null; owner.set(m.product.id, i); } else matches[i] = null;
+      if (!prev) { owner.set(m.product.id, [i]); return; }
+      const held = prev.map((k) => matches[k]!);
+      if (byCode(m) && held.every(byCode)) { prev.push(i); return; }
+      // Por código le gana a cualquiera por nombre o IA; si no, el más seguro
+      const strongest = Math.max(...held.map((h) => rank[h.confidence] + (byCode(h) ? 10 : 0)));
+      if (rank[m.confidence] + (byCode(m) ? 10 : 0) > strongest) { for (const k of prev) matches[k] = null; owner.set(m.product.id, [i]); } else matches[i] = null;
     });
+    // Los que quedaron sin producto por ceder el suyo: también con sugerencias
+    matches.forEach((m, i) => { if (!m && !candidates[i].length) candidates[i] = this.similar(rows[i].name, index); });
     return { matches, aiMatched, products, candidates };
   }
 
   /** Productos parecidos por palabras en común (mismo tamaño suma); sin exigir que sea seguro */
   private similar(name: string, index: Map<string, any[]>) {
+    return this.ranked(name, index, { limit: 3, min: 0.25, maxList: 500 })
+      .map((cand) => ({ id: cand.id, name: cand.name, costPrice: cand.costPrice, salePrice: cand.salePrice, unitsPerPack: cand.unitsPerPack }));
+  }
+
+  /** Los más parecidos por palabras en común, de mayor a menor */
+  private ranked(name: string, index: Map<string, any[]>, o: { limit: number; min: number; maxList: number }) {
     const ws = words(name);
     const rs = sizes(name);
     const seen = new Set<any>();
     for (const w of new Set(ws.map(key3))) {
       const list = index.get(w) || [];
-      if (list.length >= 500) continue;
+      if (list.length >= o.maxList) continue;
       for (const cand of list) seen.add(cand);
     }
     return [...seen].map((cand) => {
       const cw = words(cand.name);
       return { cand, score: overlap(ws, cw) / Math.max(ws.length, cw.length) + (rs && sizes(cand.name) === rs ? 0.3 : 0) };
-    }).filter((x) => x.score >= 0.25).sort((a, b) => b.score - a.score).slice(0, 3)
-      .map(({ cand }) => ({ id: cand.id, name: cand.name, costPrice: cand.costPrice, salePrice: cand.salePrice, unitsPerPack: cand.unitsPerPack }));
+    }).filter((x) => x.score >= o.min).sort((a, b) => b.score - a.score).slice(0, o.limit).map((x) => x.cand);
+  }
+
+  /**
+   * Para la IA con un catálogo grande: los 30 más parecidos a cada renglón (palabras comunes como "x"
+   * o una marca con miles de productos también cuentan, con un tope por palabra), sin repetir.
+   */
+  aiCandidates(names: string[], index: Map<string, any[]>) {
+    const out = new Map<string, any>();
+    for (const n of names) for (const c of this.ranked(n, index, { limit: AI_PER_ROW, min: 0.01, maxList: 3000 })) out.set(c.id, c);
+    return [...out.values()];
   }
 }

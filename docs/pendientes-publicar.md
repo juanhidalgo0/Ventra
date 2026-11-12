@@ -2,6 +2,27 @@
 
 Actualizado: 7 de octubre de 2026. Regla: **nada nuevo hasta vaciar esta lista**, salvo bugs.
 
+## 0. Boletas a prueba de errores — tanda 1 (12/11/2026, lista, sin publicar)
+
+Plan completo en `docs/plan-boletas-ia.md`. Probado con IA y base simuladas (`npm run test:boletas`, `test:stock`, `test:http`, `test:repetidos` en `apps/backend`; `node firebase/test/ai.test.cjs` y `wa-owner.test.cjs`).
+
+| Qué | Dónde |
+|---|---|
+| Muestras de boletas (foto + lectura + resultado confirmado) **detrás de un interruptor apagado** | `firebase/functions/invoice-samples.js`, `ai.js`; la caja manda lo confirmado |
+| Catálogos de cualquier tamaño (la IA recibe los 30 parecidos por renglón) | `product-matcher.service.ts` |
+| Mismo producto en dos renglones (por código) | `product-matcher.service.ts`, `NewPurchaseScreen`, `PurchaseItemsTable` |
+| QR de ARCA leído sobre la foto original (total, CUIT, número, fecha, nota de crédito, a nombre de otro) | `invoice-reader/arca-qr.ts` (paquete nuevo `jsqr`), `ai.js` |
+| Aviso de foto movida/oscura/chica (PC y celular) | `utils/photoQuality.ts` |
+| Deshacer boleta (stock, costos y precios como antes; productos nuevos ocultos) | `purchases.service.ts` (`undoPurchase`, columna `undo_info`), `PurchasesScreen` |
+| Hojas que faltan se suman a la pendiente; WhatsApp hasta 20 fotos; impuestos internos al costo | `purchases.service.ts`, `wa-owner-invoice.js`, `ai.js` |
+
+Orden para publicar (con tu OK):
+1. `cd firebase/functions` y `FUNCTIONS_DISCOVERY_TIMEOUT=90 npx firebase deploy --only functions:ventra:ventraAi,functions:ventra:ventraWaOwnerInbox` (antes que la caja: la caja nueva manda `qr`, `stage: "confirm"` y lee `impuestosInternos`).
+2. `npm run deploy:cloud` (caja en la nube; corre `test:http`).
+3. Versión de PC.
+
+Para prender las muestras: crear en Firestore `ventra_config/invoiceSamples` con `{ enabled: false, uids: ["<tu uid>"] }` (solo tu cuenta). Para todos (`enabled: true`) **hace falta antes actualizar los términos** y decidir cuánto tiempo se guardan.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

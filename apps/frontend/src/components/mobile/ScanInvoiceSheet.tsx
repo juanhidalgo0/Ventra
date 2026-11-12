@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Camera, ImagePlus, X, Loader2, CheckCircle2, Monitor, Sparkles } from 'lucide-react';
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { Sheet, PrimaryButton, money } from './ui';
+import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
 
 /** Cómo se cargan las boletas (Compras): JSON en el ajuste del comercio purchase_auto */
 export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
@@ -25,13 +26,22 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
   const [result, setResult] = useState<any | null>(null);
   const [auto, setAuto] = useState(readPurchaseAuto);
   const cameraRef = useRef<HTMLInputElement>(null);
+  // Foto movida, oscura o chica: aviso con "Sacar de nuevo" o "Usar igual", nunca bloquea
+  const [warnings, setWarnings] = useState<PhotoWarning[]>([]);
+  const [accepted, setAccepted] = useState<Set<File>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    checkPhotos(photos).then((w) => { if (alive) setWarnings(w); }).catch(() => {});
+    return () => { alive = false; };
+  }, [photos]);
+  const shownWarnings = warnings.filter((w) => photos[w.index] && !accepted.has(photos[w.index]));
   const galleryRef = useRef<HTMLInputElement>(null);
 
   const reset = () => { setPhotos([]); setResult(null); setBusy(false); };
   const close = () => { if (busy) return; reset(); onClose(); };
   const add = (list: FileList | null) => {
     const imgs = Array.from(list || []).filter((f) => f.type.startsWith('image/'));
-    if (imgs.length) setPhotos((p) => [...p, ...imgs].slice(0, 6));
+    if (imgs.length) setPhotos((p) => [...p, ...imgs].slice(0, 12));
   };
 
   const read = async () => {
@@ -40,7 +50,7 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
     try {
       const form = new FormData();
       photos.forEach((f) => form.append('files', f));
-      const { data } = await api.post('/purchases/scan-invoice', form, { timeout: 180000 } as any);
+      const { data } = await api.post('/purchases/scan-invoice', form, { timeout: 290000 } as any);
       setResult(data);
       onDone();
     } catch (err: any) {
@@ -121,13 +131,25 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
           <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => cameraRef.current?.click()} disabled={busy || photos.length >= 6} className="h-24 rounded-2xl bg-rose-600 text-white font-bold text-[15px] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50">
+            <button onClick={() => cameraRef.current?.click()} disabled={busy || photos.length >= 12} className="h-24 rounded-2xl bg-rose-600 text-white font-bold text-[15px] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50">
               <Camera className="w-7 h-7" /> {photos.length ? 'Otra hoja' : 'Sacar foto'}
             </button>
-            <button onClick={() => galleryRef.current?.click()} disabled={busy || photos.length >= 6} className="h-24 rounded-2xl border border-slate-300 text-slate-700 font-semibold text-[14px] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50">
+            <button onClick={() => galleryRef.current?.click()} disabled={busy || photos.length >= 12} className="h-24 rounded-2xl border border-slate-300 text-slate-700 font-semibold text-[14px] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50">
               <ImagePlus className="w-6 h-6" /> De la galería
             </button>
           </div>
+          {shownWarnings.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[13px] text-amber-900">
+              <p className="font-bold">{shownWarnings.map((w) => warningText(w, photos.length)).join('. ')}.</p>
+              <p className="mt-0.5">{PHOTO_TIP}</p>
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button onClick={() => { const bad = new Set(shownWarnings.map((w) => photos[w.index])); setPhotos((p) => p.filter((f) => !bad.has(f))); cameraRef.current?.click(); }}
+                  className="h-11 rounded-xl bg-amber-600 text-white font-bold text-[14px] active:scale-[0.98]">Sacar de nuevo</button>
+                <button onClick={() => setAccepted((a) => new Set([...a, ...shownWarnings.map((w) => photos[w.index])]))}
+                  className="h-11 rounded-xl border border-amber-300 text-amber-900 font-bold text-[14px] active:scale-[0.98]">Usar igual</button>
+              </div>
+            </div>
+          )}
           {photos.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {photos.map((f, i) => (

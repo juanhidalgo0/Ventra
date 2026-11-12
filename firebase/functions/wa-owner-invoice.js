@@ -15,8 +15,11 @@ const crypto = require("crypto");
 
 const INVOICES = "ventra_wa_invoices";
 const ACTIVE_MS = 2 * 60 * 60 * 1000;
-/** Fotos por vez (la IA lee hasta 6) */
-const MAX_PHOTOS = 6;
+/**
+ * Fotos por vez. Antes 6 (la IA las leía juntas); desde la tanda 1 del plan de boletas, más de 6 se leen
+ * de a una en la caja (readPhotosByPage). 20 es solo para que la lectura entre en el tiempo de la bandeja.
+ */
+const MAX_PHOTOS = 20;
 const money = (n) => { const v = Math.round(Number(n) || 0); return `${v < 0 ? "-" : ""}$ ${Math.abs(v).toLocaleString("es-AR")}`; };
 const pct = (p) => (p === null || p === undefined ? "" : ` (${p > 0 ? "+" : ""}${String(p).replace(".", ",")}%)`);
 const errorOf = (r) => (r && r.body && (Array.isArray(r.body.message) ? r.body.message.join(". ") : r.body.message || r.body.error)) || `error ${r && r.status}`;

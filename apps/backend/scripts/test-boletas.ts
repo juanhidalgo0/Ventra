@@ -11,6 +11,9 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { readInvoiceFile, InvoiceReadError } from '../src/modules/purchases/invoice-reader';
 import { isBarcode, barcodeProblem, splitInvoiceCodes } from '../src/modules/purchases/invoice-reader/barcode-check';
 import { SyncImageService } from '../src/modules/products/sync-image.service';
+import { ProductMatcherService } from '../src/modules/ai/product-matcher.service';
+import { mergeMissingPages } from '../src/modules/purchases/purchases.service';
+import { parseArcaQrText, readArcaQr, qrKind, qrTotalPesos } from '../src/modules/purchases/invoice-reader/arca-qr';
 
 let fallas = 0;
 let ok = 0;
@@ -434,6 +437,124 @@ async function main() {
     assert.strictEqual(await svc.autoPhotos(['p']), 1);
     assert.deepStrictEqual(log.codes, [real]);
     assert.strictEqual(log.saved.p, 'b64:https://x/sugus.jpg');
+  });
+
+  // ─── Tanda 1 del plan de boletas: catálogos grandes, mismo producto en dos renglones, QR de ARCA ───
+
+  /** Buscador con un catálogo en memoria y una IA falsa que solo "encuentra" lo que le mandaron */
+  const matcherWith = (products: any[], learned: { id: string; product_id: string }[] = []) => {
+    const sent: any[] = [];
+    const prisma: any = {
+      product: { findMany: async () => products.map((p) => ({ additionalBarcodes: [], supplierId: null, costPrice: 0, salePrice: 0, unitsPerPack: 1, barcode: null, sku: null, ...p })) },
+      $queryRawUnsafe: async () => learned,
+    };
+    const ai: any = {
+      call: async (_kind: string, body: any) => {
+        sent.push(body);
+        const ids = new Set(body.catalog.map((c: any) => c.id));
+        // Contesta como la IA: el producto que buscaba, si estaba en lo que le llegó
+        return { result: { matches: body.items.map((it: any, i: number) => ({ i, productId: ids.has(it.want) ? it.want : '', confianza: 'alta' })).filter((m: any) => m.productId) } };
+      },
+    };
+    return { svc: new ProductMatcherService(prisma, ai), sent };
+  };
+
+  await t('catálogo de 6.000 productos: la IA encuentra uno que está en la posición 5.500', async () => {
+    const products = Array.from({ length: 6000 }, (_, i) => ({ id: `p${i}`, name: i === 5500 ? 'ALFAJOR TRIPLE CHOCOLATE NEGRO 70 G' : `PRODUCTO GENERICO ${i} ${['YERBA', 'FIDEOS', 'ARROZ', 'GASEOSA'][i % 4]} ${i % 97} G` }));
+    const { svc, sent } = matcherWith(products);
+    // La IA falsa busca "want": se lo pasamos en el renglón (el buscador manda name y code)
+    const real = (svc as any).ai.call;
+    (svc as any).ai.call = (k: string, b: any) => real(k, { ...b, items: b.items.map((it: any) => ({ ...it, want: 'p5500' })) });
+    const { matches } = await svc.match([{ name: 'BOCADITO TRIPLE ALF NEGRO 70G XL' }], { useAi: true });
+    assert.strictEqual(matches[0]?.product?.id, 'p5500', 'lo encuentra');
+    assert.strictEqual(matches[0]?.by, 'ia');
+    assert.ok(sent[0].catalog.length <= 30, `solo los parecidos van a la IA (${sent[0].catalog.length})`);
+    assert.ok(sent[0].catalog.some((c: any) => c.id === 'p5500'));
+  });
+
+  await t('catálogo chico: va entero a la IA, como antes', async () => {
+    const { svc, sent } = matcherWith([{ id: 'a', name: 'COCA COLA 2,25 L' }, { id: 'b', name: 'FERNET 750' }]);
+    await svc.match([{ name: 'CC 2.25' }], { useAi: true });
+    assert.strictEqual(sent[0].catalog.length, 2);
+  });
+
+  await t('mismo producto en dos renglones: por código de barras quedan los dos', async () => {
+    const real = ean('779040000999');
+    const { svc } = matcherWith([{ id: 'coca', name: 'COCA COLA 2,25 L', barcode: real }]);
+    const { matches } = await svc.match([{ name: 'COCA 2.25', barcode: real }, { name: 'COCA 2.25 PROMO', barcode: real }], { useAi: false });
+    assert.strictEqual(matches[0]?.product.id, 'coca');
+    assert.strictEqual(matches[1]?.product.id, 'coca');
+  });
+
+  await t('mismo producto en dos renglones: por lo aprendido del proveedor quedan los dos', async () => {
+    const { svc } = matcherWith([{ id: 'yerba', name: 'YERBA PLAYADITO 1 KG' }], [{ id: 'S1|c:100', product_id: 'yerba' }, { id: 'S1|c:200', product_id: 'yerba' }]);
+    const { matches } = await svc.match([{ name: 'YERBA PLAY 1K', code: '100' }, { name: 'YERBA PLAY 1K OF', code: '200' }], { supplierId: 'S1', useAi: false });
+    assert.strictEqual(matches[0]?.by, 'learned');
+    assert.strictEqual(matches[1]?.product.id, 'yerba');
+  });
+
+  await t('mismo producto por nombre en dos renglones: sigue quedando uno solo (el otro con sugerencias)', async () => {
+    const { svc } = matcherWith([{ id: 'f', name: 'FIDEOS MOSTACHOL 500 G' }]);
+    const { matches, candidates } = await svc.match([{ name: 'FIDEOS MOSTACHOL 500 G' }, { name: 'FIDEOS MOSTACHOL 500 G' }], { useAi: false });
+    assert.strictEqual(matches.filter(Boolean).length, 1);
+    assert.ok(candidates[1].length || candidates[0].length, 'el que quedó sin producto tiene sugerencias');
+  });
+
+  await t('código de barras le gana a un parecido por nombre del mismo producto', async () => {
+    const real = ean('779040000888');
+    const { svc } = matcherWith([{ id: 'x', name: 'GALLETITAS OREO 118 G', barcode: real }]);
+    const { matches } = await svc.match([{ name: 'GALLETITAS OREO 118 G' }, { name: 'OREO', barcode: real }], { useAi: false });
+    assert.strictEqual(matches[0], null);
+    assert.strictEqual(matches[1]?.by, 'barcode');
+  });
+
+  await t('hojas que faltan: se suman a la factura pendiente y se controla el total', async () => {
+    const old = { pageCount: 3, missingPageNumbers: [3], missingPages: 1, printedTotal: null, sampleIds: ['s1'], why: ['faltan hojas (3)', '1 renglón dudoso'],
+      items: [{ name: 'A', total: 4000 }, { name: 'B', total: 3000 }] };
+    const add = { pageCount: 3, missingPageNumbers: [1, 2], missingPages: 2, printedTotal: 12100, sampleIds: ['s2'], why: ['faltan hojas (1, 2)'], items: [{ name: 'C', total: 3000 }] };
+    const m = mergeMissingPages(old, add)!;
+    assert.ok(m, 'se juntan');
+    assert.deepStrictEqual(m.items.map((i: any) => i.name), ['A', 'B', 'C']);
+    assert.deepStrictEqual(m.missingPageNumbers, []);
+    assert.strictEqual(m.check.ok, true);
+    assert.deepStrictEqual(m.sampleIds, ['s1', 's2']);
+    assert.ok(!m.why.some((w: string) => /falta/.test(w)) && m.why.includes('1 renglón dudoso'));
+    // Repite una hoja que ya estaba: no se junta (duplicaría renglones)
+    assert.strictEqual(mergeMissingPages(old, { ...add, missingPageNumbers: [1] }), null);
+    // Llega solo una de dos que faltaban: quedan las otras
+    const parcial = mergeMissingPages({ ...old, missingPageNumbers: [2, 3], missingPages: 2 }, { ...add, missingPageNumbers: [1, 2] })!;
+    assert.deepStrictEqual(parcial.missingPageNumbers, [2]);
+    assert.strictEqual(parcial.check.ok, false);
+    // Una pendiente completa no se toca
+    assert.strictEqual(mergeMissingPages({ ...old, missingPageNumbers: [], missingPages: 0 }, add), null);
+  });
+
+  await t('QR de ARCA: el ejemplo oficial de la especificación se decodifica entero', async () => {
+    const url = 'https://www.afip.gob.ar/fe/qr/?p=eyJ2ZXIiOjEsImZlY2hhIjoiMjAyMC0xMC0xMyIsImN1aXQiOjMwMDAwMDAwMDA3LCJwdG9WdGEiOjEwLCJ0aXBvQ21wIjoxLCJucm9DbXAiOjk0LCJpbXBvcnRlIjoxMjEwMCwibW9uZWRhIjoiRE9MIiwiY3R6Ijo2NSwidGlwb0RvY1JlYyI6ODAsIm5yb0RvY1JlYyI6MjAwMDAwMDAwMDEsInRpcG9Db2RBdXQiOiJFIiwiY29kQXV0Ijo3MDQxNzA1NDM2NzQ3Nn0=';
+    const q = parseArcaQrText(url)!;
+    assert.ok(q, 'se lee');
+    assert.deepStrictEqual([q.fecha, q.cuit, q.ptoVta, q.tipoCmp, q.nroCmp, q.importe, q.moneda, q.ctz, q.tipoDocRec, q.nroDocRec], ['2020-10-13', 30000000007, 10, 1, 94, 12100, 'DOL', 65, 80, 20000000001]);
+    assert.strictEqual(qrTotalPesos(q), 786500, 'en dólares: importe por cotización');
+    assert.strictEqual(qrKind(q), 'factura');
+    assert.strictEqual(qrKind({ tipoCmp: 8 }), 'nota de crédito');
+    assert.strictEqual(parseArcaQrText('https://www.arca.gob.ar/fe/qr/?p=bm8gZXMganNvbg=='), null, 'base64 que no es JSON');
+    assert.strictEqual(parseArcaQrText('https://otra.com/?p=eyJ2ZXIiOjF9'), null, 'otra página');
+  });
+
+  await t('QR de ARCA: se lee de la foto (QR generado sobre una hoja blanca)', async () => {
+    let QR: any;
+    try { QR = require('../../frontend/node_modules/qrcode'); } catch { console.log('      (sin el paquete qrcode del frontend: se saltea)'); return; }
+    const json = { ver: 1, fecha: '2026-11-12', cuit: 30712345675, ptoVta: 3, tipoCmp: 6, nroCmp: 4521, importe: 182400.5, moneda: 'PES', ctz: 1, tipoDocRec: 80, nroDocRec: 20111111112, tipoCodAut: 'E', codAut: 76123456789012 };
+    const png: Buffer = await QR.toBuffer(`https://www.arca.gob.ar/fe/qr/?p=${Buffer.from(JSON.stringify(json)).toString('base64')}`, { width: 260, margin: 2 });
+    // La "foto": una hoja grande con el QR chico en una esquina
+    const { Jimp } = require('jimp');
+    const page = new Jimp({ width: 2400, height: 3200, color: 0xffffffff });
+    page.composite(await Jimp.read(png), 2050, 2850);
+    const q = await readArcaQr(await page.getBuffer('image/jpeg', { quality: 90 }));
+    assert.ok(q, 'encuentra el QR');
+    assert.strictEqual(q!.nroCmp, 4521);
+    assert.strictEqual(qrTotalPesos(q!), 182400.5);
+    assert.strictEqual(await readArcaQr(Buffer.from('no es una foto')), null, 'sin foto: null, sin error');
   });
 
   console.log(`\n${ok} bien, ${fallas} con falla`);

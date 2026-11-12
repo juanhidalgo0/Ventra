@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ProductReviewWatcher from '../products/ProductReviews';
 import ScannedPurchasesWatcher from '../products/ScannedPurchasesWatcher';
+import ScanJobPanel from '../products/ScanJobPanel';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Download, Loader2, WifiOff, RefreshCw, Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
@@ -470,6 +471,7 @@ export default function MainLayout({ children }: Props) {
           <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
             <PlanGate mobile={false}>{children}</PlanGate>
             <ScannedPurchasesWatcher />
+            <ScanJobPanel />
             <ProductReviewWatcher />
           </div>
         </main>

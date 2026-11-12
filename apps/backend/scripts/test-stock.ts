@@ -213,6 +213,50 @@ async function main() {
     void compraId;
   });
 
+  await t('deshacer boleta: saca el stock, vuelve costo y precio, oculta el producto nuevo y anula la compra', async () => {
+    const p = await nuevo('GALLETITAS', 4, { costPrice: 500, salePrice: 1000, wholesalePrice: 900 });
+    const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [
+      { productId: p.id, quantity: 10, cost: 600 },
+      { productId: p.id, quantity: 2, cost: 600 }, // el mismo producto en otro renglón
+      { quantity: 3, cost: 200, newProductData: { name: 'PRODUCTO NUEVO DE LA BOLETA', salePrice: 400 } },
+    ] });
+    const nuevoId = (await prisma.purchaseItem.findFirst({ where: { purchaseId: c.id, productName: 'PRODUCTO NUEVO DE LA BOLETA' } }))!.productId;
+    assert.strictEqual(await stockDe(p.id), 16);
+    const subido = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.ok(subido!.costPrice > 500 && subido!.salePrice > 1000, 'la compra cambió costo y precio');
+    const r = await purchases.undoPurchase(c.id);
+    const vuelto = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.strictEqual(vuelto!.stock, 4);
+    assert.strictEqual(vuelto!.costPrice, 500);
+    assert.strictEqual(vuelto!.salePrice, 1000);
+    assert.strictEqual(vuelto!.wholesalePrice, 900);
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: nuevoId } }))!.isActive, false, 'el nuevo queda oculto');
+    assert.strictEqual(r.restored, 1);
+    assert.strictEqual(r.hidden, 1);
+    assert.strictEqual((await prisma.purchase.findUnique({ where: { id: c.id } }))!.status, 'CANCELLED');
+    await assert.rejects(() => purchases.undoPurchase(c.id), /confirmada/);
+    assert.strictEqual(await stockDe(p.id), 4, 'dos veces no saca dos veces');
+  });
+
+  await t('deshacer boleta: un precio que cambiaron después no se pisa', async () => {
+    const p = await nuevo('ACEITE', 0, { costPrice: 500, salePrice: 1000 });
+    const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 600 }] });
+    await prisma.product.update({ where: { id: p.id }, data: { salePrice: 1999 } });
+    const r = await purchases.undoPurchase(c.id);
+    const d = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.strictEqual(d!.salePrice, 1999);
+    assert.strictEqual(d!.stock, 0, 'el stock sale igual');
+    assert.deepStrictEqual(r.keptChanged, ['ACEITE']);
+  });
+
+  await t('deshacer boleta: una compra vieja sin datos guardados se rechaza sin tocar nada', async () => {
+    const p = await nuevo('SAL', 0);
+    const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 100 }] });
+    await prisma.$executeRawUnsafe(`UPDATE purchases SET undo_info = NULL WHERE id = ?`, c.id);
+    await assert.rejects(() => purchases.undoPurchase(c.id), /antes de que existiera/);
+    assert.strictEqual(await stockDe(p.id), 5);
+  });
+
   await t('cierre de caja: el consumo no suma a la plata y queda en el resumen', async () => {
     const ses = await cash.open(admin.id, { terminalName: 'Caja 2', openingAmount: 0 });
     const p = await nuevo('TORTA', 10);

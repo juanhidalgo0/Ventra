@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
+import { useScanJob } from './ScanJobPanel';
 
 /** Lo escucha la pantalla de Compras para recargarse sola */
 export const PURCHASES_CHANGED_EVENT = 'ventra:purchases-changed';
@@ -34,14 +35,18 @@ export default function ScannedPurchasesWatcher() {
         const fresh = rows.filter((p) => !seen.has(p.id));
         if (fresh.length) {
           window.dispatchEvent(new CustomEvent(PURCHASES_CHANGED_EVENT));
-          // La primera vez solo se anotan (no avisa por boletas viejas)
-          if (!first.current) {
-            const p = fresh[0];
+          // La primera vez solo se anotan (no avisa por boletas viejas). Las que acaba de leer esta PC
+          // ya las muestra la ventana de la lectura (ScanJobPanel): no se avisan dos veces.
+          const mine = new Set((useScanJob.getState().job?.documents || []).map((d) => d.purchaseId));
+          const running = ['reading', 'grouping'].includes(useScanJob.getState().job?.status || '');
+          if (!first.current && !running && fresh.some((p) => !mine.has(p.id))) {
+            const show = fresh.filter((x) => !mine.has(x.id));
+            const p = show[0];
             toast((t) => (
               <span className="flex items-center gap-3">
                 <span className="text-[13.5px]">
-                  <b>{fresh.length === 1 ? (p.via === 'whatsapp' ? 'Llegó una boleta por WhatsApp' : 'Llegó una boleta escaneada') : `Llegaron ${fresh.length} boletas para revisar`}</b>
-                  <span className="block text-slate-600">{fresh.length === 1 ? `${p.supplierName || 'Proveedor'} · ${p.items} ${p.items === 1 ? 'producto' : 'productos'}${p.via === 'whatsapp' ? ' · para revisar y confirmar' : p.userName ? ` · la cargó ${p.userName}` : ''}` : 'Están en Compras para revisar'}</span>
+                  <b>{show.length === 1 ? (p.via === 'whatsapp' ? 'Llegó una boleta por WhatsApp' : 'Llegó una boleta escaneada') : `Llegaron ${show.length} boletas para revisar`}</b>
+                  <span className="block text-slate-600">{show.length === 1 ? `${p.supplierName || 'Proveedor'} · ${p.items} ${p.items === 1 ? 'producto' : 'productos'}${p.via === 'whatsapp' ? ' · para revisar y confirmar' : p.userName ? ` · la cargó ${p.userName}` : ''}` : 'Están en Compras para revisar'}</span>
                 </span>
                 <button onClick={() => { toast.dismiss(t.id); navigate('/purchases'); }} className="shrink-0 h-9 px-3 rounded-lg bg-rose-600 text-white text-[13px] font-bold cursor-pointer">Revisar</button>
               </span>

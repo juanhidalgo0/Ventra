@@ -36,11 +36,11 @@ export class AiService {
     return out;
   }
 
-  async call(kind: 'order' | 'invoice' | 'pricelist' | 'match' | 'ask' | 'agent' | 'help' | 'gocats', body: Record<string, unknown>): Promise<{ result: any; left: number; leftToday?: number; limits?: { daily: number; monthly: number } }> {
+  async call(kind: 'order' | 'invoice' | 'pricelist' | 'match' | 'ask' | 'agent' | 'help' | 'gocats' | 'lesson', body: Record<string, unknown>, opts: { timeoutMs?: number } = {}): Promise<{ result: any; left: number; leftToday?: number; limits?: { daily: number; monthly: number } }> {
     const creds = this.subscription.getDeviceCredentials();
     if (!creds) throw new BadRequestException('La IA necesita esta PC vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
     try {
-      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraAi`, { ...creds, kind, ...body }, { timeout: 150_000, maxBodyLength: 40_000_000 });
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraAi`, { ...creds, kind, ...body }, { timeout: opts.timeoutMs ?? 150_000, maxBodyLength: 40_000_000 });
       return { result: data.result, left: data.left, leftToday: data.leftToday, limits: data.limits };
     } catch (err: any) {
       const status = err?.response?.status;

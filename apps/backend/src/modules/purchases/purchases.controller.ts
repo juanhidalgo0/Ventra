@@ -1,13 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PurchasesService } from './purchases.service';
+import { ScanJobsService } from './scan-jobs.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
 @Controller('purchases')
 @UseGuards(JwtAuthGuard)
 export class PurchasesController {
-  constructor(private purchasesService: PurchasesService) {}
+  constructor(private purchasesService: PurchasesService, private scanJobs: ScanJobsService) {}
 
   @Get()
   findAll() {
@@ -42,6 +43,14 @@ export class PurchasesController {
     return this.purchasesService.deleteOne(id);
   }
 
+  /** Deshacer una boleta confirmada: stock, costos y precios como estaban (dueño o encargado) */
+  @Post(':id/undo')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPERVISOR')
+  undoPurchase(@Param('id') id: string) {
+    return this.purchasesService.undoPurchase(id);
+  }
+
   @Post(':id/restore')
   restorePurchase(@Param('id') id: string) {
     return this.purchasesService.restorePurchase(id);
@@ -57,6 +66,34 @@ export class PurchasesController {
   @Post('cost-insights')
   costInsights(@Body() body: { supplierId?: string; items?: { productId: string; cost: number }[] }) {
     return this.purchasesService.costInsights(body?.supplierId, body?.items || []);
+  }
+
+  /** Varias compras por id (las pestañas de "Revisar boletas"): ?ids=a,b,c */
+  @Get('batch')
+  batch(@Query('ids') ids?: string) {
+    return this.purchasesService.findByIds(String(ids || '').split(','));
+  }
+
+  /**
+   * Fotos de boletas, todas las que sean: se leen en segundo plano, una por una (ver ScanJobsService).
+   * Responde al toque; la pantalla pregunta cómo va con GET scan-jobs/:id.
+   */
+  @Post('scan-jobs')
+  @UseInterceptors(FilesInterceptor('files', 60, { limits: { fileSize: 25 * 1024 * 1024 } }))
+  startScanJob(@UploadedFiles() files: Express.Multer.File[], @Request() req, @Body('manualTotal') manualTotal?: string) {
+    if (!files?.length) throw new BadRequestException('No se recibió ninguna foto');
+    const total = manualTotal ? Number(manualTotal) : undefined;
+    return this.scanJobs.start(files, req.user.sub, Number.isFinite(total) ? total : undefined);
+  }
+
+  @Get('scan-jobs/latest')
+  latestScanJob(@Request() req) {
+    return this.scanJobs.latest(req.user.sub);
+  }
+
+  @Get('scan-jobs/:id')
+  scanJob(@Param('id') id: string, @Request() req) {
+    return this.scanJobs.get(id, req.user.sub);
   }
 
   @Post('scan-invoice')
@@ -88,7 +125,8 @@ export class PurchasesController {
    */
   @Post('scan-invoice-json')
   async scanInvoiceJson(@Body() body: { images?: { data: string; mime?: string; name?: string }[]; manualTotal?: number }, @Request() req) {
-    const files = (Array.isArray(body?.images) ? body.images : []).slice(0, 6).map((im, i) => {
+    // Más de 6 fotos se leen de a una (PurchasesService.readPhotosByPage): el tope es solo de seguridad
+    const files = (Array.isArray(body?.images) ? body.images : []).slice(0, 20).map((im, i) => {
       const buffer = Buffer.from(String(im?.data || ''), 'base64');
       return { buffer, size: buffer.length, mimetype: String(im?.mime || 'image/jpeg'), originalname: String(im?.name || `boleta-${i + 1}.jpg`) } as Express.Multer.File;
     });

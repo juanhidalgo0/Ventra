@@ -32,6 +32,9 @@ import { setStoreSetting } from '../../services/storeSettings';
 import { COMING_SOON } from '../../utils/comingSoon';
 import { ComingSoonBadge } from '../common/ComingSoon';
 import { OPEN_SCAN_KEY } from './InvoiceScanCard';
+import { startScanJob } from './ScanJobPanel';
+import PurchaseItemsTable, { rowId } from './PurchaseItemsTable';
+import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -63,6 +66,8 @@ function buildCategoryTree(cats: any[]) {
 
 interface PurchaseItem {
   productId: string;
+  /** Mismo producto en dos renglones de la boleta (por código): cada uno con su clave (ver rowId) */
+  lineId?: string;
   barcode: string;
   sku?: string;
   name: string;
@@ -73,6 +78,10 @@ interface PurchaseItem {
   total: number;
   buyFormat: string;
   unitsPerPack: number;
+  /** Producto nuevo de una boleta: los parecidos que ya tenés, para asociarlo en vez de crearlo */
+  candidates?: { id: string; name: string }[];
+  /** El renglón leído de la boleta (para asociarlo a un producto existente) */
+  scanned?: any;
   trackExpiry?: boolean; // El producto controla vencimiento: se pide la fecha del lote
   expiresAt?: string;
   presentationType: string;
@@ -197,7 +206,14 @@ function CandidateChips({ candidates, onPick }: { candidates?: { id: string; nam
   );
 }
 
-export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack: () => void, initialPurchase?: any }) {
+export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed, photos }: {
+  onBack: () => void;
+  initialPurchase?: any;
+  /** Revisando varias boletas en pestañas: al confirmar pasa a la siguiente en vez de volver */
+  onConfirmed?: () => void;
+  /** Fotos de esta boleta (de la lectura en segundo plano), para compararlas al lado */
+  photos?: string[];
+}) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -230,9 +246,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
 
 
-  // Load purchase draft from localStorage
+  // Borrador en el navegador: la compra nueva tiene uno y cada boleta por revisar el suyo (así, al pasar
+  // de una pestaña a otra no se pierde lo corregido ni se mezclan renglones de otra compra)
+  const DRAFT_KEY = initialPurchase?.id ? `purchase_draft2:${initialPurchase.id}` : 'purchase_draft';
   const draft = (() => {
-    const saved = localStorage.getItem('purchase_draft');
+    const saved = localStorage.getItem(DRAFT_KEY);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -258,6 +276,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') === 'true');
 
   useEffect(() => {
+    // Ya se estaba revisando esta boleta: queda como la dejaron
+    if (initialPurchase && draft) return;
     if (initialPurchase) {
       setInvoiceNumber(initialPurchase.invoiceNumber || '');
       setDate(initialPurchase.date ? initialPurchase.date.split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -267,11 +287,15 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       }
       setPaymentStatus(initialPurchase.paymentStatus || 'PAID');
       setPaymentMethod(initialPurchase.paymentMethod || 'Efectivo');
-      setNotes(initialPurchase.notes || '');
+      // La nota interna de la boleta escaneada ("falta revisarla") no va a la compra
+      setNotes(initialPurchase.status === 'PENDING' && /falta revisarl/i.test(initialPurchase.notes || '') ? '' : (initialPurchase.notes || ''));
       // Escaneada desde el celular con la versión nueva: los renglones tal como se leyeron
       if (initialPurchase.draft) {
-        applyScanResult({ ...initialPurchase.draft, matchedSupplier: initialPurchase.supplier ? null : initialPurchase.draft.matchedSupplier });
-        if (initialPurchase.draft.why?.length) toast(`Quedó para revisar porque ${initialPurchase.draft.why.join(' y ')}.`, { icon: 'ℹ️', duration: 10000 });
+        // La boleta decía contado / cuenta corriente: arranca así (el dueño lo puede cambiar)
+        if (initialPurchase.draft.paymentSuggested === 'PAID' || initialPurchase.draft.paymentSuggested === 'OWED') setPaymentStatus(initialPurchase.draft.paymentSuggested);
+        // Con pestañas, por qué hay que mirarla va arriba fijo (ReviewTabs), no en un aviso que se va
+        applyScanResult({ ...initialPurchase.draft, matchedSupplier: initialPurchase.supplier ? null : initialPurchase.draft.matchedSupplier }, { quiet: !!onConfirmed });
+        if (initialPurchase.draft.why?.length && !onConfirmed) toast(`Quedó para revisar porque ${initialPurchase.draft.why.join(' y ')}.`, { icon: 'ℹ️', duration: 10000 });
         return;
       }
 
@@ -305,11 +329,15 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
   // Se guardan cuando el usuario los cambia, no al abrir: si no, el valor de esta PC pisaba
   // el que llegó de otra caja (son ajustes del comercio, ver services/storeSettings)
-  const ivaTouched = useRef(false);
-  const marginTouched = useRef(false);
+  const lastIva = useRef(useIvaGlobal);
+  const lastMargin = useRef(defaultMargin);
+  const marginTouched = useRef(true);
   useEffect(() => {
-    if (ivaTouched.current) setStoreSetting('purchase_use_iva', useIvaGlobal.toString());
-    ivaTouched.current = true;
+    // Al abrir no se recalcula nada: pisaba el precio anotado a mano en la boleta y el que mantiene
+    // el margen del producto. Solo cuando el dueño cambia "Calcular IVA".
+    if (lastIva.current === useIvaGlobal) return;
+    lastIva.current = useIvaGlobal;
+    setStoreSetting('purchase_use_iva', useIvaGlobal.toString());
     setItems(prev => prev.map(item => {
       const c = parseFloat(item.cost as any) || 0;
       const m = item.margin !== undefined ? item.margin : defaultMargin;
@@ -326,10 +354,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   }, [useIvaGlobal]);
 
   useEffect(() => {
+    // Solo cuando el dueño cambia el margen general (al abrir pisaba el precio anotado a mano en la boleta)
+    if (lastMargin.current === defaultMargin) return;
+    lastMargin.current = defaultMargin;
     if (marginTouched.current) setStoreSetting('purchase_default_margin', defaultMargin.toString());
     marginTouched.current = true;
     setItems(prev => prev.map(item => {
-      if (item.isNew) {
+      if (item.isNew && !(Number(item.scanned?.handPrice) > 0)) {
         const costVal = parseFloat(item.cost as any) || 0;
         const suggested = calculateSuggestedPrice(costVal, defaultMargin, useIvaGlobal);
         return {
@@ -413,6 +444,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const [scanPhotos, setScanPhotos] = useState<string[]>([]);
   const [showPhotos, setShowPhotos] = useState(false);
   useEffect(() => () => { scanPhotos.forEach((u) => URL.revokeObjectURL(u)); }, [scanPhotos]);
+  // Las de la lectura en segundo plano (no son de esta pantalla: no se liberan acá)
+  const shownPhotos = scanPhotos.length ? scanPhotos : (photos || []);
   // Las fotos traían varios comprobantes: este se revisa acá y los demás quedan en Compras → Por revisar
   const [otherDocs, setOtherDocs] = useState<{ total: number; current: string; saved: string[]; skipped: string[]; failed: string[] } | null>(null);
   const [scanStep, setScanStep] = useState('');
@@ -420,6 +453,16 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   const [showTotalPrompt, setShowTotalPrompt] = useState(false);
   const [manualTotalInput, setManualTotalInput] = useState('');
   const [selectedFilesForScan, setSelectedFilesForScan] = useState<File[]>([]);
+  // Fotos movidas, oscuras o chicas: se avisa antes de subir, nunca se bloquea (utils/photoQuality)
+  const [photoWarnings, setPhotoWarnings] = useState<PhotoWarning[]>([]);
+  const [photoWarningsOk, setPhotoWarningsOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setPhotoWarningsOk(false);
+    if (!selectedFilesForScan.length) { setPhotoWarnings([]); return; }
+    checkPhotos(selectedFilesForScan).then((w) => { if (alive) setPhotoWarnings(w); }).catch(() => {});
+    return () => { alive = false; };
+  }, [selectedFilesForScan]);
   const [unmatchedItems, setUnmatchedItems] = useState<any[]>(draft?.unmatchedItems || []);
   const [activeUnmatchedIndex, setActiveUnmatchedIndex] = useState<number | null>(draft?.activeUnmatchedIndex !== undefined ? draft.activeUnmatchedIndex : null);
   const [quickProductSearch, setQuickProductSearch] = useState('');
@@ -468,7 +511,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     setActiveUnmatchedIndex(null);
     setShowNewProductsModal(false);
     setPendingNewProducts([]);
-    localStorage.removeItem('purchase_draft');
+    localStorage.removeItem(DRAFT_KEY);
   };
 
   useEffect(() => {
@@ -486,7 +529,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       showNewProductsModal,
       pendingNewProducts
     };
-    localStorage.setItem('purchase_draft', JSON.stringify(draftData));
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData)); } catch { /* sin espacio */ }
   }, [
     selectedSupplier,
     supplierSearch,
@@ -549,7 +592,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
             name: unmatched.name.toUpperCase(),
             barcode: code,
             costPrice: unmatched.cost || 0,
-            salePrice: calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
+            salePrice: Number(unmatched.handPrice) || calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
           });
           setShowQuickCreate(true);
           setQuickProductSearch('');
@@ -567,7 +610,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           name: unmatched.name.toUpperCase(),
           barcode: code,
           costPrice: unmatched.cost || 0,
-          salePrice: calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
+          salePrice: Number(unmatched.handPrice) || calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
         });
         setShowQuickCreate(true);
         setQuickProductSearch('');
@@ -620,7 +663,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
   const updateItem = (id: string, field: keyof PurchaseItem, value: any) => {
     setItems(items.map(item => {
-      if (item.productId === id) {
+      if (rowId(item) === id) {
         const updated = { ...item, [field]: value };
         if (updated.isNew && field === 'barcode') {
           updated.newProductData = {
@@ -675,7 +718,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   };
 
   const removeItem = (id: string) => {
-    setItems(items.filter(i => i.productId !== id));
+    setItems(items.filter(i => rowId(i) !== id));
   };
 
   const calculateTotal = () => items.reduce((sum, item) => sum + item.total, 0);
@@ -714,8 +757,79 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     return auto.round ? Math.ceil(v / auto.round - 1e-9) * auto.round : Math.round(v * 100) / 100;
   };
 
+  /** Un renglón de la boleta que no está en el catálogo → producto nuevo en la lista (se edita, se borra o se asocia ahí) */
+  const newItemFromScan = (item: any, idx: number): PurchaseItem => {
+    // Precio de venta: el anotado a mano en la boleta o el del margen de siempre
+    const margin = item.margin !== undefined ? item.margin : defaultMargin;
+    const sale = Number(item.handPrice) || calculateSuggestedPrice(item.cost, margin, useIvaGlobal);
+    const base = useIvaGlobal ? item.cost * 1.21 : item.cost;
+    return {
+    salePrice: sale,
+    margin: base > 0 ? Math.round(((sale - base) / base) * 100) : margin,
+    productId: `NEW_PRODUCT_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    barcode: item.barcode || '',
+    sku: item.sku || '',
+    name: String(item.name || '').toUpperCase(),
+    categoryName: '-',
+    brandName: '-',
+    variant: '-',
+    unit: 'UNIT',
+    quantity: item.quantity,
+    cost: item.cost,
+    total: item.quantity * item.cost,
+    buyFormat: 'UNIT',
+    unitsPerPack: item.unitsPerPack || 1,
+    presentationType: 'UNIT',
+    isNew: true,
+    candidates: item.candidates?.length ? item.candidates : undefined,
+    scanned: item,
+    source: { code: item.sku || undefined, name: item.name },
+    newProductData: {
+      name: String(item.name || '').toUpperCase(),
+      barcode: item.barcode || null,
+      sku: item.sku || null,
+      salePrice: sale,
+      categoryId: null,
+      brandId: null,
+      unitsPerPack: item.unitsPerPack || 1,
+      presentationType: 'UNIT',
+    },
+    };
+  };
+
+  /** Categoría o marca nueva para un producto nuevo de la lista */
+  const createCategoryFor = async (productId: string) => {
+    const name = prompt('Nombre de la nueva categoría:');
+    if (!name || !name.trim()) return;
+    try {
+      const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#17925F' });
+      setCategories(prev => [...prev, newCat]);
+      setItems(prev => prev.map(p => rowId(p) === productId ? { ...p, newProductData: { ...p.newProductData!, categoryId: newCat.id } } : p));
+    } catch { toast.error('Error al crear categoría'); }
+  };
+  const createBrandFor = async (productId: string) => {
+    const name = prompt('Nombre de la nueva marca:');
+    if (!name || !name.trim()) return;
+    try {
+      const { data: newBrand } = await api.post('/brands', { name: name.trim() });
+      setBrands(prev => [...prev, newBrand]);
+      setItems(prev => prev.map(p => rowId(p) === productId ? { ...p, newProductData: { ...p.newProductData!, brandId: newBrand.id } } : p));
+    } catch { toast.error('Error al crear marca'); }
+  };
+
+  /** Producto nuevo de la lista que en realidad ya tenías: pasa a ser ese producto */
+  const associateNewRow = async (row: PurchaseItem, productId: string) => {
+    try {
+      const product = await associateRow({ ...(row.scanned || {}), quantity: row.quantity, cost: row.cost, total: row.total, name: row.name, sku: row.sku, barcode: row.barcode }, productId);
+      setItems((prev) => prev.filter((i) => i.productId !== row.productId));
+      toast.success(`Asociado a ${product.name}`);
+    } catch {
+      toast.error('Error al asociar el producto');
+    }
+  };
+
   /** Lo leído de una boleta (recién escaneada o pendiente del celular) → renglones de la compra */
-  const applyScanResult = (data: any) => {
+  const applyScanResult = (data: any, opts: { quiet?: boolean } = {}) => {
     if (data.duplicate) {
       toast.error(`Ojo: esta boleta ya se cargó el ${new Date(data.duplicate.createdAt).toLocaleDateString('es-AR')}${data.duplicate.status === 'PENDING' ? ' (está en "Por revisar")' : ''}. Si la confirmás de nuevo, se suma dos veces el stock.`, { duration: 15000 });
     }
@@ -734,8 +848,14 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
     for (const item of data.items) {
       if (item.product) {
+        // Precio de venta anotado a mano en la boleta: manda ese; si no, el que mantiene el margen
+        const sale = Number(item.handPrice) > 0 ? Number(item.handPrice) : keepMarginPrice(item.product, item.cost);
+        const base = useIvaGlobal ? item.cost * 1.21 : item.cost;
+        // El mismo producto en otro renglón (la boleta lo trae dos veces, por código): renglón aparte
+        const repeats = newItems.filter((n) => n.productId === item.product.id).length;
         newItems.push({
           productId: item.product.id,
+          lineId: repeats ? `${item.product.id}#${repeats + 1}` : undefined,
           barcode: item.product.barcode || item.barcode || '',
           sku: item.product.sku || item.sku || '',
           name: item.name || item.product.name,
@@ -750,8 +870,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           unitsPerPack: item.product.unitsPerPack || 1,
           presentationType: item.product.presentationType || 'UNIT',
           // Precio de venta sugerido: sube con el costo manteniendo el margen (con o sin IVA, como esté elegido)
-          salePrice: keepMarginPrice(item.product, item.cost),
-          margin: item.cost > 0 ? Math.round(((keepMarginPrice(item.product, item.cost) - (useIvaGlobal ? item.cost * 1.21 : item.cost)) / (useIvaGlobal ? item.cost * 1.21 : item.cost)) * 100) : 0,
+          salePrice: sale,
+          margin: base > 0 ? Math.round(((sale - base) / base) * 100) : 0,
           trackExpiry: Boolean(item.product.trackExpiry),
           base: { costPrice: item.product.costPrice || 0, salePrice: item.product.salePrice || 0 },
           source: { code: item.sku || undefined, name: item.name },
@@ -774,16 +894,24 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     }
 
     // Control de la lectura: si las cuentas de la boleta no cierran, se avisa qué revisar
-    if (data.check && !data.check.ok) {
+    // (en pestañas lo muestra fijo ReviewTabs, arriba de la compra)
+    if (data.check && !data.check.ok && !opts.quiet) {
       const lines = [data.check.message, ...(data.check.details || []).slice(0, 3)].join('\n');
       toast(lines, { icon: '⚠️', duration: 15000, style: { maxWidth: 520, whiteSpace: 'pre-line' } });
     }
 
     if (unmatched.length > 0) {
-      setPendingNewProducts(unmatched);
-      setShowNewProductsModal(true);
-      toast.success(`Boleta leída: ${newItems.length} productos encontrados y ${unmatched.length} nuevos.`);
-    } else {
+      // Los que no están en tu catálogo entran a la lista como productos nuevos (antes iban a una ventana
+      // aparte y, si se cerraba, se perdían). Ahí se editan, se borran o se asocian a uno que ya tenés.
+      const fresh = unmatched.map((u, k) => newItemFromScan(u, k));
+      // Si la misma boleta se aplica dos veces, no se duplican los renglones nuevos
+      const keyOf = (i: PurchaseItem) => `${i.source?.name || i.name}|${Number(i.quantity)}|${Number(i.cost)}`;
+      const freshKeys = new Set(fresh.map(keyOf));
+      setItems((prev) => [...prev.filter((p) => !(p.isNew && freshKeys.has(keyOf(p)))), ...fresh]);
+      setPendingNewProducts([]);
+      setShowNewProductsModal(false);
+      if (!opts.quiet) toast.success(`Boleta leída: ${newItems.length} productos encontrados y ${unmatched.length} nuevos (marcados "Nuevo" en la lista).`);
+    } else if (!opts.quiet) {
       toast.success(`Boleta leída: ${newItems.length} productos encontrados. Revisá y confirmá.`);
     }
   };
@@ -802,6 +930,25 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     if (!selectedFilesForScan || selectedFilesForScan.length === 0) return;
     setShowTotalPrompt(false);
     const hasExcel = selectedFilesForScan.some(isDocumentFile);
+    // Solo fotos: se leen en segundo plano, todas las que sean, con el avance foto por foto (ScanJobPanel).
+    // Cada comprobante queda en Compras → Por revisar y se abre en pestañas para confirmarlo.
+    if (!hasExcel) {
+      const files = selectedFilesForScan;
+      setIsScanning(true);
+      setScanProgress(0);
+      setScanStep(`Subiendo ${files.length === 1 ? 'la foto' : `${files.length} fotos`}…`);
+      try {
+        await startScanJob(files, useManualTotal ? manualTotalInput.trim() : undefined);
+        setSelectedFilesForScan([]);
+        onBack();
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || 'No se pudieron subir las fotos. Revisá la conexión y probá de nuevo.', { duration: 10000 });
+      } finally {
+        setIsScanning(false);
+        setScanStep('');
+      }
+      return;
+    }
     setIsScanning(true);
     setScanProgress(hasExcel ? 25 : 5);
     setScanStep(hasExcel ? 'Abriendo la boleta del proveedor...' : 'Subiendo imágenes a la IA...');
@@ -832,9 +979,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
     try {
       setScanStep(hasExcel ? 'Leyendo productos y totales, y cruzando con tu inventario...' : 'La IA está analizando detalladamente los productos y totales...');
+      // Varias fotos se leen una por una y, si no cierran, se releen: puede pasar del minuto
+      // (la caja espera a la IA hasta 150 s). Igual que en el celular.
       const { data } = await api.post('/purchases/scan-invoice', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 200000,
+      } as any);
 
       clearInterval(progressInterval);
       setScanProgress(100);
@@ -857,7 +1007,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     } catch (err: any) {
       clearInterval(progressInterval);
       console.error(err);
-      toast.error(err.response?.data?.message || err.message || 'Error al escanear la boleta');
+      const timedOut = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '');
+      toast.error(timedOut
+        ? 'La lectura tardó demasiado. Probá de nuevo con menos fotos por vez (por ejemplo, una factura por vez).'
+        : (err.response?.data?.message || err.message || 'Error al escanear la boleta'), { duration: 10000 });
     } finally {
       setIsScanning(false);
       setScanStep('');
@@ -965,7 +1118,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         name: unmatched.name.toUpperCase(),
         barcode: unmatched.barcode || '',
         costPrice: unmatched.cost || 0,
-        salePrice: calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
+        salePrice: Number(unmatched.handPrice) || calculateSuggestedPrice(unmatched.cost || 0, defaultMargin)
       });
       setActiveUnmatchedIndex(idx);
     } else {
@@ -1075,7 +1228,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
         });
         toast.success('Compra registrada con éxito');
         clearDraft();
-        onBack();
+        (onConfirmed || onBack)();
       } catch (err) {
         toast.error('Error al registrar compra');
       } finally {
@@ -1129,7 +1282,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       });
       toast.success('Compra registrada con éxito');
       clearDraft();
-      onBack();
+      (onConfirmed || onBack)();
     } catch (err) {
       toast.error('Error al registrar compra');
     } finally {
@@ -1158,23 +1311,23 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       )}
 
       {/* Las fotos de la boleta al lado, para comparar con lo leído */}
-      {scanPhotos.length > 0 && !showPhotos && (
+      {shownPhotos.length > 0 && !showPhotos && (
         <button onClick={() => setShowPhotos(true)} className="fixed right-4 bottom-24 z-[150] h-11 px-4 rounded-full bg-slate-900 text-white text-[13px] font-bold shadow-lg inline-flex items-center gap-2 cursor-pointer hover:bg-slate-800">
           <ImageIcon className="w-4 h-4" /> Ver la foto de la boleta
         </button>
       )}
       <AnimatePresence>
-        {showPhotos && scanPhotos.length > 0 && (
+        {showPhotos && shownPhotos.length > 0 && (
           <motion.aside initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }}
             className="fixed right-0 top-0 bottom-0 z-[160] w-full sm:w-[min(520px,45vw)] bg-white border-l border-slate-300 shadow-2xl flex flex-col">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
               <ImageIcon className="w-4 h-4 text-slate-600" />
-              <span className="flex-1 text-[13.5px] font-bold text-slate-800">Foto de la boleta {scanPhotos.length > 1 ? `(${scanPhotos.length})` : ''}</span>
+              <span className="flex-1 text-[13.5px] font-bold text-slate-800">Foto de la boleta {shownPhotos.length > 1 ? `(${shownPhotos.length})` : ''}</span>
               <button onClick={() => setShowPhotos(false)} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center cursor-pointer" aria-label="Cerrar"><X className="w-4 h-4" /></button>
             </div>
             <p className="px-4 pt-2 text-[12px] text-slate-500">Compará cada renglón con la foto antes de confirmar. Tocá la foto para verla más grande.</p>
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {scanPhotos.map((u, i) => (
+              {shownPhotos.map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noopener" className="block"><img src={u} alt={`Foto ${i + 1} de la boleta`} className="w-full rounded-lg border border-slate-200" /></a>
               ))}
             </div>
@@ -1216,7 +1369,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   </div>
                 ) : (
                   selectedFilesForScan.map((file, idx) => (
-                    <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-350 bg-white shadow-sm shrink-0">
+                    <div key={idx} className={`relative w-20 h-20 rounded-xl overflow-hidden border bg-white shadow-sm shrink-0 ${photoWarnings.some((w) => w.index === idx) && !photoWarningsOk ? 'border-amber-500 ring-2 ring-amber-300' : 'border-slate-350'}`}>
                       <FilePreview file={file} />
                       <button 
                         onClick={() => setSelectedFilesForScan(prev => prev.filter((_, i) => i !== idx))}
@@ -1310,6 +1463,18 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                 />
               </div>
 
+              {photoWarnings.length > 0 && !photoWarningsOk && (
+                <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12.5px] text-amber-900">
+                  <p className="font-bold">{photoWarnings.map((w) => warningText(w, selectedFilesForScan.length)).join('. ')}.</p>
+                  <p className="mt-0.5">{PHOTO_TIP}</p>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => { const bad = new Set(photoWarnings.map((w) => w.index)); setSelectedFilesForScan((prev) => prev.filter((_, i) => !bad.has(i))); cameraInputRef.current?.click(); }}
+                      className="h-8 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-bold cursor-pointer">Sacar de nuevo</button>
+                    <button type="button" onClick={() => setPhotoWarningsOk(true)} className="h-8 px-3 rounded-lg border border-amber-300 text-amber-900 hover:bg-amber-100 text-[12px] font-bold cursor-pointer">Usar igual</button>
+                  </div>
+                </div>
+              )}
+
               {/* Footer actions */}
               <div className="flex gap-3">
                 <button 
@@ -1326,6 +1491,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                   onClick={() => {
                     setShowScanModal(false);
                     setManualTotalInput('');
+                    // El total escrito solo sirve con una sola foto: con varias se leen directo
+                    if (selectedFilesForScan.length > 1 && !selectedFilesForScan.some(isDocumentFile)) { executeScanWithTotal(false); return; }
                     setShowTotalPrompt(true);
                   }}
                   className="flex-1 py-3 bg-rose-600 hover:bg-rose-750 text-white font-bold text-xs rounded-xl disabled:opacity-50 transition-all shadow-md cursor-pointer"
@@ -1354,7 +1521,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
               </h3>
               <p className="text-xs font-semibold text-slate-350 mb-4">{scanStep}</p>
               
-              {/* Progress Bar */}
+              {/* Progress Bar (subiendo fotos para leer en segundo plano: sin porcentaje) */}
+              {scanProgress > 0 && <>
               <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2">
                 <div 
                   className="bg-rose-500 h-full transition-all duration-300 ease-out"
@@ -1362,6 +1530,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                 />
               </div>
               <span className="text-[10px] font-bold text-slate-600 tracking-wider uppercase">{scanProgress}% Completado</span>
+              </>}
             </div>
           </motion.div>
         )}
@@ -1914,34 +2083,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                         <button 
                           type="button" 
                           onClick={() => {
-                            const bulkNewItems: PurchaseItem[] = pendingNewProducts.map((item, idx) => ({
-                              productId: `NEW_PRODUCT_${idx}_${Date.now()}`,
-                              barcode: item.barcode || '',
-                              sku: item.sku || '',
-                              name: item.name.toUpperCase(),
-                              categoryName: '-',
-                              brandName: '-',
-                              variant: '-',
-                              unit: 'UNIT',
-                              quantity: item.quantity,
-                              cost: item.cost,
-                              total: item.quantity * item.cost,
-                              buyFormat: 'UNIT',
-                              unitsPerPack: item.unitsPerPack || 1,
-                              presentationType: 'UNIT',
-                              isNew: true,
-                              source: { code: item.sku || undefined, name: item.name },
-                              newProductData: {
-                                name: item.name.toUpperCase(),
-                                barcode: item.barcode || null,
-                                sku: item.sku || null,
-                                salePrice: calculateSuggestedPrice(item.cost, item.margin !== undefined ? item.margin : defaultMargin),
-                                categoryId: null,
-                                brandId: null,
-                                unitsPerPack: item.unitsPerPack || 1,
-                                presentationType: 'UNIT',
-                              }
-                            }));
+                            const bulkNewItems: PurchaseItem[] = pendingNewProducts.map((item, idx) => newItemFromScan(item, idx));
                            setItems(prev => [...prev, ...bulkNewItems]);
                            setShowNewProductsModal(false);
                            setPendingNewProducts([]);
@@ -2021,369 +2163,26 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
           {/* Products Table */}
           <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-             <table className="w-full text-left border-collapse">
-                <thead>
-                   <tr className="bg-slate-50/50 border-b border-slate-300">
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">SKU</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Código (Barras)</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Nombre</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Categoría</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Marca</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest">Variante</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Formato Compra</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Cantidad</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Costo lista</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Desc. 1/2/3 (%)</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Costo + IVA</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Margen (%)</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center">Precio Venta</th>
-                      <th className="px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest text-right">Total</th>
-                      <th className="px-2 pr-4"></th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                    {items.map((item, idx) => (
-                      <tr key={item.productId} className="hover:bg-slate-50/30 transition-colors">
-                         <td className="px-4 py-1.5 text-[11px] font-bold text-slate-600">
-                           {item.sku || '-'}
-                         </td>
-                         <td className="px-4 py-1.5 text-[11px] font-bold text-slate-600">
-                           {item.isNew ? (
-                             <input 
-                               type="text"
-                               id={`main-barcode-${idx}`}
-                               placeholder="Scan/Escribir Barras..."
-                               value={item.barcode}
-                               onFocus={e => e.target.select()}
-                               onChange={e => updateItem(item.productId, 'barcode', e.target.value)}
-                               onKeyDown={e => {
-                                 if (e.key === 'Enter') {
-                                   e.preventDefault();
-                                   const next = document.getElementById(`main-qty-${idx}`);
-                                   if (next) (next as HTMLInputElement).focus();
-                                 }
-                               }}
-                               className="w-32 bg-slate-50 border border-slate-400 rounded-lg px-2 py-0.5 text-[10px] font-bold outline-none focus:bg-white focus:border-emerald-500"
-                             />
-                           ) : (
-                             item.barcode || '-'
-                           )}
-                         </td>
-                         <td className="px-4 py-1.5 text-[11px] font-bold text-slate-800">
-                            {item.name}
-                            {item.isNew && (
-                              <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px] font-extrabold uppercase">Nuevo</span>
-                            )}
-                            {!item.isNew && costInsights[item.productId] && <CostInsight info={costInsights[item.productId]} />}
-                         </td>
-                         <td className="px-4 py-1.5">
-                             {item.isNew ? (
-                               <div className="flex items-center gap-1">
-                                 <select
-                                   value={item.newProductData?.categoryId || ''}
-                                   onChange={e => {
-                                     const val = e.target.value || null;
-                                     setItems(prev => prev.map(p => {
-                                       if (p.productId === item.productId) {
-                                         return {
-                                           ...p,
-                                           newProductData: {
-                                             ...p.newProductData!,
-                                             categoryId: val
-                                           }
-                                         };
-                                       }
-                                       return p;
-                                     }));
-                                   }}
-                                   className="bg-slate-50 border border-slate-400 rounded-lg px-2 py-0.5 text-[10px] font-extrabold text-slate-600 outline-none cursor-pointer max-w-[120px]"
-                                 >
-                                   <option value="">Sin categoría</option>
-                                   {buildCategoryTree(categories).map(cat => (
-                                     <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                   ))}
-                                 </select>
-                                 <button
-                                   type="button"
-                                   onClick={async () => {
-                                     const name = prompt('Nombre de la nueva categoría:');
-                                     if (name && name.trim()) {
-                                       try {
-                                         const { data: newCat } = await api.post('/categories', { name: name.trim(), color: '#17925F' });
-                                         setCategories(prev => [...prev, newCat]);
-                                         setItems(prev => prev.map(p => {
-                                           if (p.productId === item.productId) {
-                                             return {
-                                               ...p,
-                                               newProductData: {
-                                                 ...p.newProductData!,
-                                                 categoryId: newCat.id
-                                               }
-                                             };
-                                           }
-                                           return p;
-                                         }));
-                                       } catch {
-                                         toast.error('Error al crear categoría');
-                                       }
-                                     }
-                                   }}
-                                   className="text-[11px] font-bold text-rose-500 hover:text-rose-600 px-1"
-                                 >
-                                   +
-                                 </button>
-                               </div>
-                             ) : (
-                               <span className="text-[10px] font-extrabold text-slate-600 uppercase">
-                                 {item.categoryName || '-'}
-                               </span>
-                             )}
-                          </td>
-                          <td className="px-4 py-1.5">
-                             {item.isNew ? (
-                               <div className="flex items-center gap-1">
-                                 <select
-                                   value={item.newProductData?.brandId || ''}
-                                   onChange={e => {
-                                     const val = e.target.value || null;
-                                     setItems(prev => prev.map(p => {
-                                       if (p.productId === item.productId) {
-                                         return {
-                                           ...p,
-                                           newProductData: {
-                                             ...p.newProductData!,
-                                             brandId: val
-                                           }
-                                         };
-                                       }
-                                       return p;
-                                     }));
-                                   }}
-                                   className="bg-slate-50 border border-slate-400 rounded-lg px-2 py-0.5 text-[10px] font-extrabold text-slate-600 outline-none cursor-pointer max-w-[120px]"
-                                 >
-                                   <option value="">Sin marca</option>
-                                   {brands.map(b => (
-                                     <option key={b.id} value={b.id}>{b.name}</option>
-                                   ))}
-                                 </select>
-                                 <button
-                                   type="button"
-                                   onClick={async () => {
-                                     const name = prompt('Nombre de la nueva marca:');
-                                     if (name && name.trim()) {
-                                       try {
-                                         const { data: newBrand } = await api.post('/brands', { name: name.trim() });
-                                         setBrands(prev => [...prev, newBrand]);
-                                         setItems(prev => prev.map(p => {
-                                           if (p.productId === item.productId) {
-                                             return {
-                                               ...p,
-                                               newProductData: {
-                                                 ...p.newProductData!,
-                                                 brandId: newBrand.id
-                                               }
-                                             };
-                                           }
-                                           return p;
-                                         }));
-                                       } catch {
-                                         toast.error('Error al crear marca');
-                                       }
-                                     }
-                                   }}
-                                   className="text-[11px] font-bold text-rose-500 hover:text-rose-600 px-1"
-                                 >
-                                   +
-                                 </button>
-                               </div>
-                             ) : (
-                               <span className="text-[10px] font-extrabold text-slate-600 uppercase">
-                                 {item.brandName || '-'}
-                               </span>
-                             )}
-                          </td>
-                         <td className="px-4 py-1.5 text-[10px] font-bold text-slate-350">{item.variant}</td>
-                         <td className="px-4 py-1.5 text-center">
-                            {item.presentationType === 'PACK' ? (
-                              <select
-                                value={item.buyFormat}
-                                onChange={e => updateItem(item.productId, 'buyFormat', e.target.value)}
-                                className="bg-slate-50 border border-slate-400 rounded-xl px-2 py-0.5 text-[10px] font-extrabold uppercase text-slate-600 outline-none cursor-pointer"
-                              >
-                                <option value="UNIT">Unidades</option>
-                                <option value="PACK">Paquete ({item.unitsPerPack} u.)</option>
-                              </select>
-                            ) : (
-                              <span className="text-[10px] font-extrabold text-slate-600 uppercase">Unidades</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-1.5 text-center">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <div className="flex items-center gap-1 justify-center">
-                                <button 
-                                  type="button"
-                                  onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))}
-                                  className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs active:scale-[0.9] transition-all"
-                                >
-                                  -
-                                </button>
-                                <input 
-                                  type="number" 
-                                  id={`main-qty-${idx}`}
-                                  value={item.quantity === 0 && item.quantity !== '' as any ? 0 : item.quantity || ''} 
-                                  onFocus={e => e.target.select()}
-                                  onChange={e => {
-                                    const val = parseFloat(e.target.value);
-                                    updateItem(item.productId, 'quantity', isNaN(val) ? '' as any : val);
-                                  }}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const next = document.getElementById(`main-cost-${idx}`);
-                                      if (next) (next as HTMLInputElement).focus();
-                                    }
-                                  }}
-                                  className="w-12 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
-                                />
-                                <button 
-                                  type="button"
-                                  onClick={() => updateItem(item.productId, 'quantity', (parseFloat(item.quantity as any) || 0) + 1)}
-                                  className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs active:scale-[0.9] transition-all"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              {item.buyFormat === 'PACK' && (
-                                <span className="text-[8px] font-bold text-rose-500 uppercase tracking-tight">({(parseFloat(item.quantity as any) || 0) * item.unitsPerPack} unidades)</span>
-                              )}
-                              {(item.trackExpiry || (item.isNew && expiryEnabled)) && (
-                                <input
-                                  type="date"
-                                  title="Vencimiento del lote"
-                                  value={item.expiresAt || ''}
-                                  onChange={e => updateItem(item.productId, 'expiresAt', e.target.value)}
-                                  className={`mt-0.5 w-[118px] rounded px-1 py-0.5 text-[10px] font-bold outline-none border ${item.expiresAt || !item.trackExpiry ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-amber-50 border-amber-300 text-amber-700'}`}
-                                />
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-1.5 text-center">
-                             <div className="flex flex-col items-center gap-0.5">
-                               <input 
-                                 type="number" 
-                                 id={`main-cost-${idx}`}
-                                 value={item.cost === 0 && item.cost !== '' as any ? 0 : item.cost || ''} 
-                                 onFocus={e => e.target.select()}
-                                 onChange={e => {
-                                   const val = parseFloat(e.target.value);
-                                   updateItem(item.productId, 'cost', isNaN(val) ? '' as any : val);
-                                 }}
-                                 onKeyDown={e => {
-                                   if (e.key === 'Enter') {
-                                     e.preventDefault();
-                                     const next = document.getElementById(`main-margin-${idx}`);
-                                     if (next) (next as HTMLInputElement).focus();
-                                   }
-                                 }}
-                                 className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
-                               />
-                               {item.buyFormat === 'PACK' && (
-                                 <span className="text-[8px] font-extrabold text-slate-600 uppercase">(${( (parseFloat(item.cost as any) || 0) / item.unitsPerPack).toFixed(1)} / u.)</span>
-                               )}
-                             </div>
-                          </td>
-                          {/* Descuentos del proveedor, en cascada sobre el costo de lista */}
-                          <td className="px-2 py-1.5 text-center">
-                             <div className="flex items-center justify-center gap-1">
-                               {([1, 2, 3] as const).map(n => (
-                                 <input
-                                   key={n}
-                                   type="number"
-                                   min={0}
-                                   max={100}
-                                   placeholder="0"
-                                   value={(item as any)[`discount${n}`] || ''}
-                                   onFocus={e => e.target.select()}
-                                   onChange={e => {
-                                     const val = parseFloat(e.target.value);
-                                     updateItem(item.productId, `discount${n}`, isNaN(val) ? 0 : val);
-                                   }}
-                                   className="w-11 bg-slate-50 border border-slate-300 rounded px-1 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
-                                 />
-                               ))}
-                             </div>
-                             {netCostOf(item) !== (parseFloat(item.cost as any) || 0) && (
-                               <span className="text-[8px] font-bold text-emerald-600 uppercase">neto $ {netCostOf(item).toFixed(2)}</span>
-                             )}
-                          </td>
-                          <td className="px-4 py-1.5 text-center text-[11px] font-extrabold text-slate-700 bg-slate-50/20">
-                             <div className="flex flex-col items-center justify-center gap-0.5">
-                               <span>$ {(netCostOf(item) * (useIvaGlobal ? 1.21 : 1)).toFixed(2)}</span>
-                               {item.buyFormat === 'PACK' && (
-                                 <span className="text-[8px] font-bold text-rose-500 uppercase">
-                                   ($ {(((parseFloat(item.cost as any) || 0) * (useIvaGlobal ? 1.21 : 1)) / item.unitsPerPack).toFixed(2)} / u.)
-                                 </span>
-                               )}
-                             </div>
-                          </td>
-                          <td className="px-4 py-1.5 text-center">
-                             <input 
-                               type="number" 
-                               id={`main-margin-${idx}`}
-                               value={item.margin === 0 && item.margin !== '' as any ? 0 : item.margin || ''} 
-                               onFocus={e => e.target.select()}
-                               onChange={e => {
-                                 const val = parseFloat(e.target.value);
-                                 updateItem(item.productId, 'margin', isNaN(val) ? '' as any : val);
-                               }}
-                               onKeyDown={e => {
-                                 if (e.key === 'Enter') {
-                                   e.preventDefault();
-                                   const next = document.getElementById(`main-salePrice-${idx}`);
-                                   if (next) (next as HTMLInputElement).focus();
-                                 }
-                               }}
-                               className="w-14 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50"
-                             />
-                          </td>
-                          <td className="px-4 py-1.5 text-center">
-                             <input 
-                               type="number" 
-                               id={`main-salePrice-${idx}`}
-                               value={item.salePrice === 0 && item.salePrice !== '' as any ? 0 : item.salePrice || ''} 
-                               onFocus={e => e.target.select()}
-                               onChange={e => {
-                                 const val = parseFloat(e.target.value);
-                                 updateItem(item.productId, 'salePrice', isNaN(val) ? '' as any : val);
-                               }}
-                               onKeyDown={e => {
-                                 if (e.key === 'Enter') {
-                                   e.preventDefault();
-                                   const nextRowBarcode = document.getElementById(`main-barcode-${idx + 1}`);
-                                   if (nextRowBarcode) {
-                                     (nextRowBarcode as HTMLInputElement).focus();
-                                   } else {
-                                     const nextRowQty = document.getElementById(`main-qty-${idx + 1}`);
-                                     if (nextRowQty) {
-                                       (nextRowQty as HTMLInputElement).focus();
-                                     } else {
-                                       productInputRef.current?.focus();
-                                     }
-                                   }
-                                 }
-                               }}
-                               className="w-20 bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-center text-[11px] font-bold outline-none focus:border-rose-500/50 text-emerald-700 font-extrabold"
-                             />
-                          </td>
-                         <td className="px-4 py-1.5 text-right text-[12px] font-bold text-emerald-600">$ {item.total.toFixed(2)}</td>
-                         <td className="px-2 pr-4 text-right">
-                            <button onClick={() => removeItem(item.productId)} className="p-1.5 text-rose-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all border-0 bg-transparent cursor-pointer"><Trash2 className="w-4 h-4" /></button>
-                         </td>
-                      </tr>
-                    ))}
-                   {/* Add Product Search Row */}
-                   <tr>
-                      <td colSpan={3} className="px-4 py-2">
+             <PurchaseItemsTable<PurchaseItem>
+               items={items}
+               useIva={useIvaGlobal}
+               expiryEnabled={expiryEnabled}
+               netCostOf={netCostOf}
+               update={(id, field, value) => updateItem(id, field as keyof PurchaseItem, value)}
+               setNewProductField={(id, field, value) => setItems(prev => prev.map(it => rowId(it) === id ? { ...it, newProductData: { ...it.newProductData!, [field]: value } } : it))}
+               remove={removeItem}
+               categories={buildCategoryTree(categories)}
+               brands={brands}
+               onCreateCategory={createCategoryFor}
+               onCreateBrand={createBrandFor}
+               renderNameExtras={(item) => (
+                 <>
+                   {item.isNew && item.candidates?.length ? <CandidateChips candidates={item.candidates} onPick={(id) => associateNewRow(item, id)} /> : null}
+                   {!item.isNew && costInsights[item.productId] && <CostInsight info={costInsights[item.productId]} />}
+                 </>
+               )}
+               onLeaveLast={() => productInputRef.current?.focus()}
+               addRow={(
                          <div className="relative flex items-center">
                             <Search className="absolute left-3 w-4 h-4 text-slate-300 pointer-events-none" />
                             <input 
@@ -2416,19 +2215,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                               </div>
                             )}
                          </div>
-                      </td>
-                       <td colSpan={10}>
-                         <button 
-                           type="button"
-                           onClick={() => productInputRef.current?.focus()}
-                           className="ml-4 text-[10px] font-bold text-rose-500 uppercase tracking-widest hover:underline transition-all border-0 bg-transparent cursor-pointer"
-                         >
-                           + Agregar producto
-                         </button>
-                       </td>
-                   </tr>
-                </tbody>
-             </table>
+               )}
+             />
              <div className="mt-auto p-6 border-t border-slate-300 flex flex-col items-end gap-2 bg-slate-50/20">
                 {isFixedAmount ? (
                   <div className="flex items-center gap-6 w-72 justify-end">

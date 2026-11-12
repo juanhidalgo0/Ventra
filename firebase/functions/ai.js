@@ -20,17 +20,34 @@ const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
 
+const lessonsMod = require("./supplier-lessons");
+const samples = require("./invoice-samples");
 const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); return new (SDK.default || SDK)(opts); };
 
 const MODEL = "claude-haiku-5-5";
 // pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
 // (de una lista o de una boleta); ask: 2 usos por pregunta
-const LIMITS = { order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200 };
+const LIMITS = { lesson: 400, order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60 };
-// Haiku 5.5: $0,10 / $0,50 por millón (entrada / salida); cache: escritura 1,25x, lectura 0,1x
-const costOf = (u) => ((u.input_tokens || 0) * 0.1 + (u.cache_creation_input_tokens || 0) * 0.125
-  + (u.cache_read_input_tokens || 0) * 0.01 + (u.output_tokens || 0) * 0.5) / 1e6;
+const DAILY = { lesson: 60, order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60 };
+// Fotos de boletas leídas de a una (stage "page"): las facturas se cuentan al juntarlas, esto es un techo
+const PAGE_LIMITS = { month: 600, day: 150 };
+// Dólares por millón de tokens (entrada / salida); cache: escritura 1,25x, lectura 0,1x de la entrada
+const PRICES = {
+  "claude-haiku-5-5": { in: 0.1, out: 0.5 },
+  "claude-sonnet-5-5": { in: 2, out: 10 },
+  "claude-opus-5-5": { in: 4, out: 20 },
+  "claude-fable-5-2": { in: 8, out: 40 },
+};
+/** Lo que costó una respuesta según el modelo que la dio (modelo desconocido: el más caro, para no quedarse corto). Pura. */
+function priceOf(model, u = {}) {
+  const p = PRICES[model] || PRICES["claude-fable-5-2"];
+  return ((u.input_tokens || 0) * p.in + (u.cache_creation_input_tokens || 0) * p.in * 1.25
+    + (u.cache_read_input_tokens || 0) * p.in * 0.1 + (u.output_tokens || 0) * p.out) / 1e6;
+}
+// Si la tarea juntó lecturas de varios modelos ya trae su costUsd; si no, todo fue con MODEL
+const costOf = (u) => (typeof u.costUsd === "number" ? u.costUsd : priceOf(MODEL, u));
+const USAGE_KEYS = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens", "costUsd"];
 
 const TZ = "America/Argentina/Buenos_Aires";
 const dayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
@@ -183,13 +200,26 @@ const INVOICE_SCHEMA = {
 // Antes todas las fotos iban juntas como UNA factura: con 2 facturas, un remito y una nota de otro
 // proveedor, la IA devolvía un solo comprobante y se perdía el resto (2026-11-12, boletas reales).
 // Ahora: una lectura por foto (en paralelo), las páginas del mismo comprobante se juntan por número,
-// y el comprobante cuyos renglones no cierran con lo impreso se relee una vez con un modelo más fuerte.
+// y el comprobante cuyos renglones no cierran con lo impreso se relee con Sonnet y, si sigue sin cerrar, con Opus.
 const INVOICE_STRONG_MODEL = "claude-sonnet-5-5";
+// Última instancia: solo para lo que Sonnet tampoco resolvió (cuesta el doble que Sonnet)
+const INVOICE_TOP_MODEL = "claude-opus-5-5";
 const INVOICE_ONE_PROMPT = `${INVOICE_PROMPT}
 12. Esta foto es UN solo comprobante (o una página de uno). Puede estar girada, torcida o con sombras: leela igual.
 13. "docType": "factura", "remito", "nota" (nota de pedido, presupuesto o comprobante "no válido como factura"), "ticket" u "otro".
 14. "pageNumber" y "pageCount": si dice "Pág. 1 de 2" o "Página 1 de 1", esos números; si no lo dice, 0. Ojo: un número de página suelto (por ejemplo "Pag. 226") NO es "de cuántas": en ese caso pageNumber 0 y pageCount 0.
-15. Anotaciones a mano sobre un comprobante impreso (sumas, totales escritos con birome) NO son renglones ni el total: ignoralas.`;
+15. Anotaciones a mano sobre un comprobante impreso (sumas, totales escritos con birome o resaltador, tildes) NO son renglones ni el total, y nunca cambian la cantidad, el precio ni el total impresos. Única excepción: si al lado de un renglón impreso hay un número escrito a mano que parece el precio de venta que el comercio le va a poner (por ejemplo "3400" en naranja al lado de un producto que cuesta 1.900), ponelo en "handPrice" de ese renglón (solo el número, "3400"). Si no hay, "handPrice" vacío.
+16. "unitPrice": el precio unitario impreso en ESA línea, el que multiplicado por la cantidad da el total de la línea (si hay precio de lista y precio con bonificación, el bonificado; si hay sin IVA y con IVA, el de la misma columna que el total). Vacío si no hay.
+17. Cantidades con formato "bultos,unidades" (por ejemplo "0,02" = 0 bultos y 2 unidades, en distribuidoras de bebidas): si CANTIDAD × precio no da el total, packageQuantity = total / precio unitario (puede tener decimales).
+18. Esta regla reemplaza a la 3. Descuentos con importe negativo ("LIMPIEZA DEL HOGAR 15%", "Bonificación", los renglones bajo "PROMOCIONES" al pie): SÍ van, cada uno como renglón con su total negativo tal cual está impreso (por ejemplo "-1.635,87"), packageQuantity 1, para que la suma cierre con el subtotal. "Total Ahorro" o "Ahorro total" es la suma de esos descuentos: no lo agregues. Las líneas "Promoción 181820" que solo informan un precio (sin importe negativo) no son renglones: el producto ya trae su total con la promo aplicada.
+19. Si la línea se cobra por peso (columna Kg, Vol./Kg o "x kg"), packageQuantity son los kilos de esa línea (el que multiplicado por el precio da el total).
+20. Si en la foto asoman otros papeles atrás o al costado (otra factura, otra hoja), leé SOLO el comprobante de adelante, el que se ve completo. Proveedor, número, fecha y totales tienen que ser de ESE papel: si no se ven en esa hoja, dejalos vacíos (no los tomes de los papeles de atrás). Ojo: el encabezado de un papel de atrás suele asomar ARRIBA del de adelante; si el papel de adelante tiene otro diseño (otra letra, otras columnas, otra moneda), ese número y ese proveedor NO son suyos.
+21. "ivaTotal": el importe total de IVA impreso al pie (sumando 21% y 10,5% si hay), tal cual está impreso. "otrosImpuestos": la suma de percepciones (IIBB, IVA, municipales) e impuestos internos impresos al pie, como número ("4015.71"). Vacíos si no se ven.
+26. "impuestosInternos": SOLO los impuestos internos impresos al pie ("Imp. Internos", "Impuestos internos"), como número ("1520.40"); también van sumados en "otrosImpuestos". Vacío si no hay.
+22. "condicionVenta": "contado" si dice contado, efectivo o "retirada por cliente" pagada; "cuenta corriente" si dice cuenta corriente, a plazo o con vencimiento de pago; vacío si no lo dice.
+23. Leyendas impresas debajo de un producto que no son parte del nombre ("Venta por cuenta y orden de Terceros", "Oferta", "Precio sugerido") no van en "name".
+24. "fotoLegible": "si" si podés leer todos los renglones con seguridad; "en partes" si alguna zona no se lee bien (oscura, movida, borrosa, con reflejo, doblada o cortada) pero el resto sí; "no" si no se puede leer el detalle de productos. "problemaFoto": si no es "si", qué pasa y dónde, en pocas palabras para el comerciante ("la parte de abajo está cortada: falta el total", "está movida a la derecha: no se leen los precios"); si no, vacío. No inventes lo que no se ve: si un número no se lee, mejor marcá la foto "en partes".
+25. "precios": "sin iva" si los precios de los renglones NO incluyen IVA y el IVA se suma aparte (factura A, columna "Precio sin IVA" o renglón "IVA 21%" al pie con importe); "finales" si los precios ya son lo que se paga (factura B o C, ticket, lista o presupuesto sin IVA aparte, "IVA contenido", "Exento", IVA 0,00); vacío si no se puede saber.`;
 const INVOICE_ONE_SCHEMA = {
   ...INVOICE_SCHEMA,
   properties: {
@@ -197,9 +227,81 @@ const INVOICE_ONE_SCHEMA = {
     docType: { type: "string", enum: ["factura", "remito", "nota", "ticket", "otro"] },
     pageNumber: { type: "integer" },
     pageCount: { type: "integer" },
+    ivaTotal: { type: "string" },
+    otrosImpuestos: { type: "string" },
+    condicionVenta: { type: "string", enum: ["contado", "cuenta corriente", ""] },
+    fotoLegible: { type: "string", enum: ["si", "en partes", "no"] },
+    problemaFoto: { type: "string" },
+    precios: { type: "string", enum: ["sin iva", "finales", ""] },
+    impuestosInternos: { type: "string" },
+    items: {
+      type: "array",
+      items: {
+        ...INVOICE_SCHEMA.properties.items.items,
+        properties: { ...INVOICE_SCHEMA.properties.items.items.properties, unitPrice: { type: "string" }, handPrice: { type: "string" } },
+        required: [...INVOICE_SCHEMA.properties.items.items.required, "unitPrice", "handPrice"],
+      },
+    },
   },
-  required: [...INVOICE_SCHEMA.required, "docType", "pageNumber", "pageCount"],
+  required: [...INVOICE_SCHEMA.required, "docType", "pageNumber", "pageCount", "ivaTotal", "otrosImpuestos", "condicionVenta", "fotoLegible", "problemaFoto", "precios", "impuestosInternos"],
 };
+
+/**
+ * Control de cada renglón: cantidad × precio unitario = total de la línea. true / false / null (no hay
+ * precio para comparar). Detecta una cantidad mal leída aunque la suma de la boleta cierre. Pura.
+ */
+function lineOk(it) {
+  const q = Number(it.packageQuantity) || 0, u = num(it.unitPrice), t = num(it.total);
+  if (!(u > 0) || !(q > 0) || !t) return null;
+  const tol = Math.max(1, Math.abs(t) * 0.01);
+  // A veces el precio impreso es por unidad y la cantidad en bultos (o al revés): también vale
+  const upp = Number(it.unitsPerPack) || 1;
+  return Math.abs(q * u - t) <= tol || (upp > 1 && Math.abs(q * upp * u - t) <= tol);
+}
+
+/**
+ * QR de la factura electrónica de ARCA (RG 4892; especificación "QR incluido en las facturas
+ * electrónicas", versión 1): https://www.arca.gob.ar/fe/qr/?p=<JSON en base64> con
+ * { ver, fecha, cuit, ptoVta, tipoCmp, nroCmp, importe, moneda, ctz, tipoDocRec, nroDocRec, tipoCodAut, codAut }.
+ * Lo decodifica la caja (sobre la foto original) y llega acá ya como objeto. Pura.
+ */
+const QR_CREDIT = new Set([3, 8, 13, 21, 53, 203, 208, 213]);
+const QR_DEBIT = new Set([2, 7, 12, 20, 52, 202, 207, 212]);
+const QR_LETTER = { 1: "A", 2: "A", 3: "A", 6: "B", 7: "B", 8: "B", 11: "C", 12: "C", 13: "C", 51: "M", 52: "M", 53: "M", 201: "A", 202: "A", 203: "A", 206: "B", 207: "B", 208: "B", 211: "C", 212: "C", 213: "C" };
+function cleanQr(q) {
+  if (!q || typeof q !== "object") return null;
+  const cuit = String(q.cuit || "").replace(/\D/g, "");
+  const ptoVta = Math.trunc(Number(q.ptoVta)), nroCmp = Math.trunc(Number(q.nroCmp)), tipoCmp = Math.trunc(Number(q.tipoCmp));
+  if (cuit.length !== 11 || !(ptoVta > 0) || !(nroCmp > 0) || !(tipoCmp > 0)) return null;
+  const importe = Number(q.importe) || 0;
+  const moneda = String(q.moneda || "PES").toUpperCase().slice(0, 3);
+  const ctz = Number(q.ctz) || 1;
+  return {
+    cuit, ptoVta, nroCmp, tipoCmp, importe, moneda, ctz,
+    // En pesos: lo que se paga (una factura en dólares, al tipo de cambio que dice la factura)
+    totalPesos: Math.round((moneda === "PES" ? importe : importe * ctz) * 100) / 100,
+    fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(q.fecha || "")) ? String(q.fecha) : "",
+    tipoDocRec: Math.trunc(Number(q.tipoDocRec)) || 0, nroDocRec: String(q.nroDocRec || "").replace(/\D/g, "").slice(0, 20),
+    kind: QR_CREDIT.has(tipoCmp) ? "nota de crédito" : QR_DEBIT.has(tipoCmp) ? "nota de débito" : "factura",
+    letter: QR_LETTER[tipoCmp] || "",
+  };
+}
+/** Pone en la lectura lo que dice el QR (manda sobre lo que leyó la IA). Pura: devuelve otra lectura. */
+function applyQr(read, rawQr) {
+  const qr = cleanQr(rawQr);
+  if (!qr || !read || read.error) return read;
+  const out = { ...read, qr };
+  out.supplierCuit = `${qr.cuit.slice(0, 2)}-${qr.cuit.slice(2, 10)}-${qr.cuit.slice(10)}`;
+  // Mismo número que leyó la IA (con otros ceros): queda como está; si no, el del QR
+  const parts = String(read.invoiceNumber || "").split(/\D+/).filter(Boolean).map(Number);
+  const same = parts.length >= 2 && parts[parts.length - 2] === qr.ptoVta && parts[parts.length - 1] === qr.nroCmp;
+  if (!same) out.invoiceNumber = `${String(qr.ptoVta).padStart(5, "0")}-${String(qr.nroCmp).padStart(8, "0")}`;
+  if (qr.fecha) out.date = qr.fecha;
+  // El importe del QR es el total exacto, aunque el impreso esté tapado o mal leído
+  if (qr.totalPesos > 0) out.totalFacturaAPagar = qr.totalPesos.toFixed(2);
+  if (qr.kind !== "factura") out.docType = "otro";
+  return out;
+}
 
 const num = (s) => {
   // "1.234,56" / "1234.56" / "$ 139.896,67" → número (igual que parseArgentineNumber de la caja)
@@ -220,45 +322,116 @@ const digits = (s) => String(s || "").replace(/\D/g, "").replace(/^0+/, "");
 function invoiceCloses(doc) {
   const sum = (doc.items || []).reduce((s, it) => s + num(it.total), 0);
   const total = num(doc.totalFacturaAPagar), sub = num(doc.subtotalNeto);
+  const iva = num(doc.ivaTotal), other = Math.max(0, num(doc.otrosImpuestos));
   if (!(sum > 0)) return null;
   if (!(total > 0) && !(sub > 0)) return null;
-  const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(50, b * 0.02);
-  return near(sum, sub) || near(sum * 1.21, total) || near(sum, total);
+  // Ajustado: con el 2% de antes, un descuento olvidado de $3.500 se tapaba con las percepciones y
+  // "cerraba" igual (Vital, 2026-11-12). Medio por ciento alcanza para el redondeo de cada renglón.
+  const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(20, b * 0.005);
+  // El subtotal neto impreso manda: si está, tiene que dar ese
+  // (o el total, si los renglones ya traen IVA e impuestos internos, como Salta Refrescos)
+  if (sub > 0 && !near(sub, total)) return near(sum, sub) || near(sum, total);
+  // Con el IVA y las percepciones impresos, la cuenta es exacta (sirve con 10,5% y 21% mezclados)
+  if (total > 0 && iva > 0) return near(sum + iva + other, total) || near(sum, total);
+  return near(sum, sub) || near(sum * 1.21 + other, total) || near(sum, total);
 }
 
 /**
- * Lecturas de cada foto → comprobantes. Se juntan las páginas con el mismo número (y proveedor), y
- * una foto sin número que dice "página 2 de 2" se pega al comprobante anterior. Pura.
+ * Lecturas de cada foto → comprobantes. Las hojas con el mismo número de comprobante se juntan si el
+ * proveedor coincide (mismo CUIT, o nombre parecido: la IA a veces lo escribe distinto en cada hoja), y
+ * una foto sin número que dice "página 2 de N" se pega al comprobante anterior. Pura.
  * reads: [{ image: índice de la foto, ...lectura }]
  */
+const supplierKey = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?)\b/g, "").replace(/[^a-z0-9]/g, "");
+function sameSupplier(a, b) {
+  const ca = digits(a.supplierCuit), cb = digits(b.supplierCuit);
+  if (ca.length >= 10 && cb.length >= 10) return ca === cb;
+  const na = supplierKey(a.supplierName), nb = supplierKey(b.supplierName);
+  if (!na || !nb) return true; // una hoja sin nombre: alcanza con el número
+  return na === nb || na.startsWith(nb.slice(0, 6)) || nb.startsWith(na.slice(0, 6));
+}
 function groupInvoicePages(reads) {
   const docs = [];
-  const keyOf = (r) => { const n = digits(r.invoiceNumber); return n.length >= 3 ? `${digits(r.supplierCuit) || String(r.supplierName || "").toLowerCase().replace(/\W/g, "").slice(0, 12)}|${n}` : null; };
   for (const r of reads) {
-    const key = keyOf(r);
-    let doc = key ? docs.find((d) => d.key === key) : null;
-    if (!doc && !key && r.pageNumber > 1 && docs.length) doc = docs[docs.length - 1];
+    const n = digits(r.invoiceNumber);
+    let doc = n.length >= 3 ? docs.find((d) => d.number === n && sameSupplier(d.reads[0], r)) : null;
+    if (!doc && n.length < 3 && r.pageNumber > 1 && docs.length) doc = docs[docs.length - 1];
     if (!doc) {
-      doc = { key, images: [], reads: [] };
+      doc = { number: n.length >= 3 ? n : null, images: [], reads: [] };
       docs.push(doc);
     }
     doc.images.push(r.image);
     doc.reads.push(r);
   }
+  // Una hoja que se pegó por el número pero no es de ese comprobante: repite una hoja que ya está, o no
+  // dice de qué hoja es y el proveedor no coincide. Pasa cuando atrás asoma el encabezado de otra factura
+  // (2026-11-12: una lista de cervezas tomó el número de Nini y su total). Va aparte. Una hoja movida del
+  // mismo proveedor donde no se llega a leer "hoja 2 de 6" se queda (2026-11-12: la hoja 2 de Nini).
+  const ownSupplier = (a, b) => {
+    const ca = digits(a.supplierCuit), cb = digits(b.supplierCuit);
+    if (ca.length >= 10 && cb.length >= 10) return ca === cb;
+    const na = supplierKey(a.supplierName), nb = supplierKey(b.supplierName);
+    return !!na && !!nb && sameSupplier(a, b);
+  };
+  for (const d of docs.slice()) {
+    const paged = d.reads.some((r) => Number(r.pageCount) > 1);
+    if (!paged || d.reads.length < 2) continue;
+    const seen = new Set();
+    const keep = [], stray = [];
+    const numbered = d.reads.filter((r) => Number(r.pageNumber) > 0);
+    for (const r of d.reads) {
+      const p = Number(r.pageNumber) || 0;
+      if (p > 0 && !seen.has(p)) { seen.add(p); keep.push(r); }
+      // Sin número de hoja: se queda si es del mismo proveedor y no trae un total propio (las hojas del
+      // medio dejan el pie vacío; la lista de cervezas traía el suyo)
+      else if (p === 0 && !(num(r.totalFacturaAPagar) > 0) && numbered.some((o) => ownSupplier(o, r))) keep.push({ ...r, unnumbered: true });
+      else stray.push(r);
+    }
+    d.reads = keep;
+    if (!keep.length || !stray.length) continue;
+    d.images = keep.map((r) => r.image);
+    for (const r of stray) docs.push({ number: null, images: [r.image], reads: [{ ...r, invoiceNumber: "", strayNumber: r.invoiceNumber || "" }] });
+  }
   return docs.map((d) => {
-    const pages = d.reads.slice().sort((a, b) => (a.pageNumber || 0) - (b.pageNumber || 0));
+    // Las hojas sin número van al final (no se sabe cuál es)
+    const pages = d.reads.slice().sort((a, b) => (Number(a.pageNumber) || 99) - (Number(b.pageNumber) || 99));
     const first = pages[0];
     // El pie (totales) suele estar en la última página
     const withTotal = pages.slice().reverse().find((p) => num(p.totalFacturaAPagar) > 0) || pages[pages.length - 1];
     const withSub = pages.slice().reverse().find((p) => num(p.subtotalNeto) > 0);
     const pick = (k) => (pages.find((p) => String(p[k] || "").trim()) || {})[k] || "";
+    const pageCount = Math.max(0, ...pages.map((p) => Number(p.pageCount) || 0));
+    const have = new Set(pages.map((p) => Number(p.pageNumber) || 0));
+    const notNumbered = pages.filter((p) => p.unnumbered).length;
+    const missingNumbers = pageCount > 1 ? Array.from({ length: pageCount }, (_, k) => k + 1).filter((n) => !have.has(n)) : [];
+    const missingCount = Math.max(0, missingNumbers.length - notNumbered);
+    // Con hojas sin número no se sabe cuáles faltan, solo cuántas
+    const missingPageNumbers = notNumbered ? [] : missingNumbers;
+    // El pie (total, IVA, percepciones) está en la última hoja: si falta, el total no es de estas hojas
+    const lastMissing = missingNumbers.includes(pageCount) && !(withTotal && withTotal.unnumbered && missingCount === 0);
+    const footer = lastMissing ? {} : withTotal;
     return {
-      images: d.images,
+      images: pages.map((p) => p.image),
       docType: first.docType || "factura",
       supplierName: pick("supplierName"), supplierCuit: pick("supplierCuit"), invoiceNumber: pick("invoiceNumber"), date: pick("date"),
-      totalFacturaAPagar: withTotal.totalFacturaAPagar || "", subtotalNeto: withSub ? withSub.subtotalNeto : "",
+      strayNumber: pick("strayNumber"),
+      condicionVenta: pick("condicionVenta"), precios: pick("precios"),
+      totalFacturaAPagar: footer.totalFacturaAPagar || "", subtotalNeto: withSub && footer === withTotal ? withSub.subtotalNeto : "",
+      ivaTotal: footer.ivaTotal || "", otrosImpuestos: footer.otrosImpuestos || "", impuestosInternos: footer.impuestosInternos || "",
+      missingPageNumbers,
       rawTableTranscription: pages.map((p) => p.rawTableTranscription || "").join("\n\n"),
       items: pages.flatMap((p) => p.items || []),
+      // Hojas que faltan (dice "hoja 1 de 6" y llegaron 3): el total no se puede controlar todavía
+      pages: pages.length, pageCount, missingPages: missingCount, unnumberedPages: notNumbered,
+      // La foto se leyó pero con partes que no se ven bien (oscura, movida, cortada)
+      photoIssues: pages.filter((p) => p.photoIssue).map((p) => ({ image: p.image, issue: p.photoIssue })),
+      reread: pages.some((p) => p.reread),
+      verifiedPages: pages.map((p) => p.verified || null),
+      unsureLines: pages.flatMap((p) => p.unsureLines || []),
+      // Muestras guardadas de estas hojas (invoice-samples.js): la caja las confirma con lo que quedó
+      sampleIds: pages.map((p) => p.sampleId).filter(Boolean),
+      // QR de ARCA leído en alguna hoja: CUIT, número, fecha, importe y tipo exactos
+      qr: (pages.find((p) => p.qr) || {}).qr || null,
     };
   });
 }
@@ -273,54 +446,229 @@ async function readInvoiceImages(client, images, { model = MODEL, effort = "medi
   });
   const msg = await stream.finalMessage();
   if (msg.stop_reason === "refusal") throw new AiError(422, "REFUSED", "No se pudo leer ese comprobante. Cargalo a mano o subí el PDF.");
-  try { return { read: JSON.parse(textOf(msg)), usage: msg.usage || {} }; } catch { throw new AiError(502, "BAD_OUTPUT", "No se pudo leer el comprobante. Probá con una foto más nítida."); }
+  const usage = { ...(msg.usage || {}), costUsd: priceOf(model, msg.usage || {}), model };
+  try { return { read: JSON.parse(textOf(msg)), usage }; } catch { throw new AiError(502, "BAD_OUTPUT", "No se pudo leer el comprobante. Probá con una foto más nítida."); }
+}
+
+/** Los importes de los renglones, redondeados y ordenados: dos lecturas de la misma hoja tienen que coincidir. Pura. */
+const lineSignature = (r) => (r.items || []).map((it) => Math.round(num(it.total))).sort((a, b) => a - b).join(",");
+/** Renglones de una lectura que la otra no tiene (por importe). Pura. */
+function lineDiff(a, b) {
+  const pool = (b.items || []).map((it) => Math.round(num(it.total)));
+  return (a.items || []).filter((it) => { const k = pool.indexOf(Math.round(num(it.total))); if (k < 0) return true; pool.splice(k, 1); return false; });
+}
+
+/** Qué tan mal está una lectura de UNA hoja: renglones que no cierran y, si es la única hoja, el total. Pura. */
+function readFlaws(r) {
+  (r.items || []).forEach((it) => { it.lineOk = lineOk(it); });
+  const badLines = (r.items || []).filter((it) => it.lineOk === false).length;
+  // El total solo se puede controlar si el comprobante es de una hoja (si no, falta lo de las otras)
+  const single = !(Number(r.pageCount) > 1);
+  const closes = single ? invoiceCloses(r) : null;
+  return { badLines, closes, score: (closes === false ? 2 : 0) + badLines * 0.5 };
 }
 
 /** Fotos → { documents: [comprobante + images + closes + reread] } (ver groupInvoicePages) */
-async function parseInvoices(client, body) {
+async function parseInvoices(client, body, ctx = {}) {
   const images = imageBlocks(body.images);
   if (!images.length) throw new AiError(400, "EMPTY", "Subí la foto de la factura.");
   const usage = {};
-  const addUsage = (u, mult = 1) => { for (const k of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]) usage[k] = (usage[k] || 0) + (u[k] || 0) * mult; };
+  const addUsage = (u) => { for (const k of USAGE_KEYS) usage[k] = (usage[k] || 0) + (u[k] || 0); };
   // Un total escrito a mano solo sirve si hay una sola foto (si no, no se sabe de cuál es)
   const anchor = images.length === 1 && body.manualTotal !== undefined && body.manualTotal !== null && String(body.manualTotal).trim()
     ? `\n\nEl total a pagar de este comprobante es exactamente ${String(body.manualTotal).slice(0, 30)}: usalo para controlar que los renglones cierren.` : "";
+  // 1) Cada hoja se lee sola y se controla sola (renglón por renglón; el total, si es de una hoja).
+  //    La que no cierra se relee UNA vez, también sola, con el modelo fuerte. Antes se releían todas las
+  //    hojas juntas y la relectura podía devolver menos renglones (2026-11-12: se perdían 21 de 49).
+  const { hint, more } = await lessonHints(ctx, body.supplierCuits);
+  const qrs = Array.isArray(body.qrs) ? body.qrs : [];
   const reads = await Promise.all(images.map(async (img, i) => {
+    const models = [];
+    let cost = 0;
+    const track = (u) => { if (u && u.model) models.push(u.model); cost += Number(u && u.costUsd) || 0; addUsage(u); };
+    const read = applyQr(await readInvoicePage(client, img, i, anchor + hint, track, more), qrs[i]);
+    const sampleId = await samples.save(ctx, ctx.uid, img, read, { models, costUsd: cost });
+    if (sampleId) read.sampleId = sampleId;
+    return read;
+  }));
+  return finishInvoices(reads, usage);
+}
+
+/** stage "page": una sola foto → su lectura (body.image, body.index; manualTotal solo si es la única) */
+async function invoicePage(client, body, ctx = {}) {
+  const [img] = imageBlocks([body.image]);
+  if (!img) throw new AiError(400, "EMPTY", "Subí la foto de la factura.");
+  const usage = {};
+  const addUsage = (u) => { for (const k of USAGE_KEYS) usage[k] = (usage[k] || 0) + (u[k] || 0); };
+  const anchor = body.manualTotal !== undefined && body.manualTotal !== null && String(body.manualTotal).trim()
+    ? `\n\nEl total a pagar de este comprobante es exactamente ${String(body.manualTotal).slice(0, 30)}: usalo para controlar que los renglones cierren.` : "";
+  const { hint, more } = await lessonHints(ctx, body.supplierCuits);
+  const models = [];
+  const track = (u) => { if (u && u.model) models.push(u.model); addUsage(u); };
+  const read = applyQr(await readInvoicePage(client, img, Number.isInteger(body.index) ? body.index : 0, anchor + hint, track, more), body.qr);
+  // Muestra para medir el lector (invoice-samples.js): solo con el interruptor prendido
+  const sampleId = await samples.save(ctx, ctx.uid, img, read, { models, costUsd: usage.costUsd });
+  if (sampleId) read.sampleId = sampleId;
+  return { result: { read }, usage };
+}
+
+/**
+ * Lecciones de proveedores (supplier-lessons.js): las de los proveedores que ya tiene el comercio van en
+ * la primera lectura; more(cuit) trae las de un proveedor nuevo para él, para la relectura.
+ */
+async function lessonHints(ctx, cuits) {
+  if (!ctx || !ctx.db || !ctx.uid) return { hint: "", more: null };
+  const known = await lessonsMod.forCuits(ctx.db, ctx.uid, cuits).catch(() => new Map());
+  const more = async (cuit) => {
+    const c = String(cuit || "").replace(/\D/g, "");
+    if (!c || known.has(c)) return "";
+    const m = await lessonsMod.forCuits(ctx.db, ctx.uid, [c]).catch(() => new Map());
+    return lessonsMod.hintText(m);
+  };
+  return { hint: lessonsMod.hintText(known), more };
+}
+
+/**
+ * Una hoja: se lee, se controla y, si hace falta, se relee (ver arriba). La caja nueva la pide de a una
+ * (stage "page") para mostrar el avance foto por foto y no tener límite de fotos.
+ * Una foto que no se puede leer vuelve con error y el motivo para el comerciante ("está muy oscura…").
+ */
+async function readInvoicePage(client, img, i, anchor, addUsage, more = null) {
+  const r = await readInvoicePageCore(client, img, i, anchor, addUsage, more);
+  if (r.error) return r;
+  const legible = r.fotoLegible || "si";
+  const issue = String(r.problemaFoto || "").trim().slice(0, 200);
+  // Ilegible y casi sin renglones: no se inventa nada, se pide otra foto
+  if (legible === "no" && (r.items || []).length < 3) return { image: i, error: issue || "No se puede leer la foto", unreadable: true, items: [] };
+  return legible === "si" ? r : { ...r, photoIssue: issue || "Hay partes de la foto que no se leen bien" };
+}
+
+async function readInvoicePageCore(client, img, i, baseAnchor, addUsage, more = null) {
+    let first;
+    let anchor = baseAnchor;
     try {
       const { read, usage: u } = await readInvoiceImages(client, [img], { hint: anchor });
       addUsage(u);
-      return { image: i, ...read };
+      first = { image: i, ...read };
     } catch (err) {
       // Una foto que no se pudo leer no tira abajo las demás
       return { image: i, error: err.message || "No se pudo leer", items: [] };
     }
-  }));
+    const f1 = readFlaws(first);
+    if (!(first.items || []).length) return first;
+    // Proveedor que este comercio no tenía: sus lecciones (de otros comercios) entran en la relectura
+    if (more) anchor += await more(first.supplierCuit).catch(() => "");
+    if (f1.score === 0 && f1.closes === true) return { ...first, verified: "total" };
+    if (f1.score === 0) {
+      // Sin total para comparar (hoja de un comprobante más largo, o boleta sin total): una segunda lectura
+      // independiente tiene que dar lo mismo. Detecta filas corridas, que el control de cada renglón no ve.
+      let second = null;
+      try {
+        const { read, usage: u } = await readInvoiceImages(client, [img], { effort: "high", hint: anchor });
+        addUsage(u);
+        second = { image: i, ...read };
+        readFlaws(second);
+      } catch { /* queda con una sola lectura */ }
+      if (second && lineSignature(second) === lineSignature(first)) return { ...first, verified: "dos lecturas" };
+      if (second) {
+        // No coinciden: decide el modelo fuerte, mirando las diferencias
+        const onlyA = lineDiff(first, second).map((it) => `"${it.name}" ${it.total}`).slice(0, 8);
+        const onlyB = lineDiff(second, first).map((it) => `"${it.name}" ${it.total}`).slice(0, 8);
+        const hint = `${anchor}\n\nOjo: dos lecturas de esta hoja no coinciden (una tiene ${first.items.length} renglones y otra ${(second.items || []).length}). Solo en una: ${onlyA.join("; ") || "-"}. Solo en la otra: ${onlyB.join("; ") || "-"}. Revisá fila por fila que cada nombre vaya con SU cantidad, precio y total (pueden estar desalineados en la foto) y que no falte ninguna fila.`;
+        let third;
+        try {
+          const { read, usage: u } = await readInvoiceImages(client, [img], { model: INVOICE_STRONG_MODEL, effort: "high", hint });
+          addUsage(u);
+          third = { image: i, ...read };
+          readFlaws(third);
+        } catch {
+          return { ...first, reread: true, verified: "no" };
+        }
+        const sig = lineSignature(third);
+        // Coincide con alguna de las dos: queda verificada
+        if (sig === lineSignature(first) || sig === lineSignature(second)) return { ...third, reread: true, verified: "tres lecturas", unsureLines: [] };
+        // Tres lecturas distintas: última instancia, el modelo más fuerte (Opus), con las diferencias a la vista
+        const onlyC = lineDiff(third, first).concat(lineDiff(third, second)).map((it) => `"${it.name}" ${it.total}`).slice(0, 8);
+        try {
+          const { read, usage: u } = await readInvoiceImages(client, [img], { model: INVOICE_TOP_MODEL, effort: "high", hint: `${hint} Una tercera lectura tampoco coincidió; trajo distinto: ${onlyC.join("; ") || "-"}.` });
+          addUsage(u);
+          const fourth = { image: i, ...read };
+          readFlaws(fourth);
+          const s4 = lineSignature(fourth);
+          const agrees = [first, second, third].some((r) => lineSignature(r) === s4);
+          const unsure = agrees ? [] : lineDiff(fourth, first).concat(lineDiff(fourth, second), lineDiff(fourth, third)).map((it) => it.name);
+          (fourth.items || []).forEach((it) => { if (unsure.includes(it.name)) it.unsure = true; });
+          return { ...fourth, reread: true, verified: agrees ? "cuatro lecturas" : "no", unsureLines: [...new Set(unsure)] };
+        } catch {
+          // Sin Opus: se usa la de Sonnet, con lo distinto marcado
+          const unsure = lineDiff(third, first).concat(lineDiff(third, second)).map((it) => it.name);
+          (third.items || []).forEach((it) => { if (unsure.includes(it.name)) it.unsure = true; });
+          return { ...third, reread: true, verified: "no", unsureLines: [...new Set(unsure)] };
+        }
+      }
+      return first;
+    }
+    // No cierra: relee Sonnet y, si todavía no cierra, Opus. Cada una ve lo que falló en la mejor lectura hasta ahí.
+    let best = first, fb = f1;
+    for (const model of [INVOICE_STRONG_MODEL, INVOICE_TOP_MODEL]) {
+      try {
+        const { read, usage: u } = await readInvoiceImages(client, [img], { model, effort: "high", hint: anchor + flawHint(best, fb) });
+        addUsage(u); // trae su costUsd con el precio de su modelo
+        const again = { image: i, ...read };
+        const f2 = readFlaws(again);
+        // Nunca se acepta una relectura que pierde renglones (salvo que con eso pase a cerrar el total)
+        const lost = (again.items || []).length < best.items.length && !(fb.closes === false && f2.closes === true);
+        if (!lost && (f2.score < fb.score || (f2.score === fb.score && (again.items || []).length > best.items.length))) { best = again; fb = f2; }
+      } catch { /* sigue con la mejor que hay */ }
+      // Ya cierra todo: no hace falta el modelo siguiente
+      if (fb.score === 0) break;
+    }
+    if (best === first) return { ...first, reread: true, verified: "no" };
+    // Verificada por el total, o por un modelo fuerte con cada renglón cerrando
+    return { ...best, reread: true, verified: fb.score === 0 ? (fb.closes === true ? "total" : "relectura") : "no" };
+}
+
+/** Lo que falló en una lectura, para que la relectura lo revise. Pura. */
+function flawHint(r, f) {
+  const sum = r.items.reduce((s, it) => s + num(it.total), 0);
+  const bad = r.items.filter((it) => it.lineOk === false).map((it) => `"${it.name}" (${it.packageQuantity} × ${it.unitPrice} ≠ ${it.total})`).slice(0, 8);
+  return `\n\nOjo, en una lectura anterior: ${f.closes === false ? `los renglones sumaron ${Math.round(sum)} y no coincide con el subtotal o el total impreso (${r.subtotalNeto || "-"} / ${r.totalFacturaAPagar || "-"}). ` : ""}${bad.length ? `En estos renglones la cantidad por el precio no da el total: ${bad.join("; ")}. ` : ""}Revisá fila por fila: cantidades, precios, totales de cada línea y que no falte ni sobre ninguna. Se leyeron ${r.items.length} renglones: no dejes ninguno afuera.`;
+}
+
+/** Las hojas ya leídas → comprobantes (juntando las del mismo número) y su control. Sin IA. */
+function finishInvoices(reads, usage = {}) {
   const failed = reads.filter((r) => r.error || !(r.items || []).length).map((r) => r.image);
+  const failedReasons = reads.filter((r) => r.error || !(r.items || []).length)
+    .map((r) => ({ image: r.image, reason: r.unreadable ? r.error : r.error ? "No se pudo leer" : "No se encontraron productos" }));
   const ok = reads.filter((r) => !r.error && (r.items || []).length);
-  if (!ok.length) throw new AiError(422, "EMPTY", "No encontramos productos en las fotos. Probá con fotos más nítidas, de frente y con buena luz.");
-  const documents = groupInvoicePages(ok);
-  // Segunda lectura, más cuidadosa, solo de lo que no cierra (rara vez: así el costo no se dispara)
-  await Promise.all(documents.map(async (d, k) => {
-    d.closes = invoiceCloses(d);
-    if (d.closes !== false) return;
-    const sum = d.items.reduce((s, it) => s + num(it.total), 0);
-    const hint = `\n\nOjo: en una primera lectura los renglones sumaron ${Math.round(sum)} y no coincide con el subtotal o el total impreso (${d.subtotalNeto || "-"} / ${d.totalFacturaAPagar || "-"}). Revisá fila por fila: cantidades, totales de cada línea y que no falte ni sobre ninguna.`;
-    try {
-      const { read, usage: u } = await readInvoiceImages(client, d.images.map((i) => images[i]), { model: INVOICE_STRONG_MODEL, effort: "high", hint });
-      addUsage(u, 3); // el modelo fuerte cuesta ~3 veces más (costOf usa el precio del modelo chico)
-      const again = { ...d, ...read, images: d.images, docType: read.docType || d.docType };
-      again.closes = invoiceCloses(again);
-      // Se queda con la segunda si cierra, o si la primera tampoco cerraba y la segunda está más cerca
-      const gap = (x) => {
-        const s = (x.items || []).reduce((a, it) => a + num(it.total), 0), sub = num(x.subtotalNeto), tot = num(x.totalFacturaAPagar);
-        const diffs = [sub > 0 ? Math.abs(s - sub) : null, tot > 0 ? Math.abs(s * 1.21 - tot) : null, tot > 0 ? Math.abs(s - tot) : null].filter((v) => v !== null);
-        return diffs.length ? Math.min(...diffs) : Infinity;
-      };
-      if (again.closes || gap(again) < gap(d)) documents[k] = { ...again, reread: true };
-      else d.reread = true;
-    } catch { d.reread = true; }
-  }));
-  return { result: { documents, failedImages: failed }, usage, count: documents.length };
+  if (!ok.length) {
+    const why = failedReasons.find((f) => f.reason && f.reason !== "No se pudo leer" && f.reason !== "No se encontraron productos");
+    throw new AiError(422, "EMPTY", why ? `No se pudo leer: ${why.reason}. Sacala de nuevo, de frente y con buena luz.` : "No encontramos productos en las fotos. Probá con fotos más nítidas, de frente y con buena luz.");
+  }
+  // 2) Las hojas del mismo comprobante se juntan y se controla el total del comprobante entero
+  const documents = groupInvoicePages(ok).map((d) => {
+    d.items.forEach((it) => { if (it.lineOk === undefined) it.lineOk = lineOk(it); });
+    d.badLines = d.items.filter((it) => it.lineOk === false).length;
+    d.closes = d.missingPages ? null : invoiceCloses(d);
+    d.unsureLines = d.unsureLines || [];
+    d.verified = d.closes === true && !d.badLines ? "total" : d.verifiedPages.every((v) => v && v !== "no") && !d.badLines ? "hojas" : "no";
+    return d;
+  });
+  return { result: { documents, failedImages: failed, failedReasons }, usage, count: documents.length };
+}
+
+// Hojas leídas que manda la caja para juntarlas (stage "group"): solo lo que hace falta, con topes
+const READ_KEYS = ["image", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "subtotalNeto", "ivaTotal", "otrosImpuestos", "impuestosInternos", "condicionVenta", "precios",
+  "docType", "pageNumber", "pageCount", "verified", "reread", "unsureLines", "photoIssue", "error", "unreadable", "rawTableTranscription", "items", "sampleId", "qr"];
+function cleanReads(reads) {
+  return (Array.isArray(reads) ? reads : []).slice(0, 200).map((r, k) => {
+    const o = {};
+    for (const key of READ_KEYS) if (r && r[key] !== undefined) o[key] = r[key];
+    o.image = Number.isInteger(o.image) ? o.image : k;
+    o.items = (Array.isArray(o.items) ? o.items : []).slice(0, 300);
+    o.rawTableTranscription = String(o.rawTableTranscription || "").slice(0, 20000);
+    return o;
+  });
 }
 
 async function parseInvoice(client, body) {
@@ -738,7 +1086,9 @@ async function goCategories(client, body) {
 
 // ─── Entrada ───
 
-async function handle({ db, logger, apiKey, client: injected, sql, edits, images, api }, uid, body) {
+async function handle({ db, logger, apiKey, client: injected, sql, edits, images, api, bucket = null, unlimited = false }, uid, body) {
+  // La caja confirmó una compra escaneada: lo que quedó va a sus muestras (invoice-samples.js). Sin IA ni cupo.
+  if (body && body.kind === "invoice" && body.stage === "confirm") return { result: await samples.confirm(db, uid, body), left: null };
   // "agent" (la IA con herramientas) usa el mismo cupo que las preguntas
   const kind = body && body.kind === "agent" ? "ask" : String(body && body.kind || "");
   const agent = body && body.kind === "agent";
@@ -751,7 +1101,20 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   const usedToday = Number(daySnap.exists && daySnap.data()[kind]) || 0;
   // Se cuenta por pregunta: el segundo paso de la versión vieja (redactar) no suma
   let need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
-  if (used + need > LIMITS[kind]) {
+  // Boletas de a una foto (caja nueva): cada hoja se lee aparte ("page") y al final se juntan ("group").
+  // Se cuenta por comprobante al juntar; leer una hoja solo necesita que quede al menos uno en el mes.
+  // Las hojas tienen su propio tope (que nadie lea cientos de fotos sin juntarlas nunca).
+  const stage = kind === "invoice" && (body.stage === "page" || body.stage === "group") ? body.stage : "";
+  if (stage) need = 0;
+  // unlimited: la cuenta del dueño de Ventra (ADMIN_EMAILS) no tiene topes; el uso y el costo se anotan igual
+  if (stage === "page" && !unlimited) {
+    const pagesMonth = Number(snap.exists && snap.data().invoicePages) || 0;
+    const pagesToday = Number(daySnap.exists && daySnap.data().invoicePages) || 0;
+    if (used >= LIMITS.invoice) throw new AiError(429, "LIMIT", `Llegaste a las ${LIMITS.invoice} facturas leídas con IA de este mes. Se renueva el mes que viene; mientras, subí el PDF o el Excel del proveedor.`);
+    if (usedToday >= DAILY.invoice) throw new AiError(429, "DAILY_LIMIT", "Llegaste al tope de facturas leídas con IA de hoy. Mañana podés seguir.");
+    if (pagesMonth >= PAGE_LIMITS.month || pagesToday >= PAGE_LIMITS.day) throw new AiError(429, "PAGE_LIMIT", "Llegaste al tope de fotos de boletas leídas con IA. Probá mañana o subí el PDF del proveedor.");
+  }
+  if (!unlimited && used + need > LIMITS[kind]) {
     const msgs = {
       order: `Llegaste a los ${LIMITS.order} pedidos leídos con IA de este mes. Se renueva el mes que viene.`,
       invoice: `Llegaste a las ${LIMITS.invoice} facturas leídas con IA de este mes. Se renueva el mes que viene; mientras, subí el PDF o el Excel del proveedor.`,
@@ -760,11 +1123,12 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       ask: "Llegaste al tope de preguntas de este mes. Se renueva el mes que viene; mientras, tenés todo en Reportes.",
       help: `Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: ${HELP_WHATSAPP}`,
       gocats: "Llegaste al tope de productos ordenados con IA de este mes: lo que falta queda sin rubro hasta el mes que viene.",
+      lesson: "Llegaste al tope de aprendizajes de boletas de este mes.",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
   }
-  if (usedToday + need > DAILY[kind]) {
-    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA" }[kind];
+  if (!unlimited && usedToday + need > DAILY[kind]) {
+    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA", lesson: "aprendizajes de boletas" }[kind];
     throw new AiError(429, "DAILY_LIMIT", `Llegaste al tope de ${what} de hoy. Mañana podés seguir.`);
   }
   // client: solo en las pruebas (firebase/test/ai.test.cjs)
@@ -785,7 +1149,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       }
     } else {
       // invoice con multi: una lectura por foto (versión nueva de la caja); sin multi, como antes (PCs viejas)
-      const run = { order: parseOrder, invoice: (c, b) => (b && b.multi ? parseInvoices(c, b) : parseInvoice(c, b)), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
+      const run = { order: parseOrder, invoice: (c, b) => (stage === "page" ? invoicePage(c, b, { db, uid, bucket, logger }) : stage === "group" ? finishInvoices(cleanReads(b.reads)) : b && b.multi ? parseInvoices(c, b, { db, uid, bucket, logger }) : parseInvoice(c, b)), lesson: (c, b) => lessonsMod.learn(c, db, uid, b), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
       out = await run(client, body);
     }
   } catch (err) {
@@ -795,13 +1159,18 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   }
   // Solo cuenta lo que salió bien. Varias fotos con varios comprobantes: cuenta uno por comprobante
   if (out.count > 1 && need) need = out.count;
+  if (stage === "group") need = out.count || 0;
+  const pages = stage === "page" ? { invoicePages: admin.firestore.FieldValue.increment(1) } : {};
   await ref.set({
     [kind]: admin.firestore.FieldValue.increment(need),
-    costUsd: admin.firestore.FieldValue.increment(costOf(out.usage)),
+    costUsd: admin.firestore.FieldValue.increment(costOf(out.usage || {})),
+    ...pages,
     uid, month: monthKey(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
-  await dayRef.set({ [kind]: admin.firestore.FieldValue.increment(need), uid, day: dayKey() }, { merge: true });
+  await dayRef.set({ [kind]: admin.firestore.FieldValue.increment(need), ...pages, uid, day: dayKey() }, { merge: true });
+  // Sin topes: la caja no tiene que mostrar "te quedan -40" ni frenar sola
+  if (unlimited) return { result: out.result, left: 9999, leftToday: 9999, limits: { daily: 9999, monthly: 9999 }, unlimited: true };
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, groupInvoicePages, invoiceCloses, parseInvoices, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, applyQr, cleanQr, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

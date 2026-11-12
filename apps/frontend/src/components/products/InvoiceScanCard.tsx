@@ -12,8 +12,7 @@ export const OPEN_SCAN_KEY = 'purchases_open_scan';
 /** Para el botón "Cargar boleta" desde cualquier pantalla: abre la compra nueva con la carga ya abierta */
 export function requestInvoiceScan() {
   try {
-    sessionStorage.setItem(OPEN_SCAN_KEY, '1');
-    localStorage.setItem('purchases_active_view', 'new');
+    sessionStorage.setItem(OPEN_SCAN_KEY, '1'); // Compras lo ve y abre la carga (NewPurchaseScreen lo borra)
   } catch { /* sin almacenamiento: abre la compra igual */ }
 }
 
@@ -29,10 +28,11 @@ const prettyPhone = (n?: string) => {
  * dudoso con botones, o la deja en Compras para revisarla en la PC (avisa al toque). La otra, desde
  * la PC: foto, PDF o Excel. La primera vez se ve entero; con "Entendido" queda una barra finita.
  */
-export default function InvoiceScanCard({ onUploadPc, className = '' }: { onUploadPc: () => void; className?: string }) {
+export default function InvoiceScanCard({ onUploadPc, className = '', startClosed = false }: { onUploadPc: () => void; className?: string; startClosed?: boolean }) {
   const isOwner = useOwnerAccess();
   const photosOn = !comingSoon('aiInvoiceScan');
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem(HIDE_KEY) !== '1'; } catch { return true; } });
+  // startClosed (Inventario): arranca como barra finita; "¿Cómo funciona?" la abre solo por esa vez
+  const [open, setOpen] = useState(() => { if (startClosed) return false; try { return localStorage.getItem(HIDE_KEY) !== '1'; } catch { return true; } });
   const [wa, setWa] = useState<{ linked: boolean; number?: string } | null>(null);
 
   useEffect(() => {
