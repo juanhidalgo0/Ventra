@@ -101,6 +101,18 @@ Para publicar: **ventraBarcodes**, **ventraWaOwner** + **ventraWaOwnerInbox**, y
 
 Pendiente tuyo (7.3): **averiguar con dos o tres comercios cómo les llega la factura hoy** (mail, WhatsApp, portal del proveedor). Por mail todavía no se recibe: hace falta una casilla de entrada (por ejemplo, reenviar a una dirección de Ventra); se arma cuando sepamos si vale la pena.
 
+## 0h. Boletas — tanda 8 (lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Admin → Boletas: sin tocar por proveedor, renglones corregidos, costo por boleta, escaladas, "Leyó mal", lecciones y **los que peor se leen** | `invoice-admin.js`, `web/admin.html` |
+| Aviso al comercio "Un proveedor subió fuerte un precio" (15% o más al confirmar una compra, escaneada o a mano) | `purchases.service.ts` (`afterConfirmAlerts`), `notify.service.ts`, `firebase/functions/notify.js` |
+| Aviso "La factura de X no cierra": la boleta escaneada no cerraba y se confirmó sin cambiar nada | ídem |
+
+Para publicar: **ventraNotify**, **ventraAdmin**, la web (admin.html) y la caja.
+
+**Todo el plan de boletas (tandas 1 a 8) queda hecho y sin publicar.** Orden sugerido: primero correr la evaluación de boletas con la IA de verdad (línea de base), después funciones (`ventraAi`, `ventraBarcodes`, `ventraNotify`, `ventraAdmin`, `ventraLessonTrialsWeekly`, `ventraWaOwner`, `ventraWaOwnerInbox`), la web, la caja en la nube (`npm run deploy:cloud`) y la versión de PC.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

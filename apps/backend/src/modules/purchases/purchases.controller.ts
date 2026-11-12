@@ -27,8 +27,11 @@ export class PurchasesController {
   }
 
   @Post()
-  create(@Body() data: any, @Request() req) {
-    return this.purchasesService.create({ ...data, userId: req.user.sub });
+  async create(@Body() data: any, @Request() req) {
+    const p = await this.purchasesService.create({ ...data, userId: req.user.sub });
+    // Aviso si un producto subió fuerte de costo con esta compra (tanda 8 de boletas)
+    this.purchasesService.afterConfirmAlerts(p.id, data.supplierId).catch(() => {});
+    return p;
   }
 
   @Delete()

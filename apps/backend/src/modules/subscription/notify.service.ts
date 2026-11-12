@@ -7,7 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-ventra-9cba5.cloudfunctions.net';
 
-type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue' | 'suspiciousVoid' | 'purchaseToApprove';
+type EventType = 'lowStock' | 'cashDiff' | 'saleCancel' | 'invoiceFail' | 'expiry' | 'mpUnmatched' | 'employeeConsumption' | 'workOrderDue' | 'suspiciousVoid' | 'purchaseToApprove' | 'purchaseAlert';
 interface QueuedEvent { type: EventType; data: any; at: number; tries: number }
 interface LowStockItem { id: string; name: string; stock: number; minStock: number }
 
@@ -280,6 +280,19 @@ export function localMessage(type: EventType, d: any): { title: string; body: st
         body: `${d.user || 'Un empleado'} la escaneó · ${Number(d.items) || 0} productos · ${money(d.total)}${Array.isArray(d.why) && d.why.length ? ` · ${d.why[0]}` : ''}`,
         url: '/purchases',
       };
+    // Compras (tanda 8 de boletas): un proveedor subió fuerte un precio, o la cuenta de su factura no da
+    case 'purchaseAlert': {
+      if (d.kind === 'math') {
+        return { title: `La factura de ${d.supplier || 'un proveedor'} no cierra`, body: `Los renglones suman ${money(d.sum)} y la factura cobra ${money(d.total)}${d.invoiceNumber ? ` (N° ${d.invoiceNumber})` : ''}. Revisá si el proveedor se equivocó.`, url: '/purchases' };
+      }
+      const items: any[] = Array.isArray(d.items) ? d.items : [];
+      if (!items.length) return null;
+      return {
+        title: items.length === 1 ? `${d.supplier || 'Un proveedor'} subió ${items[0].name} ${String(items[0].pct).replace('.', ',')}%` : `${d.supplier || 'Un proveedor'} subió ${items.length} precios`,
+        body: items.map((i) => `${i.name} +${String(i.pct).replace('.', ',')}%`).join(', '),
+        url: '/purchases',
+      };
+    }
     case 'suspiciousVoid': {
       const items: any[] = Array.isArray(d.items) ? d.items : [];
       if (!items.length) return null;

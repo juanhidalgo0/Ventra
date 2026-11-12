@@ -27,6 +27,7 @@ const DEFAULT_PREFS = {
   suspiciousVoid: true, // un cajero quitó productos del ticket de forma sospechosa (control de anulaciones)
   workOrderDue: true,  // encargos para entregar mañana o atrasados
   purchaseToApprove: true, // un empleado escaneó una boleta y espera que el dueño la apruebe (boletas, tanda 6.3)
+  purchaseAlert: true, // un proveedor subió fuerte un precio, o la cuenta de su factura no da (boletas, tanda 8)
   nutri: true,         // consultorio de nutrición: ficha previa recibida y controles para recordar
   dailySummary: false, // resumen del día
   summaryHour: 21,
@@ -192,6 +193,20 @@ function messageFor(ev) {
         title: `Consumo de ${String(d.user || "un empleado").slice(0, 40)}: ${money(d.total)}`,
         body: items.slice(0, 4).join(", ") + (count > 4 ? ` y ${count - 4} más` : ""),
         url: "/#/employee-consumption", tag: "consumo-" + (d.saleId || Date.now()),
+      };
+    }
+    case "purchaseAlert": {
+      const sup = String(d.supplier || "Un proveedor").slice(0, 60);
+      if (d.kind === "math") {
+        return { title: `La factura de ${sup} no cierra`, body: `Los renglones suman ${money(d.sum)} y la factura cobra ${money(d.total)}${d.invoiceNumber ? ` (N° ${String(d.invoiceNumber).slice(0, 30)})` : ""}. Revisá si el proveedor se equivocó.`, url: "/#/purchases", tag: "factura-" + Date.now() };
+      }
+      const items = (Array.isArray(d.items) ? d.items : []).slice(0, 5);
+      if (!items.length) return null;
+      const pct = (p) => String(Number(p) || 0).replace(".", ",");
+      return {
+        title: items.length === 1 ? `${sup} subió ${String(items[0].name).slice(0, 50)} ${pct(items[0].pct)}%` : `${sup} subió ${items.length} precios`,
+        body: items.map((i) => `${String(i.name).slice(0, 50)} +${pct(i.pct)}%`).join(", "),
+        url: "/#/purchases", tag: "aumento-" + Date.now(),
       };
     }
     case "purchaseToApprove":

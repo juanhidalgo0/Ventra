@@ -317,6 +317,29 @@ async function main() {
     await assert.rejects(() => ctrl.assignBarcode(sinCodigo.id, { barcode: '7790001234561' }), /ya es de/);
   });
 
+  await t('avisos al comercio: aumento fuerte de un proveedor y factura que no cierra', async () => {
+    const events: any[] = [];
+    const svc = new PurchasesService(prisma, mute(), mute(), mute(), undefined, { enqueue: (type: string, data: any) => events.push({ type, data }) } as any);
+    const prov = await prisma.supplier.create({ data: { name: 'Distri Aumentos' } });
+    const yerba = await nuevo('YERBA AVISO', 0, { costPrice: 1000, salePrice: 1500 });
+    const sal = await nuevo('SAL AVISO', 0, { costPrice: 500, salePrice: 800 });
+    // Yerba +30% (1000 → 1300 con IVA), sal +2%: solo avisa la yerba
+    const c = await svc.create({ supplierId: prov.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: yerba.id, quantity: 1, cost: 1300 / 1.21 }, { productId: sal.id, quantity: 1, cost: 510 / 1.21 }] });
+    await svc.afterConfirmAlerts(c.id, prov.id);
+    const raise = events.find((e) => e.data.kind === 'raise');
+    assert.deepStrictEqual(raise.data.items.map((i: any) => i.name), ['YERBA AVISO']);
+    assert.strictEqual(raise.data.items[0].pct, 30);
+    // Boleta que no cerraba y se confirmó sin tocar nada: la cuenta del proveedor está mal
+    await svc.afterConfirmAlerts(c.id, prov.id, { check: { ok: false }, printedTotal: 20000, items: [{ total: 10000 }], invoiceNumber: '3-1' }, true);
+    const math = events.find((e) => e.data.kind === 'math');
+    assert.strictEqual(math.data.total, 20000);
+    assert.strictEqual(math.data.sum, 12100);
+    // Si el dueño corrigió renglones, no se acusa al proveedor
+    events.length = 0;
+    await svc.afterConfirmAlerts(c.id, prov.id, { check: { ok: false }, printedTotal: 20000, items: [{ total: 10000 }] }, false);
+    assert.ok(!events.some((e) => e.data.kind === 'math'));
+  });
+
   await t('deshacer boleta: un precio que cambiaron después no se pisa', async () => {
     const p = await nuevo('ACEITE', 0, { costPrice: 500, salePrice: 1000 });
     const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 600 }] });

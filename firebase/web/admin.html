@@ -569,6 +569,11 @@
         </div>
         <ul class="aifix" id="lesList"></ul>
       </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>Los que peor se leen</h2>
+        <div class="panel-sub">Proveedores con 2 o más boletas y menos de la mitad confirmadas sin tocar: candidatos a una lección, a revisar sus "Leyó mal" o a evaluarlos (eval-boletas).</div>
+        <ul class="aifix" id="bolWorst"></ul>
+      </div>
       <div class="table-wrap cards" style="margin-top:12px">
         <table>
           <thead><tr><th>Proveedor</th><th class="r">Boletas</th><th class="r">Sin tocar</th><th class="r">Renglones corregidos</th><th class="r">Leyó mal</th><th class="r">Escaló</th><th class="r">Costo por boleta</th></tr></thead>
@@ -1508,6 +1513,10 @@
           s.lessons.map(function(l){ return '<div class="n" style="color:var(--ink)"><span class="tag ' + (l.status === 'adopted' ? 'conocimiento' : l.status === 'discarded' ? 'ignorar' : 'falta_dato') + '">' + esc(LES[l.status] || l.status) + '</span> ' + esc(l.text) +
             (l.trial ? ' <span class="small">· probada ' + waAgo(l.trial.at) + ': con ' + l.trial.with + ' / sin ' + l.trial.without + ' (' + l.trial.docs + ' boletas)</span>' : '') + '</div>'; }).join('') + '</li>';
       }).join('') : '<li class="small">Todavía no hay lecciones de proveedores.</li>';
+      var worst = st.worst || [];
+      $('bolWorst').innerHTML = worst.length ? worst.map(function(b){
+        return '<li><div class="q"><b>' + esc(b.supplier) + '</b>' + (b.cuit ? ' <span class="small">CUIT ' + esc(b.cuit) + '</span>' : '') + '</div><div class="n">' + b.untouchedPct + '% sin tocar en ' + b.invoices + ' boletas · ' + b.corrected + ' renglones corregidos · ' + b.flagged + ' "Leyó mal" · escaló ' + b.escalated + ' veces · US$ ' + b.costPerInvoice + ' por boleta</div></li>';
+      }).join('') : '<li class="small">Ningún proveedor viene leyéndose mal.</li>';
       var sup = st.suppliers || [];
       $('bolRows').innerHTML = sup.length ? sup.map(function(b){
         return '<tr><td>' + esc(b.supplier) + (b.cuit ? ' <span class="small">' + esc(b.cuit) + '</span>' : '') + '</td><td class="r">' + b.invoices + '</td><td class="r">' + b.untouchedPct + '%</td><td class="r">' + b.corrected + '</td><td class="r">' + b.flagged + '</td><td class="r">' + b.escalated + '</td><td class="r">US$ ' + b.costPerInvoice + '</td></tr>';
@@ -1850,6 +1859,7 @@
         misreads:[ { id:'m1', shop:'kiosco.lucia@gmail.com', supplierName:'DISTRIBUIDORA LOS ALAMOS S.A.', invoiceNumber:'0004-00012877', note:'Las cantidades de la yerba están mal, eran 2 bultos', samples:1, items:6, why:['1 renglón dudoso'], at: Date.now() - 3 * 36e5, seen:false },
           { id:'m2', shop:'ferreteria.central@gmail.com', supplierName:'BEBIDAS DEL VALLE', invoiceNumber:'0007-00056002', note:'', samples:0, items:4, why:[], at: Date.now() - 50 * 36e5, seen:true } ],
         stats:{ invoices:42, untouched:29, untouchedPct:69, auto:6, escalatedPct:21, costPerInvoice:0.018, correctedLines:23,
+          worst:[ { supplier:'BEBIDAS DEL VALLE S.A.', cuit:'30714446785', invoices:6, untouchedPct:33, corrected:9, flagged:1, escalated:3, costPerInvoice:0.041 } ],
           suppliers:[ { supplier:'BEBIDAS DEL VALLE S.A.', cuit:'30714446785', invoices:6, untouched:2, untouchedPct:33, corrected:9, flagged:1, escalated:3, costPerInvoice:0.041 },
             { supplier:'DISTRIBUIDORA LOS ALAMOS S.A.', cuit:'30715551239', invoices:14, untouched:11, untouchedPct:79, corrected:5, flagged:1, escalated:2, costPerInvoice:0.012 },
             { supplier:'MAYORISTA EL PUENTE SRL', cuit:'30716662345', invoices:22, untouched:16, untouchedPct:73, corrected:9, flagged:0, escalated:4, costPerInvoice:0.015 } ] } });

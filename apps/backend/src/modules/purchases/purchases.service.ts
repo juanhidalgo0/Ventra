@@ -747,6 +747,34 @@ export class PurchasesService {
     this.notifier.enqueue('purchaseToApprove', { ...d, user: u.fullName, why: d.why.slice(0, 3) });
   }
 
+  /**
+   * Avisos al comercio después de confirmar una compra (plan de boletas, tanda 8):
+   *  - "subió fuerte un precio": productos cuyo costo subió 15% o más con esta compra;
+   *  - "la cuenta de la factura está mal": la boleta escaneada no cerraba (renglones contra el total
+   *    impreso, ya releída) y el dueño la confirmó sin cambiar nada: probablemente se equivocó el proveedor.
+   * Van a la campanita y al celular del dueño (se pueden apagar en Notificaciones).
+   */
+  async afterConfirmAlerts(purchaseId: string, supplierId: string, draft?: any, untouched = false) {
+    if (!this.notifier) return;
+    const sup = await this.prisma.supplier.findUnique({ where: { id: supplierId }, select: { name: true } }).catch(() => null);
+    const supplier = sup?.name || draft?.supplierName || 'El proveedor';
+    const raw = await this.prisma.$queryRawUnsafe<{ undo_info: string | null }[]>(`SELECT undo_info FROM purchases WHERE id = ?`, purchaseId).catch(() => []);
+    let rows: UndoRow[] = [];
+    try { rows = raw[0]?.undo_info ? JSON.parse(raw[0].undo_info).rows || [] : []; } catch { rows = []; }
+    const up = rows.filter((r) => !r.created && r.before.costPrice > 0 && r.after.costPrice / r.before.costPrice - 1 >= 0.15)
+      .map((r) => ({ id: r.id, pct: Math.round((r.after.costPrice / r.before.costPrice - 1) * 1000) / 10 }))
+      .sort((a, b) => b.pct - a.pct).slice(0, 5);
+    if (up.length) {
+      const names = await this.prisma.product.findMany({ where: { id: { in: up.map((u) => u.id) } }, select: { id: true, name: true } });
+      this.notifier.enqueue('purchaseAlert', { kind: 'raise', supplier, items: up.map((u) => ({ name: names.find((n) => n.id === u.id)?.name || 'Producto', pct: u.pct })) });
+    }
+    const printed = Number(draft?.printedTotal) || 0;
+    if (draft?.check && draft.check.ok === false && !draft.check.missingPages && untouched && printed > 0) {
+      const sum = (draft.items || []).reduce((s: number, it: any) => s + (Number(it.total) || 0), 0) * (draft.pricesIncludeIva ? 1 : 1.21);
+      if (Math.abs(sum - printed) > Math.max(100, printed * 0.01)) this.notifier.enqueue('purchaseAlert', { kind: 'math', supplier, sum: Math.round(sum), total: Math.round(printed), invoiceNumber: draft.invoiceNumber || '' });
+    }
+  }
+
   // ─── Automático por proveedor (tanda 6.2) ───
   /** ¿Las boletas de este proveedor se cargan solas? */
   async supplierAuto(supplierId?: string | null): Promise<boolean> {
@@ -1431,6 +1459,8 @@ export class PurchasesService {
     if (draft?.items?.length) this.learnFromCorrections(draft, data).catch(() => { /* aprender nunca frena la compra */ });
     const untouched = !!draft && !this.correctionsOf(draft, data.items || []).length && (data.items || []).length === (draft.items || []).length;
     if (draft) this.confirmSamples(draft, data, { untouched });
+    // Avisos al comercio (tanda 8): un proveedor subió fuerte un precio, o la cuenta de su factura no da
+    this.afterConfirmAlerts(result?.id || id, data.supplierId, draft, untouched).catch(() => {});
     // Racha de boletas de este proveedor confirmadas sin tocar nada: a las 5, se ofrece cargarlas solas
     const offerAuto = draft?.items?.length ? await this.scanStreak(data.supplierId, untouched).catch(() => null) : null;
     return offerAuto ? { ...result, offerAuto } : result;
