@@ -151,6 +151,12 @@ export class PurchasesController {
     return this.purchasesService.pendingFromPreview(body?.preview, req.user.sub, body?.via === 'fotos' ? 'fotos' : body?.via === 'celular' ? 'el celular' : 'WhatsApp');
   }
 
+  /** Nota de crédito por revisar: resta deuda y, si se devolvió mercadería, stock (no toca precios) */
+  @Post(':id/credit-note')
+  confirmCreditNote(@Param('id') id: string, @Body() data: any, @Request() req) {
+    return this.purchasesService.confirmCreditNote(id, { ...data, userId: req.user.sub });
+  }
+
   @Put(':id/confirm')
   confirmPending(
     @Param('id') id: string,

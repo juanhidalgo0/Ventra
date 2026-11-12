@@ -128,6 +128,7 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
       ) : (
         <div className="space-y-4 pt-1">
           <p className="text-[13.5px] text-slate-600">Una foto por hoja, derecha y con buena luz. Si la factura tiene varias hojas, sacales foto a todas antes de leerla.</p>
+          <p className="text-[12.5px] text-slate-500">¿Ticket largo? Sacá varias fotos de arriba hacia abajo y dejá 2 renglones repetidos entre una y la siguiente: Ventra junta los tramos sin repetir nada.</p>
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
           <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
           <div className="grid grid-cols-2 gap-2">

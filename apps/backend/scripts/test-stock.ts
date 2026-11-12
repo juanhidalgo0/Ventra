@@ -238,6 +238,46 @@ async function main() {
     assert.strictEqual(await stockDe(p.id), 4, 'dos veces no saca dos veces');
   });
 
+  await t('remito en $0 y después su factura: el costo no queda en 0 y el stock no se duplica', async () => {
+    const p = await nuevo('LAVANDINA REMITO', 2, { costPrice: 500, salePrice: 1000 });
+    const prov = await prisma.supplier.create({ data: { name: 'Limpieza SA' } });
+    const remito = await purchases.create({ supplierId: prov.id, userId: admin.id, paymentStatus: 'OWED', manualTotal: 0, docType: 'remito', items: [{ productId: p.id, quantity: 6, cost: 0 }] });
+    let d = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.strictEqual(d!.stock, 8);
+    assert.strictEqual(d!.costPrice, 500, 'el remito sin precios no toca el costo');
+    // Llega la factura: mismos productos y cantidades → se reconoce el remito
+    const match = await purchases.findRemitoFor(prov.id, [{ productId: p.id, quantity: 6 }]);
+    assert.strictEqual(match?.id, remito.id);
+    const pend = await prisma.purchase.create({ data: { supplierId: prov.id, userId: admin.id, total: 4356, status: 'PENDING', paymentStatus: 'OWED', invoiceNumber: '1-55' } });
+    await prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ items: [{ name: 'LAVANDINA', quantity: 6, cost: 600 }], remitoMatch: match }), pend.id);
+    await purchases.confirmPending(pend.id, { supplierId: prov.id, userId: admin.id, paymentStatus: 'OWED', invoiceNumber: '1-55', manualTotal: 4356, items: [{ productId: p.id, quantity: 6, cost: 600 }], fromRemitoId: remito.id } as any);
+    d = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.strictEqual(d!.stock, 8, 'la factura no vuelve a sumar');
+    assert.strictEqual(Math.round(d!.costPrice), 726, 'toma el costo de la factura');
+    const r = await prisma.purchase.findUnique({ where: { id: remito.id } });
+    assert.strictEqual(r!.total, 4356, 'el remito queda con la deuda de la factura');
+    assert.strictEqual(r!.invoiceNumber, '1-55');
+    assert.strictEqual(await prisma.purchase.findUnique({ where: { id: pend.id } }), null, 'la pendiente se borra');
+    // Una factura con otros productos no es la de ese remito
+    assert.strictEqual(await purchases.findRemitoFor(prov.id, [{ productId: p.id, quantity: 6 }]), null, 'ya tiene factura');
+  });
+
+  await t('nota de crédito: resta deuda; el stock solo si se devolvió la mercadería, y no toca precios', async () => {
+    const p = await nuevo('GASEOSA NC', 10, { costPrice: 500, salePrice: 1000 });
+    const prov = await prisma.supplier.create({ data: { name: 'Bebidas NC' } });
+    const nc1 = await prisma.purchase.create({ data: { supplierId: prov.id, userId: admin.id, total: 0, status: 'PENDING', paymentStatus: 'OWED' } });
+    await purchases.confirmCreditNote(nc1.id, { supplierId: prov.id, userId: admin.id, total: 1210, returnStock: false, items: [{ productId: p.id, quantity: 2 }] });
+    assert.strictEqual(await stockDe(p.id), 10, 'sin devolución no toca el stock');
+    assert.strictEqual((await prisma.purchase.findUnique({ where: { id: nc1.id } }))!.total, -1210);
+    const nc2 = await prisma.purchase.create({ data: { supplierId: prov.id, userId: admin.id, total: 0, status: 'PENDING', paymentStatus: 'OWED' } });
+    await purchases.confirmCreditNote(nc2.id, { supplierId: prov.id, userId: admin.id, total: 605, returnStock: true, items: [{ productId: p.id, quantity: 2 }] });
+    const d = await prisma.product.findUnique({ where: { id: p.id } });
+    assert.strictEqual(d!.stock, 8, 'devolución: resta');
+    assert.strictEqual(d!.costPrice, 500);
+    assert.strictEqual(d!.salePrice, 1000);
+    await assert.rejects(() => purchases.confirmCreditNote(nc2.id, { supplierId: prov.id, userId: admin.id, total: 605 }), /ya fue cargada/);
+  });
+
   await t('deshacer boleta: un precio que cambiaron después no se pisa', async () => {
     const p = await nuevo('ACEITE', 0, { costPrice: 500, salePrice: 1000 });
     const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 600 }] });

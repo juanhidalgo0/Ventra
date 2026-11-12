@@ -428,6 +428,8 @@ export class PurchasesService {
     paymentMethod?: string;
     notes?: string;
     manualTotal?: number;
+    /** factura, remito, nota de credito: para reconocer después la factura de un remito (tanda 5) */
+    docType?: string | null;
   }) {
     const total = data.manualTotal !== undefined 
       ? Number(data.manualTotal) 
@@ -540,9 +542,14 @@ export class PurchasesService {
         const stockBefore = stockAfter - totalUnitsAdded;
 
         // Update Product Stock, Cost Price and Sale Price
+        // Sin precio (un remito en $ 0): solo suma stock. Antes dejaba el costo del producto en $ 0 (tanda 5)
+        const noPrice = !(unitCostWithIva > 0) && !createdIds.has(product.id);
         // Sin un precio de venta elegido, se mantiene el margen que ya tenía el producto
-        const updatedSalePrice = keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
-        const updateData: any = {
+        const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
+        const updateData: any = noPrice ? {
+          ...(product.supplierId ? {} : { supplierId: data.supplierId }),
+          isActive: true,
+        } : {
           costPrice: unitCostWithIva, // Store unit cost with IVA
           salePrice: updatedSalePrice,
           ...scaledPrices(product, updatedSalePrice, priceRound),
@@ -551,7 +558,7 @@ export class PurchasesService {
           isActive: true // Reactivate if soft-deleted
         };
 
-        noteUndo(undo, product, createdIds.has(product.id), updateData, barcodeSet);
+        noteUndo(undo, product, createdIds.has(product.id), noPrice ? { costPrice: product.costPrice, salePrice: product.salePrice } : updateData, barcodeSet);
 
         if (item.newProductData) {
           if (item.newProductData.categoryId) {
@@ -607,6 +614,7 @@ export class PurchasesService {
     }
 
       if (undo.size) await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = ? WHERE id = ?`, JSON.stringify({ v: 1, at: Date.now(), rows: [...undo.values()] }), newPurchase.id);
+      if (data.docType) await tx.$executeRawUnsafe(`UPDATE purchases SET doc_type = ? WHERE id = ?`, String(data.docType).slice(0, 30), newPurchase.id);
       return newPurchase;
     });
 
@@ -717,6 +725,14 @@ export class PurchasesService {
     return this.scanOne(parsedData, { readCheck, readInfo, sourceLabel, isExcel, userId, opts });
   }
 
+  /** Lo que hay que mirar por el tipo de comprobante: nota de crédito, o la factura de un remito ya cargado */
+  docNotes(base: any): string[] {
+    const out: string[] = [];
+    if (base.creditNote && !(base.qrNotes || []).some((n: string) => /nota de crédito/.test(n))) out.push('es una nota de crédito: resta de lo que le debés al proveedor (confirmala aparte)');
+    if (base.remitoMatch) out.push(`parece la factura del remito${base.remitoMatch.invoiceNumber ? ` N° ${base.remitoMatch.invoiceNumber}` : ''} del ${new Date(base.remitoMatch.createdAt).toLocaleDateString('es-AR')}: al confirmarla así, el stock no se vuelve a sumar`);
+    return out;
+  }
+
   /** ¿Ya se sabe algo de este proveedor? (códigos aprendidos o alguna compra confirmada) */
   private async supplierHasHistory(supplierId?: string | null): Promise<boolean> {
     if (!supplierId) return false;
@@ -786,7 +802,7 @@ export class PurchasesService {
     if (base.strayNumber) why.push('no tiene número propio: el que se veía era de otra factura de atrás');
     if (base.photoIssues?.length) why.push(`la foto tiene partes que no se ven bien (${base.photoIssues.map((p: any) => p.issue).join('; ')})`);
     if (out.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
-    why.push(...(base.qrNotes || []));
+    why.push(...(base.qrNotes || []), ...this.docNotes(base));
     // Las hojas que faltaban de una factura que está en "Por revisar": se suman a esa (antes decía "ya estaba cargada")
     const same = await this.findSameInvoice(base.matchedSupplier?.id, base.invoiceNumber);
     if (same?.status === 'PENDING') {
@@ -812,7 +828,9 @@ export class PurchasesService {
     const supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
     const settings = await this.scanSettings();
     // ¿Esta boleta ya se cargó? (mismo proveedor y número): escanearla de nuevo duplicaría el stock y la deuda
-    const duplicate = await this.findSameInvoice(supplier?.id, parsedData.invoiceNumber);
+    // Nota de crédito (por lo que leyó la IA o por el QR de ARCA): numeración propia, se confirma aparte (tanda 5.2)
+    const isCredit = parsedData.docType === 'nota de credito' || parsedData.qr?.kind === 'nota de crédito';
+    const duplicate = await this.findSameInvoice(supplier?.id, parsedData.invoiceNumber, isCredit);
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
     // adentro (factura B/C, ticket), la suma da el total. Así se sabe también si los precios lo traen.
@@ -1022,6 +1040,10 @@ export class PurchasesService {
       // QR de ARCA (si se leyó) y lo que hay que mirar por él
       qr: parsedData.qr || null,
       qrNotes: await this.qrNotes(parsedData.qr),
+      creditNote: isCredit,
+      // ¿Es la factura de un remito que ya sumó el stock? (tanda 5.1)
+      remitoMatch: !isCredit && (parsedData.docType || 'factura') !== 'remito'
+        ? await this.findRemitoFor(supplier?.id, items.map((it) => ({ productId: it.product?.id, quantity: it.quantity }))) : null,
       // Muestras de la nube de estas hojas: al confirmar se les manda lo que quedó (invoice-samples.js)
       sampleIds: Array.isArray(parsedData.sampleIds) ? parsedData.sampleIds.map(String).slice(0, 60) : [] as string[],
     };
@@ -1041,6 +1063,7 @@ export class PurchasesService {
     if (!items.length) why.push('no hay productos');
     if (base.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
     why.push(...base.qrNotes);
+    why.push(...this.docNotes(base));
 
     const supplierId = supplier?.id || (await this.matcher.findSupplier('Proveedor sin nombre', true))!.id;
     const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
@@ -1052,6 +1075,7 @@ export class PurchasesService {
         userId: resolvedUser,
         invoiceNumber: parsedData.invoiceNumber || undefined,
         manualTotal: printedTotal,
+        docType: base.docType || 'factura',
         paymentStatus: 'OWED',
         notes: 'Cargada sola desde la foto de la boleta (Ventra IA).',
         items: items.map((it) => ({
@@ -1145,7 +1169,7 @@ export class PurchasesService {
   }
 
   /** Una compra del mismo proveedor con el mismo número de boleta (sin contar las anuladas) */
-  private async findSameInvoice(supplierId: string | null | undefined, invoiceNumber?: string | null) {
+  private async findSameInvoice(supplierId: string | null | undefined, invoiceNumber?: string | null, credit = false) {
     // "0010-00000094" y "00010-94" son la misma: punto de venta y número, sin los ceros de adelante
     const digits = (s: string) => {
       const parts = String(s || '').split(/\D+/).filter(Boolean);
@@ -1158,8 +1182,108 @@ export class PurchasesService {
       select: { id: true, invoiceNumber: true, status: true, createdAt: true, total: true },
       orderBy: { createdAt: 'desc' }, take: 500,
     });
-    const same = rows.find((r: any) => digits(r.invoiceNumber) === target);
+    const hits = rows.filter((r: any) => digits(r.invoiceNumber) === target);
+    if (!hits.length) return null;
+    // Una nota de crédito tiene su propia numeración: la NC 3-12 no es la factura 3-12 (tanda 5)
+    const types = await this.prisma.$queryRawUnsafe<{ id: string; doc_type: string | null }[]>(
+      `SELECT id, doc_type FROM purchases WHERE id IN (${hits.map(() => '?').join(',')})`, ...hits.map((h: any) => h.id),
+    ).catch(() => [] as { id: string; doc_type: string | null }[]);
+    const isNc = (id: string) => types.find((t) => t.id === id)?.doc_type === 'nota de credito';
+    const same = hits.find((r: any) => isNc(r.id) === !!credit);
     return same ? { id: same.id, status: same.status, createdAt: same.createdAt, total: same.total } : null;
+  }
+
+  /**
+   * Remito primero, factura después (tanda 5.1): una factura que trae los mismos productos y cantidades
+   * que un remito reciente del mismo proveedor (confirmado y todavía sin factura) es la factura de ese
+   * remito. Confirmarla así completa costos y deuda SIN volver a sumar el stock (antes se duplicaba).
+   * items: { productId, quantity } de la factura (en unidades). Devuelve el remito o null.
+   */
+  async findRemitoFor(supplierId: string | null | undefined, items: { productId?: string | null; quantity: number }[]) {
+    const lines = items.filter((i) => i.productId && i.quantity > 0);
+    if (!supplierId || lines.length < 1) return null;
+    const since = new Date(Date.now() - 45 * 864e5);
+    const ids = (await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM purchases WHERE supplier_id = ? AND status = 'COMPLETED' AND doc_type = 'remito'`, supplierId,
+    ).catch(() => [] as { id: string }[])).map((r) => r.id);
+    if (!ids.length) return null;
+    const remitos: any[] = await this.prisma.purchase.findMany({ where: { id: { in: ids }, createdAt: { gte: since } }, include: { items: true }, orderBy: { createdAt: 'desc' }, take: 20 });
+    let best: any = null, bestScore = 0;
+    for (const p of remitos) {
+      const rem = new Map<string, number>();
+      for (const it of p.items) rem.set(it.productId, (rem.get(it.productId) || 0) + it.quantity);
+      const fac = new Map<string, number>();
+      for (const it of lines) fac.set(it.productId!, (fac.get(it.productId!) || 0) + it.quantity);
+      const same = [...fac.entries()].filter(([id, q]) => Math.abs((rem.get(id) || 0) - q) < 0.01).length;
+      // Los mismos productos con las mismas cantidades: casi todos (permite un renglón distinto)
+      const score = same / Math.max(fac.size, rem.size);
+      if (score > bestScore && score >= 0.8) { bestScore = score; best = { id: p.id, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, items: p.items.length, match: Math.round(score * 100) }; }
+    }
+    return best;
+  }
+
+  /**
+   * Confirmar una factura como "la factura de este remito": pone costos y precios de venta (como una
+   * compra), pero no suma stock (ya lo sumó el remito). El remito queda con el número, el total y la deuda
+   * de la factura, y la factura pendiente se borra. Todos los renglones tienen que ser productos del remito.
+   */
+  async invoiceForRemito(pendingId: string, remitoId: string, data: { supplierId: string; invoiceNumber?: string; manualTotal?: number; paymentStatus: 'PAID' | 'OWED'; paymentMethod?: string; items?: { productId?: string; quantity: number; cost: number; salePrice?: number; buyFormat?: string }[] }) {
+    const remito: any = await this.prisma.purchase.findUnique({ where: { id: remitoId }, include: { items: true } });
+    if (!remito || remito.status !== 'COMPLETED') throw new BadRequestException('Ese remito ya no está.');
+    const items = data.items || [];
+    if (!items.length || items.some((i) => !i.productId || !remito.items.some((r: any) => r.productId === i.productId))) {
+      throw new BadRequestException('Para cargarla como factura del remito, cada renglón tiene que ser un producto del remito. Si trae otros productos, confirmala como compra común.');
+    }
+    const priceRound = (await this.scanSettings()).round;
+    const total = data.manualTotal !== undefined ? Number(data.manualTotal) : items.reduce((s, i) => s + i.quantity * i.cost, 0) * 1.21;
+    await this.prisma.$transaction(async (tx) => {
+      for (const it of items) {
+        const product: any = await tx.product.findUnique({ where: { id: it.productId! } });
+        if (!product) continue;
+        const isPack = it.buyFormat === 'PACK' && product.presentationType === 'PACK';
+        const unitCostWithIva = (isPack ? it.cost / (product.unitsPerPack || 1) : it.cost) * 1.21;
+        if (!(unitCostWithIva > 0)) continue;
+        const sale = keepMarginSale(product, unitCostWithIva, it.salePrice, priceRound);
+        await tx.product.update({ where: { id: product.id }, data: { costPrice: unitCostWithIva, salePrice: sale, ...scaledPrices(product, sale, priceRound) } });
+        await (tx as any).purchaseItem.updateMany({ where: { purchaseId: remitoId, productId: product.id }, data: { cost: it.cost * 1.21, total: it.quantity * it.cost * 1.21 } });
+      }
+      await tx.purchase.update({ where: { id: remitoId }, data: {
+        total, invoiceNumber: data.invoiceNumber || remito.invoiceNumber, paymentStatus: data.paymentStatus, paymentMethod: data.paymentMethod,
+        notes: `${remito.notes ? `${remito.notes} · ` : ''}Factura ${data.invoiceNumber || ''} aplicada al remito (costos y deuda; el stock ya estaba).`.slice(0, 1000),
+      } });
+      await tx.$executeRawUnsafe(`UPDATE purchases SET doc_type = 'factura' WHERE id = ?`, remitoId);
+      await (tx as any).purchaseItem.deleteMany({ where: { purchaseId: pendingId } });
+      await tx.purchase.delete({ where: { id: pendingId } });
+    });
+    return { id: remitoId, invoiceForRemito: true };
+  }
+
+  /**
+   * Nota de crédito (tanda 5.2): resta deuda con el proveedor (queda como compra en negativo). Resta stock
+   * solo si el dueño confirma que es devolución de mercadería, y nunca toca costos ni precios de venta.
+   */
+  async confirmCreditNote(pendingId: string, data: { supplierId: string; userId: string; invoiceNumber?: string; total: number; returnStock?: boolean; items?: { productId?: string; quantity: number }[] }) {
+    const row = await this.prisma.purchase.findUnique({ where: { id: pendingId }, select: { status: true } });
+    if (!row || row.status !== 'PENDING') throw new BadRequestException('Esta nota de crédito ya fue cargada.');
+    const total = -Math.abs(Number(data.total) || 0);
+    if (!total) throw new BadRequestException('Falta el total de la nota de crédito.');
+    const lines = data.returnStock ? (data.items || []).filter((i) => i.productId && i.quantity > 0) : [];
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).purchaseItem.deleteMany({ where: { purchaseId: pendingId } });
+      for (const it of lines) {
+        const p: any = await tx.product.findUnique({ where: { id: it.productId! }, select: { id: true, name: true } });
+        if (!p) continue;
+        const { stock: after } = await tx.product.update({ where: { id: p.id }, data: { stock: { decrement: it.quantity } }, select: { stock: true } });
+        await tx.inventoryMovement.create({ data: { productId: p.id, userId: data.userId, type: 'EXIT', quantity: -it.quantity, stockBefore: after + it.quantity, stockAfter: after, reason: 'Devolución al proveedor (nota de crédito)', reference: `Compra #${pendingId}` } });
+        await (tx as any).purchaseItem.create({ data: { purchaseId: pendingId, productId: p.id, productName: p.name, quantity: -it.quantity, cost: 0, total: 0, buyFormat: 'UNIT' } });
+      }
+      await tx.purchase.update({ where: { id: pendingId }, data: {
+        supplierId: data.supplierId, userId: data.userId, invoiceNumber: data.invoiceNumber || null, total, status: 'COMPLETED', paymentStatus: 'OWED',
+        notes: `Nota de crédito${lines.length ? ' (devolución de mercadería: se restó el stock)' : ''}: resta de lo que le debés al proveedor.`,
+      } });
+      await tx.$executeRawUnsafe(`UPDATE purchases SET doc_type = 'nota de credito', draft = NULL WHERE id = ?`, pendingId);
+    });
+    return { id: pendingId, total, returned: lines.length };
   }
 
   /**
@@ -1232,7 +1356,15 @@ export class PurchasesService {
     const row = await this.prisma.$queryRawUnsafe<{ draft: string | null; supplier_id: string }[]>(`SELECT draft, supplier_id FROM purchases WHERE id = ?`, id).catch(() => []);
     let draft: any = null;
     try { draft = row[0]?.draft ? JSON.parse(row[0].draft) : null; } catch { /* sin borrador */ }
-    const result = await this.confirmPendingInner(id, data);
+    // La factura de un remito: costos y deuda, sin volver a sumar el stock (tanda 5.1)
+    const fromRemitoId = (data as any).fromRemitoId;
+    if (fromRemitoId && draft?.remitoMatch?.id === fromRemitoId) {
+      const r = await this.invoiceForRemito(id, String(fromRemitoId), data as any);
+      if (draft?.items?.length) this.learnFromCorrections(draft, data).catch(() => {});
+      if (draft) this.confirmSamples(draft, data, {});
+      return r;
+    }
+    const result = await this.confirmPendingInner(id, { ...data, docType: draft?.docType || null } as any);
     if (draft?.items?.length) this.learnFromCorrections(draft, data).catch(() => { /* aprender nunca frena la compra */ });
     if (draft) this.confirmSamples(draft, data, { untouched: !this.correctionsOf(draft, data.items || []).length && (data.items || []).length === (draft.items || []).length });
     return result;
@@ -1426,16 +1558,17 @@ export class PurchasesService {
           const stockAfter = (await tx.product.update({ where: { id: productId }, data: { stock: { increment: totalUnitsAdded } }, select: { stock: true } })).stock;
           const stockBefore = stockAfter - totalUnitsAdded;
 
-          // Update Product Stock, Cost Price and Sale Price
-          const updatedSalePrice = keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
-          const updateData: any = {
+          // Update Product Stock, Cost Price and Sale Price (sin precio, como un remito en $ 0: solo stock)
+          const noPrice = !(unitCostWithIva > 0);
+          const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
+          const updateData: any = noPrice ? { ...(product.supplierId ? {} : { supplierId: data.supplierId }), isActive: true } : {
             costPrice: unitCostWithIva,
             salePrice: updatedSalePrice,
             ...scaledPrices(product, updatedSalePrice, priceRound),
             ...(product.supplierId ? {} : { supplierId: data.supplierId }),
             isActive: true
           };
-          noteUndo(undo, product, false, updateData);
+          noteUndo(undo, product, false, noPrice ? { costPrice: product.costPrice, salePrice: product.salePrice } : updateData);
 
           await tx.product.update({
             where: { id: productId },

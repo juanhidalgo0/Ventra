@@ -617,6 +617,27 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(hint.includes("SIN IVA") && hint.includes("bultos,unidades") && hint.includes("va en sku"), hint);
   });
 
+  await t("ticket largo en tramos: se juntan y los renglones repetidos entre fotos van una vez", async () => {
+    const tramo1 = read({ supplierName: "SUPERMAYORISTA RUTA 2", invoiceNumber: "0045-00334129", docType: "ticket", totalFacturaAPagar: "", items: [it("LECHE 1L", 12, "13.800,00"), it("YOGUR 1L", 6, "11.340,00"), it("MANTECA 200G", 4, "9.240,00")] });
+    // La segunda foto repite los 2 últimos renglones y no tiene encabezado
+    const tramo2 = read({ docType: "ticket", totalFacturaAPagar: "42.720,00", items: [it("YOGUR 1L", 6, "11.340,00"), it("MANTECA 200G", 4, "9.240,00"), it("QUESO CREMA", 3, "8.340,00")] });
+    const g = ai.finishInvoices([{ image: 0, ...tramo1 }, { image: 1, ...tramo2 }]);
+    const doc = g.result.documents;
+    assert.strictEqual(doc.length, 1, "un solo ticket");
+    assert.deepStrictEqual(doc[0].items.map((x) => x.name), ["LECHE 1L", "YOGUR 1L", "MANTECA 200G", "QUESO CREMA"]);
+    assert.strictEqual(doc[0].tramos, 1);
+    assert.strictEqual(doc[0].closes, true, "con los tramos juntos cierra el total");
+    // Una factura distinta sin número no se pega a un ticket que ya tiene su total
+    const otro = ai.finishInvoices([{ image: 0, ...tramo1, totalFacturaAPagar: "34.380,00" }, { image: 1, ...tramo2 }]);
+    assert.strictEqual(otro.result.documents.length, 2);
+  });
+
+  await t("nota de crédito: la IA la puede marcar y el QR la reconoce", async () => {
+    assert.ok(ai.INVOICE_ONE_PROMPT.includes('"nota de credito"'));
+    const nc = ai.applyQr(read({ items: [it("X", 1, "1,00")] }), { ver: 1, fecha: "2026-11-10", cuit: 30712345675, ptoVta: 3, tipoCmp: 3, nroCmp: 12, importe: 121, moneda: "PES", ctz: 1 });
+    assert.strictEqual(nc.docType, "nota de credito");
+  });
+
   await t("impuestos internos: la IA los informa aparte y llegan al comprobante", async () => {
     assert.ok(ai.INVOICE_ONE_PROMPT.includes("impuestosInternos"));
     const g = ai.finishInvoices([{ image: 0, ...read({ invoiceNumber: "0001-00000001", totalFacturaAPagar: "1.331,00", ivaTotal: "210,00", otrosImpuestos: "121", impuestosInternos: "121", items: [it("CERVEZA", 1, "1.000,00")] }) }]);

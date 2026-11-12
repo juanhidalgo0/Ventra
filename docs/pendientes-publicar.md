@@ -65,6 +65,19 @@ Para publicar: función **ventraBarcodes** (antes que la caja) y la caja.
 
 Para publicar: funciones `ventraAi`, `ventraAdmin`, **`ventraLessonTrialsWeekly` (nueva)** y la web (admin.html). Ojo: la ficha y las pruebas usan las muestras, así que no hacen nada hasta prender `ventra_config/invoiceSamples`.
 
+## 0e. Boletas — tanda 5 (lista, sin publicar)
+
+Antes de cambiar, se probó cómo se comportaba: **un remito en $ 0 dejaba el costo del producto en $ 0 y su factura volvía a sumar el stock** (8 → 14). Arreglado:
+
+| Qué | Dónde |
+|---|---|
+| Un renglón sin precio (remito) solo suma stock: no toca costo ni precio de venta | `purchases.service.ts` (`create`, `confirmPendingInner`) |
+| "Es la factura de este remito": mismos productos y cantidades de un remito reciente → completa costos y deuda sin volver a sumar stock | `findRemitoFor`, `invoiceForRemito`, columna `doc_type`; aviso en `NewPurchaseScreen` |
+| Nota de crédito (la IA la marca o el QR de ARCA): resta deuda; resta stock solo si se tilda "Devolví esta mercadería"; numeración propia | `confirmCreditNote`, `CreditNotePanel.tsx`, `ai.js` |
+| Ticket largo en tramos: guía en pantalla y al juntar se sacan los renglones repetidos entre fotos | `ai.js` (`isTramo`, `joinTramos`), `ScanInvoiceSheet`, `NewPurchaseScreen` |
+
+Para publicar: `ventraAi` (con la evaluación de boletas antes, por la regla) y la caja.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

@@ -396,6 +396,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!purchaseCols.some((c) => c.name === 'draft')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN draft TEXT DEFAULT NULL;`);
             // "Deshacer boleta": cómo estaba cada producto antes de confirmar la compra (costo, precios, si era nuevo)
             if (!purchaseCols.some((c) => c.name === 'undo_info')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN undo_info TEXT DEFAULT NULL;`);
+            // Tipo de comprobante (factura, remito, nota de credito): la factura que llega después de su remito no vuelve a sumar stock
+            if (!purchaseCols.some((c) => c.name === 'doc_type')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN doc_type TEXT DEFAULT NULL;`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,

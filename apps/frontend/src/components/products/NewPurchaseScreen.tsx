@@ -274,6 +274,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const [showScanModal, setShowScanModal] = useState(false);
   // Primera boleta de un proveedor (tanda 3): asociar de corrido; y la pantalla de productos repetidos
   const [firstSupplier, setFirstSupplier] = useState(false);
+  // La factura de un remito que ya sumó el stock (tanda 5.1): se confirma sin volver a sumarlo
+  const remitoMatch = initialPurchase?.draft?.remitoMatch || null;
+  const [asRemitoInvoice, setAsRemitoInvoice] = useState(true);
   const [showDuplicates, setShowDuplicates] = useState(false);
   useEffect(() => {
     try { if (sessionStorage.getItem(OPEN_SCAN_KEY) === '1') { sessionStorage.removeItem(OPEN_SCAN_KEY); if (!initialPurchase) setShowScanModal(true); } } catch { /* nada */ }
@@ -1256,6 +1259,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       await api[method](url, {
         supplierId: selectedSupplier.id,
         invoiceNumber,
+        ...(remitoMatch && asRemitoInvoice ? { fromRemitoId: remitoMatch.id } : {}),
         items: items.map(i => {
           const costVal = netCostOf(i);
           // Scale cost down if useIvaGlobal is false since the backend will automatically multiply it by 1.21
@@ -1473,6 +1477,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                 />
               </div>
 
+              {selectedFilesForScan.length > 0 && !selectedFilesForScan.some(isDocumentFile) && (
+                <p className="mb-3 text-[11.5px] text-slate-500">¿Ticket largo? Sacá varias fotos de arriba hacia abajo y dejá 2 renglones repetidos entre una y la siguiente: Ventra junta los tramos sin repetir nada.</p>
+              )}
               {photoWarnings.length > 0 && !photoWarningsOk && (
                 <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12.5px] text-amber-900">
                   <p className="font-bold">{photoWarnings.map((w) => warningText(w, selectedFilesForScan.length)).join('. ')}.</p>
@@ -2171,6 +2178,15 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
             )}
           </AnimatePresence>
 
+          {remitoMatch && (
+            <label className="mb-3 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 cursor-pointer">
+              <input type="checkbox" checked={asRemitoInvoice} onChange={(e) => setAsRemitoInvoice(e.target.checked)} className="w-5 h-5 mt-0.5 accent-sky-600 shrink-0" />
+              <span className="text-[13px] text-slate-700">
+                <b className="block text-slate-900">Es la factura del remito{remitoMatch.invoiceNumber ? ` N° ${remitoMatch.invoiceNumber}` : ''} del {new Date(remitoMatch.createdAt).toLocaleDateString('es-AR')}</b>
+                Trae los mismos productos y cantidades. Al confirmar se completan los costos y la deuda, y <b>el stock no se vuelve a sumar</b> (ya lo sumó el remito). Destildalo si es otra compra.
+              </span>
+            </label>
+          )}
           {firstSupplier && items.length > 0 && (
             <FirstInvoicePanel<PurchaseItem> items={items} onAssociate={associateNewRow} onOpenDuplicates={() => setShowDuplicates(true)}
               onSetBarcode={(row, bc) => setItems((prev) => prev.map((it) => rowId(it) === rowId(row) ? { ...it, barcode: bc, newProductData: it.newProductData ? { ...it.newProductData, barcode: bc } : it.newProductData } : it))} />

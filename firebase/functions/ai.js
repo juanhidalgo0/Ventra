@@ -206,7 +206,7 @@ const INVOICE_STRONG_MODEL = "claude-sonnet-5-5";
 const INVOICE_TOP_MODEL = "claude-opus-5-5";
 const INVOICE_ONE_PROMPT = `${INVOICE_PROMPT}
 12. Esta foto es UN solo comprobante (o una página de uno). Puede estar girada, torcida o con sombras: leela igual.
-13. "docType": "factura", "remito", "nota" (nota de pedido, presupuesto o comprobante "no válido como factura"), "ticket" u "otro".
+13. "docType": "factura", "remito", "nota" (nota de pedido, presupuesto o comprobante "no válido como factura"), "ticket", "nota de credito" (dice NOTA DE CRÉDITO: devuelve plata o mercadería) u "otro".
 14. "pageNumber" y "pageCount": si dice "Pág. 1 de 2" o "Página 1 de 1", esos números; si no lo dice, 0. Ojo: un número de página suelto (por ejemplo "Pag. 226") NO es "de cuántas": en ese caso pageNumber 0 y pageCount 0.
 15. Anotaciones a mano sobre un comprobante impreso (sumas, totales escritos con birome o resaltador, tildes) NO son renglones ni el total, y nunca cambian la cantidad, el precio ni el total impresos. Única excepción: si al lado de un renglón impreso hay un número escrito a mano que parece el precio de venta que el comercio le va a poner (por ejemplo "3400" en naranja al lado de un producto que cuesta 1.900), ponelo en "handPrice" de ese renglón (solo el número, "3400"). Si no hay, "handPrice" vacío.
 16. "unitPrice": el precio unitario impreso en ESA línea, el que multiplicado por la cantidad da el total de la línea (si hay precio de lista y precio con bonificación, el bonificado; si hay sin IVA y con IVA, el de la misma columna que el total). Vacío si no hay.
@@ -224,7 +224,7 @@ const INVOICE_ONE_SCHEMA = {
   ...INVOICE_SCHEMA,
   properties: {
     ...INVOICE_SCHEMA.properties,
-    docType: { type: "string", enum: ["factura", "remito", "nota", "ticket", "otro"] },
+    docType: { type: "string", enum: ["factura", "remito", "nota", "ticket", "nota de credito", "otro"] },
     pageNumber: { type: "integer" },
     pageCount: { type: "integer" },
     ivaTotal: { type: "string" },
@@ -299,7 +299,9 @@ function applyQr(read, rawQr) {
   if (qr.fecha) out.date = qr.fecha;
   // El importe del QR es el total exacto, aunque el impreso esté tapado o mal leído
   if (qr.totalPesos > 0) out.totalFacturaAPagar = qr.totalPesos.toFixed(2);
-  if (qr.kind !== "factura") out.docType = "otro";
+  // Nota de crédito: tipo propio (resta deuda, tanda 5.2); nota de débito: se revisa como "otro"
+  if (qr.kind === "nota de crédito") out.docType = "nota de credito";
+  else if (qr.kind !== "factura") out.docType = "otro";
   return out;
 }
 
@@ -350,12 +352,44 @@ function sameSupplier(a, b) {
   if (!na || !nb) return true; // una hoja sin nombre: alcanza con el número
   return na === nb || na.startsWith(nb.slice(0, 6)) || nb.startsWith(na.slice(0, 6));
 }
+/** ¿Esta foto es el tramo siguiente de un ticket largo? Pura. */
+function isTramo(r, prevDoc) {
+  if (digits(r.invoiceNumber).length >= 3 || Number(r.pageNumber) > 0) return false;
+  if (String(r.supplierName || "").trim() || digits(r.supplierCuit).length >= 10) return false;
+  const last = prevDoc.reads[prevDoc.reads.length - 1];
+  if (!last || num(last.totalFacturaAPagar) > 0) return false;
+  return (prevDoc.reads[0].docType === "ticket" || r.docType === "ticket") && (r.items || []).length > 0;
+}
+
+/**
+ * Renglones de varios tramos: los que se repiten entre el final de una foto y el principio de la
+ * siguiente (se pide dejar 2 renglones repetidos para no perder ninguno) van una sola vez. Pura.
+ */
+const lineKey = (it) => `${String(it.name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${Math.round(num(it.total))}`;
+function joinTramos(pages) {
+  const out = [];
+  for (const p of pages) {
+    const cur = p.items || [];
+    let k = 0;
+    if (p.tramo) {
+      for (let n = Math.min(4, out.length, cur.length); n > 0; n--) {
+        if (out.slice(-n).every((it, i) => lineKey(it) === lineKey(cur[i]))) { k = n; break; }
+      }
+    }
+    out.push(...cur.slice(k));
+  }
+  return out;
+}
+
 function groupInvoicePages(reads) {
   const docs = [];
-  for (const r of reads) {
+  for (let r of reads) {
     const n = digits(r.invoiceNumber);
     let doc = n.length >= 3 ? docs.find((d) => d.number === n && sameSupplier(d.reads[0], r)) : null;
     if (!doc && n.length < 3 && r.pageNumber > 1 && docs.length) doc = docs[docs.length - 1];
+    // Ticket largo sacado en tramos: la foto siguiente no tiene encabezado (ni número, ni proveedor) y el
+    // tramo anterior todavía no llegó al total → es la continuación (tanda 5.3)
+    if (!doc && docs.length && isTramo(r, docs[docs.length - 1])) { doc = docs[docs.length - 1]; r = { ...r, tramo: true }; }
     if (!doc) {
       doc = { number: n.length >= 3 ? n : null, images: [], reads: [] };
       docs.push(doc);
@@ -420,7 +454,8 @@ function groupInvoicePages(reads) {
       ivaTotal: footer.ivaTotal || "", otrosImpuestos: footer.otrosImpuestos || "", impuestosInternos: footer.impuestosInternos || "",
       missingPageNumbers,
       rawTableTranscription: pages.map((p) => p.rawTableTranscription || "").join("\n\n"),
-      items: pages.flatMap((p) => p.items || []),
+      items: joinTramos(pages),
+      tramos: pages.filter((p) => p.tramo).length,
       // Hojas que faltan (dice "hoja 1 de 6" y llegaron 3): el total no se puede controlar todavía
       pages: pages.length, pageCount, missingPages: missingCount, unnumberedPages: notNumbered,
       // La foto se leyó pero con partes que no se ven bien (oscura, movida, cortada)
@@ -1175,4 +1210,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, applyQr, cleanQr, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, applyQr, cleanQr, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

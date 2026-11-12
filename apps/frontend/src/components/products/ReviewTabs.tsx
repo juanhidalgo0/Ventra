@@ -5,6 +5,7 @@ import api from '../../services/api';
 import NewPurchaseScreen from './NewPurchaseScreen';
 import { photosFor } from './ScanJobPanel';
 import DuplicatesModal from './DuplicatesModal';
+import CreditNotePanel from './CreditNotePanel';
 import { useManagerAccess } from '../../utils/managerAccess';
 
 /**
@@ -158,7 +159,10 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
             {open.length > 0 && <button onClick={() => setActive(open[0].id)} className="mt-2 h-10 px-4 rounded-xl bg-rose-600 text-white text-[13px] font-bold cursor-pointer">Ir a la siguiente</button>}
           </div>
         ) : (
-          <NewPurchaseScreen key={current.id} initialPurchase={current} photos={photosFor(current.draft?.images)} onBack={onClose} onConfirmed={next} />
+          current.draft?.creditNote
+            // Nota de crédito: no es una compra, se confirma aparte (resta deuda; stock solo si se devolvió)
+            ? <CreditNotePanel key={current.id} purchase={current} onDone={next} onDiscard={discard} />
+            : <NewPurchaseScreen key={current.id} initialPurchase={current} photos={photosFor(current.draft?.images)} onBack={onClose} onConfirmed={next} />
         )}
       </div>
     </div>
