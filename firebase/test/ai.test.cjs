@@ -452,7 +452,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
   // ── Tanda 1 del plan de boletas: QR de ARCA y muestras ──
   const samples = require("../functions/invoice-samples");
   const fakeBucket = () => { const files = {}; return { files, file: (p) => ({ save: async (buf, o) => { files[p] = { size: buf.length, type: o.contentType }; } }) }; };
-  const QR = { ver: 1, fecha: "2026-11-10", cuit: 30712345675, ptoVta: 3, tipoCmp: 1, nroCmp: 4521, importe: 12100, moneda: "PES", ctz: 1, tipoDocRec: 80, nroDocRec: 20111111112, tipoCodAut: "E", codAut: 1 };
+  const QR = { ver: 1, fecha: "2026-11-10", cuit: 30712345671, ptoVta: 3, tipoCmp: 1, nroCmp: 4521, importe: 12100, moneda: "PES", ctz: 1, tipoDocRec: 80, nroDocRec: 20111111112, tipoCodAut: "E", codAut: 1 };
 
   await t("QR de ARCA: con el total impreso tapado, la hoja cierra contra el importe del QR", async () => {
     samples.resetCache();
@@ -462,7 +462,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     const page = await ai.handle({ db, logger, client }, "u20", { kind: "invoice", stage: "page", image: { data: "FOTO0", mediaType: "image/jpeg" }, index: 0, qr: QR });
     const r = page.result.read;
     assert.strictEqual(r.totalFacturaAPagar, "12100.00");
-    assert.strictEqual(r.supplierCuit, "30-71234567-5");
+    assert.strictEqual(r.supplierCuit, "30-71234567-1");
     assert.strictEqual(r.invoiceNumber, "0003-00004521", "mismo número con otros ceros: queda el leído");
     assert.strictEqual(r.date, "2026-11-10");
     const g = await ai.handle({ db, logger, client }, "u20", { kind: "invoice", stage: "group", reads: [r] });
@@ -475,7 +475,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
 
   await t("muestras: con el interruptor apagado no se guarda nada", async () => {
     samples.resetCache();
-    const client = byPhoto({ FOTO0: read({ supplierCuit: "30-71234567-5", totalFacturaAPagar: "121,00", subtotalNeto: "100,00", items: [it("SAL", 1, "100,00")] }) });
+    const client = byPhoto({ FOTO0: read({ supplierCuit: "30-71234567-1", totalFacturaAPagar: "121,00", subtotalNeto: "100,00", items: [it("SAL", 1, "100,00")] }) });
     const db = fakeDb(), bucket = fakeBucket();
     const out = await ai.handle({ db, logger, client, bucket }, "u21", { kind: "invoice", stage: "page", image: { data: "FOTO0", mediaType: "image/jpeg" }, index: 0 });
     assert.strictEqual(out.result.read.sampleId, undefined);
@@ -485,7 +485,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
 
   await t("muestras: prendido para esa cuenta guarda foto + lectura + modelos, y al confirmar el resultado", async () => {
     samples.resetCache();
-    const client = byPhoto({ FOTO0: read({ supplierCuit: "30-71234567-5", supplierName: "DISTRI SUR", invoiceNumber: "0003-00004521", totalFacturaAPagar: "121,00", subtotalNeto: "100,00", items: [it("SAL", 1, "100,00")] }) });
+    const client = byPhoto({ FOTO0: read({ supplierCuit: "30-71234567-1", supplierName: "DISTRI SUR", invoiceNumber: "0003-00004521", totalFacturaAPagar: "121,00", subtotalNeto: "100,00", items: [it("SAL", 1, "100,00")] }) });
     const db = fakeDb(), bucket = fakeBucket();
     db.docs.invoiceSamples = { enabled: false, uids: ["u22"] };
     const out = await ai.handle({ db, logger, client, bucket }, "u22", { kind: "invoice", stage: "page", image: { data: "FOTO0", mediaType: "image/jpeg" }, index: 0 });
@@ -493,7 +493,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(id, "devuelve el sampleId");
     const doc = db.docs[id];
     assert.strictEqual(doc.uid, "u22");
-    assert.strictEqual(doc.cuit, "30712345675");
+    assert.strictEqual(doc.cuit, "30712345671");
     assert.deepStrictEqual(doc.models, ["claude-haiku-5-5"]);
     assert.strictEqual(doc.read.items[0].name, "SAL");
     assert.ok(doc.storagePath.startsWith("invoice_samples/u22/") && bucket.files[doc.storagePath], "la foto quedó en Storage");
@@ -503,7 +503,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     const other = await ai.handle({ db, logger }, "u99", { kind: "invoice", stage: "confirm", sampleIds: [id], confirmed: { items: [] } });
     assert.strictEqual(other.result.updated, 0);
     assert.strictEqual(db.docs[id].confirmed, null);
-    const mine = await ai.handle({ db, logger }, "u22", { kind: "invoice", stage: "confirm", sampleIds: [id], confirmed: { supplierCuit: "30-71234567-5", total: 121, untouched: true, items: [{ name: "SAL", quantity: 1, cost: 100, productId: "sal" }] } });
+    const mine = await ai.handle({ db, logger }, "u22", { kind: "invoice", stage: "confirm", sampleIds: [id], confirmed: { supplierCuit: "30-71234567-1", total: 121, untouched: true, items: [{ name: "SAL", quantity: 1, cost: 100, productId: "sal" }] } });
     assert.strictEqual(mine.result.updated, 1);
     assert.strictEqual(db.docs[id].confirmed.items[0].cost, 100);
     assert.strictEqual(db.docs[id].confirmed.untouched, true);
@@ -634,7 +634,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
 
   await t("nota de crédito: la IA la puede marcar y el QR la reconoce", async () => {
     assert.ok(ai.INVOICE_ONE_PROMPT.includes('"nota de credito"'));
-    const nc = ai.applyQr(read({ items: [it("X", 1, "1,00")] }), { ver: 1, fecha: "2026-11-10", cuit: 30712345675, ptoVta: 3, tipoCmp: 3, nroCmp: 12, importe: 121, moneda: "PES", ctz: 1 });
+    const nc = ai.applyQr(read({ items: [it("X", 1, "1,00")] }), { ver: 1, fecha: "2026-11-10", cuit: 30712345671, ptoVta: 3, tipoCmp: 3, nroCmp: 12, importe: 121, moneda: "PES", ctz: 1 });
     assert.strictEqual(nc.docType, "nota de credito");
   });
 
@@ -661,6 +661,15 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(img.mime, "application/pdf");
     assert.strictEqual(img.name, "factura.pdf");
     assert.ok(sent[0].includes("archivo"));
+  });
+
+  await t("CUIT mal leído en una foto borrosa: se corrige si es de un proveedor conocido; si no, queda vacío", async () => {
+    // 30-71866234-6 no pasa el dígito verificador (era 30-71666234-5: un 6 leído como 8)
+    assert.strictEqual(ai.fixCuit(read({ supplierCuit: "30-71866234-6" }), ["30716662345", "30714446785"]).supplierCuit, "30-71666234-5");
+    const sin = ai.fixCuit(read({ supplierCuit: "30-71866234-6" }), []);
+    assert.strictEqual(sin.supplierCuit, "");
+    assert.strictEqual(sin.cuitUnreadable, "30-71866234-6");
+    assert.strictEqual(ai.fixCuit(read({ supplierCuit: "30-71666234-5" }), []).supplierCuit, "30-71666234-5", "uno válido no se toca");
   });
 
   await t("impuestos internos: la IA los informa aparte y llegan al comprobante", async () => {

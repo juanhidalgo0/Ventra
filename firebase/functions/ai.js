@@ -287,6 +287,31 @@ function cleanQr(q) {
   };
 }
 /** Pone en la lectura lo que dice el QR (manda sobre lo que leyó la IA). Pura: devuelve otra lectura. */
+/** Dígito verificador del CUIT. Pura. */
+function validCuitDigits(c) {
+  if (!/^\d{11}$/.test(c)) return false;
+  const w = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let dv = 11 - (w.reduce((s, k, i) => s + k * Number(c[i]), 0) % 11);
+  if (dv === 11) dv = 0;
+  if (dv === 10) dv = 9;
+  return dv === Number(c[10]);
+}
+/**
+ * CUIT mal leído (foto borrosa: un dígito cambiado, 12-11-2026 en la evaluación): si no pasa el dígito
+ * verificador y se parece a uno solo de los proveedores del comercio (hasta 2 dígitos distintos), es ese.
+ * Si no, se deja vacío (la caja busca al proveedor por el nombre) y queda anotado lo que se leyó. Pura.
+ */
+function fixCuit(read, knownCuits) {
+  // El del QR de ARCA es el de verdad: no se toca
+  if (!read || read.error || read.qr) return read;
+  const c = String(read.supplierCuit || "").replace(/\D/g, "");
+  if (!c || validCuitDigits(c)) return read;
+  const known = [...new Set((Array.isArray(knownCuits) ? knownCuits : []).map((k) => String(k || "").replace(/\D/g, "")).filter(validCuitDigits))];
+  const near = c.length === 11 ? known.filter((k) => [...k].filter((d, i) => d !== c[i]).length <= 2) : [];
+  if (near.length === 1) return { ...read, supplierCuit: `${near[0].slice(0, 2)}-${near[0].slice(2, 10)}-${near[0].slice(10)}`, cuitFixed: read.supplierCuit };
+  return { ...read, supplierCuit: "", cuitUnreadable: read.supplierCuit };
+}
+
 function applyQr(read, rawQr) {
   const qr = cleanQr(rawQr);
   if (!qr || !read || read.error) return read;
@@ -521,7 +546,7 @@ async function parseInvoices(client, body, ctx = {}) {
     const models = [];
     let cost = 0;
     const track = (u) => { if (u && u.model) models.push(u.model); cost += Number(u && u.costUsd) || 0; addUsage(u); };
-    const read = applyQr(await readInvoicePage(client, img, i, anchor + hint, track, more), qrs[i]);
+    const read = fixCuit(applyQr(await readInvoicePage(client, img, i, anchor + hint, track, more), qrs[i]), body.supplierCuits);
     const sampleId = await samples.save(ctx, ctx.uid, img, read, { models, costUsd: cost });
     if (sampleId) read.sampleId = sampleId;
     return read;
@@ -540,7 +565,7 @@ async function invoicePage(client, body, ctx = {}) {
   const { hint, more } = await lessonHints(ctx, body.supplierCuits);
   const models = [];
   const track = (u) => { if (u && u.model) models.push(u.model); addUsage(u); };
-  const read = applyQr(await readInvoicePage(client, img, Number.isInteger(body.index) ? body.index : 0, anchor + hint, track, more), body.qr);
+  const read = fixCuit(applyQr(await readInvoicePage(client, img, Number.isInteger(body.index) ? body.index : 0, anchor + hint, track, more), body.qr), body.supplierCuits);
   // Muestra para medir el lector (invoice-samples.js): solo con el interruptor prendido
   const sampleId = await samples.save(ctx, ctx.uid, img, read, { models, costUsd: usage.costUsd });
   if (sampleId) read.sampleId = sampleId;
@@ -1210,4 +1235,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, applyQr, cleanQr, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, applyQr, cleanQr, fixCuit, validCuitDigits, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

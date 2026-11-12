@@ -115,7 +115,8 @@ async function readCase(client, c) {
   const reads = [];
   for (const [i, file] of c.files.entries()) {
     const [img] = ai.imageBlocks([{ mediaType: "image/jpeg", data: fs.readFileSync(file).toString("base64") }]);
-    reads.push(await ai.readInvoicePage(client, img, i, "", track, null));
+    // Igual que en producción (invoicePage): el CUIT que no pasa el dígito verificador se corrige o se descarta
+    reads.push(ai.fixCuit(await ai.readInvoicePage(client, img, i, "", track, null), []));
   }
   return { reads, models, cost };
 }
@@ -135,6 +136,21 @@ async function main() {
     cases = out;
   }
   const pages = cases.reduce((s, c) => s + c.files.length, 0);
+  // --recalcular: la última corrida con sus lecturas guardadas, sin IA ni costo (cuando cambia la comparación)
+  if (flag("--recalcular")) {
+    fs.mkdirSync(DIRS.corridas, { recursive: true });
+    const last = fs.readdirSync(DIRS.corridas).filter((f) => f.startsWith(`${set}_`)).sort().pop();
+    if (!last) return console.log("No hay corridas para recalcular.");
+    const old = JSON.parse(fs.readFileSync(path.join(DIRS.corridas, last), "utf8"));
+    const byId = new Map(cases.map((c) => [c.id, c]));
+    const results = old.results.filter((r) => r.reads && byId.has(r.id)).map((r) => {
+      const c = byId.get(r.id);
+      const info = { id: c.id, supplier: c.supplier, models: r.models, costUsd: r.costUsd };
+      const reads = r.reads.map((x) => ai.fixCuit(x, []));
+      return { ...(c.files.length > 1 ? cmp.compareDocument(c.expected, reads, info) : cmp.comparePage(c.expected, reads[0], info)), kind: c.kind || null, reads: r.reads };
+    });
+    return report(set, real, results, `recalculada de ${last}`);
+  }
   if (!pages) return console.log(real === "muestras" ? "No hay muestras confirmadas bajadas (usá --bajar; ¿está prendido ventra_config/invoiceSamples?)." : "No hay boletas fabricadas.");
   const simulated = flag("--simulada");
   const key = String(process.env.VENTRA_ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY || "").trim();
@@ -167,7 +183,11 @@ async function main() {
   };
   await Promise.all(Array.from({ length: 4 }, worker));
   console.log("");
+  report(set, real, results, solo || null);
+}
 
+/** Informe de una corrida: lo guarda, lo muestra y lo compara con la anterior y con la línea de base */
+function report(set, real, results, note) {
   const summary = cmp.summarize(results);
   // Por forma de arruinar la foto (solo fabricadas)
   if (real === "fabricadas") summary.byKind = Object.fromEntries(fab.ARRUINAR.map((k) => [k, cmp.summarize(results.filter((r) => r.kind === k)).overall]));
@@ -177,7 +197,7 @@ async function main() {
   const prev = runs.length ? JSON.parse(fs.readFileSync(path.join(DIRS.corridas, runs[runs.length - 1]), "utf8")).summary : null;
   const baseFile = path.join(ROOT, `base-${set}.json`);
   const base = fs.existsSync(baseFile) ? JSON.parse(fs.readFileSync(baseFile, "utf8")).summary : null;
-  fs.writeFileSync(path.join(DIRS.corridas, `${set}_${stamp}.json`), JSON.stringify({ at: new Date().toISOString(), set, filter: solo || null, summary, results }, null, 1));
+  fs.writeFileSync(path.join(DIRS.corridas, `${set}_${stamp}.json`), JSON.stringify({ at: new Date().toISOString(), set, note, summary, results }, null, 1));
   if (flag("--base") || !base) fs.writeFileSync(baseFile, JSON.stringify({ at: new Date().toISOString(), summary }, null, 1));
 
   const o = summary.overall;

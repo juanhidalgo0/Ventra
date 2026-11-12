@@ -655,7 +655,7 @@ exports.ventraSync = onRequest(
       await usage.flush();
       // Las tandas grandes viajan comprimidas: el JSON de filas se achica entre 5 y 10 veces
       const json = JSON.stringify(result);
-      if (json.length > 64 * 1024 && /gzip/.test(String(req.headers["accept-encoding"] || ""))) {
+      if (json.length > 64 * 1024 && /\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) {
         res.set("Content-Type", "application/json; charset=utf-8");
         res.set("Content-Encoding", "gzip");
         return res.status(200).send(zlib.gzipSync(json, { level: 6 }));

@@ -69,7 +69,10 @@ function pairLines(expected, read) {
  * más largo, pasar solo los renglones esperados de esa hoja (o usar compareDocument). Pura.
  */
 function comparePage(expected, read, info = {}) {
-  const finales = read && read.precios === "finales";
+  // Como la caja (scanOne): sin el dato de la IA, si los renglones suman el total impreso, los precios ya son finales
+  const items0 = (read && !read.error ? read.items || [] : []).filter((it) => num(it.total) > 0);
+  const sum0 = items0.reduce((t, it) => t + num(it.total), 0), tot0 = num(read && read.totalFacturaAPagar);
+  const finales = !!read && (read.precios === "finales" || (read.precios !== "sin iva" && !(num(read.ivaTotal) > 0) && tot0 > 0 && Math.abs(sum0 - tot0) <= Math.max(50, tot0 * 0.02)));
   const lines = (read && !read.error ? read.items || [] : [])// Descuentos (negativos) no son productos; un remito trae los renglones en $0 pero con cantidad
     .filter((it) => num(it.total) > 0 || (num(it.total) === 0 && Number(it.packageQuantity) > 0)).map((it) => readLine(it, finales));
   // Como la caja (scanOne): los descuentos en negativo se reparten entre los renglones según su importe
