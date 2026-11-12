@@ -6,6 +6,8 @@ const FUNCTIONS_URL = process.env.VENTRA_FUNCTIONS_URL || 'https://us-central1-v
 const TTL_MS = 60 * 60 * 1000;
 
 export interface SharedBarcode { name: string | null; imageUrl: string | null; votes: number }
+/** Mapa compartido entre comercios (firebase/functions/supplier-codes.js) */
+export interface SharedSupplierCode { barcode: string; name: string | null; unitsPerPack: number | null; votes: number; rivals: number; confidence: 'alta' | 'sugerencia' | 'contradice'; mine?: boolean }
 
 /**
  * Catálogo compartido entre los comercios de Ventra (función ventraBarcodes en la nube): cuando
@@ -32,6 +34,37 @@ export class SharedCatalogService {
     } catch {
       return null; // sin conexión o sin la función: se sigue sin el catálogo compartido
     }
+  }
+
+  /**
+   * Mapa compartido código del proveedor → código de barras (tanda 3 de boletas): los códigos de una
+   * boleta que no se encontraron. Sin vinculación o sin internet: vacío, sin error (sigue como siempre).
+   */
+  async supplierCodes(cuit: string, codes: string[]): Promise<Record<string, SharedSupplierCode>> {
+    const c = String(cuit || '').replace(/\D/g, '');
+    const list = [...new Set(codes.map((x) => String(x || '').trim()).filter(Boolean))].slice(0, 200);
+    if (c.length !== 11 || !list.length) return {};
+    const creds = this.subscription?.getDeviceCredentials();
+    if (!creds) return {};
+    try {
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraBarcodes`, { ...creds, action: 'supplierGet', cuit: c, codes: list }, { timeout: 4000 });
+      return data?.items || {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Lo que asoció el dueño al confirmar una compra: su voto en el mapa compartido. Nunca precios ni cantidades. */
+  async confirmSupplierCodes(cuit: string, items: { code?: string; barcode?: string | null; name?: string; unitsPerPack?: number }[]): Promise<void> {
+    const c = String(cuit || '').replace(/\D/g, '');
+    const clean = items.map((i) => ({ code: String(i.code || '').trim(), barcode: String(i.barcode || '').trim(), name: String(i.name || '').trim().slice(0, 120), unitsPerPack: Number(i.unitsPerPack) || 0 }))
+      .filter((i) => i.code && /^\d{8,14}$/.test(i.barcode));
+    if (c.length !== 11 || !clean.length) return;
+    const creds = this.subscription?.getDeviceCredentials();
+    if (!creds) return;
+    try {
+      await axios.post(`${FUNCTIONS_URL}/ventraBarcodes`, { ...creds, action: 'supplierConfirm', cuit: c, items: clean.slice(0, 200) }, { timeout: 8000 });
+    } catch { /* se pierde ese voto: no es crítico */ }
   }
 
   /** Lo confirmó el dueño: suma su voto. La foto solo si es un enlace (no las guardadas en la base). */

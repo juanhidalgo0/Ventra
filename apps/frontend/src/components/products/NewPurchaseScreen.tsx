@@ -34,6 +34,8 @@ import { ComingSoonBadge } from '../common/ComingSoon';
 import { OPEN_SCAN_KEY } from './InvoiceScanCard';
 import { startScanJob } from './ScanJobPanel';
 import PurchaseItemsTable, { rowId } from './PurchaseItemsTable';
+import FirstInvoicePanel from './FirstInvoicePanel';
+import DuplicatesModal from './DuplicatesModal';
 import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
 
 function buildCategoryTree(cats: any[]) {
@@ -270,6 +272,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const expiryEnabled = useFeature('expiry');
   // "Cargar boleta" desde Inventario o Compras: entra con la carga de la boleta ya abierta
   const [showScanModal, setShowScanModal] = useState(false);
+  // Primera boleta de un proveedor (tanda 3): asociar de corrido; y la pantalla de productos repetidos
+  const [firstSupplier, setFirstSupplier] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   useEffect(() => {
     try { if (sessionStorage.getItem(OPEN_SCAN_KEY) === '1') { sessionStorage.removeItem(OPEN_SCAN_KEY); if (!initialPurchase) setShowScanModal(true); } } catch { /* nada */ }
   }, []);
@@ -763,6 +768,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     const margin = item.margin !== undefined ? item.margin : defaultMargin;
     const sale = Number(item.handPrice) || calculateSuggestedPrice(item.cost, margin, useIvaGlobal);
     const base = useIvaGlobal ? item.cost * 1.21 : item.cost;
+    // Dos o más comercios ya cargaron este código del proveedor: el producto nuevo viene con su nombre y bulto
+    const shared = item.shared?.confidence === 'alta' ? item.shared : null;
+    const productName = String(shared?.name || item.name || '').toUpperCase();
+    const productUpp = Number(shared?.unitsPerPack) > 1 ? Number(shared.unitsPerPack) : item.unitsPerPack || 1;
     return {
     salePrice: sale,
     margin: base > 0 ? Math.round(((sale - base) / base) * 100) : margin,
@@ -785,13 +794,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     scanned: item,
     source: { code: item.sku || undefined, name: item.name },
     newProductData: {
-      name: String(item.name || '').toUpperCase(),
+      name: productName,
       barcode: item.barcode || null,
       sku: item.sku || null,
       salePrice: sale,
       categoryId: null,
       brandId: null,
-      unitsPerPack: item.unitsPerPack || 1,
+      unitsPerPack: productUpp,
       presentationType: 'UNIT',
     },
     };
@@ -833,6 +842,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     if (data.duplicate) {
       toast.error(`Ojo: esta boleta ya se cargó el ${new Date(data.duplicate.createdAt).toLocaleDateString('es-AR')}${data.duplicate.status === 'PENDING' ? ' (está en "Por revisar")' : ''}. Si la confirmás de nuevo, se suma dos veces el stock.`, { duration: 15000 });
     }
+    setFirstSupplier(!!data.firstFromSupplier);
     if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
     if (data.date) setDate(data.date);
     if (data.matchedSupplier) {
@@ -2161,6 +2171,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
             )}
           </AnimatePresence>
 
+          {firstSupplier && items.length > 0 && (
+            <FirstInvoicePanel<PurchaseItem> items={items} onAssociate={associateNewRow} onOpenDuplicates={() => setShowDuplicates(true)}
+              onSetBarcode={(row, bc) => setItems((prev) => prev.map((it) => rowId(it) === rowId(row) ? { ...it, barcode: bc, newProductData: it.newProductData ? { ...it.newProductData, barcode: bc } : it.newProductData } : it))} />
+          )}
+          {showDuplicates && <DuplicatesModal onClose={() => setShowDuplicates(false)} />}
           {/* Products Table */}
           <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
              <PurchaseItemsTable<PurchaseItem>

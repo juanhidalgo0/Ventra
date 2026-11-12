@@ -717,6 +717,14 @@ export class PurchasesService {
     return this.scanOne(parsedData, { readCheck, readInfo, sourceLabel, isExcel, userId, opts });
   }
 
+  /** ¿Ya se sabe algo de este proveedor? (códigos aprendidos o alguna compra confirmada) */
+  private async supplierHasHistory(supplierId?: string | null): Promise<boolean> {
+    if (!supplierId) return false;
+    const codes = await this.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT COUNT(*) AS n FROM supplier_codes WHERE supplier_id = ?`, supplierId).catch(() => [{ n: 0 }]);
+    if (Number(codes[0]?.n) > 0) return true;
+    return (await this.prisma.purchase.count({ where: { supplierId, status: 'COMPLETED' } }).catch(() => 0)) > 0;
+  }
+
   /** Muchas fotos (WhatsApp, más de 6): cada una se lee sola en la nube, de a 6, y al final se juntan */
   private async readPhotosByPage(files: Express.Multer.File[], qrs: (ArcaQr | null)[], supplierCuits: string[]) {
     const reads: any[] = new Array(files.length).fill(null);
@@ -880,7 +888,8 @@ export class PurchasesService {
     // Nini (1000014274, 000005341002) es de códigos internos aunque alguno pase el control de casualidad
     const codes = splitInvoiceCodes(rawItems.map((it) => ({ barcode: it.barcode, sku: it.sku })));
     const rows = rawItems.map((it, i) => ({ ...codes[i], code: codes[i].sku, name: String(it.name || '').trim() }));
-    const { matches, candidates } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true });
+    // Con el CUIT, el buscador consulta el mapa compartido entre comercios (tanda 3)
+    const { matches, candidates, sharedHints } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true, supplierCuit: parsedData.supplierCuit || readInfo?.supplierCuit || null });
 
     const roundUp = (n: number) => (settings.round ? Math.ceil(n / settings.round - 1e-9) * settings.round : Math.round(n * 100) / 100);
     const items = rawItems.map((it, i) => {
@@ -930,12 +939,17 @@ export class PurchasesService {
       if (it.unsure) reasons.push('la IA lo leyó distinto en dos lecturas: comparalo con la foto');
       // No está, pero hay alguno parecido: puede ser tuyo con otro nombre. No se crea solo (sería un duplicado)
       if (!p && candidates[i]?.length) reasons.push(`puede que ya lo tengas (¿${candidates[i][0].name}?)`);
+      // Otros comercios ya dijeron qué producto es este código del proveedor: con 2 o más que coinciden
+      // viene completo (código de barras, nombre, unidades por bulto); con uno solo o si no coinciden, a confirmar
+      const sh = !p ? sharedHints?.[i] || null : null;
+      if (sh && sh.confidence !== 'alta') reasons.push(sh.confidence === 'contradice' ? 'otros comercios no coinciden en qué producto es: confirmalo' : `otro comercio lo cargó como ${sh.name || sh.barcode}: confirmalo`);
       if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
       else if (m?.confidence === 'media' && changePct !== null && Math.abs(changePct) > 25) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}% y el producto no es seguro`);
       return {
-        barcode: r.barcode,
+        barcode: r.barcode || (sh?.confidence === 'alta' ? sh.barcode : ''),
         sku: r.sku,
         name: r.name,
+        shared: sh ? { barcode: sh.barcode, name: sh.name, unitsPerPack: sh.unitsPerPack, votes: sh.votes, confidence: sh.confidence } : null,
         quantity: quantityVal,
         unitsPerPack: unitsPerPackVal,
         packFromName,
@@ -995,6 +1009,8 @@ export class PurchasesService {
       verified: parsedData.verified || null,
       missingPages: Number(parsedData.missingPages) || 0,
       missingPageNumbers,
+      // Primera boleta de este proveedor (nada aprendido ni compras confirmadas): la pantalla ofrece asociar de corrido
+      firstFromSupplier: !(await this.supplierHasHistory(supplier?.id)),
       // "Hoja 1 de 6": para sumar después las hojas que faltan (mergeMissingPages)
       pageCount: Number(parsedData.pageCount) || 0,
       // Contado en la boleta: al revisarla arranca como pagada
@@ -1051,6 +1067,7 @@ export class PurchasesService {
             sku: it.sku || undefined,
             salePrice: it.suggestedSalePrice,
             taxRate: 21,
+            ...(it.shared?.confidence === 'alta' && Number(it.shared.unitsPerPack) > 1 ? { unitsPerPack: Number(it.shared.unitsPerPack) } : {}),
           },
         })),
       });

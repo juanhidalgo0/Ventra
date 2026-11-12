@@ -508,6 +508,65 @@ async function main() {
     assert.strictEqual(matches[1]?.by, 'barcode');
   });
 
+  await t('mapa compartido: lo que asoció un comercio le llega al otro; un voto solo no carga nada solo', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const cloud = require('../../../firebase/functions/supplier-codes');
+    const docs: Record<string, any> = {};
+    const ref = (id: string) => ({ id, get: async () => ({ id, exists: !!docs[id], data: () => docs[id] }), set: async (v: any) => { docs[id] = v; } });
+    const cloudDb: any = { collection: () => ({ doc: ref }), runTransaction: async (fn: any) => fn({ get: (r: any) => r.get(), set: (r: any, v: any) => r.set(v) }), getAll: (...refs: any[]) => Promise.all(refs.map((r) => r.get())) };
+    const sharedFor = (uid: string): any => ({
+      supplierCodes: async (c: string, codes: string[]) => (await cloud.get(cloudDb, uid, c, codes)).items,
+      confirmSupplierCodes: (c: string, items: any[]) => cloud.confirm(cloudDb, uid, c, items),
+    });
+    const CUIT = cuit('30', '71555123');
+    const YERBA = ean('779040000555');
+    const shop = (products: any[]) => {
+      const prisma: any = {
+        product: {
+          findMany: async () => products.map((p) => ({ additionalBarcodes: [], supplierId: null, costPrice: 0, salePrice: 0, unitsPerPack: 1, sku: null, ...p })),
+          findUnique: async () => ({ sku: 'YA-TIENE' }), findFirst: async () => null, update: async () => ({}),
+        },
+        $queryRawUnsafe: async (sql: string) => (/FROM suppliers/.test(sql) ? [{ cuit: CUIT }] : []),
+        $executeRawUnsafe: async () => 1,
+      };
+      return prisma;
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 30));
+    // Comercio A confirma una boleta: el código 100234 del proveedor es su yerba (con código de barras)
+    const a = new ProductMatcherService(shop([{ id: 'a1', name: 'YERBA SUAVE X 1 KG', barcode: YERBA, unitsPerPack: 10 }]), {} as any, sharedFor('A'));
+    await a.learn('SUP-A', [{ code: '100234', name: 'YERBA MATE SUAVE 1 KG', productId: 'a1' }]);
+    await tick();
+    // Comercio B, otra boleta del mismo proveedor, su yerba tiene otro nombre: la encuentra, pero con un voto queda dudosa
+    const bProducts = [{ id: 'b7', name: 'Playadito suave 1kg', barcode: YERBA }];
+    const b = new ProductMatcherService(shop(bProducts), {} as any, sharedFor('B'));
+    let r = await b.match([{ code: '0100234', name: 'YERBA MATE SUAVE 1 KG' }], { supplierId: 'SUP-B', supplierCuit: CUIT, useAi: false });
+    assert.strictEqual(r.matches[0]?.product.id, 'b7', 'le llega lo del primero');
+    assert.strictEqual(r.matches[0]?.by, 'shared');
+    assert.strictEqual(r.matches[0]?.confidence, 'baja', 'un voto solo: dudoso, no se carga solo');
+    // Un tercer comercio coincide: ya es seguro
+    const c = new ProductMatcherService(shop([{ id: 'c3', name: 'YERBA SUAVE', barcode: YERBA }]), {} as any, sharedFor('C'));
+    await c.learn('SUP-C', [{ code: '100234', name: 'YERBA MATE SUAVE 1 KG', productId: 'c3' }]);
+    await tick();
+    r = await b.match([{ code: '100234', name: 'YERBA MATE SUAVE 1 KG' }], { supplierId: 'SUP-B', supplierCuit: CUIT, useAi: false });
+    assert.strictEqual(r.matches[0]?.confidence, 'alta');
+    // Comercio D no tiene esa yerba: viene como producto nuevo con código de barras, nombre y bulto
+    const d = new ProductMatcherService(shop([{ id: 'd1', name: 'FIDEOS' }]), {} as any, sharedFor('D'));
+    r = await d.match([{ code: '100234', name: 'YERBA MATE SUAVE 1 KG' }], { supplierId: 'SUP-D', supplierCuit: CUIT, useAi: false });
+    assert.strictEqual(r.matches[0], null);
+    assert.strictEqual(r.sharedHints[0]?.barcode, YERBA);
+    assert.strictEqual(r.sharedHints[0]?.confidence, 'alta');
+    assert.strictEqual(r.sharedHints[0]?.unitsPerPack, 10);
+    // Comercios que no coinciden: dudoso
+    await cloud.confirm(cloudDb, 'E', CUIT, [{ code: '100234', barcode: ean('779040000666'), name: 'OTRA' }]);
+    r = await b.match([{ code: '100234', name: 'YERBA' }], { supplierId: 'SUP-B', supplierCuit: CUIT, useAi: false });
+    assert.strictEqual(r.matches[0]?.confidence, 'baja');
+    // Nunca precios ni cantidades en la nube; sin CUIT o sin internet, nada
+    assert.ok(!JSON.stringify(docs).match(/cost|price|quantity/i));
+    const off = new ProductMatcherService(shop(bProducts), {} as any, { supplierCodes: async () => { throw new Error('sin internet'); } } as any);
+    r = await off.match([{ code: '100234', name: 'YERBA' }], { supplierId: 'SUP-B', supplierCuit: CUIT, useAi: false });
+    assert.strictEqual(r.matches[0], null);
+  });
+
   await t('hojas que faltan: se suman a la factura pendiente y se controla el total', async () => {
     const old = { pageCount: 3, missingPageNumbers: [3], missingPages: 1, printedTotal: null, sampleIds: ['s1'], why: ['faltan hojas (3)', '1 renglón dudoso'],
       items: [{ name: 'A', total: 4000 }, { name: 'B', total: 3000 }] };

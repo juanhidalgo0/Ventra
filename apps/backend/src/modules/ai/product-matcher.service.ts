@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { SharedCatalogService, type SharedSupplierCode } from '../products/shared-catalog.service';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from './ai.service';
 import { validCuit } from '../purchases/invoice-reader/invoice-parser';
@@ -40,7 +41,9 @@ export const PRODUCT_SELECT = {
   additionalBarcodes: { select: { barcode: true } },
 } as const;
 
-export type MatchBy = 'barcode' | 'code' | 'learned' | 'name' | 'ia';
+export type MatchBy = 'barcode' | 'code' | 'learned' | 'shared' | 'name' | 'ia';
+/** Clave del código del proveedor en el mapa compartido (igual que supplier-codes.js en la nube) */
+const sharedKey = (s: string) => codeKey(s).replace(/[^A-Z0-9]/g, '').slice(0, 40);
 export type Confidence = 'alta' | 'media' | 'baja';
 export interface MatchRow { code?: string; barcode?: string; name: string }
 export interface Match { product: any; by: MatchBy; confidence: Confidence }
@@ -53,7 +56,7 @@ export interface Match { product: any; by: MatchBy; confidence: Confidence }
  */
 @Injectable()
 export class ProductMatcherService {
-  constructor(private prisma: PrismaService, private ai: AiService) {}
+  constructor(private prisma: PrismaService, private ai: AiService, @Optional() private shared?: SharedCatalogService) {}
 
   async catalog() {
     return this.prisma.product.findMany({ where: { isActive: true, id: { notIn: ['VENTA_RAPIDA', 'SERVICIO', 'PAGO_CTA_CTE'] } }, select: PRODUCT_SELECT });
@@ -124,6 +127,9 @@ export class ProductMatcherService {
       }
     }
     if (!supplierId) return;
+    // Mapa compartido entre comercios (tanda 3): código del proveedor → código de barras del producto.
+    // En segundo plano: votar nunca frena la compra. Solo código y código de barras, nunca precios.
+    if (this.shared) this.shareCodes(supplierId, items).catch(() => {});
     for (const it of items) {
       if (!it.productId) continue;
       const keys = [it.code && codeKey(it.code) ? `c:${codeKey(it.code)}` : null, it.name && norm(it.name) ? `n:${norm(it.name)}` : null].filter(Boolean) as string[];
@@ -137,8 +143,23 @@ export class ProductMatcherService {
     }
   }
 
+  private async shareCodes(supplierId: string, items: { code?: string; productId: string }[]) {
+    const withCode = items.filter((it) => it.productId && it.code && !isBarcode(String(it.code)));
+    if (!withCode.length) return;
+    const s = await this.prisma.$queryRawUnsafe<{ cuit: string | null }[]>(`SELECT cuit FROM suppliers WHERE id = ?`, supplierId).catch(() => []);
+    const cuit = String(s[0]?.cuit || '').replace(/\D/g, '');
+    if (!validCuit(cuit)) return;
+    const prods = await this.prisma.product.findMany({ where: { id: { in: [...new Set(withCode.map((i) => i.productId))] } }, select: { id: true, name: true, barcode: true, unitsPerPack: true } });
+    const byId = new Map(prods.map((p) => [p.id, p]));
+    const out = withCode.map((it) => {
+      const p = byId.get(it.productId);
+      return p && p.barcode && isBarcode(p.barcode) ? { code: String(it.code), barcode: p.barcode, name: p.name, unitsPerPack: p.unitsPerPack || 1 } : null;
+    }).filter(Boolean) as { code: string; barcode: string; name: string; unitsPerPack: number }[];
+    if (out.length) await this.shared!.confirmSupplierCodes(cuit, out);
+  }
+
   /** useAi: buscar con la IA los que no se encontraron (si la PC está vinculada y no pasó el tope) */
-  async match(rows: MatchRow[], opts: { supplierId?: string | null; useAi?: boolean } = {}) {
+  async match(rows: MatchRow[], opts: { supplierId?: string | null; useAi?: boolean; supplierCuit?: string | null } = {}) {
     const products = await this.catalog();
     const byId = new Map(products.map((p) => [p.id, p]));
     const learned = await this.learned(opts.supplierId);
@@ -153,6 +174,21 @@ export class ProductMatcherService {
       for (const w of new Set(words(p.name).map(key3))) { const l = index.get(w) || []; l.push(p); index.set(w, l); }
     }
     const supplierId = opts.supplierId || null;
+    // Mapa compartido entre comercios (tanda 3): se piden a la nube los códigos del proveedor que ni el
+    // código de barras ni lo aprendido acá encuentran. Sin internet o sin vincular: vacío, sigue como siempre.
+    let sharedMap: Record<string, SharedSupplierCode> = {};
+    const cuit = String(opts.supplierCuit || '').replace(/\D/g, '');
+    if (this.shared && validCuit(cuit)) {
+      const ask = rows.filter((r) => {
+        const code = String(r.code || '').trim();
+        if (!code || isBarcode(code)) return false;
+        const bc = String(r.barcode || '').trim();
+        if (bc && byBarcode.has(codeKey(bc))) return false;
+        return !learned.get(`c:${codeKey(code)}`) && !learned.get(`n:${norm(r.name)}`);
+      }).map((r) => String(r.code).trim());
+      if (ask.length) sharedMap = await this.shared.supplierCodes(cuit, ask).catch(() => ({}));
+    }
+    const sharedOf = (code: string) => (code ? sharedMap[sharedKey(code)] || null : null);
     const matches: (Match | null)[] = rows.map((r) => {
       const code = String(r.code || '').trim();
       // El código de la boleta solo se busca como código de barras si es un EAN válido
@@ -163,6 +199,11 @@ export class ProductMatcherService {
       const ln = learned.get(`n:${norm(r.name)}`);
       p = (lc && byId.get(lc)) || (ln && byId.get(ln));
       if (p) return { product: p, by: 'learned', confidence: 'alta' };
+      // Otros comercios asociaron este código del proveedor a un código de barras que tenés: dos o más
+      // que coinciden lo asocian solo; uno solo o si se contradicen, queda dudoso
+      const sh = sharedOf(code);
+      p = sh ? byBarcode.get(codeKey(sh.barcode)) : null;
+      if (p) return { product: p, by: 'shared', confidence: sh!.confidence === 'alta' ? 'alta' : 'baja' };
       p = code ? bySku.get(codeKey(code)) : null;
       if (p) return { product: p, by: 'code', confidence: supplierId && p.supplierId && p.supplierId !== supplierId ? 'media' : 'alta' };
       p = byName.get(norm(r.name));
@@ -221,7 +262,7 @@ export class ProductMatcherService {
     // código de barras, lo aprendido del proveedor o su código interno: es el mismo producto facturado en
     // dos renglones (otro precio, una promo, otra hoja), y antes el segundo quedaba sin asociar.
     const rank: Record<Confidence, number> = { alta: 3, media: 2, baja: 1 };
-    const byCode = (m: Match) => m.by === 'barcode' || m.by === 'learned' || m.by === 'code';
+    const byCode = (m: Match) => m.by === 'barcode' || m.by === 'learned' || m.by === 'code' || (m.by === 'shared' && m.confidence === 'alta');
     const owner = new Map<string, number[]>();
     matches.forEach((m, i) => {
       if (!m) return;
@@ -235,7 +276,10 @@ export class ProductMatcherService {
     });
     // Los que quedaron sin producto por ceder el suyo: también con sugerencias
     matches.forEach((m, i) => { if (!m && !candidates[i].length) candidates[i] = this.similar(rows[i].name, index); });
-    return { matches, aiMatched, products, candidates };
+    // Lo que dicen otros comercios de los que siguen sin producto: un producto nuevo ya viene con su
+    // código de barras, nombre y unidades por bulto (si coinciden 2 o más) o como sugerencia
+    const sharedHints: (SharedSupplierCode | null)[] = rows.map((r, i) => (matches[i] ? null : sharedOf(String(r.code || '').trim())));
+    return { matches, aiMatched, products, candidates, sharedHints };
   }
 
   /** Productos parecidos por palabras en común (mismo tamaño suma); sin exigir que sea seguro */

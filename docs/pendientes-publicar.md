@@ -45,6 +45,17 @@ Si baja contra la línea de base, el comando lo dice ("no publicar") y termina c
 
 Para publicar: funciones `ventraAi` y `ventraAdmin`, la web (admin.html) y la caja. **Todavía no corrí la evaluación con la IA de verdad** (cuesta ~US$ 0,60 las 60 fotos): hace falta tu OK y la clave en la terminal. Esa primera corrida queda como línea de base.
 
+## 0c. Boletas — tanda 3 (lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Mapa compartido código del proveedor → código de barras (un voto por comercio; 2+ coinciden = solo; 1 = sugerencia; no coinciden = dudoso) | `firebase/functions/supplier-codes.js` (acciones `supplierGet`/`supplierConfirm` de **ventraBarcodes**), `product-matcher.service.ts`, `shared-catalog.service.ts` |
+| Producto nuevo que viene con código de barras, nombre y bulto de otros comercios | `purchases.service.ts` (`scanOne`), `NewPurchaseScreen` |
+| "Primera boleta de este proveedor": avance, sugerencias y asociar pasando el lector | `FirstInvoicePanel.tsx` |
+| Pantalla "Productos repetidos" en la revisión (la API ya existía) | `DuplicatesModal.tsx`, `ReviewTabs` |
+
+Para publicar: función **ventraBarcodes** (antes que la caja) y la caja.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

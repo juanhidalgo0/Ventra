@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Trash2, Info, Flag } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Trash2, Info, Flag, Copy } from 'lucide-react';
 import api from '../../services/api';
 import NewPurchaseScreen from './NewPurchaseScreen';
 import { photosFor } from './ScanJobPanel';
+import DuplicatesModal from './DuplicatesModal';
+import { useManagerAccess } from '../../utils/managerAccess';
 
 /**
  * Las boletas leídas, una pestaña por comprobante (2026-11-12, pedido del dueño: "verlas una a una, fácil").
@@ -15,6 +17,8 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
   const [active, setActive] = useState<string>(ids[0]);
   const [doneIds, setDoneIds] = useState<string[]>([]);
   const [reported, setReported] = useState<string[]>([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const canManage = useManagerAccess();
 
   const load = async () => {
     try {
@@ -113,6 +117,12 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
             );
           })}
         </div>
+        {canManage && (
+          <button onClick={() => setShowDuplicates(true)} title="El mismo producto cargado dos veces: juntalos" className="shrink-0 h-8 px-2.5 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1 cursor-pointer">
+            <Copy className="w-3.5 h-3.5" /> Repetidos
+          </button>
+        )}
+        {showDuplicates && <DuplicatesModal onClose={() => setShowDuplicates(false)} />}
         {st !== 'done' && current.draft && (
           <button onClick={misread} disabled={!!current.draft.misreadAt || reported.includes(current.id)}
             title="Avisale a Ventra que la IA leyó mal esta boleta: la revisan para que la próxima salga bien"
