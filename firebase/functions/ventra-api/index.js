@@ -109,6 +109,11 @@ function client({ secret, url = HOST_URL, fetchImpl = fetch }) {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-cloud-secret": secret },
         body: JSON.stringify({ uid, calls, provision }),
+        // Con tope: si la caja en la nube se cuelga, el bot avisa en lugar de quedarse callado
+        // (la caja corta cada pedido a los 170 s, ver apps/cloud-host/bot-gateway.js)
+        signal: AbortSignal.timeout(200000),
+      }).catch((err) => {
+        throw Object.assign(new Error(err && err.name === "TimeoutError" ? "La caja en la nube tardó demasiado en responder" : "No me pude comunicar con la caja en la nube"), { status: 504 });
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw Object.assign(new Error(data.error || `La caja en la nube respondió ${r.status}`), { status: r.status, preparing: !!data.preparing });

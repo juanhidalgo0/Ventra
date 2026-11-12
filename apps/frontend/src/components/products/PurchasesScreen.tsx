@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import NewPurchaseScreen from './NewPurchaseScreen';
 import SuggestedReplenishmentModal from './SuggestedReplenishmentModal';
 import BarcodeLabelModal from './BarcodeLabelModal';
+import InvoiceScanCard, { requestInvoiceScan } from './InvoiceScanCard';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -112,6 +113,9 @@ export default function PurchasesScreen() {
             <input type="text" placeholder="Buscar..." className="bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-[10px] font-bold outline-none focus:border-rose-200 transition-all w-32" />
          </div>
       </div>
+
+      {/* Cargar la boleta: por WhatsApp (lo más fácil) o desde la PC */}
+      <InvoiceScanCard onUploadPc={() => { requestInvoiceScan(); handleSetView('new'); }} />
 
       {/* Scanner Alert Bar */}
       <div className="bg-[#f0fdf4] border border-emerald-100 px-6 py-3 rounded-2xl flex items-center gap-3">

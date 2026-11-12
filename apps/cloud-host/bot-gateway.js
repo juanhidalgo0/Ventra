@@ -47,7 +47,7 @@ function localRequest(port, { method, path, headers = {}, body }) {
     const req = http.request({
       host: '127.0.0.1', port, method, path,
       headers: { Accept: 'application/json', ...(data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {}), ...headers },
-      timeout: 60000,
+      timeout: 170000,
     }, (res) => {
       const chunks = []; let size = 0; let cut = false;
       res.on('data', (c) => { size += c.length; if (size <= MAX_RESPONSE) chunks.push(c); else cut = true; });

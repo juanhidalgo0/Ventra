@@ -276,7 +276,8 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     heard.a1 = "¿Cuánto sale la Coca de un litro y medio?";
     const c = editClient(null, "La Coca 1,5 L sale *$ 1.800*.");
     await voice("a1", "v1", c, NOW + 700e3);
-    assert.strictEqual(c.reqs[0].messages.at(-1).content, heard.a1);
+    assert.strictEqual(c.reqs[0].messages.at(-1).content, `[Audio] ${heard.a1}`, "la IA sabe que vino por audio");
+    assert.match(c.reqs[0].system[0].text, /nunca digas que no te llegó el audio/);
     assert.match(last().text, /^🎤 _¿Cuánto sale la Coca de un litro y medio\?_\n\nLa Coca 1,5 L sale/);
   });
   await t("audio: pide un cambio y lo confirma con otro audio ('Sí, dale.')", async () => {

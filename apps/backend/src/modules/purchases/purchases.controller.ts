@@ -82,6 +82,31 @@ export class PurchasesController {
     }
   }
 
+  /**
+   * Leer una boleta con las fotos en el cuerpo (base64), sin guardar nada: es la vista previa que
+   * usa el bot de WhatsApp del dueño. Después la compra se carga con POST /purchases.
+   */
+  @Post('scan-invoice-json')
+  async scanInvoiceJson(@Body() body: { images?: { data: string; mime?: string; name?: string }[]; manualTotal?: number }, @Request() req) {
+    const files = (Array.isArray(body?.images) ? body.images : []).slice(0, 6).map((im, i) => {
+      const buffer = Buffer.from(String(im?.data || ''), 'base64');
+      return { buffer, size: buffer.length, mimetype: String(im?.mime || 'image/jpeg'), originalname: String(im?.name || `boleta-${i + 1}.jpg`) } as Express.Multer.File;
+    });
+    if (!files.length || files.some((f) => !f.size)) throw new BadRequestException('No llegó ninguna foto de la boleta');
+    try {
+      return await this.purchasesService.scanInvoice(files, body?.manualTotal ? Number(body.manualTotal) : undefined, req.user.sub, { inline: true });
+    } catch (err: any) {
+      if (err instanceof HttpException) throw err;
+      throw new BadRequestException(err.message || 'No se pudo leer la boleta');
+    }
+  }
+
+  /** Boleta leída por el bot de WhatsApp que el dueño quiere revisar en la PC: queda pendiente */
+  @Post('pending-from-preview')
+  pendingFromPreview(@Body() body: { preview?: any; via?: string }, @Request() req) {
+    return this.purchasesService.pendingFromPreview(body?.preview, req.user.sub, body?.via === 'fotos' ? 'fotos' : body?.via === 'celular' ? 'el celular' : 'WhatsApp');
+  }
+
   @Put(':id/confirm')
   confirmPending(
     @Param('id') id: string,

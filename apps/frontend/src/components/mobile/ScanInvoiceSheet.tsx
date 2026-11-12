@@ -80,6 +80,23 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
               <span>Quedó en <b>Compras → Por revisar</b>{result.why?.length ? ` porque ${result.why.join(' y ')}` : ''}. En la PC aparece sola para revisarla y confirmarla. Hasta entonces no se toca el stock ni los precios.</span>
             </div>
           )}
+          {/* Las fotos traían más de un comprobante: cada uno quedó por su lado */}
+          {result.others?.length > 0 && (
+            <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-[13px] text-sky-900">
+              <p><b>En las fotos había {result.others.length + 1} comprobantes.</b> Cada uno se cargó por separado:</p>
+              <ul className="mt-1.5 space-y-1">
+                {result.others.map((o: any, i: number) => (
+                  <li key={i}>
+                    · {o.matchedSupplier?.name || o.supplierName || 'Proveedor'}{o.invoiceNumber ? ` N° ${o.invoiceNumber}` : ''}{o.docType && o.docType !== 'factura' ? ` (${o.docType})` : ''}:{' '}
+                    <b>{o.status === 'DUPLICATE' ? 'ya estaba cargado' : o.auto ? 'se cargó solo' : 'quedó para revisar en la PC'}</b>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {result.failedImages?.length > 0 && (
+            <p className="text-[12.5px] text-rose-700 font-semibold px-1">No pude leer {result.failedImages.length === 1 ? `la foto ${result.failedImages[0] + 1}` : `las fotos ${result.failedImages.map((n: number) => n + 1).join(', ')}`}: sacala de nuevo, de frente y con buena luz.</p>
+          )}
           <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100 max-h-[40vh] overflow-y-auto">
             {(result.items || []).map((it: any, i: number) => (
               <div key={i} className="px-3.5 py-2 text-[13px]">

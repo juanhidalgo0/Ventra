@@ -23,16 +23,19 @@ const PRICE = { input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 };
 const MONTHLY_BUDGET_USD = 50;
 const LIMITS = { perHour: 20, perDay: 60, turns: 20, userChars: 1000, assistantChars: 4000 };
 const HANDOFF = "Te paso con una persona del equipo";
-const WHATSAPP = "https://wa.me/5492212025603";
+// El WhatsApp de Ventra es el del bot: contesta el asistente y, con un botón, pasa a una persona (support.js)
+const WHATSAPP = "https://wa.me/5492212048533?text=" + encodeURIComponent("Quiero hablar con una persona de Ventra");
 
 const KB = fs.readFileSync(path.join(__dirname, "chat", "ventra-kb.md"), "utf8");
 
-const SYSTEM = `Sos el asistente de Ventra en su sitio web (ventra.store). Hablás con dueños de comercios argentinos que están pensando en usar Ventra: respondés sus dudas y los ayudás a elegir el plan que les conviene.
+const systemFor = (channel) => `Sos el asistente de Ventra ${channel === "whatsapp" ? "en su WhatsApp" : "en su sitio web (ventra.store)"}. Hablás con dueños de comercios argentinos que están pensando en usar Ventra (o que ya lo usan): respondés sus dudas y los ayudás a elegir el plan que les conviene.
 
 Cómo responder:
 - Español rioplatense, con voseo, cálido y directo. Respuestas cortas: 2 a 5 oraciones, o una lista breve si compara cosas. Sin títulos.
-- Usá solamente la información de la base de conocimiento de abajo. No inventes funciones, precios, plazos, integraciones ni promociones. Si algo no está en la base, o el cliente pide algo que Ventra todavía no hace, decilo con honestidad.
-- Cuando no sepas algo, cuando sea un caso particular (un problema con su cuenta, un pago, una configuración puntual) o cuando el cliente quiera hablar con alguien, incluí exactamente la frase "${HANDOFF}" y el link ${WHATSAPP}.
+- Usá solamente la información de la base de conocimiento de abajo. No inventes funciones, precios, plazos, integraciones, horarios de atención ni promociones. Si algo no está en la base, o el cliente pide algo que Ventra todavía no hace, decilo con honestidad.
+${channel === "whatsapp"
+    ? `- Cuando no sepas algo, cuando sea un caso particular (un problema con su cuenta, un pago, una configuración puntual) o cuando el cliente quiera hablar con alguien, decile que toque el botón *Hablar con persona* que aparece abajo de tu mensaje.`
+    : `- Cuando no sepas algo, cuando sea un caso particular (un problema con su cuenta, un pago, una configuración puntual) o cuando el cliente quiera hablar con alguien, incluí exactamente la frase "${HANDOFF}" y el link ${WHATSAPP}.`}
 - Recomendá el plan que corresponde según lo que cuenta el cliente y pasale el link de la página de ese producto o de la demo. Escribí los links completos (https://...), sin formato markdown de link.
 - Podés usar **negrita** para el nombre de un plan o un precio. Nada de tablas.
 - No pidas datos personales (nombre, teléfono, email, DNI). Si los comparte, no los repitas.
@@ -42,6 +45,8 @@ Cómo responder:
 Base de conocimiento:
 
 ${KB}`;
+const SYSTEM = systemFor("web");
+const SYSTEM_WA = systemFor("whatsapp");
 
 const monthKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).slice(0, 7);
 const costOf = (u) => (
@@ -148,4 +153,31 @@ async function handle(db, req, res, { apiKey }) {
   }
 }
 
-module.exports = { handle, cleanMessages, costOf, HANDOFF, MONTHLY_BUDGET_USD };
+/**
+ * Respuesta para el WhatsApp de soporte (support.js): sin streaming, con el mismo tope de gasto mensual
+ * que la web. null si no hay clave, se pasó el tope o la IA no respondió (el soporte ofrece una persona).
+ */
+async function answer(db, messages, { apiKey, client } = {}) {
+  const clean = cleanMessages(messages.slice(-LIMITS.turns * 2 + 1));
+  if (!clean) return null;
+  const usageRef = db.collection("ventra_chat_usage").doc(monthKey());
+  const spent = ((await usageRef.get()).data() || {}).costUsd || 0;
+  if (!client && (!apiKey || !apiKey.startsWith("sk-ant-"))) return null;
+  if (spent >= MONTHLY_BUDGET_USD) return null;
+  const ai = client || anthropicClient({ apiKey, maxRetries: 1, timeout: 60 * 1000 });
+  const final = await ai.messages.create({
+    model: MODEL, max_tokens: 1200, output_config: { effort: "low" },
+    system: [{ type: "text", text: SYSTEM_WA, cache_control: { type: "ephemeral" } }],
+    messages: clean,
+  });
+  await usageRef.set({
+    costUsd: admin.firestore.FieldValue.increment(costOf(final.usage || {})),
+    replies: admin.firestore.FieldValue.increment(1), waReplies: admin.firestore.FieldValue.increment(1),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(() => {});
+  if (final.stop_reason === "refusal") return null;
+  const text = (final.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  return text || null;
+}
+
+module.exports = { handle, answer, cleanMessages, costOf, HANDOFF, MONTHLY_BUDGET_USD, WHATSAPP };

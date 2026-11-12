@@ -19,6 +19,9 @@ import {
   DollarSign,
   Link as LinkIcon,
   X,
+  ChevronLeft,
+  Image as ImageIcon,
+  Layers,
   FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,6 +31,7 @@ import { toast } from 'react-hot-toast';
 import { setStoreSetting } from '../../services/storeSettings';
 import { COMING_SOON } from '../../utils/comingSoon';
 import { ComingSoonBadge } from '../common/ComingSoon';
+import { OPEN_SCAN_KEY } from './InvoiceScanCard';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -246,7 +250,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
   
   const [items, setItems] = useState<PurchaseItem[]>(draft?.items || []);
   const expiryEnabled = useFeature('expiry');
+  // "Cargar boleta" desde Inventario o Compras: entra con la carga de la boleta ya abierta
   const [showScanModal, setShowScanModal] = useState(false);
+  useEffect(() => {
+    try { if (sessionStorage.getItem(OPEN_SCAN_KEY) === '1') { sessionStorage.removeItem(OPEN_SCAN_KEY); if (!initialPurchase) setShowScanModal(true); } } catch { /* nada */ }
+  }, []);
   const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') === 'true');
 
   useEffect(() => {
@@ -401,6 +409,12 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
   // AI Scanning States
   const [isScanning, setIsScanning] = useState(false);
+  // Fotos del comprobante que se está revisando, para compararlas con los renglones leídos
+  const [scanPhotos, setScanPhotos] = useState<string[]>([]);
+  const [showPhotos, setShowPhotos] = useState(false);
+  useEffect(() => () => { scanPhotos.forEach((u) => URL.revokeObjectURL(u)); }, [scanPhotos]);
+  // Las fotos traían varios comprobantes: este se revisa acá y los demás quedan en Compras → Por revisar
+  const [otherDocs, setOtherDocs] = useState<{ total: number; current: string; saved: string[]; skipped: string[]; failed: string[] } | null>(null);
   const [scanStep, setScanStep] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
   const [showTotalPrompt, setShowTotalPrompt] = useState(false);
@@ -774,6 +788,16 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
     }
   };
 
+  // Ventana del total: Volver (a elegir las fotos, sin perderlas) o cancelar todo (X, Esc o tocar afuera)
+  const backFromTotalPrompt = () => { setShowTotalPrompt(false); setShowScanModal(true); };
+  const cancelTotalPrompt = () => { setShowTotalPrompt(false); setSelectedFilesForScan([]); setManualTotalInput(''); };
+  useEffect(() => {
+    if (!showTotalPrompt) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') cancelTotalPrompt(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showTotalPrompt]);
+
   const executeScanWithTotal = async (useManualTotal: boolean) => {
     if (!selectedFilesForScan || selectedFilesForScan.length === 0) return;
     setShowTotalPrompt(false);
@@ -820,6 +844,16 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
 
       setScanStep('Buscando coincidencias con tu inventario...');
       applyScanResult(data);
+      // Las fotos de ESTE comprobante (si había varios, solo las suyas), para tenerlas al lado
+      const photoFiles = selectedFilesForScan.filter((f) => !isDocumentFile(f));
+      const mine: File[] = Array.isArray(data.images) ? data.images.map((i: number) => photoFiles[i]).filter(Boolean) : photoFiles;
+      setScanPhotos(mine.map((f) => URL.createObjectURL(f)));
+      if (data.others?.length) await saveOtherDocs(data);
+      else setOtherDocs(null);
+      if (data.failedImages?.length) {
+        const which = data.failedImages.length === 1 ? `la foto ${data.failedImages[0] + 1}` : `las fotos ${data.failedImages.map((n: number) => n + 1).join(', ')}`;
+        toast.error(`No pude leer ${which}: sacala de nuevo, de frente y con buena luz.`, { duration: 12000 });
+      }
     } catch (err: any) {
       clearInterval(progressInterval);
       console.error(err);
@@ -830,6 +864,20 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       setScanProgress(0);
       setSelectedFilesForScan([]);
     }
+  };
+
+  /** Los otros comprobantes de las mismas fotos: cada uno queda como compra para revisar (sin tocar nada) */
+  const saveOtherDocs = async (data: any) => {
+    const label = (d: any) => `${d.matchedSupplier?.name || d.supplierName || 'Proveedor'}${d.invoiceNumber ? ` N° ${d.invoiceNumber}` : ''}${d.docType && d.docType !== 'factura' ? ` (${d.docType})` : ''}`;
+    const saved: string[] = [], skipped: string[] = [], failed: string[] = [];
+    for (const o of data.others) {
+      if (o.duplicate) { skipped.push(label(o)); continue; }
+      try {
+        const { data: r } = await api.post('/purchases/pending-from-preview', { preview: o, via: 'fotos' });
+        (r?.status === 'DUPLICATE' ? skipped : saved).push(label(o));
+      } catch { failed.push(label(o)); }
+    }
+    setOtherDocs({ total: data.others.length + 1, current: label(data), saved, skipped, failed });
   };
 
   /** Un renglón de la boleta es un producto que ya tenés: entra a la compra con ese producto */
@@ -1095,6 +1143,45 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
       animate={{ opacity: 1, y: 0 }} 
       className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-hidden"
     >
+      {/* Las fotos traían varios comprobantes */}
+      {otherDocs && (
+        <div className="shrink-0 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 flex items-start gap-3 text-[13px] text-sky-900">
+          <Layers className="w-5 h-5 shrink-0 mt-0.5 text-sky-600" />
+          <div className="flex-1 min-w-0">
+            <b>En las fotos había {otherDocs.total} comprobantes.</b> Acá estás revisando <b>{otherDocs.current}</b>.
+            {otherDocs.saved.length > 0 && <> Los otros quedaron en <b>Compras → Por revisar</b>, sin cargar nada: {otherDocs.saved.join(' · ')}.</>}
+            {otherDocs.skipped.length > 0 && <> Ya estaban cargados (no se duplican): {otherDocs.skipped.join(' · ')}.</>}
+            {otherDocs.failed.length > 0 && <span className="text-rose-700 font-semibold"> No se pudieron guardar: {otherDocs.failed.join(' · ')}. Volvé a escanear esas fotos.</span>}
+          </div>
+          <button onClick={() => setOtherDocs(null)} className="w-7 h-7 rounded-lg hover:bg-sky-100 flex items-center justify-center cursor-pointer shrink-0" aria-label="Cerrar"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Las fotos de la boleta al lado, para comparar con lo leído */}
+      {scanPhotos.length > 0 && !showPhotos && (
+        <button onClick={() => setShowPhotos(true)} className="fixed right-4 bottom-24 z-[150] h-11 px-4 rounded-full bg-slate-900 text-white text-[13px] font-bold shadow-lg inline-flex items-center gap-2 cursor-pointer hover:bg-slate-800">
+          <ImageIcon className="w-4 h-4" /> Ver la foto de la boleta
+        </button>
+      )}
+      <AnimatePresence>
+        {showPhotos && scanPhotos.length > 0 && (
+          <motion.aside initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }}
+            className="fixed right-0 top-0 bottom-0 z-[160] w-full sm:w-[min(520px,45vw)] bg-white border-l border-slate-300 shadow-2xl flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
+              <ImageIcon className="w-4 h-4 text-slate-600" />
+              <span className="flex-1 text-[13.5px] font-bold text-slate-800">Foto de la boleta {scanPhotos.length > 1 ? `(${scanPhotos.length})` : ''}</span>
+              <button onClick={() => setShowPhotos(false)} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center cursor-pointer" aria-label="Cerrar"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="px-4 pt-2 text-[12px] text-slate-500">Compará cada renglón con la foto antes de confirmar. Tocá la foto para verla más grande.</p>
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {scanPhotos.map((u, i) => (
+                <a key={i} href={u} target="_blank" rel="noopener" className="block"><img src={u} alt={`Foto ${i + 1} de la boleta`} className="w-full rounded-lg border border-slate-200" /></a>
+              ))}
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
       {/* Modal para selección de fotos / cámara */}
       <AnimatePresence>
         {showScanModal && (
@@ -1877,15 +1964,18 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
           <AnimatePresence>
             {showTotalPrompt && (
               <div className="fixed inset-0 z-[220] flex items-center justify-center p-4">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowTotalPrompt(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={cancelTotalPrompt} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
                 <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-400 overflow-hidden flex flex-col p-6 space-y-4">
                   <div className="flex items-center gap-2.5 pb-2 border-b border-slate-300">
                     <FileText className="w-5 h-5 text-rose-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Total de la boleta</h3>
+                    <h3 className="text-sm font-bold text-slate-800 flex-1">Total de la boleta</h3>
+                    <button type="button" onClick={cancelTotalPrompt} title="Cancelar" aria-label="Cancelar" className="w-8 h-8 -mr-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center cursor-pointer"><X className="w-4 h-4" /></button>
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs text-slate-700 font-semibold leading-relaxed">
-                      Si querés, ingresá el <strong>total a pagar</strong> de la boleta: lo usamos para controlar que la lectura cierre (si el PDF lo trae impreso, lo tomamos de ahí).
+                      {selectedFilesForScan.some(isDocumentFile)
+                        ? <>Si querés, ingresá el <strong>total a pagar</strong> de la boleta: lo usamos para controlar que la lectura cierre. Si el PDF o la planilla lo trae, lo tomamos de ahí y podés seguir sin escribirlo.</>
+                        : <>Si querés, escribí el <strong>total a pagar</strong> que figura en la boleta: lo usamos para controlar que la lectura cierre. Si en la foto se ve bien, lo leemos de ahí y podés seguir sin escribirlo.</>}
                     </p>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600">$</span>
@@ -1905,20 +1995,23 @@ export default function NewPurchaseScreen({ onBack, initialPurchase }: { onBack:
                       />
                     </div>
                   </div>
-                  <div className="flex gap-2 justify-end pt-2">
+                  <div className="flex flex-wrap gap-2 justify-end pt-2">
+                    <button type="button" onClick={backFromTotalPrompt} className="mr-auto px-3 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-1">
+                      <ChevronLeft className="w-3.5 h-3.5" /> Volver
+                    </button>
                     <button 
                       type="button" 
                       onClick={() => executeScanWithTotal(false)} 
                       className="px-4 py-2.5 border border-slate-400 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
                     >
-                      Saltar y Escanear
+                      Seguir sin el total
                     </button>
                     <button 
                       type="button" 
                       onClick={() => executeScanWithTotal(true)} 
                       className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-md transition-all cursor-pointer"
                     >
-                      Comenzar Escaneo
+                      Leer la boleta
                     </button>
                   </div>
                 </motion.div>

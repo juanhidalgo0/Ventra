@@ -396,7 +396,8 @@ const server = http.createServer(async (req, res) => {
     if (url === '/_ventra/logout') { setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
     // El bot de WhatsApp del dueño (solo la función de Ventra, con el secreto compartido)
     if (url === '/_ventra/bot' && req.method === 'POST') {
-      const r = await bot.handle(req.headers, await readBody(req, 256 * 1024));
+      // Hasta 12 MB: las fotos de boletas viajan en el cuerpo
+      const r = await bot.handle(req.headers, await readBody(req, 12 * 1024 * 1024));
       return sendJson(res, r.status, r.json);
     }
 

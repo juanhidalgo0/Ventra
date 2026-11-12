@@ -323,7 +323,8 @@ const t = async (name, fn) => { try { const r = await fn(); if (r === "skip") { 
   await t("una foto suelta: pregunta qué hacer; 'usala para el fernet' la usa en la imagen", async () => {
     sent.length = 0;
     await pic(PHONE, "foto-media", "p1", "", null, NOW + 300e3);
-    assert.match(sent.at(-1).text, /Qué hago con ella/);
+    assert.match(sent.at(-1).text, /Recibí la foto. ¿Qué es?/);
+    assert.deepStrictEqual(sent.at(-1).buttons.map((b) => b.title), ["Boleta o factura", "Logo del comercio", "Otra cosa"]);
     const cl = client([{ name: "crear_imagen", input: { productos: [{ buscar: "fernet 750", usar_ultima_foto: true }] } }]);
     await say(PHONE, "usala para el fernet 750", "p2", cl, NOW + 310e3);
     assert.strictEqual(sent.filter((s) => s.image).length, 3);

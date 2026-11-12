@@ -136,6 +136,82 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.ok(enumList.includes("Cervezas › Packs") && enumList.length === ai.GO_CATEGORIES.length, "la IA no puede inventar rubros");
     await assert.rejects(() => ai.handle({ db: fakeDb(), logger, client }, "u10", { kind: "gocats", names: [] }), /No hay productos/);
   });
+  // ── Varias fotos: comprobantes distintos (datos inventados, con la forma de boletas reales) ──
+  const read = (o) => ({ rawTableTranscription: "", supplierName: "", supplierCuit: "", invoiceNumber: "", date: "2026-11-11", totalFacturaAPagar: "", subtotalNeto: "", docType: "factura", pageNumber: 0, pageCount: 0, items: [], ...o });
+  const it = (name, qty, total) => ({ sku: "", barcode: "", name, packageQuantity: qty, unitsPerPack: 1, total });
+  const pics = (n) => Array.from({ length: n }, (_, i) => ({ data: `FOTO${i}`, mediaType: "image/jpeg" }));
+  // Cliente falso que contesta según la foto (y según el modelo, para la relectura)
+  const byPhoto = (answers, strong = {}) => {
+    const calls = [];
+    const pick = (req) => {
+      const imgs = req.messages[0].content.filter((b) => b.type === "image").map((b) => b.source.data);
+      const key = imgs.join("+");
+      return req.model.includes("sonnet") && strong[key] ? strong[key] : answers[key];
+    };
+    const msg = (req) => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(pick(req)) }], usage: { input_tokens: 1000, output_tokens: 200 } });
+    return { calls, messages: { stream: (req) => { calls.push(req); return { finalMessage: async () => msg(req) }; } } };
+  };
+  await t("4 fotos de 4 comprobantes distintos: devuelve 4, cada uno con su foto, y cuenta 4 facturas", async () => {
+    const client = byPhoto({
+      FOTO0: read({ supplierName: "BEBIDAS DEL NORTE SA", supplierCuit: "30-11111111-1", invoiceNumber: "0001-00000100", subtotalNeto: "100,00", totalFacturaAPagar: "1.250,00",
+        items: [it("GASEOSA 2500*8", 3, "900,00"), it("VASO PROMO X12", 1, "300,00")] }),
+      FOTO1: read({ supplierName: "BEBIDAS DEL NORTE SA", supplierCuit: "30-11111111-1", invoiceNumber: "0002-00000555", docType: "remito", totalFacturaAPagar: "0,00", items: [it("ENERGIZANTE 473*6", 1, "4.132,76")] }),
+      FOTO2: read({ supplierName: "BEBIDAS DEL NORTE SA", supplierCuit: "30-11111111-1", invoiceNumber: "0001-00000101", totalFacturaAPagar: "2.000,00", items: [it("GASEOSA 600*12", 2, "1.000,00"), it("GASEOSA 1500*8", 1, "1.000,00")] }),
+      FOTO3: read({ supplierName: "PANIFICADORA SUR", invoiceNumber: "0002-00019258", docType: "nota", totalFacturaAPagar: "22.560,00", items: [it("PAN VIENA X6", 4, "5.360,00"), it("PAN LACTAL X350", 8, "17.200,00")] }),
+    });
+    const db = fakeDb();
+    const out = await ai.handle({ db, logger, client }, "u9", { kind: "invoice", multi: true, images: pics(4) });
+    const docs = out.result.documents;
+    assert.strictEqual(docs.length, 4);
+    assert.deepStrictEqual(docs.map((d) => d.images), [[0], [1], [2], [3]]);
+    assert.deepStrictEqual(docs.map((d) => d.docType), ["factura", "remito", "factura", "nota"]);
+    assert.strictEqual(docs[0].items.length + docs[2].items.length + docs[3].items.length, 6, "no se pierde ningún renglón");
+    assert.deepStrictEqual(docs.map((d) => d.closes), [true, null, true, true], "remito en $0: no hay con qué comparar");
+    assert.strictEqual(client.calls.length, 4, "una lectura por foto, ninguna relectura");
+    assert.ok(client.calls.every((c) => c.model === "claude-haiku-5-5"));
+    assert.strictEqual(db.docs[Object.keys(db.docs).find((k) => /_u9$/.test(k))].invoice, 4, "cuenta uno por comprobante");
+  });
+  await t("dos fotos de la misma factura (páginas 1 y 2): un solo comprobante con los renglones de las dos", async () => {
+    const client = byPhoto({
+      FOTO0: read({ supplierName: "MAYORISTA X", invoiceNumber: "0003-00000777", pageNumber: 1, pageCount: 2, items: [it("ARROZ 1KG", 10, "10.000,00")] }),
+      FOTO1: read({ supplierName: "MAYORISTA X", invoiceNumber: "", pageNumber: 2, pageCount: 2, subtotalNeto: "15.000,00", totalFacturaAPagar: "18.150,00", items: [it("FIDEOS 500G", 10, "5.000,00")] }),
+    });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u8", { kind: "invoice", multi: true, images: pics(2) });
+    const [d] = out.result.documents;
+    assert.strictEqual(out.result.documents.length, 1);
+    assert.deepStrictEqual(d.images, [0, 1]);
+    assert.strictEqual(d.items.length, 2);
+    assert.strictEqual(d.totalFacturaAPagar, "18.150,00", "el total de la última página");
+    assert.strictEqual(d.closes, true);
+  });
+  await t("no cierra: se relee solo ese comprobante con el modelo fuerte y se queda con la lectura que cierra", async () => {
+    const mal = read({ supplierName: "DISTRI", invoiceNumber: "0001-00000009", totalFacturaAPagar: "12.100,00", items: [it("YERBA 1KG", 5, "5.000,00")] });
+    const bien = read({ supplierName: "DISTRI", invoiceNumber: "0001-00000009", totalFacturaAPagar: "12.100,00", items: [it("YERBA 1KG", 5, "5.000,00"), it("AZUCAR 1KG", 10, "5.000,00")] });
+    const otra = read({ supplierName: "OTRO", invoiceNumber: "0001-00000010", totalFacturaAPagar: "1.210,00", items: [it("SAL", 1, "1.000,00")] });
+    const client = byPhoto({ FOTO0: mal, FOTO1: otra }, { FOTO0: bien });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u7", { kind: "invoice", multi: true, images: pics(2) });
+    const [d, e] = out.result.documents;
+    assert.strictEqual(d.items.length, 2);
+    assert.strictEqual(d.closes, true);
+    assert.strictEqual(d.reread, true);
+    assert.ok(!e.reread, "el que cerraba no se relee");
+    assert.strictEqual(client.calls.filter((c) => c.model.includes("sonnet")).length, 1);
+    assert.match(client.calls.find((c) => c.model.includes("sonnet")).messages[0].content.at(-1).text, /sumaron 5000/);
+  });
+  await t("una foto que no se puede leer no tira abajo las demás", async () => {
+    const client = byPhoto({ FOTO0: read({ invoiceNumber: "0001-00000001", totalFacturaAPagar: "1.210,00", items: [it("SAL", 1, "1.000,00")] }), FOTO1: read({ items: [] }) });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u6", { kind: "invoice", multi: true, images: pics(2) });
+    assert.strictEqual(out.result.documents.length, 1);
+    assert.deepStrictEqual(out.result.failedImages, [1]);
+  });
+  await t("sin multi (PCs con la versión vieja): sigue siendo una sola lectura con todas las fotos", async () => {
+    const client = fakeClient(read({ items: [it("SAL", 1, "1.000,00")] }));
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u5", { kind: "invoice", images: pics(3) });
+    assert.strictEqual(client.calls.length, 1);
+    assert.strictEqual(client.calls[0].messages[0].content.filter((b) => b.type === "image").length, 3);
+    assert.ok(Array.isArray(out.result.items) && !out.result.documents);
+  });
+
   console.log(`\n${ok} bien, ${bad} con falla`);
   process.exit(bad ? 1 : 0);
 })();

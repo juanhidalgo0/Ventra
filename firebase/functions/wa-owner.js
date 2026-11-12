@@ -19,16 +19,51 @@ const dashboard = require("./dashboard");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
 const edits = require("./wa-owner-edits");
 const menu = require("./wa-owner-menu");
+const cleanup = require("./wa-owner-cleanup");
+const invoice = require("./wa-owner-invoice");
+// Comandos de la limpieza de repetidos
+const SEPARAR_RE = /^separar(?:\s+(\d{1,2}))?[.!]*$/i;
+const JUNTADOS_RE = /^(?:juntados|productos juntados|ver juntados|ocultos)[.!]*$/i;
+const PARAR_RE = /^(?:parar|para|basta|despues|después|despues sigo|después sigo|frenar)[.!]*$/i;
+const KEEP_RE = /^(?:queda|que quede|dej[aá]|dejá)\s+(?:el\s+)?(\d)[.!]*$/i;
+const BOLETA_RE = /\b(boleta|factura|remito|compra|proveedor)\b/i;
 // Imágenes (sharp, Chromium): se cargan recién cuando se usan, así una pregunta común arranca rápido
 let promoMod = null, brandMod = null;
 const promo = new Proxy({}, { get: (t, k) => (promoMod || (promoMod = require("./promo-images")))[k] });
 const brandKit = new Proxy({}, { get: (t, k) => (brandMod || (brandMod = require("./promo-images/brand")))[k] });
 const ventraApi = require("./ventra-api");
+const stats = require("./wa-owner-stats");
 
 /** Cuánto tiempo después de mandar imágenes se puede elegir escribiendo "la 2" */
 const PICK_MS = 3 * 60 * 60 * 1000;
 /** Cuánto vale una foto que mandó como "la última foto" (para usarla de logo o de producto) */
 const PHOTO_MS = 2 * 60 * 60 * 1000;
+/** Fotos que llegan seguidas: se espera este rato a que lleguen las demás del mismo envío */
+const PHOTO_BATCH_WAIT_MS = 8000;
+/** Una foto nueva se suma al envío anterior si llegó dentro de este rato y todavía no se leyó */
+const PHOTO_BATCH_GAP_MS = 90 * 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Suma la foto al envío en curso (o arranca uno nuevo). boleta: el texto de alguna dice "boleta", "factura"… */
+async function addToPhotoBatch(db, ownerRef, path, boleta, now) {
+  const apply = (cur) => {
+    const open = cur && !cur.done && now - Number(cur.lastAt || 0) < PHOTO_BATCH_GAP_MS;
+    const base = open ? cur : { id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, paths: [], boleta: false };
+    return { ...base, paths: [...base.paths.filter((p) => p !== path), path], lastPath: path, lastAt: now, boleta: !!(base.boleta || boleta), done: false };
+  };
+  // Las fotos de un álbum llegan casi juntas: con transacción no se pisa ninguna
+  if (db.runTransaction) {
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ownerRef);
+      const next = apply(((snap.exists ? snap.data() : {}) || {}).photoBatch);
+      tx.set(ownerRef, { photoBatch: next }, { merge: true });
+      return next;
+    });
+  }
+  const next = apply(((await ownerRef.get()).data() || {}).photoBatch);
+  await ownerRef.set({ photoBatch: next }, { merge: true });
+  return next;
+}
 
 /** Número de WhatsApp de Ventra (el de los recordatorios de turnos) */
 const VENTRA_WA = "5492212048533";
@@ -157,7 +192,12 @@ async function onMessage(db, send, m, now = Date.now(), io = {}) {
   const from = String(m.from || "");
   const text = m.type === "text" && m.text ? String(m.text.body || "").trim() : "";
   const id = String(m.id || `${from}-${now}`).replace(/[^\w.-]/g, "_").slice(0, 150);
+  const IN = { question: "in_question", audio: "in_audio", image: "in_image", menu: "in_menu" };
+  let role = null;
   const enqueue = async (item) => {
+    if (item.uid && item.type !== "welcome") {
+      await stats.track(db, item.uid, ["msgs", IN[item.type] || "in_button", role === "SUPERVISOR" ? "by_supervisor" : "by_owner"], now);
+    }
     try {
       await db.collection(INBOX).doc(id).create({ from, at: now, ...item });
     } catch (err) {
@@ -192,14 +232,16 @@ async function onMessage(db, send, m, now = Date.now(), io = {}) {
   const owner = await db.collection(OWNERS).doc(from).get();
   if (!owner.exists) return false;
   const o = owner.data();
+  role = o.role || "ADMIN";
   // "Escribiendo…" enseguida: el dueño ve que el bot ya está en eso
   if (io.typing && m.id) io.typing(m.id);
+  const listId = String((m.interactive && m.interactive.list_reply && m.interactive.list_reply.id) || "");
   await owner.ref.set({ lastInboundAt: now }, { merge: true });
 
   // Menú: "MENÚ" abre la lista; elegir un renglón la atiende la bandeja (o abre "Más opciones")
-  const listId = String((m.interactive && m.interactive.list_reply && m.interactive.list_reply.id) || "");
   const openMenu = async (page = "main") => {
     if (!io.sendList) { await enqueue({ uid: o.uid, type: "menu", option: page === "mas" ? "mas" : "__open" }); return true; }
+    await stats.track(db, o.uid, ["msgs", "in_menu", role === "SUPERVISOR" ? "by_supervisor" : "by_owner"], now);
     const acc = await account(db, o.uid, now);
     await io.sendList(from, page === "mas" ? "Más opciones:" : menu.MENU_TEXT, page === "mas" ? "Más opciones" : "Ver opciones", menu.sections({ plan: acc && acc.plan, role: o.role, page }));
     return true;
@@ -216,6 +258,34 @@ async function onMessage(db, send, m, now = Date.now(), io = {}) {
   if (button.startsWith("wo|")) {
     const [, action, editId] = button.split("|");
     await enqueue({ uid: o.uid, type: "edit", action, editId });
+    return true;
+  }
+  // Repetidos ("wc|merge|i"), boletas ("wv|…", también en listas) y "¿qué es esta foto?" ("wf|tipo")
+  const anyId = button || listId;
+  if (anyId.startsWith("wc|")) {
+    const [, action, i] = anyId.split("|");
+    await enqueue({ uid: o.uid, type: "cleanup", action, i: Number(i) });
+    return true;
+  }
+  if (anyId.startsWith("wv|")) {
+    const [, action, invId, k, productId] = anyId.split("|");
+    await enqueue({ uid: o.uid, type: "invoice", action, invId, k: k === undefined ? null : Number(k), productId: productId || null });
+    return true;
+  }
+  if (anyId.startsWith("wf|")) {
+    const [, kind, batch] = anyId.split("|");
+    await enqueue({ uid: o.uid, type: "photo", kind, batch: batch || null });
+    return true;
+  }
+  // Comandos de la limpieza de repetidos
+  const sep = SEPARAR_RE.exec(text);
+  if (sep || JUNTADOS_RE.test(text) || /^repetidos de nuevo[.!]*$/i.test(text)) {
+    await enqueue({ uid: o.uid, type: "cleanup_cmd", cmd: sep ? "undo" : JUNTADOS_RE.test(text) ? "list" : "restart", n: sep && sep[1] ? Number(sep[1]) : null });
+    return true;
+  }
+  if ((o.cleanupAt && now - Number(o.cleanupAt) < 2 * 60 * 60 * 1000) && (PARAR_RE.test(text) || KEEP_RE.test(text))) {
+    const keep = KEEP_RE.exec(text);
+    await enqueue({ uid: o.uid, type: "cleanup_cmd", cmd: keep ? "keep" : "stop", n: keep ? Number(keep[1]) : null });
     return true;
   }
   // Operación del sistema (Confirmar / Cancelar): "wx|ok|id"
@@ -317,6 +387,7 @@ async function processInbox(db, item, deps, now = Date.now()) {
     const doEdit = async (action, editId, prefix = "") => {
       if (o.role === "SUPERVISOR") return send(from, "Los cambios de precios por WhatsApp los hace solo el dueño.");
       const r = await edits.act(db, { action, id: editId, from, uid, sql, afterWrite: deps.afterWrite }, now);
+      if (action === "ok") await stats.track(db, uid, ["do_prices_ok"], now);
       if (o.pendingEdit === editId && action !== "undo") await ownerRef.set({ pendingEdit: null }, { merge: true });
       if (r.undo && deps.sendButtons) return deps.sendButtons(from, prefix + r.text, [{ id: `wo|undo|${r.undo}`, title: "Deshacer" }]);
       return send(from, prefix + r.text);
@@ -329,10 +400,58 @@ async function processInbox(db, item, deps, now = Date.now()) {
       if (!deps.ventraApi) return send(from, "Por ahora no puedo hacer operaciones del sistema por acá.");
       if (action === "ok") await send(from, `${prefix}⏳ Haciéndolo en tu caja…`);
       const r = await ventraApi.act(db, deps.ventraApi, { action, id: opId, from, uid }, now);
+      if (action === "ok") await stats.track(db, uid, ["do_op_ok"], now);
       if (o.pendingOp === opId) await ownerRef.set({ pendingOp: null }, { merge: true });
       return send(from, (action === "ok" ? "" : prefix) + r.text);
     };
     if (item.type === "op") return doOp(item.action, item.opId);
+
+    // ── Repetidos y boletas (en la caja en la nube) ──
+    const flow = { db, api: deps.ventraApi, bucket: deps.bucket, uid, from, send, sendButtons: deps.sendButtons, sendList: deps.sendList, now };
+    const needCloud = () => send(from, "Por ahora no puedo hacer eso por acá.");
+    if (["cleanup", "cleanup_cmd", "invoice", "photo"].includes(item.type) && o.role === "SUPERVISOR") return send(from, "Eso lo hace el dueño.");
+    if (item.type === "cleanup") {
+      if (!deps.ventraApi) return needCloud();
+      await ownerRef.set({ cleanupAt: now }, { merge: true });
+      return cleanup.act(flow, item.action, item.i);
+    }
+    if (item.type === "cleanup_cmd") {
+      if (!deps.ventraApi) return needCloud();
+      if (item.cmd === "undo") return cleanup.undo(flow, item.n);
+      if (item.cmd === "list") return cleanup.list(flow);
+      if (item.cmd === "stop") { await ownerRef.set({ cleanupAt: null }, { merge: true }); return cleanup.stop(flow); }
+      if (item.cmd === "restart") { await cleanup.resetSkipped(db, uid, from); await ownerRef.set({ cleanupAt: now }, { merge: true }); return cleanup.start(flow); }
+      if (item.cmd === "keep") {
+        const c = await cleanup.active(db, uid, from, now);
+        if (!c) return send(from, "No hay una revisión de repetidos en curso.");
+        const g = c.groups[c.i];
+        if (!g.products[item.n - 1]) return send(from, `Ese grupo tiene ${g.products.length} productos: elegí un número del 1 al ${g.products.length}.`);
+        return cleanup.act(flow, "merge", c.i, item.n - 1);
+      }
+    }
+    if (item.type === "invoice") {
+      if (!deps.ventraApi) return needCloud();
+      return invoice.act(flow, { action: item.action, id: item.invId, k: item.k, productId: item.productId });
+    }
+    if (item.type === "photo") {
+      const path = o.lastPhoto && o.lastPhoto.path;
+      if (!path) return send(from, "No encontré la foto. Mandala de nuevo.");
+      if (item.kind === "invoice") {
+        if (!deps.ventraApi) return needCloud();
+        // Las fotos de ese envío (no solo la última); un botón viejo no vuelve a cargarlas
+        const b = o.photoBatch;
+        if (item.batch && b && b.id === item.batch && b.done) return send(from, "Esas fotos ya las leí. Si querés cargarlas de nuevo, mandalas otra vez.");
+        const photos = item.batch && b && b.id === item.batch ? b.paths : [path];
+        if (b && b.id === item.batch) await ownerRef.set({ photoBatch: { ...b, done: true } }, { merge: true });
+        await stats.track(db, uid, ["do_invoice"], now);
+        return invoice.start(flow, photos);
+      }
+      if (item.kind === "logo") {
+        await brandKit.save(db, uid, await promo.saveLogo({ db, bucket: deps.bucket, uid }, path));
+        return send(from, "¡Gracias! Guardé el logo para las imágenes de tus promos.");
+      }
+      return send(from, "Dale. Decime qué hago con la foto (por ejemplo: *usala para el Fernet Branca*).");
+    }
 
     // ── Menú ──
     if (item.type === "menu") {
@@ -343,7 +462,13 @@ async function processInbox(db, item, deps, now = Date.now()) {
       }
       const opt = menu.OPTIONS[option];
       if (!opt) return send(from, "No entendí esa opción. Escribí *MENÚ* para verlas de nuevo.");
+      await stats.track(db, uid, [`menu_${option}`], now);
       if (opt.write && o.role === "SUPERVISOR") return send(from, "Eso lo hace el dueño. Podés pedirme cualquier dato del negocio.");
+      if (option === "repetidos") {
+        if (!deps.ventraApi) return needCloud();
+        await ownerRef.set({ cleanupAt: now }, { merge: true });
+        return cleanup.start(flow);
+      }
       if (opt.kind === "hacer") {
         await ownerRef.set({ menuIntent: { id: option, at: now } }, { merge: true });
         return send(from, opt.ask);
@@ -417,8 +542,16 @@ async function processInbox(db, item, deps, now = Date.now()) {
       const path = await promo.savePhoto(deps.bucket, uid, buf, now);
       await ownerRef.set({ lastPhoto: { path, at: now } }, { merge: true });
       lastPhoto = path;
+      // Varias fotos seguidas (un álbum, o varias boletas de una): se juntan y las atiende la última
+      // en llegar, con una sola respuesta. Antes cada una preguntaba "¿qué es?" y cualquier botón leía
+      // solo la última foto.
+      const batch = await addToPhotoBatch(db, ownerRef, path, BOLETA_RE.test(item.caption || ""), now);
+      await (deps.photoWait || sleep)(PHOTO_BATCH_WAIT_MS);
+      const cur = ((await ownerRef.get()).data() || {}).photoBatch;
+      if (!cur || cur.id !== batch.id || cur.lastPath !== path) return null; // llegó otra después: responde esa
+      const photos = cur.paths || [path];
       const known = await brandKit.learned(db, uid);
-      if (known.awaitingLogo && !item.caption) {
+      if (known.awaitingLogo && !item.caption && photos.length === 1) {
         await brandKit.save(db, uid, await promo.saveLogo({ db, bucket: deps.bucket, uid }, path));
         const kit = await loadKit();
         const vivid = (kit.logoColors && kit.logoColors.vivid) || [];
@@ -426,8 +559,21 @@ async function processInbox(db, item, deps, now = Date.now()) {
         if (kit.needs.includes("nombre")) return send(from, "¿Cómo se llama el comercio? Así lo pongo en las imágenes.");
         return continuePending(kit, known.pendingRequest);
       }
-      if (!item.caption) {
-        return send(from, "📷 Recibí la foto. ¿Qué hago con ella? Puedo usarla como *logo* del comercio o para la imagen de un producto (por ejemplo: *usala para el Fernet Branca*).");
+      const intent = ((await ownerRef.get()).data() || {}).menuIntent || o.menuIntent;
+      const wantsInvoice = (intent && intent.id === "compra" && now - Number(intent.at || 0) < menu.INTENT_MS) || BOLETA_RE.test(item.caption || "") || cur.boleta;
+      if (wantsInvoice && deps.ventraApi) {
+        await ownerRef.set({ menuIntent: null, photoBatch: { ...cur, done: true } }, { merge: true });
+        await stats.track(db, uid, ["do_invoice"], now);
+        return invoice.start({ db, api: deps.ventraApi, bucket: deps.bucket, uid, from, send, sendButtons: deps.sendButtons, sendList: deps.sendList, now }, photos);
+      }
+      if (!item.caption || photos.length > 1) {
+        return photos.length > 1
+          ? deps.sendButtons(from, `📷 Recibí ${photos.length} fotos. ¿Qué son?`, [
+            { id: `wf|invoice|${cur.id}`, title: "Boletas o facturas" }, { id: `wf|other|${cur.id}`, title: "Otra cosa" },
+          ])
+          : deps.sendButtons(from, "📷 Recibí la foto. ¿Qué es?", [
+            { id: `wf|invoice|${cur.id}`, title: "Boleta o factura" }, { id: "wf|logo", title: "Logo del comercio" }, { id: "wf|other", title: "Otra cosa" },
+          ]);
       }
       text = item.caption;
     }
@@ -457,20 +603,25 @@ async function processInbox(db, item, deps, now = Date.now()) {
       : null;
     const operating = o.role !== "SUPERVISOR" && deps.ventraApi && deps.sendButtons ? ventraApi.session({ api: deps.ventraApi, uid }) : null;
     const out = await ai.handle({ ...aiDeps, edits: editing, images: imaging, api: operating }, uid, {
-      kind: "agent", channel: "whatsapp", question: text, history, plan: acc.plan, role: o.role || "ADMIN", info,
+      // Un audio llega ya pasado a texto: la IA tiene que saber que vino por voz (si no, ante
+      // "¿me escuchás?" contesta que no le llegó ningún audio)
+      kind: "agent", channel: "whatsapp", question: item.type === "audio" ? `[Audio] ${text}` : text, history, plan: acc.plan, role: o.role || "ADMIN", info,
     });
     if (editing && editing.plan) {
       const editId = await edits.save(db, { uid, from, userId: o.userId, plan: editing.plan }, now);
+      await stats.track(db, uid, ["do_prices"], now);
       await ownerRef.set({ lastQuestion: text, lastAnswer: "(propuesta de cambio de precios)", lastAt: now, questions: (Number(o.questions) || 0) + 1, pendingEdit: editId, pendingEditAt: now }, { merge: true });
       return deps.sendButtons(from, edits.previewText(editing.plan, heardNote), [{ id: `wo|ok|${editId}`, title: "Confirmar" }, { id: `wo|no|${editId}`, title: "Cancelar" }]);
     }
     if (operating && operating.op) {
       const opId = await ventraApi.save(db, { uid, from, op: operating.op }, now);
+      await stats.track(db, uid, ["do_op", `op_${operating.op.id}`], now);
       await ownerRef.set({ lastQuestion: text, lastAnswer: `(propuesta: ${operating.op.summary})`.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1, pendingOp: opId, pendingOpAt: now }, { merge: true });
       return deps.sendButtons(from, ventraApi.confirmText(operating.op, heardNote), [{ id: `wx|ok|${opId}`, title: "Confirmar" }, { id: `wx|no|${opId}`, title: "Cancelar" }]);
     }
     if (imaging && imaging.plan) {
       await ownerRef.set({ lastQuestion: text, lastAnswer: "(le armé imágenes de promo)", lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
+      await stats.track(db, uid, ["do_promo"], now);
       if (known && known.pendingRequest) await brandKit.save(db, uid, { pendingRequest: null });
       // "La 1 pero con…": pedir cambios sobre una opción también es elegirla (cuenta el voto una vez)
       const prev = o.lastImage;
@@ -484,6 +635,7 @@ async function processInbox(db, item, deps, now = Date.now()) {
     const answer = waFormat(out.result && out.result.answer);
     const note = acc.plan === "agenda" || acc.plan === "agenda_pro" ? "" : freshnessNote(last, now);
     await ownerRef.set({ lastQuestion: text, lastAnswer: answer.slice(0, 1200), lastAt: now, questions: (Number(o.questions) || 0) + 1 }, { merge: true });
+    await stats.track(db, uid, ["do_answer"], now);
     const day = new Date(now).toLocaleDateString("en-CA", { timeZone: TZ });
     const menuHint = o.menuHintDay !== day ? "\n\n_Escribí *MENÚ* para ver todo lo que puedo hacer._" : "";
     if (menuHint) await ownerRef.set({ menuHintDay: day }, { merge: true });

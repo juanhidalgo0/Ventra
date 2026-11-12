@@ -233,6 +233,40 @@
   .meter{ margin-top:6px; height:5px; border-radius:999px; background:var(--line-2); overflow:hidden; }
   .meter span{ display:block; height:100%; background:var(--pine); }
   .hcard.warn .meter span{ background:#D08A1E; } .hcard.bad .meter span{ background:var(--red); }
+  /* WhatsApp del dueño */
+  .wab-use{ display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:12px; margin-top:12px; }
+  @media (max-width: 960px){ .wab-use{ grid-template-columns:1fr; } }
+  .bars{ display:grid; gap:8px; margin-top:12px; }
+  .wbar{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; font-size:13px; }
+  .wbar i{ grid-column:1 / -1; height:6px; border-radius:99px; background:var(--gray-bg); overflow:hidden; }
+  .wbar i b{ display:block; height:100%; background:var(--pine); border-radius:inherit; }
+  .phones{ display:flex; flex-direction:column; gap:3px; }
+  .ph{ display:flex; align-items:center; gap:6px; font-size:12.5px; white-space:nowrap; }
+  .role{ font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; padding:1px 6px; border-radius:6px; background:var(--mint-50); color:var(--pine); }
+  .role.sup{ background:var(--gray-bg); color:var(--ink-2); }
+  .sup{ display:grid; grid-template-columns:minmax(240px,320px) 1fr; gap:12px; margin-top:12px; }
+  .sup-list{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); max-height:560px; overflow:auto; }
+  .sup-item{ display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line-2); padding:12px 14px; cursor:pointer; font:inherit; color:inherit; }
+  .sup-item:hover{ background:var(--paper); } .sup-item.on{ background:var(--mint-50); }
+  .sup-item .t{ display:flex; justify-content:space-between; gap:8px; font-weight:600; font-size:14px; }
+  .sup-item .l{ display:block; margin-top:3px; font-size:12.5px; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sup-badge{ font-size:11px; font-weight:700; border-radius:999px; padding:1px 7px; background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-line); white-space:nowrap; }
+  .sup-unread{ font-size:11px; font-weight:700; border-radius:999px; padding:1px 7px; background:var(--pine); color:#fff; }
+  .sup-chat{ background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); display:flex; flex-direction:column; min-height:420px; max-height:560px; }
+  .sup-head{ padding:12px 14px; border-bottom:1px solid var(--line-2); display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .sup-msgs{ flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:8px; background:var(--paper); }
+  .sup-msg{ max-width:80%; padding:8px 11px; border-radius:12px; font-size:14px; line-height:1.4; white-space:pre-wrap; word-wrap:break-word; }
+  .sup-msg.in{ align-self:flex-start; background:#fff; border:1px solid var(--line); }
+  .sup-msg.out{ align-self:flex-end; background:var(--mint-50); border:1px solid var(--mint-100); }
+  .sup-msg.admin{ background:var(--pine); color:#fff; border-color:var(--pine); }
+  .sup-msg small{ display:block; margin-top:3px; font-size:10.5px; opacity:.7; }
+  .sup-form{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--line-2); }
+  .sup-form textarea{ flex:1; resize:vertical; min-height:42px; max-height:160px; border:1px solid var(--line); border-radius:12px; padding:10px; font:inherit; font-size:14px; }
+  @media (max-width: 760px){ .sup{ grid-template-columns:1fr; } .sup-list{ max-height:260px; } }
+  .misses{ list-style:none; margin:12px 0 0; padding:0; display:grid; gap:8px; max-height:360px; overflow:auto; }
+  .misses li{ font-size:13px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+  .misses li .q{ display:block; color:var(--ink); }
+  .misses li .m{ display:block; margin-top:4px; font-size:11.5px; color:var(--ink-3); }
   .cost-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
   .cost-kpis .kpi{ padding:14px 16px; } .cost-kpis .kpi-value{ font-size:22px; }
   td.neg{ color:var(--red); font-weight:600; } td.pos{ color:var(--pine); font-weight:600; }
@@ -259,22 +293,139 @@
   .store-stats{ font-size:12px; color:var(--ink-3); margin-top:2px; }
   .pill.pub{ background:var(--mint-50); color:var(--pine); border-color:var(--mint-100); }
   .pill.unpub{ background:var(--gray-bg); color:var(--ink-2); border-color:var(--line); }
+  /* ── Pestañas (una sección por vez) ──────────── */
+  .topbar{ position:sticky; top:0; z-index:30; }
+  .tabs{ border-top:1px solid var(--line-dark); }
+  .tabs-in{ max-width:1240px; margin:0 auto; padding:0 16px; display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .tabs-in::-webkit-scrollbar{ display:none; }
+  .tabs a{ flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:11px 12px 10px; font-size:13.5px; font-weight:600; color:var(--on-dark-2);
+    text-decoration:none; border-bottom:2px solid transparent; white-space:nowrap; transition:color .15s var(--ease); }
+  .tabs a:hover{ color:var(--on-dark); }
+  .tabs a.on{ color:var(--on-dark); border-bottom-color:var(--mint); }
+  .tbadge{ min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:rgba(246,242,236,.16); color:var(--on-dark); font-size:11px; font-weight:700;
+    display:inline-flex; align-items:center; justify-content:center; font-family:var(--mono); }
+  .tbadge.hot{ background:#E08A1E; color:#fff; }
+  .view{ display:none; }
+  .view.on{ display:block; animation:vin .18s var(--ease); }
+  @keyframes vin{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
+  .h2{ margin:0; font-size:18px; font-weight:700; letter-spacing:-.02em; }
+  .head-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* ── Para atender (arriba del resumen) ───────── */
+  .todo{ display:grid; gap:8px; margin-bottom:14px; }
+  .todo-item{ display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:var(--r); background:#fff; border:1px solid var(--line); text-decoration:none; color:inherit; }
+  .todo-item:hover{ border-color:var(--ink-3); }
+  .todo-item.warn{ background:var(--amber-bg); border-color:var(--amber-line); }
+  .todo-item.bad{ background:var(--red-bg); border-color:var(--red-line); }
+  .todo-item .ti{ width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:var(--mint-50); color:var(--pine); font-weight:700; }
+  .todo-item.warn .ti{ background:#fff; color:var(--amber); } .todo-item.bad .ti{ background:#fff; color:var(--red); }
+  .todo-item .tt{ flex:1; min-width:0; font-weight:600; } .todo-item .tt small{ display:block; font-weight:400; color:var(--ink-2); font-size:12.5px; }
+  .todo-item .go{ color:var(--ink-3); font-size:18px; }
+
+  /* ── Ayuda plegable ──────────────────────────── */
+  .howto{ margin-top:14px; border:1px solid var(--line); border-radius:var(--r); background:#fff; }
+  .howto summary{ cursor:pointer; padding:11px 14px; font-size:13px; font-weight:600; color:var(--ink-2); list-style:none; display:flex; align-items:center; gap:8px; }
+  .howto summary::-webkit-details-marker{ display:none; }
+  .howto summary::before{ content:'?'; width:18px; height:18px; border-radius:50%; background:var(--gray-bg); color:var(--ink-2); font-size:11px; display:inline-flex; align-items:center; justify-content:center; }
+  .howto[open] summary{ border-bottom:1px solid var(--line-2); }
+  .howto ul, .howto p{ margin:0; padding:12px 14px 14px 32px; font-size:13px; color:var(--ink-2); line-height:1.55; }
+  .howto p{ padding-left:14px; } .howto li + li{ margin-top:6px; }
+
+  /* ── Mails ───────────────────────────────────── */
+  .aud{ display:inline-block; margin-left:6px; font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; padding:1px 6px; border-radius:6px; vertical-align:1px; }
+  .aud.noplan{ background:var(--gray-bg); color:var(--ink-2); } .aud.client{ background:var(--mint-50); color:var(--pine); } .aud.internal{ background:#EAF1F6; color:#2F4A5E; }
+  tr.click{ cursor:pointer; }
+  .mail-card{ width:min(760px,100%); max-height:94vh; display:flex; flex-direction:column; padding:18px; }
+  .mail-top{ display:flex; gap:10px; align-items:flex-start; }
+  .mail-top h3{ word-break:break-word; }
+  .mv-note{ margin-top:10px; padding:9px 12px; border-radius:var(--r-sm); background:var(--amber-bg); border:1px solid var(--amber-line); color:var(--amber); font-size:12.5px; }
+  .mv-tabs{ display:flex; gap:6px; margin:12px 0 10px; }
+  .mv-frame{ width:100%; flex:1; min-height:60vh; border:1px solid var(--line); border-radius:var(--r); background:#F6F2EC; }
+  .mv-text{ flex:1; min-height:60vh; margin:0; overflow:auto; white-space:pre-wrap; word-break:break-word; padding:14px; border:1px solid var(--line); border-radius:var(--r); background:#fff; font:13px/1.55 var(--mono); }
+
+  /* ── Soporte en el celular: lista o conversación, una por vez ── */
+  .sup-back{ display:none; flex-shrink:0; }
+  .sup-head{ flex-wrap:nowrap; }
+  .sup-item .t > span:first-child{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  @media (max-width: 760px){
+    .sup{ display:block; }
+    .sup-list{ max-height:none; }
+    .sup-chat{ display:none; min-height:0; max-height:none; height:calc(100dvh - 190px); }
+    .sup.chat-open .sup-list{ display:none; }
+    .sup.chat-open .sup-chat{ display:flex; }
+    .sup-back{ display:flex; }
+    .sup-msg{ max-width:88%; }
+  }
+
+  /* ── Tablas que pasan a tarjetas en el celular ── */
+  @media (max-width: 720px){
+    main{ padding:16px 16px 48px; }
+    h1{ font-size:22px; }
+    .page-head{ margin-bottom:14px; align-items:flex-start; }
+    .page-head > .btn, .head-btns{ width:100%; }
+    .page-head > .btn{ justify-content:center; }
+    .head-btns .btn{ flex:1; }
+    .kpis{ gap:10px; } .kpi{ padding:14px 15px; }
+    .search{ max-width:none; min-width:0; flex-basis:100%; }
+    .chips{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:0 -16px; padding:0 16px; }
+    .chips::-webkit-scrollbar{ display:none; }
+    .chip{ flex-shrink:0; }
+    .cards{ overflow:visible; background:transparent; border:0; box-shadow:none; }
+    .cards table{ min-width:0; }
+    .cards thead{ display:none; }
+    .cards tbody, .cards tr, .cards td{ display:block; }
+    .cards tr{ display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; padding:13px 15px; margin-bottom:8px; background:#fff; border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow-sm); }
+    .cards tbody tr:last-child td, .cards td{ border:0; padding:0; text-align:left; }
+    .cards td.hide-sm{ display:block; }
+    .cards td:first-child{ grid-column:1 / -1; }
+    .cards td[colspan]{ grid-column:1 / -1; text-align:center; }
+    .cards td::before{ content:attr(data-label); display:block; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-3); margin-bottom:2px; }
+    .cards td:first-child::before, .cards td[colspan]::before, .cards td[data-label=""]::before{ display:none; }
+    .cards .client-email{ max-width:none; white-space:normal; word-break:break-word; }
+    .cards .avatar{ display:flex; }
+    .cards .empty{ padding:28px 12px; }
+    .facts{ grid-template-columns:1fr 1fr; }
+    .drawer-body{ padding:16px 16px 28px; }
+    .drawer-head{ padding:16px; }
+    .form-grid{ grid-template-columns:1fr; }
+    .modal{ padding:0; align-items:flex-end; }
+    .modal-card{ border-radius:22px 22px 0 0; max-height:94vh; overflow-y:auto; }
+    .mail-card{ height:94vh; padding:16px; }
+    .mv-frame, .mv-text{ min-height:0; }
+    .health{ grid-template-columns:1fr; }
+    .cost-kpis .kpi-value{ font-size:19px; }
+  }
+  @media (max-width: 340px){ .kpis, .cost-kpis{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
   <div id="demoFlag" class="demo-flag hidden">Modo demostración: datos inventados, las acciones no se guardan.</div>
   <header class="topbar">
     <div class="topbar-in">
-      <div class="brand"><img src="/ventra-logo.png" alt=""> Ventra <span class="tag">Administración</span></div>
+      <div class="brand"><img src="/ventra-logo.png" alt=""> Ventra <span class="tag">Admin</span></div>
       <div class="spacer"></div>
       <span class="who" id="who"></span>
-      <a class="btn-dark" href="/instagram" style="text-decoration:none">Instagram</a>
+      <a class="btn-dark" href="/instagram" style="text-decoration:none" title="Instagram">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/></svg>
+        <span class="hide-sm">Instagram</span>
+      </a>
       <button class="btn-dark hidden" id="refreshBtn" title="Actualizar">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         <span class="hide-sm">Actualizar</span>
       </button>
       <button class="btn-dark hidden" id="logoutBtn">Salir</button>
     </div>
+    <nav class="tabs hidden" id="tabs" aria-label="Secciones">
+      <div class="tabs-in">
+        <a href="#resumen" data-view="resumen">Resumen</a>
+        <a href="#clientes" data-view="clientes">Clientes <b class="tbadge hidden" id="tbClientes"></b></a>
+        <a href="#soporte" data-view="soporte">Soporte <b class="tbadge hot hidden" id="tbSoporte"></b></a>
+        <a href="#mails" data-view="mails">Mails <b class="tbadge hot hidden" id="tbMails"></b></a>
+        <a href="#bot" data-view="bot">WhatsApp del dueño</a>
+        <a href="#costos" data-view="costos">Costos</a>
+      </div>
+    </nav>
   </header>
 
   <!-- Acceso -->
@@ -288,48 +439,38 @@
   </section>
 
   <main id="app" class="hidden">
-    <div class="page-head">
-      <div>
-        <h1>Resumen</h1>
-        <div class="sub" id="updatedAt">Cargando…</div>
+
+    <!-- ═══ Resumen ═══ -->
+    <div class="view" data-view="resumen">
+      <div class="page-head">
+        <div><h1>Resumen</h1><div class="sub" id="updatedAt">Cargando…</div></div>
       </div>
+      <section class="todo hidden" id="todo"></section>
+      <section class="kpis" id="kpis"></section>
+      <section class="panels">
+        <div class="panel">
+          <h2>Cobrado por mes</h2>
+          <div class="panel-sub">Últimos 12 meses · montos brutos, antes de la comisión de Mercado Pago</div>
+          <div id="chart"></div>
+        </div>
+        <div class="panel">
+          <h2>Clientes por plan</h2>
+          <div class="panel-sub">Cuentas creadas en ventra.store</div>
+          <div id="plans" style="margin-top:8px"></div>
+        </div>
+      </section>
+      <section class="ops">
+        <div class="section-head"><h2 class="h2">Estado del sistema</h2><span class="small" id="healthSum"></span></div>
+        <div class="health" id="health"></div>
+      </section>
     </div>
 
-    <section class="kpis" id="kpis"></section>
-
-    <section class="panels">
-      <div class="panel">
-        <h2>Cobrado por mes</h2>
-        <div class="panel-sub">Últimos 12 meses · montos brutos, antes de la comisión de Mercado Pago</div>
-        <div id="chart"></div>
+    <!-- ═══ Clientes ═══ -->
+    <div class="view" data-view="clientes">
+      <div class="page-head">
+        <div><h1>Clientes</h1><div class="sub">Tocá un cliente para ver su ficha: plan, pagos, PCs, tienda y notas.</div></div>
+        <button class="btn primary" id="newClientBtn">+ Nuevo cliente</button>
       </div>
-      <div class="panel">
-        <h2>Clientes por plan</h2>
-        <div class="panel-sub">Cuentas creadas en ventra.store</div>
-        <div id="plans" style="margin-top:8px"></div>
-      </div>
-    </section>
-
-    <section class="ops">
-      <div class="section-head"><h1 style="font-size:20px">Estado del sistema</h1><span class="small" id="healthSum"></span></div>
-      <div class="health" id="health"></div>
-    </section>
-
-    <section class="ops">
-      <div class="section-head"><div><h1 style="font-size:20px">Costos por cliente</h1><div class="sub" id="costSub"></div></div><button class="btn" id="costsBtn">Cargar costos del mes</button></div>
-      <div class="cost-kpis" id="costKpis"></div>
-      <div class="cost-alert hidden" id="costAlert"></div>
-      <div class="table-wrap" style="margin-top:12px">
-        <table>
-          <thead><tr><th>Cliente</th><th class="r hide-sm">Sincronizaciones</th><th class="r hide-sm">Datos en la nube</th><th class="r hide-sm">Fotos</th><th class="r hide-sm">Visitas tienda</th><th class="r">Costo estimado</th><th class="r">Pagó este mes</th><th class="r">Margen</th></tr></thead>
-          <tbody id="costRows"></tbody>
-        </table>
-      </div>
-      <p class="warn">El costo de cada servicio se reparte según el uso medido de cada comercio: Neon por datos guardados y sincronizaciones, Firebase por llamadas y fotos, fly.io por uso de la caja en la nube, y “otros” parejo entre las cuentas activas. WhatsApp no se reparte: cada comercio suma sus recordatorios automáticos entregados en el mes. Son estimaciones.</p>
-    </section>
-
-    <section class="clients">
-      <div class="section-head"><h1 style="font-size:20px">Clientes</h1><button class="btn primary" id="newClientBtn">+ Nuevo cliente</button></div>
       <div class="toolbar">
         <label class="search">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -337,22 +478,123 @@
         </label>
         <div class="chips" id="chips"></div>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap cards">
         <table>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Estado</th>
-              <th>Vencimiento</th>
-              <th class="hide-sm">PCs</th>
-              <th class="r hide-sm">Total cobrado</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Cliente</th><th>Estado</th><th>Vencimiento</th><th>PCs</th><th class="r">Total cobrado</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
-    </section>
+    </div>
+
+    <!-- ═══ Soporte ═══ -->
+    <div class="view" data-view="soporte" id="soporte">
+      <div class="page-head">
+        <div><h1>Soporte por WhatsApp</h1><div class="sub" id="supSub">Cargando…</div></div>
+        <div class="head-btns"><button class="btn hidden" id="supNotify">Avisos en esta PC</button><button class="btn" id="supTest">Probar avisos</button><button class="btn" id="supRefresh">Actualizar</button></div>
+      </div>
+      <div class="sup" id="supBox">
+        <div class="sup-list" id="supList"></div>
+        <div class="sup-chat">
+          <div class="sup-head">
+            <button class="icon-btn sup-back" id="supBack" type="button" aria-label="Volver a la lista"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <div style="flex:1;min-width:0"><div id="supWho" style="font-weight:700">Elegí una conversación</div><div class="small" id="supInfo"></div></div>
+            <button class="btn sm hidden" id="supMode"></button>
+          </div>
+          <div class="sup-msgs" id="supMsgs"></div>
+          <div class="sup-form hidden" id="supReopen" style="align-items:center;justify-content:space-between;flex-wrap:wrap"><span class="small" id="supReopenTxt"></span><button class="btn" type="button" id="supReopenBtn">Retomar conversación</button></div>
+          <form class="sup-form" id="supForm"><textarea id="supText" placeholder="Escribí tu respuesta…" disabled></textarea><button class="btn primary" id="supSend" disabled>Enviar</button></form>
+        </div>
+      </div>
+      <details class="howto"><summary>¿Cómo funciona?</summary>
+        <ul>
+          <li><b>Cada mensaje que entra</b> al WhatsApp de Ventra te manda un mail (a juanhidalgobass@gmail.com y ventra.gestion@gmail.com) con la charla reciente y una notificación al celular, aunque no pida hablar con una persona. Con “Probar avisos” confirmás que te llegan.</li>
+          <li>Contesta el asistente con la información de la web. Si tocan “Hablar con persona” (o lo piden escrito), el bot deja de contestarle y aparece arriba con “Pide persona”. Si faltan 4 h para las 24 h y nadie respondió, te avisa de nuevo.</li>
+          <li>Al responder vos, el bot queda callado en esa conversación hasta que la devuelvas o pasen 48 h.</li>
+          <li>Pasadas las 24 h, “Retomar conversación” le manda un mensaje aprobado por Meta; cuando responde, le escribís normal.</li>
+        </ul>
+      </details>
+    </div>
+
+    <!-- ═══ Mails ═══ -->
+    <div class="view" data-view="mails" id="mailSection">
+      <div class="page-head">
+        <div><h1>Mails</h1><div class="sub" id="mailSub">Cargando…</div></div>
+        <button class="btn" id="mailRefresh">Actualizar</button>
+      </div>
+      <div class="cost-kpis" id="mailKpis"></div>
+      <div class="toolbar"><div class="chips" id="mailChips"></div></div>
+      <div class="table-wrap cards">
+        <table>
+          <thead><tr><th>Mail</th><th>Para</th><th>Cuándo</th><th>Estado</th></tr></thead>
+          <tbody id="mailRows"></tbody>
+        </table>
+      </div>
+      <p class="small" style="margin-top:8px">Tocá un mail para verlo completo, tal cual le llegó.</p>
+      <details class="howto"><summary>¿Qué mails salen y cuándo?</summary>
+        <ul>
+          <li><b>Sin plan</b> (entraron con Google y no compraron): bienvenida y recordatorios a los días 1, 3 y 7. Si alguno no salió a tiempo, se manda solo el que toca en ese momento.</li>
+          <li><b>Clientes</b>: comprobante y bienvenida al pagar, aviso 3 días antes del cobro, pago rechazado, gracia (al vencer, 2 días antes y al quedar en solo lectura), ayuda si no arrancó, “volvé” a los 30 días, PC nueva, cambio de plan y el resumen del mes (el 1° a las 10).</li>
+          <li><b>Para vos</b>: los avisos del WhatsApp de Ventra (cada mensaje que entra).</li>
+          <li>Los de pago, PC, plan y los avisos para vos salen al momento; el resto, de 9 a 21.</li>
+        </ul>
+      </details>
+    </div>
+
+    <!-- ═══ WhatsApp del dueño ═══ -->
+    <div class="view" data-view="bot" id="waSection">
+      <div class="page-head">
+        <div><h1>WhatsApp del dueño</h1><div class="sub" id="waSub">Cargando…</div></div>
+        <button class="btn" id="waRefresh">Actualizar</button>
+      </div>
+      <div class="cost-kpis" id="waKpis"></div>
+      <div class="wab-use">
+        <div class="panel"><h2>Qué le piden</h2><div class="panel-sub">Este mes, todos los comercios juntos</div><div class="bars" id="waBars"></div></div>
+        <div class="panel"><h2>Lo que no supo contestar</h2><div class="panel-sub">Últimos 30 días, por WhatsApp</div><ul class="misses" id="waMisses"></ul></div>
+      </div>
+      <div class="table-wrap cards" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Comercio</th><th>Teléfonos</th><th class="r">Mensajes del mes</th><th class="r">Audios</th><th>Lo que más usa</th><th class="r">Último uso</th></tr></thead>
+          <tbody id="waRows"></tbody>
+        </table>
+      </div>
+      <details class="howto"><summary>¿Qué se cuenta?</summary>
+        <p>No se guarda el texto de lo que escriben: solo cuántos mensajes llegan y qué se hizo con cada uno, desde que se activó este conteo. El último uso de cada teléfono y lo que no supo contestar vienen de antes.</p>
+      </details>
+    </div>
+
+    <!-- ═══ Costos ═══ -->
+    <div class="view" data-view="costos">
+      <div class="page-head">
+        <div><h1>Costos por cliente</h1><div class="sub" id="costSub"></div></div>
+        <button class="btn" id="costsBtn">Cargar costos del mes</button>
+      </div>
+      <div class="cost-kpis" id="costKpis"></div>
+      <div class="cost-alert hidden" id="costAlert"></div>
+      <div class="table-wrap cards" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Cliente</th><th class="r">Sincronizaciones</th><th class="r">Datos en la nube</th><th class="r">Fotos</th><th class="r">Visitas tienda</th><th class="r">Costo estimado</th><th class="r">Pagó este mes</th><th class="r">Margen</th></tr></thead>
+          <tbody id="costRows"></tbody>
+        </table>
+      </div>
+      <details class="howto"><summary>¿Cómo se calcula?</summary>
+        <p>El costo de cada servicio se reparte según el uso medido de cada comercio: Neon por datos guardados y sincronizaciones, Firebase por llamadas y fotos, fly.io por uso de la caja en la nube, y “otros” parejo entre las cuentas activas. WhatsApp no se reparte: cada comercio suma sus recordatorios automáticos entregados en el mes. Son estimaciones.</p>
+      </details>
+    </div>
   </main>
+
+  <!-- Ver un mail completo -->
+  <div class="modal hidden" id="mailModal" role="dialog" aria-label="Mail enviado">
+    <div class="modal-card mail-card">
+      <div class="mail-top">
+        <div style="min-width:0;flex:1"><h3 id="mvSubject">Mail</h3><div class="small" id="mvMeta"></div></div>
+        <button class="icon-btn" id="mvClose" aria-label="Cerrar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="mv-note hidden" id="mvNote"></div>
+      <div class="mv-tabs" id="mvTabs"><button class="chip on" data-mv="html">Como se ve</button><button class="chip" data-mv="text">Solo texto</button></div>
+      <iframe id="mvFrame" class="mv-frame" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="Mail"></iframe>
+      <pre id="mvText" class="mv-text hidden"></pre>
+    </div>
+  </div>
 
   <div class="scrim" id="scrim"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-label="Detalle del cliente"></aside>
@@ -412,6 +654,9 @@
   <script>
   (function(){
     var ADMIN_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraAdmin';
+    // Soporte por WhatsApp: acá arriba porque el panel puede cargar antes de que el script llegue a su sección
+    var SUPPORT_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraSupportAdmin';
+    var sup = { phone:null, thread:null, busy:false };
     var DEMO = /[?&]demo\b/.test(location.search);
     var STATE = {
       ACTIVE: { label:'Activa', color:'#167160' },
@@ -439,6 +684,36 @@
       clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.className = 'toast'; }, 2800);
     }
 
+    // ── Secciones (pestañas): una por vez, con la dirección (#clientes, #soporte…) para volver o compartir ──
+    var VIEWS = ['resumen', 'clientes', 'soporte', 'mails', 'bot', 'costos'];
+    var view = null;
+    function showView(name, keepScroll){
+      if (VIEWS.indexOf(name) < 0) name = 'resumen';
+      var changed = view !== name; view = name;
+      [].forEach.call(document.querySelectorAll('.view'), function(v){ v.classList.toggle('on', v.getAttribute('data-view') === name); });
+      [].forEach.call(document.querySelectorAll('#tabs a'), function(a){
+        var on = a.getAttribute('data-view') === name; a.classList.toggle('on', on);
+        if (on && changed && a.scrollIntoView) a.scrollIntoView({ block:'nearest', inline:'nearest' });
+      });
+      if (changed && !keepScroll) window.scrollTo(0, 0);
+      if (name === 'soporte' && changed) $('supBox').classList.remove('chat-open');
+    }
+    window.addEventListener('hashchange', function(){ showView(location.hash.slice(1)); });
+    showView(location.hash.slice(1), true);
+
+    // En el celular las tablas se ven como tarjetas: cada dato lleva el nombre de su columna
+    function labelTable(tbody){
+      var table = tbody.closest('table'); if (!table) return;
+      var heads = [].map.call(table.querySelectorAll('thead th'), function(th){ return th.textContent.trim(); });
+      [].forEach.call(tbody.rows, function(tr){
+        [].forEach.call(tr.cells, function(td, i){ if (!td.hasAttribute('colspan') && !td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i] || ''); });
+      });
+    }
+    [].forEach.call(document.querySelectorAll('.cards tbody'), function(tb){
+      new MutationObserver(function(){ labelTable(tb); }).observe(tb, { childList:true });
+    });
+    function setBadge(id, n){ var b = $(id); if (!b) return; b.textContent = n > 99 ? '99+' : String(n); b.classList.toggle('hidden', !n); }
+
     function daysText(a){
       if (a.state === 'UNPAID') return { main:'Sin fecha', sub:'Esperando el primer cobro' };
       if (a.state === 'ACTIVE') return { main: a.daysLeft === 0 ? 'Vence hoy' : a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:'Paga hasta el ' + fdate(a.paidUntil) };
@@ -463,6 +738,9 @@
       return api('GET').then(function(d){
         data = d; merge(); render(); showApp();
         if (!stats) loadStats();
+        loadWaBot();
+        loadMailBot();
+        loadSupport();
       }).catch(function(err){
         if (err.status === 403) return showGate('Sin acceso', 'La cuenta ' + (auth.currentUser && auth.currentUser.email || '') + ' no es administradora de Ventra.', true);
         toast('No se pudo cargar el panel', true);
@@ -521,7 +799,25 @@
       renderPlans(m.byPlan);
       renderChips();
       renderRows();
+      renderTodo();
+      setBadge('tbClientes', (s.GRACE || 0) + (s.READ_ONLY || 0));
       if (openUid && !keepDrawer) openDrawer(openUid);
+    }
+
+    // ── Para atender: lo que pide algo de vos, arriba de todo y con un toque para ir ──
+    var todoExtra = { support:0, mailErr:0 };
+    function renderTodo(){
+      if (!data) return;
+      var items = [], add = function(level, icon, title, sub, href){ items.push('<a class="todo-item ' + level + '" href="' + href + '"><span class="ti">' + icon + '</span><span class="tt">' + title + (sub ? '<small>' + sub + '</small>' : '') + '</span><span class="go">›</span></a>'); };
+      if (todoExtra.support) add('warn', '💬', todoExtra.support + (todoExtra.support === 1 ? ' persona espera' : ' personas esperan') + ' una respuesta por WhatsApp', 'Pidieron hablar con una persona', '#soporte');
+      var grace = data.accounts.filter(function(a){ return a.state === 'GRACE'; }), ro = data.accounts.filter(function(a){ return a.state === 'READ_ONLY' && a.daysLeft > -15; });
+      if (grace.length) add('warn', '⏳', grace.length + (grace.length === 1 ? ' cliente en período de gracia' : ' clientes en período de gracia'), grace.slice(0, 3).map(function(a){ return esc(a.email); }).join(' · ') + (grace.length > 3 ? '…' : ''), '#clientes');
+      if (ro.length) add('bad', '🔒', ro.length + (ro.length === 1 ? ' cliente quedó en solo lectura' : ' clientes quedaron en solo lectura'), 'En las últimas dos semanas', '#clientes');
+      if (todoExtra.mailErr) add('bad', '✉', todoExtra.mailErr + (todoExtra.mailErr === 1 ? ' mail no salió' : ' mails no salieron') + ' en los últimos 30 días', 'Mirá el error en Mails', '#mails');
+      var bad = stats ? [].filter.call(document.querySelectorAll('#health .hcard.bad'), function(){ return true; }).length : 0;
+      if (bad) add('bad', '⚠', bad + (bad === 1 ? ' servicio con problemas' : ' servicios con problemas'), 'Revisá Estado del sistema, más abajo', '#resumen');
+      $('todo').innerHTML = items.length ? '<div class="section-head" style="margin-bottom:2px"><h2 class="h2" style="font-size:15px">Para atender</h2></div>' + items.join('') : '';
+      $('todo').classList.toggle('hidden', !items.length);
     }
 
     var mb = function(b){ b = Number(b) || 0; return b >= 1073741824 ? (b / 1073741824).toLocaleString('es-AR', { maximumFractionDigits:2 }) + ' GB' : (b / 1048576).toLocaleString('es-AR', { maximumFractionDigits:1 }) + ' MB'; };
@@ -1053,9 +1349,9 @@
     }
 
     // ── Pantallas ──────────────────────────────────
-    function showApp(){ $('gate').classList.add('hidden'); $('app').classList.remove('hidden'); $('refreshBtn').classList.remove('hidden'); $('logoutBtn').classList.toggle('hidden', DEMO); }
+    function showApp(){ $('gate').classList.add('hidden'); $('app').classList.remove('hidden'); $('tabs').classList.remove('hidden'); $('refreshBtn').classList.remove('hidden'); $('logoutBtn').classList.toggle('hidden', DEMO); }
     function showGate(title, text, signedIn){
-      $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); $('refreshBtn').classList.add('hidden');
+      $('app').classList.add('hidden'); $('tabs').classList.add('hidden'); $('gate').classList.remove('hidden'); $('refreshBtn').classList.add('hidden');
       $('gateTitle').textContent = title; $('gateText').textContent = text;
       $('loginBtn').textContent = signedIn ? 'Usar otra cuenta' : 'Iniciar sesión con Google';
       $('logoutBtn').classList.toggle('hidden', !signedIn);
@@ -1067,7 +1363,7 @@
     });
     $('chips').addEventListener('click', function(e){ var b = e.target.closest('[data-f]'); if (!b) return; filter = b.getAttribute('data-f'); renderChips(); renderRows(); });
     $('search').addEventListener('input', function(e){ query = e.target.value; renderRows(); });
-    $('scrim').onclick = function(){ if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
+    $('scrim').onclick = function(){ if (!$('mailModal').classList.contains('hidden')) return closeMail(); if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); };
     function closeNew(){ $('newModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
     $('newClientBtn').onclick = function(){
       $('ncPlan').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba' && !data.plans[k].legacy; }).map(function(k){ return '<option value="' + k + '">' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('');
@@ -1084,13 +1380,15 @@
         .catch(function(err){ toast(err.message || 'No se pudo crear', true); })
         .then(function(){ btn.disabled = false; });
     };
-    document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
+    document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('mailModal').classList.contains('hidden')) return closeMail(); if (!$('costsModal').classList.contains('hidden')) return closeCosts(); if (!$('newModal').classList.contains('hidden')) return closeNew(); closeDrawer(); });
     $('refreshBtn').onclick = function(){ Promise.all([load(), loadStats()]).then(function(){ toast('Datos actualizados'); }); };
 
     if (DEMO){
       $('demoFlag').classList.remove('hidden'); $('who').textContent = 'demo@ventra.store';
-      load(); return;
+      // Después de que el resto del script conecte los botones (antes cortaba acá y la demo quedaba sin ellos)
+      setTimeout(load, 0);
     }
+    if (!DEMO) {
 
     firebase.initializeApp({
       apiKey: "AIzaSyCFiHwebmIbwqVjaW0nu6_Swb646zFyX8k",
@@ -1110,9 +1408,294 @@
       if (!user){ data = null; closeDrawer(); return showGate('Panel de administración', 'Ingresá con la cuenta de Google de administrador.', false); }
       load();
     });
+    }
+
+
+    // ── WhatsApp del dueño ─────────────────────────
+    var waBusy = false;
+    function waLabel(k, labels){
+      var MENU_LABELS = { ventas_hoy:'Ventas de hoy', ultimas_ventas:'Últimas ventas', cajas:'Cajas', crear_producto:'Crear producto', cambiar_precio:'Cambiar precio', reponer:'Qué reponer', deudas:'Deudas de clientes', fiado:'Anotar fiado', promo:'Promo o imagen', resumen:'Resumen del día', mas_vendidos:'Lo más vendido', compra:'Cargar una compra', repetidos:'Productos repetidos', stock:'Ajustar stock', vencimientos:'Vencimientos', encargos:'Encargos', gasto:'Anotar un gasto', otra_cosa:'Otra cosa', turnos_hoy:'Turnos de hoy', turnos_manana:'Turnos de mañana' };
+      if (labels[k]) return labels[k];
+      if (k.indexOf('menu_') === 0) return 'Menú: ' + (MENU_LABELS[k.slice(5)] || k.slice(5).replace(/_/g, ' '));
+      if (k.indexOf('op_') === 0) return 'En el sistema: ' + k.slice(3).replace(/_/g, ' ');
+      return k.replace(/_/g, ' ');
+    }
+    function waAgo(t){
+      if (!t) return '—';
+      var m = Math.round((Date.now() - t) / 60000);
+      if (m < 2) return 'recién'; if (m < 60) return 'hace ' + m + ' min';
+      var h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h';
+      var d = Math.round(h / 24); return d === 1 ? 'ayer' : 'hace ' + d + ' días';
+    }
+    function loadWaBot(){
+      if (waBusy) return; waBusy = true; $('waRefresh').disabled = true;
+      api('POST', { action:'waBot' }).then(renderWaBot).catch(function(err){ console.error('WhatsApp del dueño', err); $('waSub').textContent = 'No se pudo cargar el uso del WhatsApp.'; })
+        .then(function(){ waBusy = false; $('waRefresh').disabled = false; });
+    }
+    function renderWaBot(w){
+      var monthName = new Date(w.month + '-15T12:00:00').toLocaleDateString('es-AR', { month:'long', year:'numeric' });
+      $('waSub').textContent = 'Mes de ' + monthName + ' · se actualiza al abrir el panel';
+      var msgs = Number(w.totals.msgs) || 0, prev = w.shops.reduce(function(n, s){ return n + (Number(s.prev) || 0); }, 0);
+      var kpi = function(label, value, foot){ return '<div class="kpi"><div class="kpi-label">' + esc(label) + '</div><div class="kpi-value num">' + value + '</div><div class="kpi-foot">' + foot + '</div></div>'; };
+      $('waKpis').innerHTML =
+        kpi('Comercios vinculados', int(w.linkedShops), int(w.linkedPhones) + (w.linkedPhones === 1 ? ' teléfono' : ' teléfonos')) +
+        kpi('Lo usaron este mes', int(w.activeShops), w.linkedShops ? Math.round(w.activeShops * 100 / w.linkedShops) + '% de los vinculados' : '—') +
+        kpi('Mensajes del mes', int(msgs), 'Mes pasado: ' + int(prev)) +
+        kpi('Audios', int(w.totals.in_audio), msgs ? Math.round((Number(w.totals.in_audio) || 0) * 100 / msgs) + '% de los mensajes' : '—');
+      var keys = Object.keys(w.totals).filter(function(k){ return /^(do_|menu_|op_)/.test(k); }).sort(function(a, b){ return w.totals[b] - w.totals[a]; }).slice(0, 10);
+      var max = keys.length ? w.totals[keys[0]] : 1;
+      $('waBars').innerHTML = keys.length ? keys.map(function(k){
+        return '<div class="wbar"><span>' + esc(waLabel(k, w.labels)) + '</span><b class="num">' + int(w.totals[k]) + '</b><i><b style="width:' + Math.max(4, w.totals[k] * 100 / max) + '%"></b></i></div>';
+      }).join('') : '<div class="small">Todavía no hay uso registrado este mes.</div>';
+      $('waMisses').innerHTML = w.misses.length ? w.misses.map(function(m){
+        return '<li><span class="q">“' + esc(m.question) + '”</span><span class="m">' + esc(m.email || 'Comercio sin mail') + ' · ' + waAgo(m.at) + (m.reasons && m.reasons.length ? ' · ' + esc(m.reasons.join(', ')) : '') + '</span></li>';
+      }).join('') : '<li class="small">Nada en los últimos 30 días.</li>';
+      $('waRows').innerHTML = w.shops.length ? w.shops.map(function(s){
+        var top = Object.keys(s.month).filter(function(k){ return /^(do_|menu_|op_)/.test(k); }).sort(function(a, b){ return s.month[b] - s.month[a]; }).slice(0, 2).map(function(k){ return waLabel(k, w.labels); }).join(' · ');
+        var last = Math.max.apply(null, [0].concat(s.phones.map(function(p){ return p.lastAt || 0; })));
+        var phones = s.phones.length ? s.phones.map(function(p){
+          return '<span class="ph">' + esc(p.phone) + ' <span class="role' + (p.role === 'SUPERVISOR' ? ' sup' : '') + '">' + (p.role === 'SUPERVISOR' ? 'Encargado' : 'Dueño') + '</span>' + (p.summary ? ' <span class="small">resumen</span>' : '') + '</span>';
+        }).join('') : '<span class="small">Desvinculado</span>';
+        return '<tr><td><div style="font-weight:600">' + esc(s.email || s.uid) + '</div><div class="small">' + esc(s.plan || '') + '</div></td><td><div class="phones">' + phones + '</div></td>' +
+          '<td class="r num">' + int(s.month.msgs) + '<div class="small">mes pasado ' + int(s.prev) + '</div></td><td class="r num hide-sm">' + int(s.month.in_audio) + '</td>' +
+          '<td class="hide-sm small">' + (esc(top) || '—') + '</td><td class="r small">' + waAgo(last || null) + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="small">Ningún comercio vinculó su WhatsApp todavía.</td></tr>';
+    }
+    $('waRefresh').addEventListener('click', loadWaBot);
+
+    // ── Mails ─────────────────────────────────────
+    var mailBusy = false, mailData = null, mailFilter = 'ALL';
+    var MAIL_LABELS = { 'sin_plan:bienvenida':'Bienvenida', 'sin_plan:arrancar':'Día 1 · Cómo arrancar', 'sin_plan:paulos':'Día 3 · Caso Paulos', 'sin_plan:ayuda':'Día 7 · Te ayudamos a cargar',
+      'gracia:inicio':'Pago · Venció', 'gracia:fin':'Pago · Faltan 2 días', 'gracia:bloqueo':'Pago · Solo lectura',
+      'cuenta:bienvenida_pago':'Primer pago · Bienvenida', 'cuenta:pago':'Pago recibido', 'cobro:aviso_cobro':'Aviso de cobro', 'cobro:rechazo':'Pago rechazado',
+      'cuenta:arranque':'Ayuda para arrancar', 'cuenta:volve':'Volvé (30 días)', 'seguridad:pc':'PC nueva vinculada', 'cuenta:plan':'Cambio de plan',
+      'soporte:first':'WhatsApp · Alguien nuevo escribió', 'soporte:msg':'WhatsApp · Mensaje al bot', 'soporte:new':'WhatsApp · Pide una persona', 'soporte:remind':'WhatsApp · Respuesta por vencer', 'soporte:test':'WhatsApp · Prueba de avisos' };
+    // A quién va: registrados sin plan, clientes o vos (avisos internos)
+    var mailAud = function(x){ return x.kind === 'sin_plan' ? 'NOPLAN' : x.kind === 'soporte' ? 'INTERNAL' : 'CLIENT'; };
+    var AUD = { NOPLAN:['noplan', 'Sin plan'], CLIENT:['client', 'Cliente'], INTERNAL:['internal', 'Para vos'] };
+    var mailLabel = function(x){ return MAIL_LABELS[x.kind + ':' + x.step] || (x.kind === 'resumen' ? 'Resumen de ' + new Date(x.step + '-15T12:00:00').toLocaleDateString('es-AR', { month:'long' }) : x.kind + ' · ' + x.step); };
+    function loadMailBot(){
+      if (mailBusy) return; mailBusy = true; $('mailRefresh').disabled = true;
+      api('POST', { action:'emailBot' }).then(renderMailBot).catch(function(err){ console.error('Mails automáticos', err); $('mailSub').textContent = 'No se pudieron cargar los mails.'; })
+        .then(function(){ mailBusy = false; $('mailRefresh').disabled = false; });
+    }
+    function renderMailBot(m){
+      mailData = m;
+      var s = m.signup || {}, g = m.grace || {};
+      var waiting = (Number(s.due) || 0) + (Number(g.due) || 0);
+      var noKey = s.skipped === 'sin configurar';
+      var resendErr = !noKey && s.skipped ? s.skipped : (g.skipped && g.skipped !== 'sin configurar' ? g.skipped : '');
+      var stale = !m.lastRunAt || Date.now() - m.lastRunAt > 40 * 60000;
+      $('mailSub').textContent = 'Todos los mails que manda Ventra' + (m.lastRunAt ? ' · última pasada ' + waAgo(m.lastRunAt) : ' · la tarea todavía no corrió');
+      var kpi = function(label, value, foot){ return '<div class="kpi"><div class="kpi-label">' + esc(label) + '</div><div class="kpi-value num">' + value + '</div><div class="kpi-foot">' + foot + '</div></div>'; };
+      var esperando = int(waiting) + (waiting === 1 ? ' mail esperando' : ' mails esperando');
+      var state = stale ? '<span class="pill READ_ONLY">Detenido</span>' : noKey ? '<span class="pill GRACE">Sin clave</span>' : resendErr ? '<span class="pill READ_ONLY">Resend rechaza</span>' : '<span class="pill ACTIVE">Enviando</span>';
+      var stateFoot = stale ? 'La tarea no pasó en los últimos 40 min' : noKey ? 'Falta la clave de Resend: ' + esperando : resendErr ? resendErr + ' · ' + esperando : (waiting ? int(waiting) + ' por salir en la próxima pasada' : 'Al día');
+      $('mailKpis').innerHTML =
+        kpi('Estado', state, esc(stateFoot)) +
+        kpi('Enviados (30 días)', int(m.sent30), m.failed30 ? '<span style="color:var(--red)">' + int(m.failed30) + ' con error</span>' : 'Sin errores') +
+        kpi('Registrados sin plan', int(s.candidates || 0), 'De los últimos 10 días') +
+        kpi('En período de gracia', int(g.inGrace || 0), int(m.unsubscribed) + ' de baja de promos · ' + int(m.unsubscribedSummary || 0) + ' del resumen');
+      todoExtra.mailErr = Number(m.failed30) || 0; renderTodo(); setBadge('tbMails', todoExtra.mailErr);
+      renderMailRows();
+    }
+    function renderMailRows(){
+      var m = mailData; if (!m) return;
+      var c = { ALL:m.items.length, NOPLAN:0, CLIENT:0, INTERNAL:0 };
+      m.items.forEach(function(x){ c[mailAud(x)]++; });
+      $('mailChips').innerHTML = [['ALL','Todos'],['NOPLAN','Sin plan'],['CLIENT','Clientes'],['INTERNAL','Para vos']].map(function(it){
+        return '<button class="chip' + (mailFilter === it[0] ? ' on' : '') + '" data-mf="' + it[0] + '">' + it[1] + ' <span class="c">' + c[it[0]] + '</span></button>';
+      }).join('');
+      var list = m.items.filter(function(x){ return mailFilter === 'ALL' || mailAud(x) === mailFilter; });
+      var noKey = m.signup && m.signup.skipped === 'sin configurar';
+      $('mailRows').innerHTML = list.length ? list.map(function(x){
+        var aud = AUD[mailAud(x)];
+        var st = x.ok ? '<span class="pill ACTIVE">Enviado</span>' : '<span class="pill READ_ONLY" title="' + esc(x.error || '') + '">Error</span><div class="small">' + esc(x.error || '') + '</div>';
+        return '<tr class="click" data-log="' + esc(x.logId || '') + '"><td><div style="font-weight:600">' + esc(mailLabel(x)) + '<span class="aud ' + aud[0] + '">' + aud[1] + '</span></div>' + (x.subject ? '<div class="small">' + esc(x.subject) + '</div>' : '') + '</td>' +
+          '<td style="word-break:break-word">' + esc(x.to || x.uid) + (x.channel === 'whatsapp' ? ' <span class="small">(WhatsApp)</span>' : '') + '</td>' +
+          '<td class="small">' + esc(new Date(x.at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) + '<div class="small">' + waAgo(x.at) + '</div></td><td>' + st + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" class="small empty">' + (m.items.length ? 'No hay mails de este tipo.' : noKey ? 'Todavía no salió ningún mail: falta cargar la clave de Resend.' : 'Todavía no salió ningún mail.') + '</td></tr>';
+    }
+    $('mailRefresh').addEventListener('click', loadMailBot);
+    $('mailChips').addEventListener('click', function(e){ var b = e.target.closest('[data-mf]'); if (!b) return; mailFilter = b.getAttribute('data-mf'); renderMailRows(); });
+    $('mailRows').addEventListener('click', function(e){ var tr = e.target.closest('tr[data-log]'); if (tr && tr.getAttribute('data-log')) openMail(tr.getAttribute('data-log')); });
+
+    // Ver un mail completo, tal cual le llegó (HTML guardado al enviarlo; los de antes, reconstruidos con la plantilla)
+    var mv = null;
+    function openMail(logId){
+      var x = (mailData && mailData.items || []).filter(function(i){ return i.logId === logId; })[0] || {};
+      $('mvSubject').textContent = x.subject || mailLabel(x);
+      $('mvMeta').textContent = 'Abriendo…'; $('mvNote').classList.add('hidden');
+      $('mvFrame').srcdoc = ''; $('mvText').textContent = '';
+      $('mailModal').classList.remove('hidden'); $('scrim').classList.add('open');
+      api('POST', { action:'emailView', logId:logId }).then(function(d){
+        mv = d;
+        $('mvSubject').textContent = d.subject || mailLabel(d);
+        var when = new Date(d.at).toLocaleString('es-AR', { weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+        $('mvMeta').textContent = 'Para ' + (d.to || '—') + ' · ' + when + ' · ' + (d.ok ? 'enviado' : 'no salió: ' + (d.error || 'error')) + ' · ' + mailLabel(d) + ' (' + AUD[mailAud(d)][1].toLowerCase() + ')';
+        $('mvNote').textContent = d.note || ''; $('mvNote').classList.toggle('hidden', !d.note || d.exact);
+        // Los links se abren en otra pestaña y el mail no puede ejecutar nada
+        $('mvFrame').srcdoc = d.html ? d.html.replace(/<head>/i, '<head><base target="_blank">') : '<p style="font:14px system-ui;padding:20px;color:#56655F">' + esc(d.note || 'Sin contenido.') + '</p>';
+        $('mvText').textContent = d.text || '';
+        showMailTab('html');
+      }).catch(function(err){ $('mvMeta').textContent = err.message || 'No se pudo abrir el mail'; });
+    }
+    function showMailTab(t){
+      [].forEach.call(document.querySelectorAll('#mvTabs [data-mv]'), function(b){ b.classList.toggle('on', b.getAttribute('data-mv') === t); });
+      $('mvFrame').classList.toggle('hidden', t !== 'html'); $('mvText').classList.toggle('hidden', t !== 'text');
+    }
+    function closeMail(){ $('mailModal').classList.add('hidden'); $('scrim').classList.toggle('open', !!openUid); }
+    $('mvTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-mv]'); if (b) showMailTab(b.getAttribute('data-mv')); });
+    $('mvClose').onclick = closeMail;
+    $('mailModal').addEventListener('click', function(e){ if (e.target === $('mailModal')) closeMail(); });
+
+    // ── Soporte por WhatsApp ──────────────────────
+    function supApi(body){
+      if (DEMO) return Promise.resolve(demoSupport(body));
+      return auth.currentUser.getIdToken().then(function(token){
+        return fetch(SUPPORT_URL, { method:'POST', headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+      }).then(function(r){ return r.json().then(function(d){ if (!r.ok) throw Object.assign(new Error(d.error || 'Error'), { status:r.status }); return d; }); });
+    }
+    function supName(c){ return c.name ? c.name + ' · +' + c.phone : '+' + c.phone; }
+    function loadSupport(){
+      bindSupport();
+      if (sup.busy) return; sup.busy = true;
+      supApi({ action:'list' }).then(function(d){
+        // Alguien nuevo pide una persona: aviso del navegador (si se activó) — no en la primera carga
+        var waitingNow = d.items.filter(function(c){ return c.waiting; }).map(function(c){ return c.phone; });
+        if (sup.seen && 'Notification' in window && Notification.permission === 'granted') {
+          waitingNow.filter(function(p){ return sup.seen.indexOf(p) < 0; }).forEach(function(p){
+            var c = d.items.filter(function(x){ return x.phone === p; })[0];
+            var n = new Notification(supName(c) + ' quiere hablar con una persona', { body:c.lastText, tag:'soporte-' + p });
+            n.onclick = function(){ window.focus(); location.hash = 'soporte'; openThread(p); n.close(); };
+          });
+        }
+        sup.seen = waitingNow;
+        todoExtra.support = Number(d.waiting) || 0; renderTodo(); setBadge('tbSoporte', todoExtra.support);
+        $('supSub').textContent = d.items.length ? (d.waiting ? d.waiting + (d.waiting === 1 ? ' persona espera' : ' personas esperan') + ' una respuesta · ' : '') + 'tope del bot: ' + d.dailyLimit + ' respuestas por día y por número' : 'Todavía nadie escribió al WhatsApp de Ventra.';
+        $('supList').innerHTML = d.items.map(function(c){
+          return '<button class="sup-item' + (c.phone === sup.phone ? ' on' : '') + '" data-phone="' + esc(c.phone) + '"><span class="t"><span>' + esc(supName(c)) + '</span>' +
+            (c.waiting ? '<span class="sup-badge">Pide persona</span>' : c.unread ? '<span class="sup-unread">' + int(c.unread) + '</span>' : '<span class="small">' + waAgo(Date.parse(c.lastAt)) + '</span>') +
+            '</span><span class="l">' + (c.lastDir === 'out' ? '↪ ' : '') + esc(c.lastText) + '</span></button>';
+        }).join('') || '<div class="small" style="padding:14px">Sin conversaciones.</div>';
+        if (sup.phone) openThread(sup.phone, true);
+      }).catch(function(err){ console.error('Soporte', err); $('supSub').textContent = 'No se pudo cargar el soporte.'; })
+        .then(function(){ sup.busy = false; });
+    }
+    function openThread(phone, quiet){
+      sup.phone = phone;
+      [].forEach.call(document.querySelectorAll('.sup-item'), function(b){ b.classList.toggle('on', b.getAttribute('data-phone') === phone); });
+      supApi({ action:'thread', phone:phone }).then(function(t){
+        sup.thread = t;
+        $('supWho').textContent = supName(t);
+        $('supInfo').textContent = t.waiting ? 'Pidió hablar con una persona: el bot no le contesta' : 'Le contesta el bot';
+        $('supMode').classList.remove('hidden');
+        $('supMode').textContent = t.waiting ? 'Devolver al bot' : 'Atiendo yo';
+        var box = $('supMsgs'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+        box.innerHTML = t.messages.map(function(m){
+          var who = m.dir === 'in' ? '' : m.by === 'admin' ? 'Vos' : 'Bot';
+          return '<div class="sup-msg ' + (m.dir === 'in' ? 'in' : 'out') + (m.by === 'admin' ? ' admin' : '') + '">' + esc(m.text) + '<small>' + (who ? who + ' · ' : '') + esc(new Date(m.at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) + '</small></div>';
+        }).join('');
+        if (!quiet || atBottom) box.scrollTop = box.scrollHeight;
+        $('supText').disabled = $('supSend').disabled = !t.canReply;
+        $('supText').placeholder = t.canReply ? 'Escribí tu respuesta…' : 'Pasaron más de 24 h desde su último mensaje: retomá la conversación con el botón de arriba.';
+        // Pasadas las 24 h: retomar con la plantilla aprobada por Meta; cuando responde, se puede escribir de nuevo
+        $('supReopen').classList.toggle('hidden', t.canReply);
+        $('supReopenBtn').disabled = !t.reopenReady || t.reopenPending;
+        $('supReopenTxt').textContent = t.reopenPending ? 'Ya le mandaste el mensaje para retomar: cuando responda, le escribís normal.'
+          : t.reopenReady ? 'Le llega un mensaje de Ventra invitándolo a responder; cuando conteste, se reabren las 24 h.'
+          : 'Para escribirle pasadas las 24 h falta que Meta apruebe la plantilla "retomar_consulta".';
+        if (!quiet) { var it = document.querySelector('.sup-item.on .sup-unread'); if (it) it.remove(); }
+      }).catch(function(err){ toast(err.message || 'No se pudo abrir la conversación', true); });
+    }
+    // Se conecta al cargar la bandeja (en la demo el script termina antes de llegar acá)
+    function bindSupport(){
+    if (sup.bound) return; sup.bound = true;
+    $('supList').addEventListener('click', function(e){ var b = e.target.closest('.sup-item'); if (!b) return; $('supBox').classList.add('chat-open'); openThread(b.getAttribute('data-phone')); });
+    $('supBack').addEventListener('click', function(){ $('supBox').classList.remove('chat-open'); });
+    // Manda un mail y una notificación de prueba, igual que cuando alguien escribe al bot
+    $('supTest').addEventListener('click', function(){
+      var btn = this; btn.disabled = true;
+      supApi({ action:'testAlert' }).then(function(r){
+        toast('Prueba: mail ' + (r.mail || '—') + ' · ' + (r.push ? r.push + (r.push === 1 ? ' notificación enviada' : ' notificaciones enviadas') : 'ninguna notificación (' + (r.pushReason === 'no-devices' ? 'activá los avisos en la app de Ventra del celular' : (r.pushReason || 'sin celular')) + ')'), !(r.mail === 'enviado'));
+        loadMailBot();
+      }).catch(function(err){ toast(err.message || 'No se pudo mandar la prueba', true); }).then(function(){ btn.disabled = false; });
+    });
+    $('supForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var text = $('supText').value.trim(); if (!text || !sup.phone) return;
+      $('supSend').disabled = true;
+      supApi({ action:'reply', phone:sup.phone, text:text }).then(function(){ $('supText').value = ''; openThread(sup.phone); loadSupport(); })
+        .catch(function(err){ toast(err.message || 'No se pudo enviar', true); }).then(function(){ $('supSend').disabled = !(sup.thread && sup.thread.canReply); });
+    });
+    $('supText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('supForm').requestSubmit(); });
+    $('supMode').addEventListener('click', function(){
+      if (!sup.thread) return;
+      supApi({ action:'mode', phone:sup.phone, mode:sup.thread.waiting ? 'bot' : 'human' }).then(function(){ openThread(sup.phone, true); loadSupport(); })
+        .catch(function(err){ toast(err.message || 'No se pudo cambiar', true); });
+    });
+    $('supRefresh').addEventListener('click', loadSupport);
+    $('supReopenBtn').addEventListener('click', function(){
+      if (!sup.phone) return;
+      $('supReopenBtn').disabled = true;
+      supApi({ action:'reopen', phone:sup.phone }).then(function(){ toast('Mensaje enviado: cuando responda, le escribís normal'); openThread(sup.phone); loadSupport(); })
+        .catch(function(err){ toast(err.message || 'No se pudo enviar', true); $('supReopenBtn').disabled = false; });
+    });
+    // Avisos del navegador mientras el admin está abierto (además del mail y la app de Ventra)
+    var canNotify = 'Notification' in window;
+    $('supNotify').classList.toggle('hidden', !canNotify || Notification.permission !== 'default');
+    $('supNotify').addEventListener('click', function(){
+      Notification.requestPermission().then(function(p){ $('supNotify').classList.add('hidden'); if (p === 'granted') toast('Listo: te aviso acá cuando alguien pida una persona'); });
+    });
+    // Mientras el panel está abierto y visible, se actualiza solo cada 20 s
+    setInterval(function(){ if (data && !document.hidden) loadSupport(); }, 20000);
+    }
+    function demoSupport(body){
+      var now = Date.now(), m = 60000, iso = function(x){ return new Date(x).toISOString(); };
+      var convs = {
+        '5491155550001': { name:'Marcela', waiting:true, canReply:true, msgs:[ ['in', null, 'Hola, cuánto sale Ventra para una ferretería?', 30], ['out', 'bot', 'Para una ferretería con local te conviene *Ventra Full*: $24.900 por mes, con caja, stock y tienda online. Podés probar la demo: https://app.ventra.store', 29], ['in', null, '[Botón] Hablar con persona', 12], ['out', 'bot', 'Listo, ya le aviso a una persona del equipo de Ventra y te responde por acá lo antes posible.', 12], ['in', null, 'Tengo 4000 productos en un Excel, me ayudan a cargarlos?', 10] ] },
+        '5491155550002': { name:'Kiosco Lucho', waiting:true, canReply:false, msgs:[ ['in', null, 'funciona sin internet? quiero hablar con alguien del equipo', 1800], ['out', 'bot', 'Listo, ya le aviso a una persona del equipo de Ventra y te responde por acá lo antes posible.', 1799] ] }
+      };
+      if (body.action === 'list') return { dailyLimit:15, waiting:2, items:Object.keys(convs).map(function(p){ var c = convs[p], last = c.msgs[c.msgs.length - 1]; return { phone:p, name:c.name, waiting:c.waiting, canReply:c.canReply, unread:c.waiting ? 1 : 0, lastText:last[2], lastDir:last[0], lastAt:iso(now - last[3] * m) }; }) };
+      if (body.action === 'testAlert') return { mail:'enviado', push:1 };
+      if (body.action === 'thread') { var c = convs[body.phone]; return { phone:body.phone, name:c.name, waiting:c.waiting, canReply:c.canReply, reopenReady:false, reopenPending:false, messages:c.msgs.map(function(x){ return { dir:x[0], by:x[1], text:x[2], at:iso(now - x[3] * m) }; }) }; }
+      return { ok:true };
+    }
+    function demoMailBot(){
+      var now = Date.now(), h = 3600000;
+      var n = 0, it = function(hAgo, to, kind, step, ok, ch, err){ return { logId:'d' + (++n), at:now - hAgo * h, to:to, kind:kind, step:step, ok:ok, channel:ch || 'mail', error:err, subject: kind === 'sin_plan' && step === 'ayuda' ? 'Te ayudamos a cargar tus productos' : null }; };
+      return { lastRunAt:now - 6 * 60000, signup:{ candidates:7, due:1, sent:0 }, grace:{ inGrace:2, due:0 }, sent30:23, failed30:1, unsubscribed:1, byStep:{},
+        items:[ it(0.05, 'juanhidalgobass@gmail.com, ventra.gestion@gmail.com', 'soporte', 'msg', true), it(0.1, 'nuevo.almacen@gmail.com', 'sin_plan', 'ayuda', true), it(0.2, 'nuevo.kiosco@gmail.com', 'sin_plan', 'bienvenida', true), it(3, 'ana.pelu@gmail.com', 'sin_plan', 'arrancar', true), it(5, 'ferre.lopez@gmail.com', 'gracia', 'inicio', true),
+          it(5, '•••• 7788', 'gracia', 'inicio', true, 'whatsapp'), it(26, 'mal.escrito@gmial.com', 'sin_plan', 'bienvenida', false, 'mail', 'The email address is invalid'), it(50, 'almacen.don@gmail.com', 'sin_plan', 'paulos', true) ] };
+    }
+
+    function demoMailView(logId){
+      var x = demoMailBot().items.filter(function(i){ return i.logId === logId; })[0] || {};
+      var html = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#F6F2EC;font-family:Arial,sans-serif"><div style="max-width:520px;margin:0 auto;padding:24px 16px"><div style="background:#fff;border-radius:20px;padding:28px 24px;border:1px solid #E4DDD1"><h1 style="font-size:22px">¡Hola Martina! No arranques de cero: te ayudamos</h1><p>Lo que más cuesta al empezar es cargar todo…</p><a href="https://ventra.store/empezar" style="display:block;text-align:center;background:#167160;color:#fff;border-radius:999px;padding:14px;text-decoration:none">Elegir mi plan</a></div></div></body></html>';
+      return Object.assign({}, x, { exact: x.kind !== 'sin_plan', subject: x.subject || 'Mail de prueba', html: html, text: '¡Hola Martina! No arranques de cero: te ayudamos', note: x.kind === 'sin_plan' ? 'Reconstruido con la misma plantilla y los datos de la persona: es el mismo texto que le llegó.' : null });
+    }
+
+    function demoWaBot(){
+      var now = Date.now(), h = 3600000, month = new Date().toISOString().slice(0, 7);
+      var shop = function(email, plan, phones, m, prev){ return { uid:email, email:email, plan:plan, phones:phones, month:m, prev:prev }; };
+      var ph = function(last4, role, lastH, summary){ return { phone:'•••• ' + last4, role:role, lastAt:now - lastH * h, linkedAt:now - 40 * 24 * h, questions:120, summary:!!summary }; };
+      var shops = [
+        shop('kiosco.lucia@gmail.com', 'full', [ph('5603', 'ADMIN', 1, true), ph('2211', 'SUPERVISOR', 26)], { msgs:184, in_question:120, in_audio:51, in_menu:9, in_button:4, do_answer:131, do_prices:14, do_prices_ok:12, do_promo:9, menu_ventas_hoy:6, op_crear_producto:3, do_op:3, do_op_ok:3 }, 140),
+        shop('ferreteria.central@gmail.com', 'full', [ph('7788', 'ADMIN', 5)], { msgs:62, in_question:40, in_audio:18, in_menu:4, do_answer:48, do_invoice:6, menu_reponer:3 }, 71),
+        shop('peluqueria.sofi@gmail.com', 'agenda_pro', [ph('4410', 'ADMIN', 50)], { msgs:11, in_question:11, do_answer:11, menu_turnos_manana:4 }, 3),
+        shop('maxikiosco.sol@hotmail.com', 'caja', [ph('9021', 'ADMIN', 24 * 19)], {}, 22)
+      ];
+      var totals = {}; shops.forEach(function(s){ Object.keys(s.month).forEach(function(k){ totals[k] = (totals[k] || 0) + s.month[k]; }); });
+      return { month:month, labels:{ in_question:'Mensajes escritos', in_audio:'Audios', in_image:'Fotos', in_menu:'Menú', in_button:'Botones', do_answer:'Preguntas contestadas', do_prices:'Cambios de precios propuestos', do_prices_ok:'Cambios de precios confirmados', do_op:'Acciones en el sistema propuestas', do_op_ok:'Acciones confirmadas', do_promo:'Imágenes de promos', do_invoice:'Boletas cargadas por foto' },
+        totals:totals, linkedShops:4, linkedPhones:5, activeShops:3, shops:shops,
+        misses:[ { email:'kiosco.lucia@gmail.com', question:'¿Cuánto gané en octubre sacando los gastos del local?', reasons:['no tiene los gastos fijos'], at:now - 5 * h }, { email:'ferreteria.central@gmail.com', question:'Pasame el número del proveedor de pinturas', reasons:['no guarda teléfonos de proveedores'], at:now - 30 * h } ] };
+    }
 
     // ── Datos de demostración (solo con ?demo) ──────
     function demoApi(method, body, part){
+      if (method === 'POST' && body && body.action === 'waBot') return Promise.resolve(demoWaBot());
+      if (method === 'POST' && body && body.action === 'emailBot') return Promise.resolve(demoMailBot());
+      if (method === 'POST' && body && body.action === 'emailView') return Promise.resolve(demoMailView(body.logId));
       if (method === 'POST') return Promise.resolve({ ok:true });
       var day = 864e5, now = Date.now(), iso = function(ms){ return new Date(ms).toISOString(); };
       var plans = { caja:{ name:'Ventra Caja', amount:14900, legacy:true }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda_pro:{ name:'Ventra Agenda Pro', amount:19900 }, prueba:{ name:'Ventra Prueba', amount:100 } };

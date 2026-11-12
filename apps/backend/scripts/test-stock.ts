@@ -766,6 +766,58 @@ async function main() {
     assert.strictEqual(a.balance, 100);
   });
 
+  await t('boletas por foto: varios comprobantes en las mismas fotos salen por separado (y el remito nunca se carga solo)', async () => {
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const doc = (o: any) => ({ supplierName: '', supplierCuit: '', invoiceNumber: '', date: '2026-11-11', totalFacturaAPagar: '', subtotalNeto: '', docType: 'factura', items: [], ...o });
+    const line = (name: string, qty: number, total: string, sku = '') => ({ sku, barcode: '', name, packageQuantity: qty, unitsPerPack: 1, total });
+    const calls: any[] = [];
+    const fakeAi: any = {
+      shrink: async (files: any[]) => files.map(() => ({ data: 'x', mediaType: 'image/jpeg' })),
+      call: async (kind: string, body: any) => {
+        calls.push({ kind, body });
+        if (kind === 'match') return { result: { matches: [] } };
+        return { result: { failedImages: [], documents: [
+          { ...doc({ supplierName: 'BEBIDAS PRUEBA SA', supplierCuit: '30-22222222-2', invoiceNumber: '0001-00000100', totalFacturaAPagar: '1.452,00', items: [line('GASEOSA PRUEBA 2500', 3, '900,00', 'G25'), line('VASO PRUEBA', 1, '300,00', 'V1')] }), images: [0], closes: true },
+          { ...doc({ supplierName: 'BEBIDAS PRUEBA SA', supplierCuit: '30-22222222-2', invoiceNumber: '0002-00000555', docType: 'remito', totalFacturaAPagar: '0,00', items: [line('ENERGIZANTE PRUEBA', 1, '4.132,76', 'E1')] }), images: [1], closes: null },
+          { ...doc({ supplierName: 'PANIFICADORA PRUEBA', invoiceNumber: '0002-00019258', docType: 'nota', totalFacturaAPagar: '2.200,00', items: [line('PAN PRUEBA X6', 2, '2.200,00', 'P6')] }), images: [2], closes: true, reread: true },
+        ] } };
+      },
+    };
+    const matcher = new ProductMatcherService(prisma, fakeAi);
+    const svc = new PurchasesService(prisma, mute(), fakeAi, matcher);
+    const file = (n: string) => ({ buffer: Buffer.from('x'), size: 1, mimetype: 'image/jpeg', originalname: n }) as any;
+
+    // En la PC (vista previa): el primero para revisar ahí y los otros dos aparte, sin guardar nada
+    const before = await (prisma as any).purchase.count();
+    const r = await svc.scanInvoice([file('a.jpg'), file('b.jpg'), file('c.jpg')], undefined, admin.id, { inline: true });
+    assert.strictEqual(calls.find((c) => c.kind === 'invoice').body.multi, true, 'pide una lectura por foto');
+    assert.strictEqual(r.documentsFound, 3);
+    assert.strictEqual(r.status, 'INLINE');
+    assert.strictEqual(r.items.length, 2);
+    assert.deepStrictEqual(r.images, [0]);
+    assert.deepStrictEqual(r.others.map((o: any) => [o.invoiceNumber, o.docType, o.items.length]), [['0002-00000555', 'remito', 1], ['0002-00019258', 'nota', 1]]);
+    assert.strictEqual(r.others[1].reread, true);
+    assert.strictEqual(await (prisma as any).purchase.count(), before, 'la vista previa no guarda nada');
+
+    // Los otros quedan para revisar (lo que hace la PC con "Por revisar"); el mismo comprobante dos veces, no
+    const p1 = await svc.pendingFromPreview(r.others[1], admin.id, 'fotos');
+    assert.strictEqual(p1.status, 'PENDING');
+    const row = await (prisma as any).purchase.findUnique({ where: { id: p1.purchaseId } });
+    assert.match(row.notes, /Otro comprobante de las fotos/);
+    const pend = (await svc.pending()).find((x: any) => x.id === p1.purchaseId);
+    assert.strictEqual(pend.items, 1);
+    assert.strictEqual(pend.via, 'scan');
+    assert.strictEqual((await svc.pendingFromPreview(r.others[1], admin.id, 'fotos')).status, 'DUPLICATE');
+
+    // Desde el celular con la carga automática prendida: la factura que cierra entra sola, el remito queda para revisar
+    await prisma.storeSetting.upsert({ where: { id: 'purchase_auto' }, create: { id: 'purchase_auto', value: JSON.stringify({ enabled: true, keepMargin: true, round: 10 }) }, update: { value: JSON.stringify({ enabled: true, keepMargin: true, round: 10 }) } });
+    const m = await svc.scanInvoice([file('a.jpg'), file('b.jpg'), file('c.jpg')], undefined, admin.id, {});
+    const remito = m.others.find((o: any) => o.docType === 'remito');
+    assert.strictEqual(remito.status, 'PENDING');
+    assert.ok(remito.why.some((w: string) => /es un remito/.test(w)), remito.why.join(' | '));
+    await prisma.storeSetting.delete({ where: { id: 'purchase_auto' } }).catch(() => {});
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

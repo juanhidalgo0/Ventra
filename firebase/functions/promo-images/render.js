@@ -24,7 +24,10 @@ async function browser() {
   browserPromise = (async () => {
     const local = !process.env.K_SERVICE && LOCAL_CHROME.find((p) => fs.existsSync(p));
     if (local) return puppeteer.launch({ executablePath: local, headless: true, args: ["--no-sandbox", "--font-render-hinting=none"] });
-    const chromium = require("@sparticuz/chromium");
+    // Desde la versión 133 el paquete es ESM: con require() todo queda en .default (sin esto,
+    // "chromium.executablePath is not a function" y el bot no manda la imagen)
+    const mod = require("@sparticuz/chromium");
+    const chromium = mod && typeof mod.executablePath === "function" ? mod : mod.default;
     return puppeteer.launch({ executablePath: await chromium.executablePath(), headless: true, args: [...chromium.args, "--font-render-hinting=none"] });
   })();
   return browserPromise;

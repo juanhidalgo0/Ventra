@@ -289,6 +289,16 @@ async function creditAuthorizedPayment(authorizedPaymentId, accessToken) {
   const paymentStatus = ap.payment && ap.payment.status;
   if (paymentStatus !== "approved") {
     logger.info(`Ventra: cobro ${authorizedPaymentId} en estado ${paymentStatus || ap.status}, no se acredita`);
+    // Rechazado: queda anotado para avisarle al cliente por mail (ventraPaymentIssueEmail), una vez por cobro
+    if (paymentStatus === "rejected" && ap.preapproval_id) {
+      const sub = await mpPreApproval(accessToken).get({ id: ap.preapproval_id }).catch(() => null);
+      if (sub && sub.external_reference) {
+        await db.collection("ventra_accounts").doc(sub.external_reference).collection("payment_issues").doc(String(authorizedPaymentId)).create({
+          status: paymentStatus, detail: (ap.payment && ap.payment.status_detail) || null, amount: ap.transaction_amount || null,
+          at: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {}); // ya existía: MP avisa varias veces el mismo cobro
+      }
+    }
     return;
   }
 
@@ -883,13 +893,17 @@ async function systemHealth(config) {
       return { openBoxes: d.cajas };
     }),
     check(async () => {
-      const [files] = await admin.storage().bucket().getFiles({ prefix: backup.PREFIX, autoPaginate: false, maxResults: 100, fields: "items(name,size,updated,timeCreated)" });
+      // Sin "fields": con ese filtro la librería de Storage devuelve los archivos sin metadata
+      // ("Cannot read properties of undefined (reading 'updated')" en el admin, 12/11/2026)
+      const [files] = await admin.storage().bucket().getFiles({ prefix: backup.PREFIX, autoPaginate: false, maxResults: 100 });
       const last = files.filter((f) => /.ndjson.gz$/.test(f.name)).sort((a, b) => a.name.localeCompare(b.name)).pop();
       if (!last) throw new Error("no hay copias");
-      const at = last.metadata.updated || last.metadata.timeCreated;
+      const md = last.metadata || (await last.getMetadata())[0] || {};
+      const at = md.updated || md.timeCreated;
+      if (!at) throw new Error("no se pudo leer la fecha de la última copia");
       const ageH = (Date.now() - Date.parse(at)) / 3600000;
       if (ageH > 36) throw new Error(`la última es de hace ${Math.round(ageH / 24)} días`);
-      return { file: last.name.slice(backup.PREFIX.length), bytes: Number(last.metadata.size || 0), at, count: files.length };
+      return { file: last.name.slice(backup.PREFIX.length), bytes: Number(md.size || 0), at, count: files.length };
     }),
     check(async () => { await db.collection("ventra_config").limit(1).get(); return {}; }),
   ]);
@@ -1171,6 +1185,13 @@ exports.ventraAdmin = onRequest(
     });
 
     try {
+      // Uso del WhatsApp del dueño: teléfonos vinculados, mensajes del mes y lo que no supo contestar
+      if (action === "waBot") return res.status(200).json(await require("./wa-owner-stats").report(db));
+      // Mails automáticos (bienvenida, recordatorios y avisos de gracia): última pasada y envíos
+      if (action === "emailBot") return res.status(200).json(await require("./signup-emails").report(db));
+      // Un mail del registro, completo (asunto y HTML), para verlo tal cual le llegó
+      if (action === "emailView") return res.status(200).json(await require("./signup-emails").viewEmail(db, admin, req.body.logId));
+
       // Entrar al sistema del cliente en app.ventra.store como su administrador.
       // Se entrega un pase de un solo uso que vence en 2 minutos; lo canjea el
       // anfitrión de cajas por medio de ventraCloudAccess.
@@ -2191,7 +2212,12 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
   if (!whatsapp.configured(token)) return;
   const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
   await cloudSync.ensureSchema(sql);
-  await waOwner.processInbox(db, event.data.data(), {
+  // Red de seguridad: si algo se cuelga, la función se corta a los 300 s sin decir nada y el dueño
+  // queda esperando. A los 270 s se le avisa igual (processInbox ya ataja y avisa los errores).
+  const item = event.data.data();
+  let timer = null;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve("late"), 270000); });
+  const work = waOwner.processInbox(db, item, {
     ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
     sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
     sendButtons: (to, text, buttons) => whatsapp.sendButtons(token, to, text, buttons),
@@ -2211,6 +2237,14 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
       return out;
     },
   });
+  const outcome = await Promise.race([work.then(() => "ok", (err) => { logger.error("Bandeja del WhatsApp del dueño", err); return "error"; }), late]);
+  clearTimeout(timer);
+  if (outcome !== "ok" && item.from) {
+    if (outcome === "late") logger.error(`Bandeja del WhatsApp del dueño: tardó más de 270 s (${item.uid}, ${item.type})`);
+    await whatsapp.sendText(token, item.from, outcome === "late"
+      ? "Esto está tardando más de lo normal y no lo pude terminar. Probá de nuevo en un rato, por favor."
+      : "No pude responderte ahora. Probá de nuevo en un rato.").catch(() => {});
+  }
   await usage.flush();
   await event.data.ref.delete().catch(() => {});
 });
@@ -2341,4 +2375,223 @@ exports.nutriControlReminders = onSchedule({ schedule: "0 9 * * *", timeZone: no
     await notify.sendToAccount(db, ownerUid, "nutri", nutriPortal.controlsMessage(list), { storeId }).catch((err) => logger.warn("nutriControlReminders", ownerUid, err.message));
   }
   logger.info(`nutriControlReminders: ${due.length} consultorios avisados`);
+});
+
+// ─── Mails a quienes entraron con Google y no compraron un plan (ver signup-emails.js) ───
+// Bienvenida, y recordatorios a los días 1, 3 y 7; se corta al pagar o con la baja.
+const signupEmails = require("./signup-emails");
+// También el aviso de pago a las cuentas en período de gracia (mail, y WhatsApp con plantilla aprobada).
+exports.ventraSignupEmails = onSchedule({ schedule: "every 15 minutes", timeZone: notify.TZ, secrets: [VENTRA_RESEND_KEY, VENTRA_WA_TOKEN] }, async () => {
+  const apiKey = String(VENTRA_RESEND_KEY.value() || "").trim();
+  const r = await signupEmails.signupEmailsRun(db, { apiKey, admin, logger, listUsers: listAuthUsersWithEmail, exclude: ADMIN_EMAILS });
+  if (r.sent || r.failed || r.skipped) logger.info(`Mails sin plan: ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error, ${r.candidates} sin plan`}`);
+  const waToken = String(VENTRA_WA_TOKEN.value() || "").trim();
+  const g = await signupEmails.graceEmailsRun(db, {
+    apiKey, admin, logger, exclude: ADMIN_EMAILS,
+    sendWaTemplate: whatsapp.configured(waToken) ? (to, template, params) => whatsapp.sendTemplate(waToken, to, template, params) : null,
+  });
+  if (g.sent || g.failed) logger.info(`Avisos de gracia: ${g.sent} enviado(s) (${g.wa} por WhatsApp), ${g.failed} con error, ${g.inGrace} en gracia`);
+  const now = Date.now();
+  await signupEmails.saveRun(db, admin, now, r, g);
+  // Una vez por día (pasada de las 4) se borran los registros viejos de envíos
+  if (new Date(now - 3 * 3600e3).getUTCHours() === 4 && new Date(now).getUTCMinutes() < 15) await signupEmails.pruneLog(db, admin, now).catch(() => {});
+});
+// Link "Darme de baja" de esos mails (y la baja con un toque de Gmail/Outlook)
+exports.ventraEmailBaja = onRequest({ maxInstances: 5, memory: "128MiB", secrets: [VENTRA_RESEND_KEY] }, (req, res) =>
+  signupEmails.handleUnsub(db, req, res, { secret: String(VENTRA_RESEND_KEY.value() || "").trim(), admin }));
+
+// ─── Mails a los clientes que pagan (ver account-emails.js) ───
+// Comprobante y bienvenida al pagar, cobro rechazado, PC nueva, cambio de plan, aviso antes del cobro,
+// ayuda si no arrancó, "volvé" y el resumen del mes. Todos se ven en el admin (Mails automáticos).
+const accountEmails = require("./account-emails");
+const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const mailDeps = (extra = {}) => {
+  const apiKey = String(VENTRA_RESEND_KEY.value() || "").trim();
+  return { apiKey, admin, logger, exclude: ADMIN_EMAILS, plans: VENTRA_PLANS, unsub: (uid, list) => signupEmails.unsubLink(apiKey, uid, list), ...extra };
+};
+const docData = (snap) => (snap && snap.exists ? snap.data() : null);
+
+exports.ventraPaymentEmail = onDocumentCreated({ document: "ventra_accounts/{uid}/payments/{paymentId}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  const payment = docData(event.data);
+  if (payment) await accountEmails.onPayment(db, mailDeps(), { uid: event.params.uid, paymentId: event.params.paymentId, payment });
+});
+exports.ventraPaymentIssueEmail = onDocumentCreated({ document: "ventra_accounts/{uid}/payment_issues/{issueId}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  const issue = docData(event.data);
+  if (issue) await accountEmails.onPaymentIssue(db, mailDeps(), { uid: event.params.uid, issueId: event.params.issueId, issue });
+});
+exports.ventraDeviceEmail = onDocumentWritten({ document: "ventra_devices/{deviceId}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  await accountEmails.onDevice(db, mailDeps(), { deviceId: event.params.deviceId, before: docData(event.data.before), after: docData(event.data.after) });
+});
+exports.ventraPlanEmail = onDocumentUpdated({ document: "ventra_accounts/{uid}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  await accountEmails.onAccountUpdate(db, mailDeps(), { uid: event.params.uid, before: docData(event.data.before), after: docData(event.data.after) });
+});
+
+/** Tiendas o agendas de una cuenta (la misma cuenta puede tener una tienda y una agenda en el mismo documento). */
+const storesOf = async (uid) => (await db.collection("ventra_stores").where("ownerUid", "==", uid).get()).docs;
+
+// Todos los días a las 10: aviso antes del cobro, ayuda si no arrancó y "volvé"
+exports.ventraAccountEmailsDaily = onSchedule({ schedule: "0 10 * * *", timeZone: notify.TZ, secrets: [VENTRA_RESEND_KEY, NEON_DATABASE_URL] }, async () => {
+  const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+  const used = async (uid) => {
+    const [sync, stores, devices] = await Promise.all([
+      require("./insights-cloud").lastSync(sql, uid).catch(() => null), storesOf(uid),
+      db.collection("ventra_devices").where("uid", "==", uid).limit(1).get(),
+    ]);
+    return !!sync || stores.length > 0 || !devices.empty;
+  };
+  const r = await accountEmails.dailyRun(db, mailDeps({ used }));
+  logger.info(`Mails de cuenta: ${r.skipped || `${r.sent} enviado(s), ${r.failed} con error`}`);
+  await db.collection("ventra_config").doc("emailBot").set({ daily: { ...r, at: admin.firestore.Timestamp.now() } }, { merge: true }).catch(() => {});
+});
+
+// El 1° de cada mes a las 10: el resumen del mes anterior (caja, pedidos online y turnos)
+exports.ventraMonthlySummary = onSchedule({ schedule: "0 10 1 * *", timeZone: notify.TZ, secrets: [VENTRA_RESEND_KEY, NEON_DATABASE_URL], timeoutSeconds: 540, memory: "512MiB" }, async () => {
+  const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+  const stats = async (uid, account, { from, to }) => {
+    const out = { sales: { total: 0, count: 0, prevTotal: 0 }, top: [], bookings: 0, orders: { count: 0, total: 0 } };
+    if (account.plan !== "agenda" && account.plan !== "agenda_pro") {
+      const o = await dashboard.overview(sql, uid, from, to).catch(() => null);
+      if (o) {
+        out.sales = { total: Number(o.summary.total) || 0, count: Number(o.summary.count) || 0, prevTotal: Number(o.previous.total) || 0 };
+        out.top = (o.topProducts || []).map((p) => p.name).filter(Boolean).slice(0, 3);
+      }
+    }
+    const start = admin.firestore.Timestamp.fromDate(new Date(`${from}T00:00:00-03:00`));
+    const end = admin.firestore.Timestamp.fromDate(new Date(new Date(`${to}T00:00:00-03:00`).getTime() + 864e5));
+    for (const s of await storesOf(uid)) {
+      const [bk, od] = await Promise.all([
+        s.ref.collection("bookings").where("dateKey", ">=", from).where("dateKey", "<=", to).get().catch(() => ({ docs: [] })),
+        s.ref.collection("orders").where("createdAt", ">=", start).where("createdAt", "<", end).get().catch(() => ({ docs: [] })),
+      ]);
+      out.bookings += bk.docs.filter((d) => d.data().kind === "booking" && !/CANCEL/.test(String(d.data().status))).length;
+      const orders = od.docs.map((d) => d.data()).filter((o) => !/CANCEL|RECHAZ/i.test(String(o.status || "")));
+      out.orders.count += orders.length;
+      out.orders.total += orders.reduce((n, o) => n + (Number(o.total) || 0), 0);
+    }
+    return out;
+  };
+  const r = await accountEmails.monthlyRun(db, mailDeps({ stats }));
+  logger.info(`Resumen mensual ${r.month || ""}: ${r.skipped || `${r.sent} enviado(s), ${r.quiet} sin movimiento, ${r.failed} con error`}`);
+  await db.collection("ventra_config").doc("emailBot").set({ monthly: { ...r, at: admin.firestore.Timestamp.now() } }, { merge: true }).catch(() => {});
+});
+
+// ─── Soporte de Ventra por WhatsApp (ver support.js) ───
+// El webhook anota el mensaje y lo encola; acá contesta la IA (con la base de la web) y el botón "Hablar con persona".
+const support = require("./support");
+exports.ventraSupportInbox = onDocumentCreated({
+  document: "ventra_support_inbox/{msgId}", secrets: [VENTRA_ANTHROPIC_KEY, VENTRA_WA_TOKEN], timeoutSeconds: 90, memory: "256MiB", maxInstances: 10, retry: false,
+}, async (event) => {
+  if (!event.data) return;
+  const item = event.data.data();
+  const token = String(VENTRA_WA_TOKEN.value() || "").trim();
+  try {
+    if (!whatsapp.configured(token)) return;
+    const apiKey = String(VENTRA_ANTHROPIC_KEY.value() || "").trim();
+    await support.processInbox(db, item, {
+      admin, answer: (messages) => chat.answer(db, messages, { apiKey }),
+      sendText: (to, text) => whatsapp.sendText(token, to, text),
+      sendButtons: (to, text, buttons) => whatsapp.sendButtons(token, to, text, buttons),
+    });
+  } catch (err) {
+    logger.error("Soporte por WhatsApp: no se pudo contestar", item.phone, err.message);
+  } finally {
+    await event.data.ref.delete().catch(() => {});
+  }
+});
+
+// Alguien pidió hablar con una persona (o se le están por cumplir las 24 h sin respuesta): mail a
+// support.ALERT_EMAILS y notificación de la app de Ventra en los celulares de esas cuentas (si la tienen).
+// Desde el 12/11/2026 también por CADA mensaje que entra (kind "first" / "msg"), aunque no pida persona.
+// El mail lleva la charla reciente; la notificación sale aunque sea horario de silencio. Cada mail queda en
+// ventra_email_log (kind "soporte") y se ve completo en el admin. Devuelve { mail, push } para la prueba.
+async function supportAlert(conv, kind) {
+  const kit = require("./mail-kit");
+  const { title, body } = support.alertText(conv, kind);
+  const apiKey = String(VENTRA_RESEND_KEY.value() || "").trim();
+  const out = { mail: "sin clave de Resend", push: 0 };
+  // Charla reciente (los últimos 8 mensajes), para entender el contexto sin abrir el admin
+  let recent = [];
+  if (kind !== "test" && conv.phone) {
+    const snap = await db.collection(support.SUPPORT).doc(String(conv.phone)).collection("messages").orderBy("at", "desc").limit(8).get().catch(() => ({ docs: [] }));
+    recent = snap.docs.map((d) => d.data()).reverse();
+  }
+  const hhmm = (t) => new Intl.DateTimeFormat("es-AR", { timeZone: notify.TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t && t.toMillis ? t.toMillis() : Number(t) || Date.now()));
+  const chatHtml = recent.length
+    ? `<b>Últimos mensajes:</b><br>${recent.map((m) => `<span style="color:#8A958F">${hhmm(m.at)} · ${m.dir === "in" ? "Cliente" : m.by === "admin" ? "Vos" : "Bot"}:</span> ${kit.esc(String(m.text || "").slice(0, 400))}`).join("<br>")}`
+    : "";
+  const tail = kind === "remind" ? "Pasadas las 24 h desde su último mensaje, WhatsApp no deja escribirle sin una plantilla aprobada."
+    : kind === "new" ? "El bot dejó de contestarle. Respondele desde el admin: tenés 24 h desde su último mensaje."
+    : kind === "test" ? "Si te llegó este mail y la notificación en el celular, los avisos andan bien."
+    : conv.mode === "human" ? "Está esperando a una persona (el bot no le contesta). Respondele desde el admin."
+    : "Le contesta el bot. Si querés atenderlo vos, abrí la conversación en el admin y tocá “Atiendo yo”.";
+  const badge = kind === "remind" ? ["Por vencer", "warn"] : kind === "new" ? ["Pide persona", "warn"] : kind === "test" ? ["Prueba", "ok"] : ["Mensaje al bot", "info"];
+  const msg = kit.render({
+    subject: `WhatsApp: ${title}`, preheader: body, badge, title,
+    paras: [kit.esc(body), ...(chatHtml ? [chatHtml] : []), tail],
+    cta: ["Abrir la conversación", "https://ventra.store/admin#soporte"], footer: "Aviso interno del soporte de Ventra.",
+  });
+  const now = Date.now(), to = support.ALERT_EMAILS.join(", ");
+  if (kit.keyOk(apiKey)) {
+    try {
+      const r = await kit.sendEmail(apiKey, { from: kit.FROM, to: support.ALERT_EMAILS, subject: msg.subject, html: msg.html, text: msg.text, tags: [{ name: "kind", value: "soporte_alerta" }] });
+      out.mail = "enviado";
+      await kit.logSend(db, admin, now, { kind: "soporte", step: kind, to, ok: true, id: r && r.id, msg });
+    } catch (err) {
+      out.mail = `error: ${err.message}`;
+      logger.warn("Soporte: no se pudo avisar por mail", err.message);
+      await kit.logSend(db, admin, now, { kind: "soporte", step: kind, to, ok: false, error: err.message, msg });
+    }
+  }
+  for (const email of support.ALERT_EMAILS) {
+    const u = await admin.auth().getUserByEmail(email).catch(() => null);
+    // Avisos del soporte: siempre, aunque sea horario de silencio
+    if (u) {
+      const r = await notify.sendToAccount(db, u.uid, "support", { title, body, url: "https://ventra.store/admin#soporte", tag: `soporte-${conv.phone || "prueba"}-${now}` }, { ignoreQuiet: true })
+        .catch((err) => { logger.warn("Soporte: no se pudo avisar al celular", err.message); return { sent: 0, reason: err.message }; });
+      out.push += (r && r.sent) || 0;
+      if (r && !r.sent && r.reason) out.pushReason = r.reason;
+    }
+  }
+  return out;
+}
+exports.ventraSupportAlert = onDocumentWritten({ document: "ventra_support/{phone}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  const before = docData(event.data.before) || {}, after = docData(event.data.after);
+  const kind = support.alertKind(before, after);
+  if (!kind) return;
+  await supportAlert({ phone: event.params.phone, ...after }, kind);
+});
+// Cada 30 min: los que esperan a una persona y les quedan 4 h o menos para que se cierren las 24 h
+exports.ventraSupportReminders = onSchedule({ schedule: "every 30 minutes", timeZone: notify.TZ, secrets: [VENTRA_RESEND_KEY] }, async () => {
+  const n = await support.remindersRun(db, { admin, alert: supportAlert });
+  if (n) logger.info(`Soporte: ${n} recordatorio(s) de respuesta por vencer`);
+});
+
+// Bandeja del soporte en el admin (admin.html → "Soporte por WhatsApp"): listar, leer, responder y devolver al bot
+exports.ventraSupportAdmin = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_WA_TOKEN, VENTRA_RESEND_KEY], maxInstances: 5, memory: "256MiB" }, async (req, res) => {
+  const user = await verifyUser(req);
+  if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { action, phone, text, mode } = req.body || {};
+  try {
+    if (action === "list") return res.status(200).json(await support.list(db));
+    // "Probar avisos": manda un mail y una notificación de prueba a los del equipo
+    if (action === "testAlert") return res.status(200).json(await supportAlert({ phone: null, name: "Prueba" }, "test"));
+    if (action === "thread") return res.status(200).json(await support.thread(db, String(phone || "")) || { error: "No existe" });
+    if (action === "mode") return res.status(200).json(await support.setMode(db, { phone: String(phone || ""), mode, admin }));
+    if (action === "reopen") {
+      const token = String(VENTRA_WA_TOKEN.value() || "").trim();
+      if (!whatsapp.configured(token)) return res.status(503).json({ error: "WhatsApp no está configurado" });
+      return res.status(200).json(await support.reopen(db, { phone: String(phone || ""), adminEmail: user.email, admin, sendTemplate: (to, tpl, params) => whatsapp.sendTemplate(token, to, tpl, params) }));
+    }
+    if (action === "reply") {
+      const token = String(VENTRA_WA_TOKEN.value() || "").trim();
+      if (!whatsapp.configured(token)) return res.status(503).json({ error: "WhatsApp no está configurado" });
+      return res.status(200).json(await support.reply(db, { phone: String(phone || ""), text, adminEmail: user.email, admin, sendText: (to, t) => whatsapp.sendText(token, to, t) }));
+    }
+    return res.status(400).json({ error: "Acción inválida" });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    logger.error("Soporte admin: error", err);
+    return res.status(500).json({ error: "No se pudo completar" });
+  }
 });

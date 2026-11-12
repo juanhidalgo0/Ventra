@@ -179,6 +179,150 @@ const INVOICE_SCHEMA = {
   additionalProperties: false,
 };
 
+// ─── Varias fotos: cada una se lee sola (pueden ser comprobantes distintos) ───
+// Antes todas las fotos iban juntas como UNA factura: con 2 facturas, un remito y una nota de otro
+// proveedor, la IA devolvía un solo comprobante y se perdía el resto (2026-11-12, boletas reales).
+// Ahora: una lectura por foto (en paralelo), las páginas del mismo comprobante se juntan por número,
+// y el comprobante cuyos renglones no cierran con lo impreso se relee una vez con un modelo más fuerte.
+const INVOICE_STRONG_MODEL = "claude-sonnet-5-5";
+const INVOICE_ONE_PROMPT = `${INVOICE_PROMPT}
+12. Esta foto es UN solo comprobante (o una página de uno). Puede estar girada, torcida o con sombras: leela igual.
+13. "docType": "factura", "remito", "nota" (nota de pedido, presupuesto o comprobante "no válido como factura"), "ticket" u "otro".
+14. "pageNumber" y "pageCount": si dice "Pág. 1 de 2" o "Página 1 de 1", esos números; si no lo dice, 0. Ojo: un número de página suelto (por ejemplo "Pag. 226") NO es "de cuántas": en ese caso pageNumber 0 y pageCount 0.
+15. Anotaciones a mano sobre un comprobante impreso (sumas, totales escritos con birome) NO son renglones ni el total: ignoralas.`;
+const INVOICE_ONE_SCHEMA = {
+  ...INVOICE_SCHEMA,
+  properties: {
+    ...INVOICE_SCHEMA.properties,
+    docType: { type: "string", enum: ["factura", "remito", "nota", "ticket", "otro"] },
+    pageNumber: { type: "integer" },
+    pageCount: { type: "integer" },
+  },
+  required: [...INVOICE_SCHEMA.required, "docType", "pageNumber", "pageCount"],
+};
+
+const num = (s) => {
+  // "1.234,56" / "1234.56" / "$ 139.896,67" → número (igual que parseArgentineNumber de la caja)
+  let t = String(s == null ? "" : s).replace(/[^\d.,-]/g, "");
+  if (!t) return 0;
+  if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if (t.includes(",")) t = /,\d{1,2}$/.test(t) ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if ((t.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(t)) t = t.replace(/\./g, "");
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+};
+const digits = (s) => String(s || "").replace(/\D/g, "").replace(/^0+/, "");
+
+/**
+ * ¿Los renglones cierran con lo impreso? true / false / null (no hay con qué comparar: remito en $0,
+ * nota sin total). Mismas reglas que la caja: contra el subtotal neto, o el total con o sin IVA. Pura.
+ */
+function invoiceCloses(doc) {
+  const sum = (doc.items || []).reduce((s, it) => s + num(it.total), 0);
+  const total = num(doc.totalFacturaAPagar), sub = num(doc.subtotalNeto);
+  if (!(sum > 0)) return null;
+  if (!(total > 0) && !(sub > 0)) return null;
+  const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(50, b * 0.02);
+  return near(sum, sub) || near(sum * 1.21, total) || near(sum, total);
+}
+
+/**
+ * Lecturas de cada foto → comprobantes. Se juntan las páginas con el mismo número (y proveedor), y
+ * una foto sin número que dice "página 2 de 2" se pega al comprobante anterior. Pura.
+ * reads: [{ image: índice de la foto, ...lectura }]
+ */
+function groupInvoicePages(reads) {
+  const docs = [];
+  const keyOf = (r) => { const n = digits(r.invoiceNumber); return n.length >= 3 ? `${digits(r.supplierCuit) || String(r.supplierName || "").toLowerCase().replace(/\W/g, "").slice(0, 12)}|${n}` : null; };
+  for (const r of reads) {
+    const key = keyOf(r);
+    let doc = key ? docs.find((d) => d.key === key) : null;
+    if (!doc && !key && r.pageNumber > 1 && docs.length) doc = docs[docs.length - 1];
+    if (!doc) {
+      doc = { key, images: [], reads: [] };
+      docs.push(doc);
+    }
+    doc.images.push(r.image);
+    doc.reads.push(r);
+  }
+  return docs.map((d) => {
+    const pages = d.reads.slice().sort((a, b) => (a.pageNumber || 0) - (b.pageNumber || 0));
+    const first = pages[0];
+    // El pie (totales) suele estar en la última página
+    const withTotal = pages.slice().reverse().find((p) => num(p.totalFacturaAPagar) > 0) || pages[pages.length - 1];
+    const withSub = pages.slice().reverse().find((p) => num(p.subtotalNeto) > 0);
+    const pick = (k) => (pages.find((p) => String(p[k] || "").trim()) || {})[k] || "";
+    return {
+      images: d.images,
+      docType: first.docType || "factura",
+      supplierName: pick("supplierName"), supplierCuit: pick("supplierCuit"), invoiceNumber: pick("invoiceNumber"), date: pick("date"),
+      totalFacturaAPagar: withTotal.totalFacturaAPagar || "", subtotalNeto: withSub ? withSub.subtotalNeto : "",
+      rawTableTranscription: pages.map((p) => p.rawTableTranscription || "").join("\n\n"),
+      items: pages.flatMap((p) => p.items || []),
+    };
+  });
+}
+
+async function readInvoiceImages(client, images, { model = MODEL, effort = "medium", hint = "" } = {}) {
+  const stream = client.messages.stream({
+    model,
+    max_tokens: 32000,
+    output_config: { effort, format: { type: "json_schema", schema: INVOICE_ONE_SCHEMA } },
+    system: INVOICE_ONE_PROMPT,
+    messages: [{ role: "user", content: [...images, { type: "text", text: `Leé este comprobante de compra.${hint}` }] }],
+  });
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === "refusal") throw new AiError(422, "REFUSED", "No se pudo leer ese comprobante. Cargalo a mano o subí el PDF.");
+  try { return { read: JSON.parse(textOf(msg)), usage: msg.usage || {} }; } catch { throw new AiError(502, "BAD_OUTPUT", "No se pudo leer el comprobante. Probá con una foto más nítida."); }
+}
+
+/** Fotos → { documents: [comprobante + images + closes + reread] } (ver groupInvoicePages) */
+async function parseInvoices(client, body) {
+  const images = imageBlocks(body.images);
+  if (!images.length) throw new AiError(400, "EMPTY", "Subí la foto de la factura.");
+  const usage = {};
+  const addUsage = (u, mult = 1) => { for (const k of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]) usage[k] = (usage[k] || 0) + (u[k] || 0) * mult; };
+  // Un total escrito a mano solo sirve si hay una sola foto (si no, no se sabe de cuál es)
+  const anchor = images.length === 1 && body.manualTotal !== undefined && body.manualTotal !== null && String(body.manualTotal).trim()
+    ? `\n\nEl total a pagar de este comprobante es exactamente ${String(body.manualTotal).slice(0, 30)}: usalo para controlar que los renglones cierren.` : "";
+  const reads = await Promise.all(images.map(async (img, i) => {
+    try {
+      const { read, usage: u } = await readInvoiceImages(client, [img], { hint: anchor });
+      addUsage(u);
+      return { image: i, ...read };
+    } catch (err) {
+      // Una foto que no se pudo leer no tira abajo las demás
+      return { image: i, error: err.message || "No se pudo leer", items: [] };
+    }
+  }));
+  const failed = reads.filter((r) => r.error || !(r.items || []).length).map((r) => r.image);
+  const ok = reads.filter((r) => !r.error && (r.items || []).length);
+  if (!ok.length) throw new AiError(422, "EMPTY", "No encontramos productos en las fotos. Probá con fotos más nítidas, de frente y con buena luz.");
+  const documents = groupInvoicePages(ok);
+  // Segunda lectura, más cuidadosa, solo de lo que no cierra (rara vez: así el costo no se dispara)
+  await Promise.all(documents.map(async (d, k) => {
+    d.closes = invoiceCloses(d);
+    if (d.closes !== false) return;
+    const sum = d.items.reduce((s, it) => s + num(it.total), 0);
+    const hint = `\n\nOjo: en una primera lectura los renglones sumaron ${Math.round(sum)} y no coincide con el subtotal o el total impreso (${d.subtotalNeto || "-"} / ${d.totalFacturaAPagar || "-"}). Revisá fila por fila: cantidades, totales de cada línea y que no falte ni sobre ninguna.`;
+    try {
+      const { read, usage: u } = await readInvoiceImages(client, d.images.map((i) => images[i]), { model: INVOICE_STRONG_MODEL, effort: "high", hint });
+      addUsage(u, 3); // el modelo fuerte cuesta ~3 veces más (costOf usa el precio del modelo chico)
+      const again = { ...d, ...read, images: d.images, docType: read.docType || d.docType };
+      again.closes = invoiceCloses(again);
+      // Se queda con la segunda si cierra, o si la primera tampoco cerraba y la segunda está más cerca
+      const gap = (x) => {
+        const s = (x.items || []).reduce((a, it) => a + num(it.total), 0), sub = num(x.subtotalNeto), tot = num(x.totalFacturaAPagar);
+        const diffs = [sub > 0 ? Math.abs(s - sub) : null, tot > 0 ? Math.abs(s * 1.21 - tot) : null, tot > 0 ? Math.abs(s - tot) : null].filter((v) => v !== null);
+        return diffs.length ? Math.min(...diffs) : Infinity;
+      };
+      if (again.closes || gap(again) < gap(d)) documents[k] = { ...again, reread: true };
+      else d.reread = true;
+    } catch { d.reread = true; }
+  }));
+  return { result: { documents, failedImages: failed }, usage, count: documents.length };
+}
+
 async function parseInvoice(client, body) {
   const images = imageBlocks(body.images);
   if (!images.length) throw new AiError(400, "EMPTY", "Subí la foto de la factura.");
@@ -458,7 +602,8 @@ async function ask(client, body) {
 // La misma base de conocimiento del asistente de la web, más la guía de dónde está cada cosa
 // (chat/ventra-ayuda.md), para los comercios que ya usan Ventra.
 
-const HELP_WHATSAPP = "https://wa.me/5492212025603";
+// WhatsApp de Ventra (el bot): con este texto pasa directo a una persona del equipo (support.js)
+const HELP_WHATSAPP = "https://wa.me/5492212048533?text=" + encodeURIComponent("Quiero hablar con una persona de Ventra");
 let helpSystem = null;
 function helpSystemText() {
   if (helpSystem) return helpSystem;
@@ -605,7 +750,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   const used = Number(snap.exists && snap.data()[kind]) || 0;
   const usedToday = Number(daySnap.exists && daySnap.data()[kind]) || 0;
   // Se cuenta por pregunta: el segundo paso de la versión vieja (redactar) no suma
-  const need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
+  let need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
   if (used + need > LIMITS[kind]) {
     const msgs = {
       order: `Llegaste a los ${LIMITS.order} pedidos leídos con IA de este mes. Se renueva el mes que viene.`,
@@ -613,7 +758,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       pricelist: "Llegaste al tope de listas de precios leídas con IA de este mes. Se renueva el mes que viene.",
       match: "Llegaste al tope de búsquedas con IA de este mes: los productos que no se encuentran solos quedan para elegirlos a mano.",
       ask: "Llegaste al tope de preguntas de este mes. Se renueva el mes que viene; mientras, tenés todo en Reportes.",
-      help: "Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: https://wa.me/5492212025603",
+      help: `Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: ${HELP_WHATSAPP}`,
       gocats: "Llegaste al tope de productos ordenados con IA de este mes: lo que falta queda sin rubro hasta el mes que viene.",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
@@ -639,7 +784,8 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
           .set({ uid, channel: ctx.channel, plan: ctx.plan, question: q, reasons: r.misses.slice(0, 5), at: Date.now() }).catch(() => {});
       }
     } else {
-      const run = { order: parseOrder, invoice: parseInvoice, pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
+      // invoice con multi: una lectura por foto (versión nueva de la caja); sin multi, como antes (PCs viejas)
+      const run = { order: parseOrder, invoice: (c, b) => (b && b.multi ? parseInvoices(c, b) : parseInvoice(c, b)), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
       out = await run(client, body);
     }
   } catch (err) {
@@ -647,7 +793,8 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
     logger.warn(`Ventra IA (${uid}, ${kind}): ${err && err.message}`);
     throw new AiError(502, "AI_ERROR", "La IA no respondió. Probá de nuevo en un rato.");
   }
-  // Solo cuenta lo que salió bien
+  // Solo cuenta lo que salió bien. Varias fotos con varios comprobantes: cuenta uno por comprobante
+  if (out.count > 1 && need) need = out.count;
   await ref.set({
     [kind]: admin.firestore.FieldValue.increment(need),
     costUsd: admin.firestore.FieldValue.increment(costOf(out.usage)),
@@ -657,4 +804,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, groupInvoicePages, invoiceCloses, parseInvoices, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };

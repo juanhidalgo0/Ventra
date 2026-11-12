@@ -95,7 +95,7 @@ Comentario en una publicación (canal "comment"): la respuesta es pública y la 
 - "handoff" si es una queja, un problema puntual o algo delicado: en "text" respondé con amabilidad que le escriban por mensaje directo para verlo bien.
 - "skip" para spam, insultos, bots, cuentas que promocionan lo suyo o etiquetas sueltas de otras personas sin pregunta. En ese caso "text" va vacío.
 - En la respuesta pública no van botones: solo acompañan al mensaje privado.
-- Mensaje privado ("dm"): si el comentario pide precio, link o más información, o responde a una invitación de la publicación (por ejemplo "comentá AGENDA y te mando…"), escribí en "dm" un mensaje privado corto y útil para esa persona: lo que pidió y una pregunta para seguir la charla, sin links (elegí los botones que correspondan en "botones"). En ese caso la respuesta pública ("text") avisa que le escribiste por privado. Si no hace falta, "dm" va vacío. En el canal "dm", "dm" siempre va vacío.
+- Mensaje privado ("dm"): si el comentario pide precio, link o más información, o responde a una invitación de la publicación (por ejemplo "comentá AGENDA y te mando…"), escribí en "dm" un mensaje privado corto y útil para esa persona: lo que pidió y una pregunta para seguir la charla, sin links (elegí los botones que correspondan en "botones"). En ese caso la respuesta pública ("text") avisa que le escribiste por privado. Si "text" dice que le escribiste o le mandaste algo por privado, "dm" nunca puede ir vacío. Si no hace falta, "dm" va vacío. En el canal "dm", "dm" siempre va vacío.
 
 Además, para aprender qué le interesa al público, clasificá el último mensaje:
 - "topic": el tema en 1 a 3 palabras en minúscula (por ejemplo "precio", "agenda", "tienda online", "facturación", "caja", "soporte", "elogio", "spam").
@@ -551,6 +551,9 @@ async function onDm(db, item, cfg, apiKey, done) {
   }
 }
 
+const PROMETE_PRIVADO = /privad|te (escrib|mand)|\bDM\b|al md\b|inbox/i;
+const DM_DE_RESPALDO = "¡Hola! Te escribo por lo que comentaste 👋 Te dejo la demo de Ventra para que la pruebes gratis, sin registrarte. ¿Qué tipo de comercio tenés?";
+
 async function onComment(db, item, cfg, apiKey, done) {
   if (!(cfg.bots || {}).comments) return done("off", { why: "Respuestas a comentarios apagadas" });
   if (Date.now() - ms(item.at) > LIMITS.commentMaxAgeMs) return done("skipped", { why: "comentario viejo" });
@@ -604,7 +607,13 @@ async function onComment(db, item, cfg, apiKey, done) {
     await addUsage(db, r.cost, "igCommentReplies");
     // Del comentario al chat: un mensaje privado con lo que pidió (Instagram permite uno por comentario)
     let privateReply = null;
-    const dm = clipBytes(r.dm || "");
+    let dm = clipBytes(r.dm || "");
+    // La respuesta pública prometió un privado y la IA no lo escribió (pasó el 11/11 con "Kiosco"):
+    // se manda uno corto con la demo, así la promesa nunca queda sin cumplir.
+    if (!dm && PROMETE_PRIVADO.test(reply)) {
+      dm = DM_DE_RESPALDO;
+      if (!(r.botones || []).length) r.botones = ["demo"];
+    }
     if (dm && item.commentId) {
       try {
         const key = crypto.createHash("sha1").update(dm).digest("hex");
@@ -643,6 +652,7 @@ async function tick(db) {
   out.token = await refreshToken(db, cfg).catch(fail("no se pudo renovar el token"));
   if (out.token === "renovado") cfg = (await ref.get()).data() || {};
   out.comments = await pollComments(db, cfg).catch(fail("no se pudieron revisar los comentarios"));
+  out.stories = await storyRepeat(db, cfg).catch(fail("no se pudo repetir el reel en historias"));
   out.posts = await publishDue(db, cfg).catch(fail("error publicando"));
   // Las métricas no frenan nada: si falta el permiso, el panel lo avisa aparte
   out.insights = await collectInsights(db, cfg).catch((err) => { logger.warn("Instagram: métricas", err.message); return "error"; });
@@ -781,6 +791,63 @@ function containerParams(post, item, { child = false } = {}) {
 
 const statusOf = (token, id) => graph(token, "GET", id, { fields: "status_code,status" });
 
+// ─── Reel repetido en historias ───
+// cfg.storyRepeat = { enabled, mediaId (null = el último reel), days }
+// cfg.storyRepeat.current = { mediaId, count, lastAt, lastPostId, permalink, caption }: el ciclo en curso
+const STORY_REPEAT = { defaultDays: 7, maxDays: 30, everyMs: DAY - 10 * 60e3 }; // 10 min de margen para que no se corra la hora
+
+/**
+ * Una vez cada 24 h vuelve a subir el reel elegido (o el último publicado) como historia, durante los días
+ * configurados. En modo "el último", si aparece un reel nuevo empieza un ciclo nuevo con ese.
+ * Arma una publicación tipo historia ya aprobada: la sube publishDue en esta misma vuelta.
+ */
+async function storyRepeat(db, cfg) {
+  const sr = cfg.storyRepeat || {};
+  if (!sr.enabled || !cfg.userId) return "apagado";
+  const cur = sr.current || {};
+  const now = Date.now();
+  if (cur.lastAt && now - ms(cur.lastAt) < STORY_REPEAT.everyMs) return "esperando";
+  // La anterior todavía se está subiendo: no se apilan
+  if (cur.lastPostId) {
+    const prev = (await db.collection("ventra_ig_posts").doc(cur.lastPostId).get()).data();
+    if (prev && ["approved", "processing"].includes(prev.status)) return "subiendo la anterior";
+  }
+  const days = Math.min(STORY_REPEAT.maxDays, Math.max(1, Number(sr.days) || STORY_REPEAT.defaultDays));
+
+  let target = sr.mediaId || null;
+  if (!target) {
+    const media = await graph(cfg.token, "GET", `${cfg.userId}/media`, { fields: "id,media_product_type,timestamp", limit: 12 });
+    const reel = (media.data || []).find((m) => m.media_product_type === "REELS");
+    if (!reel) return "no hay reels";
+    target = reel.id;
+  }
+  const fresh = cur.mediaId !== target;
+  const count = fresh ? 0 : cur.count || 0;
+  if (count >= days) return `terminó (${count} de ${days})`;
+
+  // El video: si el reel salió desde el panel, el archivo propio; si no, el de Instagram (se pide cada vez porque vence)
+  const ours = await db.collection("ventra_ig_posts").where("mediaId", "==", target).limit(1).get();
+  const own = ours.empty ? null : (ours.docs[0].data().media || []).find((m) => m.kind === "video");
+  const info = await graph(cfg.token, "GET", target, { fields: "media_type,media_url,permalink,caption" });
+  const url = (own && own.url) || info.media_url;
+  if (!url || (info.media_type && info.media_type !== "VIDEO")) throw new Error("Esa publicación no es un video");
+
+  const postRef = db.collection("ventra_ig_posts").doc();
+  const n = count + 1;
+  await postRef.set({
+    type: "story", caption: "", media: [{ url, kind: "video" }], status: "approved",
+    note: `Historia ${n} de ${days} del reel ${info.permalink || target}`, repeatOf: target,
+    publishAt: admin.firestore.Timestamp.now(), approvedBy: "historias del reel", approvedAt: admin.firestore.Timestamp.now(),
+    createdAt: admin.firestore.Timestamp.now(), tries: 0,
+  });
+  await config(db).set({ storyRepeat: { current: {
+    mediaId: target, count: n, lastAt: admin.firestore.Timestamp.now(), lastPostId: postRef.id,
+    permalink: info.permalink || null, caption: String(info.caption || "").split("\n")[0].slice(0, 90),
+    ...(fresh ? { startedAt: admin.firestore.Timestamp.now() } : {}),
+  } } }, { merge: true });
+  return `historia ${n} de ${days}`;
+}
+
 /**
  * Publica lo aprobado cuya hora llegó. Cada publicación avanza por pasos (contenedores →
  * procesado → publicada); lo que tarda (videos) sigue en la próxima vuelta.
@@ -903,6 +970,13 @@ async function overview(db, { aiReady }) {
     subscribed: cfg.subscribed || null,
     bots: { dm: !!(cfg.bots || {}).dm, comments: !!(cfg.bots || {}).comments },
     autopilot: { enabled: !!(cfg.autopilot || {}).enabled, leadHours: AUTOPILOT.leadHours, perWeek: AUTOPILOT.perWeek },
+    storyRepeat: (() => {
+      const sr = cfg.storyRepeat || {}, c = sr.current || null;
+      return {
+        enabled: !!sr.enabled, mediaId: sr.mediaId || null, days: sr.days || STORY_REPEAT.defaultDays, maxDays: STORY_REPEAT.maxDays,
+        current: c && c.mediaId ? { mediaId: c.mediaId, count: c.count || 0, lastAt: iso(c.lastAt), nextAt: c.lastAt ? new Date(ms(c.lastAt) + STORY_REPEAT.everyMs).toISOString() : null, permalink: c.permalink || null, caption: c.caption || "" } : null,
+      };
+    })(),
     aiReady,
     commentsCheckedAt: iso(cfg.commentsCheckedAt),
     lastError: cfg.lastError || null,
@@ -983,6 +1057,21 @@ async function adminAction(db, body, user) {
     return { autopilot };
   }
 
+  // Reel repetido en historias: prender/apagar, qué reel (vacío = el último) y cuántos días.
+  // Cambiar de reel o "empezar de nuevo" reinicia la cuenta; cambiar solo los días la conserva.
+  if (action === "storyRepeat") {
+    const prev = ((await ref.get()).data() || {}).storyRepeat || {};
+    const days = body.days == null || body.days === "" ? STORY_REPEAT.defaultDays : Math.round(Number(body.days));
+    if (!(days >= 1) || days > STORY_REPEAT.maxDays) throw Object.assign(new Error(`Elegí entre 1 y ${STORY_REPEAT.maxDays} días`), { status: 400 });
+    const mediaId = String(body.mediaId || "").trim() || null;
+    if (mediaId && !/^\w+$/.test(mediaId)) throw Object.assign(new Error("Reel inválido"), { status: 400 });
+    const restart = !!body.restart || (prev.mediaId || null) !== mediaId;
+    const storyRepeat = { enabled: !!body.enabled, mediaId, days, changedBy: user.email, changedAt: admin.firestore.Timestamp.now() };
+    // set sin merge en storyRepeat: así "current" se borra al reiniciar
+    await ref.set({ storyRepeat: { ...storyRepeat, current: restart ? null : prev.current || null } }, { mergeFields: ["storyRepeat"] });
+    return { storyRepeat: { enabled: storyRepeat.enabled, mediaId, days } };
+  }
+
   if (action === "resolve") {
     await db.collection("ventra_ig_threads").doc(String(body.thread || "x")).set({ needsHuman: false }, { merge: true });
     return {};
@@ -1029,4 +1118,4 @@ async function adminAction(db, body, user) {
   throw Object.assign(new Error("Acción desconocida"), { status: 400 });
 }
 
-module.exports = { AUTOPILOT, AUTOPILOT_BY, aiReply, buttonsFor, BUTTONS, hook, processInbox, tick, overview, adminAction, historyFor, mergeLead, onlyEmoji, onlyMentions, plain, clipBytes, containerParams, validSignature, SYSTEM, LIMITS };
+module.exports = { AUTOPILOT, STORY_REPEAT, storyRepeat, AUTOPILOT_BY, aiReply, buttonsFor, BUTTONS, hook, processInbox, tick, overview, adminAction, historyFor, mergeLead, onlyEmoji, onlyMentions, plain, clipBytes, containerParams, validSignature, SYSTEM, LIMITS };

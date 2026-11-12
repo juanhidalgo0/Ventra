@@ -20,6 +20,7 @@ const notify = require("./notify");
 const { publicUrl } = require("./store-slugs");
 const { GRACE_DAYS, DAY_MS } = require("./subscription-rules");
 const waOwner = require("./wa-owner");
+const support = require("./support");
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 /**
@@ -388,15 +389,21 @@ async function hook(db, req, res, { token, appSecret, verifyToken }) {
     for (const change of entry.changes || []) {
       const v = change.value || {};
       for (const s of v.statuses || []) jobs.push(onStatus(db, s));
+      const names = Object.fromEntries((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));
       for (const m of v.messages || []) {
         const payload = (m.button && m.button.payload) || (m.interactive && m.interactive.button_reply && m.interactive.button_reply.id);
+        // Soporte de Ventra (support.js): sus botones ("sp|…") y cualquiera que pida hablar con una persona
+        const supportIo = { admin, name: names[m.from], sendText: (to, text) => sendText(token, to, text), sendButtons: (to, text, buttons) => sendButtons(token, to, text, buttons) };
+        const text = m.type === "text" && m.text ? String(m.text.body || "") : "";
+        if (configured(token) && (String(payload || "").startsWith("sp|") || (text && support.HUMAN_RE.test(text)))) jobs.push(support.onMessage(db, m, supportIo));
         // Los botones de los cambios de precios del dueño ("wo|…") los atiende wa-owner.js
-        if (payload && !String(payload).startsWith("wo|")) jobs.push(onButton(db, token, m.from, payload));
-        // El dueño que pregunta por su negocio (o vincula su WhatsApp); si no, un cliente de la agenda
-        else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, text) => sendText(token, to, text), m, Date.now(), {
+        else if (payload && !String(payload).startsWith("wo|")) jobs.push(onButton(db, token, m.from, payload));
+        // El dueño que pregunta por su negocio (o vincula su WhatsApp); si no, soporte de Ventra; si no, un cliente de la agenda
+        else if (configured(token)) jobs.push(waOwner.onMessage(db, (to, t) => sendText(token, to, t), m, Date.now(), {
           typing: (id) => markTyping(token, id),
-          sendList: (to, text, button, sections) => sendList(token, to, text, button, sections),
-        }).then((handled) => (handled ? null : onText(db, token, m.from))));
+          sendList: (to, t, button, sections) => sendList(token, to, t, button, sections),
+        }).then((handled) => (handled ? true : support.onMessage(db, m, supportIo)))
+          .then((handled) => (handled ? null : onText(db, token, m.from))));
       }
     }
   }

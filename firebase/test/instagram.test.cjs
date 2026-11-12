@@ -78,6 +78,10 @@ global.fetch = async (input, opts = {}) => {
     return json({ id });
   }
   if (method === "GET" && state.containers[p]) return json({ status_code: state.containers[p].status, status: state.containers[p].status });
+  if (method === "GET" && (url.searchParams.get("fields") || "").includes("media_url")) {
+    const m = state.media.find((x) => x.id === p) || {};
+    return json({ id: p, media_type: m.media_type || "VIDEO", media_url: "https://cdn.ig/" + p + ".mp4", permalink: "https://ig/" + p, caption: m.caption || "" });
+  }
   if (method === "GET" && p.startsWith("media")) return json({ permalink: "https://www.instagram.com/p/" + p });
   if (method === "GET" && url.searchParams.get("fields") === "caption") return json({ caption: "Caption traída de Instagram" });
   return json({ error: { message: "ruta simulada desconocida " + key } }, 404);
@@ -417,6 +421,17 @@ async function clear() {
     it = await processId("c_C10");
     const fb = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C10");
     ok(it.privateReply && fb.length === 2 && fb[1].body.message.text.includes("Probar demo gratis: https://app.ventra.store/?utm_source=instagram&utm_medium=comentario"), "respuesta privada: si no acepta botones, manda los links en el texto", fb.map((c) => c.body.message));
+    // La IA promete un privado en público pero deja "dm" vacío (pasó en producción con "Kiosco"): igual se manda
+    await deliver({ object: "instagram", entry: [{ id: IG_ID, time: now, changes: [{ field: "comments", value: { id: "C11", text: "Kiosco", from: { id: "11", username: "kiosco_x" }, media: { id: "M1" } } }] }] });
+    state.aiQueue.push({ action: "reply", text: "Hola, gracias por pasarte. Te escribimos por privado con el link de la demo.", dm: "", botones: [], topic: "kiosco", rubro: "kiosco", intent: "interesado" });
+    it = await processId("c_C11");
+    const pr = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C11");
+    ok(it.privateReply && pr.length === 1 && JSON.stringify(pr[0].body).includes("demo"), "si prometió un privado y la IA no lo escribió, manda uno con la demo", { it, pr: pr.map((c) => c.body) });
+    // Sin promesa de privado y sin dm: no manda nada por privado
+    await deliver({ object: "instagram", entry: [{ id: IG_ID, time: now, changes: [{ field: "comments", value: { id: "C12", text: "qué lindo", from: { id: "12", username: "lu" }, media: { id: "M1" } } }] }] });
+    state.aiQueue.push({ action: "reply", text: "¡Gracias, Lu!", dm: "", botones: [], topic: "elogio", rubro: "", intent: "ninguna" });
+    it = await processId("c_C12");
+    ok(!it.privateReply && !calls.some((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C12"), "sin promesa de privado no manda privado", it);
   }
 
   console.log("Publicaciones");
@@ -553,6 +568,63 @@ async function clear() {
     const ov = await ig.overview(db, { aiReady: true });
     ok(ov.followers.length === 1 && ov.followers[0].n === 1234 && ov.media.length === 2 && ov.learned.topics.length > 0, "el panel muestra seguidores, métricas y lo aprendido", { f: ov.followers, t: ov.learned });
     ok(ov.handoffs.some((h) => h.why === "Posible venta"), "el panel muestra las posibles ventas");
+  }
+
+  console.log("Reel repetido en historias");
+  {
+    const posts = db.collection("ventra_ig_posts");
+    const back = async (h) => { const c = (await getCfg()).storyRepeat.current; await cfgRef.set({ storyRepeat: { current: { lastAt: admin.firestore.Timestamp.fromMillis(c.lastAt.toMillis() - h * 3600e3) } } }, { merge: true }); };
+    const storyConts = () => calls.filter((c) => c.p === `${IG_ID}/media` && c.body && c.body.media_type === "STORIES");
+    let r = await ig.tick(db);
+    ok(r.stories === "apagado", "apagado por defecto", r.stories);
+    let err = null;
+    try { await ig.adminAction(db, { action: "storyRepeat", enabled: true, days: 0 }, adminUser); } catch (e) { err = e; }
+    ok(err && err.status === 400 && /entre 1 y 30/.test(err.message), "días fuera de rango rechazados");
+    await ig.adminAction(db, { action: "storyRepeat", enabled: true, mediaId: "", days: 7 }, adminUser);
+    r = await ig.tick(db);
+    let cfg = await getCfg();
+    let cur = cfg.storyRepeat.current;
+    ok(r.stories === "historia 1 de 7" && cur.mediaId === "M1" && cur.count === 1, "sube el último reel como historia", { s: r.stories, cur });
+    let story = (await posts.doc(cur.lastPostId).get()).data();
+    ok(story.type === "story" && story.status === "published" && story.repeatOf === "M1", "la historia sale en la misma vuelta", story);
+    ok(storyConts().slice(-1)[0].body.video_url === "https://cdn.ig/M1.mp4", "usa el video de Instagram si el reel no salió del panel");
+    r = await ig.tick(db);
+    ok(r.stories === "esperando" && storyConts().length === 1, "no repite antes de las 24 h", r.stories);
+    await back(24);
+    r = await ig.tick(db);
+    ok(r.stories === "historia 2 de 7" && storyConts().length === 2, "a las 24 h sube la segunda", r.stories);
+    state.media.unshift({ id: "M9", caption: "Reel nuevo", media_type: "VIDEO", media_product_type: "REELS", timestamp: new Date().toISOString(), permalink: "https://ig/M9" });
+    await back(24);
+    r = await ig.tick(db);
+    cur = (await getCfg()).storyRepeat.current;
+    ok(cur.mediaId === "M9" && cur.count === 1 && r.stories === "historia 1 de 7", "con un reel nuevo empieza otro ciclo", cur);
+    const own = (await posts.doc("P_REEL").get()).data();
+    state.media.push({ id: own.mediaId, caption: "Propio", media_type: "VIDEO", media_product_type: "REELS", timestamp: new Date().toISOString() });
+    await ig.adminAction(db, { action: "storyRepeat", enabled: true, mediaId: own.mediaId, days: 2 }, adminUser);
+    cfg = await getCfg();
+    ok(!cfg.storyRepeat.current && cfg.storyRepeat.days === 2 && cfg.storyRepeat.mediaId === own.mediaId, "cambiar de reel reinicia la cuenta", cfg.storyRepeat);
+    r = await ig.tick(db);
+    ok(r.stories === "historia 1 de 2" && storyConts().slice(-1)[0].body.video_url === "https://x/r.mp4", "un reel del panel usa su archivo propio", { s: r.stories, b: storyConts().slice(-1)[0].body });
+    await back(24); r = await ig.tick(db);
+    ok(r.stories === "historia 2 de 2", "segunda de dos", r.stories);
+    await back(24); r = await ig.tick(db);
+    ok(/terminó/.test(r.stories) && storyConts().length === 5, "a los días elegidos deja de subir", r.stories);
+    await ig.adminAction(db, { action: "storyRepeat", enabled: true, mediaId: own.mediaId, days: 3 }, adminUser);
+    r = await ig.tick(db);
+    ok(r.stories === "historia 3 de 3", "alargar los días continúa la cuenta", r.stories);
+    await ig.adminAction(db, { action: "storyRepeat", enabled: true, mediaId: own.mediaId, days: 3, restart: true }, adminUser);
+    r = await ig.tick(db);
+    ok(r.stories === "historia 1 de 3", "empezar de nuevo reinicia", r.stories);
+    cur = (await getCfg()).storyRepeat.current;
+    await posts.doc(cur.lastPostId).set({ status: "processing" }, { merge: true });
+    await back(24); r = await ig.tick(db);
+    ok(r.stories === "subiendo la anterior", "no apila si la anterior no terminó", r.stories);
+    await posts.doc(cur.lastPostId).set({ status: "published" }, { merge: true });
+    await ig.adminAction(db, { action: "storyRepeat", enabled: false, mediaId: own.mediaId, days: 3 }, adminUser);
+    r = await ig.tick(db);
+    ok(r.stories === "apagado", "apagarlo frena todo", r.stories);
+    const ov = await ig.overview(db, { aiReady: true });
+    ok(ov.storyRepeat && ov.storyRepeat.current && ov.storyRepeat.current.count === 1 && ov.storyRepeat.days === 3 && !ov.storyRepeat.enabled, "el panel muestra el estado", ov.storyRepeat);
   }
 
   console.log(`\n${passed} bien, ${failed} mal`);

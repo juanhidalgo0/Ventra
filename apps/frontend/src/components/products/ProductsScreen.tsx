@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ProductReviewsBanner } from './ProductReviews';
+import InvoiceScanCard, { requestInvoiceScan } from './InvoiceScanCard';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import api from '../../services/api';
@@ -28,7 +29,8 @@ import {
   Image,
   Percent,
   Barcode,
-  ArrowUpCircle
+  ArrowUpCircle,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
@@ -786,6 +788,8 @@ export default function ProductsScreen() {
     <div className="h-full flex flex-col gap-4 p-2 overflow-hidden">
       {/* Los que cargaron los empleados en la caja: a la vista hasta revisarlos */}
       <ProductReviewsBanner className="shrink-0" />
+      {/* Cargar la mercadería con la boleta del proveedor (foto por WhatsApp o desde la PC) */}
+      <InvoiceScanCard className="shrink-0" onUploadPc={() => { requestInvoiceScan(); navigate('/purchases'); }} />
       {/* Search and Global Filters */}
       <div className="card p-5 space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
@@ -832,30 +836,32 @@ export default function ProductsScreen() {
             />
           </div>
           <div className="flex items-center justify-between md:justify-start gap-2">
-            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
+            <div className="relative flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
                <Filter className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                <select 
                  value={selectedCategory || ''}
                  onChange={(e) => setSelectedCategory(e.target.value || null)}
-                 className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
+                 className="appearance-none bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 shadow-none p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
                >
                  <option value="">Todas las categorías</option>
                  {categories.filter(c => c._count?.products > 0).map(cat => (
                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                  ))}
                </select>
+               <ChevronDown className="pointer-events-none absolute right-3 w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             </div>
-            <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
+            <div className="relative flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-400 dark:border-slate-700 shadow-sm hover:bg-slate-100/50 transition-all">
                <Image className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                <select 
                  value={imageFilter}
                  onChange={(e) => setImageFilter(e.target.value as any)}
-                 className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
+                 className="appearance-none bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 border-0 shadow-none p-0 pr-6 focus:ring-0 focus:outline-none outline-none cursor-pointer w-full"
                >
                  <option value="all">Todas las fotos</option>
                  <option value="with">Con imagen</option>
                  <option value="without">Sin imagen</option>
                </select>
+               <ChevronDown className="pointer-events-none absolute right-3 w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             </div>
             <button className="px-4 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-all flex items-center gap-2">
                <AlertTriangle className="w-3.5 h-3.5" /> Bajo Stock

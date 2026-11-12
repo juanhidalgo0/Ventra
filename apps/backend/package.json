@@ -17,7 +17,9 @@
     "test:boletas": "npx tsx scripts/test-boletas.ts",
     "test:auth": "npx tsx scripts/test-auth.ts",
     "test:anulaciones": "npx tsx scripts/test-void-score.ts",
-    "test:precios": "npx tsx scripts/test-price-editor.ts"
+    "test:precios": "npx tsx scripts/test-price-editor.ts",
+    "test:repetidos": "npx tsx scripts/test-merge.ts",
+    "test:http": "node scripts/test-http.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

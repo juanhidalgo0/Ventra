@@ -76,7 +76,8 @@ async function storageBytesByTenant() {
     const [files, next] = await bucket.getFiles(query);
     files.forEach((f) => {
       const uid = f.name.split("/")[1];
-      if (uid) out[uid] = (out[uid] || 0) + Number(f.metadata.size || 0);
+      // Con "fields", @google-cloud/storage 7.22 deja el tamaño en f.size y no arma f.metadata
+      if (uid) out[uid] = (out[uid] || 0) + Number((f.metadata && f.metadata.size) || f.size || 0);
     });
     query = next || null;
   }

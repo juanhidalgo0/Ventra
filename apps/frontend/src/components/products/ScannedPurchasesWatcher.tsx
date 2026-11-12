@@ -40,8 +40,8 @@ export default function ScannedPurchasesWatcher() {
             toast((t) => (
               <span className="flex items-center gap-3">
                 <span className="text-[13.5px]">
-                  <b>{fresh.length === 1 ? 'Llegó una boleta escaneada' : `Llegaron ${fresh.length} boletas escaneadas`}</b>
-                  <span className="block text-slate-600">{fresh.length === 1 ? `${p.supplierName || 'Proveedor'} · ${p.items} ${p.items === 1 ? 'producto' : 'productos'}${p.userName ? ` · la cargó ${p.userName}` : ''}` : 'Están en Compras para revisar'}</span>
+                  <b>{fresh.length === 1 ? (p.via === 'whatsapp' ? 'Llegó una boleta por WhatsApp' : 'Llegó una boleta escaneada') : `Llegaron ${fresh.length} boletas para revisar`}</b>
+                  <span className="block text-slate-600">{fresh.length === 1 ? `${p.supplierName || 'Proveedor'} · ${p.items} ${p.items === 1 ? 'producto' : 'productos'}${p.via === 'whatsapp' ? ' · para revisar y confirmar' : p.userName ? ` · la cargó ${p.userName}` : ''}` : 'Están en Compras para revisar'}</span>
                 </span>
                 <button onClick={() => { toast.dismiss(t.id); navigate('/purchases'); }} className="shrink-0 h-9 px-3 rounded-lg bg-rose-600 text-white text-[13px] font-bold cursor-pointer">Revisar</button>
               </span>

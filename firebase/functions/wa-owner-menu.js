@@ -46,8 +46,9 @@ const OPTIONS = {
   // Más opciones
   resumen: { title: "Resumen del día", description: "Ventas, comparación y control de caja", kind: "ver" },
   mas_vendidos: { title: "Lo más vendido", description: "De los últimos 7 días", kind: "ver" },
-  compra: { title: "Cargar una compra", description: "Mercadería de un proveedor: suma stock y costos", kind: "hacer", write: true,
-    ask: "¿De qué proveedor y qué llegó? Decime cantidades y costos.\n\nPor ejemplo: _de Distribuidora Sur: 24 Coca 2,25 a 3800 y 12 Sprite 1,5 a 2100_" },
+  compra: { title: "Cargar una compra", description: "Foto de la boleta o escribime qué llegó", kind: "hacer", write: true,
+    ask: "Mandame una *foto de la boleta o factura* del proveedor y la leo yo (la próxima vez que me mandes una foto, la tomo como boleta).\n\nO escribime qué llegó: _de Distribuidora Sur: 24 Coca 2,25 a 3800 y 12 Sprite 1,5 a 2100_" },
+  repetidos: { title: "Productos repetidos", description: "Revisar y juntar los que están dos veces", kind: "special", write: true },
   stock: { title: "Ajustar stock", description: "Sumar o descontar unidades de un producto", kind: "hacer", write: true,
     ask: "¿De qué producto y cuántas unidades sumo o descuento?\n\nPor ejemplo: _sumá 12 Coca 1,5_ · _descontá 2 alfajores rotos_" },
   vencimientos: { title: "Vencimientos", description: "Lo que vence en los próximos 15 días", kind: "ver" },
@@ -77,7 +78,7 @@ function sections({ plan, role, page = "main" }) {
   if (page === "mas") {
     return build([
       ["Más para ver", ["resumen", "mas_vendidos", "vencimientos", "encargos", ...(plan === "tienda" ? ["turnos_hoy"] : [])]],
-      ["Más para hacer", ["compra", "stock", "gasto", "otra_cosa"]],
+      ["Más para hacer", ["compra", "repetidos", "stock", "gasto", "otra_cosa"]],
     ]);
   }
   return build([

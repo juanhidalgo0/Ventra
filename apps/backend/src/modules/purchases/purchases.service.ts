@@ -254,12 +254,12 @@ export class PurchasesService {
   async pending() {
     const rows = await (this.prisma as any).purchase.findMany({
       where: { status: 'PENDING' },
-      select: { id: true, total: true, invoiceNumber: true, createdAt: true, supplier: { select: { name: true } }, user: { select: { fullName: true } }, _count: { select: { items: true } } },
+      select: { id: true, total: true, invoiceNumber: true, createdAt: true, notes: true, supplier: { select: { name: true } }, user: { select: { fullName: true } }, _count: { select: { items: true } } },
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
     const drafts = await this.drafts(rows.map((p: any) => p.id));
-    return rows.map((p: any) => ({ id: p.id, total: p.total, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, supplierName: p.supplier?.name || '', userName: p.user?.fullName || '', items: drafts.get(p.id)?.items?.length ?? p._count?.items ?? 0 }));
+    return rows.map((p: any) => ({ id: p.id, total: p.total, invoiceNumber: p.invoiceNumber, createdAt: p.createdAt, supplierName: p.supplier?.name || '', userName: p.user?.fullName || '', items: drafts.get(p.id)?.items?.length ?? p._count?.items ?? 0, via: /WhatsApp/i.test(p.notes || '') ? 'whatsapp' : 'scan' }));
   }
 
   /** Renglones guardados de las compras escaneadas que esperan revisión */
@@ -569,15 +569,36 @@ export class PurchasesService {
     } else {
       // Fotos: las lee la IA de Ventra en la nube (Claude, ver firebase/functions/ai.js). La PC no
       // tiene ninguna clave: pide con su vinculación y el comercio tiene un tope de facturas por mes.
+      // Cada foto se lee sola: pueden ser comprobantes distintos (dos facturas, un remito y la nota de
+      // otro proveedor). La nube junta las páginas del mismo comprobante y relee el que no cierra.
       const images = await this.ai.shrink(files, 2000);
-      const { result } = await this.ai.call('invoice', { images, manualTotal: manualTotal ?? null });
-      parsedData = result;
-      if (!parsedData?.items?.length) {
+      const { result } = await this.ai.call('invoice', { images, manualTotal: manualTotal ?? null, multi: true });
+      // Nube con la versión anterior: devuelve un solo comprobante
+      const docs: any[] = Array.isArray(result?.documents) ? result.documents : [result];
+      const usable = docs.filter((d) => d?.items?.length);
+      if (!usable.length) {
         throw new BadRequestException('No encontramos productos en la foto. Probá con una foto más nítida, de frente y con buena luz.');
       }
-      console.log(`[PurchasesService] Factura leída con IA: ${parsedData.items.length} productos.`);
+      console.log(`[PurchasesService] Fotos leídas con IA: ${usable.length} comprobante(s), ${usable.reduce((s, d) => s + d.items.length, 0)} productos.`);
+      const results: any[] = [];
+      for (const d of usable) {
+        const r = await this.scanOne(d, { readCheck: null, readInfo: null, sourceLabel, isExcel: false, userId, opts });
+        results.push({ ...r, docType: d.docType || 'factura', images: Array.isArray(d.images) ? d.images : null, reread: !!d.reread });
+      }
+      const [first, ...others] = results;
+      // El primero se revisa como siempre; los demás vienen aparte (la PC los deja en "Por revisar")
+      return { ...first, others, failedImages: Array.isArray(result?.failedImages) ? result.failedImages : [], documentsFound: results.length };
     }
+    return this.scanOne(parsedData, { readCheck, readInfo, sourceLabel, isExcel, userId, opts });
+  }
 
+  /**
+   * Un comprobante ya leído (de un PDF, una planilla o una o varias fotos) → proveedor, productos
+   * encontrados, control de totales y costos. inline: vista previa. Si no (celular): se carga solo si
+   * cierra y no hay nada dudoso; si no, queda pendiente para revisar en la PC.
+   */
+  private async scanOne(parsedData: any, ctx: { readCheck: ParsedInvoice['check'] | null; readInfo: Pick<ParsedInvoice, 'docType' | 'letter' | 'supplierCuit' | 'pricesIncludeIva' | 'totals'> | null; sourceLabel: string; isExcel: boolean; userId?: string; opts: { inline?: boolean } }) {
+    const { readCheck, readInfo, sourceLabel, isExcel, userId, opts } = ctx;
     // Proveedor: el que ya está cargado (nombre parecido) o, si no está, se crea con el nombre de la boleta
     const supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
     const settings = await this.scanSettings();
@@ -687,6 +708,10 @@ export class PurchasesService {
       invoice: readInfo,
       pricesIncludeIva: netFactor !== 1,
       duplicate,
+      // Varias fotos: qué tipo de comprobante es, cuáles fotos son suyas y si la IA tuvo que releerlo
+      docType: parsedData.docType || readInfo?.docType || null,
+      images: Array.isArray(parsedData.images) ? parsedData.images : null,
+      reread: !!parsedData.reread,
     };
 
     // En la PC la boleta se revisa en la misma pantalla: no se guarda nada todavía
@@ -702,6 +727,7 @@ export class PurchasesService {
     if (totalsOk !== true) why.push(totalsOk === false ? 'los renglones no suman el total de la boleta' : 'no se pudo leer el total de la boleta');
     if (doubts.length) why.push(`${doubts.length} ${doubts.length === 1 ? 'renglón dudoso' : 'renglones dudosos'}`);
     if (!items.length) why.push('no hay productos');
+    if (base.docType === 'remito') why.push('es un remito: los precios suelen venir en la factura');
 
     const supplierId = supplier?.id || (await this.matcher.findSupplier('Proveedor sin nombre', true))!.id;
     const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
@@ -766,6 +792,36 @@ export class PurchasesService {
     });
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`, JSON.stringify({ ...base, why }), pending.id);
     return { ...base, status: 'PENDING', purchaseId: pending.id, auto: false, why };
+  }
+
+  /**
+   * La boleta que el dueño mandó por WhatsApp y prefiere revisar en la PC: queda pendiente con lo que
+   * ya se leyó (la vista previa de scan-invoice-json), sin volver a leerla con IA ni crear nada. La PC
+   * la ve en Compras y avisa al toque (ScannedPurchasesWatcher).
+   */
+  async pendingFromPreview(preview: any, userId?: string, via = 'WhatsApp') {
+    const items = Array.isArray(preview?.items) ? preview.items : [];
+    if (!items.length) throw new BadRequestException('La boleta no tiene renglones');
+    const known = preview?.matchedSupplier?.id
+      ? await (this.prisma as any).supplier.findUnique({ where: { id: String(preview.matchedSupplier.id) }, select: { id: true } }).catch(() => null)
+      : null;
+    const supplierId = known?.id || (await this.matcher.findSupplier(preview?.supplierName || 'Proveedor sin nombre', true))!.id;
+    const duplicate = await this.findSameInvoice(supplierId, preview?.invoiceNumber);
+    if (duplicate) return { status: 'DUPLICATE', purchaseId: duplicate.id };
+    const resolvedUser = userId || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } }))?.id || (await this.prisma.user.findFirst())!.id;
+    const sum = items.reduce((s: number, it: any) => s + (Number(it?.total) || (Number(it?.quantity) || 0) * (Number(it?.cost) || 0)), 0);
+    const printed = Number(preview?.invoice?.totals?.total) || 0;
+    const total = printed > 0 ? printed : sum * 1.21;
+    const pending = await (this.prisma as any).purchase.create({
+      data: {
+        supplierId, userId: resolvedUser, invoiceNumber: preview?.invoiceNumber || null, total,
+        status: 'PENDING', paymentStatus: 'OWED', notes: via === 'fotos' ? 'Otro comprobante de las fotos escaneadas: falta revisarlo.' : `Mandada por ${via}: falta revisarla.`,
+      },
+    });
+    const { status: _s, purchaseId: _p, others: _o, failedImages: _f, documentsFound: _d, ...base } = preview || {};
+    await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`,
+      JSON.stringify({ ...base, matchedSupplier: base.matchedSupplier || { id: supplierId, name: base.supplierName || '' }, why: [via === 'fotos' ? 'venía en las mismas fotos que otro comprobante' : `la mandaste por ${via} para revisarla en la PC`] }), pending.id);
+    return { status: 'PENDING', purchaseId: pending.id, items: items.length };
   }
 
   /** Una compra del mismo proveedor con el mismo número de boleta (sin contar las anuladas) */

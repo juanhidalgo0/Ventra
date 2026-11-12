@@ -21,7 +21,8 @@
     "tauri:dev": "npm run build:backend && tauri dev",
     "tauri:dev:full": "npm run build:backend && concurrently \"npm run dev:frontend\" \"tauri dev\"",
     "tauri:build": "npm run db:reset && npm run build:frontend && npm run build:backend && tauri build",
-    "license:reset": "node clear_license.js"
+    "license:reset": "node clear_license.js",
+    "deploy:cloud": "npm run build --prefix apps/backend && npm run test:http --prefix apps/backend && fly deploy -c fly.cloud.toml"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

@@ -7,6 +7,7 @@ import { SharedCatalogService } from './shared-catalog.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
 import { PriceEditorService } from './price-editor.service';
+import { ProductMergeService } from './product-merge.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import * as path from 'path';
@@ -26,6 +27,7 @@ export class ProductsController {
     private ventraImport: VentraImportService,
     private hardwareImages: HardwareImageService,
     private priceEditor: PriceEditorService,
+    private merger: ProductMergeService,
   ) {}
 
   @Get()
@@ -166,6 +168,42 @@ export class ProductsController {
   @Post('costs')
   getCosts(@Body() body: { ids?: string[] }) {
     return this.productsService.getCosts(Array.isArray(body?.ids) ? body.ids.map(String).slice(0, 5000) : []);
+  }
+
+  // ── Productos repetidos (ver ProductMergeService): nada se borra, juntar oculta y se puede separar ──
+  /** Grupos de productos repetidos (mismo nombre, o las mismas palabras y tamaños) con ventas, stock y códigos */
+  @Get('duplicates')
+  @Roles(...MANAGERS)
+  findDuplicates(@Query('limit') limit?: string) {
+    return this.merger.duplicates(limit ? Number(limit) : 200);
+  }
+
+  /** "Son distintos": ese grupo (ids) no se vuelve a ofrecer como repetido */
+  @Post('duplicates/distinct')
+  @Roles(...MANAGERS)
+  markDistinct(@Body() body: { ids: string[] }) {
+    return this.merger.markDistinct(body?.ids || []);
+  }
+
+  /** Juntar repetidos: keepId queda; mergeIds se ocultan y pasan sus códigos de barras, stock y lotes al que queda */
+  @Post('merge')
+  @Roles(...MANAGERS)
+  mergeProducts(@Body() body: { keepId: string; mergeIds: string[] }, @Request() req) {
+    return this.merger.merge(String(body?.keepId || ''), body?.mergeIds || [], req.user.sub);
+  }
+
+  /** Separar una unificación (deja los productos como estaban) */
+  @Post('merge/:mergeId/undo')
+  @Roles(...MANAGERS)
+  undoMerge(@Param('mergeId') mergeId: string, @Request() req) {
+    return this.merger.undo(mergeId, req.user.sub);
+  }
+
+  /** Las últimas unificaciones, para separarlas */
+  @Get('merges')
+  @Roles(...MANAGERS)
+  recentMerges() {
+    return this.merger.recent();
   }
 
   // Variantes (talle / color): se declaran antes de ':id' para que no las capture esa ruta
