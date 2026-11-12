@@ -10,8 +10,28 @@
   dd.forEach(function(d){ d.addEventListener('toggle', function(){ if (d.open) dd.forEach(function(o){ if (o !== d) o.open = false; }); }); });
   document.addEventListener('click', function(e){ dd.forEach(function(d){ if (!d.contains(e.target) || e.target.closest('.drop a')) d.open = false; }); });
 
+  // El que abre su Ventra queda recordado en este navegador (sin datos personales, solo una marca):
+  // la próxima vez "Abrir mi Ventra" aparece en verde y la barra de abajo lo lleva a su Ventra
+  var KEY = 'ventra_cliente', root = document.documentElement;
+  window.ventraRecordarCliente = function(){
+    try { localStorage.setItem(KEY, '1'); } catch(e){}
+    if (!root.classList.contains('es-cliente')) { root.classList.add('es-cliente'); dockCliente(); }
+  };
+  document.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('a[href^="https://web.ventra.store"]')) window.ventraRecordarCliente();
+  }, true);
+  function dockCliente(){
+    var dk = document.getElementById('dock'); if (!dk || dk.getAttribute('data-cliente')) return;
+    var a = dk.querySelector('a.btn'), t = dk.querySelector('span'); if (!a) return;
+    dk.setAttribute('data-cliente', '1');
+    if (t) t.innerHTML = '<b>Tu Ventra</b><small>Caja, tienda y agenda</small>';
+    a.href = 'https://web.ventra.store'; a.textContent = 'Abrir mi Ventra';
+    a.removeAttribute('data-start'); a.setAttribute('data-track', 'open_dock');
+  }
+  if (root.classList.contains('es-cliente')) dockCliente();
+
   // Menú del celular
-  var b = tb.querySelector('.burger'), m = document.getElementById('mnav');
+  var b =tb.querySelector('.burger'), m = document.getElementById('mnav');
   if (!b || !m) return;
   function setM(open){
     if (open) m.style.top = Math.max(0, tb.getBoundingClientRect().bottom) + 'px';

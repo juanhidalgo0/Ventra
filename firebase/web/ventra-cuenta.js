@@ -112,9 +112,10 @@
       var d = doc.data(), until = d.paidUntil && d.paidUntil.toDate ? d.paidUntil.toDate() : null;
       // Vigente o dentro de los 7 días de gracia
       if (!until || Date.now() > until.getTime() + 7 * 864e5) return;
+      if (window.ventraRecordarCliente) window.ventraRecordarCliente();
       // Ya es cliente: "Empezar" no tiene sentido, lo lleva a su cuenta
       // (arriba ya está "Mi cuenta" al lado, no hace falta repetirlo)
-      document.querySelectorAll('a[data-start]').forEach(function(a){ a.href = '/cuenta.html'; a.textContent = 'Mi cuenta'; a.removeAttribute('data-start'); if (a.closest('.nav')) a.style.display = 'none'; });
+      document.querySelectorAll('a[data-start]').forEach(function(a){ a.href = '/cuenta.html'; a.textContent = 'Mi cuenta'; a.removeAttribute('data-start'); if (a.closest('.nav, .topbar .acts')) a.style.display = 'none'; });
       document.querySelectorAll('a[href="' + DEMO_URL + '"]').forEach(function(a){
         a.href = WEB_APP_URL;
         var arrow = a.querySelector('.arr');
@@ -131,7 +132,7 @@
       if (!user) {
         // Como en cualquier web: lleva a la página de entrar, y de ahí a la cuenta
         var b = document.createElement('a');
-        b.className = 'auth-btn'; b.href = '/cuenta.html'; b.textContent = 'Iniciar sesión';
+        b.className = 'auth-btn'; b.href = '/cuenta.html'; b.textContent = 'Mi cuenta';
         area.appendChild(b);
         return;
       }

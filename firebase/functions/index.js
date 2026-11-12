@@ -1791,6 +1791,8 @@ const SITE_EVENTS = new Set([
   // Alta en /empezar: de dónde arrancan y hasta qué paso llegan
   "view_empezar", "start_nav", "start_hero", "start_strip", "start_final", "start_dock",
   "signup_negocio", "signup_plan", "signup_google", "signup_pago",
+  // "Abrir mi Ventra" (clientes que ya tienen cuenta): barra, menú del celular y barra de abajo
+  "open_nav", "open_menu", "open_dock",
 ]);
 exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, memory: "256MiB" }, async (req, res) => {
   let e = "";

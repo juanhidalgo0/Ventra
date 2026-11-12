@@ -64,7 +64,32 @@ body{ background:#fff; }
   .burger{ display:grid; }
   .topbar .acts .auth-area{ display:none; }
 }
-@media (max-width:560px){ .topbar .tin{ gap:12px; } }
+/* "Abrir mi Ventra": el que ya es cliente lo tiene siempre a mano (barra y menú del celular).
+   Si ya entró alguna vez desde este navegador (html.es-cliente, lo marca menu.js) pasa a verde
+   y "Empezar" deja la barra. Sin sesión, "Iniciar sesión" no va arriba: lo reemplaza este botón. */
+.open-btn{ gap:8px; padding:0 14px; }
+.open-btn svg{ flex:none; color:var(--green); }
+.open-btn .ob-s{ display:none; }
+.topbar .acts .auth-btn{ display:none; }
+html.es-cliente .open-btn, html.es-cliente .mn-open .btn{ background:var(--green); border-color:var(--green); color:#fff; }
+html.es-cliente .open-btn:hover, html.es-cliente .mn-open .btn:hover{ background:var(--green-dk); border-color:var(--green-dk); color:#fff; }
+html.es-cliente .open-btn svg, html.es-cliente .mn-open .btn svg{ color:#fff; }
+html.es-cliente .topbar .acts [data-start]{ display:none; }
+.topbar .acts .auth-area:empty, .topbar .acts .auth-area:not(:has(.auth-user)){ display:none; }
+/* Compus angostas: el menú se aprieta un poco para que entren los dos botones */
+@media (min-width:1021px) and (max-width:1200px){
+  .menu{ margin-left:8px; gap:2px; }
+  .menu > a, .menu summary{ padding:0 9px; }
+}
+@media (max-width:560px){
+  .topbar .tin{ gap:12px; }
+  .topbar .acts{ gap:8px; }
+  .open-btn{ padding:0 12px; gap:6px; }
+  .open-btn .ob-l{ display:none; }
+  .open-btn .ob-s{ display:inline; }
+  .topbar .acts .btn-sm{ padding:0 12px; }
+}
+@media (max-width:380px){ .open-btn svg{ display:none; } }
 @media (max-width:360px){ .topbar .brand{ font-size:0; gap:0; } }
 
 /* ── Menú del celular: lista corta; abajo la demo y la cuenta ── */
@@ -83,6 +108,10 @@ body{ background:#fff; }
 .mn-rub .rl{ display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; padding:2px 0 14px; border-bottom:1px solid var(--line); }
 .mn-rub .rl a{ padding:9px 0; font-size:15px; font-weight:550; color:var(--ink-2); }
 .mn-rub .rl a:active{ color:var(--green-dk); }
+.mn-open{ display:grid; gap:8px; padding:8px 0 16px; border-bottom:1px solid var(--line); text-align:center; }
+.mn-open .btn{ width:100%; height:52px; }
+.mn-open .btn svg{ color:var(--green); }
+.mn-open small{ font-size:13.5px; color:var(--ink-3); }
 .mn-foot{ flex:none; display:grid; gap:12px; padding:14px 20px calc(16px + env(safe-area-inset-bottom)); background:#fff; border-top:1px solid var(--line); }
 .mn-foot .btn{ width:100%; height:52px; }
 .mn-foot .btn svg{ color:var(--green); }

@@ -307,6 +307,8 @@
       $('panelBtn').classList.toggle('hidden', storeOnly);
       var paidUntil = data.paidUntil && data.paidUntil.toDate ? data.paidUntil.toDate() : null;
       var s = stateOf(paidUntil);
+      // Ya es cliente: en la web le aparece 'Abrir mi Ventra' en verde (ver menu.js)
+      if (paidUntil) { try { localStorage.setItem('ventra_cliente', '1'); } catch(e){} }
 
       $('planName').textContent = data.planName || plan.name || 'Ventra';
       $('statePill').className = 'pill ' + s.state; $('statePill').textContent = STATE_LABEL[s.state];
