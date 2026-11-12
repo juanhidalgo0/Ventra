@@ -30,6 +30,11 @@
   a{ color:var(--brand); }
   footer{ text-align:center; color:var(--muted); font-size:13px; padding:0 20px 40px; }
   @media (max-width:600px){ article{ padding:20px 18px 6px; } h1{ font-size:26px; } }
+  /* Estilo nuevo de la web: barra clara, como la portada */
+  header{ background:rgba(255,255,255,.95); border-bottom:1px solid #E2EAE5; position:sticky; top:0; z-index:5; }
+  header .brand{ color:#0E1B16 !important; }
+  .bar a.back{ color:#0E5E48; font-weight:600; }
+  .bar a.back:hover{ text-decoration:underline; text-underline-offset:3px; }
 </style>
 </head>
 <body>
@@ -37,7 +42,7 @@
 <main>
   <p class="eyebrow">Legal</p>
   <h1>Política de Privacidad</h1>
-  <p class="upd">Última actualización: 4 de octubre de 2026</p>
+  <p class="upd">Última actualización: 11 de noviembre de 2026</p>
   <article>
     <h2>1. Quiénes somos</h2>
     <p>Ventra es un sistema de ventas (punto de venta, stock, caja y tienda online) para comercios. Esta política explica qué datos tratamos cuando usás el sitio <b>ventra.store</b>, la aplicación Ventra y las tiendas online creadas con Ventra, y cómo los protegemos, de acuerdo con la Ley 25.326 de Protección de los Datos Personales de la República Argentina.</p>
@@ -58,12 +63,16 @@
       <li>Gestionar tu suscripción y avisarte sobre su estado.</li>
       <li>Mostrar tu tienda online y hacerte llegar los pedidos de tus clientes.</li>
       <li>Avisarte de actualizaciones del sistema y darte soporte.</li>
+      <li>Si creaste tu cuenta y todavía no elegiste un plan, mandarte por correo unos pocos mails para ayudarte a empezar (como máximo cuatro, en la primera semana). Cada uno tiene un link para darte de baja con un toque, y dejan de llegar apenas te suscribís.</li>
+      <li>Si tu suscripción vence, avisarte por correo (y por WhatsApp, si vinculaste tu número con Ventra) para que la renueves antes de que el sistema quede en solo lectura. Este aviso es parte del servicio y llega aunque te hayas dado de baja de los mails para empezar.</li>
+      <li>Mandarte por correo los avisos de tu cuenta: el comprobante de cada pago, el aviso unos días antes del cobro, si un cobro fue rechazado, si se vinculó una PC nueva o si cambiaste de plan. Son parte del servicio.</li>
+      <li>Mandarte el primer día de cada mes un resumen de lo que vendiste el mes anterior, y alguna vez ayuda para arrancar o novedades. Cada uno tiene su link para darte de baja.</li>
       <li>Mantener la seguridad del servicio y prevenir usos indebidos.</li>
     </ul>
     <p>No vendemos ni alquilamos datos personales a terceros.</p>
 
     <h2>4. Con quién los compartimos</h2>
-    <p>Solo con los proveedores necesarios para prestar el servicio: Google (inicio de sesión y almacenamiento en la nube mediante Firebase), Mercado Pago (pagos de la suscripción) y, si el comercio lo activa, las integraciones que elija. Cada uno trata los datos según sus propias políticas. También podemos compartir datos si una autoridad competente lo exige por ley.</p>
+    <p>Solo con los proveedores necesarios para prestar el servicio: Google (inicio de sesión y almacenamiento en la nube mediante Firebase), Mercado Pago (pagos de la suscripción), Resend (envío de correos) y, si el comercio lo activa, las integraciones que elija. Cada uno trata los datos según sus propias políticas. También podemos compartir datos si una autoridad competente lo exige por ley.</p>
 
     <h2 id="clientes">5. Datos de los clientes de los comercios</h2>
     <p>Cuando un comercio usa Ventra para registrar a sus clientes, recibir pedidos por su tienda online o tomar turnos, ese comercio es el responsable de esos datos y Ventra los trata por cuenta del comercio, solo para prestarle el servicio.</p>

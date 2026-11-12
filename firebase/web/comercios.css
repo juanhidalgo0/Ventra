@@ -1,0 +1,48 @@
+/* Comercios que usan Ventra: lista con logos, franja de confianza y reseñas.
+   Lo usan index.html, empezar.html y sistema-de-ventas.html (mismas variables de color). */
+
+/* Lista de comercios */
+.shops{ list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.shop{ display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:18px; border:1px solid var(--line); background:var(--paper); color:inherit; text-decoration:none; }
+a.shop{ transition:border-color .25s, transform .35s var(--ease); }
+a.shop:hover{ border-color:var(--mint-300); transform:translateY(-2px); }
+.shop img{ width:48px; height:48px; flex:none; border-radius:50%; object-fit:cover; background:#fff; box-shadow:0 0 0 1px var(--line); }
+.shop b{ display:block; line-height:1.25; }
+.shop small{ color:var(--ink-3); font-size:13px; }
+.shop .igb{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:650; color:var(--pine); white-space:nowrap; }
+@media (max-width:560px){ .shop .igb .t{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); } }
+img.logo-dark{ background:#111 !important; padding:3px; }
+.shops-more{ display:flex; align-items:center; gap:10px; margin:14px 2px 0 !important; font-size:14px !important; color:var(--ink-3) !important; }
+.shops-more .dots{ display:inline-flex; flex:none; }
+.shops-more .dots i{ width:22px; height:22px; border-radius:50%; border:2px solid #fff; background:var(--mint-300); margin-left:-7px; }
+.shops-more .dots i:first-child{ margin-left:0; background:var(--pine); }
+.shops-more .dots i:nth-child(2){ background:var(--pine-800); }
+
+/* Franja chica: "Ya lo usan…" con logos superpuestos */
+.trust{ display:inline-flex; align-items:center; gap:12px; padding:8px 16px 8px 8px; border-radius:999px; font-size:14px; line-height:1.3; text-decoration:none; color:var(--ink-2); background:#fff; border:1px solid var(--line); transition:border-color .25s; }
+.trust:hover{ border-color:var(--mint-300); }
+.trust b{ color:var(--ink); font-weight:650; }
+.trust .faces{ display:inline-flex; flex:none; }
+.trust .faces img{ width:30px; height:30px; border-radius:50%; object-fit:cover; background:#fff; border:2px solid #fff; margin-left:-9px; }
+.trust .faces img:first-child{ margin-left:0; }
+.dark .trust, .trust.on-dark{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.16); color:var(--on-dark-2, rgba(255,255,255,.75)); }
+.dark .trust b, .trust.on-dark b{ color:var(--on-dark, #fff); }
+.dark .trust .faces img, .trust.on-dark .faces img{ border-color:var(--pine-900, #06261D); }
+@media (max-width:560px){ .trust{ font-size:13px; gap:10px; } .trust .faces img{ width:26px; height:26px; } }
+
+/* Reseñas: tarjetas tipo comentario (diseño propio de Ventra, no imita otra plataforma) */
+.reviews{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; margin-top:28px; }
+@media (max-width:760px){ .reviews{ grid-template-columns:minmax(0,1fr); } }
+.review{ min-width:0; }
+.review{ margin:0; display:flex; flex-direction:column; gap:10px; padding:18px 18px 20px; border-radius:20px; background:#fff; border:1px solid var(--line); box-shadow:0 1px 2px rgba(15,31,26,.04), 0 10px 28px -14px rgba(15,31,26,.18); }
+.review figcaption{ display:flex; align-items:center; gap:12px; font-size:14px; min-width:0; }
+.review figcaption > span{ min-width:0; }
+.review figcaption img{ width:44px; height:44px; border-radius:50%; object-fit:cover; background:#fff; box-shadow:0 0 0 1px var(--line); flex:none; }
+.review figcaption b{ display:block; color:var(--ink); line-height:1.25; }
+.review figcaption small{ display:block; color:var(--ink-3); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.review figcaption small.since{ color:var(--pine); font-weight:600; margin-top:1px; }
+.review .stars{ display:inline-flex; gap:2px; }
+.review .stars svg{ width:17px; height:17px; fill:#F5B301; }
+.review blockquote{ position:relative; margin:4px 0 0; padding:13px 16px; border-radius:4px 16px 16px 16px; background:var(--paper); border:1px solid var(--line); font-size:15.5px; line-height:1.5; color:var(--ink); }
+/* Si queda una reseña sola en la última fila, ocupa todo el ancho */
+@media (min-width:761px){ .review:last-child:nth-child(odd){ grid-column:1 / -1; } }

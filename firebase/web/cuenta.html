@@ -125,6 +125,22 @@
     .card{ padding:20px; }
     .who{ display:none; }
   }
+
+  /* ═════ Estilo nuevo de la web (nov-2026): claro, verde Ventra, como la portada ═════ */
+  :root{ --paper:#fff; --line:#E2EAE5; --ink:#0E1B16; --ink-2:#4F5E58; --ink-3:#7F8C86; --green:#167160; --green-dk:#0E5E48; --green-50:#EAF6F0;
+    --shadow-lg:0 30px 70px -42px rgba(14,27,22,.4), 0 1px 2px rgba(14,27,22,.04); }
+  body{ background:#fff; background-image:radial-gradient(760px 520px at 88% -12%, #E2F4EA, #EEF8F2 45%, rgba(255,255,255,0) 72%); }
+  .nav{ color:var(--ink); }
+  .who{ color:var(--ink-3); }
+  .nav-btn{ height:38px; border-radius:10px; border-color:var(--line); color:var(--ink); background:#fff; }
+  .nav-btn:hover{ background:var(--green-50); border-color:#D3EEE1; }
+  .hero{ color:var(--ink); }
+  .hero h1{ font-weight:800; }
+  .hero p{ color:var(--ink-2); }
+  .btn{ height:46px; border-radius:12px; background:var(--green); border-color:var(--green); color:#fff; font-weight:650; }
+  .btn:hover{ background:var(--green-dk); border-color:var(--green-dk); box-shadow:0 14px 28px -14px rgba(14,94,72,.55); }
+  .btn.ghost{ border-radius:12px; }
+  .btn.ghost:hover{ border-color:var(--green); color:var(--green-dk); }
 </style>
 </head>
 <body>
@@ -330,7 +346,7 @@
 
     // ── Primeros pasos: al volver de pagar (y mientras dure esta pestaña) se muestra qué
     // sigue. Full arranca en el navegador; instalar en la PC queda como opcional. ──
-    var WA_HELP = 'https://wa.me/5492212025603?text=' + encodeURIComponent('Hola, me acabo de suscribir a Ventra y quiero ayuda para arrancar');
+    var WA_HELP = 'https://wa.me/5492212048533?text=' + encodeURIComponent('Quiero hablar con una persona de Ventra: me acabo de suscribir y quiero ayuda para arrancar');
     function renderStart(data, state, agendaOnly, storeOnly){
       try { if (fromCheckout) sessionStorage.setItem('ventra_welcome', '1'); } catch(e){}
       var on = fromCheckout; try { on = on || sessionStorage.getItem('ventra_welcome') === '1'; } catch(e){}
