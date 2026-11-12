@@ -890,14 +890,14 @@ export class SalesService {
       }),
       this.prisma.purchase.aggregate({
         _sum: { total: true },
-        where: { createdAt: { gte: today, lte: endOfPeriod }, status: { not: 'CANCELLED' } }
+        where: { createdAt: { gte: today, lte: endOfPeriod }, status: { notIn: ['CANCELLED', 'PENDING'] } }
       }),
       // Sum of all active client debt balances
       this.prisma.client.aggregate({ _sum: { balance: true }, where: { isActive: true } }),
-      // Sum of all unpaid supplier purchases (OWED)
+      // Lo que se debe a proveedores: sin las anuladas ni las boletas que todavía no se confirmaron
       this.prisma.purchase.aggregate({
         _sum: { total: true },
-        where: { paymentStatus: 'OWED', status: { not: 'CANCELLED' } }
+        where: { paymentStatus: 'OWED', status: { notIn: ['CANCELLED', 'PENDING'] } }
       }),
       this.prisma.cashRegisterSession.findMany({ where: { status: 'OPEN' }, select: { id: true, openingAmount: true } }),
       // Latest system audit movements

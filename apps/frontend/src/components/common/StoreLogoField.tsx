@@ -13,7 +13,7 @@ const MAX_W = 480;
 const MAX_H = 200;
 const MAX_CHARS = 280_000;
 
-function fileToLogo(file: File): Promise<string> {
+export function fileToLogo(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('No se pudo leer el archivo'));

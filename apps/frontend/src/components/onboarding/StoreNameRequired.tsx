@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Store } from 'lucide-react';
@@ -7,6 +7,8 @@ import { setStoreSetting, whenStoreSettingsReady, STORE_SETTINGS_EVENT } from '.
 import { IS_DEMO_BUILD } from '../../demo/flag';
 import { useTourStore } from '../common/tour/tourStore';
 import { hasFeature } from '../../stores/businessStore';
+import LogoPicker from './LogoPicker';
+import { readStoreLogo } from '../common/StoreLogoField';
 
 const hasName = () => (localStorage.getItem('gd_store_name') || '').trim().length >= 2;
 /** "Más tarde": no se vuelve a pedir hasta que se abra Ventra de nuevo */
@@ -29,6 +31,12 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
   const welcomeOpen = useTourStore((s) => s.paused);
   const [show, setShow] = useState(false);
   const [name, setName] = useState('');
+  /** Con el nombre guardado, si no hay logo se pide en el mismo cartel */
+  const [stage, setStage] = useState<'name' | 'logo'>('name');
+  const [logo, setLogo] = useState('');
+
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
 
   useEffect(() => {
     if (role !== 'ADMIN' || IS_DEMO_BUILD) { setShow(false); return; }
@@ -36,7 +44,8 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
     const check = () => {
       if (!alive) return;
       // La bienvenida (onboarding_done sin marcar) pregunta el nombre ella misma
-      setShow(!hasName() && !postponed() && localStorage.getItem('onboarding_done') === '1');
+      // Pidiendo el logo, el nombre ya está: no se cierra solo
+      setShow((was) => (was && stageRef.current === 'logo') || (!hasName() && !postponed() && localStorage.getItem('onboarding_done') === '1'));
     };
     whenStoreSettingsReady().then(check);
     // El nombre puede llegar de otra caja, o la bienvenida puede terminar sin él
@@ -55,14 +64,35 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
   const save = () => {
     if (!valid) return;
     setStoreSetting('store_name', name.trim().slice(0, 60));
-    setShow(false);
     toast.success('Nombre del comercio guardado');
+    if (readStoreLogo()) setShow(false); else setStage('logo');
   };
+  const saveLogo = () => {
+    if (!logo) return;
+    setStoreSetting('store_logo', logo);
+    setShow(false);
+    toast.success('Logo guardado: va a salir en las impresiones');
+  };
+  const logoLater = () => setShow(false);
 
   return (
     <div className="fixed inset-0 z-[95] bg-slate-900/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
       <div role="dialog" aria-modal="true" aria-labelledby="store-name-title"
         className={`w-full sm:max-w-md bg-white shadow-2xl p-6 ${mobile ? 'rounded-t-3xl pb-[calc(env(safe-area-inset-bottom)+24px)]' : 'rounded-3xl'}`}>
+        {stage === 'logo' ? (<>
+          <h2 id="store-name-title" className="text-[21px] font-bold text-slate-900 tracking-tight leading-tight">¿Tu comercio tiene logo?</h2>
+          <p className="mt-1.5 text-[14px] text-slate-500 leading-snug">
+            Sale arriba de las notas de venta, los remitos y las facturas. Lo podés subir después en Configuración.
+          </p>
+          <div className="mt-5"><LogoPicker name={name} logo={logo} onChange={setLogo} /></div>
+          <button disabled={!logo} onClick={saveLogo}
+            className="mt-5 w-full py-3.5 rounded-2xl bg-rose-600 text-white text-[15px] font-bold disabled:opacity-40 active:scale-[0.99] transition-transform">
+            Guardar logo
+          </button>
+          <button onClick={logoLater} className="mt-2 w-full py-2.5 rounded-2xl text-[13.5px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+            Más tarde
+          </button>
+        </>) : (<>
         <div className="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
           <Store className="w-5 h-5" />
         </div>
@@ -81,6 +111,7 @@ export default function StoreNameRequired({ mobile }: { mobile: boolean }) {
         <button onClick={later} className="mt-2 w-full py-2.5 rounded-2xl text-[13.5px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50">
           Más tarde
         </button>
+        </>)}
       </div>
     </div>
   );

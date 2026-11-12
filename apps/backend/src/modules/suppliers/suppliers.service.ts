@@ -26,7 +26,7 @@ export class SuppliersService {
    */
   async debts(): Promise<Map<string, { debt: number; overdue: number; dueSoon: number; nextDueAt: string | null }>> {
     const [purchases, payments, extras] = await Promise.all([
-      (this.prisma as any).purchase.findMany({ where: { paymentStatus: 'OWED', status: { not: 'CANCELLED' } }, select: { supplierId: true, total: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
+      (this.prisma as any).purchase.findMany({ where: { paymentStatus: 'OWED', status: { notIn: ['CANCELLED', 'PENDING'] } }, select: { supplierId: true, total: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
       (this.prisma as any).supplierPayment.groupBy({ by: ['supplierId'], _sum: { amount: true } }),
       this.extras(),
     ]);

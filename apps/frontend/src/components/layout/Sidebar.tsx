@@ -149,9 +149,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
       ? { path: '/agenda', label: 'Mi agenda', icon: CalendarDays, subtitle: 'Turnos online' }
       : { path: '/tienda', label: 'Mi tienda', icon: Globe, subtitle: 'Tienda online' };
 
+  // Secciones con título (2026-11-12): el orden de siempre, sin mover nada, solo agrupado para leerlo mejor
   const menuGroups = [
     {
-      title: 'General',
+      title: 'Gestión',
       items: [
         ...(distrib ? [{ label: 'Hoy', icon: Sun, path: '/hoy' }] : []),
         {
@@ -183,11 +184,21 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
         { label: 'Clientes', icon: Users, path: '/clients' },
         { label: 'Proveedores', icon: Truck, path: '/suppliers' },
         { label: 'Gastos', icon: Receipt, path: '/gastos' },
+      ]
+    },
+    {
+      title: 'Ventas',
+      items: [
         { label: 'Historial de Ventas', icon: History, path: '/historial' },
         // Solo si el comercio permite que los empleados consuman (Configuración)
         ...(user?.role === 'ADMIN' && localStorage.getItem('employee_consumption') === '1' ? [{ label: 'Consumo propio', icon: Coffee, path: '/employee-consumption' }] : []),
         // Control de anulaciones: solo el dueño, también con el candado (los cajeros no saben que existe)
         ...(isOwner ? [{ label: 'Control de anulaciones', icon: ShieldAlert, path: '/anulaciones' }] : []),
+      ]
+    },
+    {
+      title: 'Pedidos y turnos',
+      items: [
         ...((ordersVisible || !planFeatures.caja) && user?.role === 'ADMIN' ? [{ label: 'Pedidos online', icon: ShoppingCart, path: '/pedidos', badge: newOrders }] : []),
         ...(user?.role === 'ADMIN' && !agendaOnly ? [{ label: consultorio ? 'Agenda' : 'Agenda de turnos', icon: CalendarDays, path: '/agenda' }] : []),
         // Sin caja (o en un consultorio), los turnos se cobran en la agenda: clientes y cobros propios
@@ -195,10 +206,20 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           { label: agendaOnly ? 'Clientes' : 'Clientes de la agenda', icon: Users, path: '/agenda/clientes' },
           { label: agendaOnly || consultorio ? 'Cobros' : 'Cobros de turnos', icon: Banknote, path: '/agenda/cobros' },
         ] : []),
+      ]
+    },
+    {
+      title: 'Análisis',
+      items: [
         { label: 'Reportes', icon: BarChart3, path: '/reports' },
         ...(isOwner ? [{ label: 'División de ganancias', icon: Users2, path: '/earnings-division' }] : []),
         // Preguntarle a Ventra por WhatsApp: abre el panel de la IA en esa parte (no es una pantalla)
         ...(isManager ? [{ label: 'Preguntale por WhatsApp', icon: MessageCircle, path: '#whatsapp', action: () => openAskBusiness({ whatsapp: true }), isNew: true }] : []),
+      ]
+    },
+    {
+      title: 'Más herramientas',
+      items: [
         { label: 'Facturación', icon: Calculator, path: '/fiscal', soon: COMING_SOON.arcaInvoicing },
         { 
           label: 'Tienda Online', 
@@ -211,16 +232,27 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
           ]
         },
         // GO Delivery: con la cuenta vinculada (se vincula desde Configuración → Integraciones)
-        ...(isOwner && goLinked ? [{ label: 'GO Delivery', icon: GoIcon, path: '/go' }] : []),
+        // Siempre para el dueño: si la cuenta no está vinculada, la pantalla de GO ofrece vincularla
+        ...(isOwner ? [{ label: 'GO Delivery', icon: GoIcon, path: '/go', badgeText: goLinked ? undefined : 'Vincular' }] : []),
         ...(hasFeature('quotes') ? [
           { label: 'Presupuestos', icon: FileText, path: '/quotes' }
         ] : []),
         ...(hasFeature('workorders') ? [{ label: 'Encargos', icon: Printer, path: '/encargos' }] : []),
+      ]
+    },
+    {
+      title: 'Distribuidora',
+      items: [
         ...(hasFeature('preorders') ? [
           { label: 'Preventa', icon: ClipboardList, path: '/preventa' },
           { label: 'Reparto', icon: Truck, path: '/reparto' },
           ...(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR' ? [{ label: 'Informes de reparto', icon: BarChart3, path: '/informes' }] : [])
         ] : []),
+      ]
+    },
+    {
+      title: 'Conexión',
+      items: [
         ...(user?.role === 'ADMIN' && !agendaOnly ? [
           { label: 'Acceso Remoto', icon: Smartphone, path: '/remote-access' }
         ] : [])
@@ -309,6 +341,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
                       <div className="flex-1 flex items-center justify-between overflow-hidden">
                         <span className={`text-[13px] truncate ${itemActive ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
                         {(item as any).soon && <ComingSoonBadge className="ml-auto" />}
+                        {(item as any).badgeText && <span className="ml-auto px-1.5 h-[18px] rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center">{(item as any).badgeText}</span>}
                         {(item as any).isNew && <span className="ml-auto px-1.5 h-[18px] rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold flex items-center">Nuevo</span>}
                         {!!(item as any).badge && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-600 text-white text-[10.5px] font-bold flex items-center justify-center">{(item as any).badge}</span>}
                         {item.collapsible && (
