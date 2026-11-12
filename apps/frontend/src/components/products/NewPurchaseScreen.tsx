@@ -2253,6 +2253,16 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                  <>
                    {item.doubtful && item.reasons?.length && !(item.isNew && item.reasons.length === 1 && item.reasons[0] === 'producto nuevo') ? <p className="text-[11.5px] text-amber-700 mt-0.5">Mirar: {item.reasons.join(', ')}</p> : null}
                    {item.isNew && item.candidates?.length ? <CandidateChips candidates={item.candidates} onPick={(id) => associateNewRow(item, id)} /> : null}
+                   {item.isNew && !item.barcode && (item as any).scanned?.barcodeSuggestions?.length ? (
+                     <div className="mt-1 flex flex-wrap items-center gap-1">
+                       <span className="text-[11.5px] text-slate-500">¿Código de barras?</span>
+                       {(item as any).scanned.barcodeSuggestions.map((sg: any) => (
+                         <button key={sg.barcode} type="button" title={`Lo cargaron así otros comercios: ${sg.barcode}`}
+                           onClick={() => setItems((prev) => prev.map((it) => rowId(it) === rowId(item) ? { ...it, barcode: sg.barcode, newProductData: it.newProductData ? { ...it.newProductData, barcode: sg.barcode } : it.newProductData } : it))}
+                           className="h-6 px-2 rounded-full border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 cursor-pointer">{sg.name} · {sg.barcode}</button>
+                       ))}
+                     </div>
+                   ) : null}
                    {!item.isNew && costInsights[item.productId] && <CostInsight info={costInsights[item.productId]} />}
                  </>
                )}

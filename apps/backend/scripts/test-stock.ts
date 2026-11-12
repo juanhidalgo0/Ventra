@@ -302,6 +302,21 @@ async function main() {
     assert.ok(!(await boleta(6, 6) as any).offerAuto);
   });
 
+  await t('caja: un código no registrado se asocia a un producto recién comprado sin código', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ProductsController } = require('../src/modules/products/products.controller');
+    const ctrl = new ProductsController(null, { findByBarcode: (c: string) => prisma.product.findFirst({ where: { barcode: c } }) }, null, null, null, null, null, prisma);
+    const sinCodigo = await nuevo('PAN DE CAMPO SIN CODIGO', 0);
+    const conCodigo = await nuevo('GALLETITA CON CODIGO', 0, { barcode: '7790001234561' });
+    await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: sinCodigo.id, quantity: 3, cost: 100 }, { productId: conCodigo.id, quantity: 3, cost: 100 }] });
+    const list = await ctrl.recentWithoutBarcode();
+    assert.ok(list.some((p: any) => p.id === sinCodigo.id), 'aparece el que no tiene código');
+    assert.ok(!list.some((p: any) => p.id === conCodigo.id), 'el que ya tiene, no');
+    const linked = await ctrl.assignBarcode(sinCodigo.id, { barcode: '7790009876543' });
+    assert.strictEqual(linked.id, sinCodigo.id);
+    await assert.rejects(() => ctrl.assignBarcode(sinCodigo.id, { barcode: '7790001234561' }), /ya es de/);
+  });
+
   await t('deshacer boleta: un precio que cambiaron después no se pisa', async () => {
     const p = await nuevo('ACEITE', 0, { costPrice: 500, salePrice: 1000 });
     const c = await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: p.id, quantity: 5, cost: 600 }] });

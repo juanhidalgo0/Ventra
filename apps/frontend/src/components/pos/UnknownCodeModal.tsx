@@ -60,6 +60,27 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
   const [qty, setQty] = useState('1');
   const [saving, setSaving] = useState(false);
   const priceRef = useRef<HTMLInputElement>(null);
+  // Boletas sin código de barras (tanda 7.2): ¿es alguno de los recién comprados que no tienen código?
+  const [recent, setRecent] = useState<{ id: string; name: string; salePrice: number }[]>([]);
+  const [linking, setLinking] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canCreate) return;
+    let alive = true;
+    api.get('/products/recent-without-barcode', { silent: true } as any).then(({ data }) => { if (alive) setRecent(Array.isArray(data) ? data : []); }).catch(() => {});
+    return () => { alive = false; };
+  }, [canCreate]);
+  const linkTo = async (id: string) => {
+    setLinking(id);
+    try {
+      const { data } = await api.post(`/products/${id}/assign-barcode`, { barcode: code });
+      toast.success(`Listo: ${data?.name || 'el producto'} ya tiene este código`);
+      onCreated(data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo guardar el código');
+    } finally {
+      setLinking(null);
+    }
+  };
   const nameRef = useRef<HTMLInputElement>(null);
 
   // Nombre y foto según los supermercados (si es un código de producto conocido)
@@ -178,6 +199,20 @@ export default function UnknownCodeModal({ code, canCreate, reviewNote, categori
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {mode === 'create' && recent.length > 0 && (
+          <div className="mb-3">
+            <span className={label}>¿Es alguno de estos recién comprados sin código?</span>
+            <div className="flex flex-wrap gap-1.5">
+              {recent.slice(0, 8).map((r) => (
+                <button key={r.id} type="button" disabled={!!linking} onClick={() => linkTo(r.id)}
+                  className="h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 disabled:opacity-50">
+                  {linking === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-3 items-start">
           {mode === 'create' && imageUrl && (

@@ -8,6 +8,7 @@ import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
 import { PriceEditorService } from './price-editor.service';
 import { ProductMergeService } from './product-merge.service';
+import { PrismaService } from '../../database/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import * as path from 'path';
@@ -28,6 +29,7 @@ export class ProductsController {
     private hardwareImages: HardwareImageService,
     private priceEditor: PriceEditorService,
     private merger: ProductMergeService,
+    private prisma: PrismaService,
   ) {}
 
   @Get()
@@ -88,6 +90,39 @@ export class ProductsController {
   @Get('barcode/:barcode')
   findByBarcode(@Param('barcode') barcode: string) {
     return this.productsService.findByBarcode(barcode);
+  }
+
+  /**
+   * Boletas sin código de barras (tanda 7.2 de boletas): los productos que entraron en compras de las
+   * últimas 3 semanas y todavía no tienen código. La caja los ofrece al escanear un código no registrado.
+   */
+  @Get('recent-without-barcode')
+  @Roles(...MANAGERS)
+  async recentWithoutBarcode() {
+    const since = new Date(Date.now() - 21 * 864e5);
+    const items = await (this.prisma as any).purchaseItem.findMany({
+      where: { purchase: { status: 'COMPLETED', createdAt: { gte: since } }, product: { isActive: true, OR: [{ barcode: null }, { barcode: '' }] } },
+      select: { productId: true, product: { select: { id: true, name: true, salePrice: true, stock: true } }, purchase: { select: { createdAt: true } } },
+      orderBy: { purchase: { createdAt: 'desc' } }, take: 200,
+    });
+    const seen = new Set<string>();
+    return items.filter((i: any) => i.product && !seen.has(i.productId) && seen.add(i.productId)).slice(0, 12)
+      .map((i: any) => ({ ...i.product, boughtAt: i.purchase.createdAt }));
+  }
+
+  /** "Es este": el código escaneado queda como código de barras de ese producto (si nadie más lo usa) */
+  @Post(':id/assign-barcode')
+  @Roles(...MANAGERS)
+  async assignBarcode(@Param('id') id: string, @Body() body: { barcode: string }) {
+    const code = String(body?.barcode || '').trim();
+    if (!/^[0-9A-Za-z-]{4,40}$/.test(code)) throw new BadRequestException('Ese código no es válido');
+    const taken = await this.prisma.product.findFirst({ where: { OR: [{ barcode: code }, { additionalBarcodes: { some: { barcode: code } } }] }, select: { id: true, name: true } });
+    if (taken && taken.id !== id) throw new BadRequestException(`Ese código ya es de ${taken.name}`);
+    const p = await this.prisma.product.findUnique({ where: { id }, select: { barcode: true } });
+    if (!p) throw new BadRequestException('No encontré ese producto');
+    if (p.barcode && p.barcode !== code) throw new BadRequestException('Ese producto ya tiene otro código de barras');
+    await this.prisma.product.update({ where: { id }, data: { barcode: code } });
+    return this.productsService.findByBarcode(code);
   }
 
   /** Liviano (sin fotos): qué productos están en o por debajo del stock mínimo. Lo usa la app del celular. */

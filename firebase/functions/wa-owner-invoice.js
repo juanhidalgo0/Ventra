@@ -40,16 +40,20 @@ const pending = (inv) => inv.items.map((it, k) => (it.decision ? null : k)).filt
  */
 async function start(deps, paths) {
   const { db, api, bucket, uid, from, send, now = Date.now() } = deps;
-  const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
+  // Fotos (rutas en Storage) o archivos de la factura ({ path, mime, name }: PDF o Excel, se leen sin IA)
+  const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean).map((p) => (typeof p === "string" ? { path: p, mime: "image/jpeg", name: "" } : p));
+  const isDoc = list.some((f) => !/^image\//.test(f.mime));
   if (list.length > MAX_PHOTOS) await send(from, `Leo hasta ${MAX_PHOTOS} fotos por vez: tomo las primeras ${MAX_PHOTOS}. Las demás mandámelas después.`);
   const use = list.slice(0, MAX_PHOTOS);
-  await send(from, use.length > 1
-    ? `🧾 Leyendo ${use.length} fotos… cada una por separado, tarda un poco más (hasta un par de minutos).`
-    : "🧾 Leyendo la boleta… tarda unos segundos (hasta un minuto si es larga).");
+  await send(from, isDoc
+    ? "🧾 Leyendo la factura del archivo… tarda unos segundos."
+    : use.length > 1
+      ? `🧾 Leyendo ${use.length} fotos… cada una por separado, tarda un poco más (hasta un par de minutos).`
+      : "🧾 Leyendo la boleta… tarda unos segundos (hasta un minuto si es larga).");
   let r;
   try {
-    const bufs = await Promise.all(use.map((p) => bucket.file(p).download().then(([b]) => b)));
-    [r] = await api.call(uid, [{ method: "POST", path: "/api/purchases/scan-invoice-json", body: { images: bufs.map((b, i) => ({ data: b.toString("base64"), mime: "image/jpeg", name: `boleta-${i + 1}.jpg` })) } }]);
+    const bufs = await Promise.all(use.map((f) => bucket.file(f.path).download().then(([b]) => b)));
+    [r] = await api.call(uid, [{ method: "POST", path: "/api/purchases/scan-invoice-json", body: { images: bufs.map((b, i) => ({ data: b.toString("base64"), mime: use[i].mime, name: use[i].name || `boleta-${i + 1}.jpg` })) } }]);
   } catch (err) {
     return send(from, err.preparing ? `${err.message} Cuando esté lista, mandame la foto de nuevo.` : `No pude leer la boleta: ${err.message}`);
   }

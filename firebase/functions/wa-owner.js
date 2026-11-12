@@ -333,6 +333,17 @@ async function onMessage(db, send, m, now = Date.now(), io = {}) {
     await enqueue({ uid: o.uid, type: "audio", mediaId: String(m.audio.id), mime: String(m.audio.mime_type || "") });
     return true;
   }
+  // PDF, Excel o CSV de la factura que manda el proveedor: se lee sin IA, como en la PC (tanda 7.3 de boletas)
+  if (m.type === "document" && m.document && m.document.id) {
+    const mime = String(m.document.mime_type || "").toLowerCase();
+    const name = String(m.document.filename || "factura").slice(0, 120);
+    if (/pdf|spreadsheet|excel|csv/.test(mime) || /\.(pdf|xlsx?|csv)$/i.test(name)) {
+      await enqueue({ uid: o.uid, type: "document", mediaId: String(m.document.id), mime, filename: name });
+      return true;
+    }
+    await send(from, "Ese archivo no lo puedo leer. Mandame la factura en PDF, Excel o una foto.");
+    return true;
+  }
   // Fotos: el logo del comercio o la foto de un producto para las imágenes de promos
   if (m.type === "image" && m.image && m.image.id) {
     await enqueue({ uid: o.uid, type: "image", mediaId: String(m.image.id), mime: String(m.image.mime_type || ""), caption: String(m.image.caption || "").slice(0, 500) });
@@ -532,6 +543,18 @@ async function processInbox(db, item, deps, now = Date.now()) {
       const pend = pendingOf(o, now);
       const answer = pend ? editAnswer(text) : null;
       if (answer) return pend.kind === "op" ? doOp(answer, pend.id, heardNote) : doEdit(answer, pend.id, heardNote);
+    }
+
+    // La factura del proveedor en PDF o Excel: va derecho a la carga de la boleta, sin IA (tanda 7.3)
+    if (item.type === "document") {
+      if (!deps.ventraApi) return send(from, "Por ahora no puedo cargar facturas por acá. Subila desde la PC, en Compras.");
+      const buf = deps.download ? await deps.download(item.mediaId).catch(() => null) : null;
+      if (!buf) return send(from, "No pude abrir el archivo. Probá mandarlo de nuevo.");
+      const ext = (String(item.filename || "").match(/\.(pdf|xlsx?|csv)$/i) || [])[1] || (/pdf/.test(item.mime) ? "pdf" : "xlsx");
+      const path = `wa_docs/${uid}/${now}.${ext.toLowerCase()}`;
+      await deps.bucket.file(path).save(buf, { contentType: item.mime || "application/octet-stream", resumable: false });
+      await stats.track(db, uid, ["do_invoice"], now);
+      return invoice.start({ db, api: deps.ventraApi, bucket: deps.bucket, uid, from, send, sendButtons: deps.sendButtons, sendList: deps.sendList, now }, [{ path, mime: item.mime || "application/pdf", name: item.filename || `factura.${ext}` }]);
     }
 
     // Foto: si estaba esperando el logo, es el logo; si no, queda como "la última foto"

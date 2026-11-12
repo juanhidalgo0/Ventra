@@ -158,6 +158,11 @@ export class ProductMatcherService {
     if (out.length) await this.shared!.confirmSupplierCodes(cuit, out);
   }
 
+  /** Códigos de barras sugeridos por nombre desde el catálogo compartido (tanda 7.1): uno por nombre, hasta 3 cada uno */
+  async barcodeSuggestions(names: string[]) {
+    return this.shared ? this.shared.searchNames(names) : names.map(() => []);
+  }
+
   /** useAi: buscar con la IA los que no se encontraron (si la PC está vinculada y no pasó el tope) */
   async match(rows: MatchRow[], opts: { supplierId?: string | null; useAi?: boolean; supplierCuit?: string | null } = {}) {
     const products = await this.catalog();

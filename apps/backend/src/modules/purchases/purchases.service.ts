@@ -1042,6 +1042,14 @@ export class PurchasesService {
       };
     });
 
+    // Productos nuevos sin código de barras: el catálogo compartido propone códigos por nombre (tanda 7.1).
+    // Siempre una sugerencia para elegir con un toque, nunca se pone solo.
+    const noCode = items.map((it, i) => (!it.product && !isBarcode(it.barcode) ? i : -1)).filter((i) => i >= 0).slice(0, 40);
+    if (noCode.length) {
+      const sugg = await this.matcher?.barcodeSuggestions(noCode.map((i) => items[i].name)).catch(() => [] as any[]) || [];
+      noCode.forEach((i, n) => { if (sugg[n]?.length) (items[i] as any).barcodeSuggestions = sugg[n]; });
+    }
+
     const base = {
       supplierName: parsedData.supplierName || '',
       matchedSupplier: supplier ? { id: supplier.id, name: supplier.name } : null,

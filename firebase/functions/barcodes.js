@@ -52,11 +52,57 @@ async function confirm(db, uid, rawItems) {
       const prev = votesBy[uid] || {};
       // El voto de este comercio se actualiza (si editó el nombre, cuenta el último); la foto se conserva si no mandó otra
       votesBy[uid] = { name: it.name || prev.name || null, imageUrl: it.imageUrl || prev.imageUrl || null, at: Date.now() };
-      tx.set(ref, { ...best(votesBy), votesBy, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      const b = best(votesBy);
+      // words: índice por palabras del nombre, para buscar por nombre (tanda 7.1 de boletas)
+      tx.set(ref, { ...b, words: indexKeys(b.name), votesBy, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     });
     saved++;
   }
   return { saved };
 }
 
-module.exports = { get, confirm, best };
+// ─── Buscar por nombre (plan-boletas-ia.md, tanda 7.1) ───
+// Un producto nuevo de una boleta que no trae código de barras: se busca su nombre en este catálogo
+// para proponer el código. Siempre es una sugerencia que el dueño confirma con un toque, nunca solo.
+const STOP = new Set(["de", "la", "el", "con", "sin", "por", "para", "los", "las", "del", "x", "un", "una"]);
+/** Palabras del nombre para el índice: sin acentos, de 3 letras o más, y los números (tamaños). Pura. */
+function nameWords(name) {
+  const w = norm(name).replace(/(\d),(\d)/g, "$1.$2").replace(/(\d)([a-z])/g, "$1 $2").replace(/[^a-z0-9. ]/g, " ").split(/\s+/)
+    .map((x) => x.replace(/^\.+|\.+$/g, "")).filter((x) => x && !STOP.has(x) && (x.length >= 3 || /^\d/.test(x)));
+  return [...new Set(w)].slice(0, 20);
+}
+/** Lo que se guarda en el índice: las palabras y el principio de cada una ("p:alfa"), así una boleta que dice "ALF." encuentra "alfajor". Pura. */
+function indexKeys(name) {
+  const w = nameWords(name);
+  return [...new Set([...w, ...w.filter((x) => !/^\d/.test(x)).map((x) => `p:${x.slice(0, 3)}`)])].slice(0, 40);
+}
+/** Qué tan parecido es un nombre a otro: palabras en común (abreviadas también) y los mismos números. Pura. */
+function similarity(a, b) {
+  const wa = nameWords(a), wb = nameWords(b);
+  if (!wa.length || !wb.length) return 0;
+  const nums = (ws) => ws.filter((x) => /^\d/.test(x)).sort().join(",");
+  const text = (ws) => ws.filter((x) => !/^\d/.test(x));
+  const ta = text(wa), tb = text(wb);
+  const hit = ta.filter((x) => tb.some((y) => y === x || (Math.min(x.length, y.length) >= 3 && (y.startsWith(x) || x.startsWith(y))))).length;
+  const base = hit / Math.max(ta.length, tb.length, 1);
+  return nums(wa) === nums(wb) ? base + 0.15 : nums(wa) && nums(wb) ? base - 0.5 : base;
+}
+/** names: los nombres de la boleta → por cada uno, hasta 3 { barcode, name, votes, score } */
+async function search(db, names) {
+  const list = (Array.isArray(names) ? names : []).map((n) => String(n || "").slice(0, 120)).slice(0, 40);
+  const results = [];
+  for (const name of list) {
+    // Las 2 palabras más largas (las que más distinguen) buscan candidatos en el índice
+    const keys = nameWords(name).filter((x) => !/^\d/.test(x)).sort((a, b) => b.length - a.length).slice(0, 2).map((x) => `p:${x.slice(0, 3)}`);
+    const found = new Map();
+    for (const k of keys) {
+      const snap = await db.collection("ventra_barcodes").where("words", "array-contains", k).limit(40).get().catch(() => ({ docs: [] }));
+      for (const d of snap.docs) found.set(d.id, d.data());
+    }
+    results.push([...found.entries()].map(([barcode, d]) => ({ barcode, name: d.name || "", votes: d.votes || 0, score: Math.round(similarity(name, d.name) * 100) / 100 }))
+      .filter((x) => x.score >= 0.6).sort((a, b) => b.score - a.score || b.votes - a.votes).slice(0, 3));
+  }
+  return { results };
+}
+
+module.exports = { get, confirm, best, search, nameWords, indexKeys, similarity };

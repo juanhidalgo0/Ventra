@@ -54,6 +54,23 @@ export class SharedCatalogService {
     }
   }
 
+  /**
+   * Productos nuevos de una boleta sin código de barras (tanda 7.1): por cada nombre, hasta 3 códigos del
+   * catálogo compartido con nombre parecido (y el mismo tamaño). Son sugerencias: el dueño elige con un toque.
+   */
+  async searchNames(names: string[]): Promise<{ barcode: string; name: string; votes: number; score: number }[][]> {
+    const list = names.map((n) => String(n || '').trim()).slice(0, 40);
+    if (!list.some(Boolean)) return list.map(() => []);
+    const creds = this.subscription?.getDeviceCredentials();
+    if (!creds) return list.map(() => []);
+    try {
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraBarcodes`, { ...creds, action: 'searchName', names: list }, { timeout: 5000 });
+      return Array.isArray(data?.results) ? data.results : list.map(() => []);
+    } catch {
+      return list.map(() => []);
+    }
+  }
+
   /** Lo que asoció el dueño al confirmar una compra: su voto en el mapa compartido. Nunca precios ni cantidades. */
   async confirmSupplierCodes(cuit: string, items: { code?: string; barcode?: string | null; name?: string; unitsPerPack?: number }[]): Promise<void> {
     const c = String(cuit || '').replace(/\D/g, '');

@@ -638,6 +638,31 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(nc.docType, "nota de credito");
   });
 
+  await t("producto nuevo sin código: el catálogo compartido sugiere por nombre (con el mismo tamaño)", async () => {
+    const barcodes = require("../functions/barcodes");
+    const db = colDb();
+    // colDb filtra con ==; el índice usa array-contains: se agrega para esta prueba
+    const docs = { "7790001000024": { name: "Alfajor triple chocolate 70 g", votes: 3 }, "7790001000031": { name: "Alfajor triple chocolate 50 g", votes: 2 }, "7790001000048": { name: "Galletitas de agua 300 g", votes: 1 } };
+    for (const d of Object.values(docs)) d.words = barcodes.indexKeys(d.name);
+    db.collection = () => ({ where: (f, op, v) => ({ limit: () => ({ get: async () => ({ docs: Object.entries(docs).filter(([, d]) => d.words.includes(v)).map(([id, d]) => ({ id, data: () => d })) }) }) }) });
+    const r = await barcodes.search(db, ["ALF. TRIPLE CHOC 70G", "YERBA SUAVE 1 KG"]);
+    assert.deepStrictEqual(r.results[0].map((x) => x.barcode), ["7790001000024"], "el de 50 g no: otro tamaño");
+    assert.deepStrictEqual(r.results[1], []);
+  });
+
+  await t("WhatsApp: el PDF de la factura va a la carga de la boleta, como archivo (sin IA)", async () => {
+    const invoice = require("../functions/wa-owner-invoice");
+    const sent = [], calls = [];
+    const db = colDb();
+    const bucket = { file: () => ({ download: async () => [Buffer.from("%PDF-1.4")] }) };
+    const api = { call: async (uid, reqs) => { calls.push(reqs[0]); return reqs[0].path.includes("duplicates") ? [{ status: 200, body: { groups: [] } }] : [{ status: 200, body: { supplierName: "PROV", items: [{ name: "SAL", quantity: 1, cost: 100, product: { id: "p1", name: "SAL", costPrice: 121, salePrice: 200 } }] } }]; } };
+    await invoice.start({ db, api, bucket, uid: "u1", from: "549", send: async (to, t) => sent.push(t), sendButtons: async () => {}, sendList: async () => {}, now: 1 }, [{ path: "wa_docs/u1/1.pdf", mime: "application/pdf", name: "factura.pdf" }]);
+    const img = calls[0].body.images[0];
+    assert.strictEqual(img.mime, "application/pdf");
+    assert.strictEqual(img.name, "factura.pdf");
+    assert.ok(sent[0].includes("archivo"));
+  });
+
   await t("impuestos internos: la IA los informa aparte y llegan al comprobante", async () => {
     assert.ok(ai.INVOICE_ONE_PROMPT.includes("impuestosInternos"));
     const g = ai.finishInvoices([{ image: 0, ...read({ invoiceNumber: "0001-00000001", totalFacturaAPagar: "1.331,00", ivaTotal: "210,00", otrosImpuestos: "121", impuestosInternos: "121", items: [it("CERVEZA", 1, "1.000,00")] }) }]);

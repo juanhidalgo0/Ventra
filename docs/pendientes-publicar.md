@@ -89,6 +89,18 @@ Para publicar: `ventraAi` (con la evaluación de boletas antes, por la regla) y 
 
 Para publicar: función **ventraNotify** (el aviso nuevo) y la caja (PC y web).
 
+## 0g. Boletas — tanda 7 (lista, sin publicar)
+
+| Qué | Dónde |
+|---|---|
+| Producto nuevo sin código de barras: el catálogo compartido sugiere códigos por nombre (mismo tamaño), con un toque; nunca solo | `firebase/functions/barcodes.js` (`search`, índice `words`), acción `searchName` de **ventraBarcodes**, `shared-catalog.service.ts`, `NewPurchaseScreen` |
+| Caja: al escanear un código no registrado, "¿Es alguno de estos recién comprados sin código?" dentro de la ventana de alta rápida (la pantalla de cobro no cambia) | `UnknownCodeModal.tsx`, `products.controller.ts` (`recent-without-barcode`, `assign-barcode`) |
+| Factura por WhatsApp en PDF, Excel o CSV: se lee sin IA, como en la PC | `wa-owner.js`, `wa-owner-invoice.js` |
+
+Para publicar: **ventraBarcodes**, **ventraWaOwner** + **ventraWaOwnerInbox**, y la caja. Después, con tu OK: `node scripts/backfill-barcode-words.js --aplicar` (completa el índice de los códigos viejos; escribe en producción; sin `--aplicar` solo cuenta).
+
+Pendiente tuyo (7.3): **averiguar con dos o tres comercios cómo les llega la factura hoy** (mail, WhatsApp, portal del proveedor). Por mail todavía no se recibe: hace falta una casilla de entrada (por ejemplo, reenviar a una dirección de Ventra); se arma cuando sepamos si vale la pena.
+
 ## 1. Publicar ya (todo está hecho y probado)
 
 | # | Qué | Cómo | Notas |

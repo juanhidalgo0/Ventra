@@ -2342,6 +2342,8 @@ exports.ventraBarcodes = onRequest({ maxInstances: 20, timeoutSeconds: 30, memor
     // Mapa compartido código del proveedor → código de barras (supplier-codes.js, tanda 3 de boletas)
     if (action === "supplierGet") return res.status(200).json(await require("./supplier-codes").get(db, uid, req.body.cuit, req.body.codes));
     if (action === "supplierConfirm") return res.status(200).json(await require("./supplier-codes").confirm(db, uid, req.body.cuit, req.body.items));
+    // Productos nuevos de una boleta sin código de barras: buscar el código por nombre (tanda 7.1, siempre sugerencia)
+    if (action === "searchName") return res.status(200).json(await barcodes.search(db, req.body.names));
     return res.status(400).json({ error: "Acción inválida" });
   } catch (err) {
     logger.error(`Ventra códigos (${uid}): error`, err);
