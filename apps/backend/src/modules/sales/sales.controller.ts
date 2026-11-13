@@ -72,9 +72,10 @@ export class SalesController {
   getDashboardData(
     @Query('period') period?: 'day' | 'week' | 'month',
     @Query('from') from?: string,
-    @Query('to') to?: string
+    @Query('to') to?: string,
+    @Query('top') top?: string
   ) {
-    return this.salesService.getDashboardData(period, from, to);
+    return this.salesService.getDashboardData(period, from, to, Number(top) || undefined);
   }
 
   @Get('godelivery/metrics')

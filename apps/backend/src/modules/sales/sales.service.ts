@@ -1109,7 +1109,9 @@ export class SalesService {
     };
   }
 
-  async getDashboardData(period: 'day' | 'week' | 'month' = 'day', from?: string, to?: string) {
+  async getDashboardData(period: 'day' | 'week' | 'month' = 'day', from?: string, to?: string, top?: number) {
+    // Cuántos más vendidos (la tienda online pide más para armar "Lo más pedido" sin bebidas)
+    const topLimit = Math.min(50, Math.max(1, Math.floor(top || 10)));
     const conditions = [`s.status = 'COMPLETED'`];
     const params: Date[] = [];
     if (from || to) {
@@ -1141,7 +1143,7 @@ export class SalesService {
         SELECT si.product_id AS id, MAX(si.product_name) AS name, SUM(si.quantity) AS quantity,
                SUM(si.total) AS revenue, COALESCE(MAX(p.stock), 0) AS stock
         FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
-        WHERE ${where} GROUP BY si.product_id ORDER BY quantity DESC LIMIT 10`, ...params),
+        WHERE ${where} GROUP BY si.product_id ORDER BY quantity DESC LIMIT ${topLimit}`, ...params),
       this.prisma.$queryRawUnsafe<any[]>(`
         SELECT c.id AS id, c.name AS name, c.dni AS dni, c.phone AS phone,
                COUNT(*) AS salesCount, SUM(s.total) AS totalSpent

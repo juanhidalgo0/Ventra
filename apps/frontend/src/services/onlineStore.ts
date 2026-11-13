@@ -281,6 +281,8 @@ export interface OnlineProduct {
   pack?: { size: number; price: number };
   /** Oferta por cantidad: desde minQty unidades, cada una a price */
   wholesale?: { price: number; minQty: number };
+  /** Puesto en ventas de los últimos 90 días (1 = el más vendido); la tienda arma "Lo más pedido" */
+  rank?: number;
 }
 
 /** Venta a comercios (distribuidora): la tienda muestra bultos y los pedidos van al reparto */
@@ -455,7 +457,22 @@ export async function publishProductImages(
 
 // Sube (o reemplaza) el catálogo completo visible en la tienda online. Se usa
 // batch writes para mantenerlo rápido incluso con cientos de productos.
+/** Los más vendidos de los últimos 90 días (id → puesto). Si no se pueden leer, la tienda no muestra "Lo más pedido". */
+async function bestSellerRanks(): Promise<Map<string, number>> {
+  try {
+    const { default: api } = await import('./api');
+    const from = new Date(Date.now() - 90 * 86400000).toISOString();
+    const { data } = await api.get('/sales/dashboard', { params: { from, top: 30 } });
+    const top: { id: string }[] = data?.topProducts || [];
+    return new Map(top.filter((t) => t?.id).map((t, i) => [String(t.id), i + 1]));
+  } catch {
+    return new Map();
+  }
+}
+
 export async function syncCatalogToStore(storeId: string, products: OnlineProduct[]): Promise<void> {
+  const ranks = await bestSellerRanks();
+  products = products.map(({ rank: _old, ...p }) => (ranks.has(p.productId) ? { ...p, rank: ranks.get(p.productId) } : p));
   await claimStore(storeId);
   const db = getDb();
   const productsRef = collection(db, 'ventra_stores', storeId, 'products');
