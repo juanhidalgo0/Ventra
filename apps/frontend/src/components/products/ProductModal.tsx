@@ -27,6 +27,7 @@ import {
   Camera,
   Image as ImageIcon
 } from 'lucide-react';
+import OrganizeSuggestion from './OrganizeSuggestion';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
@@ -923,6 +924,19 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 placeholder="Ej: COCA COLA ZERO 2.25L"
                 className={inputCls + ' h-10 text-[15px]'}
               />
+              {!product?.id && (
+                <OrganizeSuggestion
+                  name={formData.name}
+                  categoryId={formData.categoryId}
+                  brandId={formData.brandId}
+                  categories={categories}
+                  brands={brands}
+                  onCategory={(id) => setFormData((prev) => ({ ...prev, categoryId: id }))}
+                  onBrand={(id) => setFormData((prev) => ({ ...prev, brandId: id }))}
+                  reloadCategories={loadCategories}
+                  reloadBrands={loadBrands}
+                />
+              )}
             </div>
 
             <div>

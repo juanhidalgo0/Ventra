@@ -678,6 +678,70 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(g.result.documents[0].impuestosInternos, "121");
   });
 
+  // ─── Organizar automáticamente (ai-organize.js) ───
+  await t("organizar, árbol: reusa lo que hay, limpia duplicados y cuenta 1", async () => {
+    const client = fakeClient({ categorias: [
+      { nombre: "Bebidas", subcategorias: ["Gaseosas", "Aguas", "Gaseosas", "Bebidas"] },
+      { nombre: "Golosinas", subcategorias: [] },
+      { nombre: "gaseosas", subcategorias: [] },
+      { nombre: "", subcategorias: ["x"] },
+    ] });
+    const db = fakeDb();
+    const out = await ai.handle({ db, logger, client }, "u30", { kind: "organize", step: "plan", rubro: "Kiosco / Almacén",
+      names: ["COCA 2.25", "ALF JORGITO"], categories: [{ name: "Gaseosa", count: 3 }, { name: "Aguas", parent: "Bebidas" }] });
+    assert.deepStrictEqual(out.result.tree, [{ name: "Bebidas", subs: ["Gaseosas", "Aguas"] }, { name: "Golosinas", subs: [] }]);
+    const sent = client.calls[0].messages[0].content;
+    assert.ok(sent.includes("Gaseosa (3 productos)") && sent.includes("Bebidas › Aguas") && sent.includes("Kiosco / Almacén"));
+    assert.strictEqual(Object.values(db.docs).find((d) => d.month).organize, 1);
+  });
+
+  await t("organizar, productos: de a 50 en paralelo, el contexto cacheado, cuenta por producto", async () => {
+    const items = Array.from({ length: 70 }, (_, i) => ({ name: `PROD ${i}`, category: i === 0 ? "Varios" : "" }));
+    const calls = [];
+    const client = { messages: { stream: (req) => {
+      calls.push(req);
+      const n = (req.messages[0].content[1].text.match(/\n\d+\./g) || []).length;
+      const answer = { items: Array.from({ length: n }, (_, j) => ({ i: j, categoria: "Bebidas", subcategoria: j === 1 ? "Bebidas" : "Gaseosas", marca: j % 2 ? "Coca-Cola" : "", segura: j !== 2 })) };
+      return { finalMessage: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(answer) }], usage: { input_tokens: 1000, output_tokens: 200 } }) };
+    } } };
+    const db = fakeDb();
+    const out = await ai.handle({ db, logger, client }, "u31", { kind: "organize", step: "items", rubro: "Kiosco", items,
+      tree: [{ name: "Bebidas", subs: ["Gaseosas"] }], brands: ["Coca-Cola", "Arcor"] });
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(out.result.items.length, 70);
+    assert.deepStrictEqual(out.result.items[0], { i: 0, category: "Bebidas", subcategory: "Gaseosas", brand: "", sure: true });
+    // La subcategoría igual a la categoría se descarta
+    assert.strictEqual(out.result.items[1].subcategory, "");
+    assert.strictEqual(out.result.items[2].sure, false);
+    assert.strictEqual(out.result.items[50].i, 50);
+    const ctx = calls[0].messages[0].content[0];
+    assert.ok(ctx.cache_control && ctx.text.includes("- Bebidas: Gaseosas") && ctx.text.includes("Coca-Cola, Arcor"));
+    assert.ok(calls[0].messages[0].content[1].text.includes("0. PROD 0 (hoy en: Varios)"));
+    assert.strictEqual(calls[0].model, ai.MODEL);
+    assert.strictEqual(Object.values(db.docs).find((d) => d.month).organize, 70);
+  });
+
+  await t("organizar: lo que la IA no devolvió queda sin sugerencia", async () => {
+    const client = fakeClient({ items: [{ i: 1, categoria: "Limpieza", subcategoria: "", marca: "Ayudín", segura: true }, { i: 7, categoria: "X", subcategoria: "", marca: "", segura: true }] });
+    const out = await ai.handle({ db: fakeDb(), logger, client }, "u32", { kind: "organize", step: "items", items: [{ name: "COSA" }, { name: "LAV AYUDIN 1L" }], tree: [] });
+    assert.deepStrictEqual(out.result.items, [
+      { i: 0, category: "", subcategory: "", brand: "", sure: false },
+      { i: 1, category: "Limpieza", subcategory: "", brand: "Ayudín", sure: true },
+    ]);
+  });
+
+  await t("organizar: tope diario corta antes de llamar a la IA; vacío no cuenta", async () => {
+    const db = fakeDb();
+    await assert.rejects(() => ai.handle({ db, logger, client: fakeClient({}) }, "u33", { kind: "organize", step: "items", items: [] }), /No hay productos/);
+    await assert.rejects(() => ai.handle({ db, logger, client: fakeClient({}) }, "u33", { kind: "organize", step: "otro", items: [{ name: "x" }] }), /Pedido inválido/);
+    assert.deepStrictEqual(Object.keys(db.docs), []);
+    const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+    db.docs[`${day}_u33`] = { organize: ai.DAILY.organize - 10 };
+    const client = fakeClient({ items: [] });
+    await assert.rejects(() => ai.handle({ db, logger, client }, "u33", { kind: "organize", step: "items", items: Array.from({ length: 20 }, (_, i) => ({ name: `P${i}` })) }), /productos organizados con IA de hoy/);
+    assert.strictEqual(client.calls.length, 0);
+  });
+
   console.log(`\n${ok} bien, ${bad} con falla`);
   process.exit(bad ? 1 : 0);
 })();

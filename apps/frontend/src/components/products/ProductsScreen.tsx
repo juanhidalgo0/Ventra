@@ -30,12 +30,14 @@ import {
   Percent,
   Barcode,
   ArrowUpCircle,
-  ChevronDown
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
 import PriceEditorModal from './PriceEditorModal';
 import PriceListModal from './PriceListModal';
+import OrganizeModal from './OrganizeModal';
 import PriceChangesLabelsModal from './PriceChangesLabelsModal';
 import GaveteroLabelModal from './GaveteroLabelModal';
 import ShelfLabelModal from './ShelfLabelModal';
@@ -58,6 +60,7 @@ export default function ProductsScreen() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [showOrganize, setShowOrganize] = useState(false);
   const [showPriceList, setShowPriceList] = useState(false);
   const [showPriceChangeLabels, setShowPriceChangeLabels] = useState(false);
   const [showVentraImport, setShowVentraImport] = useState(false);
@@ -1000,6 +1003,12 @@ export default function ProductsScreen() {
                 icon={<Upload className="w-3.5 h-3.5 text-slate-700" />}
                 items={[
                   {
+                    label: 'Organizar automáticamente',
+                    description: 'La IA ordena categorías, subcategorías y marcas; revisás antes de guardar',
+                    icon: <Sparkles className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowOrganize(true),
+                  },
+                  {
                     label: 'Importar productos',
                     description: 'Formato Ventra (.xlsx) o base de modpresup (.mdb)',
                     icon: <Upload className="w-3.5 h-3.5 text-slate-600" />,
@@ -1742,6 +1751,8 @@ export default function ProductsScreen() {
           onPrintLabels={() => setShowPriceChangeLabels(true)}
         />
       )}
+
+      {showOrganize && <OrganizeModal onClose={() => setShowOrganize(false)} onSaved={() => loadProducts(true)} />}
 
       {showPriceList && (
         <PriceListModal onClose={() => setShowPriceList(false)} onSuccess={() => loadProducts(true)} onPrintLabels={() => setShowPriceChangeLabels(true)} />

@@ -36,7 +36,7 @@ export class AiService {
     return out;
   }
 
-  async call(kind: 'order' | 'invoice' | 'pricelist' | 'match' | 'ask' | 'agent' | 'help' | 'gocats' | 'lesson', body: Record<string, unknown>, opts: { timeoutMs?: number } = {}): Promise<{ result: any; left: number; leftToday?: number; limits?: { daily: number; monthly: number } }> {
+  async call(kind: 'order' | 'invoice' | 'pricelist' | 'match' | 'ask' | 'agent' | 'help' | 'gocats' | 'lesson' | 'organize', body: Record<string, unknown>, opts: { timeoutMs?: number } = {}): Promise<{ result: any; left: number; leftToday?: number; limits?: { daily: number; monthly: number } }> {
     const creds = this.subscription.getDeviceCredentials();
     if (!creds) throw new BadRequestException('La IA necesita esta PC vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
     try {

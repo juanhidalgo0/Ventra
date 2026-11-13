@@ -19,6 +19,7 @@
     "test:anulaciones": "npx tsx scripts/test-void-score.ts",
     "test:precios": "npx tsx scripts/test-price-editor.ts",
     "test:repetidos": "npx tsx scripts/test-merge.ts",
+    "test:organizar": "npx tsx scripts/test-organize.ts",
     "test:http": "node scripts/test-http.cjs"
   },
   "dependencies": {

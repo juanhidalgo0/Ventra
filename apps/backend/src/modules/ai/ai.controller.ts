@@ -1,17 +1,55 @@
-import { Body, Controller, Get, Post, Request, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Request, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { AiService } from './ai.service';
 import { InsightsService } from './insights.service';
 import { PriceListService } from './price-list.service';
+import { OrganizeService } from './organize.service';
 
 const MANAGERS = ['ADMIN', 'SUPERVISOR'];
 
 @Controller('ai')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AiController {
-  constructor(private ai: AiService, private insights: InsightsService, private priceList: PriceListService) {}
+  constructor(private ai: AiService, private insights: InsightsService, private priceList: PriceListService, private organize: OrganizeService) {}
+
+  // ─── Organizar automáticamente (categorías, subcategorías y marcas con IA) ───
+  @Get('organize/status')
+  @Roles(...MANAGERS)
+  organizeStatus() {
+    return this.organize.status();
+  }
+
+  @Post('organize/plan')
+  @Roles(...MANAGERS)
+  organizePlan(@Body() body: any) {
+    return this.organize.plan(body || {});
+  }
+
+  @Post('organize/batch')
+  @Roles(...MANAGERS)
+  organizeBatch(@Body() body: any) {
+    return this.organize.batch(body || {});
+  }
+
+  @Post('organize/apply')
+  @Roles(...MANAGERS)
+  organizeApply(@Body() body: any, @Request() req) {
+    return this.organize.apply(body || {}, req.user?.sub);
+  }
+
+  @Post('organize/undo/:batchId')
+  @Roles(...MANAGERS)
+  organizeUndo(@Param('batchId') batchId: string) {
+    return this.organize.undo(batchId);
+  }
+
+  /** Al crear un producto: categoría y marca sugeridas (chips que se tocan para aplicar) */
+  @Get('organize/suggest')
+  organizeSuggest(@Query('name') name: string, @Query('rubro') rubro?: string) {
+    return this.organize.suggest(name, rubro);
+  }
 
   /** Pedido de WhatsApp → renglones del catálogo (multipart: text + files) */
   @Post('order')

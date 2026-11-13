@@ -22,14 +22,15 @@ const admin = require("firebase-admin");
 
 const lessonsMod = require("./supplier-lessons");
 const samples = require("./invoice-samples");
+const organizeMod = require("./ai-organize");
 const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); return new (SDK.default || SDK)(opts); };
 
 const MODEL = "claude-haiku-5-5";
 // pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
 // (de una lista o de una boleta); ask: 2 usos por pregunta
-const LIMITS = { lesson: 400, order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200 };
+const LIMITS = { lesson: 400, order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200, organize: 20000 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { lesson: 60, order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60 };
+const DAILY = { lesson: 60, order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60, organize: 6000 };
 // Fotos de boletas leídas de a una (stage "page"): las facturas se cuentan al juntarlas, esto es un techo
 const PAGE_LIMITS = { month: 600, day: 150 };
 // Dólares por millón de tokens (entrada / salida); cache: escritura 1,25x, lectura 0,1x de la entrada
@@ -1163,6 +1164,8 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   const usedToday = Number(daySnap.exists && daySnap.data()[kind]) || 0;
   // Se cuenta por pregunta: el segundo paso de la versión vieja (redactar) no suma
   let need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
+  // Organizar: cada producto cuenta 1 (el árbol de categorías, 1)
+  if (kind === "organize") need = Math.max(1, organizeMod.organizeCount(body));
   // Boletas de a una foto (caja nueva): cada hoja se lee aparte ("page") y al final se juntan ("group").
   // Se cuenta por comprobante al juntar; leer una hoja solo necesita que quede al menos uno en el mes.
   // Las hojas tienen su propio tope (que nadie lea cientos de fotos sin juntarlas nunca).
@@ -1186,11 +1189,12 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       help: `Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: ${HELP_WHATSAPP}`,
       gocats: "Llegaste al tope de productos ordenados con IA de este mes: lo que falta queda sin rubro hasta el mes que viene.",
       lesson: "Llegaste al tope de aprendizajes de boletas de este mes.",
+      organize: "Llegaste al tope de productos organizados con IA de este mes. Se renueva el mes que viene.",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
   }
   if (!unlimited && usedToday + need > DAILY[kind]) {
-    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA", lesson: "aprendizajes de boletas" }[kind];
+    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA", lesson: "aprendizajes de boletas", organize: "productos organizados con IA" }[kind];
     throw new AiError(429, "DAILY_LIMIT", `Llegaste al tope de ${what} de hoy. Mañana podés seguir.`);
   }
   // client: solo en las pruebas (firebase/test/ai.test.cjs)
@@ -1211,7 +1215,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       }
     } else {
       // invoice con multi: una lectura por foto (versión nueva de la caja); sin multi, como antes (PCs viejas)
-      const run = { order: parseOrder, invoice: (c, b) => (stage === "page" ? invoicePage(c, b, { db, uid, bucket, logger }) : stage === "group" ? finishInvoices(cleanReads(b.reads)) : b && b.multi ? parseInvoices(c, b, { db, uid, bucket, logger }) : parseInvoice(c, b)), lesson: (c, b) => lessonsMod.learn(c, db, uid, b), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories }[kind];
+      const run = { order: parseOrder, invoice: (c, b) => (stage === "page" ? invoicePage(c, b, { db, uid, bucket, logger }) : stage === "group" ? finishInvoices(cleanReads(b.reads)) : b && b.multi ? parseInvoices(c, b, { db, uid, bucket, logger }) : parseInvoice(c, b)), lesson: (c, b) => lessonsMod.learn(c, db, uid, b), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories, organize: (c, b) => organizeMod.organize(c, b, { jsonCall, AiError, model: MODEL }) }[kind];
       out = await run(client, body);
     }
   } catch (err) {
@@ -1221,6 +1225,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   }
   // Solo cuenta lo que salió bien. Varias fotos con varios comprobantes: cuenta uno por comprobante
   if (out.count > 1 && need) need = out.count;
+  if (kind === "organize") need = out.count || 0;
   if (stage === "group") need = out.count || 0;
   const pages = stage === "page" ? { invoicePages: admin.firestore.FieldValue.increment(1) } : {};
   await ref.set({
