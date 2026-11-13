@@ -2936,7 +2936,8 @@ export default function POSScreen() {
               )}
               {cart.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-8 select-none my-auto">
-                  <MangoLogo className="w-20 h-20 mb-3 opacity-25 grayscale" />
+                  {/* data-nv-gorro: en diciembre navidad.js le pone el gorrito aunque el logo esté apagado */}
+                  <div data-nv-gorro className="mb-3"><MangoLogo className="w-20 h-20 opacity-25 grayscale" /></div>
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
                     Carrito vacío
                   </h4>
@@ -2947,6 +2948,8 @@ export default function POSScreen() {
                     <kbd className="font-mono font-bold text-[9.5px] bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded shadow-2xs border border-slate-200 dark:border-slate-600">F6</kbd>
                     <span>Historial de tickets</span>
                   </div>
+                  {/* Solo en diciembre: navidad.js lo llena con los días que faltan para Navidad */}
+                  <p data-nv-cuenta hidden className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-100 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/20 text-[11px] font-bold" />
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
