@@ -289,7 +289,11 @@ export class ProductMatcherService {
 
   /** Productos parecidos por palabras en común (mismo tamaño suma); sin exigir que sea seguro */
   private similar(name: string, index: Map<string, any[]>) {
+    // Al menos una palabra con letras en común: solo por números ("24", "20") salían cosas como
+    // NESQUIK 24X200ML → "CINTA ADHESIVA 24 X 60" o MEGA CLASICO 20 → "KETROLAC 20 MG" (Paulos, 2026-11-14)
+    const letters = words(name).filter((w) => !/^\d/.test(w));
     return this.ranked(name, index, { limit: 3, min: 0.25, maxList: 500 })
+      .filter((cand) => overlap(letters, words(cand.name).filter((w) => !/^\d/.test(w))) > 0)
       .map((cand) => ({ id: cand.id, name: cand.name, costPrice: cand.costPrice, salePrice: cand.salePrice, unitsPerPack: cand.unitsPerPack }));
   }
 

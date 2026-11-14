@@ -8,6 +8,7 @@ import { useWorkRole } from '../../services/workRole';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import OfflineStartBanner from '../common/OfflineStartBanner';
+import { resumeScanJob } from '../../utils/scanInvoiceJob';
 
 const TABS = [
   { path: '/inicio', label: 'Inicio', icon: Home },
@@ -177,6 +178,8 @@ export default function MobileShell({ children, tabs: staffTabs }: { children: R
   const inTab = isTab(tabs, pathname) || NATIVE_MOBILE_PATHS.includes(pathname) || pathname.startsWith('/settings/') || pathname.startsWith('/pacientes/');
   const scrollsItself = pathname === '/inicio' || pathname === '/mas';
   const { pull, reloading, handlers } = usePullToReload();
+  // Boleta que se estaba leyendo cuando se cerró la app: se sigue esperando y se avisa al terminar
+  useEffect(() => { resumeScanJob(); }, []);
 
   return (
     <div className="h-[100dvh] w-full flex flex-col bg-[#F6F8F7] overflow-hidden keep-animated mobile-app">

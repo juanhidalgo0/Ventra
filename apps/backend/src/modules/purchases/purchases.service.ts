@@ -715,6 +715,9 @@ export class PurchasesService {
       if (!usable.length) {
         throw new BadRequestException('No encontramos productos en la foto. Probá con una foto más nítida, de frente y con buena luz.');
       }
+      // El total que escribió el comerciante (celular, opcional) manda sobre el leído si las fotos son de un
+      // solo comprobante: con varias hojas la nube no lo usa, pero el control de "cierra o no" sí
+      if (manualTotal !== undefined && manualTotal > 0 && usable.length === 1) usable[0].totalFacturaAPagar = manualTotal;
       console.log(`[PurchasesService] Fotos leídas con IA: ${usable.length} comprobante(s), ${usable.reduce((s, d) => s + d.items.length, 0)} productos.`);
       const results: any[] = [];
       for (const d of usable) {
@@ -1443,10 +1446,50 @@ export class PurchasesService {
    * correcciones se mandan a la nube para que aprenda cómo viene la boleta de ese proveedor
    * (firebase/functions/supplier-lessons.js): la próxima, de cualquier comercio, se lee mejor.
    */
+  /**
+   * Revisar en el celular (2026-11-14): las correcciones de una boleta por revisar se guardan en su borrador
+   * (renglones, proveedor, número, contado o a cuenta) sin confirmarla. Sigue PENDING: no suma stock, no
+   * cambia precios y no es deuda hasta que alguien la confirme, en el celular o en la PC.
+   */
+  async savePendingDraft(id: string, body: { items?: any[]; supplierId?: string | null; supplierName?: string; invoiceNumber?: string; paymentSuggested?: 'PAID' | 'OWED' | null; printedTotal?: number | null }, userId?: string) {
+    const row = await this.prisma.$queryRawUnsafe<{ status: string; draft: string | null }[]>(`SELECT status, draft FROM purchases WHERE id = ?`, id);
+    if (!row.length) throw new NotFoundException('Esa boleta ya no está');
+    if (row[0].status !== 'PENDING') throw new BadRequestException('Esta boleta ya fue confirmada');
+    let draft: any = {};
+    try { draft = row[0].draft ? JSON.parse(row[0].draft) : {}; } catch { draft = {}; }
+    if (Array.isArray(body.items)) {
+      if (!body.items.length) throw new BadRequestException('La boleta tiene que tener al menos un renglón');
+      // Lo leído al principio queda guardado: así al confirmar se aprende de lo que se corrigió
+      if (!draft.originalItems) draft.originalItems = draft.items || [];
+      draft.items = body.items.map((it: any) => {
+        const quantity = Math.max(0, Number(it?.quantity) || 0);
+        const cost = Math.max(0, Number(it?.cost) || 0);
+        return { ...it, quantity, cost, total: Math.round(quantity * cost * 100) / 100 };
+      });
+    }
+    if (body.supplierId !== undefined) {
+      const sup = body.supplierId ? await this.prisma.supplier.findUnique({ where: { id: String(body.supplierId) }, select: { id: true, name: true } }) : null;
+      if (body.supplierId && !sup) throw new BadRequestException('Ese proveedor no existe');
+      if (sup) draft.matchedSupplier = { ...(draft.matchedSupplier || {}), id: sup.id, name: sup.name };
+    }
+    if (body.invoiceNumber !== undefined) draft.invoiceNumber = String(body.invoiceNumber || '').slice(0, 40);
+    if (body.paymentSuggested !== undefined) draft.paymentSuggested = body.paymentSuggested === 'PAID' || body.paymentSuggested === 'OWED' ? body.paymentSuggested : null;
+    if (body.printedTotal !== undefined) draft.printedTotal = Number(body.printedTotal) > 0 ? Number(body.printedTotal) : null;
+    const who = userId ? await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } }).catch(() => null) : null;
+    draft.editedOnPhone = { at: new Date().toISOString(), by: who?.fullName || '' };
+    const sum = (draft.items || []).reduce((s: number, it: any) => s + (Number(it.total) || 0), 0);
+    const total = Number(draft.printedTotal) > 0 ? Number(draft.printedTotal) : sum * 1.21;
+    await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ?, total = ?, invoice_number = ?${draft.matchedSupplier?.id ? ', supplier_id = ?' : ''} WHERE id = ?`,
+      JSON.stringify(draft), total, draft.invoiceNumber || null, ...(draft.matchedSupplier?.id ? [draft.matchedSupplier.id] : []), id);
+    return { ok: true, purchaseId: id, total, draft };
+  }
+
   async confirmPending(id: string, data: Parameters<PurchasesService['confirmPendingInner']>[1]) {
     const row = await this.prisma.$queryRawUnsafe<{ draft: string | null; supplier_id: string }[]>(`SELECT draft, supplier_id FROM purchases WHERE id = ?`, id).catch(() => []);
     let draft: any = null;
     try { draft = row[0]?.draft ? JSON.parse(row[0].draft) : null; } catch { /* sin borrador */ }
+    // Corregida en el celular: se aprende comparando con lo que leyó la IA, no con lo ya corregido
+    if (draft?.originalItems) draft = { ...draft, items: draft.originalItems };
     // La factura de un remito: costos y deuda, sin volver a sumar el stock (tanda 5.1)
     const fromRemitoId = (data as any).fromRemitoId;
     if (fromRemitoId && draft?.remitoMatch?.id === fromRemitoId) {

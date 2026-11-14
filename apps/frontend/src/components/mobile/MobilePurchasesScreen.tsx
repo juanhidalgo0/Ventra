@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Search, X, ShoppingBag, Camera, ChevronRight } from 'lucide-react';
 import ScanInvoiceSheet from './ScanInvoiceSheet';
+import ReviewInvoiceSheet from './ReviewInvoiceSheet';
 import api from '../../services/api';
 import { flushScans, queuedScans } from '../../utils/scanQueue';
+import { useScanJob } from '../../utils/scanInvoiceJob';
 import { useManagerAccess } from '../../utils/managerAccess';
 import { ScreenHeader, headerInput, Chips, Sheet, EmptyState, ListSkeleton, money, qty } from './ui';
 
@@ -17,6 +19,7 @@ export default function MobilePurchasesScreen() {
   const [selected, setSelected] = useState<any | null>(null);
   const [limit, setLimit] = useState(60);
   const [scanning, setScanning] = useState(false);
+  const scanStage = useScanJob((s) => s.stage);
 
   const load = () => api.get('/purchases').then((r) => setRows((r.data || []).filter((p: any) => p.status !== 'CANCELLED'))).catch(() => { setRows([]); toast.error('No pudimos traer las compras'); });
   // Boletas sacadas sin conexión: se mandan solas al abrir y cuando vuelve internet (tanda 6.4)
@@ -33,43 +36,21 @@ export default function MobilePurchasesScreen() {
     window.addEventListener('online', on);
     return () => window.removeEventListener('online', on);
   }, []);
-  // Aprobar desde el celular (tanda 6.3): el dueño o un encargado confirma la boleta que escaneó un empleado
+  // Revisar, corregir y confirmar desde el celular: el dueño o un encargado confirma; los demás pueden corregir
   const canApprove = useManagerAccess();
-  const [approving, setApproving] = useState(false);
-  const approve = async (p: any) => {
-    const d = p.draft || {};
-    setApproving(true);
-    try {
-      await api.put(`/purchases/${p.id}/confirm`, {
-        supplierId: p.supplierId || d.matchedSupplier?.id,
-        invoiceNumber: d.invoiceNumber || p.invoiceNumber || undefined,
-        manualTotal: Number(d.printedTotal) > 0 ? Number(d.printedTotal) : undefined,
-        paymentStatus: d.paymentSuggested === 'PAID' ? 'PAID' : 'OWED',
-        items: (d.items || []).map((it: any) => ({
-          productId: it.product?.id || undefined, quantity: it.quantity, cost: it.cost, buyFormat: 'UNIT',
-          salePrice: it.suggestedSalePrice, source: { code: it.sku || undefined, name: it.name },
-          newProductData: it.product ? undefined : { name: String(it.shared?.confidence === 'alta' && it.shared?.name ? it.shared.name : it.name).toUpperCase(), barcode: it.barcode || undefined, sku: it.sku || undefined, salePrice: it.suggestedSalePrice, taxRate: 21 },
-        })),
-      });
-      toast.success('Boleta confirmada: se sumó el stock y se actualizaron los precios');
-      setSelected(null);
-      load();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'No se pudo confirmar. Revisala en la PC.');
-    } finally {
-      setApproving(false);
-    }
-  };
+  const [reviewing, setReviewing] = useState<any | null>(null);
   const pending = (rows || []).filter((p) => p.status === 'PENDING');
 
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const monthTotal = (rows || []).filter((p) => new Date(p.createdAt) >= monthStart).reduce((s, p) => s + p.total, 0);
-  const owed = (rows || []).filter((p) => p.paymentStatus === 'OWED');
+  // Una boleta "Por revisar" no es una compra todavía: no suma a lo comprado ni a la deuda hasta confirmarla
+  const confirmed = (rows || []).filter((p) => p.status !== 'PENDING');
+  const monthTotal = confirmed.filter((p) => new Date(p.createdAt) >= monthStart).reduce((s, p) => s + p.total, 0);
+  const owed = confirmed.filter((p) => p.paymentStatus === 'OWED');
 
   const list = useMemo(() => {
     const t = search.trim().toLowerCase();
     return (rows || [])
-      .filter((p) => filter === 'ALL' || p.paymentStatus === filter)
+      .filter((p) => filter === 'ALL' || (p.status !== 'PENDING' && p.paymentStatus === filter))
       .filter((p) => !t || `${p.supplier?.name || ''} ${p.invoiceNumber || ''} ${(p.items || []).map((i: any) => i.productName).join(' ')}`.toLowerCase().includes(t));
   }, [rows, search, filter]);
   useEffect(() => setLimit(60), [search, filter]);
@@ -110,8 +91,14 @@ export default function MobilePurchasesScreen() {
           </span>
           <ChevronRight className="w-5 h-5 text-rose-200 shrink-0" />
         </button>
+        {(scanStage === 'reading' || scanStage === 'uploading') && !scanning && (
+          <button onClick={() => setScanning(true)} className="mt-2 w-full flex items-center gap-2 rounded-xl bg-sky-50 border border-sky-100 px-3 py-2 text-left text-[12.5px] font-semibold text-sky-800">
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-sky-600 border-t-transparent animate-spin shrink-0" />
+            La IA está leyendo una boleta: te avisamos cuando termine. Tocá para ver.
+          </button>
+        )}
         {pending.length > 0 && (
-          <p className="mt-2 text-[12.5px] text-amber-800 font-semibold">{pending.length === 1 ? '1 boleta escaneada espera' : `${pending.length} boletas escaneadas esperan`} {canApprove ? 'que las apruebes: tocala para ver' : 'que la confirmen en la PC'}.</p>
+          <p className="mt-2 text-[12.5px] text-amber-800 font-semibold">{pending.length === 1 ? '1 boleta escaneada espera' : `${pending.length} boletas escaneadas esperan`} {canApprove ? 'que las revises: tocá una para corregirla y confirmarla' : 'revisión: tocá una para corregirla'}.</p>
         )}
         {queued > 0 && (
           <p className="mt-1.5 text-[12.5px] text-sky-800 font-semibold">{queued === 1 ? '1 boleta espera' : `${queued} boletas esperan`} conexión: se manda{queued === 1 ? '' : 'n'} sola{queued === 1 ? '' : 's'} cuando vuelva internet.</p>
@@ -129,11 +116,11 @@ export default function MobilePurchasesScreen() {
           <div className="px-4 py-3">
             <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
               {list.slice(0, limit).map((p) => (
-                <button key={p.id} onClick={() => setSelected(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                <button key={p.id} onClick={() => (p.status === 'PENDING' && p.draft ? setReviewing(p) : setSelected(p))} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
                   <span className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0"><ShoppingBag className="w-[18px] h-[18px] text-rose-600" /></span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[14.5px] font-medium text-slate-800 truncate">{p.supplier?.name || 'Sin proveedor'}</span>
-                    <span className="block text-[12px] text-slate-500 truncate">{new Date(p.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} · {p.items?.length || 0} productos{p.invoiceNumber ? ` · Fact. ${p.invoiceNumber}` : ''}</span>
+                    <span className="block text-[12px] text-slate-500 truncate">{new Date(p.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} · {(p.status === 'PENDING' ? p.draft?.items?.length : p.items?.length) || 0} productos{p.invoiceNumber ? ` · Fact. ${p.invoiceNumber}` : ''}</span>
                   </span>
                   <span className="text-right shrink-0">
                     <span className="block text-[14.5px] font-semibold text-slate-900 tabular-nums">{money(p.total)}</span>
@@ -147,6 +134,8 @@ export default function MobilePurchasesScreen() {
           </div>
         )}
       </div>
+
+      <ReviewInvoiceSheet purchase={reviewing} open={!!reviewing} onClose={() => setReviewing(null)} onDone={load} canConfirm={canApprove} />
 
       <Sheet open={!!selected} onClose={() => setSelected(null)} title={selected?.supplier?.name || 'Compra'}>
         {selected && (
@@ -173,32 +162,14 @@ export default function MobilePurchasesScreen() {
               ))}
             </div>
             {selected.notes && <p className="rounded-2xl bg-slate-50 px-4 py-3 text-[13.5px] text-slate-700">{selected.notes}</p>}
-            {selected.status === 'PENDING' && selected.draft && (() => {
-              const d = selected.draft;
-              const items: any[] = d.items || [];
-              // Del celular se confirman solo las limpias: sin renglones dudosos, sin repetidos posibles y que no sean nota de crédito ni factura de un remito
-              const look = items.filter((it: any) => it.doubtful || (!it.product && it.candidates?.length));
-              const clean = !look.length && !d.creditNote && !d.remitoMatch && d.check?.ok === true;
-              return (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
-                  <p className="text-[13.5px] font-bold text-amber-900">Boleta escaneada para aprobar</p>
-                  <div className="divide-y divide-amber-100">
-                    {items.map((it: any, k: number) => (
-                      <div key={k} className="py-1.5 text-[13px]">
-                        <div className="flex justify-between gap-3"><span className="min-w-0 truncate">{qty(it.quantity)} × {it.product?.name || it.name}{!it.product && <span className="ml-1 text-[11px] text-sky-700 font-semibold">nuevo</span>}</span><span className="tabular-nums shrink-0">{money(it.total * 1.21)}</span></div>
-                        {it.doubtful && <p className="text-[11.5px] text-amber-800">Mirar: {(it.reasons || []).join(', ')}</p>}
-                      </div>
-                    ))}
-                  </div>
-                  {d.check?.message && <p className={`text-[12px] font-semibold ${d.check.ok ? 'text-emerald-700' : 'text-red-700'}`}>{d.check.message}</p>}
-                  {canApprove && clean ? (
-                    <button onClick={() => approve(selected)} disabled={approving} className="w-full h-12 rounded-xl bg-emerald-600 text-white font-bold text-[15px] active:scale-[0.99] disabled:opacity-60">{approving ? 'Confirmando…' : 'Confirmar boleta'}</button>
-                  ) : (
-                    <p className="text-[12.5px] text-amber-900">{canApprove ? `Tiene ${look.length || 'cosas'} ${look.length === 1 ? 'renglón' : 'para mirar'} que conviene revisar en la PC, con la foto al lado.` : 'La confirma el dueño o un encargado.'}</p>
-                  )}
-                </div>
-              );
-            })()}
+            {selected.status === 'PENDING' && selected.draft && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+                <p className="text-[13.5px] font-bold text-amber-900">Boleta escaneada por revisar</p>
+                <p className="text-[12.5px] text-amber-900">{(selected.draft.items || []).length} productos{selected.draft.check?.message ? ` · ${selected.draft.check.message}` : ''}{selected.draft.editedOnPhone?.by ? ` · la corrigió ${selected.draft.editedOnPhone.by}` : ''}</p>
+                <p className="text-[12px] text-amber-800">Todavía no suma stock ni deuda.</p>
+                <button onClick={() => { setReviewing(selected); setSelected(null); }} className="w-full h-12 rounded-xl bg-rose-600 text-white font-bold text-[15px] active:scale-[0.99]">{canApprove ? 'Revisar y confirmar' : 'Revisar y corregir'}</button>
+              </div>
+            )}
             <p className="text-[12px] text-slate-400 text-center">Cargada por {selected.user?.fullName || '—'}</p>
           </div>
         )}

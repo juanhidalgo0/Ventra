@@ -127,6 +127,31 @@ export class ScanJobsService implements OnModuleInit {
     return this.view(job);
   }
 
+  // ─── Boleta del celular en segundo plano (2026-11-14) ───
+  // Antes el celular mandaba las fotos y se quedaba esperando la respuesta (hasta 5 minutos) con la
+  // pantalla trabada: no se podía cerrar ni seguir usando la app, y si se bloqueaba el teléfono se cortaba.
+  // Ahora se suben las fotos, se responde al toque con el número de lectura y la lectura sigue en el
+  // servidor igual que antes (se carga sola si cierra). El celular pregunta cómo va.
+  private invoiceJobs = new Map<string, { id: string; owner: string; createdAt: number; status: 'reading' | 'done' | 'error'; result?: any; error?: string; code?: number }>();
+
+  startInvoice(files: Express.Multer.File[], userId?: string, manualTotal?: number) {
+    if (!files?.length) throw new BadRequestException('No se recibió ninguna foto');
+    const now = Date.now();
+    for (const [k, j] of this.invoiceJobs) if (now - j.createdAt > KEEP_MS) this.invoiceJobs.delete(k);
+    const job = { id: randomUUID(), owner: this.ownerKey(userId), createdAt: now, status: 'reading' as 'reading' | 'done' | 'error', result: undefined as any, error: undefined as string | undefined, code: undefined as number | undefined };
+    this.invoiceJobs.set(job.id, job);
+    this.purchases.scanInvoice(files, manualTotal, userId, { inline: false })
+      .then((r) => { job.status = 'done'; job.result = r; })
+      .catch((err: any) => { job.status = 'error'; job.error = err?.message || 'No se pudo leer la boleta. Probá de nuevo.'; job.code = err instanceof HttpException ? err.getStatus() : 500; });
+    return { id: job.id, status: job.status };
+  }
+
+  getInvoice(id: string, userId?: string) {
+    const job = this.invoiceJobs.get(id);
+    if (!job || job.owner !== this.ownerKey(userId)) throw new NotFoundException('Esa lectura ya no está. Volvé a sacar las fotos.');
+    return { id: job.id, status: job.status, createdAt: job.createdAt, result: job.result ?? null, error: job.error ?? null, code: job.code ?? null };
+  }
+
   /** La última lectura de este usuario (para volver a verla si se fue de la pantalla) */
   latest(userId?: string) {
     const key = this.ownerKey(userId);

@@ -193,7 +193,7 @@ export default function SuppliersScreen() {
     const s = suppliers.find((x) => x.id === supplierId);
     if (s && typeof s.debt === 'number') return s.debt;
     return purchases
-      .filter(p => p.supplierId === supplierId && p.paymentStatus === 'OWED')
+      .filter(p => p.supplierId === supplierId && p.paymentStatus === 'OWED' && p.status !== 'CANCELLED' && p.status !== 'PENDING')
       .reduce((sum, p) => sum + p.total, 0);
   };
 

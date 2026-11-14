@@ -24,7 +24,7 @@ export default function MobileTreasuryScreen() {
     ]);
     setData(summary || { openSessions: [], paymentBreakdown: {} });
     setReceivable(clients.reduce((s: number, c: any) => s + (c.balance > 0 ? c.balance : 0), 0));
-    setPayable(purchases.filter((p: any) => p.paymentStatus === 'OWED' && p.status !== 'CANCELLED').reduce((s: number, p: any) => s + p.total, 0));
+    setPayable(purchases.filter((p: any) => p.paymentStatus === 'OWED' && p.status !== 'CANCELLED' && p.status !== 'PENDING').reduce((s: number, p: any) => s + p.total, 0));
   }, []);
   useEffect(() => { load(); }, [load]);
 

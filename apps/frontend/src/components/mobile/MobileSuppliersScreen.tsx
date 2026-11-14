@@ -36,7 +36,7 @@ export default function MobileSuppliersScreen() {
   const debtOf = useCallback((id: string) => {
     const s = (suppliers || []).find((x) => x.id === id);
     if (s && typeof s.debt === 'number') return s.debt;
-    return purchases.filter((p) => p.supplierId === id && p.paymentStatus === 'OWED' && p.status !== 'CANCELLED').reduce((sum, p) => sum + p.total, 0);
+    return purchases.filter((p) => p.supplierId === id && p.paymentStatus === 'OWED' && p.status !== 'CANCELLED' && p.status !== 'PENDING').reduce((sum, p) => sum + p.total, 0);
   }, [purchases, suppliers]);
   const totalDebt = useMemo(() => (suppliers || []).reduce((s, x) => s + debtOf(x.id), 0), [suppliers, debtOf]);
   const withDebt = (suppliers || []).filter((s) => debtOf(s.id) > 0).length;

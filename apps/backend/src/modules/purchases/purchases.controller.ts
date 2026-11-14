@@ -105,6 +105,19 @@ export class PurchasesController {
     return this.scanJobs.get(id, req.user.sub);
   }
 
+  /** Boleta del celular: responde al toque y la lectura sigue en el servidor (GET scan-invoice-bg/:id) */
+  @Post('scan-invoice-bg')
+  @UseInterceptors(FilesInterceptor('files', 12, { limits: { fileSize: 25 * 1024 * 1024 } }))
+  startScanInvoiceBg(@UploadedFiles() files: Express.Multer.File[], @Request() req, @Body('manualTotal') manualTotal?: string) {
+    const total = manualTotal ? Number(manualTotal) : undefined;
+    return this.scanJobs.startInvoice(files, req.user.sub, Number.isFinite(total) ? total : undefined);
+  }
+
+  @Get('scan-invoice-bg/:id')
+  scanInvoiceBg(@Param('id') id: string, @Request() req) {
+    return this.scanJobs.getInvoice(id, req.user.sub);
+  }
+
   @Post('scan-invoice')
   @UseInterceptors(FilesInterceptor('files'))
   async scanInvoice(
@@ -166,6 +179,12 @@ export class PurchasesController {
   @Post(':id/credit-note')
   confirmCreditNote(@Param('id') id: string, @Body() data: any, @Request() req) {
     return this.purchasesService.confirmCreditNote(id, { ...data, userId: req.user.sub });
+  }
+
+  /** Correcciones de una boleta por revisar hechas en el celular, sin confirmarla (no toca stock ni deuda) */
+  @Put(':id/draft')
+  savePendingDraft(@Param('id') id: string, @Body() body: any, @Request() req) {
+    return this.purchasesService.savePendingDraft(id, body || {}, req.user.sub);
   }
 
   @Put(':id/confirm')

@@ -459,6 +459,22 @@ async function main() {
     return { svc: new ProductMatcherService(prisma, ai), sent };
   };
 
+  await t('"puede que ya lo tengas": no sugiere productos que solo comparten un número (boletas de Paulos)', async () => {
+    const { svc } = matcherWith([
+      { id: 'c1', name: 'CINTA ADHESIVA 24 X 60' }, { id: 'k1', name: 'KETROLAC 20 MG' }, { id: 'g1', name: 'GUMBALLS CHICLE 18 X 245' },
+      { id: 'n1', name: 'NESQUIK CHOCOLATE X 180' }, { id: 'f1', name: 'FRIGOR SIN PARAR FRUTILLA Y AMERICANA' },
+    ]);
+    const r = await svc.match([
+      { code: '000567', name: 'NESQUIK RTD 24X200ML' }, { code: '4016', name: 'MEGA CLASICO 20' },
+      { code: '000441', name: 'NESQUIK POLVO 18X180G' }, { code: '4061', name: 'SIN PARAR DDL Y AMERICANA' },
+    ], { useAi: false });
+    const ids = r.candidates.map((c: any[]) => c.map((x) => x.id));
+    assert.ok(!ids[0].includes('c1'), 'Nesquik no es cinta adhesiva');
+    assert.deepStrictEqual(ids[1], [], 'Mega clásico no es Ketrolac');
+    assert.ok(!ids[2].includes('g1') && ids[2].includes('n1'), 'Nesquik polvo sugiere Nesquik, no chicles');
+    assert.ok(ids[3].includes('f1'), 'los parecidos de verdad se siguen sugiriendo');
+  });
+
   await t('catálogo de 6.000 productos: la IA encuentra uno que está en la posición 5.500', async () => {
     const products = Array.from({ length: 6000 }, (_, i) => ({ id: `p${i}`, name: i === 5500 ? 'ALFAJOR TRIPLE CHOCOLATE NEGRO 70 G' : `PRODUCTO GENERICO ${i} ${['YERBA', 'FIDEOS', 'ARROZ', 'GASEOSA'][i % 4]} ${i % 97} G` }));
     const { svc, sent } = matcherWith(products);
@@ -598,6 +614,37 @@ async function main() {
     assert.strictEqual(v.status, 'done');
     assert.strictEqual(saved.length, 1);
     assert.strictEqual(v.documents[0].purchaseId, 'P1');
+  });
+
+  await t('boleta del celular en segundo plano: responde al toque, sigue leyendo y es de quien la empezó', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ScanJobsService } = require('../src/modules/purchases/scan-jobs.service');
+    const { BadRequestException } = require('@nestjs/common');
+    let release: (v: any) => void = () => {};
+    let opts: any = null;
+    const purchases: any = {
+      scanInvoice: (_f: any, _t: any, _u: any, o: any) => { opts = o; return new Promise((r) => { release = r; }); },
+    };
+    const svc = new ScanJobsService({} as any, purchases);
+    const files = [{ buffer: Buffer.from('x'), mimetype: 'image/jpeg', originalname: 'a.jpg' }];
+    const job = svc.startInvoice(files, 'u1');
+    assert.strictEqual(job.status, 'reading', 'responde sin esperar a la IA');
+    assert.strictEqual(opts.inline, false, 'como el celular de antes: se carga sola si cierra');
+    assert.strictEqual(svc.getInvoice(job.id, 'u1').status, 'reading');
+    assert.throws(() => svc.getInvoice(job.id, 'otro'), 'otro usuario no la ve');
+    release({ auto: true, supplierName: 'VITAL', items: [{}] });
+    await new Promise((r) => setTimeout(r, 10));
+    const v = svc.getInvoice(job.id, 'u1');
+    assert.strictEqual(v.status, 'done');
+    assert.strictEqual(v.result.supplierName, 'VITAL');
+    // Un error (foto ilegible, tope de la IA) llega con su mensaje
+    purchases.scanInvoice = async () => { throw new BadRequestException('No encontramos productos en la foto.'); };
+    const bad = svc.startInvoice(files, 'u1');
+    await new Promise((r) => setTimeout(r, 10));
+    const e = svc.getInvoice(bad.id, 'u1');
+    assert.strictEqual(e.status, 'error');
+    assert.strictEqual(e.error, 'No encontramos productos en la foto.');
+    assert.strictEqual(e.code, 400);
   });
 
   await t('hojas que faltan: se suman a la factura pendiente y se controla el total', async () => {

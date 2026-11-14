@@ -3,9 +3,11 @@ import toast from 'react-hot-toast';
 import { Camera, ImagePlus, X, Loader2, CheckCircle2, Monitor, Sparkles } from 'lucide-react';
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
-import { Sheet, PrimaryButton, money } from './ui';
+import { Sheet, PrimaryButton, money, parseAmount } from './ui';
 import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
 import { enqueueScan, isOffline } from '../../utils/scanQueue';
+import { preparePhoto, type PreparedPhoto } from '../../utils/shrinkPhoto';
+import { useScanJob, startScanJob, resetScanJob } from '../../utils/scanInvoiceJob';
 
 /** Cómo se cargan las boletas (Compras): JSON en el ajuste del comercio purchase_auto */
 export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
@@ -22,61 +24,116 @@ export const savePurchaseAuto = (v: { enabled: boolean; keepMargin: boolean; rou
  * productos nuevos. Si no, queda "por revisar" en la PC, sin tocar nada.
  */
 export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<any | null>(null);
+  // Cada foto ya achicada en el teléfono, con su miniatura (ver utils/shrinkPhoto)
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([]);
+  const [preparing, setPreparing] = useState(0);
+  // Total de la boleta (opcional): con él la IA controla que los renglones cierren y relee si no
+  const [totalText, setTotalText] = useState('');
+  const job = useScanJob();
+  const busy = job.stage === 'uploading';
+  const reading = job.stage === 'reading';
+  const result = job.stage === 'done' ? job.result : null;
   const [auto, setAuto] = useState(readPurchaseAuto);
   const cameraRef = useRef<HTMLInputElement>(null);
   // Foto movida, oscura o chica: aviso con "Sacar de nuevo" o "Usar igual", nunca bloquea
   const [warnings, setWarnings] = useState<PhotoWarning[]>([]);
   const [accepted, setAccepted] = useState<Set<File>>(new Set());
+  const files = photos.map((p) => p.file);
   useEffect(() => {
     let alive = true;
-    checkPhotos(photos).then((w) => { if (alive) setWarnings(w); }).catch(() => {});
+    checkPhotos(photos.map((p) => p.file)).then((w) => { if (alive) setWarnings(w); }).catch(() => {});
     return () => { alive = false; };
   }, [photos]);
-  const shownWarnings = warnings.filter((w) => photos[w.index] && !accepted.has(photos[w.index]));
+  const shownWarnings = warnings.filter((w) => files[w.index] && !accepted.has(files[w.index]));
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  const reset = () => { setPhotos([]); setResult(null); setBusy(false); };
-  const close = () => { if (busy) return; reset(); onClose(); };
-  const add = (list: FileList | null) => {
-    const imgs = Array.from(list || []).filter((f) => f.type.startsWith('image/'));
-    if (imgs.length) setPhotos((p) => [...p, ...imgs].slice(0, 12));
+  // Mientras la ventanita está abierta, el resultado se muestra acá (sin cartel aparte)
+  useEffect(() => {
+    useScanJob.setState({ watching: open });
+    return () => useScanJob.setState({ watching: false });
+  }, [open]);
+  // Terminó una lectura: la lista de compras se actualiza
+  const firstFinished = useRef(job.finished);
+  useEffect(() => { if (job.finished !== firstFinished.current) onDone(); }, [job.finished]);
+  useEffect(() => { if (job.stage === 'error' && open && job.error) toast.error(job.error, { duration: 8000 }); }, [job.stage, job.error]);
+  // Reloj de la lectura, para que se vea que avanza
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!reading || !open) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [reading, open]);
+
+  const dropThumbs = (list: PreparedPhoto[]) => list.forEach((p) => { try { URL.revokeObjectURL(p.thumb); } catch { /* nada */ } });
+  const clearPhotos = () => { setPhotos((p) => { dropThumbs(p); return []; }); setAccepted(new Set()); };
+  const reset = () => { clearPhotos(); setTotalText(''); resetScanJob(); };
+  // Se puede cerrar siempre, salvo en el ratito que se suben las fotos: la lectura sigue sola
+  const close = () => {
+    if (busy) return;
+    if (job.stage === 'done' || job.stage === 'error') reset();
+    onClose();
   };
+  const add = async (list: FileList | null) => {
+    const imgs = Array.from(list || []).filter((f) => f.type.startsWith('image/')).slice(0, Math.max(0, 12 - photos.length));
+    if (!imgs.length) return;
+    setPreparing((n) => n + imgs.length);
+    // De a una: varias fotos de 12 MP abiertas a la vez se comen la memoria de un Android básico
+    for (const f of imgs) {
+      const p = await preparePhoto(f);
+      setPhotos((prev) => [...prev, p].slice(0, 12));
+      setPreparing((n) => Math.max(0, n - 1));
+    }
+  };
+  const remove = (i: number) => setPhotos((p) => { dropThumbs([p[i]]); return p.filter((_, k) => k !== i); });
 
   const read = async () => {
-    if (!photos.length) return;
-    setBusy(true);
+    if (!photos.length || preparing || busy || reading) return;
+    const toSend = files;
     try {
-      const form = new FormData();
-      photos.forEach((f) => form.append('files', f));
-      const { data } = await api.post('/purchases/scan-invoice', form, { timeout: 290000 } as any);
-      setResult(data);
-      onDone();
+      await startScanJob(toSend, parseAmount(totalText) || undefined);
+      clearPhotos();
+      setTotalText('');
     } catch (err: any) {
       // Sin conexión: la boleta queda guardada en el teléfono y se manda sola cuando vuelva (tanda 6.4)
-      if (isOffline(err) && await enqueueScan(photos)) {
+      if (isOffline(err) && await enqueueScan(toSend)) {
         toast.success('Sin conexión: la boleta quedó en espera y se manda sola cuando vuelva internet.', { duration: 8000 });
         reset();
         onDone();
         onClose();
         return;
       }
-      toast.error(err?.response?.data?.message || 'No se pudo leer la boleta. Probá de nuevo.', { duration: 8000 });
-    } finally {
-      setBusy(false);
+      toast.error(err?.response?.data?.message || 'No se pudieron subir las fotos. Probá de nuevo.', { duration: 8000 });
     }
   };
+
+  const secs = Math.max(0, Math.round((Date.now() - job.startedAt) / 1000));
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 
   const total = result ? (result.items || []).reduce((s: number, it: any) => s + (Number(it.total) || 0), 0) : 0;
 
   return (
-    <Sheet open={open} onClose={close} title={result ? 'Boleta leída' : 'Escanear boleta'}
+    <Sheet open={open} onClose={close} title={result ? 'Boleta leída' : reading ? 'Leyendo la boleta' : 'Escanear boleta'}
       footer={result
         ? <PrimaryButton onClick={() => { reset(); }}>Escanear otra</PrimaryButton>
-        : <PrimaryButton onClick={read} loading={busy}>{busy ? 'Leyendo la boleta…' : photos.length ? `Leer la boleta (${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'})` : 'Sacá la foto primero'}</PrimaryButton>}>
-      {result ? (
+        : reading
+          ? <PrimaryButton onClick={onClose}>Seguir usando la app</PrimaryButton>
+          : <PrimaryButton onClick={read} loading={busy || preparing > 0}>{busy ? `Subiendo las fotos… ${job.uploadPct}%` : preparing ? 'Preparando las fotos…' : photos.length ? `Leer la boleta (${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'})` : 'Sacá la foto primero'}</PrimaryButton>}>
+      {reading ? (
+        <div className="space-y-4 pt-2 pb-1 text-center">
+          <div className="relative w-16 h-16 mx-auto">
+            <Loader2 className="w-16 h-16 text-rose-600 animate-spin" />
+            <Sparkles className="w-6 h-6 text-rose-600 absolute inset-0 m-auto" />
+          </div>
+          <div>
+            <p className="text-[16px] font-bold text-slate-900">La IA está leyendo {job.photos > 1 ? `las ${job.photos} fotos` : 'la boleta'}</p>
+            <p className="mt-1 text-[13px] text-slate-500 tabular-nums">{clock} · suele tardar entre 20 segundos y 1 minuto{job.photos > 1 ? ' (las hojas se leen al mismo tiempo)' : ''}. Si algo no cierra, la relee con más cuidado y tarda un poco más.</p>
+          </div>
+          <div className="rounded-2xl bg-sky-50 border border-sky-100 px-4 py-3 text-[13.5px] text-sky-900 text-left flex gap-3">
+            <Monitor className="w-5 h-5 shrink-0 mt-0.5" />
+            <span><b>Podés cerrar esto y seguir usando la app.</b> La lectura sigue sola y te avisamos cuando termine. Aunque cierres la app, la boleta se carga igual.</span>
+          </div>
+        </div>
+      ) : result ? (
         <div className="space-y-4 pt-1">
           <div className="text-center">
             <CheckCircle2 className={`w-12 h-12 mx-auto ${result.auto ? 'text-emerald-600' : 'text-amber-500'}`} />
@@ -153,23 +210,39 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
               <p className="font-bold">{shownWarnings.map((w) => warningText(w, photos.length)).join('. ')}.</p>
               <p className="mt-0.5">{PHOTO_TIP}</p>
               <div className="mt-2.5 grid grid-cols-2 gap-2">
-                <button onClick={() => { const bad = new Set(shownWarnings.map((w) => photos[w.index])); setPhotos((p) => p.filter((f) => !bad.has(f))); cameraRef.current?.click(); }}
+                <button onClick={() => { const bad = new Set(shownWarnings.map((w) => files[w.index])); setPhotos((p) => { dropThumbs(p.filter((x) => bad.has(x.file))); return p.filter((x) => !bad.has(x.file)); }); cameraRef.current?.click(); }}
                   className="h-11 rounded-xl bg-amber-600 text-white font-bold text-[14px] active:scale-[0.98]">Sacar de nuevo</button>
-                <button onClick={() => setAccepted((a) => new Set([...a, ...shownWarnings.map((w) => photos[w.index])]))}
+                <button onClick={() => setAccepted((a) => new Set([...a, ...shownWarnings.map((w) => files[w.index])]))}
                   className="h-11 rounded-xl border border-amber-300 text-amber-900 font-bold text-[14px] active:scale-[0.98]">Usar igual</button>
               </div>
             </div>
           )}
-          {photos.length > 0 && (
+          {(photos.length > 0 || preparing > 0) && (
             <div className="grid grid-cols-3 gap-2">
-              {photos.map((f, i) => (
-                <div key={i} className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-100">
-                  <img src={URL.createObjectURL(f)} alt={`Hoja ${i + 1}`} className="w-full h-full object-cover" />
+              {photos.map((p, i) => (
+                <div key={p.thumb} className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-100">
+                  <img src={p.thumb} alt={`Hoja ${i + 1}`} decoding="async" className="w-full h-full object-cover" />
                   <span className="absolute left-1.5 top-1.5 text-[11px] font-bold bg-black/60 text-white rounded px-1.5">Hoja {i + 1}</span>
-                  {!busy && <button onClick={() => setPhotos((p) => p.filter((_, k) => k !== i))} className="absolute right-1 top-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label="Sacar la foto"><X className="w-4 h-4" /></button>}
+                  {!busy && <button onClick={() => remove(i)} className="absolute right-1 top-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label="Sacar la foto"><X className="w-4 h-4" /></button>}
+                </div>
+              ))}
+              {Array.from({ length: preparing }, (_, k) => (
+                <div key={`prep${k}`} className="aspect-[3/4] rounded-xl bg-slate-100 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
                 </div>
               ))}
             </div>
+          )}
+          {photos.length > 0 && (
+            <label className="block rounded-2xl border border-slate-200 px-3.5 py-2.5">
+              <span className="block text-[13px] font-bold text-slate-900">Total de la boleta <span className="font-normal text-slate-500">(opcional)</span></span>
+              <span className="flex items-center gap-1 mt-0.5">
+                <span className="text-[18px] font-semibold text-slate-400">$</span>
+                <input inputMode="decimal" value={totalText} onChange={(e) => setTotalText(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="El total a pagar, con IVA"
+                  className="flex-1 min-w-0 bg-transparent outline-none text-[18px] font-bold tabular-nums text-slate-900 placeholder:text-[14px] placeholder:font-normal placeholder:text-slate-400" />
+              </span>
+              <span className="block mt-0.5 text-[12px] text-slate-500">Si lo ponés, la IA controla que los productos sumen eso y, si no, la vuelve a leer. Sirve sobre todo cuando el total está cortado o borroso en la foto.</span>
+            </label>
           )}
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 px-3.5 py-3">
             <input type="checkbox" checked={auto.enabled} onChange={(e) => { const v = { ...auto, enabled: e.target.checked }; setAuto(v); savePurchaseAuto(v); }} className="w-5 h-5 mt-0.5 accent-rose-600 shrink-0" />
@@ -178,7 +251,12 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
               Si los renglones suman el total y no hay nada dudoso: suma el stock, actualiza los precios manteniendo tu margen y crea los productos nuevos. Si algo no cierra, queda para revisar.
             </span>
           </label>
-          {busy && <p className="flex items-center justify-center gap-2 text-[13px] text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> La IA está leyendo los productos y los totales…</p>}
+          {busy && (
+            <div className="space-y-1.5">
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-rose-600 transition-[width] duration-300" style={{ width: `${job.uploadPct}%` }} /></div>
+              <p className="text-center text-[12.5px] text-slate-500">Subiendo las fotos… después la lectura sigue sola y podés seguir usando la app.</p>
+            </div>
+          )}
         </div>
       )}
     </Sheet>
