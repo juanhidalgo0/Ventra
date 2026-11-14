@@ -426,10 +426,17 @@ export default function POSScreen() {
     setReprintInvoice(factura);
     setReprintSale(lastSale);
     toast.success(`🖨️ Imprimiendo ${factura ? 'la factura' : 'el ticket'} #${lastSale.saleNumber || ''}`);
-    setTimeout(() => {
+    setTimeout(async () => {
       // App de escritorio: directo a la impresora de tickets; si falla, el cuadro de impresión
-      if (canPrintSilently()) printSilently('ticket').catch((err) => toast.error(printFailMessage(err), { duration: 8000 }));
-      else window.print();
+      try {
+        if (canPrintSilently()) await printSilently('ticket').catch((err) => toast.error(printFailMessage(err), { duration: 8000 }));
+        else window.print();
+      } finally {
+        // La hoja de la reimpresión se saca al terminar: si quedaba, tapaba los tickets de las
+        // ventas siguientes (salía otra vez el ticket reimpreso en vez del nuevo)
+        setReprintSale(null);
+        setReprintInvoice(null);
+      }
     }, 250);
   };
 
