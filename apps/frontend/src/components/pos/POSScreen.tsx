@@ -410,6 +410,21 @@ export default function POSScreen() {
   const [reprintSale, setReprintSale] = useState<any | null>(null);
   const [reprintInvoice, setReprintInvoice] = useState<{ doc: any; qr: string | null } | null>(null);
 
+  /**
+   * La hoja oculta de la reimpresión tiene que salir de la pantalla antes de la próxima impresión:
+   * si quedaba, tapaba el ticket de la venta siguiente (salía otra vez el reimpreso).
+   */
+  const clearReprint = () => { setReprintSale(null); setReprintInvoice(null); };
+  // En el navegador se saca justo antes de la próxima impresión (cualquiera: otro ticket, un cierre)
+  const reprintCleanupRef = useRef<(() => void) | null>(null);
+  const dropReprintCleanup = () => {
+    if (reprintCleanupRef.current) window.removeEventListener('beforeprint', reprintCleanupRef.current);
+    reprintCleanupRef.current = null;
+  };
+  useEffect(() => dropReprintCleanup, []);
+  // Al abrir el cobro de otra venta ya no hace falta
+  useEffect(() => { if (showPayment) { dropReprintCleanup(); clearReprint(); } }, [showPayment]);
+
   const handleReprintLastTicket = async () => {
     if (!lastSale) {
       toast('No hay ninguna venta reciente para reimprimir', { icon: 'ℹ️' });
@@ -423,20 +438,34 @@ export default function POSScreen() {
         if (data?.invoice?.status === 'AUTHORIZED') factura = { doc: data.invoice, qr: await qrImagen(data.invoice.qrUrl) };
       } catch { /* sin facturación o sin respuesta: va el ticket común */ }
     }
+    // Una reimpresión anterior todavía esperando: que no borre esta
+    dropReprintCleanup();
     setReprintInvoice(factura);
     setReprintSale(lastSale);
     toast.success(`🖨️ Imprimiendo ${factura ? 'la factura' : 'el ticket'} #${lastSale.saleNumber || ''}`);
     setTimeout(async () => {
-      // App de escritorio: directo a la impresora de tickets; si falla, el cuadro de impresión
-      try {
-        if (canPrintSilently()) await printSilently('ticket').catch((err) => toast.error(printFailMessage(err), { duration: 8000 }));
-        else window.print();
-      } finally {
-        // La hoja de la reimpresión se saca al terminar: si quedaba, tapaba los tickets de las
-        // ventas siguientes (salía otra vez el ticket reimpreso en vez del nuevo)
-        setReprintSale(null);
-        setReprintInvoice(null);
+      // App de escritorio: directo a la impresora de tickets. La impresión termina cuando vuelve,
+      // así que recién ahí se saca la hoja.
+      if (canPrintSilently()) {
+        try {
+          await printSilently('ticket');
+        } catch (err) {
+          toast.error(printFailMessage(err), { duration: 8000 });
+        } finally {
+          clearReprint();
+        }
+        return;
       }
+      // Navegador: en la PC window.print() espera al cuadro de impresión, pero en tablets y
+      // celulares vuelve enseguida y la hoja se arma después; sacarla acá dejaba la reimpresión
+      // en blanco. Queda hasta justo antes de la próxima impresión (o hasta el próximo cobro).
+      window.print();
+      setTimeout(() => {
+        dropReprintCleanup();
+        const cleanup = () => { dropReprintCleanup(); flushSync(clearReprint); };
+        reprintCleanupRef.current = cleanup;
+        window.addEventListener('beforeprint', cleanup);
+      }, 0);
     }, 250);
   };
 
