@@ -14,6 +14,7 @@
     "db:generate": "npx prisma generate",
     "test:fiscal": "npx tsx scripts/test-fiscal.ts",
     "test:stock": "npx tsx scripts/test-stock.ts",
+    "test:packs": "npx tsx scripts/test-packs.ts",
     "test:boletas": "npx tsx scripts/test-boletas.ts",
     "test:auth": "npx tsx scripts/test-auth.ts",
     "test:anulaciones": "npx tsx scripts/test-void-score.ts",

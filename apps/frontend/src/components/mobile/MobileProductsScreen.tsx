@@ -222,7 +222,8 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
   const costValue = parseAmount(cost);
   const margin = priceValue > 0 && costValue > 0 ? Math.round(((priceValue - costValue) / costValue) * 100) : null;
   const priceChanged = product && (priceValue !== product.salePrice || costValue !== product.costPrice);
-  const tracksStock = product && !product.unlimitedStock;
+  // Pack o kit: no tiene stock propio (se cuenta en sus piezas), así que no se ajusta acá
+  const tracksStock = product && !product.unlimitedStock && !product.isKit;
 
   const savePrices = async () => {
     if (priceValue <= 0) return toast.error('El precio tiene que ser mayor a cero');
@@ -380,6 +381,14 @@ function ProductSheet({ productId, onClose, onChanged }: { productId: string | n
                 <p className="mt-2 text-[12.5px] text-slate-600">Sale {money(packPriceValue / packUnitsValue)} la unidad en el bulto (suelta, {money(priceValue)}).</p>
               )}
               {packChanged && <PrimaryButton className="mt-3" onClick={savePack} loading={savingPack}>Guardar bulto</PrimaryButton>}
+            </section>
+          )}
+
+          {product.isKit && !product.unlimitedStock && (
+            <section className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-[12.5px] text-slate-500">Alcanzan para</p>
+              <p className={`text-[26px] font-bold tabular-nums ${product.stock <= 0 ? 'text-red-600' : 'text-slate-900'}`}>{qty(product.stock)}</p>
+              <p className="text-[12.5px] text-slate-600">Es un pack: el stock se cuenta en el producto suelto. Para sumar o restar, ajustá ese.</p>
             </section>
           )}
 

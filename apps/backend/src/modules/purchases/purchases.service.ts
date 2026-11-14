@@ -27,6 +27,28 @@ export function keepMarginSale(product: { costPrice: number; salePrice: number }
 }
 
 /** El precio del bulto, mayorista y de gremio acompañan al precio de venta (mismo margen) */
+/**
+ * Pack armado (kit de una sola pieza, ej. "Pack Quilmes x6" = 6 latas): no tiene stock propio,
+ * así que la compra entra en la pieza. 2 packs a $6.000 = 12 latas a $1.000. El precio de venta
+ * del pack no se toca (es aparte) y su costo lo recalcula la base (ver kit-stock.ts).
+ * Devuelve null si no es un pack de una sola pieza: la compra sigue como siempre.
+ */
+export async function packToPiece<P extends { id: string; isKit: boolean; presentationType: string; unitsPerPack: number }, I extends { quantity: number; cost: number; buyFormat?: string }>(
+  tx: any, product: P, item: I,
+): Promise<{ product: P; item: I } | null> {
+  if (!product.isKit) return null;
+  const pieces = await tx.productKitItem.findMany({ where: { parentProductId: product.id } });
+  if (pieces.length !== 1 || !(Number(pieces[0].quantity) > 0)) return null;
+  const piece = await tx.product.findUnique({ where: { id: pieces[0].childProductId }, include: { category: true } });
+  if (!piece) return null;
+  const boxes = item.buyFormat === 'PACK' && product.presentationType === 'PACK' ? product.unitsPerPack || 1 : 1;
+  const units = boxes * Number(pieces[0].quantity);
+  return {
+    product: piece,
+    item: { ...item, productId: piece.id, quantity: item.quantity * units, cost: item.cost / units, buyFormat: 'UNIT', salePrice: undefined, newProductData: undefined, setBarcode: undefined } as I,
+  };
+}
+
 export function scaledPrices(product: { salePrice: number; packPrice?: number | null; wholesalePrice?: number | null; tradePrice?: number | null }, newSale: number, round = 10) {
   if (!(product.salePrice > 0) || Math.abs(newSale - product.salePrice) < 0.01) return {};
   const f = newSale / product.salePrice;
@@ -459,7 +481,7 @@ export class PurchasesService {
 
       // 2. Create Items and Update Stock
       if (data.items && data.items.length > 0) {
-        for (const item of data.items) {
+        for (let item of data.items) {
           let productId = item.productId;
 
         // If it's a new product, create it first
@@ -516,11 +538,14 @@ export class PurchasesService {
           if (!owner && (await tx.product.updateMany({ where: { id: productId, OR: [{ barcode: null }, { barcode: '' }] }, data: { barcode: item.setBarcode } })).count) barcodeSet = item.setBarcode;
         }
 
-        const product = await tx.product.findUnique({ 
-          where: { id: productId }, 
-          include: { category: true } 
+        let product = await tx.product.findUnique({
+          where: { id: productId },
+          include: { category: true }
         });
         if (!product) throw new NotFoundException(`Producto ${productId} no encontrado`);
+        // Un pack armado (6 latas) entra como latas
+        const asPiece = await packToPiece(tx, product, item);
+        if (asPiece) { product = asPiece.product; item = asPiece.item; productId = product.id; }
 
         const isPack = item.buyFormat === 'PACK' && product.presentationType === 'PACK';
         const unitsPerPack = isPack ? (product.unitsPerPack || 1) : 1;
@@ -1667,13 +1692,16 @@ export class PurchasesService {
 
       // 3. Create Items and Update Stock
       if (data.items && data.items.length > 0) {
-        for (const item of data.items) {
-          const productId = item.productId;
-          const product = await tx.product.findUnique({ 
-            where: { id: productId }, 
-            include: { category: true } 
+        for (let item of data.items) {
+          let productId = item.productId;
+          let product = await tx.product.findUnique({
+            where: { id: productId },
+            include: { category: true }
           });
           if (!product) throw new NotFoundException(`Producto ${productId} no encontrado`);
+          // Un pack armado (6 latas) entra como latas
+          const asPiece = await packToPiece(tx, product, item);
+          if (asPiece) { product = asPiece.product; item = asPiece.item; productId = product.id; }
 
           const isPack = item.buyFormat === 'PACK' && product.presentationType === 'PACK';
           const unitsPerPack = isPack ? (product.unitsPerPack || 1) : 1;

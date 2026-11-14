@@ -999,32 +999,41 @@ export class FirebaseSyncService implements OnModuleInit {
             }
 
             if (!Number.isFinite(qty) || qty <= 0) continue;
-            const { stock: stockAfter } = await tx.product.update({
-              where: { id: localProd.id },
-              data: { stock: { decrement: qty } },
-              select: { stock: true },
-            });
-            const stockBefore = stockAfter + qty;
+            // Pack o kit: sale de sus piezas (un pack de 6 baja 6 latas), como en la caja
+            const pieces = localProd.isKit
+              ? await tx.productKitItem.findMany({ where: { parentProductId: localProd.id }, include: { childProduct: true } })
+              : [];
+            const targets = pieces.length
+              ? pieces.filter((k) => !k.childProduct.unlimitedStock).map((k) => ({ prod: k.childProduct, qty: qty * (Number(k.quantity) || 1) }))
+              : [{ prod: localProd, qty }];
+            for (const target of targets) {
+              const { stock: stockAfter } = await tx.product.update({
+                where: { id: target.prod.id },
+                data: { stock: { decrement: target.qty } },
+                select: { stock: true },
+              });
+              const stockBefore = stockAfter + target.qty;
 
-            await tx.inventoryMovement.create({
-              data: {
-                productId: localProd.id,
-                userId: systemUserId,
-                type: 'EXIT',
-                quantity: -qty,
-                stockBefore,
-                stockAfter,
-                reason: `Venta Online GoDelivery (Pedido #${order.orderId || orderId.substring(0, 6).toUpperCase()})`,
-                reference: `GoDelivery:${orderId}`
-              }
-            });
+              await tx.inventoryMovement.create({
+                data: {
+                  productId: target.prod.id,
+                  userId: systemUserId,
+                  type: 'EXIT',
+                  quantity: -target.qty,
+                  stockBefore,
+                  stockAfter,
+                  reason: `Venta Online GoDelivery (Pedido #${order.orderId || orderId.substring(0, 6).toUpperCase()})${target.prod.id !== localProd.id ? ` · ${localProd.name}` : ''}`,
+                  reference: `GoDelivery:${orderId}`
+                }
+              });
 
-            console.log(`[FirebaseSync] Stock de [${localProd.name}] descontado localmente: ${stockBefore} -> ${stockAfter}`);
+              console.log(`[FirebaseSync] Stock de [${target.prod.name}] descontado localmente: ${stockBefore} -> ${stockAfter}`);
 
-            this.eventsGateway.emitProductUpdated({
-              ...localProd,
-              stock: stockAfter
-            });
+              this.eventsGateway.emitProductUpdated({
+                ...target.prod,
+                stock: stockAfter
+              });
+            }
           } else {
             console.warn(`[FirebaseSync] Producto online [${name || 'Sin nombre'}] (Código: [${barcode || 'Sin código'}]) no encontrado localmente en POS.`);
           }

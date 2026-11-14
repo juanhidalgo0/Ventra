@@ -1096,7 +1096,25 @@ export default function POSScreen() {
     }
     if (!sold.size) return;
     const st = usePOSStore.getState();
-    st.setProducts(st.products.map((p: any) => (sold.has(p.id) && !p.unlimitedStock ? { ...p, stock: (Number(p.stock) || 0) - sold.get(p.id)! } : p)));
+    // Pack o kit: lo vendido sale de sus piezas (un pack de 6 baja 6 latas)
+    const kits = st.products.filter((p: any) => p.isKit && p.kitItems?.length);
+    for (const k of kits) {
+      const qty = sold.get(k.id);
+      if (!qty) continue;
+      sold.delete(k.id);
+      for (const piece of k.kitItems) add(piece.childProductId, qty * (Number(piece.quantity) || 1));
+    }
+    const updated = st.products.map((p: any) => (sold.has(p.id) && !p.unlimitedStock && !p.isKit ? { ...p, stock: (Number(p.stock) || 0) - sold.get(p.id)! } : p));
+    // Y los packs que usan esas piezas muestran lo que alcanza ahora
+    const byId = new Map(updated.map((p: any) => [p.id, p]));
+    st.setProducts(updated.map((p: any) => {
+      if (!p.isKit || !p.kitItems?.length || !p.kitItems.some((k: any) => sold.has(k.childProductId))) return p;
+      const counts = p.kitItems
+        .map((k: any) => byId.get(k.childProductId))
+        .map((c: any, i: number) => (c && !c.unlimitedStock ? Math.max(0, Math.floor((Number(c.stock) || 0) / (Number(p.kitItems[i].quantity) || 1) + 1e-9)) : null))
+        .filter((n: number | null) => n !== null) as number[];
+      return counts.length ? { ...p, stock: Math.min(...counts) } : p;
+    }));
   };
   /** El catálogo completo (precios y stock de las otras cajas) se recarga cuando la caja está quieta */
   const catalogRefreshTimer = useRef(0);

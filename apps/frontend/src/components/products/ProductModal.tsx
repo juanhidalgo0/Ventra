@@ -68,6 +68,8 @@ interface ProductModalProps {
   onClose: () => void;
   onSuccess: (product?: any) => void;
   product?: any;
+  /** Se creó un pack de este producto desde la ficha (la lista tiene un producto más) */
+  onPacksChanged?: () => void;
 }
 
 /** Sección del formulario: título chico en mayúsculas con ícono y una línea. */
@@ -111,6 +113,8 @@ function Collapsible({ icon: Icon, title, hint, defaultOpen, badge, children }: 
   icon: any; title: string; hint?: string; defaultOpen?: boolean; badge?: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  // Los datos que llegan después de abrir la ficha (por ejemplo los packs del producto) también la abren
+  useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
   return (
     <div className={`rounded-xl border transition-colors ${open ? 'border-slate-300 bg-white' : 'border-transparent hover:bg-slate-50'}`}>
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-2 py-1.5 text-left">
@@ -129,7 +133,7 @@ function Collapsible({ icon: Icon, title, hint, defaultOpen, badge, children }: 
   );
 }
 
-export default function ProductModal({ onClose, onSuccess, product }: ProductModalProps) {
+export default function ProductModal({ onClose, onSuccess, product, onPacksChanged }: ProductModalProps) {
   const [formData, setFormData] = useState({
     name: product?.name || '',
     description: product?.description || '',
@@ -182,14 +186,37 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
   const [pendingLots, setPendingLots] = useState<PendingLot[]>([]);
   const canUseExpiry = useFeature('expiry') || Boolean(product?.trackExpiry);
 
-  const [kitItems, setKitItems] = useState<{ childProductId: string; quantity: number; name: string; salePrice?: number }[]>(() => {
-    return product?.kitItems?.map((k: any) => ({
-      childProductId: k.childProductId,
-      quantity: k.quantity,
-      name: k.childProduct?.name || 'Componente',
-      salePrice: k.childProduct?.salePrice || 0
-    })) || [];
+  const toKitItem = (k: any) => ({
+    childProductId: k.childProductId,
+    quantity: k.quantity,
+    name: k.childProduct?.name || 'Componente',
+    salePrice: k.childProduct?.salePrice || 0,
+    costPrice: k.childProduct?.costPrice as number | undefined,
+    stock: k.childProduct?.stock as number | undefined,
   });
+  const [kitItems, setKitItems] = useState<{ childProductId: string; quantity: number; name: string; salePrice?: number; costPrice?: number; stock?: number }[]>(() => {
+    return product?.kitItems?.map(toKitItem) || [];
+  });
+  // Packs que se arman con este producto (pack de 6 = kit de una pieza): ver "Se vende también en pack"
+  const [packs, setPacks] = useState<{ id: string; name: string; barcode?: string | null; salePrice: number; units: number }[]>([]);
+  const [packForm, setPackForm] = useState({ units: '6', barcode: '', price: '', name: '' });
+  const [creatingPack, setCreatingPack] = useState(false);
+  const packPriceRef = useRef<HTMLInputElement>(null);
+
+  // La lista de Inventario no trae las piezas del kit ni los packs del producto: se piden aparte.
+  // Sin esto, guardar un pack abierto desde la lista lo dejaba sin sus piezas.
+  useEffect(() => {
+    if (!product?.id) return;
+    let alive = true;
+    api.get(`/products/${product.id}`, { silent: true } as any).then(({ data }) => {
+      if (!alive || !data) return;
+      if (data.isKit && Array.isArray(data.kitItems) && data.kitItems.length) setKitItems(data.kitItems.map(toKitItem));
+      setPacks((data.parentKits || [])
+        .filter((k: any) => k.parentProduct?.isActive && k.parentProduct?.isKit)
+        .map((k: any) => ({ id: k.parentProduct.id, name: k.parentProduct.name, barcode: k.parentProduct.barcode, salePrice: k.parentProduct.salePrice, units: k.quantity })));
+    }).catch(() => { /* sin conexión: queda lo que vino de la lista */ });
+    return () => { alive = false; };
+  }, [product?.id]);
 
   const [newBarcode, setNewBarcode] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
@@ -536,6 +563,103 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
       ...prev,
       additionalBarcodes: prev.additionalBarcodes.filter(b => b !== barcode)
     }));
+  };
+
+  // Pack o kit: el costo es la suma de sus piezas y lo mantiene la base (ver kit-stock.ts en el
+  // servidor). Acá se muestra igual, solo si se conoce el costo de todas las piezas.
+  const kitCost = formData.isKit && kitItems.length > 0 && kitItems.every(k => k.costPrice !== undefined)
+    ? Math.round(kitItems.reduce((s, k) => s + (Number(k.costPrice) || 0) * (Number(k.quantity) || 0), 0) * 100) / 100
+    : 0;
+  useEffect(() => {
+    if (!(kitCost > 0) || formData.presentationType === 'PACK') return;
+    setFormData(prev => Number(prev.costPrice) === kitCost ? prev : {
+      ...prev,
+      costPrice: kitCost,
+      margin: Number(prev.salePrice) > 0 ? parseFloat(((Number(prev.salePrice) / kitCost - 1) * 100).toFixed(2)) : prev.margin,
+    });
+  }, [kitCost]);
+  // Cuántos packs/kits alcanzan con el stock de las piezas (si se conoce), si no lo que mandó el servidor
+  const kitAvailable = formData.isKit && kitItems.length > 0 && kitItems.every(k => k.stock !== undefined)
+    ? Math.max(0, Math.min(...kitItems.map(k => Math.floor((Number(k.stock) || 0) / (Number(k.quantity) || 1) + 1e-9))))
+    : Number(product?.stock) || 0;
+
+  /** Precio de una unidad suelta de este producto (para comparar con el pack) */
+  const unitSalePrice = (parseFloat(formData.salePrice as any) || 0) / (formData.presentationType === 'PACK' ? Math.max(1, Number(formData.unitsPerPack) || 1) : 1);
+  const unitCostPrice = (parseFloat(formData.costPrice as any) || 0) / (formData.presentationType === 'PACK' ? Math.max(1, Number(formData.unitsPerPack) || 1) : 1);
+  const packUnits = Math.round(parseFloat(packForm.units) || 0);
+  const autoPackName = `PACK ${(formData.name || '').trim().toUpperCase()} X${packUnits || ''}`.trim();
+
+  // "Llegaron packs" en la ficha del pack: suma packs × unidades al stock del producto suelto
+  const [packsIn, setPacksIn] = useState('');
+  const [addingPacks, setAddingPacks] = useState(false);
+  const addPacksToStock = async () => {
+    const n = parseInt(packsIn);
+    const piece = kitItems[0];
+    if (!piece || !(n > 0) || addingPacks) return;
+    const units = n * (Number(piece.quantity) || 1);
+    setAddingPacks(true);
+    try {
+      await api.post(`/products/${piece.childProductId}/movement`, {
+        type: 'ENTRY',
+        quantity: units,
+        reason: `Ingreso de ${n} ${n === 1 ? 'pack' : 'packs'} (${formData.name || 'pack'})`,
+      });
+      setKitItems(prev => prev.map((k, i) => (i === 0 ? { ...k, stock: (Number(k.stock) || 0) + units } : k)));
+      setPacksIn('');
+      usePOSStore.getState().setProducts([]);
+      onPacksChanged?.();
+      toast.success(`Sumaste ${units.toLocaleString('es-AR')} a ${piece.name}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo sumar al stock');
+    } finally {
+      setAddingPacks(false);
+    }
+  };
+
+  /** "Se vende también en pack": crea el pack como un producto aparte (su código y su precio) que al venderse descuenta N unidades de este */
+  const createPack = async () => {
+    if (!product?.id || creatingPack) return;
+    const price = parseFloat(packForm.price);
+    const barcode = packForm.barcode.trim().toUpperCase();
+    if (!(packUnits >= 2)) { toast.error('El pack tiene que traer 2 unidades o más'); return; }
+    if (!(price > 0)) { toast.error('Poné el precio del pack'); packPriceRef.current?.focus(); return; }
+    // Un código escaneado sin querer en el precio (o un número de más) daría un pack carísimo
+    if (unitSalePrice > 0 && price > unitSalePrice * packUnits * 2) {
+      toast.error(`Revisá el precio: el pack saldría $ ${Math.round(price).toLocaleString('es-AR')} y ${packUnits} sueltas salen $ ${Math.round(unitSalePrice * packUnits).toLocaleString('es-AR')}`);
+      packPriceRef.current?.focus();
+      return;
+    }
+    if (barcode && (barcode === String(formData.barcode || '').toUpperCase() || formData.additionalBarcodes.includes(barcode))) {
+      toast.error('Ese es el código de la unidad suelta: escaneá el del pack (el del cartón o la caja)');
+      return;
+    }
+    setCreatingPack(true);
+    try {
+      const { data } = await api.post('/products', {
+        name: (packForm.name.trim() || autoPackName).toUpperCase(),
+        barcode: barcode || null,
+        salePrice: Math.round(price * 100) / 100,
+        costPrice: Math.round(unitCostPrice * packUnits * 100) / 100,
+        stock: 0,
+        minStock: 0,
+        categoryId: product.categoryId || null,
+        brandId: product.brandId || null,
+        supplierId: product.supplierId || null,
+        showOnline: Boolean(product.showOnline),
+        isKit: true,
+        kitItems: [{ childProductId: product.id, quantity: packUnits }],
+      });
+      setPacks(prev => [...prev, { id: data.id, name: data.name, barcode: data.barcode, salePrice: data.salePrice, units: packUnits }]);
+      setPackForm({ units: String(packUnits), barcode: '', price: '', name: '' });
+      // La caja vuelve a bajar el catálogo: así reconoce el código del pack
+      usePOSStore.getState().setProducts([]);
+      onPacksChanged?.();
+      toast.success(`Listo: cada "${data.name}" que se venda descuenta ${packUnits} del stock de este producto`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo crear el pack');
+    } finally {
+      setCreatingPack(false);
+    }
   };
 
   const handleCostChange = (cost: number) => {
@@ -1314,9 +1438,18 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       onChange={e => handleCostChange(parseFloat(e.target.value))}
                       onFocus={e => e.target.select()}
                       placeholder="0.00"
-                      className={inputCls + ' pl-7'}
+                      readOnly={kitCost > 0}
+                      className={inputCls + ' pl-7' + (kitCost > 0 ? ' bg-slate-50 text-slate-600' : '')}
                     />
                   </div>
+                  {kitCost > 0 && (
+                    <p className={hintCls}>
+                      {kitItems.length === 1
+                        ? `${kitItems[0].quantity} × $ ${Number(kitItems[0].costPrice).toLocaleString('es-AR')} de ${kitItems[0].name}.`
+                        : 'La suma de sus piezas.'}{' '}
+                      Se actualiza solo.
+                    </p>
+                  )}
                 </div>
               )}
               <div>
@@ -1540,6 +1673,49 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
           <div className="space-y-5 min-w-0 md:col-span-2 xl:col-span-1">
           {/* ── Inventario ── */}
           <FormSection icon={Boxes} title="Inventario">
+            {formData.isKit && kitItems.length > 0 ? (
+              // Pack o kit: no tiene stock propio, se cuenta en las piezas (ver kit-stock.ts en el servidor)
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[13px] font-semibold text-slate-800">
+                  Alcanza para {kitAvailable} {kitItems.length === 1 ? (kitAvailable === 1 ? 'pack' : 'packs') : (kitAvailable === 1 ? 'kit' : 'kits')}
+                </p>
+                <p className={hintCls}>
+                  {kitItems.length === 1
+                    ? <>El stock se cuenta en <b>{kitItems[0].name}</b>{kitItems[0].stock !== undefined ? <> (hay {Number(kitItems[0].stock).toLocaleString('es-AR')})</> : null}. Cada venta descuenta {kitItems[0].quantity}. Para cargar stock o avisar cuando falte, usá ese producto.</>
+                    : <>El stock se cuenta en sus piezas: cada venta descuenta {kitItems.map(k => `${k.quantity} × ${k.name}`).join(', ')}.</>}
+                </p>
+                {kitItems.length === 1 && product?.id && (
+                  // Mercadería que llegó en packs: se suma a mano como unidades del producto suelto
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-200">
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Llegaron packs</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={packsIn}
+                        onChange={e => setPacksIn(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addPacksToStock(); } }}
+                        onFocus={e => e.target.select()}
+                        placeholder="0"
+                        className={inputCls.replace('w-full', 'w-20 shrink-0') + ' text-center font-bold'}
+                      />
+                      <button
+                        type="button"
+                        onClick={addPacksToStock}
+                        disabled={addingPacks || !(parseInt(packsIn) > 0)}
+                        className="flex-1 h-9 rounded-lg bg-rose-600 text-white text-[13px] font-semibold hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                      >
+                        {parseInt(packsIn) > 0
+                          ? `Sumar ${(parseInt(packsIn) * (Number(kitItems[0].quantity) || 1)).toLocaleString('es-AR')} al stock`
+                          : 'Sumar al stock'}
+                      </button>
+                    </div>
+                    <p className={hintCls}>Se suman como unidades sueltas: cada pack son {kitItems[0].quantity}.</p>
+                  </div>
+                )}
+              </div>
+            ) : (<>
             <label className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 -mx-2 hover:bg-slate-50 cursor-pointer select-none">
               <span>
                 <span className="block text-[13px] font-semibold text-slate-800">Stock ilimitado</span>
@@ -1578,6 +1754,21 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                       </button>
                     ))}
                   </div>
+                  {packs.length > 0 && formData.presentationType !== 'PACK' && (
+                    // Llegaron packs de este producto: cada toque suma un pack en unidades sueltas
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {Array.from(new Set(packs.map(pk => pk.units))).sort((a, b) => a - b).map(units => (
+                        <button
+                          key={units}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, stock: parseFloat(((formData.stock || 0) + units).toFixed(2)) })}
+                          className="h-7 px-2 bg-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-600 hover:text-rose-700 hover:border-rose-300 transition-colors"
+                        >
+                          +1 pack ({units})
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className={labelCls}>Stock mínimo</label>
@@ -1594,6 +1785,7 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
                 </div>
               </div>
             )}
+            </>)}
 
             {canUseExpiry && (
               <>
@@ -1915,6 +2107,116 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
               </Collapsible>
             )}
 
+            {!formData.isKit && !(canUseVariants && variantMode) && (
+              <Collapsible
+                icon={Boxes}
+                title="Se vende también en pack"
+                hint="Pack de 6, caja de 12: con su código y su precio, descuenta de este stock"
+                defaultOpen={packs.length > 0}
+                badge={packs.length > 0 ? String(packs.length) : undefined}
+              >
+                {!product?.id ? (
+                  <p className="text-[12px] text-slate-600">Guardá el producto primero y después creá el pack desde acá.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {packs.length > 0 && (
+                      <div className="space-y-1.5">
+                        {packs.map(pk => (
+                          <div key={pk.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-semibold text-slate-800">{pk.name}</span>
+                              <span className="block text-[11px] text-slate-500">
+                                {pk.units} u.{pk.barcode ? ` · ${pk.barcode}` : ' · sin código'}
+                                {!formData.unlimitedStock && ` · alcanza para ${Math.max(0, Math.floor((Number(product?.stock) || 0) / (pk.units || 1)))}`}
+                              </span>
+                            </span>
+                            <span className="font-bold text-slate-900 shrink-0">$ {Number(pk.salePrice).toLocaleString('es-AR')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-[70px_1fr] gap-2">
+                      <div>
+                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Trae</label>
+                        <input
+                          type="number"
+                          min="2"
+                          step="1"
+                          value={packForm.units}
+                          onChange={e => setPackForm({ ...packForm, units: e.target.value })}
+                          onFocus={e => e.target.select()}
+                          className={inputCls + ' text-center font-bold'}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Código del pack</label>
+                        <input
+                          type="text"
+                          value={packForm.barcode}
+                          onChange={e => setPackForm({ ...packForm, barcode: e.target.value.toUpperCase() })}
+                          // El lector manda Enter: pasa al precio (no guarda la ficha)
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); packPriceRef.current?.focus(); } }}
+                          placeholder="Escaneá el del cartón (opcional)"
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio del pack</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 font-semibold pointer-events-none">$</span>
+                        <input
+                          ref={packPriceRef}
+                          type="number"
+                          step="0.01"
+                          value={packForm.price}
+                          onChange={e => setPackForm({ ...packForm, price: e.target.value })}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); createPack(); } }}
+                          onFocus={e => e.target.select()}
+                          placeholder={unitSalePrice > 0 && packUnits >= 2 ? String(Math.round(unitSalePrice * packUnits)) : '0'}
+                          className={inputCls + ' pl-7 font-bold'}
+                        />
+                      </div>
+                      {unitSalePrice > 0 && packUnits >= 2 && (() => {
+                        const loose = unitSalePrice * packUnits;
+                        const price = parseFloat(packForm.price) || 0;
+                        const fmt = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
+                        return (
+                          <p className={hintCls}>
+                            {packUnits} sueltas salen {fmt(loose)}.
+                            {price > 0 && price < loose && <> En el pack, cada una queda a {fmt(price / packUnits)} (ahorran {fmt(loose - price)}).</>}
+                            {price > loose && <span className="text-amber-700"> El pack sale más caro que comprarlas sueltas.</span>}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Nombre</label>
+                      <input
+                        type="text"
+                        value={packForm.name}
+                        onChange={e => setPackForm({ ...packForm, name: e.target.value.toUpperCase() })}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); createPack(); } }}
+                        placeholder={autoPackName}
+                        className={inputCls}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={createPack}
+                      disabled={creatingPack}
+                      className="w-full h-9 rounded-lg bg-rose-600 text-white text-[13px] font-semibold hover:bg-rose-700 disabled:opacity-60 transition-colors"
+                    >
+                      {creatingPack ? 'Creando…' : 'Crear pack'}
+                    </button>
+                    <p className={hintCls}>
+                      El pack queda como otro producto, con su precio. Al venderlo descuenta {packUnits >= 2 ? packUnits : 'esas'} unidades de este stock, y si se compra por pack entra como unidades.
+                    </p>
+                  </div>
+                )}
+              </Collapsible>
+            )}
+
             <Collapsible
               icon={Barcode}
               title="Códigos alternativos"
@@ -1947,10 +2249,10 @@ export default function ProductModal({ onClose, onSuccess, product }: ProductMod
               )}
             </Collapsible>
 
-            {isHardwareStore && (
+            {(isHardwareStore || formData.isKit) && (
               <Collapsible
                 icon={Package}
-                title="Kit / combo armado"
+                title={formData.isKit && kitItems.length === 1 ? 'Pack' : 'Kit / combo armado'}
                 hint="Al venderlo descuenta el stock de sus piezas"
                 defaultOpen={!!formData.isKit}
               >

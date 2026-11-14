@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { PRODUCT_WITHOUT_IMAGE, productIdFromImageLink, productImageLink } from '../../database/product-select';
 import { consumeLotsFefo } from './lots.util';
+import { withKitStock } from './kit-stock';
 import { PosTrailService } from '../pos-trail/pos-trail.service';
 
 function getSearchVariants(token: string): string[] {
@@ -200,7 +201,9 @@ export class ProductsService {
   /** Agrega a cada producto su foto como enlace liviano (ver getCatalogImageUrls). */
   private async withImageLinks<T extends { id: string }>(products: T[]): Promise<(T & { imageUrl: string | null })[]> {
     const imageById = await this.getCatalogImageUrls(products.map((p) => p.id));
-    return products.map((p) => ({ ...p, imageUrl: imageById.get(p.id) ?? null }));
+    // De paso, el stock de los packs y kits: lo que alcanza con sus piezas
+    const withStock = await withKitStock(this.prisma, products as any[]);
+    return withStock.map((p) => ({ ...p, imageUrl: imageById.get(p.id) ?? null }));
   }
 
   /**
@@ -300,7 +303,8 @@ export class ProductsService {
 
   async getLowStockIds() {
     const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT id, min_stock AS minStock FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND stock <= min_stock;`
+      // Packs y kits no: su stock se cuenta (y se avisa) en las piezas
+      `SELECT id, min_stock AS minStock FROM products WHERE is_active = 1 AND unlimited_stock = 0 AND is_kit = 0 AND stock <= min_stock;`
     );
     return rows.map((r) => ({ id: r.id, minStock: Number(r.minStock) }));
   }
@@ -335,6 +339,8 @@ export class ProductsService {
         unit: true,
         unitsPerPack: true,
         packPrice: true,
+        // Packs y kits: su stock es lo que alcanza con las piezas (ver kit-stock.ts)
+        isKit: true,
         // Precio mayorista (desde cierta cantidad) y de gremio: sin esto la caja cobraba siempre el común
         wholesalePrice: true,
         wholesaleMinQty: true,
@@ -371,13 +377,14 @@ export class ProductsService {
       console.warn('[ProductsService] No se pudo calcular lo más vendido:', err.message);
     }
 
-    const mappedProducts = products.map((p: any) => ({
+    const mappedProducts = (await withKitStock(this.prisma, products, { pieces: true })).map((p: any) => ({
       id: p.id,
       barcode: p.barcode,
       sku: p.sku,
       name: p.name,
       salePrice: p.salePrice,
       stock: p.stock,
+      ...(p.isKit ? { isKit: true, kitItems: p.kitItems } : {}),
       categoryId: p.categoryId,
       category: p.category,
       imageUrl: imageById.get(p.id) ?? null,
@@ -414,12 +421,12 @@ export class ProductsService {
       where: { showOnline: true },
       select: {
         id: true, name: true, description: true, salePrice: true, unit: true, stock: true, unlimitedStock: true,
-        variantGroupId: true, baseName: true, variantAttrs: true, imageUrl: true,
+        variantGroupId: true, baseName: true, variantAttrs: true, imageUrl: true, isKit: true,
         category: { select: { name: true, parentCategory: { select: { name: true } } } },
         brand: { select: { name: true } },
       },
     });
-    return rows.map(({ imageUrl, ...p }) => ({ ...p, hasImage: !!imageUrl }));
+    return (await withKitStock(this.prisma, rows)).map(({ imageUrl, isKit: _k, ...p }) => ({ ...p, hasImage: !!imageUrl }));
   }
 
   async getCosts(ids: string[]): Promise<Record<string, number>> {
@@ -451,7 +458,7 @@ export class ProductsService {
             { name: 'asc' }
           ],
         });
-        return this.withImageLinks(products.filter((p) => p.stock <= p.minStock));
+        return this.withImageLinks(products.filter((p) => !p.isKit && p.stock <= p.minStock));
       }
 
       const rawTokens = params?.search ? params.search.trim().split(/\s+/).filter(Boolean) : [];
@@ -577,11 +584,14 @@ export class ProductsService {
         brand: true,
         supplier: true,
         additionalBarcodes: true,
-        kitItems: { include: { childProduct: { select: { id: true, name: true, salePrice: true, stock: true, barcode: true } } } }
+        kitItems: { include: { childProduct: { select: { id: true, name: true, salePrice: true, costPrice: true, stock: true, barcode: true } } } },
+        // Los packs que se arman con este producto (ver "También se vende en pack" en la ficha)
+        parentKits: { include: { parentProduct: { select: { id: true, name: true, barcode: true, salePrice: true, isActive: true, isKit: true } } } },
       }
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
-    return product;
+    const [withStock] = await withKitStock(this.prisma, [product]);
+    return withStock;
   }
 
   /**
@@ -677,7 +687,8 @@ export class ProductsService {
       },
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
-    return product;
+    const [withStock] = await withKitStock(this.prisma, [product]);
+    return withStock;
   }
 
   /**
@@ -830,9 +841,11 @@ export class ProductsService {
     }
 
     const syncBarcode = product.barcode || product.id;
+    // Pack o kit: lo que alcanza con sus piezas
+    const shownStock = product.isKit ? (await withKitStock(this.prisma, [product]))[0].stock : product.stock;
     this.firebaseSync.syncProductToFirestore(
       syncBarcode, 
-      product.stock, 
+      shownStock, 
       product.salePrice,
       {
         name: product.name,
@@ -851,7 +864,7 @@ export class ProductsService {
       });
     }
 
-    return product;
+    return (await withKitStock(this.prisma, [product]))[0];
   }
 
   async update(id: string, data: any, userId?: string) {
@@ -900,6 +913,8 @@ export class ProductsService {
     // solo la diferencia que cargó el usuario sobre el stock actual. Así guardar la ficha (por ejemplo
     // para cambiar el precio) no borra las ventas que hizo otra caja mientras estaba abierta.
     let stockChange = 0;
+    // Pack o kit: no tiene stock propio (se cuenta en las piezas), lo que mande la ficha no cuenta
+    if (updateData.stock !== undefined && (data.isKit ?? existing.isKit)) delete updateData.stock;
     if (updateData.stock !== undefined) {
       const wanted = Number(updateData.stock);
       if (!Number.isFinite(wanted)) throw new BadRequestException('El stock tiene que ser un número');
@@ -933,7 +948,10 @@ export class ProductsService {
         }
       }
 
-      if (data.isKit !== undefined) {
+      // Un kit sin piezas no existe: si la ficha manda el kit vacío (la abrieron desde la lista,
+      // que no trae las piezas) se conservan las que tenía. Antes el pack quedaba sin sus latas.
+      const keepPieces = data.isKit && !(Array.isArray(kitItems) && kitItems.length > 0);
+      if (data.isKit !== undefined && !keepPieces) {
         await tx.productKitItem.deleteMany({ where: { parentProductId: id } });
         if (data.isKit && kitItems && Array.isArray(kitItems) && kitItems.length > 0) {
           for (const k of kitItems) {
@@ -961,9 +979,11 @@ export class ProductsService {
     });
 
     const syncBarcode = updatedProduct.barcode || updatedProduct.id;
+    // Pack o kit: lo que alcanza con sus piezas
+    const shownStock = updatedProduct.isKit ? (await withKitStock(this.prisma, [updatedProduct]))[0].stock : updatedProduct.stock;
     this.firebaseSync.syncProductToFirestore(
       syncBarcode, 
-      updatedProduct.stock, 
+      shownStock, 
       updatedProduct.salePrice,
       {
         name: updatedProduct.name,
@@ -984,7 +1004,7 @@ export class ProductsService {
       });
     }
 
-    return updatedProduct;
+    return (await withKitStock(this.prisma, [updatedProduct]))[0];
   }
 
   async delete(id: string, userId?: string) {
@@ -1109,6 +1129,7 @@ export class ProductsService {
   async addMovement(productId: string, data: { type: 'ENTRY' | 'EXIT' | 'ADJUSTMENT'; quantity: number; reason: string; note?: string; userId: string }) {
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException('Producto no encontrado');
+    if (product.isKit) throw new BadRequestException('El stock de un pack o kit se cuenta en sus piezas: ajustá el stock del producto suelto');
     const qty = Number(data.quantity);
     if (!Number.isFinite(qty) || qty === 0) throw new BadRequestException('La cantidad tiene que ser un número distinto de cero');
 
@@ -1651,7 +1672,8 @@ export class ProductsService {
       });
       
       // Mapear productos. Si no tienen código de barras, usamos su ID como código de barras en GoDelivery
-      const validProducts = products.map(p => ({
+      // (los packs y kits, con el stock que alcanza con sus piezas)
+      const validProducts = (await withKitStock(this.prisma, products)).map(p => ({
         ...p,
         barcode: (p.barcode && p.barcode.trim() !== '') ? p.barcode.trim() : p.id
       }));
@@ -1909,8 +1931,10 @@ export class ProductsService {
   async bulkDeleteZeroNegative(userId?: string) {
     console.log('[ProductsService] Soft-deleting products with zero or negative stock...');
     const products = await this.prisma.product.findMany({
-      where: { 
+      where: {
         isActive: true,
+        // Los packs y kits siempre tienen 0 propio (su stock está en las piezas): no se borran
+        isKit: false,
         stock: { lte: 0 }
       },
       select: { id: true, barcode: true, name: true, stock: true, salePrice: true }
@@ -2065,11 +2089,11 @@ export class ProductsService {
 
   async exportForGoDelivery() {
     console.log('[ProductsService] Exporting database for GoDelivery...');
-    const products = await this.prisma.product.findMany({
+    const products = await withKitStock(this.prisma, await this.prisma.product.findMany({
       where: { isActive: true },
       include: { category: true }
-    });
-    
+    }));
+
     return products.map(p => ({
       barcode: p.barcode || '',
       name: p.name,

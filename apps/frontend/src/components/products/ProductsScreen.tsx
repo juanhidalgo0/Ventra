@@ -1138,10 +1138,11 @@ export default function ProductsScreen() {
                       </td>
                       <td className="px-3 py-3 text-center">
                          <div className="inline-flex flex-col items-center">
-                            <span className={`text-sm font-bold ${p.stock <= p.minStock ? 'text-red-600' : 'text-slate-800'}`}>
+                            {/* Pack o kit: el stock es lo que alcanza con sus piezas (lo calcula el servidor) */}
+                            <span className={`text-sm font-bold ${!p.isKit && p.stock <= p.minStock ? 'text-red-600' : 'text-slate-800'}`}>
                                {p.stock}
                             </span>
-                            <span className="text-[9px] font-medium text-slate-600">Min: {p.minStock}</span>
+                            <span className="text-[9px] font-medium text-slate-600">{p.isKit ? 'alcanzan' : `Min: ${p.minStock}`}</span>
                          </div>
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-medium text-slate-700 whitespace-nowrap">
@@ -1225,6 +1226,7 @@ export default function ProductsScreen() {
             onClose={() => setShowModal(false)} 
             onSuccess={handleProductSuccess}
             product={selectedProduct}
+            onPacksChanged={() => loadProducts(true)}
           />
         )}
 

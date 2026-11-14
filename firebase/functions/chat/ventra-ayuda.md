@@ -45,6 +45,7 @@ Barra de la izquierda (en la PC). Arriba, el botón grande lleva a la pantalla p
 - Promos (2×1, combos, descuentos por cantidad): **Productos → Promociones y Combos**.
 - Stock bajo y reposición: **Productos → Control de Stock**. Contar el stock real: **Auditoría de Stock**.
 - Vencimientos por lote: en el producto, activar **Controla vencimiento** y cargar los lotes; avisa antes de que venzan.
+- Packs (pack de 6 latas, caja de 12): en la ficha del producto suelto, **Se vende también en pack**: cuántas trae, el código del pack (el del cartón, opcional) y su precio, que es aparte (suele ser más barato que las sueltas). El stock se cuenta solo en el producto suelto: vender un pack descuenta 6 latas, y el pack muestra cuántos alcanzan. El costo del pack se calcula solo. Si se compra por pack en una boleta, entra como latas. Cargar a mano los packs que llegaron: en la ficha del pack, **Llegaron packs** (poner cuántos y **Sumar**: entran como latas), o en la ficha de la lata los botones **+1 pack** junto al stock y **Guardar cambios**. El aviso de stock bajo se pone en el producto suelto.
 - Talles y colores, tamaños con distinto precio: al cargar el producto, la opción de variantes u opciones.
 
 ## Compras y proveedores

@@ -847,6 +847,29 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           console.error('[PrismaService] Failed to ensure product_kit_items table:', err);
         }
 
+        // 2.6b Costo de packs y kits = suma del costo de sus piezas (pack de 6 latas = 6 × costo de
+        // la lata). Lo usan los informes de ganancia. Triggers, así lo cubre cualquier camino que
+        // cambie un costo: la ficha, una boleta, un aumento masivo o un cambio que llega de otra caja.
+        // Si las piezas no tienen costo cargado (suma 0), queda el que tenía el kit. Ver kit-stock.ts
+        try {
+          const kitCost = (kit: string) => `ROUND((SELECT SUM(COALESCE(c.cost_price, 0) * k.quantity) FROM product_kit_items k JOIN products c ON c.id = k.child_product_id WHERE k.parent_product_id = ${kit}), 2)`;
+          const refresh = (where: string) => `UPDATE products SET cost_price = ${kitCost('products.id')}
+            WHERE ${where} AND is_kit = 1 AND ${kitCost('products.id')} > 0 AND cost_price IS NOT ${kitCost('products.id')};`;
+          await this.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "ventra_kit_cost_piece" AFTER UPDATE OF cost_price ON products
+            WHEN OLD.cost_price IS NOT NEW.cost_price
+            BEGIN ${refresh('id IN (SELECT parent_product_id FROM product_kit_items WHERE child_product_id = NEW.id)')} END`);
+          await this.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "ventra_kit_cost_add" AFTER INSERT ON product_kit_items
+            BEGIN ${refresh('id = NEW.parent_product_id')} END`);
+          await this.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "ventra_kit_cost_edit" AFTER UPDATE ON product_kit_items
+            BEGIN ${refresh('id = NEW.parent_product_id')} END`);
+          await this.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "ventra_kit_cost_remove" AFTER DELETE ON product_kit_items
+            BEGIN ${refresh('id = OLD.parent_product_id')} END`);
+          // Los kits que ya existían antes de los triggers (solo toca los que difieren)
+          await this.$executeRawUnsafe(refresh('id IN (SELECT parent_product_id FROM product_kit_items)'));
+        } catch (err) {
+          console.error('[PrismaService] Failed to ensure kit cost triggers:', err);
+        }
+
         // 2.7 Ensure delivery_receipts / delivery_receipt_items tables exist
         try {
           await this.$executeRawUnsafe(`
