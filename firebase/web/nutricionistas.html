@@ -90,7 +90,7 @@
         { "@type": "Question", "name": "¿Hago consultas online?",
           "acceptedAnswer": { "@type": "Answer", "text": "Sí. Cada paciente tiene su sala de videollamada: se la mandás por WhatsApp con un toque y entra desde el navegador, sin cuenta ni app." } },
         { "@type": "Question", "name": "¿Hay permanencia o contrato?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. Pagás mes a mes con Mercado Pago y lo das de baja cuando quieras." } }
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Los primeros 7 días son gratis. Después pagás mes a mes con Mercado Pago y lo das de baja cuando quieras, desde Mi cuenta." } }
       ]
     }
   ]
@@ -181,7 +181,7 @@
       <div class="ticks">
         <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>Desde el celular o la compu</span>
         <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>Historia clínica que no se borra</span>
-        <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>Sin permanencia</span>
+        <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>7 días gratis · sin permanencia</span>
       </div>
     </div>
 
@@ -247,7 +247,7 @@
         <div class="pname">Ventra Full</div>
         <div class="pfor">Elegís el rubro Nutricionista y el sistema se arma alrededor de tus pacientes.</div>
         <div class="price"><span class="amt">$24.900</span><span class="per">/ mes</span></div>
-        <div class="perday">Equivale a $830 por día · se paga con Mercado Pago</div>
+        <div class="perday"><b>$0 hoy</b> · 7 días gratis · después equivale a $830 por día</div>
         <ul>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Pacientes ilimitados con historia clínica</li>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Mediciones, cálculos y gráficos de evolución</li>
@@ -257,15 +257,15 @@
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Cobros, packs de consultas y planilla de obras sociales</li>
           <li><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>Preguntale a Ventra por WhatsApp: "¿qué turnos tengo mañana?"</li>
         </ul>
-        <button type="button" class="btn btn-block plan-btn" data-plan="full">Empezar con Ventra Full</button>
+        <button type="button" class="btn btn-block plan-btn" data-plan="full" aria-label="Probar Ventra Full 7 días gratis">Probalo 7 días gratis</button>
       </div>
     </div>
     <ol class="howto rv" aria-label="Así empezás">
       <li><span>1</span>Entrá con Google</li>
-      <li><span>2</span>Pagá con Mercado Pago</li>
+      <li><span>2</span>Probalo 7 días gratis</li>
       <li><span>3</span>Cargá tu primer paciente</li>
     </ol>
-    <p class="fine" style="text-align:center;margin-top:18px">Sin permanencia: lo das de baja cuando quieras.</p>
+    <p class="fine" style="text-align:center;margin-top:18px">7 días gratis y sin permanencia: lo das de baja cuando quieras.</p>
   </div>
 </section>
 
@@ -279,7 +279,7 @@
       <details><summary>¿Sirve para atender por obra social?</summary><p>Sí. Cargás la obra social, el número de afiliado y el plan del paciente, y cada consulta queda registrada con su cobertura. A fin de mes bajás la planilla de consultas por obra social para presentarla.</p></details>
       <details><summary>¿Puedo vender packs de consultas?</summary><p>Sí. Vendés un pack (por ejemplo, 4 consultas) desde la ficha del paciente, el cobro entra en Cobros y cada consulta descuenta una sesión sola.</p></details>
       <details><summary>¿Hago consultas online?</summary><p>Sí. Cada paciente tiene su sala de videollamada: se la mandás por WhatsApp con un toque y entra desde el navegador, sin cuenta ni app.</p></details>
-      <details><summary>¿Hay permanencia o contrato?</summary><p>No. Pagás mes a mes con Mercado Pago y lo das de baja cuando quieras.</p></details>
+      <details><summary>¿Hay permanencia o contrato?</summary><p>No. Los primeros 7 días son gratis. Después pagás mes a mes con Mercado Pago y lo das de baja cuando quieras, desde Mi cuenta.</p></details>
     </div>
   </div>
 </section>
@@ -290,6 +290,7 @@
     <span class="eyebrow"><i></i>Empezá hoy</span>
     <h2>Tus pacientes, sus planes y sus controles, en un solo lugar.</h2>
     <p>Cargás tu primer paciente en un minuto y le mandás su plan hoy mismo.</p>
+    <div data-ventri="picara" data-gesto="saluda" data-pos="final" data-dice="¿Dudas? **Preguntame** en el chat, te respondo al toque 👇"></div>
     <div class="hero-cta">
       <a href="#plan" class="btn btn-cream">Ver el precio</a>
     </div>
@@ -347,6 +348,7 @@
 <script src="/menu.js?v=2"></script>
 <script src="/navidad.js?v=2" defer data-gorro=".topbar .brand img" data-luces="#topbar" data-saludo="96" data-arbolito="right:22px;bottom:140px" data-brindis></script>
 <script src="/ventra-cuenta.js?v=6"></script>
-<script src="/ventra-chat.js?v=1" defer></script>
+<script src="/ventri.js?v=1" defer></script>
+<script src="/ventra-chat.js?v=2" defer></script>
 </body>
 </html>

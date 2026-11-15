@@ -1,4 +1,5 @@
-// Asistente de Ventra con IA, para todas las páginas de ventra.store.
+// Ventri, la asistente de Ventra con IA, para todas las páginas de ventra.store (la misma mascota
+// de los reels, de Instagram y de la caja: ver ventri.js y marketing/ventri/BIBLIA.md).
 // Habla con la función ventraChat (firebase/functions/chat.js), que responde en vivo (SSE) a partir de
 // la base de conocimiento de Ventra. La conversación queda en esta pestaña (sessionStorage), así sigue
 // al pasar de una página a otra. Si el asistente no está disponible, ofrece el WhatsApp.
@@ -7,7 +8,7 @@
   var API = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraChat';
   // Pruebas locales: en localhost se puede apuntar a un servidor de prueba (localStorage.vc_api)
   try { if (/^(localhost|127\.)/.test(location.hostname) && localStorage.getItem('vc_api')) API = localStorage.getItem('vc_api'); } catch(e){}
-  var WA = 'https://wa.me/5492212025603';
+  var WA = 'https://wa.me/5492212048533';
   var KEY = 'ventra_chat_v1', MAX_TURNS = 20;
   var page = document.documentElement.getAttribute('data-page') || 'home';
   var SUGGEST = {
@@ -27,7 +28,7 @@
   var css = '\
 .vc-launch{position:fixed;left:18px;bottom:18px;z-index:45;display:flex;align-items:center;gap:9px;height:52px;padding:0 18px 0 8px;border-radius:999px;border:0;cursor:pointer;background:#06261D;color:#F6F2EC;font:600 14.5px/1 Inter,system-ui,sans-serif;box-shadow:0 16px 34px -14px rgba(3,20,15,.7),0 0 0 1px rgba(246,242,236,.08) inset;transition:transform .3s cubic-bezier(.16,1,.3,1)}\
 .vc-launch:hover{transform:translateY(-2px)}\
-.vc-launch .vc-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#34AC7E,#167160)}\
+.vc-launch .vc-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#34AC7E,#167160)}.vc-launch .vc-ventri{height:62px;width:auto;margin:-22px -4px 0 -6px;align-self:flex-end;filter:drop-shadow(0 6px 8px rgba(0,0,0,.3));transition:transform .3s cubic-bezier(.34,1.5,.64,1)}.vc-launch:hover .vc-ventri{transform:translateY(-4px) rotate(-4deg)}.vc-launch.has-ventri{padding-left:12px}\
 .vc-launch .vc-pulse{position:absolute;left:8px;top:8px;width:36px;height:36px;border-radius:50%;box-shadow:0 0 0 0 rgba(52,172,126,.6);animation:vcp 2.4s infinite}\
 @keyframes vcp{70%{box-shadow:0 0 0 12px rgba(52,172,126,0)}100%{box-shadow:0 0 0 0 rgba(52,172,126,0)}}\
 @media (prefers-reduced-motion:reduce){.vc-launch .vc-pulse{animation:none}}\
@@ -36,13 +37,13 @@
 @keyframes vcin{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}\
 @media (max-width:560px){.vc-panel{left:0;right:0;bottom:0;width:100%;height:100%;border-radius:0}}\
 .vc-head{display:flex;align-items:center;gap:11px;padding:14px 14px 14px 16px;background:#06261D;color:#F6F2EC}\
-.vc-head img{width:34px;height:34px;border-radius:10px}\
+.vc-head img{height:44px;width:auto;margin:-6px 0 -6px -4px}\
 .vc-head b{display:block;font-size:15px}\
 .vc-head small{display:block;font-size:12px;color:rgba(246,242,236,.62)}\
 .vc-x{margin-left:auto;width:36px;height:36px;border-radius:50%;border:0;background:rgba(246,242,236,.08);color:#F6F2EC;cursor:pointer;font-size:20px;line-height:1}\
 .vc-body{flex:1;overflow-y:auto;padding:16px 14px 8px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}\
 .vc-msg{max-width:88%;padding:10px 13px;border-radius:16px;white-space:pre-wrap;word-wrap:break-word;font-size:14.5px}\
-.vc-msg.bot{align-self:flex-start;background:#fff;border:1px solid #E4DDD1;border-bottom-left-radius:5px}\
+.vc-msg.bot{align-self:flex-start;background:#fff;border:1px solid #E4DDD1;border-bottom-left-radius:5px}.vc-row{display:flex;align-items:flex-end;gap:6px;align-self:flex-start;max-width:96%}.vc-row .vc-av{height:34px;width:auto;flex:none}.vc-row .vc-msg{max-width:none}.vc-hola{display:flex;align-items:flex-end;gap:8px;align-self:flex-start;max-width:100%}.vc-hola img{height:96px;width:auto;flex:none}.vc-hola .vc-msg{max-width:none}\
 .vc-msg.me{align-self:flex-end;background:#08362A;color:#F6F2EC;border-bottom-right-radius:5px}\
 .vc-msg a{color:#167160;font-weight:600;text-decoration:underline;text-underline-offset:2px;word-break:break-all}\
 .vc-msg.me a{color:#CDEEE0}\
@@ -60,7 +61,17 @@
 .vc-send:disabled{opacity:.45;cursor:default}\
 .vc-note{padding:0 14px 10px;background:#fff;font-size:11px;color:#8A958F;text-align:center}\
 .vc-note a{color:inherit}';
+  // El botón del asistente y el de WhatsApp aparecen recién al bajar un poco: así la primera pantalla
+  // se ve entera (en el celular tapaban la imagen de la PC y el celular)
+  css += '.vc-launch,.wa-fab{transition:opacity .3s ease,transform .3s ease}\
+html:not(.vc-scrolled) .vc-launch,html:not(.vc-scrolled) .wa-fab{opacity:0;pointer-events:none;transform:translateY(16px)}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  // Al volver arriba del todo se ocultan de nuevo
+  var onScroll = function(){
+    document.documentElement.classList.toggle('vc-scrolled', (window.scrollY || document.documentElement.scrollTop) > 140);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 
   var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); };
   // Formato mínimo: **negrita** y links solo a Ventra y WhatsApp
@@ -74,27 +85,39 @@
   }
 
   var launch = document.createElement('button');
-  launch.type = 'button'; launch.className = 'vc-launch'; launch.setAttribute('aria-label', 'Abrir el asistente de Ventra');
-  launch.innerHTML = '<span class="vc-pulse"></span><span class="vc-dot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg></span><span class="vc-txt">¿Dudas? Preguntame</span>';
+  launch.type = 'button'; launch.className = 'vc-launch has-ventri'; launch.setAttribute('aria-label', 'Abrir el chat con Ventri, la asistente de Ventra');
+  launch.innerHTML = '<img class="vc-ventri" src="/ventri/picara.webp" alt="" decoding="async"><span class="vc-txt">¿Dudas? Preguntale a Ventri</span>';
   document.body.appendChild(launch);
 
   var panel = null, body, input, sendBtn, sugBox, human, busy = false;
 
   function waLink(){
     var last = state.messages.filter(function(m){ return m.role === 'user'; }).pop();
-    var text = 'Hola! Estaba hablando con el asistente de Ventra' + (last ? ' y quería consultar: ' + last.content.slice(0, 300) : '');
+    var text = 'Quiero hablar con una persona de Ventra. Estaba hablando con el asistente' + (last ? ' y quería consultar: ' + last.content.slice(0, 300) : '');
     return WA + '?text=' + encodeURIComponent(text);
   }
+  // Las respuestas van con la carita de Ventri al costado
   function bubble(role, text){
     var d = document.createElement('div');
     d.className = 'vc-msg ' + (role === 'user' ? 'me' : 'bot');
     d.innerHTML = fmt(text);
-    body.appendChild(d); body.scrollTop = body.scrollHeight;
+    if (role === 'user') body.appendChild(d);
+    else {
+      var row = document.createElement('div'); row.className = 'vc-row';
+      row.innerHTML = '<img class="vc-av" src="/ventri/picara.webp" alt="">';
+      row.appendChild(d); body.appendChild(row);
+    }
+    body.scrollTop = body.scrollHeight;
     return d;
   }
   function renderAll(){
     body.innerHTML = '';
-    bubble('assistant', '¡Hola! Soy el asistente de Ventra. Preguntame lo que quieras: planes, precios, cómo funciona la caja, la tienda online o la agenda de turnos.');
+    // Saludo: Ventri saluda con la mano (el clip animado se baja recién al abrir el chat)
+    var hola = document.createElement('div'); hola.className = 'vc-hola';
+    var anim = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) && !(navigator.connection && navigator.connection.saveData);
+    hola.innerHTML = '<img src="/ventri/' + (anim ? 'gesto-saluda' : 'picara') + '.webp" alt=""><div class="vc-msg bot"></div>';
+    hola.querySelector('.vc-msg').innerHTML = fmt('¡Hola! Soy **Ventri** 👋, la asistente de Ventra con inteligencia artificial. Preguntame lo que quieras: planes, precios, cómo funciona la caja, la tienda online o la agenda de turnos.');
+    body.appendChild(hola);
     state.messages.forEach(function(m){ bubble(m.role, m.content); });
     sugBox.style.display = state.messages.length ? 'none' : '';
     human.href = waLink();
@@ -104,9 +127,9 @@
     track('chat_open');
     if (panel) { panel.style.display = ''; launch.style.display = 'none'; input.focus(); return; }
     panel = document.createElement('div');
-    panel.className = 'vc-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Asistente de Ventra');
+    panel.className = 'vc-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Chat con Ventri, la asistente de Ventra');
     panel.innerHTML =
-      '<div class="vc-head"><img src="/ventra-icon-192.png" alt=""><div><b>Asistente de Ventra</b><small>Responde con IA · puede equivocarse</small></div><button type="button" class="vc-x" aria-label="Cerrar">×</button></div>' +
+      '<div class="vc-head"><img src="/ventri/picara.webp" alt=""><div><b>Ventri</b><small>La asistente de Ventra · IA, puede equivocarse</small></div><button type="button" class="vc-x" aria-label="Cerrar">×</button></div>' +
       '<div class="vc-body" aria-live="polite"></div>' +
       '<div class="vc-sug"></div>' +
       '<a class="vc-human" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M12 .2A11.8 11.8 0 0 0 1.9 17.9L.2 24l6.3-1.7A11.8 11.8 0 1 0 12 .2Zm0 21.6a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8Z"/></svg>Hablar con una persona</a>' +

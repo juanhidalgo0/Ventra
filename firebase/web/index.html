@@ -63,10 +63,10 @@
       "image": "https://ventra.store/og/home.jpg",
       "publisher": { "@id": "https://ventra.store/#org" },
       "offers": [
-        { "@type": "Offer", "name": "Ventra Full", "price": "24900", "priceCurrency": "ARS", "url": "https://ventra.store/sistema-de-ventas#planes", "availability": "https://schema.org/InStock" },
-        { "@type": "Offer", "name": "Ventra Tienda", "price": "9900", "priceCurrency": "ARS", "url": "https://ventra.store/tienda-online#plan", "availability": "https://schema.org/InStock" },
-        { "@type": "Offer", "name": "Ventra Agenda", "price": "9900", "priceCurrency": "ARS", "url": "https://ventra.store/turnos#plan", "availability": "https://schema.org/InStock" },
-        { "@type": "Offer", "name": "Ventra Agenda Pro", "price": "19900", "priceCurrency": "ARS", "url": "https://ventra.store/turnos#plan", "availability": "https://schema.org/InStock" }
+        { "@type": "Offer", "name": "Ventra Full", "price": "24900", "priceCurrency": "ARS", "description": "7 días gratis; después $24.900 por mes, sin permanencia", "priceSpecification": { "@type": "UnitPriceSpecification", "price": "24900", "priceCurrency": "ARS", "billingDuration": "P1M", "unitText": "mes" }, "url": "https://ventra.store/sistema-de-ventas#planes", "availability": "https://schema.org/InStock" },
+        { "@type": "Offer", "name": "Ventra Tienda", "price": "9900", "priceCurrency": "ARS", "description": "7 días gratis; después $9.900 por mes, sin permanencia", "priceSpecification": { "@type": "UnitPriceSpecification", "price": "9900", "priceCurrency": "ARS", "billingDuration": "P1M", "unitText": "mes" }, "url": "https://ventra.store/tienda-online#plan", "availability": "https://schema.org/InStock" },
+        { "@type": "Offer", "name": "Ventra Agenda", "price": "9900", "priceCurrency": "ARS", "description": "7 días gratis; después $9.900 por mes, sin permanencia", "priceSpecification": { "@type": "UnitPriceSpecification", "price": "9900", "priceCurrency": "ARS", "billingDuration": "P1M", "unitText": "mes" }, "url": "https://ventra.store/turnos#plan", "availability": "https://schema.org/InStock" },
+        { "@type": "Offer", "name": "Ventra Agenda Pro", "price": "19900", "priceCurrency": "ARS", "description": "7 días gratis; después $19.900 por mes, sin permanencia", "priceSpecification": { "@type": "UnitPriceSpecification", "price": "19900", "priceCurrency": "ARS", "billingDuration": "P1M", "unitText": "mes" }, "url": "https://ventra.store/turnos#plan", "availability": "https://schema.org/InStock" }
       ]
     },
     {
@@ -74,13 +74,21 @@
       "@id": "https://ventra.store/#faq",
       "mainEntity": [
         { "@type": "Question", "name": "¿Puedo probar Ventra gratis?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Sí. La demo se abre en el navegador, sin registrarte ni poner tarjeta: elegís qué plan querés probar y lo usás con datos de ejemplo." } },
-        { "@type": "Question", "name": "¿Necesito instalar algo?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. Ventra corre en el navegador y en el celular. Si tenés un local y preferís la caja instalada en la PC para seguir vendiendo aunque se corte internet, también existe esa versión." } },
+          "acceptedAnswer": { "@type": "Answer", "text": "Sí, de dos formas. Con la prueba gratis usás tu propio Ventra 7 días sin pagar: cargás la tarjeta en Mercado Pago, ese día no se cobra nada y te avisamos antes del primer cobro. Y si querés mirarlo antes, la demo se abre en el navegador sin registrarte ni poner tarjeta." } },
+        { "@type": "Question", "name": "¿Los 7 días gratis se descuentan del primer mes?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Los 7 días son gratis de verdad: el primer mes que pagás empieza recién cuando termina la prueba." } },
+        { "@type": "Question", "name": "¿Qué pasa si me doy de baja?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Lo hacés con un botón desde Mi cuenta y Mercado Pago deja de cobrarte al instante. Si estás en la prueba gratis, no pagás nada. Ventra sigue andando hasta el final de lo que ya pagaste y tus datos quedan guardados por si volvés." } },
+        { "@type": "Question", "name": "¿Necesito instalar algo o comprar equipos?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Ventra corre en el navegador y en el celular, en la compu que ya tenés. El lector de código de barras y la impresora de tickets son opcionales. Si tenés un local y preferís la caja instalada en la PC, también existe esa versión." } },
+        { "@type": "Question", "name": "¿Qué pasa si se corta internet?",
+          "acceptedAnswer": { "@type": "Answer", "text": "La caja instalada en la PC sigue vendiendo sin internet y sincroniza sola cuando vuelve la conexión." } },
+        { "@type": "Question", "name": "¿Me ayudan a cargar los productos?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sí. Mandanos tu Excel o una foto de la lista por WhatsApp y te los cargamos gratis." } },
         { "@type": "Question", "name": "¿Puedo empezar con una cosa y sumar otra después?",
           "acceptedAnswer": { "@type": "Answer", "text": "Sí. Empezás con el plan que necesitás hoy y te cambiás de plan desde Mi cuenta cuando quieras, sobre la misma suscripción. Tus productos, clientes y turnos siguen ahí." } },
         { "@type": "Question", "name": "¿Hay permanencia o contrato?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. Pagás mes a mes con Mercado Pago y lo das de baja cuando quieras." } }
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Los primeros 7 días son gratis. Después pagás mes a mes con Mercado Pago y lo das de baja cuando quieras, desde Mi cuenta." } }
       ]
     }
   ]
@@ -173,7 +181,7 @@
   html:not(.js) .wa2-ctl{ display:none; }
   @media (prefers-reduced-motion:reduce){ html.js .wa2-chat .m{ display:block !important; animation:none !important; } .wa2-ctl{ display:none; } }
   /* Simplificada: notas y bloques nuevos */
-  .pgroup, .start-steps li, .review{ border-radius:20px; }
+  .start-steps li, .review{ border-radius:20px; }
   .wab .wab-list{ grid-template-columns:1fr; gap:10px; }
   .sols-note{ max-width:680px; margin:26px auto 0; text-align:center; color:var(--ink-2); font-size:16px; }
   .sols-note b{ color:var(--ink); font-weight:650; }
@@ -291,9 +299,6 @@
   .stats b{ color:var(--green-dk); }
   .features{ background:var(--sand); }
   .start-steps .n{ background:var(--green); color:#fff; }
-  .pgroup h3{ color:var(--green); }
-  .prow .btn.go{ color:#fff; }
-  .prow a.more{ color:var(--green-dk); }
   .faq summary::after{ background:var(--green-50); color:var(--green-dk); }
   .final{ margin:0 16px; border-radius:28px; background:radial-gradient(900px 420px at 80% 0%, rgba(52,172,126,.35), transparent 60%), var(--pine-850); }
   .final .btn-cream{ --fg:var(--pine-900); }
@@ -308,19 +313,53 @@
 
   /* De la página actual: lo que sigue igual */
   @keyframes flow{ to{ stroke-dashoffset:-24; } }
-  .plan-table{ max-width:960px; margin:0 auto; display:grid; gap:12px; }
-  .pgroup{ background:#fff; border:1px solid var(--line); padding:22px 24px; transition:box-shadow .35s var(--ease); }
-  .pgroup:hover{ box-shadow:var(--shadow); }
-  .pgroup h3{ font-size:13px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
-  .prow{ display:grid; grid-template-columns:1.2fr 2fr auto auto; gap:16px; align-items:center; padding:12px 0; border-top:1px solid var(--line); }
-  .pgroup h3 + .prow{ border-top:0; }
-  .prow b{ font-size:16px; }
-  .prow span{ color:var(--ink-2); font-size:14.5px; }
-  .prow .pr{ font-weight:750; font-size:18px; letter-spacing:-.02em; white-space:nowrap; color:var(--ink); }
-  .prow .pr small{ color:var(--ink-3); font-weight:500; font-size:13px; }
-  .prow .acts{ display:flex; align-items:center; gap:14px; }
-  .prow .btn.go{ height:38px; padding:0 18px; text-decoration:none; }
-  .prow a.more{ font-weight:600; font-size:14px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+  /* ── Planes: tres tarjetas por cómo vende (Full destacado), prueba gratis y confianza ── */
+  .pc3{ max-width:1080px; margin:0 auto; display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; align-items:stretch; }
+  .pc{ position:relative; display:flex; flex-direction:column; background:#fff; border:1px solid var(--line); border-radius:22px; padding:26px 24px 20px; transition:box-shadow .35s var(--ease), transform .35s var(--ease); }
+  .pc:hover{ box-shadow:var(--shadow); }
+  .pc.featured{ border:2px solid var(--green); box-shadow:0 26px 60px -30px rgba(14,94,72,.45); }
+  .pc-need{ align-self:flex-start; font-size:12.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--green); background:var(--green-50); border-radius:999px; padding:5px 11px; }
+  .pc-tag{ position:absolute; top:-13px; right:20px; background:var(--green); color:#fff; font-size:12.5px; font-weight:700; border-radius:999px; padding:5px 12px; }
+  .pc h3{ font-size:22px; letter-spacing:-.025em; margin:14px 0 4px; }
+  .pc-for{ color:var(--ink-2); font-size:14.5px; min-height:2.9em; }
+  .pc-price{ display:flex; align-items:baseline; gap:6px; margin-top:14px; }
+  .pc-price b{ font-size:36px; font-weight:800; letter-spacing:-.04em; }
+  .pc-price small{ color:var(--ink-3); font-size:15px; font-weight:500; }
+  .pc-trial{ margin-top:2px; color:var(--green-dk); font-weight:650; font-size:14.5px; }
+  .pc-list{ list-style:none; margin:16px 0 0; padding:16px 0 0; border-top:1px solid var(--line); display:grid; gap:10px; flex:1; align-content:start; }
+  .pc-list li{ position:relative; padding-left:26px; font-size:14.5px; color:var(--ink); line-height:1.4; }
+  .pc-list li::before{ content:''; position:absolute; left:0; top:2px; width:17px; height:17px; border-radius:50%; background:var(--green-50) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23167160' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 11px no-repeat; }
+  .pc-anchor{ margin-top:16px; padding:12px 14px; border-radius:14px; background:var(--paper); border:1px dashed var(--green-100); color:var(--ink-2); font-size:13.5px; line-height:1.45; }
+  .pc-anchor b{ color:var(--green-dk); }
+  .pc .btn{ margin-top:18px; }
+  .pc-more{ display:block; text-align:center; margin-top:12px; font-size:14px; font-weight:600; color:var(--green-dk); text-decoration:underline; text-underline-offset:3px; }
+  .pc-switch{ display:flex; align-items:center; gap:12px; margin-top:16px; padding:12px 14px; border-radius:14px; border:1px solid var(--line); cursor:pointer; transition:border-color .2s, background-color .2s; }
+  .pc-switch:hover{ border-color:var(--green-100); }
+  .pc-switch input{ position:absolute; opacity:0; pointer-events:none; }
+  .pc-switch .sw{ flex:none; position:relative; width:40px; height:24px; border-radius:999px; background:#CBD6D0; transition:background-color .2s; }
+  .pc-switch .sw::after{ content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:transform .2s var(--ease); }
+  .pc-switch input:checked + .sw{ background:var(--green); }
+  .pc-switch input:checked + .sw::after{ transform:translateX(16px); }
+  .pc-switch input:focus-visible + .sw{ box-shadow:0 0 0 3px var(--green-100); }
+  .pc-switch:has(input:checked){ border-color:var(--green-100); background:var(--green-50); }
+  .pc-switch b{ display:block; font-size:14px; }
+  .pc-switch small{ display:block; color:var(--ink-2); font-size:13px; }
+  .pc-trust{ list-style:none; margin:26px auto 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:10px 26px; color:var(--ink-2); font-size:14.5px; font-weight:550; }
+  .pc-trust li{ display:inline-flex; align-items:center; gap:8px; }
+  .pc-trust li::before{ content:''; width:16px; height:16px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23167160' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat; }
+  .pc-help{ max-width:860px; margin:26px auto 0; display:flex; align-items:center; gap:18px; padding:18px 20px; border-radius:20px; background:var(--sand); }
+  .pc-help p{ flex:1; color:var(--ink-2); font-size:15px; line-height:1.45; }
+  .pc-help p b{ color:var(--ink); }
+  .pc-help .faces{ display:inline-flex; flex:none; }
+  .pc-help .faces img{ width:36px; height:36px; border-radius:50%; object-fit:cover; background:#fff; border:2px solid #fff; margin-left:-10px; }
+  .pc-help .faces img:first-child{ margin-left:0; }
+  .pc-help .btn{ flex:none; }
+  @media (max-width:980px){
+    .pc3{ grid-template-columns:1fr; max-width:520px; }
+    .pc-for{ min-height:0; }
+    .pc-help{ flex-wrap:wrap; }
+    .pc-help .btn{ width:100%; }
+  }
   .start-steps{ list-style:none; margin:0 auto; padding:0; max-width:960px; display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
   .start-steps li{ background:#fff; border:1px solid var(--line); padding:22px; }
   .start-steps .n{ width:36px; height:36px; border-radius:11px; display:grid; place-items:center; font-weight:800; margin-bottom:14px; }
@@ -328,7 +367,6 @@
   .start-steps p{ color:var(--ink-2); font-size:15px; }
   .start-cta{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:26px; }
   @media (max-width:760px){ .start-steps{ grid-template-columns:1fr; } .start-steps li{ display:grid; grid-template-columns:36px 1fr; gap:2px 14px; padding:18px; } .start-steps .n{ grid-row:span 2; margin:0; } .start-cta .btn{ width:100%; } }
-  @media (max-width:700px){ .prow{ grid-template-columns:1fr auto; gap:4px 12px; align-items:baseline; } .prow > span:not(.pr):not(.acts){ grid-column:1 / -1; grid-row:2; } .prow .pr{ grid-column:2; grid-row:1; } .prow .acts{ grid-column:1 / -1; grid-row:3; justify-content:space-between; margin-top:8px; } }
 
   @media (prefers-reduced-motion:reduce){
     .aurora i{ animation:none !important; }
@@ -411,12 +449,12 @@
       <h1 class="rv" style="--d:.08s">El sistema de ventas para hacer crecer <em>tu negocio</em></h1>
       <p class="lead rv" style="--d:.16s">Cobrá en el mostrador, vendé por internet y organizá turnos, todo desde un solo lugar. <b>Empezá con lo que necesitás hoy</b> y sumá el resto cuando crezcas.</p>
       <div class="cta rv" style="--d:.24s">
-        <a href="/empezar" data-start data-track="start_hero" class="btn">Empezar ahora <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a href="/empezar" data-start data-track="start_hero" class="btn">Probalo 7 días gratis <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         <a href="https://app.ventra.store" target="_blank" rel="noopener" data-track="demo_hero" class="btn btn-ghost"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>Probar la demo gratis</a>
       </div>
       <div class="ok rv" style="--d:.3s">
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Demo gratis, sin tarjeta</span>
-        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Sin permanencia</span>
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>7 días gratis · sin permanencia</span>
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Te ayudamos por WhatsApp</span>
       </div>
     </div>
@@ -428,6 +466,8 @@
         <div class="base"></div>
       </div>
       <div class="ph" aria-hidden="true"><div class="s"><img src="/inicio-captura-caja.webp" alt="" width="585" height="1266" decoding="async"></div></div>
+      <!-- Ventri, la mascota de Ventra (ventri.js): se asoma y saluda -->
+      <div data-ventri="picara" data-gesto="saluda" data-pos="mock" data-dice="¡Hola! Soy **Ventri** 👋 Te ayudo a vender más."></div>
     </div>
   </div>
 </section>
@@ -604,29 +644,77 @@
   <div class="shell">
     <div class="sec-head center rv">
       <span class="eyebrow"><i></i>Planes</span>
-      <h2>Un precio fijo por mes, sin sorpresas.</h2>
-      <p>Elegí según cómo trabajás. Podés cambiar de plan cuando quieras desde Mi cuenta.</p>
+      <h2>Probalo 7 días gratis.<br>Después, un precio fijo por mes.</h2>
+      <p>Elegí según cómo vendés. Hoy no pagás nada y te das de baja con un botón.</p>
     </div>
-    <div class="plan-table rv">
-      <div class="pgroup">
-        <h3>Para tu local</h3>
-        <div class="prow"><b>Ventra Full</b><span>Caja, stock, cuentas corrientes y reportes + tienda online con el mismo stock + agenda con recordatorios</span><span class="pr">$24.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/sistema-de-ventas#planes" data-track="card_local">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=full" data-start data-track="plan_full">Empezar</a></span></div>
-      </div>
-      <div class="pgroup">
-        <h3>Para vender por internet</h3>
-        <div class="prow"><b>Ventra Tienda</b><span>Tienda online con pedidos por WhatsApp, sin comisión, y agenda incluida</span><span class="pr">$9.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/tienda-online#plan" data-track="card_online">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=tienda" data-start data-track="plan_tienda">Empezar</a></span></div>
-      </div>
-      <div class="pgroup">
-        <h3>Para negocios con turnos</h3>
-        <div class="prow"><b>Ventra Agenda</b><span>Turnos online, página propia y recordatorio de WhatsApp con un toque</span><span class="pr">$9.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/turnos#plan" data-track="card_turnos">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=agenda" data-start data-track="plan_agenda">Empezar</a></span></div>
-        <div class="prow"><b>Ventra Agenda Pro</b><span>Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes</span><span class="pr">$19.900 <small>/ mes</small></span><span class="acts"><a class="more" href="/turnos#plan" data-track="card_turnos">Ver detalles</a><a class="btn btn-sm go" href="/empezar?plan=agenda_pro" data-start data-track="plan_agenda_pro">Empezar</a></span></div>
-      </div>
+    <div class="pc3">
+      <article class="pc featured rv">
+        <span class="pc-need">Tengo un local</span>
+        <span class="pc-tag">Todo incluido</span>
+        <h3>Ventra Full</h3>
+        <p class="pc-for">Kioscos, almacenes, ferreterías, ropa, bazares y más.</p>
+        <div class="pc-price"><b>$24.900</b><small>/ mes</small></div>
+        <p class="pc-trial">$0 hoy · 7 días gratis</p>
+        <ul class="pc-list">
+          <li>Caja, stock, código de barras y cuenta corriente</li>
+          <li>Tienda online con el mismo stock</li>
+          <li>Agenda con recordatorios automáticos</li>
+          <li>Ventra por WhatsApp: preguntale cuánto vendiste o cambiá precios con un audio</li>
+        </ul>
+        <p class="pc-anchor">Tienda ($9.900) + Agenda Pro ($19.900) ya suman $29.800. Full trae las dos <b>y además la caja</b>.</p>
+        <a class="btn btn-block" href="/empezar?plan=full" data-start data-track="plan_full" aria-label="Probar Ventra Full 7 días gratis">Probalo 7 días gratis</a>
+        <a class="pc-more" href="/sistema-de-ventas#planes" data-track="card_local">Ver todo lo que incluye</a>
+      </article>
+      <article class="pc rv" style="--d:80ms">
+        <span class="pc-need">Vendo por Instagram o WhatsApp</span>
+        <h3>Ventra Tienda</h3>
+        <p class="pc-for">Ropa, comida, emprendimientos y todo lo que vendés con un link.</p>
+        <div class="pc-price"><b>$9.900</b><small>/ mes</small></div>
+        <p class="pc-trial">$0 hoy · 7 días gratis</p>
+        <ul class="pc-list">
+          <li>Tienda online con tu logo, fotos y precios</li>
+          <li>Pedidos ordenados por WhatsApp, sin comisión</li>
+          <li>Agenda de turnos incluida</li>
+        </ul>
+        <a class="btn btn-ghost btn-block" href="/empezar?plan=tienda" data-start data-track="plan_tienda" aria-label="Probar Ventra Tienda 7 días gratis">Probalo 7 días gratis</a>
+        <a class="pc-more" href="/tienda-online#plan" data-track="card_online">Ver detalles</a>
+      </article>
+      <article class="pc rv" style="--d:160ms" id="pcAgenda">
+        <span class="pc-need">Doy turnos</span>
+        <h3 id="agName">Ventra Agenda</h3>
+        <p class="pc-for">Peluquerías, consultorios, estética, clases, canchas y talleres.</p>
+        <div class="pc-price"><b id="agPrice">$9.900</b><small>/ mes</small></div>
+        <p class="pc-trial">$0 hoy · 7 días gratis</p>
+        <ul class="pc-list">
+          <li>Tu página de turnos, abierta las 24 horas</li>
+          <li>Varios profesionales con sus horarios</li>
+          <li>Ficha de clientes y control de cobros</li>
+        </ul>
+        <label class="pc-switch">
+          <input type="checkbox" id="agPro">
+          <span class="sw" aria-hidden="true"></span>
+          <span><b>Recordatorio automático por WhatsApp</b><small>200 por mes, salen solos · +$10.000</small></span>
+        </label>
+        <a class="btn btn-ghost btn-block" id="agBtn" href="/empezar?plan=agenda" data-start data-track="plan_agenda">Probalo 7 días gratis</a>
+        <a class="pc-more" href="/turnos#plan" data-track="card_turnos">Ver detalles</a>
+      </article>
+    </div>
+    <ul class="pc-trust rv">
+      <li>Sin permanencia</li>
+      <li>Baja con un botón desde Mi cuenta</li>
+      <li>Te avisamos antes del primer cobro</li>
+      <li>Cambiás de plan cuando quieras</li>
+    </ul>
+    <div class="pc-help rv">
+      <span class="faces" aria-hidden="true"><img src="/paulos-logo.jpg" alt="" width="36" height="36" loading="lazy"><img src="/danys-logo.jpg" alt="" width="36" height="36" loading="lazy"><img src="/magdalena-logo.jpg" alt="" width="36" height="36" loading="lazy"><img class="logo-dark" src="/escabiados-logo.webp" alt="" width="36" height="36" loading="lazy"></span>
+      <p><b>¿Te da fiaca cargar los productos?</b> Mandanos tu Excel o una foto de la lista y te los cargamos gratis.</p>
+      <a class="btn btn-sm btn-ghost" href="https://wa.me/5492212048533?text=Hola%2C%20quiero%20que%20me%20ayuden%20a%20cargar%20mis%20productos%20en%20Ventra" target="_blank" rel="noopener">Escribinos</a>
     </div>
     <h3 class="steps-title rv">Así empezás, en 2 minutos</h3>
     <ol class="start-steps rv">
       <li><span class="n">1</span><b>Elegí tu plan</b><p>Según cómo vendés: en tu local, por internet o con turnos.</p></li>
       <li><span class="n">2</span><b>Entrá con Google</b><p>Tu cuenta de Ventra es tu cuenta de Google. Sin otra contraseña.</p></li>
-      <li><span class="n">3</span><b>Pagá con Mercado Pago</b><p>Mes a mes, sin permanencia. Volvés y empezás a vender.</p></li>
+      <li><span class="n">3</span><b>Probalo 7 días gratis</b><p>Cargás la tarjeta en Mercado Pago y hoy no pagás nada. Sin permanencia.</p></li>
     </ol>
     <p class="demo-line rv">¿Querés verlo antes? <a href="https://app.ventra.store" target="_blank" rel="noopener">Probá la demo gratis</a>, sin registrarte.</p>
   </div>
@@ -636,10 +724,14 @@
   <div class="shell">
     <div class="sec-head center"><span class="eyebrow"><i></i>Preguntas frecuentes</span><h2>Antes de empezar.</h2></div>
     <div class="faq">
-      <details><summary>¿Puedo probar Ventra gratis?</summary><p>Sí. La demo se abre en el navegador, sin registrarte ni poner tarjeta: elegís qué plan querés probar y lo usás con datos de ejemplo.</p></details>
-      <details><summary>¿Necesito instalar algo?</summary><p>No. Ventra corre en el navegador y en el celular. Si tenés un local y preferís la caja instalada en la PC para seguir vendiendo aunque se corte internet, también existe esa versión.</p></details>
+      <details><summary>¿Puedo probar Ventra gratis?</summary><p>Sí, de dos formas. Con la prueba gratis usás tu propio Ventra 7 días sin pagar: cargás la tarjeta en Mercado Pago, ese día no se cobra nada y te avisamos antes del primer cobro. Y si querés mirarlo antes, la demo se abre en el navegador sin registrarte ni poner tarjeta.</p></details>
+      <details><summary>¿Los 7 días gratis se descuentan del primer mes?</summary><p>No. Los 7 días son gratis de verdad: el primer mes que pagás empieza recién cuando termina la prueba.</p></details>
+      <details><summary>¿Qué pasa si me doy de baja?</summary><p>Lo hacés con un botón desde Mi cuenta y Mercado Pago deja de cobrarte al instante. Si estás en la prueba gratis, no pagás nada. Ventra sigue andando hasta el final de lo que ya pagaste y tus datos quedan guardados por si volvés.</p></details>
+      <details><summary>¿Necesito instalar algo o comprar equipos?</summary><p>No. Ventra corre en el navegador y en el celular, en la compu que ya tenés. El lector de código de barras y la impresora de tickets son opcionales. Si tenés un local y preferís la caja instalada en la PC, también existe esa versión.</p></details>
+      <details><summary>¿Qué pasa si se corta internet?</summary><p>La caja instalada en la PC sigue vendiendo sin internet y sincroniza sola cuando vuelve la conexión.</p></details>
+      <details><summary>¿Me ayudan a cargar los productos?</summary><p>Sí. Mandanos tu Excel o una foto de la lista por WhatsApp y te los cargamos gratis.</p></details>
       <details><summary>¿Puedo empezar con una cosa y sumar otra después?</summary><p>Sí. Empezás con el plan que necesitás hoy y te cambiás de plan desde Mi cuenta cuando quieras, sobre la misma suscripción. Tus productos, clientes y turnos siguen ahí.</p></details>
-      <details><summary>¿Hay permanencia o contrato?</summary><p>No. Pagás mes a mes con Mercado Pago y lo das de baja cuando quieras.</p></details>
+      <details><summary>¿Hay permanencia o contrato?</summary><p>No. Los primeros 7 días son gratis. Después pagás mes a mes con Mercado Pago y lo das de baja cuando quieras, desde Mi cuenta.</p></details>
     </div>
   </div>
 </section>
@@ -650,8 +742,9 @@
     <span class="eyebrow"><i></i>Empezá hoy</span>
     <h2>¿Arrancamos?</h2>
     <p>Elegí tu plan y en 2 minutos estás vendiendo. ¿Dudas? Escribinos y te decimos qué plan te conviene.</p>
+    <div data-ventri="guino" data-gesto="festejo" data-pos="final" data-dice="Probalo 7 días gratis. **Yo te acompaño** desde el primer día."></div>
     <div class="hero-cta">
-      <a href="/empezar" data-start data-track="start_final" class="btn btn-cream">Empezar ahora</a>
+      <a href="/empezar" data-start data-track="start_final" class="btn btn-cream">Probalo 7 días gratis</a>
       <a href="https://wa.me/5492212048533?text=Hola%2C%20quiero%20saber%20qu%C3%A9%20plan%20de%20Ventra%20me%20conviene" target="_blank" rel="noopener" class="btn btn-ghost">Escribinos por WhatsApp</a>
     </div>
   </div>
@@ -669,8 +762,24 @@
   </div>
 </footer>
 
+<script>
+// Planes: el interruptor de la agenda pasa de Agenda a Agenda Pro (precio, nombre y a qué plan lleva el botón)
+(function(){
+  var sw = document.getElementById('agPro'); if (!sw) return;
+  var btn = document.getElementById('agBtn'), name = document.getElementById('agName'), price = document.getElementById('agPrice');
+  function sync(){
+    var pro = sw.checked;
+    name.textContent = pro ? 'Ventra Agenda Pro' : 'Ventra Agenda';
+    price.textContent = pro ? '$19.900' : '$9.900';
+    btn.setAttribute('href', '/empezar?plan=' + (pro ? 'agenda_pro' : 'agenda'));
+    btn.setAttribute('data-track', pro ? 'plan_agenda_pro' : 'plan_agenda');
+    btn.setAttribute('aria-label', 'Probar ' + name.textContent + ' 7 días gratis');
+  }
+  sw.addEventListener('change', sync); sync();
+})();
+</script>
 <div class="dock" id="dock">
-  <span><b>Empezá con Ventra</b><small>En 2 minutos · sin permanencia</small></span>
+  <span><b>Empezá con Ventra</b><small>7 días gratis · sin permanencia</small></span>
   <a href="/empezar" data-start data-track="start_dock" class="btn btn-cream btn-sm">Empezar</a>
 </div>
 
@@ -716,7 +825,8 @@ document.getElementById('year').textContent = new Date().getFullYear();
 <script src="/menu.js?v=2"></script>
 <script src="/navidad.js?v=2" defer data-gorro=".topbar .brand img" data-luces="#topbar" data-saludo="96" data-arbolito="right:22px;bottom:140px" data-brindis></script>
 <script src="/ventra-cuenta.js?v=6"></script>
-<script src="/ventra-chat.js?v=1" defer></script>
+<script src="/ventri.js?v=1" defer></script>
+<script src="/ventra-chat.js?v=2" defer></script>
 <script>
 /* Charla de WhatsApp: se escribe sola cuando se ve, con "escribiendo…", y vuelve a empezar.
    Se pausa con el botón, al salir de la pantalla o con la pestaña oculta; los temas saltan a esa parte. */

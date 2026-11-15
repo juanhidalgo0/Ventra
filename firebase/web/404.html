@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Página no encontrada — Ventra</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#0F1F1A; --muted:#5E6E66; --green:#167160; --pine:#06261D; --bg:#F6F9F7; --line:#E2EAE5; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; flex-direction:column; font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--bg); }
+  .bar{ background:var(--pine); padding:14px 20px; }
+  .brand{ display:inline-flex; align-items:center; gap:10px; color:#fff; font-weight:700; text-decoration:none; font-size:18px; }
+  main{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px 20px 56px; }
+  .num{ font-size:13px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--green); margin:18px 0 6px; }
+  h1{ font-size:clamp(26px,5vw,38px); line-height:1.15; letter-spacing:-.02em; margin:0 0 10px; }
+  p{ color:var(--muted); font-size:16px; line-height:1.55; margin:0 0 26px; max-width:440px; }
+  .ctas{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+  .btn{ display:inline-flex; align-items:center; justify-content:center; height:50px; padding:0 22px; border-radius:12px; font-weight:650; font-size:15px; text-decoration:none; background:var(--green); color:#fff; }
+  .btn-ghost{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+</style>
+</head>
+<body>
+<header class="bar"><a href="/" class="brand"><img src="/ventra-logo.png" alt="" width="26" height="26">Ventra</a></header>
+<main>
+  <div data-ventri="sorprendida" data-pos="centro" data-dice="¡Uy! Busqué por todos lados y **esta página no está**."></div>
+  <div class="num">Error 404</div>
+  <h1>Esta página se perdió</h1>
+  <p>Puede que el link esté mal escrito o que la página ya no exista. Te llevo a un lugar que sí funciona.</p>
+  <div class="ctas">
+    <a class="btn" href="/">Ir al inicio</a>
+    <a class="btn btn-ghost" href="/empezar">Probar Ventra gratis</a>
+  </div>
+</main>
+<script src="/ventri.js?v=1" defer></script>
+<script src="/ventra-chat.js?v=2" defer></script>
+</body>
+</html>

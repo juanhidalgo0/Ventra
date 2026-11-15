@@ -5,13 +5,13 @@
 <script>document.documentElement.classList.add("js")</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Empezar con Ventra: elegí tu plan en 2 minutos</title>
-<meta name="description" content="Elegí tu plan, entrá con Google y pagá con Mercado Pago. En 2 minutos estás usando Ventra en tu negocio. Sin permanencia.">
+<meta name="description" content="Elegí tu plan, entrá con Google y probá Ventra 7 días gratis. En 2 minutos lo estás usando en tu negocio. Sin permanencia: te das de baja cuando quieras.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#08362A">
 <link rel="canonical" href="https://ventra.store/empezar">
 <meta property="og:site_name" content="Ventra">
 <meta property="og:title" content="Empezá con Ventra en 2 minutos">
-<meta property="og:description" content="Elegí tu plan, entrá con Google y pagá con Mercado Pago. Sin permanencia.">
+<meta property="og:description" content="Elegí tu plan, entrá con Google y probá Ventra 7 días gratis. Sin permanencia.">
 <meta property="og:image" content="https://ventra.store/og/home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -35,7 +35,7 @@
   "step": [
     { "@type": "HowToStep", "position": 1, "name": "Elegí tu plan", "text": "Contanos qué negocio tenés y elegí el plan: Ventra Full, Tienda, Agenda o Agenda Pro." },
     { "@type": "HowToStep", "position": 2, "name": "Entrá con Google", "text": "Tu cuenta de Ventra es tu cuenta de Google: no tenés que inventar otra contraseña." },
-    { "@type": "HowToStep", "position": 3, "name": "Pagá con Mercado Pago", "text": "Te suscribís con Mercado Pago, mes a mes y sin permanencia, y volvés a Ventra para empezar a usarlo." }
+    { "@type": "HowToStep", "position": 3, "name": "Empezá la prueba gratis", "text": "Cargás la tarjeta en Mercado Pago y usás Ventra 7 días gratis. Si te sirve, sigue mes a mes y sin permanencia; si no, te das de baja y no pagás nada." }
   ]
 }
 </script>
@@ -124,6 +124,7 @@
   .sum small{ display:block; color:var(--ink-2); font-size:13.5px; }
   .sum .pr{ font-weight:800; font-size:22px; letter-spacing:-.03em; white-space:nowrap; }
   .sum .pr small{ display:inline; }
+  .sum .pr small.then{ display:block; text-align:right; font-size:12.5px; font-weight:600; letter-spacing:0; margin-top:2px; }
   label.fl{ display:block; font-weight:650; font-size:15px; margin-bottom:8px; }
   .inp{ width:100%; height:52px; border-radius:14px; border:1.5px solid var(--line); padding:0 16px; font:inherit; font-size:16px; color:var(--ink); background:var(--paper); }
   .inp:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 4px rgba(52,172,126,.15); background:#fff; }
@@ -170,6 +171,9 @@
     <li data-p="4"><span>Pago</span></li>
   </ol>
 
+  <!-- Ventri acompaña los pasos (ventri.js); lo que dice cambia en go() -->
+  <div id="vtPaso" data-ventri="picara" data-gesto="saluda" data-pos="paso" data-dice="¡Hola! Soy **Ventri**. Contame qué negocio tenés y te muestro el plan justo."></div>
+
   <!-- 1. Negocio -->
   <section class="pane" data-step="1" aria-labelledby="t1">
     <h1 id="t1">¿Qué negocio tenés?</h1>
@@ -202,7 +206,7 @@
     <div class="trust"><span class="faces" aria-hidden="true"><img src="/paulos-logo.jpg" alt="" width="30" height="30"><img src="/magdalena-logo.jpg" alt="" width="30" height="30"><img class="logo-dark" src="/escabiados-logo.webp" alt="" width="30" height="30"><img src="/danys-logo.jpg" alt="" width="30" height="30"><img src="/hamburguesas-lp-logo.jpg" alt="" width="30" height="30"></span><span>Ya lo usan <b>Paulos, Escabiados, Dany's, Hamburguesas La Plata, Distribuidora Magdalena</b> y muchos más</span></div>
     <div class="plist" id="plist" role="radiogroup" aria-labelledby="t2"></div>
     <div class="promise">
-      <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Sin permanencia</span>
+      <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>7 días gratis, sin permanencia</span>
       <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Cambiás de plan cuando quieras</span>
       <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Te ayudamos a arrancar</span>
     </div>
@@ -236,8 +240,8 @@
   <!-- 4. Pago -->
   <section class="pane" data-step="4" aria-labelledby="t4">
     <button type="button" class="back" data-go="2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Cambiar de plan</button>
-    <h1 id="t4">Último paso: el pago</h1>
-    <p class="sub">Te suscribís con Mercado Pago. Se cobra solo cada mes y lo das de baja cuando quieras.</p>
+    <h1 id="t4">Último paso: tu prueba gratis</h1>
+    <p class="sub" id="paySub">Cargás la tarjeta en Mercado Pago y usás Ventra 7 días gratis: hoy no se cobra nada. Si te sirve, sigue solo mes a mes; si no, te das de baja desde Mi cuenta y no pagás nada.</p>
     <div class="trust"><span class="faces" aria-hidden="true"><img src="/paulos-logo.jpg" alt="" width="30" height="30"><img src="/magdalena-logo.jpg" alt="" width="30" height="30"><img class="logo-dark" src="/escabiados-logo.webp" alt="" width="30" height="30"><img src="/danys-logo.jpg" alt="" width="30" height="30"><img src="/hamburguesas-lp-logo.jpg" alt="" width="30" height="30"></span><span>Ya lo usan <b>Paulos, Escabiados, Dany's, Hamburguesas La Plata, Distribuidora Magdalena</b> y muchos más</span></div>
     <form class="box" id="payForm" novalidate>
       <div class="sum">
@@ -252,12 +256,12 @@
       </div>
       <button type="submit" class="btn btn-block mp" id="payBtn">Ir a pagar con Mercado Pago</button>
       <p class="err" id="payErr" role="alert"></p>
-      <p class="safe">El pago se hace en la página de Mercado Pago. Después volvés acá solo.</p>
+      <p class="safe" id="paySafe">La tarjeta se carga en la página de Mercado Pago. Te avisamos por mail antes del primer cobro.</p>
     </form>
   </section>
 
   <div class="next" id="next" hidden>
-    <h2>Después de pagar</h2>
+    <h2>Cuando empezás</h2>
     <ol id="nextList"></ol>
   </div>
 </main>
@@ -326,6 +330,13 @@
     if (n === 3) renderAuth();
     if (n === 4) renderPay();
     renderNext(n);
+    // Ventri acompaña cada paso (ventri.js) y festeja en el último
+    var VT = { 1: ['picara', '¡Hola! Soy **Ventri**. Contame qué negocio tenés y te muestro el plan justo.'],
+      2: ['guino', 'Este es el plan que te recomiendo. **Sin permanencia**: lo das de baja cuando quieras.'],
+      3: ['picara', 'Entrá con tu cuenta de Google, **es un toque**.'],
+      4: ['guino', '¡Último paso! **Te espero adentro** para arrancar.'] };
+    var vtEl = document.getElementById('vtPaso');
+    if (window.ventri && vtEl && VT[n]) { window.ventri.decir(vtEl, VT[n][1], VT[n][0]); if (n === 4) window.ventri.gesto(vtEl, 'festejo'); }
     if (!(opts && opts.silent)) { window.scrollTo({ top:0, behavior:'smooth' }); var h = document.querySelector('.pane.on h1'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll:true }); } }
   }
 
@@ -387,12 +398,33 @@
   $('asMe').addEventListener('click', function(){ go(4); });
   $('otherAcc').addEventListener('click', function(){ window.ventraCuenta.signOut().then(function(){ user = null; renderAuth(); $('gBtn').click(); }); });
 
+  // Prueba gratis de 7 días para cuentas nuevas (la decide createVentraSubscription; acá solo se
+  // muestra). Quien ya pagó o ya la usó ve el pago normal.
+  var trialOk = true;
+  function payTexts(){
+    var p = PLANS[st.plan];
+    $('t4').textContent = trialOk ? 'Último paso: tu prueba gratis' : 'Último paso: el pago';
+    $('paySub').textContent = trialOk
+      ? 'Cargás la tarjeta en Mercado Pago y usás Ventra 7 días gratis: hoy no se cobra nada. Si te sirve, sigue solo mes a mes; si no, te das de baja desde Mi cuenta y no pagás nada.'
+      : 'Te suscribís con Mercado Pago. Se cobra solo cada mes y lo das de baja cuando quieras.';
+    $('sumPrice').innerHTML = trialOk ? '$0 hoy <small class="then">después ' + money(p.amount) + ' / mes</small>' : money(p.amount) + ' <small>/ mes</small>';
+    $('payBtn').textContent = trialOk ? 'Empezar mis 7 días gratis' : 'Ir a pagar ' + money(p.amount) + ' con Mercado Pago';
+    $('paySafe').textContent = trialOk ? 'La tarjeta se carga en la página de Mercado Pago. Te avisamos por mail antes del primer cobro.' : 'El pago se hace en la página de Mercado Pago. Después volvés acá solo.';
+  }
+  function checkTrial(){
+    if (!user || st.plan === 'prueba' || !window.firebase || !firebase.firestore) return;
+    firebase.firestore().collection('ventra_accounts').doc(user.uid).get().then(function(doc){
+      var d = doc.exists ? doc.data() : {};
+      var was = trialOk;
+      trialOk = !(d.paidUntil || d.trialUsed || d.trialStartedAt);
+      if (was !== trialOk && !$('payBtn').disabled) payTexts();
+    }).catch(function(){});
+  }
   function renderPay(){
     var p = PLANS[st.plan];
     $('sumName').textContent = p.name;
     $('sumWho').textContent = user && user.email ? 'Cuenta: ' + user.email : '';
-    $('sumPrice').innerHTML = money(p.amount) + ' <small>/ mes</small>';
-    $('payBtn').textContent = 'Ir a pagar ' + money(p.amount) + ' con Mercado Pago';
+    payTexts(); checkTrial();
     var inp = $('mpEmail');
     if (!inp.value) inp.value = st.mpEmail || (user && user.email) || '';
   }
@@ -440,5 +472,6 @@
 })();
 </script>
 <script src="/navidad.js?v=2" defer data-gorro="a.brand img" data-saludo="24"></script>
+<script src="/ventri.js?v=1" defer></script>
 </body>
 </html>
