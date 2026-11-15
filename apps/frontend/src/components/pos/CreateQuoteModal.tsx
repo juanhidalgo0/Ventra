@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ticketPrintCss } from '../../utils/ticketLook';
 import { motion } from 'framer-motion';
 import { FileText, X, Check, Share2, Printer, Calendar, User, Phone, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
@@ -99,25 +100,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
         exit={{ scale: 0.95, opacity: 0, y: 15 }}
         className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col"
       >
-        <style>{`
-          @media print {
-            @page { size: 80mm 297mm; margin: 0 !important; }
-            body * { visibility: hidden !important; }
-            #printable-quote, #printable-quote * { visibility: visible !important; }
-            #printable-quote {
-              display: block !important;
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 80mm !important;
-              font-family: 'Courier New', Courier, monospace !important;
-              font-size: 8.5pt !important;
-              line-height: 1.4 !important;
-              padding: 4mm 4mm 12mm 4mm !important;
-              box-sizing: border-box !important;
-            }
-          }
-        `}</style>
+        <style>{ticketPrintCss('#printable-quote')}</style>
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">

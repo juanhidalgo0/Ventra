@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ticketPrintCss } from '../../utils/ticketLook';
 import { X, Printer, Loader2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -17,21 +18,8 @@ export const formatPrice = (p: number) => {
 };
 
 /** Mismo CSS de impresión que el ticket del cobro: solo sale el comprobante, a 80 mm. */
-const PRINT_CSS = `
-  @media print {
-    @page { size: 80mm 297mm; margin: 0 !important; }
-    * { transform: none !important; animation: none !important; }
-    html, body, #root { margin: 0 !important; padding: 0 !important; background: #fff !important; width: 80mm !important; }
-    body * { visibility: hidden !important; }
-    #printable-receipt, #printable-receipt * { visibility: visible !important; }
-    #printable-receipt {
-      display: block !important; position: absolute !important; left: 0 !important; top: 0 !important;
-      width: 80mm !important; max-width: 80mm !important;
-      font-family: 'Courier New', Courier, monospace !important; font-size: 8.5pt !important; line-height: 1.4 !important;
-      color: #000 !important; background: #fff !important; padding: 4mm 4mm 12mm 4mm !important; margin: 0 !important; box-sizing: border-box !important;
-    }
-  }
-`;
+// Al ancho del papel de esta PC (80 o 58 mm): ver utils/ticketLook
+const PRINT_CSS = () => ticketPrintCss();
 
 /**
  * Ver y reimprimir un comprobante emitido (factura o nota de crédito), tal como salió.
@@ -72,7 +60,7 @@ export default function FiscalDocModal({ docId, onClose }: { docId: string; onCl
 
   return (
     <div className="fixed inset-0 z-[140] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <style>{PRINT_CSS}</style>
+      <style>{PRINT_CSS()}</style>
       <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">

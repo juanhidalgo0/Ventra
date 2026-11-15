@@ -8,6 +8,7 @@ import InvoiceModal, { nombreComprobante, numeroComprobante, qrImagen } from './
 import TicketReceipt from './TicketReceipt';
 import SalesNotePreview from './SalesNotePreview';
 import { canPrintSilently, getAutoPrintInvoice, printSilently, printFailMessage } from '../../utils/ticketPrinter';
+import { ticketPrintCss } from '../../utils/ticketLook';
 import { MangoIcon } from '../common/MangoLogo';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useBusinessStore } from '../../stores/businessStore';
@@ -884,46 +885,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
             {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 }, exit: { scale: 0.95, opacity: 0 } })} 
             className="card w-full max-w-xl p-8 text-center bg-white dark:bg-slate-900 shadow-2xl relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800"
           >
-            <style>{`
-              @media print {
-                @page {
-                  size: 80mm 297mm;
-                  margin: 0 !important;
-                }
-                * {
-                  transform: none !important;
-                  animation: none !important;
-                }
-                html, body, #root {
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  background: #fff !important;
-                  width: 80mm !important;
-                }
-                body * {
-                  visibility: hidden !important;
-                }
-                #printable-receipt, #printable-receipt * {
-                  visibility: visible !important;
-                }
-                #printable-receipt {
-                  display: block !important;
-                  position: absolute !important;
-                  left: 0 !important;
-                  top: 0 !important;
-                  width: 80mm !important;
-                  max-width: 80mm !important;
-                  font-family: 'Courier New', Courier, monospace !important;
-                  font-size: 8.5pt !important;
-                  line-height: 1.4 !important;
-                  color: #000 !important;
-                  background: #fff !important;
-                  padding: 4mm 4mm 12mm 4mm !important;
-                  margin: 0 !important;
-                  box-sizing: border-box !important;
-                }
-              }
-            `}</style>
+            <style>{ticketPrintCss()}</style>
 
           <div className="absolute top-0 left-0 w-full h-2.5 bg-gradient-to-r from-emerald-400 to-teal-500" />
           

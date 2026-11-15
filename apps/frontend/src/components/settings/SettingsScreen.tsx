@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import TicketPrinterCard from './TicketPrinterCard';
+import TicketLookCard from './TicketLookCard';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
 import api from '../../services/api';
@@ -933,6 +934,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   </div>
                 </div>
                 <TicketPrinterCard />
+                <TicketLookCard />
                 {/* PC Identity */}
                 <div className="card p-6 space-y-4">
                   <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">

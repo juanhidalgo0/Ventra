@@ -29,6 +29,11 @@ const SHARED: Record<string, string> = {
   store_iibb: 'gd_store_iibb',
   /** Logo para las impresiones (imagen chica en data URL, opcional: ver StoreLogoField) */
   store_logo: 'gd_store_logo',
+  /** Ticket: logo arriba ('1' / '0'), QR al pie ('none' | 'store' | 'whatsapp' + su link) y mensaje propio (ver utils/ticketLook) */
+  ticket_logo: 'ventra_ticket_logo',
+  ticket_qr: 'ventra_ticket_qr',
+  ticket_qr_url: 'ventra_ticket_qr_url',
+  ticket_footer: 'ventra_ticket_footer',
   /** Inicio de actividades (AAAA-MM-DD), para el encabezado de las hojas */
   store_start_date: 'gd_store_start',
   /** Numeración de las hojas impresas (punto de venta y desde qué número): JSON, ver SalesNoteSheet */

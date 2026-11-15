@@ -59,6 +59,7 @@ import { useBusinessStore } from '../../stores/businessStore';
 import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
 import { canPrintSilently, printSilently, printFailMessage } from '../../utils/ticketPrinter';
 import { isPrinting, onAfterPrint } from '../../utils/printing';
+import { ticketPrintCss } from '../../utils/ticketLook';
 
 interface Product { 
   id: string; 
@@ -4733,46 +4734,7 @@ export default function POSScreen() {
       {/* Hidden printable receipt for 1-click reprinting */}
       {reprintSale && (
         <div id="printable-receipt" style={{ display: 'none' }}>
-          <style>{`
-            @media print {
-              @page {
-                size: 80mm 297mm;
-                margin: 0 !important;
-              }
-              * {
-                transform: none !important;
-                animation: none !important;
-              }
-              html, body, #root {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                width: 80mm !important;
-              }
-              body * {
-                visibility: hidden !important;
-              }
-              #printable-receipt, #printable-receipt * {
-                visibility: visible !important;
-              }
-              #printable-receipt {
-                display: block !important;
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 80mm !important;
-                max-width: 80mm !important;
-                font-family: 'Courier New', Courier, monospace !important;
-                font-size: 8.5pt !important;
-                line-height: 1.4 !important;
-                color: #000 !important;
-                background: #fff !important;
-                padding: 4mm 4mm 12mm 4mm !important;
-                margin: 0 !important;
-                box-sizing: border-box !important;
-              }
-            }
-          `}</style>
+          <style>{ticketPrintCss()}</style>
           {/* El mismo ticket que al cobrar: con la factura y su CAE si la venta se facturó */}
           <TicketReceipt
             createdSale={reprintSale}

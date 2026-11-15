@@ -1,4 +1,5 @@
 import { isOrderNote } from './gastro';
+import { useTicketLook } from '../../utils/ticketLook';
 interface TicketReceiptProps {
   createdSale: any;
   storeName: string;
@@ -41,6 +42,8 @@ const nro = (pv: number, n: number) => `${String(pv ?? 0).padStart(5, '0')}-${St
  * la B (Ley 27.743), CAE con su vencimiento y el QR. Sin CAE, dice que no es factura.
  */
 export default function TicketReceipt({ createdSale, storeName, invoice, invoiceQr, pickedUpBy, reprint, formatPrice }: TicketReceiptProps) {
+  // Logo, QR, mensaje y ancho del papel: Configuración → "Cómo sale el ticket"
+  const look = useTicketLook();
   const fiscal = invoice && invoice.status === 'AUTHORIZED' && invoice.cae ? invoice : null;
   const emisor = fiscal?.emisor;
   const letra: string = fiscal?.letter || (fiscal?.type || '').slice(-1);
@@ -60,13 +63,20 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
   const dashed = { borderBottom: '1px dashed #000', paddingBottom: '6px' } as const;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', fontFamily: 'monospace', fontSize: '8pt', color: '#000', gap: '7px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', fontFamily: 'monospace', fontSize: look.width === 58 ? '7pt' : '8pt', color: '#000', gap: '7px' }}>
 
       {/* Emisor: sale de la configuración fiscal, nunca inventado */}
       <div style={{ ...dashed, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        {look.logo && <img src={look.logo} alt="" style={{ display: 'block', margin: '0 auto 4px auto', maxWidth: '70%', maxHeight: '22mm', width: 'auto', height: 'auto' }} />}
         <h4 style={{ margin: 0, fontSize: '10.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
           {titulo}
         </h4>
+        {!emisor && (look.address || look.phone) && (
+          <>
+            {look.address && <p style={{ margin: 0 }}>{look.address}</p>}
+            {look.phone && <p style={{ margin: 0 }}>Tel.: {look.phone}</p>}
+          </>
+        )}
         {emisor && (
           <>
             {razonAparte && <p style={{ margin: 0, fontWeight: 'bold' }}>{emisor.razonSocial}</p>}
@@ -252,7 +262,7 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
       )}
 
       <p style={{ margin: 0, fontSize: '7pt', textAlign: 'center', borderTop: '1px dashed #000', paddingTop: '8px', fontWeight: 'bold' }}>
-        ¡Muchas gracias por su compra! - {storeName}
+        {look.footer || `¡Muchas gracias por su compra! - ${storeName}`}
       </p>
 
       {pickedUpBy && (
@@ -263,6 +273,14 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
           </div>
           <div style={{ borderBottom: '1px solid #000', width: '70%', margin: '18px auto 4px auto' }} />
           <div style={{ textAlign: 'center', fontSize: '6.5pt', color: '#555' }}>Firma y Aclaración de Quien Retira</div>
+        </div>
+      )}
+
+      {/* QR del comercio: su tienda online o su WhatsApp (no va en la factura, que ya lleva el de ARCA) */}
+      {look.qr && !fiscal && (
+        <div style={{ borderTop: '1px dashed #000', paddingTop: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+          <img src={look.qr} alt="" style={{ width: look.width === 58 ? '24mm' : '28mm', height: look.width === 58 ? '24mm' : '28mm' }} />
+          <span style={{ fontWeight: 'bold', fontSize: '7.5pt' }}>{look.qrLabel}</span>
         </div>
       )}
 
