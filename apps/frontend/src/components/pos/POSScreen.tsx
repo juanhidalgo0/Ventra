@@ -58,6 +58,7 @@ import { registerTourActions, useTourStore } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
 import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
 import { canPrintSilently, printSilently, printFailMessage } from '../../utils/ticketPrinter';
+import { isPrinting, onAfterPrint } from '../../utils/printing';
 
 interface Product { 
   id: string; 
@@ -560,12 +561,15 @@ export default function POSScreen() {
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
 
   useEffect(() => {
+    // Mientras se imprime no se cambia la vista (el ancho es el del papel): ver utils/printing
     const handleResize = () => {
+      if (isPrinting()) return;
       setIsMobile(window.innerWidth < 768);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const stop = onAfterPrint(handleResize);
+    return () => { window.removeEventListener('resize', handleResize); stop(); };
   }, []);
 
   const [suggestedPromo, setSuggestedPromo] = useState<any | null>(null);

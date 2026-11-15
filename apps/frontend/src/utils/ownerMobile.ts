@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { isPrinting, onAfterPrint } from './printing';
 
-const QUERY = '(max-width: 767px)';
+// Solo la pantalla: al imprimir el ancho es el del papel (80 mm) y no tiene que contar
+const QUERY = 'screen and (max-width: 767px)';
 
 export function useSmallScreen() {
   const [isSmall, setIsSmall] = useState(() => window.matchMedia(QUERY).matches);
   useEffect(() => {
     const mq = window.matchMedia(QUERY);
-    const onChange = () => setIsSmall(mq.matches);
+    // Mientras se imprime no se cambia de pantalla: se cambiaba a la app del celular en plena
+    // impresión y salía impresa esa pantalla ("Vender / Cargando…") en vez del ticket
+    const onChange = () => { if (!isPrinting()) setIsSmall(window.matchMedia(QUERY).matches); };
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    const stop = onAfterPrint(onChange);
+    return () => { mq.removeEventListener('change', onChange); stop(); };
   }, []);
   return isSmall;
 }
