@@ -53,7 +53,10 @@ body{ background:#fff; }
 .topbar .acts{ display:flex; align-items:center; gap:10px; margin-left:auto; }
 .topbar .auth-btn{ height:42px; border-radius:10px; border:1px solid var(--line); color:var(--green-dk); padding:0 16px; }
 .topbar .auth-btn:hover{ background:var(--green-50); border-color:var(--green-100); }
-.topbar .auth-user{ color:var(--ink); }
+.topbar .auth-user{ color:var(--ink); display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.topbar .auth-user img{ width:30px; height:30px; border-radius:50%; flex:none; }
+.topbar .auth-user .auth-name{ white-space:nowrap; font-weight:600; font-size:14px; color:var(--ink); }
+.topbar .auth-user button{ white-space:nowrap; font-size:13px; }
 .burger{ display:none; width:44px; height:44px; border-radius:12px; border:1px solid var(--line); place-items:center; color:var(--ink); }
 .burger svg path{ transition:transform .3s var(--ease), opacity .2s; transform-origin:12px 12px; }
 .burger[aria-expanded="true"] .b1{ transform:translateY(5px) rotate(45deg); }
@@ -66,20 +69,42 @@ body{ background:#fff; }
 }
 /* "Abrir mi Ventra": el que ya es cliente lo tiene siempre a mano (barra y menú del celular).
    Si ya entró alguna vez desde este navegador (html.es-cliente, lo marca menu.js) pasa a verde
-   y "Empezar" deja la barra. Sin sesión, "Iniciar sesión" no va arriba: lo reemplaza este botón. */
+   y "Empezar" deja la barra. Sin sesión, arriba siempre está "Iniciar sesión" (pedido del dueño:
+   no se veía cómo entrar); en la compu, al que todavía no es cliente no se le muestra "Abrir mi Ventra". */
 .open-btn{ gap:8px; padding:0 14px; }
 .open-btn svg{ flex:none; color:var(--green); }
 .open-btn .ob-s{ display:none; }
-.topbar .acts .auth-btn{ display:none; }
+@media (min-width:1021px){ html:not(.es-cliente) .topbar .acts .open-btn{ display:none; } }
 html.es-cliente .open-btn, html.es-cliente .mn-open .btn{ background:var(--green); border-color:var(--green); color:#fff; }
 html.es-cliente .open-btn:hover, html.es-cliente .mn-open .btn:hover{ background:var(--green-dk); border-color:var(--green-dk); color:#fff; }
 html.es-cliente .open-btn svg, html.es-cliente .mn-open .btn svg{ color:#fff; }
 html.es-cliente .topbar .acts [data-start]{ display:none; }
-.topbar .acts .auth-area:empty, .topbar .acts .auth-area:not(:has(.auth-user)){ display:none; }
+.topbar .acts .auth-area:empty{ display:none; }
+.topbar .acts .auth-btn{ display:inline-flex; align-items:center; font-weight:650; font-size:14.5px; white-space:nowrap; }
 /* Compus angostas: el menú se aprieta un poco para que entren los dos botones */
 @media (min-width:1021px) and (max-width:1200px){
   .menu{ margin-left:8px; gap:2px; }
   .menu > a, .menu summary{ padding:0 9px; }
+}
+/* Con la sesión iniciada y poco lugar: solo la foto y "Mi cuenta" (sin el nombre) */
+@media (max-width:1440px){ .topbar .auth-user .auth-first{ display:none; } }
+/* Compus angostas con sesión: "Salir" queda dentro de Mi cuenta y el botón dice "Mi Ventra",
+   así todo entra en una línea sin salirse de la pantalla */
+@media (min-width:1021px) and (max-width:1320px){
+  .topbar .auth-user button{ display:none; }
+  .topbar .acts:has(.auth-user) .open-btn .ob-l, html.es-cliente .topbar .open-btn .ob-l{ display:none; }
+  .topbar .acts:has(.auth-user) .open-btn .ob-s, html.es-cliente .topbar .open-btn .ob-s{ display:inline; }
+  .topbar .acts{ gap:8px; }
+}
+@media (min-width:1021px) and (max-width:1100px){
+  .menu > a, .menu summary{ padding:0 7px; font-size:14.5px; }
+  .topbar .auth-user img{ display:none; }
+  .topbar .acts .auth-btn{ padding:0 12px; font-size:14px; }
+}
+@media (min-width:1021px) and (max-width:1060px){
+  .menu{ margin-left:4px; gap:0; }
+  .menu > a, .menu summary{ padding:0 5px; font-size:14px; }
+  .topbar .brand{ font-size:20px; }
 }
 @media (max-width:560px){
   .topbar .tin{ gap:12px; }

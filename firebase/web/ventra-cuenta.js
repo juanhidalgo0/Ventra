@@ -132,7 +132,8 @@
       if (!user) {
         // Como en cualquier web: lleva a la página de entrar, y de ahí a la cuenta
         var b = document.createElement('a');
-        b.className = 'auth-btn'; b.href = '/cuenta.html'; b.textContent = 'Mi cuenta';
+        // Arriba "Iniciar sesión" (que se vea cómo entrar); en el menú del celular, "Pagos y plan: Mi cuenta"
+        b.className = 'auth-btn'; b.href = '/cuenta.html'; b.textContent = area.id === 'authAreaMobile' ? 'Mi cuenta' : 'Iniciar sesión';
         area.appendChild(b);
         return;
       }

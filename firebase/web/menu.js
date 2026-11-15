@@ -36,6 +36,7 @@
   function etiquetaEntrar(){
     var cli = root.classList.contains('es-cliente');
     tb.querySelectorAll('.open-btn .ob-l').forEach(function(s){ s.textContent = cli ? 'Abrir mi Ventra' : 'Iniciar sesión'; });
+    tb.querySelectorAll('.open-btn .ob-s').forEach(function(s){ s.textContent = cli ? 'Mi Ventra' : 'Entrar'; });
     var mo = m && m.querySelector('.mn-open a');
     if (mo && mo.lastChild && mo.lastChild.nodeType === 3) mo.lastChild.textContent = cli ? 'Abrir mi Ventra' : 'Iniciar sesión';
   }
