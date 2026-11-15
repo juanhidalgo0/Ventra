@@ -44,7 +44,14 @@ export default function LoginPage() {
         localStorage.setItem('connection_mode', 'CLIENT');
         navigate('/pos');
       })
-      .catch((err: any) => toast.error(err?.message || 'No se pudo entrar como soporte'));
+      .catch(() => {
+        // La entrada de soporte quedó guardada en este navegador (dura 8 horas) pero la caja ya no
+        // la acepta: sin esto el dueño quedaba trabado acá, sin forma de entrar con su cuenta.
+        // Se borra esa sesión y se va a la entrada con Google (solo en la caja en la nube).
+        setSupportAvailable(false);
+        toast.error('La entrada de soporte ya no vale. Te llevo a entrar con tu cuenta de Google…', { duration: 3000 });
+        setTimeout(() => { window.location.href = '/_ventra/logout'; }, 2500);
+      });
   };
 
   useEffect(() => {

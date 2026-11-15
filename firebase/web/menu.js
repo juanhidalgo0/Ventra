@@ -30,8 +30,35 @@
   }
   if (root.classList.contains('es-cliente')) dockCliente();
 
+  // El botón de entrar: el que todavía no es cliente ve "Iniciar sesión" (antes decía "Abrir mi
+  // Ventra" y no se entendía que ahí se entra); el cliente recordado ve "Abrir mi Ventra"
+  var m = document.getElementById('mnav');
+  function etiquetaEntrar(){
+    var cli = root.classList.contains('es-cliente');
+    tb.querySelectorAll('.open-btn .ob-l').forEach(function(s){ s.textContent = cli ? 'Abrir mi Ventra' : 'Iniciar sesión'; });
+    var mo = m && m.querySelector('.mn-open a');
+    if (mo && mo.lastChild && mo.lastChild.nodeType === 3) mo.lastChild.textContent = cli ? 'Abrir mi Ventra' : 'Iniciar sesión';
+  }
+  etiquetaEntrar();
+  var recordar = window.ventraRecordarCliente;
+  window.ventraRecordarCliente = function(){ recordar(); etiquetaEntrar(); };
+
+  // Descargar la app de Windows, siempre a mano (página /descargar.html, sin cuenta)
+  var DL = '/descargar.html';
+  var menuPc = tb.querySelector('.menu');
+  if (menuPc && !menuPc.querySelector('a[href="' + DL + '"]')) {
+    var dl = document.createElement('a'); dl.href = DL; dl.textContent = 'Descargar'; dl.setAttribute('data-track', 'download_nav');
+    menuPc.appendChild(dl);
+  }
+  var sc = m && m.querySelector('.mn-scroll');
+  if (sc && !sc.querySelector('a[href="' + DL + '"]')) {
+    var dlm = document.createElement('a'); dlm.className = 'mn-l'; dlm.href = DL; dlm.setAttribute('data-track', 'download_menu');
+    dlm.innerHTML = 'Descargar la app para PC<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+    sc.appendChild(dlm);
+  }
+
   // Menú del celular
-  var b =tb.querySelector('.burger'), m = document.getElementById('mnav');
+  var b =tb.querySelector('.burger');
   if (!b || !m) return;
   function setM(open){
     if (open) m.style.top = Math.max(0, tb.getBoundingClientRect().bottom) + 'px';
