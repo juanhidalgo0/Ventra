@@ -52,6 +52,7 @@ import StoreLogoField from '../common/StoreLogoField';
 import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
 import { usePlanStore } from '../../stores/planStore';
 import { effectiveIntents } from '../../utils/gettingStarted';
+import { VentriImg, getVentriCaja, saveVentriCaja, type VentriCaja } from '../common/Ventri';
 
 const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -120,6 +121,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     return saved ? saved === 'true' : true;
   });
   const [openingFloat, setOpeningFloatInput] = useState(() => { const v = getOpeningFloat(); return v == null ? '' : String(v); });
+  const [ventriCaja, setVentriCaja] = useState<VentriCaja>(getVentriCaja);
   const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => {
     const saved = localStorage.getItem('pos_disable_change_calculator');
     return saved ? saved === 'true' : false;
@@ -1081,10 +1083,30 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                         <input 
                           type="checkbox" 
                           checked={!disableChangeCalculator} 
-                          onChange={(e) => setDisableChangeCalculator(!e.target.checked)} 
+                          onChange={(e) => setDisableChangeCalculator(!e.target.checked)}
                           className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
                         />
                       </label>
+
+                      {/* Ventri en la caja: se guarda al elegir (ajuste del comercio, viaja a todas las cajas) */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 max-w-[70%]">
+                          <VentriImg cara="picara" size={40} />
+                          <div>
+                            <span className="text-xs font-bold text-slate-700 block">Mostrar a Ventri en la caja</span>
+                            <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">La asistente de Ventra acompaña el modo práctica, la apertura y el cierre del turno, la ayuda y las esperas. Nunca aparece al cobrar.</span>
+                          </div>
+                        </div>
+                        <select
+                          value={ventriCaja}
+                          onChange={(e) => { const v = e.target.value as VentriCaja; setVentriCaja(v); saveVentriCaja(v); toast.success(v === 'nadie' ? 'Listo: Ventri no aparece en la caja' : 'Listo: Ventri guardada'); }}
+                          className="h-8 px-2 rounded-lg border border-slate-300 bg-white text-[11.5px] font-semibold text-slate-700 cursor-pointer"
+                        >
+                          <option value="equipo">Al dueño y encargados</option>
+                          <option value="todos">A todos (también cajeros)</option>
+                          <option value="nadie">A nadie</option>
+                        </select>
+                      </div>
 
                       <label className="flex items-center justify-between cursor-pointer group pt-2 border-t border-slate-300/50">
                         <div className="max-w-[80%]">

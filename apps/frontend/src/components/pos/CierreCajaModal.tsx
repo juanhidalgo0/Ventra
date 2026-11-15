@@ -14,6 +14,7 @@ import { printReport } from '../../utils/ticketPrinter';
 import { useConfirm } from '../common/ConfirmDialog';
 import { lockShortcuts } from '../../utils/shortcutLock';
 import { readArqueoDraft, saveArqueoDraft, clearArqueoDraft } from '../../utils/arqueoDraft';
+import { VentriImg, useVentri } from '../common/Ventri';
 
 interface CierreCajaModalProps {
   session: any;
@@ -53,6 +54,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
   const [editingGasto, setEditingGasto] = useState<any | null>(null);
 
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
+  const ventri = useVentri();
 
   // Mientras dura el cierre no se cierra la sesión de esta terminal: se cierra recién
   // cuando el cajero sale del cartel (así puede imprimir el comprobante)
@@ -837,10 +839,24 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
 
           {step === 6 && (
             <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
+              {ventri ? (
+                // Si falta plata, no festeja: pone cara de sorpresa y lo dice
+                <VentriImg cara={differenceTotal < 0 && !isZero(differenceTotal) ? 'sorprendida' : 'guino'} size={110} entra className="mb-3" />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+              )}
               <h3 className="text-[22px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">Turno cerrado</h3>
+              {ventri && (differenceTotal < 0 && !isZero(differenceTotal) ? (
+                <p className="text-[15px] font-semibold text-red-700 dark:text-red-300 mt-1.5">
+                  ¡Ojo! Faltan {fmt(-differenceTotal)} en el arqueo. Revisalo antes de irte.
+                </p>
+              ) : shiftSalesCount > 0 && (
+                <p className="text-[15px] font-semibold text-emerald-800 dark:text-emerald-300 mt-1.5">
+                  ¡Buen turno! Vendiste {fmt(shiftSalesTotal)} en {shiftSalesCount} {shiftSalesCount === 1 ? 'venta' : 'ventas'}.
+                </p>
+              ))}
               <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">El arqueo quedó guardado. Si lo necesitás, imprimí el comprobante del cierre X.</p>
               <div className="mt-6 w-full max-w-md">
                 {diffSummary}

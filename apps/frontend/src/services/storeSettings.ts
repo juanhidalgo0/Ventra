@@ -59,6 +59,8 @@ const SHARED: Record<string, string> = {
   route_days: 'ventra_route_days',
   /** Distribuidora: comisión de los vendedores, en % de lo entregado (Informes) */
   seller_commission_pct: 'seller_commission_pct',
+  /** Ventri, la mascota, en la caja: 'equipo' (dueño y encargados, de entrada) | 'todos' | 'nadie' (ver components/common/Ventri) */
+  ventri_caja: 'ventra_ventri_caja',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;

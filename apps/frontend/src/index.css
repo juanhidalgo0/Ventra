@@ -477,3 +477,20 @@ html.dark #pos-search {
 }
 .go-badge { background: #e11d48; color: #fff; animation: go-badge-wave 2s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) { .go-badge { animation: none; } }
+
+/* ── Ventri (components/common/Ventri.tsx): solo transform/opacity ─────────── */
+/* Aparece una vez, de abajo, con un pequeño rebote */
+.ventri-entra { animation: ventri-entra 420ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+@keyframes ventri-entra { from { opacity: 0; transform: translateY(14px) scale(0.92); } }
+.ventri-globo { animation: v-fade 260ms ease-out 140ms backwards; }
+/* Espera: sale impresa de la ranura, se queda un momento y vuelve a empezar */
+.ventri-imprime { animation: ventri-imprime 2.4s cubic-bezier(0.45, 0, 0.2, 1) infinite; }
+@keyframes ventri-imprime {
+  0% { transform: translateY(100%); }
+  45%, 80% { transform: translateY(0); }
+  100% { transform: translateY(-6%); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ventri-entra, .ventri-globo { animation: none !important; }
+  .ventri-imprime { animation: none !important; transform: none !important; }
+}

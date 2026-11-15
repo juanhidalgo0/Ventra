@@ -34,6 +34,7 @@ import QuickSaleIcon from './QuickSaleIcon';
 import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 import UnknownCodeModal from './UnknownCodeModal';
+import { judgeScan } from '../../utils/scanCheck';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useFeature, hasFeature } from '../../stores/businessStore';
@@ -159,6 +160,55 @@ export default function POSScreen() {
     }
     return map;
   }, [cachedProducts]);
+
+  // Código que no está en el catálogo en memoria. Antes la caja esperaba al servidor (hasta 5 s)
+  // antes de mostrar nada. Ahora:
+  // - si es una lectura mala (dígito verificador que no da, o un código conocido cortado), avisa
+  //   "pasalo de nuevo" sin abrir el alta (ver utils/scanCheck);
+  // - si no, abre el alta al instante.
+  // En los dos casos se le pregunta igual al servidor, por si el catálogo en memoria quedó atrasado
+  // (un producto recién cargado en otra caja): si aparece, entra al ticket y se cierra el aviso.
+  // Sin catálogo en memoria (todavía cargando) se espera al servidor como antes.
+  const unknownCodeRef = useRef<string | null>(null);
+  unknownCodeRef.current = unknownCode;
+  const lookupMissing = async (code: string, onFound: (product: any) => void) => {
+    const server = api.get(`/products/barcode/${encodeURIComponent(code)}`, LOOKUP_OPTS).then((r) => r.data || null).catch(() => null);
+    if (!usePOSStore.getState().products.length) {
+      const p = await server;
+      if (p) onFound(p);
+      else { playErrorBeep(); setUnknownCode(code); }
+      return;
+    }
+    const verdict = judgeScan(code, barcodeMap.keys());
+    playErrorBeep();
+    if (!verdict.ok) {
+      const parecido = verdict.similar ? barcodeMap.get(verdict.similar) : null;
+      const id = 'scan-misread';
+      toast.error((t) => (
+        <span className="text-[14px] leading-snug">
+          <b>No se leyó bien el código.</b> Pasalo de nuevo.
+          <span className="flex flex-wrap gap-2 mt-2">
+            {parecido && (
+              <button type="button" className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-semibold text-[13px]"
+                onClick={() => { toast.dismiss(t.id); onFound(parecido); }}>
+                ¿Era {String(parecido.name).slice(0, 28)}? Agregarlo
+              </button>
+            )}
+            <button type="button" className="px-2.5 py-1 rounded-lg border border-slate-300 font-semibold text-[13px]"
+              onClick={() => { toast.dismiss(t.id); setUnknownCode(code); }}>
+              Es un código nuevo
+            </button>
+          </span>
+        </span>
+      ), { id, duration: 7000 });
+      server.then((p) => { if (p) { toast.dismiss(id); onFound(p); } });
+      return;
+    }
+    setUnknownCode(code);
+    server.then((p) => {
+      if (p && unknownCodeRef.current === code) { setUnknownCode(null); onFound(p); }
+    });
+  };
 
   const [rawDisplayedProducts, setDisplayedProducts] = useState<Product[]>([]);
   const [variantGroupToPick, setVariantGroupToPick] = useState<any | null>(null);
@@ -1013,25 +1063,25 @@ export default function POSScreen() {
               return;
             }
 
+            const useProduct = (data: any) => {
+              if (data.allowCustomPrice) {
+                setPricePromptProduct(data);
+                setPromptPriceValue('');
+              } else if (e.shiftKey) {
+                setQtyPromptProduct(data);
+                setPromptQtyValue('');
+              } else {
+                addToCart(data);
+                setTimeout(() => searchRef.current?.focus(), 50);
+                checkPromoSuggestion(data);
+              }
+            };
             // Fast memory lookup: 0ms scan resolution via O(1) Hash Map
             const cachedMatch = barcodeMap.get(scannedCode.toUpperCase());
-
-            let data = cachedMatch;
-            if (!data) {
-              const res = await api.get(`/products/barcode/${scannedCode}`, LOOKUP_OPTS);
-              data = res.data;
-            }
-
-            if (data.allowCustomPrice) {
-              setPricePromptProduct(data);
-              setPromptPriceValue('');
-            } else if (e.shiftKey) {
-              setQtyPromptProduct(data);
-              setPromptQtyValue('');
-            } else {
-              addToCart(data);
+            if (cachedMatch) useProduct(cachedMatch);
+            else {
+              await lookupMissing(scannedCode, useProduct);
               setTimeout(() => searchRef.current?.focus(), 50);
-              checkPromoSuggestion(data);
             }
           } catch {
             notifyUnknownCode(scannedCode);
@@ -1709,47 +1759,26 @@ export default function POSScreen() {
         return;
       }
 
-      // 3. Fallback: Query backend for targetCode/codeClean
-      setIsCartBusy(true);
-      try {
-        const queryToUse = targetCode || codeClean;
-        let finalData = null;
-        try {
-          const { data } = await api.get(`/products/barcode/${queryToUse}`, LOOKUP_OPTS);
-          finalData = data;
-        } catch {
-          // If queryToUse failed, try the full codeClean just in case
-          if (queryToUse !== codeClean) {
-            const { data } = await api.get(`/products/barcode/${codeClean}`, LOOKUP_OPTS);
-            finalData = data;
-            multiplier = 1; // reset multiplier if direct match found
-          }
-        }
-
-        if (!finalData) {
-          throw new Error('Not found');
-        }
-
+      // 3. No está en memoria: lectura mala, alta al instante y, en paralelo, el servidor (ver lookupMissing)
+      const useProduct = (finalData: any) => {
         if (finalData.allowCustomPrice) {
           setPricePromptProduct(finalData);
           setPromptPriceValue('');
-          setSearchQuery('');
         } else if (shiftKey) {
           setQtyPromptProduct(finalData);
           setPromptQtyValue('');
-          setSearchQuery('');
         } else {
           addItem(finalData, multiplier);
-          setSearchQuery('');
           focusSearch();
           checkPromoSuggestion(finalData);
         }
-      } catch {
-        playErrorBeep();
-        notifyUnknownCode(codeClean);
+      };
+      setIsCartBusy(true);
+      try {
+        await lookupMissing(targetCode || codeClean, useProduct);
+      } finally {
         setSearchQuery('');
         focusSearch();
-      } finally {
         setIsCartBusy(false);
       }
   };

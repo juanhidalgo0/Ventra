@@ -5,6 +5,7 @@ import { tourSteps, ROUTE_HELP, ROUTE_SHORTCUTS, type HelpEntry } from './tours'
 import { getTourCtx } from './tourContext';
 import { useTourStore } from './tourStore';
 import HelpChat from './HelpChat';
+import { useVentri } from '../Ventri';
 
 /** A tour is offered only if at least one of its targets is on screen right now. */
 function isAvailable(entry: HelpEntry) {
@@ -49,6 +50,9 @@ export default function HelpMenu({ pathname, placement, iconOnly }: { pathname: 
   const start = useTourStore((s) => s.start);
   const tourActive = useTourStore((s) => !!s.activeTour);
   const [open, setOpen] = useState(false);
+  // En la caja, con Ventri prendida, la ayuda es ella (ver HelpChat)
+  const ventriOn = useVentri();
+  const ventriHere = ventriOn && pathname === '/pos';
   const [available, setAvailable] = useState<HelpEntry[]>([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -134,7 +138,7 @@ export default function HelpMenu({ pathname, placement, iconOnly }: { pathname: 
               >
                 <MessageCircleQuestion className="w-5 h-5 text-rose-600 shrink-0" />
                 <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100">Preguntale a la ayuda</span>
+                  <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100">{ventriHere ? 'Preguntale a Ventri' : 'Preguntale a la ayuda'}</span>
                   <span className="block text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug">Escribí qué querés hacer y te dice los pasos</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />

@@ -39,6 +39,7 @@ import { deviceStart, START_PATH } from '../distribuidora/StartChooser';
 import { myWorkRole, useWorkRole, WORK_PATH, isProductionRole, PRODUCTION_PATHS, type WorkRole } from '../../services/workRole';
 import DemoPlanSwitcher from '../subscription/DemoPlanSwitcher';
 import { GettingStartedPill } from '../onboarding/GettingStarted';
+import { VentriImprimiendo, useVentri } from '../common/Ventri';
 
 interface Props { children: React.ReactNode; }
 
@@ -48,6 +49,7 @@ export default function MainLayout({ children }: Props) {
   const [showUpdate, setShowUpdate] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isConnecting, setIsConnecting] = useState(true);
+  const ventri = useVentri();
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [retryTrigger, setRetryTrigger] = useState(0);
@@ -336,8 +338,11 @@ export default function MainLayout({ children }: Props) {
           </div>
 
           <div className="flex flex-col items-center justify-center mt-2">
-            {/* Giro en CSS: se ve en movimiento también con framer-motion apagado */}
-            <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-rose-600 animate-spin" />
+            {/* Giro en CSS: se ve en movimiento también con framer-motion apagado. Con Ventri
+                prendida, en vez del círculo sale impresa de la ranura (ver components/common/Ventri) */}
+            {ventri
+              ? <VentriImprimiendo size={92} />
+              : <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-rose-600 animate-spin" />}
             <div className="h-6 flex items-center justify-center overflow-hidden mt-6 min-w-[280px]">
               <span key={messageIndex} className="text-[13px] font-medium text-slate-500 block text-center anim-rise">
                 {loadingMessages[messageIndex]}

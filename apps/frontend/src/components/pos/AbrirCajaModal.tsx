@@ -4,6 +4,13 @@ import { X, Unlock, Lock, Laptop, Banknote, FileOutput } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { useOpeningFloat } from '../../utils/openingFloat';
+import { VentriDice, useVentri } from '../common/Ventri';
+
+/** "¡Buen día" / "¡Buenas tardes" / "¡Buenas noches" según la hora */
+const saludo = () => {
+  const h = new Date().getHours();
+  return h >= 5 && h < 13 ? '¡Buen día' : h >= 13 && h < 20 ? '¡Buenas tardes' : '¡Buenas noches';
+};
 
 interface AbrirCajaModalProps {
   onClose: () => void;
@@ -16,6 +23,7 @@ interface AbrirCajaModalProps {
 export default function AbrirCajaModal({ onClose, onSuccess, terminalName, onMakeZ }: AbrirCajaModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const openingFloat = useOpeningFloat();
+  const ventri = useVentri();
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
 
   // Turnos cerrados que todavía no entraron en un Cierre Z (p. ej. el último hizo un X por error)
@@ -92,6 +100,13 @@ export default function AbrirCajaModal({ onClose, onSuccess, terminalName, onMak
 
         {/* Body */}
         <div className="space-y-4">
+          {ventri && (
+            <VentriDice cara={pendingZ ? 'sorprendida' : 'picara'}>
+              {pendingZ
+                ? <>¡Ojo! Quedó un turno sin <b>Cierre Z</b>. Hacelo abajo antes de arrancar.</>
+                : <>{saludo()}! {openingFloat != null ? <>Arrancamos con <b>{fmt(openingFloat)}</b> de cambio en el cajón.</> : 'Arrancamos el turno.'} Que se venda todo 💪</>}
+            </VentriDice>
+          )}
           <div>
             <label className="block text-[10px] font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1">Terminal Activo</label>
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-xl px-4 py-3 text-xs font-bold text-slate-650 dark:text-slate-300">

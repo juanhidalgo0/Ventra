@@ -27,6 +27,7 @@ import { startStoreSettingsSync } from './services/storeSettings';
 import ComingSoonScreen from './components/common/ComingSoon';
 import { COMING_SOON } from './utils/comingSoon';
 import { Calculator } from 'lucide-react';
+import { VentriImprimiendo, useVentri } from './components/common/Ventri';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
@@ -229,6 +230,8 @@ export default function App() {
   if (backendPort) {
     sessionStorage.setItem('active_backend_port', backendPort);
   }
+  // Ventri en la espera de "Preparando la caja" (si está prendida para quien entra, ver components/common/Ventri)
+  const ventri = useVentri();
 
   useEffect(() => {
     if ((window as any).__TAURI__) {
@@ -666,8 +669,13 @@ export default function App() {
             <p className="mt-2 text-[13px] text-slate-500">Terminal de ventas</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-6 sm:p-7">
-            <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.02em]">Preparando la caja</h2>
-            <p key={warmingStatus} className="mt-1.5 text-[14px] text-slate-600 anim-rise">{warmingStatus}</p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.02em]">Preparando la caja</h2>
+                <p key={warmingStatus} className="mt-1.5 text-[14px] text-slate-600 anim-rise">{warmingStatus}</p>
+              </div>
+              {ventri && <div className="-mt-2 shrink-0"><VentriImprimiendo size={64} /></div>}
+            </div>
 
             <div className="mt-6 relative h-[3px] w-full bg-slate-100 rounded-full overflow-hidden">
               <div

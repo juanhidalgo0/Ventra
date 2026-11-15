@@ -6,6 +6,7 @@ import { TOURS, tourSteps, PRACTICE_TOURS, ROAMING_TOURS, type TourStep } from '
 import { getTourCtx } from './tourContext';
 import { useTourStore, setTourKeyHandler, runTourAction, hasTourAction } from './tourStore';
 import { useAuthStore } from '../../../stores/authStore';
+import { VentriImg, useVentri, type VentriCara } from '../Ventri';
 
 const SPOT_PAD = 6;
 const GAP = 14;
@@ -106,6 +107,11 @@ export default function GuidedTour() {
 
   const step = steps[index];
   const isLast = index === steps.length - 1;
+  // Modo práctica de la caja: Ventri hace de instructora (saluda, explica y festeja al final)
+  const ventriOn = useVentri();
+  const ventriCara: VentriCara | null = ventriOn && activeTour && PRACTICE_TOURS.has(activeTour)
+    ? (index === 0 ? 'picara' : isLast ? 'guino' : index % 3 === 2 ? 'sorprendida' : 'picara')
+    : null;
 
   const next = useCallback(() => { dir.current = 1; if (isLast) finish(); else setIndex((i) => i + 1); }, [isLast, finish]);
   const back = useCallback(() => { dir.current = -1; setIndex((i) => Math.max(0, i - 1)); }, []);
@@ -208,6 +214,8 @@ export default function GuidedTour() {
     height: rect.height + SPOT_PAD * 2,
   };
   const pos = place(spot, popSize);
+  // Ventri se asoma 66 px arriba de la tarjeta: que no quede cortada por el borde de la pantalla
+  if (ventriCara && pos.top < 80) pos.top = 80;
   // Esperando que cargue la otra pantalla: la tarjeta no se muestra en el medio a la nada
   const waiting = !!(step.path && step.target && !rect);
 
@@ -246,6 +254,9 @@ export default function GuidedTour() {
         className="keep-style keep-animated absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
         style={{ top: pos.top, left: pos.left, opacity: waiting ? 0 : 1, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out' }}
       >
+        {ventriCara && (
+          <VentriImg key={`ventri-${activeTour}-${index}`} cara={ventriCara} size={76} entra className="absolute -top-[66px] left-3" />
+        )}
         <button
           onClick={finish}
           className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-50 transition-colors"
