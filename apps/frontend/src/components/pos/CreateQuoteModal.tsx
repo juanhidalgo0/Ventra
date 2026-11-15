@@ -341,7 +341,7 @@ export default function CreateQuoteModal({ cart, total, onClose, onSuccess }: Cr
                 </div>
                 {createdQuote.items.map((it: any, idx: number) => (
                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ width: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ width: '55%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
                       {it.productName || it.product?.name || 'Producto'}
                     </span>
                     <span style={{ width: '20%', textAlign: 'center' }}>{Number(it.quantity).toFixed(1)}</span>

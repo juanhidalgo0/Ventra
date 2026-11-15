@@ -172,7 +172,8 @@ export default function TicketReceipt({ createdSale, storeName, invoice, invoice
         {lines.map((item: any, idx: number) => (
           <div key={idx}>
             <div style={row}>
-              <span style={{ width: '55%', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {/* El nombre entero: si no entra, sigue en el renglón de abajo (nunca "…") */}
+              <span style={{ width: '55%', textTransform: 'uppercase', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
                 {item.productName || item.name}
               </span>
               <span style={{ width: '17%', textAlign: 'center' }}>{Number(item.quantity).toLocaleString('es-AR', { maximumFractionDigits: 3 })}</span>
