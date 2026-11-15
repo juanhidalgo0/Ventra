@@ -52,17 +52,53 @@ export function useVentri(): boolean {
   return role === 'ADMIN' || role === 'SUPERVISOR';
 }
 
-/** Una cara de Ventri. `entra`: aparece de abajo una vez (solo transform/opacity). */
-export function VentriImg({ cara, size = 72, entra = false, className = '' }: { cara: VentriCara; size?: number; entra?: boolean; className?: string }) {
+/** Ancho/alto de cada cara (public/ventri) y dónde está el centro de la "cabeza" del ticket, para el gorrito */
+const FORMA: Record<VentriCara, { ratio: number; cabeza: number }> = {
+  picara: { ratio: 0.88, cabeza: 0.42 }, guino: { ratio: 0.9, cabeza: 0.57 }, sorprendida: { ratio: 0.83, cabeza: 0.45 },
+  mate: { ratio: 0.78, cabeza: 0.43 }, indignada: { ratio: 0.8, cabeza: 0.5 }, pila: { ratio: 1.23, cabeza: 0.5 },
+};
+
+/** Temporada de fiestas: la prende navidad.js (public/navidad.js) del 1/12 al 6/1, con la clase "navidad" en <html> */
+export function esNavidad(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('navidad');
+}
+
+/** El mismo gorrito de navidad.js, dibujado adentro de Ventri (así la sigue cuando se mueve) */
+const Gorro = ({ size, cara }: { size: number; cara: VentriCara }) => {
+  const w = size * FORMA[cara].ratio;
+  const hatW = size * 0.42;
   return (
+    <svg viewBox="0 0 100 84" aria-hidden style={{ position: 'absolute', width: hatW, left: w * FORMA[cara].cabeza - hatW * 0.45, top: size * 0.11 - hatW * 0.69, transform: 'rotate(-12deg)', transformOrigin: '50% 90%', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,.18))' }}>
+      <path d="M12 66C20 36 42 10 68 9c15-.6 24 10 26 25-8-7-18-9-24-3-6 8-4 22 0 35z" fill="#D62839" />
+      <path d="M40 66c4-20 14-35 30-35-6 8-4 22 0 35z" fill="#A81D2C" />
+      <circle cx="92" cy="38" r="9.5" fill="#fff" stroke="#e3e6ea" strokeWidth="1.5" />
+      <rect x="4" y="59" width="76" height="19" rx="9.5" fill="#fff" stroke="#e3e6ea" strokeWidth="1.5" />
+    </svg>
+  );
+};
+
+/**
+ * Una cara de Ventri. `entra`: aparece de abajo una vez (solo transform/opacity).
+ * `gorro`: en las fiestas lleva gorrito (de entrada, solo si navidad.js prendió la temporada).
+ */
+export function VentriImg({ cara, size = 72, entra = false, gorro, className = '' }: { cara: VentriCara; size?: number; entra?: boolean; gorro?: boolean; className?: string }) {
+  const conGorro = gorro ?? esNavidad();
+  const img = (
     <img
       src={`/ventri/${cara}.webp`}
       alt=""
       aria-hidden
       draggable={false}
       style={{ height: size, width: 'auto' }}
-      className={`select-none pointer-events-none shrink-0 ${entra ? 'ventri-entra' : ''} ${className}`}
+      className={`select-none pointer-events-none shrink-0 ${conGorro ? '' : entra ? 'ventri-entra' : ''} ${conGorro ? '' : className}`}
     />
+  );
+  if (!conGorro) return img;
+  return (
+    <span className={`relative inline-block shrink-0 pointer-events-none ${entra ? 'ventri-entra' : ''} ${className}`} style={{ height: size, width: size * FORMA[cara].ratio }}>
+      {img}
+      <Gorro size={size} cara={cara} />
+    </span>
   );
 }
 

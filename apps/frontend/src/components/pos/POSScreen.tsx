@@ -35,6 +35,7 @@ import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 import UnknownCodeModal from './UnknownCodeModal';
 import { judgeScan } from '../../utils/scanCheck';
+import { VentriEnReposo, VentriFestejos, ventriVentaHecha, ventriCajaAbierta } from './VentriCaja';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import { useFeature, hasFeature } from '../../stores/businessStore';
@@ -3023,7 +3024,9 @@ export default function POSScreen() {
                 </div>
               )}
               {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center p-8 select-none my-auto">
+                <div className="relative flex flex-col items-center justify-center h-full text-center p-8 select-none my-auto">
+                  {/* Ventri se asoma desde abajo cuando la caja está quieta (ver VentriCaja) */}
+                  <VentriEnReposo libre={!!currentSession && !showPayment && !showGastos && !showProveedores && !showCierre && !showHistorial && !showCajaInfo && !showAbrirCaja && !showCobroCtaCte && !showQuickSale && !unknownCode} inicioTurno={currentSession?.openedAt} />
                   {/* data-nv-gorro: en diciembre navidad.js le pone el gorrito aunque el logo esté apagado */}
                   <div data-nv-gorro className="mb-3"><MangoLogo className="w-20 h-20 opacity-25 grayscale" /></div>
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
@@ -3343,6 +3346,7 @@ export default function POSScreen() {
               focusSearch(); 
             }} 
             onSuccess={() => { 
+              ventriVentaHecha(); // festejos de Ventri (primera venta, la 100…), ver VentriCaja
               applySoldStock(usePOSStore.getState().cart);
               clearCart(); 
               setShowPayment(false); 
@@ -3623,6 +3627,7 @@ export default function POSScreen() {
             onSuccess={(session) => {
               setCurrentSession(session);
               setShowAbrirCaja(false);
+              ventriCajaAbierta(); // primera caja del día en esta PC: Ventri saluda (ver VentriCaja)
               loadProducts();
             }} 
           />
@@ -3829,6 +3834,8 @@ export default function POSScreen() {
           </MotionDiv>
         )}
         
+        <VentriFestejos key="ventri-festejos" practica={currentSession?.id === PRACTICE_SESSION_ID} sesion={currentSession?.id} />
+
         {unknownCode && (
           <UnknownCodeModal
             code={unknownCode}
