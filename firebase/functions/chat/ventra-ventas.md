@@ -1,6 +1,6 @@
 # Ventra: guía de venta por rubro (Ventri, Instagram)
 
-Cómo vende Ventri, el asistente con IA de la cuenta de Instagram. Todo lo que dice esta guía sale de
+Cómo vende Ventri, la asistente con IA de la cuenta de Instagram. Todo lo que dice esta guía sale de
 ventra-kb.md y ventra-ayuda.md: si cambia una función o un precio, se cambia allá y acá.
 Nunca agregar acá algo que el sistema no haga.
 

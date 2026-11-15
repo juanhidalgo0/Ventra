@@ -20,7 +20,7 @@ const sleep = (n) => new Promise((r) => setTimeout(r, n));
 // ─── Simulación de Instagram y de la IA ───
 const calls = [];
 const state = {
-  media: [], comments: {}, containers: {}, n: 0, aiQueue: [], aiCalls: [], failNext: {}, insightsFail: false, refreshFail: false,
+  media: [], comments: {}, containers: {}, n: 0, aiQueue: [], aiCalls: [], failNext: {}, insightsFail: false, refreshFail: false, failCard: false,
 };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 global.fetch = async (input, opts = {}) => {
@@ -45,6 +45,10 @@ global.fetch = async (input, opts = {}) => {
   calls.push({ method, p, body, params: Object.fromEntries(url.searchParams), token });
   const key = `${method} ${p}`;
   if (state.failNext[key]) { const e = state.failNext[key]; delete state.failNext[key]; return json({ error: e }, e.status || 400); }
+  // Instagram rechaza la tarjeta de Ventri (por ejemplo, no pudo bajar la imagen)
+  if (state.failCard && key === "POST me/messages" && body && body.message && body.message.attachment && body.message.attachment.payload.template_type === "generic") {
+    state.failCard = false; return json({ error: { message: "image_url not reachable", code: 100 } }, 400);
+  }
 
   if (p === "refresh_access_token") {
     if (state.refreshFail) return json({ error: { message: "token too new", code: 190 } }, 400);
@@ -114,7 +118,9 @@ async function processId(id) {
 const thread = async (id) => (await db.collection("ventra_ig_threads").doc(id).get()).data() || {};
 // Mensajes del bot a esa conversación, sin la presentación de Ventri (esa se prueba aparte)
 const sentAll = (id) => calls.filter((c) => c.p === "me/messages" && c.body.recipient.id === id);
-const isIntro = (c) => c.body.message.text === ig.VENTRI_DM;
+// La presentación: la tarjeta de Ventri (imagen + quién es + botones) o, si falla, el texto
+const isCard = (c) => { const p = c.body.message.attachment && c.body.message.attachment.payload; return !!(p && p.template_type === "generic"); };
+const isIntro = (c) => isCard(c) || c.body.message.text === ig.VENTRI_DM || (c.body.message.attachment && c.body.message.attachment.payload && c.body.message.attachment.payload.text === ig.VENTRI_DM);
 const sentTo = (id) => sentAll(id).filter((c) => !isIntro(c));
 const adminUser = { email: "juanhidalgobass@gmail.com" };
 
@@ -149,6 +155,8 @@ async function clear() {
       && ig.withoutGreeting("Buenas tardes! 👋 te cuento") === "Te cuento" && ig.withoutGreeting("Holaaa") === "Holaaa" && ig.withoutGreeting("¡Hola!") === "¡Hola!"
       && ig.withoutGreeting("Hola, gracias por pasarte.") === "Gracias por pasarte.", "saca el saludo del principio sin comerse el resto");
     ok(ig.SYSTEM.includes("Ventri") && ig.SYSTEM.includes("inteligencia artificial") && !ig.SYSTEM.includes("asistente automático"), "el prompt dice que es Ventri, una IA");
+    ok(ig.SYSTEM.includes("sos la asistente") && ig.SYSTEM.includes("usá el femenino") && !/el asistente de Ventra/.test(ig.SYSTEM)
+      && [ig.VENTRI_DM, ig.VENTRI_COMMENT, ig.VENTRI_PRIVATE].every((m) => m && m.includes("la asistente")), "Ventri es mujer: se presenta y habla en femenino");
     ok(ig.SYSTEM.includes("guía de venta por rubro") && ig.SYSTEM.includes("Función estrella: tu negocio en tu WhatsApp") && ig.SYSTEM.includes("Ventra por dentro") && ig.SYSTEM.includes("menos de 300 caracteres"), "el prompt trae la guía de venta, el bot de WhatsApp, la ayuda y respuestas cortas");
     const fu = ig.funnelFor([
       { messages: [{ by: "user" }, { by: "bot", text: "Mirá [botón: Probar demo gratis]" }], lead: { intent: "listo_para_comprar" } },
@@ -233,9 +241,12 @@ async function clear() {
     ok(s[0] && !s[0].body.message.text.includes("**"), "la respuesta sale sin markdown", s[0] && s[0].body.message.text);
     ok(s[0] && s[0].token.startsWith("IGAAtoken2"), "usa el token guardado");
     const all2 = sentAll("u2");
-    ok(all2.length === 2 && isIntro(all2[0]) && !all2[1].body.message.text.startsWith("Hola"), "la primera vez se presenta Ventri en un mensaje aparte y la respuesta no repite el saludo", all2.map((c) => c.body.message.text));
+    ok(all2.length === 2 && !isIntro(all2[0]) && isCard(all2[1]) && !all2[0].body.message.text.startsWith("Hola"), "la primera vez va la respuesta y después la tarjeta de Ventri (2 mensajes), sin repetir el saludo", all2.map((c) => c.body.message.text || "[tarjeta]"));
+    const card = all2[1].body.message.attachment.payload.elements[0];
+    ok(card.image_url === ig.VENTRI_CARD.image && card.title.includes("Ventri") && card.title.includes("IA") && card.title.length <= 80 && card.subtitle.length <= 80 && card.buttons.length >= 1, "la tarjeta tiene la imagen de Ventri, dice que es una IA y lleva botones", card);
+    ok(!all2[0].body.message.attachment, "la respuesta del primer contacto va sola (los botones quedan en la tarjeta)");
     const t2 = await thread("u2");
-    ok(t2.ventriAt && t2.messages[1].by === "bot" && t2.messages[1].text === ig.VENTRI_DM && t2.botMids.length === 2, "la presentación queda en la charla y su id como del bot", t2);
+    ok(t2.ventriAt && t2.messages[2].by === "bot" && t2.messages[2].text === ig.VENTRI_DM && t2.botMids.length === 2, "la presentación queda en la charla y su id como del bot", t2);
     const ai = state.aiCalls[state.aiCalls.length - 1];
     ok(ai.model === "claude-haiku-5-5" && ai.output_config.effort === "low" && ai.output_config.format.type === "json_schema" && !("fallbacks" in ai), "pide a Haiku 5.5 con salida estructurada y esfuerzo bajo");
     ok(ai.system[0].cache_control && ai.messages[ai.messages.length - 1].content.startsWith("[canal: dm]"), "base cacheada y canal indicado");
@@ -296,6 +307,27 @@ async function clear() {
     ok(s6a.status === "skipped" && s6auto.status === "auto-reply" && s6b.status === "replied" && !t.pausedUntil && sentTo("u6").length === 1,
       "anuncio: la publicación compartida y el saludo automático no frenan la respuesta", [s6a.status, s6auto.status, s6b.status]);
     ok(t.messages.some((m) => m.by === "auto"), "el saludo automático queda en la charla", t.messages);
+    // Ya habló con el dueño (sin marca de presentación) y vuelve otro día: Ventri no se presenta
+    await db.collection("ventra_ig_threads").doc("u6old").set({ messages: [
+      { by: "user", text: "hola", at: admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 86400e3) },
+      { by: "human", text: "Hola! soy Juan", at: admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 86400e3 + 60e3) },
+    ] });
+    await deliver(dmEvent("u6old", "mid.6old", "Buen día, ¿el precio es por mes?"));
+    it = await processId(inboxId("mid.6old"));
+    ok(it.status === "replied" && sentAll("u6old").filter(isIntro).length === 0, "si ya le escribió alguien del equipo, Ventri no se presenta", sentAll("u6old").map((c) => c.body.message));
+    // Anuncio con preguntas frecuentes (caso real del 14-11): tres preguntas seguidas y el saludo
+    // del anuncio en el medio, que se procesa cuando las tres ya están guardadas
+    const T7 = Date.now();
+    const dmAt = (mid, text, ts) => ({ object: "instagram", entry: [{ id: IG_ID, time: ts, messaging: [{ sender: { id: "u7ad" }, recipient: { id: IG_ID }, timestamp: ts, message: { mid, text } }] }] });
+    await deliver(dmAt("mid.7a", "¿Es compatible con mi sistema actual?", T7));
+    await deliver(echoEvent("u7ad", "mid.7auto", "¡Hola! 👋 Gracias por escribir a Ventra.", T7 + 2000));
+    await deliver(dmAt("mid.7b", "¿Cuánto cuesta la implementación inicial?", T7 + 2200));
+    await deliver(dmAt("mid.7c", "¿Puedo probar el demo antes de comprar?", T7 + 4200));
+    const [s7a, s7b, s7c] = await Promise.all([processId(inboxId("mid.7a")), processId(inboxId("mid.7b")), processId(inboxId("mid.7c"))]);
+    const s7auto = await processId(inboxId("mid.7auto"));
+    t = await thread("u7ad");
+    ok(s7auto.status === "auto-reply" && !t.pausedUntil && s7c.status === "replied" && sentTo("u7ad").length >= 1,
+      "anuncio con 3 preguntas: el saludo del medio no pausa al bot", [s7a.status, s7b.status, s7c.status, s7auto.status]);
     // Una foto sin texto sí la tiene que ver una persona
     await deliver(dmEvent("u6foto", "mid.6foto", "", { attachments: [{ type: "image", payload: {} }] }));
     it = await processId(inboxId("mid.6foto"));
@@ -313,7 +345,18 @@ async function clear() {
     await processId(inboxId("mid.4b"));
     ok(sentTo("u4b")[0].body.message.text === "¡Qué bueno que nos escribas!\n\n" + ig.HANDOFF_NOTICE, "derivación sin aviso: se agrega que pasa al equipo", sentTo("u4b")[0].body.message.text);
 
-    // Quiere comprar: sigue atendiendo pero queda marcado
+    // Si Instagram rechaza la tarjeta: la presentación va en texto con los botones (el aviso de IA no se pierde)
+    state.failCard = true;
+    await deliver(dmEvent("u4c", "mid.4c", "hola"));
+    state.aiQueue.push({ action: "reply", text: "Contame qué negocio tenés.", botones: ["demo"], topic: "info", rubro: "", intent: "consulta" });
+    await processId(inboxId("mid.4c"));
+    const fbIntro = sentAll("u4c");
+    ok(fbIntro.length === 3 && isCard(fbIntro[1]) && fbIntro[2].body.message.attachment.payload.text === ig.VENTRI_DM && fbIntro[2].body.message.attachment.payload.buttons.length === 1 && (await thread("u4c")).ventriAt,
+      "tarjeta rechazada: va la presentación en texto con los botones", fbIntro.map((c) => c.body.message));
+
+    // Quiere comprar: sigue atendiendo pero queda marcado (conversación ya presentada: botones en la respuesta)
+    await db.collection("ventra_ig_threads").doc("u5").set({ ventriAt: admin.firestore.Timestamp.now() });
+    await db.collection("ventra_ig_threads").doc("u5b").set({ ventriAt: admin.firestore.Timestamp.now() });
     await deliver(dmEvent("u5", "mid.5", "dale, como pago el Full?"));
     state.aiQueue.push({ action: "reply", text: "Entrá con el botón de abajo y tocá el plan.", botones: ["full", "full", "inventado", "demo", "cuenta"], topic: "pago", rubro: "kiosco", intent: "listo_para_comprar" });
     it = await processId(inboxId("mid.5"));
@@ -353,7 +396,7 @@ async function clear() {
     it = await processId(inboxId("mid.7"));
     ok(it.status === "handoff" && (await thread("u7")).needsHuman && sentTo("u7").length === 1 && sentTo("u7")[0].body.message.text === ig.HANDOFF_NOTICE, "respuesta inválida de la IA: avisa que pasa al equipo y queda para el dueño", sentTo("u7").map((c) => c.body.message));
     await deliver(dmEvent("u8", "mid.8", "hola"));
-    state.aiQueue.push({ __throw: true }, { __throw: true });
+    state.aiQueue.push({ __throw: true }, { __throw: true }, { __throw: true }, { __throw: true }); // 1 intento + 3 reintentos
     it = await processId(inboxId("mid.8"));
     ok(it.status === "error" && (await thread("u8")).needsHumanWhy === "Falló la IA", "IA caída: queda para el dueño", it);
 
@@ -460,7 +503,7 @@ async function clear() {
     state.failNext["POST me/messages"] = { message: "template not supported for private replies", code: 100, status: 400 };
     it = await processId("c_C10");
     const fb = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === "C10");
-    ok(it.privateReply && fb.length === 2 && fb[1].body.message.text.includes("Probar demo gratis: https://app.ventra.store/?utm_source=instagram&utm_medium=comentario"), "respuesta privada: si no acepta botones, manda los links en el texto", fb.map((c) => c.body.message));
+    ok(it.privateReply && fb.length === 2 && fb[1].body.message.text.includes("Probar demo gratis: https://ventra.store/?utm_source=instagram&utm_medium=comentario"), "respuesta privada: si no acepta botones, manda los links en el texto", fb.map((c) => c.body.message));
     // La IA promete un privado en público pero deja "dm" vacío (pasó en producción con "Kiosco"): igual se manda
     await deliver({ object: "instagram", entry: [{ id: IG_ID, time: now, changes: [{ field: "comments", value: { id: "C11", text: "Kiosco", from: { id: "11", username: "kiosco_x" }, media: { id: "M1" } } }] }] });
     state.aiQueue.push({ action: "reply", text: "Hola, gracias por pasarte. Te escribimos por privado con el link de la demo.", dm: "", botones: [], topic: "kiosco", rubro: "kiosco", intent: "interesado" });
