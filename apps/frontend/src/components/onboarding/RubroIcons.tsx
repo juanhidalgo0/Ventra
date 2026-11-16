@@ -16,6 +16,24 @@ const ICONS: Record<BusinessProfile, JSX.Element> = {
       <path d="M13 26v-6.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5V26" {...FILL} />
     </>
   ),
+  // Bife con su hueso
+  CARNICERIA: (
+    <>
+      <path d="M6.5 10c3.2-4.2 11.5-5.6 16.5-3 4.6 2.4 5.6 7.8 3.4 11.8-2.3 4.4-7.6 7.9-13.1 8.3-4.4.3-7.8-2-8.8-5.4-.9-3.3.3-8.6 2-11.7z" {...FILL} />
+      <path d="M15.5 9c1.6 2.6 1.6 6.8-.6 10" />
+      <circle cx="20.5" cy="14.5" r="2.3" />
+    </>
+  ),
+  // Horma de queso cortada
+  FIAMBRERIA: (
+    <>
+      <path d="M4 15 21 6.5l7 4.5v15H4z" {...FILL} />
+      <path d="M4 15h24" />
+      <circle cx="10" cy="20.5" r="1.7" />
+      <circle cx="17.5" cy="22.5" r="1.3" />
+      <circle cx="23" cy="19" r="1.2" />
+    </>
+  ),
   // Llave y tornillo
   FERRETERIA: (
     <>

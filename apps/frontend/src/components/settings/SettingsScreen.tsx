@@ -49,7 +49,8 @@ import { getOpeningFloat, saveOpeningFloat } from '../../utils/openingFloat';
 import { setStoreSetting } from '../../services/storeSettings';
 import { usePOSStore } from '../../stores/posStore';
 import StoreLogoField from '../common/StoreLogoField';
-import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfile, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
+import ScaleSettingsCard from './ScaleSettingsCard';
+import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfiles, rubrosTitle, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
 import { usePlanStore } from '../../stores/planStore';
 import { effectiveIntents } from '../../utils/gettingStarted';
 import { VentriImg, getVentriCaja, saveVentriCaja, type VentriCaja } from '../common/Ventri';
@@ -126,12 +127,13 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     const saved = localStorage.getItem('pos_disable_change_calculator');
     return saved ? saved === 'true' : false;
   });
-  const businessProfile = useBusinessStore((st) => st.profile);
+  const businessProfiles = useBusinessStore((st) => st.profiles);
   const businessFeatures = useBusinessStore((st) => st.features);
-  const setBusinessProfile = useBusinessStore((st) => st.setProfile);
+  const toggleBusinessProfile = useBusinessStore((st) => st.toggleProfile);
+  const setMainBusinessProfile = useBusinessStore((st) => st.setMainProfile);
   const setBusinessFeature = useBusinessStore((st) => st.setFeature);
-  // Si las funciones ya no coinciden con las del perfil, el comercio armó su propia combinación
-  const isCustomProfile = ALL_FEATURES.some((ft) => businessFeatures[ft] !== featuresOfProfile(businessProfile)[ft]);
+  // Si las funciones ya no coinciden con las de los rubros, el comercio armó su propia combinación
+  const isCustomProfile = ALL_FEATURES.some((ft) => businessFeatures[ft] !== featuresOfProfiles(businessProfiles)[ft]);
 
   // Integraciones: vínculo de cuenta de Google con GoDelivery
   const [localGoogleUser, setLocalGoogleUser] = useState<any>(() => {
@@ -979,18 +981,24 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   <div className="space-y-4">
                     {/* Rubro del Negocio */}
                     <div className="space-y-2 pb-2">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Rubro / Tipo de Comercio</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Rubros del comercio</label>
+                      <p className="text-[10.5px] text-slate-500 leading-snug -mt-1">Marcá todos los que tengas: un kiosco o almacén con carnicería o fiambrería suma las funciones de los dos.</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((profile) => {
                           const info = PROFILE_LABELS[profile];
-                          const active = businessProfile === profile;
+                          const active = businessProfiles.includes(profile);
+                          const main = active && businessProfiles.length > 1 && businessProfiles[0] === profile;
                           return (
-                            <button
+                            <div
                               key={profile}
-                              type="button"
+                              role="checkbox"
+                              aria-checked={active}
+                              tabIndex={0}
+                              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}
                               onClick={() => {
-                                setBusinessProfile(profile);
-                                toast.success(`Modo ${info.title} activado`);
+                                if (active && businessProfiles.length === 1) { toast('Tiene que quedar al menos un rubro'); return; }
+                                toggleBusinessProfile(profile);
+                                toast.success(active ? `Sacaste ${info.title}` : `Sumaste ${info.title}`);
                               }}
                               className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                                 active
@@ -999,15 +1007,29 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                               }`}
                             >
                               <span className="text-xs font-bold flex items-center gap-1.5">
+                                <input type="checkbox" readOnly tabIndex={-1} checked={active} className="rounded border-slate-400 text-emerald-600 h-3.5 w-3.5 pointer-events-none" />
                                 {info.emoji} {info.title}
-                                {active && isCustomProfile && (
+                                {main && (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white">PRINCIPAL</span>
+                                )}
+                                {active && isCustomProfile && businessProfiles[0] === profile && (
                                   <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">A MEDIDA</span>
                                 )}
                               </span>
                               <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
                                 {info.description}
                               </span>
-                            </button>
+                              {active && !main && businessProfiles.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setMainBusinessProfile(profile); toast.success(`${info.title} es tu rubro principal`); }}
+                                  className="self-start mt-0.5 text-[10px] font-bold text-emerald-700 hover:underline"
+                                  title="El principal define los ejemplos de la práctica, los recorridos y cómo te conoce la IA"
+                                >
+                                  Hacer principal
+                                </button>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -1157,6 +1179,9 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                     <CheckCircle2 className="w-4 h-4" /> Guardar Parámetros
                   </button>
                 </div>
+
+                {/* Carnicería y fiambrería: cómo lee la caja las etiquetas de la balanza */}
+                {businessFeatures.scaleLabels && <div className="mt-6"><ScaleSettingsCard /></div>}
               </motion.div>
             )}
 
@@ -2013,7 +2038,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
             <h3 className="text-[15px] font-bold mt-1 truncate">{terminalName}</h3>
             <p className="text-[11.5px] text-slate-400 mt-1 font-mono truncate" title={terminalUuid}>{terminalUuid}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="chip-lime">{PROFILE_LABELS[businessProfile].title}</span>
+              <span className="chip-lime">{rubrosTitle(businessProfiles)}</span>
               {performanceMode && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-white/10 text-slate-200">Modo rendimiento</span>}
             </div>
           </div>

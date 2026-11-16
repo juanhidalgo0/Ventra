@@ -17,6 +17,7 @@ import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
 import { hasFeature } from '../../stores/businessStore';
 import { packOf } from '../../stores/posStore';
 import { collapseVariantGroups } from '../../utils/variants';
+import { parseScaleLabel, buildPluIndex, scaleLine } from '../../utils/scaleLabel';
 
 /** Productos internos (cobros de fiado, venta rápida): no se venden tocándolos */
 const INTERNAL = new Set(['PAGO_CTA_CTE', 'VENTA_RAPIDA']);
@@ -96,7 +97,20 @@ export default function MobileSellScreen() {
       (x.sku || '').toUpperCase() === c ||
       x.additionalBarcodes?.some((b: any) => (b.barcode || '').toUpperCase() === c),
     );
-    if (p) {
+    // Etiqueta de la balanza (carnicería, fiambrería): el corte entra con los kilos de la etiqueta
+    const label = !p && hasFeature('scaleLabels') ? parseScaleLabel(c) : null;
+    if (label) {
+      const cut = buildPluIndex(list).get(label.plu);
+      if (cut) {
+        const { qty: kg, customPrice } = scaleLine(Number(cut.salePrice) || 0, label);
+        usePOSStore.getState().addToCart(cut, customPrice, kg, false, customPrice !== undefined);
+        haptic(15);
+        toast.success(`${cut.name} · ${kg.toLocaleString('es-AR', { maximumFractionDigits: 3 })} kg`, { id: 'scan', duration: 1500 });
+      } else {
+        haptic([40, 60, 40]);
+        toast.error(`Etiqueta de balanza: ningún producto tiene el código ${label.plu}`, { id: 'scan' });
+      }
+    } else if (p) {
       tapRef.current(p);
       haptic(15);
       toast.success(p.name, { id: 'scan', duration: 1200 });

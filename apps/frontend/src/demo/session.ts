@@ -2,7 +2,7 @@ import toast from 'react-hot-toast';
 import api from '../services/api';
 import { forgetStoreSettings } from '../services/storeSettings';
 import { usePOSStore } from '../stores/posStore';
-import { PROFILE_LABELS, type BusinessProfile } from '../stores/businessStore';
+import { rubrosTitle, type BusinessProfile } from '../stores/businessStore';
 
 /**
  * SOLO DEMO PÚBLICA. Cada visitante tiene su propia base en el servidor (ver
@@ -19,11 +19,12 @@ export async function startDemo() {
   }
 }
 
-/** Al elegir rubro: el servidor carga sus productos y ejemplos, y la app se vuelve a abrir con ellos. */
-export async function loadDemoRubro(profile: BusinessProfile) {
-  const id = toast.loading(`Armando la demo de ${PROFILE_LABELS[profile].title}…`);
+/** Al elegir rubros: el servidor carga sus productos y ejemplos, y la app se vuelve a abrir con ellos. */
+export async function loadDemoRubro(profiles: BusinessProfile[]) {
+  const id = toast.loading(`Armando la demo de ${rubrosTitle(profiles)}…`);
   try {
-    await api.post('/demo/rubro', { profile });
+    // `profile` sigue para un servidor de demo que todavía no conoce varios rubros
+    await api.post('/demo/rubro', { profile: profiles[0], profiles });
     // Un momento para que el rubro elegido termine de guardarse (ver setStoreSetting)
     setTimeout(() => window.location.reload(), 700);
   } catch (err: any) {

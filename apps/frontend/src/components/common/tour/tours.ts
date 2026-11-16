@@ -39,6 +39,8 @@ const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 /** Paso propio del rubro en el primer recorrido de la caja. */
 const RUBRO_POS: Record<string, TourStep | null> = {
   KIOSKO: null,
+  CARNICERIA: { title: 'Por kilo y con balanza', body: 'Los cortes van **por kilo**: al tocarlos pedís **el peso o la plata** ("$5.000 de picada"). Si pasás la **etiqueta de la balanza** por el lector, entra solo con su importe. La media res la cargás en **Productos → Desposte** y te dice cuánto ganás en cada corte.' },
+  FIAMBRERIA: { title: 'Por kilo o por plata', body: 'Fiambres y quesos van **por kilo**: al tocarlos elegís **por peso** (250 g) o **por plata** ("$3.000 de jamón"). Si pasás la **etiqueta de la balanza** por el lector, entra solo con su importe.' },
   FERRETERIA: { title: 'Hecho para ferretería', body: 'Vendé **por metro, kilo o litro**, armá **presupuestos** y llevá **acopios**. En el botón de ayuda tenés el recorrido **Ferretería** con todo eso.' },
   INDUMENTARIA: { title: 'Talles y colores', body: 'Al tocar una prenda elegís **talle y color**. Si pasás el **código de la variante** con el lector, se suma directo la correcta y descuenta **su propio stock**.' },
   GASTRONOMIA: { title: 'Tamaños y promos', body: 'Los productos con **tamaños** (chica, grande, docena) te preguntan cuál al tocarlos, y las **promos por cantidad** se aplican solas en el ticket.' },
@@ -68,7 +70,9 @@ export const TOURS = {
         : 'Estos son productos de ejemplo: cada uno que tocás se **suma al ticket**. Filtrá por categoría para encontrarlo más rápido.' },
     RUBRO_POS[c.profile],
     c.biz.expiry && c.profile !== 'GASTRONOMIA' && { title: 'Vencimientos', body: 'Si cargás la **fecha de vencimiento** de cada lote, Ventra te avisa **antes de que se venza** para que lo vendas primero.' },
-    { target: 'pos-cart', run: 'pos:addSample', title: 'Ticket en curso', body: c.biz.fractional
+    { target: 'pos-cart', run: 'pos:addSample', title: 'Ticket en curso', body: c.profile === 'CARNICERIA' || c.profile === 'FIAMBRERIA'
+      ? 'Sumamos productos al ticket: cada renglón muestra **los kilos y el precio del kilo**. Cambiá el peso o quitá ítems antes de cobrar.'
+      : c.biz.fractional
       ? 'Sumamos productos al ticket. Lo que va **por metro o kilo** acepta decimales: cambiá la **cantidad** o quitá ítems antes de cobrar.'
       : 'Sumamos unos productos al ticket. Acá cambiás **cantidades** o quitás ítems antes de cobrar.' },
     c.profile === 'GASTRONOMIA' && { target: 'pos-pedido', run: 'pos:sampleOrder', title: 'Mesa, para llevar o delivery', body: 'Antes de cobrar elegí **cómo es el pedido**: la mesa (acá, la **4**), para llevar o delivery con la dirección. Sale **bien grande en el ticket**.' },

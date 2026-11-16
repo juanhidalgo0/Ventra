@@ -233,7 +233,8 @@ export async function saveStoreConfig(storeId: string, config: Partial<StoreConf
   if (config.rubro === 'GASTRONOMIA') {
     import('../stores/businessStore').then(({ useBusinessStore }) => {
       const b = useBusinessStore.getState();
-      if (b.profile === 'KIOSKO') b.setProfile('GASTRONOMIA');
+      // Solo un kiosco "de fábrica": si ya marcó otros rubros (almacén + carnicería), no se los pisa
+      if (b.profiles.length === 1 && b.profile === 'KIOSKO') b.setProfile('GASTRONOMIA');
     }).catch(() => {});
   }
   // Avisa a la barra lateral y a la caja si la tienda quedó publicada o no

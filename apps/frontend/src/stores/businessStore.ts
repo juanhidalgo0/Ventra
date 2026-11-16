@@ -63,12 +63,15 @@ export type BusinessFeature =
   | 'preorders'      // Preventa: los vendedores toman pedidos en el celular
   | 'workorders'     // Encargos: trabajos a pedido con seña, fecha de entrega y estados
   | 'clientorders'   // Encargos en la caja: revistas y demás que llegan, se avisa y se retiran
-  | 'patients';      // Pacientes: historia clínica y mediciones (consultorio de nutrición)
+  | 'patients'       // Pacientes: historia clínica y mediciones (consultorio de nutrición)
+  | 'scaleLabels'    // Etiquetas de balanza: la caja lee el código con el precio o el peso adentro (ver utils/scaleLabel)
+  | 'monthfund'      // Caja del mes: la plata guardada aparte, le entra el Z y lo que trae el chofer
+  | 'desposte';      // Desposte de media res: entra como compra, suma el stock de cada corte con su costo real
 
-export type BusinessProfile = 'KIOSKO' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
+export type BusinessProfile = 'KIOSKO' | 'CARNICERIA' | 'FIAMBRERIA' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
 
 export const ALL_FEATURES: BusinessFeature[] = [
-  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'clientorders', 'patients',
+  'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'clientorders', 'patients', 'scaleLabels', 'desposte', 'monthfund',
 ];
 
 export const FEATURE_LABELS: Record<BusinessFeature, { title: string; description: string }> = {
@@ -86,15 +89,20 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   clientorders:   { title: 'Encargos en la caja', description: 'Revistas, diarios y otros artículos que el cliente encarga: el cajero lo anota desde la caja con sus datos y una seña opcional, le avisa cuando llega y cobra la diferencia cuando lo retira.' },
   preorders:      { title: 'Preventa y reparto', description: 'Los vendedores toman pedidos en el celular (también sin señal), se arman los repartos con hoja de carga y de ruta, y en la caja se cobran.' },
   patients:       { title: 'Pacientes', description: 'Ficha de cada paciente con historia clínica, consultas y mediciones (peso, IMC, pliegues, % de grasa) con gráficos de evolución.' },
+  scaleLabels:    { title: 'Etiquetas de balanza', description: 'La caja lee el código de barras que imprime la balanza (con el importe o el peso adentro) y suma el producto con su precio justo.' },
+  monthfund:      { title: 'Caja del mes', description: 'La plata que se guarda aparte del cajón: al hacer el Cierre Z se pasa el efectivo, lo que trae el chofer entra solo al rendir el reparto, y a fin de mes se cuenta y se hace el balance en Tesorería.' },
+  desposte:       { title: 'Desposte de media res', description: 'Cargás lo que pagaste y los kilos de cada corte: suma el stock y te dice cuánto te cuesta y cuánto ganás en cada corte.' },
 };
 
 export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   KIOSKO: ['expiry'],
+  CARNICERIA: ['scaleLabels', 'desposte'],
+  FIAMBRERIA: ['scaleLabels', 'expiry'],
   FERRETERIA: ['quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages'],
   INDUMENTARIA: ['variants'],
   GASTRONOMIA: ['variants', 'expiry'],
   MULTIRUBRO: ['quotes', 'tradePricing', 'substitutes', 'fractional', 'variants', 'expiry'],
-  DISTRIBUIDORA: ['bulk', 'delivery', 'preorders', 'expiry'],
+  DISTRIBUIDORA: ['bulk', 'delivery', 'preorders', 'expiry', 'monthfund'],
   IMPRENTA: ['workorders', 'quotes'],
   NUTRICION: ['patients'],
 };
@@ -104,6 +112,16 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     emoji: '🍬',
     title: 'Kiosco / Almacén',
     description: 'Interfaz simple por unidades o packs. Sin acopios, presupuestos ni sustitutos para no saturar el mostrador.',
+  },
+  CARNICERIA: {
+    emoji: '🥩',
+    title: 'Carnicería',
+    description: 'Venta por kilo o por plata, etiquetas de la balanza, cortes con su código PLU y desposte de la media res con el costo real de cada corte.',
+  },
+  FIAMBRERIA: {
+    emoji: '🧀',
+    title: 'Fiambrería / Quesería',
+    description: 'Venta por kilo o por plata ("$3.000 de jamón"), etiquetas de la balanza y vencimientos por lote para fiambres y quesos.',
   },
   FERRETERIA: {
     emoji: '🔧',
@@ -152,12 +170,13 @@ export const isConsultorio = (profile: BusinessProfile) => profile === 'NUTRICIO
 const CONSULTORIO_HIDDEN = [
   '/pos', '/cash', '/cash-control', '/clients', '/treasury', '/suppliers', '/purchases', '/gastos', '/historial', '/reports', '/dashboard',
   '/earnings-division', '/quotes', '/inicio', '/employee-consumption', '/anulaciones', '/informes', '/encargos', '/preventa', '/reparto', '/hoy',
-  '/products', '/inventory', '/promos', '/stock-control', '/stock-audit', '/tienda', '/online-store', '/pedidos',
+  '/products', '/inventory', '/promos', '/stock-control', '/stock-audit', '/tienda', '/online-store', '/pedidos', '/desposte',
   // Los clientes de la agenda son los pacientes
   '/agenda/clientes',
 ];
 
 const PROFILE_KEY = 'business_profile';
+const PROFILES_KEY = 'business_profiles';
 const FEATURES_KEY = 'business_features';
 const LEGACY_KEY = 'business_type';
 
@@ -166,22 +185,51 @@ type FeatureMap = Record<BusinessFeature, boolean>;
 const emptyMap = (): FeatureMap =>
   ALL_FEATURES.reduce((acc, f) => { acc[f] = false; return acc; }, {} as FeatureMap);
 
-export const featuresOfProfile = (profile: BusinessProfile): FeatureMap => {
+export const featuresOfProfile = (profile: BusinessProfile): FeatureMap => featuresOfProfiles([profile]);
+
+/** Funciones de varios rubros juntos: las de todos (un kiosco con carnicería tiene las dos). */
+export const featuresOfProfiles = (profiles: BusinessProfile[]): FeatureMap => {
   const map = emptyMap();
-  for (const f of PROFILE_FEATURES[profile]) map[f] = true;
+  for (const p of profiles) for (const f of PROFILE_FEATURES[p] || []) map[f] = true;
   return map;
 };
 
+/**
+ * Rubros del comercio, el principal primero. Un kiosco o almacén puede tener también carnicería o
+ * fiambrería: se marcan todos y se suman sus funciones. El principal (`profile`) es el que manda
+ * en lo que necesita uno solo: la práctica de la caja, los recorridos, el texto para la IA y lo
+ * que lee la nube (business_profile). El consultorio no se combina: no vende.
+ */
+export const normalizeProfiles = (list: BusinessProfile[]): BusinessProfile[] => {
+  const clean = [...new Set(list.filter((p) => !!PROFILE_FEATURES[p]))];
+  if (!clean.length) return ['KIOSKO'];
+  if (isConsultorio(clean[0])) return [clean[0]];
+  return clean.filter((p) => !isConsultorio(p));
+};
+
+const readProfiles = (main: BusinessProfile): BusinessProfile[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(PROFILES_KEY) || 'null');
+    if (Array.isArray(v)) {
+      const list = normalizeProfiles(v);
+      // El principal manda: si otro equipo viejo cambió solo business_profile, queda primero
+      return normalizeProfiles([main, ...list.filter((p) => p !== main)]);
+    }
+  } catch { /* lista corrupta: queda el principal solo */ }
+  return [main];
+};
+
 /** Lee la config guardada; si sólo existe el `business_type` viejo, lo migra al perfil equivalente. */
-const loadState = (): { profile: BusinessProfile; features: FeatureMap } => {
+const loadState = (): { profile: BusinessProfile; profiles: BusinessProfile[]; features: FeatureMap } => {
   const savedProfile = localStorage.getItem(PROFILE_KEY) as BusinessProfile | null;
   const legacy = localStorage.getItem(LEGACY_KEY);
   const profile: BusinessProfile =
     savedProfile && PROFILE_FEATURES[savedProfile]
       ? savedProfile
       : legacy === 'FERRETERIA' ? 'FERRETERIA' : 'KIOSKO';
+  const profiles = readProfiles(profile);
 
-  const features = featuresOfProfile(profile);
+  const features = featuresOfProfiles(profiles);
   try {
     const saved = JSON.parse(localStorage.getItem(FEATURES_KEY) || 'null');
     if (saved && typeof saved === 'object') {
@@ -189,7 +237,7 @@ const loadState = (): { profile: BusinessProfile; features: FeatureMap } => {
     }
   } catch { /* config corrupta: quedan los valores del perfil */ }
 
-  return { profile, features };
+  return { profile: profiles[0], profiles, features };
 };
 
 const writeLegacy = (features: FeatureMap) => {
@@ -198,59 +246,121 @@ const writeLegacy = (features: FeatureMap) => {
 };
 
 /** Rubro y funciones son del comercio: viajan a los otros equipos (ver services/storeSettings). */
-const persist = (profile: BusinessProfile, features: FeatureMap) => {
-  setStoreSetting('business_profile', profile);
+const persist = (profiles: BusinessProfile[], features: FeatureMap) => {
+  setStoreSetting('business_profile', profiles[0]);
+  setStoreSetting('business_profiles', JSON.stringify(profiles));
   setStoreSetting('business_features', JSON.stringify(features));
   writeLegacy(features);
 };
 
 interface BusinessState {
+  /** Rubro principal (= profiles[0]) */
   profile: BusinessProfile;
+  /** Todos los rubros del comercio, el principal primero */
+  profiles: BusinessProfile[];
   features: FeatureMap;
   intents: BusinessIntent[] | null;
+  /** Un solo rubro (deja las funciones de ese rubro, como antes) */
   setProfile: (profile: BusinessProfile) => void;
+  /** Todos los rubros de una vez (bienvenida): las funciones quedan las de todos */
+  setProfiles: (profiles: BusinessProfile[]) => void;
+  /** Suma o saca un rubro sin tocar lo que el comercio prendió o apagó a mano en los otros */
+  toggleProfile: (profile: BusinessProfile) => void;
+  /** Pasa un rubro que ya tiene a principal */
+  setMainProfile: (profile: BusinessProfile) => void;
   setFeature: (feature: BusinessFeature, enabled: boolean) => void;
   setIntents: (intents: BusinessIntent[]) => void;
 }
 
-export const useBusinessStore = create<BusinessState>((set, get) => ({
-  ...loadState(),
-  intents: readIntents(),
-
-  setIntents: (intents) => {
-    const clean = ALL_INTENTS.filter((i) => intents.includes(i));
-    setStoreSetting('business_intents', JSON.stringify(clean));
-    set({ intents: clean });
-  },
-
-  setProfile: (profile) => {
-    const features = featuresOfProfile(profile);
-    persist(profile, features);
+export const useBusinessStore = create<BusinessState>((set, get) => {
+  /** Guarda los rubros nuevos con sus funciones y ajusta lo que depende del consultorio y la demo. */
+  const apply = (next: BusinessProfile[], features: FeatureMap) => {
+    const profiles = normalizeProfiles(next);
+    const was = get().profiles;
+    persist(profiles, features);
     // Un consultorio solo da turnos; al volver a un rubro que vende, se le devuelve todo
-    const was = get().profile;
-    if (isConsultorio(profile) && !isConsultorio(was)) get().setIntents(['turnos']);
-    else if (!isConsultorio(profile) && isConsultorio(was)) get().setIntents(ALL_INTENTS);
-    set({ profile, features });
+    if (isConsultorio(profiles[0]) && !isConsultorio(was[0])) get().setIntents(['turnos']);
+    else if (!isConsultorio(profiles[0]) && isConsultorio(was[0])) get().setIntents(ALL_INTENTS);
+    set({ profile: profiles[0], profiles, features });
     // Demo pública: cada rubro se muestra con sus productos y ejemplos (encargos, pedidos…)
-    if (IS_DEMO_BUILD) import('../demo/session').then((m) => m.loadDemoRubro(profile));
-  },
+    if (IS_DEMO_BUILD && profiles.join() !== was.join()) import('../demo/session').then((m) => m.loadDemoRubro(profiles));
+  };
 
-  setFeature: (feature, enabled) => {
-    const features = { ...get().features, [feature]: enabled };
-    persist(get().profile, features);
-    set({ features });
-  },
-}));
+  return {
+    ...loadState(),
+    intents: readIntents(),
+
+    setIntents: (intents) => {
+      const clean = ALL_INTENTS.filter((i) => intents.includes(i));
+      setStoreSetting('business_intents', JSON.stringify(clean));
+      set({ intents: clean });
+    },
+
+    setProfile: (profile) => apply([profile], featuresOfProfile(profile)),
+
+    setProfiles: (profiles) => {
+      const clean = normalizeProfiles(profiles);
+      apply(clean, featuresOfProfiles(clean));
+    },
+
+    toggleProfile: (profile) => {
+      const { profiles, features } = get();
+      // El consultorio no se combina: elegirlo es quedarse solo con él (y dejarlo, volver a kiosco)
+      if (isConsultorio(profile) || isConsultorio(profiles[0])) {
+        const only: BusinessProfile = profiles.includes(profile) ? 'KIOSKO' : profile;
+        return apply([only], featuresOfProfile(only));
+      }
+      if (profiles.includes(profile)) {
+        if (profiles.length === 1) return; // siempre queda al menos uno
+        const rest = profiles.filter((p) => p !== profile);
+        // Se apaga lo que traía ese rubro y no usa ninguno de los que quedan
+        const keep = featuresOfProfiles(rest);
+        const next = { ...features };
+        for (const f of PROFILE_FEATURES[profile]) if (!keep[f]) next[f] = false;
+        return apply(rest, next);
+      }
+      const next = { ...features };
+      for (const f of PROFILE_FEATURES[profile]) next[f] = true;
+      apply([...profiles, profile], next);
+    },
+
+    setMainProfile: (profile) => {
+      const { profiles, features } = get();
+      if (!profiles.includes(profile) || profiles[0] === profile) return;
+      apply([profile, ...profiles.filter((p) => p !== profile)], features);
+    },
+
+    setFeature: (feature, enabled) => {
+      const features = { ...get().features, [feature]: enabled };
+      persist(get().profiles, features);
+      set({ features });
+    },
+  };
+});
 
 // Otro equipo cambió el rubro o las funciones: se aplican sin reiniciar
 window.addEventListener(STORE_SETTINGS_EVENT, (e) => {
   const keys = (e as CustomEvent<string[]>).detail || [];
   if (keys.includes('business_intents')) useBusinessStore.setState({ intents: readIntents() });
-  if (!keys.includes('business_profile') && !keys.includes('business_features')) return;
+  if (!keys.includes('business_profile') && !keys.includes('business_profiles') && !keys.includes('business_features')) return;
   const next = loadState();
   writeLegacy(next.features);
   useBusinessStore.setState(next);
 });
+
+/** El comercio tiene este rubro (como principal o sumado a otro). */
+export const hasRubro = (profile: BusinessProfile): boolean => useBusinessStore.getState().profiles.includes(profile);
+
+/** Igual que `hasRubro` pero re-renderiza cuando se cambian los rubros. */
+export const useHasRubro = (profile: BusinessProfile): boolean =>
+  useBusinessStore((s) => s.profiles.includes(profile));
+
+/** "Kiosco / Almacén + Carnicería": para mostrar o para darle contexto a la IA. */
+export const rubrosTitle = (profiles: BusinessProfile[]): string =>
+  profiles.map((p) => PROFILE_LABELS[p]?.title).filter(Boolean).join(' + ');
+
+/** Rubros que venden por kilo con balanza: los productos nuevos arrancan "por kilo". */
+export const SCALE_PROFILES: BusinessProfile[] = ['CARNICERIA', 'FIAMBRERIA'];
 
 /** Para leer fuera de React o dentro del render sin suscribirse (reemplazo directo del viejo localStorage.getItem). */
 export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStore.getState().features[feature];

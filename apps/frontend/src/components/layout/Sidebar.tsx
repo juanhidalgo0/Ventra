@@ -166,6 +166,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, onCloseMobile }: 
             { label: 'Inventario', path: '/inventory' },
             { label: 'Promociones y Combos', path: '/promos' },
             { label: 'Compras', path: '/purchases' },
+            // Carnicería: la media res entra como compra repartida en los cortes
+            ...(hasFeature('desposte') ? [{ label: 'Desposte', path: '/desposte' }] : []),
             { label: 'Control de Stock', path: '/stock-control' },
             { label: 'Auditoría de Stock', path: '/stock-audit' },
           ]

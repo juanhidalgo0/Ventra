@@ -35,6 +35,7 @@ import { MangoLogo } from '../common/MangoLogo';
 import QuickSaleModal, { buildQuickSaleProduct, QUICK_SALE_PRODUCT_ID } from './QuickSaleModal';
 import UnknownCodeModal from './UnknownCodeModal';
 import { judgeScan } from '../../utils/scanCheck';
+import { parseScaleLabel, buildPluIndex, scaleLine } from '../../utils/scaleLabel';
 import { VentriEnReposo, VentriFestejos, ventriVentaHecha, ventriCajaAbierta } from './VentriCaja';
 import ScrollRow from '../common/ScrollRow';
 import { shortcutsLocked } from '../../utils/shortcutLock';
@@ -340,13 +341,16 @@ export default function POSScreen() {
     }
     setShowPayment(true);
   };
+  // Carnicería y fiambrería: etiquetas de la balanza con el código del producto (PLU) adentro
+  const scaleLabelsOn = useFeature('scaleLabels');
+  const pluIndex = useMemo(() => (scaleLabelsOn ? buildPluIndex(cachedProducts) : null), [scaleLabelsOn, cachedProducts]);
   const addItem = (product: any, qty = 1) => {
     const pack = product?.allowCustomPrice ? null : packOf(product, hasFeature('bulk'));
     if (pack) usePOSStore.getState().addPackToCart(product, pack, qty);
     else addToCart(product, undefined, qty);
   };
   // Gastronomía: carta con pestañas grandes, tarjetas sin código ni stock y tipo de pedido (ver gastro.tsx)
-  const gastro = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
+  const gastro = useBusinessStore((s) => s.profiles.includes('GASTRONOMIA'));
   const catCls = gastro
     ? 'px-4 py-2.5 rounded-2xl text-sm whitespace-nowrap transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer '
     : 'px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer ';
@@ -1706,6 +1710,27 @@ export default function POSScreen() {
       matchingPromo = promotions.find(p => p.isActive && p.code && p.code.toUpperCase() === codeClean);
       if (!matchingPromo) {
         matchedProduct = barcodeMap.get(codeClean);
+      }
+
+      // 1b. Etiqueta de la balanza (empieza con 2, trae el PLU y el importe o el peso): entra el
+      // producto con los kilos de la etiqueta y se cobra lo que dice impreso (ver utils/scaleLabel)
+      if (!matchingPromo && !matchedProduct && pluIndex) {
+        const label = parseScaleLabel(codeClean);
+        if (label) {
+          setSearchQuery('');
+          focusSearch();
+          const product = pluIndex.get(label.plu);
+          const printed = label.kind === 'weight' ? `${label.kg!.toLocaleString('es-AR', { maximumFractionDigits: 3 })} kg` : `$ ${label.amount!.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+          if (!product) {
+            playErrorBeep();
+            toast.error(`Etiqueta de balanza: ningún producto tiene el código ${label.plu} (${printed}). Cargalo como "Código de balanza" en el producto, o cobralo con Venta rápida (tecla 1).`, { duration: 7000, id: 'scale-label' });
+            return;
+          }
+          const { qty, customPrice } = scaleLine(Number(product.salePrice) || 0, label);
+          addToCart(product, customPrice, qty, false, customPrice !== undefined);
+          checkPromoSuggestion(product);
+          return;
+        }
       }
 
       // 2. If no direct match in memory, check if it starts with a numeric prefix multiplier

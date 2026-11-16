@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Check } from 'lucide-react';
 import api from '../../services/api';
-import { PROFILE_LABELS, useBusinessStore } from '../../stores/businessStore';
+import { rubrosTitle, useBusinessStore } from '../../stores/businessStore';
 
 /**
  * Debajo del nombre, al crear un producto: "Sugerido: Bebidas › Gaseosas · Coca-Cola". Tocar un chip
@@ -25,7 +25,7 @@ export default function OrganizeSuggestion({ name, categoryId, brandId, categori
   reloadCategories: () => Promise<void> | void;
   reloadBrands: () => Promise<void> | void;
 }) {
-  const profile = useBusinessStore((s) => s.profile);
+  const profiles = useBusinessStore((s) => s.profiles);
   const [cat, setCat] = useState<CatSug | null>(null);
   const [brand, setBrand] = useState<BrandSug | null>(null);
   const [busy, setBusy] = useState<'' | 'cat' | 'brand'>('');
@@ -38,14 +38,14 @@ export default function OrganizeSuggestion({ name, categoryId, brandId, categori
     // Que termine de escribir (o de escanear) antes de preguntar
     const timer = setTimeout(async () => {
       try {
-        const { data } = await api.get('/ai/organize/suggest', { params: { name: q, rubro: PROFILE_LABELS[profile]?.title || '' }, timeout: 35000, silent: true } as any);
+        const { data } = await api.get('/ai/organize/suggest', { params: { name: q, rubro: rubrosTitle(profiles) }, timeout: 35000, silent: true } as any);
         if (my !== seq.current) return;
         setCat(data?.category || null);
         setBrand(data?.brand || null);
       } catch { /* sin sugerencia: no se muestra nada */ }
     }, 1100);
     return () => clearTimeout(timer);
-  }, [name, profile, categoryId, brandId]);
+  }, [name, profiles, categoryId, brandId]);
 
   // Los nombres de categoría no se repiten (ni entre principales y subcategorías)
   const findCat = (n: string) => categories.find((c) => norm(c.name) === norm(n));

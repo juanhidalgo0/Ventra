@@ -13,7 +13,7 @@ export const qty = (n: number) => String(Math.round((n || 0) * 1000) / 1000).rep
 
 export const METHOD_LABELS: Record<string, string> = {
   CASH: 'Efectivo', CLOVER: 'Tarjeta', MERCADOPAGO: 'Mercado Pago', DEBT: 'Cuenta corriente',
-  TRANSFER: 'Transferencia', CARD: 'Tarjeta', DEBIT: 'Débito', CREDIT: 'Crédito', MIXED: 'Pago mixto',
+  TRANSFER: 'Transferencia', TRANSFERENCIA: 'Transferencia', CARD: 'Tarjeta', DEBIT: 'Débito', CREDIT: 'Crédito', MIXED: 'Pago mixto',
 };
 
 /**

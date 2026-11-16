@@ -32,6 +32,8 @@ export function useAskSuggestions(): string[] {
   }
   if (profile === 'GASTRONOMIA') return ['¿Cuánto vendí hoy?', '¿Qué es lo más pedido esta semana?', '¿A qué hora vendo más?', '¿Cómo viene la caja?', '¿Qué productos me dejan menos ganancia?'];
   if (profile === 'DISTRIBUIDORA') return ['¿Qué pedidos tengo para el reparto de mañana?', '¿Qué clientes dejaron de pedir?', '¿Quién me debe más?', '¿Qué tengo que reponer?', '¿Cuánto les debo a los proveedores?'];
+  if (profile === 'CARNICERIA') return ['¿Cuántos kilos de asado vendí esta semana?', '¿Qué cortes me dejan más ganancia?', '¿Cuánto vendí hoy?', '¿Qué corte se está quedando sin stock?', '¿Cuánto le debo al frigorífico?'];
+  if (profile === 'FIAMBRERIA') return ['¿Qué fiambres y quesos vendí más esta semana?', '¿Qué está por vencer?', '¿Cuánto vendí hoy?', '¿Qué productos me dejan más ganancia?', '¿Qué tengo que reponer?'];
   if (profile === 'IMPRENTA') return ['¿Qué encargos tengo para hoy?', '¿Hay encargos atrasados?', '¿Cuánto me falta cobrar de encargos?', '¿Cuánto vendí esta semana?'];
   if ((profile as string) === 'NUTRICION') return ['¿Qué turnos tengo mañana?', '¿Quién faltó esta semana?', '¿Cuánto cobré online este mes?', '¿Cómo cargo una consulta?'];
   return ['¿Cuánto vendí esta semana contra la pasada?', '¿Qué productos me dejan más ganancia este mes?', '¿Quién me debe más?', '¿Qué productos no se venden hace un mes?', '¿Qué día de la semana vendo más?'];

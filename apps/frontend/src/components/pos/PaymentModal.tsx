@@ -312,7 +312,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
   /** Notas de la venta: Mesa / Para llevar / Delivery (gastronomía) y el recargo a mano */
   const saleNotes = () => {
-    const gastro = useBusinessStore.getState().profile === 'GASTRONOMIA' ? saleNote(usePOSStore.getState().order, cart) : '';
+    const gastro = useBusinessStore.getState().profiles.includes('GASTRONOMIA') ? saleNote(usePOSStore.getState().order, cart) : '';
     return [gastro, manualSurchargeNote(manualSurcharge, manualTotal, formatPrice)].filter(Boolean).join('\n') || undefined;
   };
 
@@ -778,7 +778,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           // Gastronomía: Mesa / Para llevar / Delivery, y el recargo a mano: impresos en el ticket
           notes: saleNotes(),
         });
-        if (useBusinessStore.getState().profile === 'GASTRONOMIA') usePOSStore.getState().setOrder({ table: '', address: '' });
+        if (useBusinessStore.getState().profiles.includes('GASTRONOMIA')) usePOSStore.getState().setOrder({ table: '', address: '' });
         // Turnos de la agenda que iban en el ticket: quedan cobrados con este medio
         chargeTurnosOfSale(cart, turnoMethodLabel());
         saleData = response.data;

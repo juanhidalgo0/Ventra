@@ -13,6 +13,8 @@ import api from './api';
 /** Ajuste del comercio → clave de localStorage donde lo leen las pantallas. */
 const SHARED: Record<string, string> = {
   business_profile: 'business_profile',
+  /** Todos los rubros del comercio (JSON), el principal primero: un almacén con carnicería */
+  business_profiles: 'business_profiles',
   business_features: 'business_features',
   /** Qué hace el comercio con Ventra (mostrador, online, turnos): ordena el menú */
   business_intents: 'business_intents',
@@ -61,6 +63,10 @@ const SHARED: Record<string, string> = {
   seller_commission_pct: 'seller_commission_pct',
   /** Ventri, la mascota, en la caja: 'todos' (de entrada, también cajeros) | 'equipo' (dueño y encargados) | 'nadie' (ver components/common/Ventri) */
   ventri_caja: 'ventra_ventri_caja',
+  /** Balanza: cómo viene armado el código de las etiquetas (JSON, ver utils/scaleLabel) */
+  scale_format: 'ventra_scale_format',
+  /** Carnicería: cuánto rinde cada corte en el último desposte (JSON, ver carniceria/DesposteScreen) */
+  desposte_template: 'ventra_desposte_template',
 };
 
 export type StoreSettingKey = keyof typeof SHARED;

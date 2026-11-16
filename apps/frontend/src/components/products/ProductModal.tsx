@@ -34,7 +34,7 @@ import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import ImageSearchPicker from './ImageSearchPicker';
 import ExpiryLotsEditor, { PendingLot } from './ExpiryLotsEditor';
-import { hasFeature, useFeature, useBusinessStore } from '../../stores/businessStore';
+import { hasFeature, useFeature, useBusinessStore, SCALE_PROFILES } from '../../stores/businessStore';
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -154,7 +154,8 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
     minStock: product?.presentationType === 'PACK'
       ? Math.floor((product?.minStock || 0) / (product?.unitsPerPack || 1))
       : (product?.minStock || 5),
-    unit: product?.unit || 'UNIT',
+    // Carnicería y fiambrería: lo nuevo arranca por kilo
+    unit: product?.unit || (!product?.id && SCALE_PROFILES.includes(useBusinessStore.getState().profile) ? 'KG' : 'UNIT'),
     presentationType: product?.presentationType || 'UNIT',
     unitsPerPack: product?.unitsPerPack || 1,
     pieceSize: product?.pieceSize || '',
@@ -250,7 +251,9 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
 
   const canUseVariants = useFeature('variants');
   // Gastronomía: la opción es el tamaño y cada uno tiene su precio (pizza chica / grande)
-  const isFood = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
+  const isFood = useBusinessStore((s) => s.profiles.includes('GASTRONOMIA'));
+  // Carnicería y fiambrería: el código interno es el código de la balanza (PLU, ver utils/scaleLabel)
+  const scaleLabels = useFeature('scaleLabels');
   const [variantMode, setVariantMode] = useState(Boolean(product?.variantGroupId));
   const [variantGroupId, setVariantGroupId] = useState<string | undefined>(product?.variantGroupId || undefined);
   const [variantAxes, setVariantAxes] = useState<[string, string]>(isFood ? ['tamaño', 'variedad'] : ['talle', 'color']);
@@ -1097,6 +1100,38 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               </div>
             </div>
 
+            {scaleLabels && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Código de balanza <span className="text-slate-400 font-normal text-[12px]">(PLU)</span></label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.sku}
+                    onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                    onFocus={e => e.target.select()}
+                    placeholder="El número en la balanza"
+                    className={inputCls}
+                  />
+                </div>
+                {!isHardwareStore && (
+                  <div>
+                    <label className={labelCls}>Se vende por</label>
+                    <div className="relative">
+                      <select value={formData.unit === 'KG' ? 'KG' : 'UNIT'} onChange={e => setFormData({ ...formData, unit: e.target.value })} className={selectCls}>
+                        <option value="KG">Kilo (por peso o por $)</option>
+                        <option value="UNIT">Unidad</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+                <p className="col-span-2 -mt-1.5 text-[11.5px] text-slate-500 leading-snug">
+                  Con el mismo código que tiene en la balanza, la caja lee sola las etiquetas: el producto entra con sus kilos y el importe impreso.
+                </p>
+              </div>
+            )}
+
             {/* Imagen */}
             <div>
               <label className={labelCls}>Imagen</label>
@@ -1272,16 +1307,18 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               </div>
             </div>
 
-            <div>
-              <label className={labelCls}>SKU <span className="text-slate-400 font-normal text-[12px]">(código interno, opcional)</span></label>
-              <input
-                type="text"
-                value={formData.sku}
-                onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
-                onFocus={e => e.target.select()}
-                className={inputCls}
-              />
-            </div>
+            {!scaleLabels && (
+              <div>
+                <label className={labelCls}>SKU <span className="text-slate-400 font-normal text-[12px]">(código interno, opcional)</span></label>
+                <input
+                  type="text"
+                  value={formData.sku}
+                  onChange={e => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                  onFocus={e => e.target.select()}
+                  className={inputCls}
+                />
+              </div>
+            )}
 
             {isHardwareStore && (
               <div>

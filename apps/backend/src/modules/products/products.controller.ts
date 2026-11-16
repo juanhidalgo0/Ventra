@@ -41,6 +41,7 @@ export class ProductsController {
     @Query('lowStock') lowStock?: string,
     @Query('hasImage') hasImage?: string,
     @Query('noBarcode') noBarcode?: string,
+    @Query('channel') channel?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ) {
@@ -57,6 +58,7 @@ export class ProductsController {
       lowStock: lowStock === 'true',
       hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
       noBarcode: noBarcode === 'true',
+      channel,
       skip: isNaN(skipNum) ? 0 : skipNum,
       take: isNaN(takeNum) ? 50 : takeNum,
     });
@@ -68,12 +70,14 @@ export class ProductsController {
     @Query('categoryId') categoryId?: string,
     @Query('hasImage') hasImage?: string,
     @Query('noBarcode') noBarcode?: string,
+    @Query('channel') channel?: string,
   ) {
     return this.productsService.count({
       search,
       categoryId,
       hasImage: hasImage === 'true' ? true : hasImage === 'false' ? false : undefined,
       noBarcode: noBarcode === 'true',
+      channel,
     });
   }
 

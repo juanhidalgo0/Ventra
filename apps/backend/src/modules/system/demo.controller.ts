@@ -33,17 +33,18 @@ export class DemoController {
     }
   }
 
-  /** Carga el catálogo y los ejemplos del rubro elegido en la demo de este visitante. */
+  /** Carga el catálogo y los ejemplos de los rubros elegidos en la demo de este visitante. */
   @Post('rubro')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  async rubro(@Body() body: { profile?: string }) {
+  async rubro(@Body() body: { profile?: string; profiles?: string[] }) {
     if (!isDemoMode()) throw new NotFoundException();
     const visitor = demoContext.getStore();
     if (!visitor) throw new BadRequestException('Tu demo terminó. Entrá de nuevo para empezar otra.');
-    const profile = String(body?.profile || '') as DemoProfile;
-    if (!DEMO_PROFILES.includes(profile)) throw new BadRequestException('Rubro desconocido');
-    await applyDemoProfile(visitor.client, profile);
+    // Varios rubros a la vez (un almacén con carnicería); las apps viejas mandan uno solo
+    const list = (Array.isArray(body?.profiles) && body.profiles.length ? body.profiles : [body?.profile]).map((p) => String(p || '')) as DemoProfile[];
+    if (!list.length || list.length > DEMO_PROFILES.length || list.some((p) => !DEMO_PROFILES.includes(p))) throw new BadRequestException('Rubro desconocido');
+    await applyDemoProfile(visitor.client, list);
     return { ok: true };
   }
 }

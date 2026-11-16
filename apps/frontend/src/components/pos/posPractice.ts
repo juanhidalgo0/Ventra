@@ -47,6 +47,24 @@ const variants = (base: string, price: (attrs: Record<string, string>) => number
 function sampleCatalog(profile: BusinessProfile) {
   seq = 0;
   switch (profile) {
+    case 'CARNICERIA': {
+      const c = [cat('pc_c1', 'Vacuno', '#b91c1c', 5), cat('pc_c2', 'Cerdo y pollo', '#f59e0b', 3), cat('pc_c3', 'Embutidos', '#7c2d12', 2)];
+      const kg = (plu: number) => ({ unit: 'KG', sku: String(plu), stock: 30 });
+      return { categories: c, products: [
+        prod('Asado', 15900, c[0], kg(10)), prod('Vacío', 17900, c[0], kg(11)), prod('Nalga', 18900, c[0], kg(13)), prod('Bife de chorizo', 21900, c[0], kg(16)), prod('Carne picada especial', 12900, c[0], kg(19)),
+        prod('Bondiola', 11900, c[1], kg(30)), prod('Pollo entero', 4900, c[1], kg(40)), prod('Pechuga', 8900, c[1], kg(42)),
+        prod('Chorizo puro cerdo', 9500, c[2], kg(50)), prod('Morcilla', 7500, c[2], kg(51)),
+      ] };
+    }
+    case 'FIAMBRERIA': {
+      const c = [cat('pc_b1', 'Fiambres', '#e11d48', 4), cat('pc_b2', 'Quesos', '#eab308', 4), cat('pc_b3', 'Almacén', '#10b981', 2)];
+      const kg = (plu: number) => ({ unit: 'KG', sku: String(plu), stock: 10 });
+      return { categories: c, products: [
+        prod('Jamón cocido natural', 18900, c[0], kg(110)), prod('Jamón crudo', 39900, c[0], kg(111)), prod('Mortadela', 9900, c[0], kg(113)), prod('Salame Milán', 24900, c[0], kg(130)),
+        prod('Queso de máquina', 15900, c[1], kg(120)), prod('Queso cremoso', 11900, c[1], kg(121)), prod('Queso tybo', 14900, c[1], kg(122)), prod('Muzzarella', 10900, c[1], kg(125)),
+        prod('Pan de miga x8', 4500, c[2]), prod('Aceitunas verdes 200g', 3200, c[2]),
+      ] };
+    }
     case 'FERRETERIA': {
       const c = [cat('pc_f1', 'Tornillería', '#64748b', 3), cat('pc_f2', 'Electricidad', '#f59e0b', 3), cat('pc_f3', 'Pinturería', '#3b82f6', 2)];
       return { categories: c, products: [
@@ -113,7 +131,9 @@ function sampleCatalog(profile: BusinessProfile) {
 export function practiceTicket(profile: BusinessProfile, products: any[]): { product: any; qty: number }[] {
   const by = (pred: (p: any) => boolean) => products.find(pred);
   const picks: [any, number][] =
-    profile === 'FERRETERIA' ? [[by((p) => p.unit === 'MT'), 5], [by((p) => /Tornillo/.test(p.name)), 20]]
+    profile === 'CARNICERIA' ? [[by((p) => /Asado/.test(p.name)), 1.5], [by((p) => /Chorizo/.test(p.name)), 0.5]]
+    : profile === 'FIAMBRERIA' ? [[by((p) => /cocido/.test(p.name)), 0.25], [by((p) => /máquina/.test(p.name)), 0.3]]
+    : profile === 'FERRETERIA' ? [[by((p) => p.unit === 'MT'), 5], [by((p) => /Tornillo/.test(p.name)), 20]]
     : profile === 'INDUMENTARIA' ? [[by((p) => /Remera.*M Negro/.test(p.name)), 1], [by((p) => /Gorra/.test(p.name)), 1]]
     : profile === 'GASTRONOMIA' ? [[by((p) => /muzzarella Grande/.test(p.name)), 1], [by((p) => /carne/.test(p.name)), 6], [by((p) => /Gaseosa/.test(p.name)), 1]]
     : profile === 'MULTIRUBRO' ? [[by((p) => /Taza/.test(p.name)), 2], [by((p) => p.unit === 'MT'), 3]]

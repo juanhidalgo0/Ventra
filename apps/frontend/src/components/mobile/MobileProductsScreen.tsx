@@ -475,7 +475,7 @@ function NewProductSheet({ open, onClose, onCreated }: { open: boolean; onClose:
   const [looking, setLooking] = useState(false);
   const nameTouched = useRef(false);
   // Gastronomía: sin stock (se cocina a pedido) y con tamaños a distinto precio
-  const isFood = useBusinessStore((s) => s.profile) === 'GASTRONOMIA';
+  const isFood = useBusinessStore((s) => s.profiles.includes('GASTRONOMIA'));
   const [withOptions, setWithOptions] = useState(false);
   const [optionName, setOptionName] = useState('Tamaño');
   const [options, setOptions] = useState<{ label: string; price: string }[]>([{ label: '', price: '' }, { label: '', price: '' }]);

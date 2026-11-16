@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
   Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote, ClipboardList,
-  Printer, ShieldAlert,
+  Printer, ShieldAlert, Beef,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -40,6 +40,7 @@ const SECTIONS: { title: string; items: Tile[] }[] = [
       { path: '/informes', label: 'Informes', hint: 'Vendedores, zonas, qué comprar', icon: BarChart3, tint: 'bg-emerald-50 text-emerald-700' },
       { path: '/stock-control', label: 'Stock', hint: 'Lo que falta', icon: ClipboardCheck, tint: 'bg-orange-100 text-orange-800' },
       { path: '/purchases', label: 'Compras', hint: 'Facturas', icon: ShoppingBag, tint: 'bg-rose-50 text-rose-700' },
+      { path: '/desposte', label: 'Desposte', hint: 'Media res y cortes', icon: Beef, tint: 'bg-red-50 text-red-700' },
       { path: '/suppliers', label: 'Proveedores', hint: 'Deudas y pagos', icon: Truck, tint: 'bg-violet-50 text-violet-700' },
       { path: '/promos', label: 'Promociones', hint: 'Vigentes', icon: Tag, tint: 'bg-pink-50 text-pink-700' },
     ],
@@ -73,6 +74,7 @@ export default function MobileMoreScreen() {
     .map((s) => ({ ...s, items: s.items.filter((i: Tile) => menuAllows(planFeatures, intents, i.path)
       && ((i.path !== '/preventa' && i.path !== '/reparto' && i.path !== '/informes') || hasFeature('preorders'))
       && (i.path !== '/encargos' || hasFeature('workorders'))
+      && (i.path !== '/desposte' || (hasFeature('desposte') && owner))
       && ((i.path !== '/anulaciones' && i.path !== '/earnings-division') || owner)
       && (i.path !== '/pacientes/obras-sociales' || consultorio)
       && !(i.noCaja && planFeatures.caja && !consultorio)

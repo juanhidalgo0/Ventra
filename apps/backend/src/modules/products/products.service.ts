@@ -109,7 +109,7 @@ export class ProductsService {
     private trail: PosTrailService,
   ) {}
 
-  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean }): any {
+  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string }): any {
     // Hide the internal "Venta Rápida" product from inventory lists.
     const where: any = { id: { notIn: ['VENTA_RAPIDA', 'SERVICIO'] } };
     if (params?.isActive !== undefined) {
@@ -137,6 +137,11 @@ export class ProductsService {
 
     if (params?.categoryId) where.categoryId = params.categoryId;
     if (params?.isFavorite) where.isFavorite = true;
+    // Mayoristas = se venden en el reparto; minoristas = en el mostrador. Los de los dos entran en ambos.
+    if (params?.channel === 'WHOLESALE' || params?.channel === 'RETAIL') {
+      const channelOr = { OR: [{ salesChannel: null }, { salesChannel: 'BOTH' }, { salesChannel: params.channel }] };
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), channelOr];
+    }
 
     if (params?.hasImage !== undefined) {
       if (params.hasImage) {
@@ -339,6 +344,7 @@ export class ProductsService {
         unit: true,
         unitsPerPack: true,
         packPrice: true,
+        salesChannel: true,
         // Packs y kits: su stock es lo que alcanza con las piezas (ver kit-stock.ts)
         isKit: true,
         // Precio mayorista (desde cierta cantidad) y de gremio: sin esto la caja cobraba siempre el común
@@ -393,6 +399,7 @@ export class ProductsService {
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,
       packPrice: p.packPrice,
+      salesChannel: p.salesChannel,
       wholesalePrice: p.wholesalePrice,
       wholesaleMinQty: p.wholesaleMinQty,
       tradePrice: p.tradePrice,
@@ -435,7 +442,7 @@ export class ProductsService {
     return Object.fromEntries(rows.map((r) => [r.id, Number(r.costPrice) || 0]));
   }
 
-  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; skip?: number; take?: number }) {
+  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string; skip?: number; take?: number }) {
     try {
       const where = this.buildSearchWhere(params);
 
@@ -566,7 +573,7 @@ export class ProductsService {
     }
   }
 
-  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean; noBarcode?: boolean }) {
+  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean; noBarcode?: boolean; channel?: string }) {
     try {
       const where = this.buildSearchWhere(params);
       return await this.prisma.product.count({ where });
@@ -760,7 +767,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'salesChannel'
     ];
     
     const productData: any = {};
@@ -879,7 +886,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'salesChannel'
     ];
     
     const updateData: any = {};

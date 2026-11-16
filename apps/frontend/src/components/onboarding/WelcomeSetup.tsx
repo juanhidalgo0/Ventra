@@ -9,7 +9,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
 import {
-  useBusinessStore, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, PROFILE_LABELS, isConsultorio, type BusinessIntent, type BusinessProfile,
+  useBusinessStore, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, PROFILE_LABELS, isConsultorio, normalizeProfiles, rubrosTitle, type BusinessIntent, type BusinessProfile,
 } from '../../stores/businessStore';
 import { setStoreSetting, whenStoreSettingsReady } from '../../services/storeSettings';
 import { useTourStore } from '../common/tour/tourStore';
@@ -30,6 +30,8 @@ type Step = 'intent' | 'rubro' | 'name' | 'logo';
 /** Cómo se muestra cada rubro en la bienvenida: nombre corto y una sola línea de qué trae */
 const RUBRO_CARD: Record<BusinessProfile, { title: string; line: string }> = {
   KIOSKO: { title: 'Kiosco o almacén', line: 'Venta rápida por unidad o pack' },
+  CARNICERIA: { title: 'Carnicería', line: 'Por kilo, balanza y desposte' },
+  FIAMBRERIA: { title: 'Fiambrería', line: 'Por kilo o por plata, con balanza' },
   FERRETERIA: { title: 'Ferretería', line: 'Presupuestos, acopio y medidas' },
   INDUMENTARIA: { title: 'Ropa y calzado', line: 'Talles y colores con su stock' },
   GASTRONOMIA: { title: 'Gastronomía', line: 'Tamaños, promos y mitad y mitad' },
@@ -58,12 +60,14 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
   const features = usePlanStore((s) => s.features);
   const planLoaded = usePlanStore((s) => s.loaded);
   const signupRubro = usePlanStore((s) => s.signupRubro);
-  const { setProfile, setIntents } = useBusinessStore();
+  const { setProfiles, setIntents } = useBusinessStore();
   const [show, setShow] = useState(false);
   const [step, setStep] = useState<Step>('intent');
   const allowed = ALL_INTENTS.filter((i) => features[INTENT_AREA[i]]);
   const [chosen, setChosen] = useState<BusinessIntent[]>([]);
-  const [profile, setProfileChoice] = useState<BusinessProfile | null>(null);
+  /** Rubros marcados, el principal (el primero que tocó) adelante. Un almacén puede tener carnicería */
+  const [profiles, setProfileChoice] = useState<BusinessProfile[]>([]);
+  const profile: BusinessProfile | null = profiles[0] || null;
   const [name, setName] = useState('');
   /** Logo elegido en la bienvenida: se guarda recién al terminar */
   const [logo, setLogo] = useState(readStoreLogo);
@@ -82,7 +86,8 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
     if (isAgendaOnly(features)) { setToursPaused(false); return; }
     let alive = true;
     // Si se suscribió desde una landing por rubro (/ropa, /kioscos…), ese rubro ya viene marcado
-    const fromLanding = profileForRubro(signupRubro);
+    const landing = profileForRubro(signupRubro);
+    const fromLanding: BusinessProfile[] = landing ? [landing] : [];
     const askRubro = () => { setRubroOnly(true); setProfileChoice(fromLanding); setStep('rubro'); setShow(true); };
     (async () => {
       await whenStoreSettingsReady();
@@ -141,15 +146,15 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
   const finish = (withLogo = true) => {
     if (rubroOnly) {
-      if (profile) setProfile(profile);
+      if (profile) setProfiles(profiles);
       close();
-      toast.success(`Listo: activamos las funciones de ${PROFILE_LABELS[profile!].title}`, { duration: 4000 });
+      toast.success(`Listo: activamos las funciones de ${rubrosTitle(profiles)}`, { duration: 4000 });
       return;
     }
     const intents = chosen.length ? chosen : allowed;
     setIntents(intents);
     // Siempre se guarda (aunque coincida con el de fábrica): así los otros equipos lo reciben
-    if (sells && profile) setProfile(profile);
+    if (sells && profile) setProfiles(profiles);
     if (name.trim().length >= 2) setStoreSetting('store_name', name.trim().slice(0, 60));
     if (withLogo && logo && logo !== readStoreLogo()) setStoreSetting('store_logo', logo);
     setStoreSetting('onboarding_done', '1');
@@ -161,6 +166,12 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
 
   const consultorio = !!profile && isConsultorio(profile);
   const toggle = (i: BusinessIntent) => setChosen((c) => (c.includes(i) ? c.filter((x) => x !== i) : [...c, i]));
+  // Varios rubros a la vez; el consultorio no se combina (no vende): elegirlo deja solo ese
+  const toggleRubro = (p: BusinessProfile) => setProfileChoice((cur) => {
+    if (cur.includes(p)) return cur.filter((x) => x !== p);
+    if (isConsultorio(p) || (cur[0] && isConsultorio(cur[0]))) return [p];
+    return normalizeProfiles([...cur, p]);
+  });
   const canNext = step === 'intent' ? chosen.length > 0 : step === 'rubro' ? !!profile : step === 'logo' ? !!logo : name.trim().length >= 2;
 
   return (
@@ -213,19 +224,23 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
           {step === 'rubro' && (
             <>
               <h2 id="welcome-title" className="text-[24px] font-bold text-slate-900 tracking-tight leading-tight">{rubroOnly ? 'Antes de seguir: ¿cuál es tu rubro?' : '¿Cuál es tu rubro?'}</h2>
-              <p className="mt-1.5 text-[14px] text-slate-500 leading-snug">Prendemos solo lo que tu rubro usa. Lo cambiás cuando quieras en Configuración.</p>
-              <div role="radiogroup" aria-labelledby="welcome-title" className="mt-5 grid grid-cols-2 gap-2.5">
+              <p className="mt-1.5 text-[14px] text-slate-500 leading-snug">Podés marcar más de uno, por ejemplo <b className="font-semibold text-slate-700">almacén y carnicería</b>. Prendemos solo lo que usan y lo cambiás cuando quieras en Configuración.</p>
+              <div role="group" aria-labelledby="welcome-title" className="mt-5 grid grid-cols-2 gap-2.5">
                 {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((p) => {
                   const card = RUBRO_CARD[p];
-                  const on = profile === p;
+                  const on = profiles.includes(p);
+                  const main = on && profiles.length > 1 && profiles[0] === p;
                   return (
-                    <button key={p} role="radio" aria-checked={on} onClick={() => setProfileChoice(p)}
+                    <button key={p} role="checkbox" aria-checked={on} onClick={() => toggleRubro(p)}
                       className={`relative grid grid-cols-1 sm:grid-cols-[auto,1fr] sm:items-center sm:gap-x-3 p-3 sm:p-3.5 rounded-2xl border-2 text-left transition-all ${on ? 'border-rose-600 bg-rose-50 shadow-[0_6px_18px_-10px_rgba(14,110,82,0.6)]' : 'border-slate-200 bg-white hover:border-rose-300'}`}>
                       <span className={`w-9 h-9 sm:w-12 sm:h-12 sm:row-span-2 mb-2 sm:mb-0 rounded-xl flex items-center justify-center shrink-0 transition-colors ${on ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700'}`}>
                         <RubroIcon profile={p} className="w-6 h-6 sm:w-7 sm:h-7" />
                       </span>
                       <span className={`min-w-0 sm:pr-4 sm:self-end text-[14px] sm:text-[14.5px] font-bold leading-tight ${on ? 'text-rose-800' : 'text-slate-900'}`}>{card.title}</span>
-                      <span className="sm:col-start-2 sm:self-start sm:pr-4 mt-0.5 text-[12px] text-slate-500 leading-snug">{card.line}</span>
+                      <span className="sm:col-start-2 sm:self-start sm:pr-4 mt-0.5 text-[12px] text-slate-500 leading-snug">
+                        {card.line}
+                        {main && <span className="ml-1.5 inline-block align-middle px-1.5 py-px rounded-md bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wide">Principal</span>}
+                      </span>
                       <span className={`absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center transition-all ${on ? 'bg-rose-600 text-white scale-100' : 'border-2 border-slate-200 scale-90'}`}>
                         {on && <Check className="w-3 h-3" strokeWidth={3.5} />}
                       </span>
@@ -259,7 +274,7 @@ export default function WelcomeSetup({ mobile }: { mobile: boolean }) {
         <div className="px-6 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:pb-6 border-t border-slate-100">
           <button disabled={!canNext} onClick={idx === flow.length - 1 ? () => finish() : next}
             className="w-full h-13 py-3.5 rounded-2xl bg-rose-600 text-white text-[16px] font-bold disabled:opacity-40 active:scale-[0.99] transition-transform">
-            {rubroOnly ? 'Listo' : step === 'logo' ? 'Guardar logo y empezar' : step === 'rubro' && profile ? `Seguir con ${RUBRO_CARD[profile].title}` : 'Seguir'}
+            {rubroOnly ? 'Listo' : step === 'logo' ? 'Guardar logo y empezar' : step === 'rubro' && profile ? (profiles.length > 1 ? `Seguir con ${profiles.length} rubros` : `Seguir con ${RUBRO_CARD[profile].title}`) : 'Seguir'}
           </button>
           {step === 'logo' && (
             <button onClick={() => finish(false)} className="mt-2 w-full py-2.5 rounded-2xl text-[14px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50">

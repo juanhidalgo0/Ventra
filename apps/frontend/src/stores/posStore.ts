@@ -62,7 +62,8 @@ interface POSState {
   setActiveGoOrder: (order: ActiveGoOrder | null) => void;
   promotions: any[];
   setPromotions: (promos: any[]) => void;
-  addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean) => void;
+  /** exactPrice: el precio a mano no se redondea a centavos (etiqueta de balanza: el renglón suma justo lo impreso) */
+  addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean, exactPrice?: boolean) => void;
   /** Distribuidora: suma `packs` bultos del producto (ver packOf) */
   addPackToCart: (product: any, pack: { size: number; price: number }, packs?: number) => void;
   /** Distribuidora: pasa un renglón de bultos a unidades sueltas o al revés, con la misma cantidad */
@@ -362,7 +363,7 @@ export const usePOSStore = create<POSState>()(
       },
       setIsWarmed: (isWarmed) => set({ isWarmed }),
 
-  addToCart: (product, customPrice?, quantity = 1, isReturn = false) => {
+  addToCart: (product, customPrice?, quantity = 1, isReturn = false, exactPrice = false) => {
     set((state) => {
       const isCustom = customPrice !== undefined;
       const baseSalePrice = Number(product.salePrice);
@@ -377,7 +378,7 @@ export const usePOSStore = create<POSState>()(
         }
       }
 
-      const regularPrice = Math.round(calculatedRegularPrice * 100) / 100;
+      const regularPrice = exactPrice && isCustom ? calculatedRegularPrice : Math.round(calculatedRegularPrice * 100) / 100;
       const wholesalePrice = (!isCustom && product.wholesalePrice && Number(product.wholesalePrice) > 0)
         ? Math.round(Number(product.wholesalePrice) * 100) / 100
         : undefined;

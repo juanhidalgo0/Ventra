@@ -3,7 +3,7 @@ import { X, Search, Undo2, Loader2, CheckCircle2, AlertTriangle, Sparkles, Pause
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { useConfirm } from '../common/ConfirmDialog';
-import { PROFILE_LABELS, useBusinessStore } from '../../stores/businessStore';
+import { rubrosTitle, useBusinessStore } from '../../stores/businessStore';
 
 /**
  * Organizar automáticamente: la IA sugiere categoría, subcategoría y marca de cada producto
@@ -29,8 +29,8 @@ const chip = (on: boolean) =>
 
 export default function OrganizeModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [confirm, confirmDialog] = useConfirm();
-  const profile = useBusinessStore((s) => s.profile);
-  const rubro = PROFILE_LABELS[profile]?.title || '';
+  const profiles = useBusinessStore((s) => s.profiles);
+  const rubro = rubrosTitle(profiles);
 
   const [step, setStep] = useState<Step>('start');
   const [status, setStatus] = useState<Status | null>(null);

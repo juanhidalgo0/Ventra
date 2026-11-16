@@ -12,7 +12,7 @@ import { DEMO_PRODUCTS, DEMO_CATEGORY_COLORS } from './demo-reset.service';
  * Volver a un rubro ya elegido reactiva lo suyo, sin duplicar nada.
  */
 
-export const DEMO_PROFILES = ['KIOSKO', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA', 'NUTRICION'] as const;
+export const DEMO_PROFILES = ['KIOSKO', 'CARNICERIA', 'FIAMBRERIA', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA', 'NUTRICION'] as const;
 export type DemoProfile = typeof DEMO_PROFILES[number];
 
 interface Item {
@@ -29,6 +29,8 @@ interface Item {
   /** Variantes: nombre del modelo y atributos de esta variante */
   baseName?: string;
   attrs?: Record<string, string>;
+  /** Carnicería y fiambrería: código de la balanza (PLU). Va como código del producto */
+  plu?: number;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -38,6 +40,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   Bazar: '#8b5cf6', Ropa: '#ec4899', 'Por medida': '#64748b', 'Librería': '#10b981',
   Golosinas: '#f59e0b', 'Almacén': '#10b981', Limpieza: '#06b6d4',
   Impresiones: '#3b82f6', 'Gráfica': '#8b5cf6', 'Gran formato': '#f97316', 'Sellos y regalos': '#ec4899',
+  Vacuno: '#b91c1c', Cerdo: '#f472b6', Pollo: '#f59e0b', 'Achuras y embutidos': '#7c2d12', Elaborados: '#ea580c',
+  Fiambres: '#e11d48', Quesos: '#eab308', Salames: '#9f1239', Fiambrería: '#e11d48',
 };
 
 /** Todas las combinaciones de los ejes (talle × color, tamaño…) como variantes de un modelo. */
@@ -49,7 +53,30 @@ function variants(baseName: string, category: string, axes: Record<string, strin
 
 const bulto = (unitsPerPack: number, packPrice: number): Partial<Item> => ({ unitsPerPack, packPrice, stock: unitsPerPack * 40 });
 
+/** Por kilo, con su código de balanza */
+const kilo = (plu: number, name: string, price: number, category: string, stock = 15): Item => ({ name, price, category, unit: 'KG', stock, plu });
+
 const CATALOGS: Record<Exclude<DemoProfile, 'KIOSKO'>, Item[]> = {
+  CARNICERIA: [
+    kilo(10, 'ASADO', 15900, 'Vacuno', 30), kilo(11, 'VACÍO', 17900, 'Vacuno', 20), kilo(12, 'MATAMBRE', 16900, 'Vacuno', 10),
+    kilo(13, 'NALGA', 18900, 'Vacuno'), kilo(14, 'CUADRADA', 17500, 'Vacuno'), kilo(15, 'PECETO', 19900, 'Vacuno', 8),
+    kilo(16, 'BIFE DE CHORIZO', 21900, 'Vacuno', 12), kilo(17, 'COLITA DE CUADRIL', 19500, 'Vacuno', 8), kilo(18, 'PALETA', 14900, 'Vacuno'),
+    kilo(19, 'CARNE PICADA ESPECIAL', 12900, 'Vacuno', 25), kilo(20, 'OSOBUCO', 8900, 'Vacuno'),
+    kilo(30, 'BONDIOLA', 11900, 'Cerdo', 10), kilo(31, 'PECHITO DE CERDO', 9900, 'Cerdo', 10), kilo(32, 'CARRÉ DE CERDO', 10900, 'Cerdo', 10),
+    kilo(40, 'POLLO ENTERO', 4900, 'Pollo', 30), kilo(41, 'PATA Y MUSLO', 5900, 'Pollo', 20), kilo(42, 'PECHUGA', 8900, 'Pollo', 15),
+    kilo(50, 'CHORIZO PURO CERDO', 9500, 'Achuras y embutidos', 12), kilo(51, 'MORCILLA', 7500, 'Achuras y embutidos', 8), kilo(52, 'MOLLEJAS', 22900, 'Achuras y embutidos', 4),
+    kilo(60, 'MILANESA DE NALGA', 16900, 'Elaborados', 10), kilo(61, 'MILANESA DE POLLO', 10900, 'Elaborados', 10), kilo(62, 'HAMBURGUESA CASERA', 11900, 'Elaborados', 8),
+    { name: 'CARBÓN 4KG', price: 6500, category: 'Elaborados', stock: 20 },
+  ],
+  FIAMBRERIA: [
+    kilo(110, 'JAMÓN COCIDO NATURAL', 18900, 'Fiambres', 8), kilo(111, 'JAMÓN CRUDO', 39900, 'Fiambres', 4), kilo(112, 'PALETA COCIDA', 12900, 'Fiambres', 8),
+    kilo(113, 'MORTADELA', 9900, 'Fiambres', 6), kilo(114, 'LOMITO AHUMADO', 34900, 'Fiambres', 3), kilo(115, 'PANCETA AHUMADA', 22900, 'Fiambres', 4),
+    kilo(120, 'QUESO DE MÁQUINA', 15900, 'Quesos', 10), kilo(121, 'QUESO CREMOSO', 11900, 'Quesos', 12), kilo(122, 'QUESO TYBO', 14900, 'Quesos', 8),
+    kilo(123, 'QUESO SARDO', 21900, 'Quesos', 5), kilo(124, 'QUESO AZUL', 24900, 'Quesos', 3), kilo(125, 'MUZZARELLA', 10900, 'Quesos', 15),
+    kilo(130, 'SALAME MILÁN', 24900, 'Salames', 5), kilo(131, 'SALAMÍN PICADO FINO', 26900, 'Salames', 4), kilo(132, 'LONGANIZA', 21900, 'Salames', 4),
+    { name: 'ACEITUNAS VERDES 200G', price: 3200, category: 'Fiambrería', stock: 20 },
+    { name: 'PAN DE MIGA X8', price: 4500, category: 'Fiambrería', stock: 15 },
+  ],
   FERRETERIA: [
     { name: 'TORNILLO AUTOPERFORANTE 8X1"', price: 45, category: 'Tornillería', stock: 800, tradePrice: 40 },
     { name: 'TARUGO FISCHER 8MM', price: 30, category: 'Tornillería', stock: 1200, tradePrice: 26 },
@@ -140,22 +167,28 @@ const KIOSKO_BARCODES = DEMO_PRODUCTS.map((p) => p.barcode);
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const daysFromNow = (d: number, hour = 12) => { const t = new Date(); t.setDate(t.getDate() + d); t.setHours(hour, 0, 0, 0); return t; };
 
-/** Prende el catálogo del rubro (creándolo la primera vez) y apaga el de los demás. */
-export async function applyDemoProfile(db: any, profile: DemoProfile) {
+/**
+ * Prende el catálogo de los rubros elegidos (creándolo la primera vez) y apaga el de los demás.
+ * Un almacén con carnicería ve los dos catálogos juntos.
+ */
+export async function applyDemoProfile(db: any, profileOrList: DemoProfile | DemoProfile[]) {
+  const profiles = [...new Set(Array.isArray(profileOrList) ? profileOrList : [profileOrList])];
   // Lo de los otros rubros de ejemplo se apaga y sale de su categoría (la caja muestra todas
   // las categorías, tengan o no productos activos). Lo que cargó el visitante no se toca.
   // (en dos pasos: los del kiosco no tienen sku y un NOT sobre un sku vacío no los tomaría)
   const off = { isActive: false, categoryId: null };
-  if (profile !== 'KIOSKO') await db.product.updateMany({ where: { barcode: { in: KIOSKO_BARCODES } }, data: off });
-  await db.product.updateMany({ where: { sku: { startsWith: 'DEMO-' }, NOT: { sku: { startsWith: skuPrefix(profile) } } }, data: off });
+  if (!profiles.includes('KIOSKO')) await db.product.updateMany({ where: { barcode: { in: KIOSKO_BARCODES } }, data: off });
+  await db.product.updateMany({ where: { sku: { startsWith: 'DEMO-' }, NOT: { OR: profiles.map((p) => ({ sku: { startsWith: skuPrefix(p) } })) } }, data: off });
 
-  if (profile === 'KIOSKO') {
-    const categoryIds = await ensureCategories(db, DEMO_PRODUCTS.map((p) => p.category));
-    for (const p of DEMO_PRODUCTS) {
-      await db.product.updateMany({ where: { barcode: p.barcode }, data: { isActive: true, categoryId: categoryIds.get(p.category) } });
+  for (const profile of profiles) {
+    if (profile === 'KIOSKO') {
+      const categoryIds = await ensureCategories(db, DEMO_PRODUCTS.map((p) => p.category));
+      for (const p of DEMO_PRODUCTS) {
+        await db.product.updateMany({ where: { barcode: p.barcode }, data: { isActive: true, categoryId: categoryIds.get(p.category) } });
+      }
+    } else {
+      await showCatalog(db, profile);
     }
-  } else {
-    await showCatalog(db, profile);
   }
 
   // Categorías de ejemplo que quedaron vacías
@@ -163,8 +196,8 @@ export async function applyDemoProfile(db: any, profile: DemoProfile) {
     await db.category.deleteMany({ where: { name: { in: DEMO_CATEGORY_NAMES }, products: { none: {} }, subcategories: { none: {} }, surcharge: null } });
   } catch { /* alguna quedó en uso: se deja */ }
 
-  if (profile === 'IMPRENTA') await seedImprenta(db);
-  if (profile === 'DISTRIBUIDORA') await seedDistribuidora(db);
+  if (profiles.includes('IMPRENTA')) await seedImprenta(db);
+  if (profiles.includes('DISTRIBUIDORA')) await seedDistribuidora(db);
 }
 
 const DEMO_CATEGORY_NAMES = [...new Set([...Object.keys(CATEGORY_COLORS), ...Object.keys(DEMO_CATEGORY_COLORS)])];
@@ -201,10 +234,13 @@ async function showCatalog(db: any, profile: Exclude<DemoProfile, 'KIOSKO'>) {
       if (!groups.has(it.baseName)) groups.set(it.baseName, `demo-${profile.toLowerCase()}-${groups.size + 1}`);
       variantGroupId = groups.get(it.baseName);
     }
+    // El código de balanza va como código del producto (si nadie lo usa ya)
+    const barcode = it.plu && !(await db.product.findUnique({ where: { barcode: String(it.plu) }, select: { id: true } })) ? String(it.plu) : null;
     await db.product.create({
       data: {
         name: it.name,
         sku,
+        barcode,
         salePrice: it.price,
         costPrice: Math.round(it.price * 0.6),
         stock: it.unlimited ? 0 : it.stock ?? 20,
