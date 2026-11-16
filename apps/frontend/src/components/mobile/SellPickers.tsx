@@ -24,6 +24,16 @@ export function useRubroAdd() {
   const [measure, setMeasure] = useState<any | null>(null);
   const [priced, setPriced] = useState<any | null>(null);
   const [amount, setAmount] = useState('');
+  // Por kilo: el cliente pide "300 g" o "$3.000 de jamón"
+  const [byMoney, setByMoney] = useState(false);
+  const kgPrice = Number(measure?.salePrice) || 0;
+  const canByMoney = measure?.unit === 'KG' && kgPrice > 0;
+  const moneyMode = canByMoney && byMoney;
+  const measureQty = moneyMode
+    ? Math.round((parseAmount(amount) / kgPrice) * 1000) / 1000
+    // En cantidades el punto es decimal: "0.250" son 250 g, no 250 kg
+    : (parseFloat(amount.trim().replace(',', '.')) || 0);
+  const fmtKg = (kg: number) => kg < 1 ? `${Math.round(kg * 1000)} g` : `${qty(kg)} kg`;
 
   const put = (p: any, price?: number, quantity = 1) => {
     const pack = price === undefined && !p.allowCustomPrice ? packOf(p, hasFeature('bulk')) : null;
@@ -36,7 +46,7 @@ export function useRubroAdd() {
   const tap = (p: any) => {
     if (p?._isVariantGroup) { setGroup(p); return; }
     if (p.allowCustomPrice) { setAmount(''); setPriced(p); return; }
-    if (isMeasured(p)) { setAmount(''); setMeasure(p); return; }
+    if (isMeasured(p)) { setAmount(''); setByMoney(false); setMeasure(p); return; }
     put(p);
   };
 
@@ -51,20 +61,48 @@ export function useRubroAdd() {
       </Sheet>
 
       <Sheet open={!!measure} onClose={() => setMeasure(null)} title={measure?.name}
-        footer={<PrimaryButton disabled={parseAmount(amount) <= 0} onClick={() => { put(measure, undefined, parseAmount(amount)); setMeasure(null); }}>
-          {parseAmount(amount) > 0 && measure ? `Agregar ${qty(parseAmount(amount))} ${MEASURE[measure.unit].short} · ${money(parseAmount(amount) * (measure.salePrice || 0))}` : 'Agregar'}
+        footer={<PrimaryButton disabled={!(measureQty > 0)} onClick={() => { put(measure, undefined, measureQty); setMeasure(null); }}>
+          {measureQty > 0 && measure
+            ? `Agregar ${measure.unit === 'KG' ? fmtKg(measureQty) : `${qty(measureQty)} ${MEASURE[measure.unit].short}`} · ${money(measureQty * (measure.salePrice || 0))}`
+            : 'Agregar'}
         </PrimaryButton>}>
         {measure && (
           <>
-            <p className="text-[14px] text-slate-600 mb-3">¿Cuántos {MEASURE[measure.unit].name}? <span className="text-slate-400">({money(measure.salePrice)} el {MEASURE[measure.unit].short})</span></p>
-            <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
-              className="w-full h-14 px-4 rounded-2xl bg-slate-50 border border-slate-200 text-[24px] font-bold text-slate-900 outline-none focus:border-rose-500 tabular-nums" />
+            {canByMoney && (
+              <div className="mb-3 grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100" role="tablist" aria-label="Pedir por peso o por plata">
+                {([[false, 'Por peso (kg)'], [true, 'Por plata ($)']] as const).map(([m, label]) => (
+                  <button key={label} role="tab" aria-selected={byMoney === m} onClick={() => { setByMoney(m); setAmount(''); }}
+                    className={`h-10 rounded-xl text-[14px] font-bold ${byMoney === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-[14px] text-slate-600 mb-3">
+              {moneyMode ? '¿Cuánta plata pide?' : `¿Cuántos ${MEASURE[measure.unit].name}?`}{' '}
+              <span className="text-slate-400">({money(measure.salePrice)} el {MEASURE[measure.unit].short})</span>
+            </p>
+            {moneyMode ? (
+              <MoneyInput value={amount} onChange={setAmount} autoFocus />
+            ) : (
+              <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
+                className="w-full h-14 px-4 rounded-2xl bg-slate-50 border border-slate-200 text-[24px] font-bold text-slate-900 outline-none focus:border-rose-500 tabular-nums" />
+            )}
+            {moneyMode && measureQty > 0 && (
+              <p className="mt-2 text-[15px] text-slate-700">Hay que cortar <span className="font-extrabold text-slate-900">{fmtKg(measureQty)}</span></p>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
-              {MEASURE[measure.unit].chips.map((c) => (
-                <button key={c} onClick={() => setAmount(qty(c))} className="h-10 px-4 rounded-full bg-slate-100 text-[14px] font-semibold text-slate-700 active:scale-95">
-                  {qty(c)} {MEASURE[measure.unit].short}
-                </button>
-              ))}
+              {moneyMode
+                ? [1000, 2000, 3000, 5000].map((c) => (
+                  <button key={c} onClick={() => setAmount(String(c))} className="h-10 px-4 rounded-full bg-slate-100 text-[14px] font-semibold text-slate-700 active:scale-95">
+                    {money(c)}
+                  </button>
+                ))
+                : MEASURE[measure.unit].chips.map((c) => (
+                  <button key={c} onClick={() => setAmount(qty(c))} className="h-10 px-4 rounded-full bg-slate-100 text-[14px] font-semibold text-slate-700 active:scale-95">
+                    {measure.unit === 'KG' ? fmtKg(c) : `${qty(c)} ${MEASURE[measure.unit].short}`}
+                  </button>
+                ))}
             </div>
           </>
         )}
