@@ -147,6 +147,53 @@ const deps = (box, extra = {}) => ({ apiKey: "re_x", admin: fakeAdmin, now: NOW,
     assert.strictEqual((await ae.monthlyRun(db, deps(box, { stats }))).sent, 0, "no repite");
   });
 
+  // ─── Prueba gratis y baja ───
+  const sr = require("../functions/subscription-rules");
+  await t("prueba: solo cuentas nuevas y una vez por correo", () => {
+    assert.strictEqual(sr.trialEligible({}, false), true);
+    assert.strictEqual(sr.trialEligible(null, false), true);
+    assert.strictEqual(sr.trialEligible({}, true), false, "el correo ya la usó");
+    assert.strictEqual(sr.trialEligible({ paidUntil: ts(NOW - 90 * D) }, false), false, "ya pagó alguna vez");
+    assert.strictEqual(sr.trialEligible({ trialUsed: true }, false), false);
+    assert.strictEqual(sr.trialKey(" Dueno@Gmail.com "), sr.trialKey("dueno@gmail.com"));
+  });
+  await t("prueba: primer cobro a los 7 días y el mes pago empieza ahí", () => {
+    const d = sr.trialDates(NOW);
+    assert.strictEqual(Date.parse(d.start_date), NOW + 7 * D);
+    assert.ok(Date.parse(d.end_date) > NOW + 9 * 365 * D, "end_date lejos (MP lo pide junto con start_date)");
+    assert.strictEqual(sr.trialEnd({ next_payment_date: new Date(NOW + 7 * D).toISOString() }, NOW).getTime(), NOW + 7 * D);
+    assert.strictEqual(sr.trialEnd({ next_payment_date: new Date(NOW).toISOString() }, NOW).getTime(), NOW + 7 * D, "cobro hoy: raro, se toman 7 días");
+    assert.strictEqual(sr.trialEnd({}, NOW).getTime(), NOW + 7 * D);
+    // El primer cobro (día 8) extiende un mes desde el fin de la prueba: los 7 días no se descuentan
+    const end = new Date(NOW + 7 * D);
+    assert.strictEqual(sr.nextPaidUntil(end, end, 1).toISOString(), sr.addMonths(end, 1).toISOString());
+  });
+  await t("prueba: mail al empezar y aviso antes del primer cobro", async () => {
+    const end = ts(NOW + 7 * D);
+    const after = account({ paidUntil: end, trialEndsAt: end, trialStartedAt: ts(NOW) });
+    const m = ae.trialStartEmail(after, 24900);
+    assert.ok(m.subject.includes("prueba gratis") && m.html.includes("no te cobramos nada") && m.html.includes("$24.900") && m.html.includes("Instalá la caja"), m.subject);
+    const db = fakeDb({ ventra_accounts: {} }); const box = outbox();
+    const before = account({ paidUntil: null, status: "pending_payment" });
+    assert.strictEqual(await ae.onAccountUpdate(db, deps(box), { uid: "u9", before, after }), "sent");
+    assert.strictEqual(await ae.onAccountUpdate(db, deps(box), { uid: "u9", before, after }), "skip", "una sola vez");
+    const pre = ae.preChargeEmail(after, 24900);
+    assert.ok(pre.subject.includes("termina") && pre.html.includes("date de baja antes") && pre.html.includes("$24.900"), pre.subject);
+    assert.ok(!ae.preChargeEmail(account(), 24900).subject.includes("termina"), "renovación normal: el aviso de siempre");
+    assert.deepStrictEqual(ae.dailySteps({ ...after, paidUntil: ts(NOW + 2.5 * D), trialEndsAt: ts(NOW + 2.5 * D) }, {}, NOW).map((s) => s.step), ["aviso_cobro"]);
+  });
+  await t("baja: constancia una vez, dice hasta cuándo anda", async () => {
+    const db = fakeDb({ ventra_accounts: {} }); const box = outbox();
+    const before = account();
+    const after = account({ status: "cancelled", cancelledAt: ts(NOW) });
+    assert.strictEqual(await ae.onAccountUpdate(db, deps(box), { uid: "u8", before, after }), "sent");
+    assert.ok(box[0].subject.includes("Te diste de baja") && box[0].html.includes("no te vamos a cobrar más"), box[0].subject);
+    assert.strictEqual(await ae.onAccountUpdate(db, deps(box), { uid: "u8", before, after }), "skip");
+    const tr = ae.cancelEmail(account({ status: "cancelled", cancelledAt: ts(NOW), paidUntil: ts(NOW + 5 * D), trialEndsAt: ts(NOW + 5 * D) }));
+    assert.ok(tr.html.includes("no se te cobró nada"));
+    assert.strictEqual(await ae.onAccountUpdate(db, deps(box), { uid: "u8", before: after, after: { ...after, updatedAt: 1 } }), "skip", "ya estaba dada de baja");
+  });
+
   console.log(`\n${ok} bien, ${bad} con falla`);
   process.exit(bad ? 1 : 0);
 })();

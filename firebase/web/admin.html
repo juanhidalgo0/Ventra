@@ -769,6 +769,7 @@
 
     function daysText(a){
       if (a.state === 'UNPAID') return { main:'Sin fecha', sub:'Esperando el primer cobro' };
+      if (a.state === 'ACTIVE' && a.trial) return { main:'Prueba gratis · ' + a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:(a.mpStatus === 'cancelled' ? 'Se dio de baja · gratis hasta el ' : 'Primer cobro el ') + fdate(a.paidUntil) };
       if (a.state === 'ACTIVE') return { main: a.daysLeft === 0 ? 'Vence hoy' : a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:'Paga hasta el ' + fdate(a.paidUntil) };
       if (a.state === 'GRACE') return { main: a.daysLeft === 0 ? 'Último día de gracia' : a.daysLeft + (a.daysLeft === 1 ? ' día de gracia' : ' días de gracia'), sub:'Venció el ' + fdate(a.paidUntil) };
       var d = Math.abs(a.daysLeft); return { main: d === 0 ? 'Bloqueada hoy' : 'Hace ' + d + (d === 1 ? ' día' : ' días'), sub:'Venció el ' + fdate(a.paidUntil) };

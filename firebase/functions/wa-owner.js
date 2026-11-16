@@ -80,6 +80,8 @@ const TZ = "America/Argentina/Buenos_Aires";
 const OWNERS = "ventra_wa_owners";
 const LINKS = "ventra_wa_links";
 const INBOX = "ventra_wa_owner_inbox";
+// Respuestas con "¿Te sirvió?": lo que se preguntó y respondió, para anotar el voto
+const ANSWERS = "ventra_wa_owner_answers";
 const SETTINGS = "ventra_wa_settings";
 
 const ms = (t) => (t && typeof t.toMillis === "function" ? t.toMillis() : Number(t) || 0);
@@ -258,6 +260,21 @@ async function onMessage(db, send, m, now = Date.now(), io = {}) {
   if (button.startsWith("wo|")) {
     const [, action, editId] = button.split("|");
     await enqueue({ uid: o.uid, type: "edit", action, editId });
+    return true;
+  }
+  // "¿Te sirvió?" de una respuesta: se anota (sin IA). El 👎 va a la revisión semanal de la IA.
+  if (button.startsWith("fb|")) {
+    const [, vote, fbId] = button.split("|");
+    const ans = await db.collection(ANSWERS).doc(String(fbId || "x")).get().catch(() => null);
+    const a = ans && ans.exists ? ans.data() : null;
+    if (a && !a.vote && a.uid === o.uid) {
+      await ans.ref.set({ vote: vote === "up" ? "up" : "down", votedAt: now }, { merge: true });
+      await stats.track(db, o.uid, [vote === "up" ? "fb_up" : "fb_down"], now);
+      if (vote === "down") {
+        await db.collection("ventra_ai_misses").doc(`${now}_${o.uid}_fb`).set({ uid: o.uid, channel: "whatsapp", question: a.question, reasons: ["el dueño marcó que la respuesta no le sirvió"], answer: String(a.answer || "").slice(0, 600), at: now }).catch(() => {});
+      }
+    }
+    await send(from, vote === "up" ? "¡Gracias! 🙌" : "Gracias por avisar. Lo reviso para mejorar. Si querés, contame qué esperabas y te respondo de nuevo.");
     return true;
   }
   // Repetidos ("wc|merge|i"), boletas ("wv|…", también en listas) y "¿qué es esta foto?" ("wf|tipo")
@@ -625,7 +642,8 @@ async function processInbox(db, item, deps, now = Date.now()) {
       ? promo.session({ sql, db, bucket: deps.bucket, uid, from, lastPhoto, last: o.lastImage || null, kit: known ? { ...known, name: known.name || info.name || null, needs: [] } : {}, loadKit })
       : null;
     const operating = o.role !== "SUPERVISOR" && deps.ventraApi && deps.sendButtons ? ventraApi.session({ api: deps.ventraApi, uid }) : null;
-    const out = await ai.handle({ ...aiDeps, edits: editing, images: imaging, api: operating }, uid, {
+    const unlimited = deps.isUnlimited ? await deps.isUnlimited(uid).catch(() => false) : false;
+    const out = await ai.handle({ ...aiDeps, edits: editing, images: imaging, api: operating, unlimited }, uid, {
       // Un audio llega ya pasado a texto: la IA tiene que saber que vino por voz (si no, ante
       // "¿me escuchás?" contesta que no le llegó ningún audio)
       kind: "agent", channel: "whatsapp", question: item.type === "audio" ? `[Audio] ${text}` : text, history, plan: acc.plan, role: o.role || "ADMIN", info,
@@ -662,7 +680,17 @@ async function processInbox(db, item, deps, now = Date.now()) {
     const day = new Date(now).toLocaleDateString("en-CA", { timeZone: TZ });
     const menuHint = o.menuHintDay !== day ? "\n\n_Escribí *MENÚ* para ver todo lo que puedo hacer._" : "";
     if (menuHint) await ownerRef.set({ menuHintDay: day }, { merge: true });
-    await send(from, (heardNote + answer + note + menuHint + leftNote(out.leftToday)).slice(0, 4000));
+    const full = (heardNote + answer + note + menuHint + leftNote(out.leftToday)).slice(0, 4000);
+    // "¿Te sirvió?" en las respuestas con datos del negocio que entran en un mensaje con botones:
+    // el 👎 manda la pregunta a la revisión semanal (ai-review.js) para que el bot aprenda
+    const usedData = Number(out.result && out.result.rounds) > 1;
+    if (usedData && deps.sendButtons && full.length <= 1024) {
+      const fbId = `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      await db.collection(ANSWERS).doc(fbId).set({ uid, from, question: String(text).slice(0, 500), answer: answer.slice(0, 1200), at: now }).catch(() => {});
+      await deps.sendButtons(from, full, [{ id: `fb|up|${fbId}`, title: "👍 Me sirvió" }, { id: `fb|down|${fbId}`, title: "👎 No me sirvió" }]);
+    } else {
+      await send(from, full);
+    }
     // Completó el nombre o el logo con un pedido de imagen esperando: lo arma ahora
     if (imaging && imaging.brandSaved && known && known.pendingRequest) return continuePending(imaging.kit, known.pendingRequest);
     return null;

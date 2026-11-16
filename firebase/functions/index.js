@@ -17,7 +17,7 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 // El SDK de Mercado Pago pesa: se carga recién en las funciones de suscripción, no al arrancar todas
 const mpPreApproval = (accessToken) => { const { MercadoPagoConfig, PreApproval } = require("mercadopago"); return new PreApproval(new MercadoPagoConfig({ accessToken })); };
-const { GRACE_DAYS, nextPaidUntil } = require("./subscription-rules");
+const { GRACE_DAYS, nextPaidUntil, TRIAL_DAYS, trialEligible, trialDates, trialEnd, trialKey } = require("./subscription-rules");
 const cloudSync = require("./sync");
 const syncArchive = require("./archive");
 const dashboard = require("./dashboard");
@@ -158,10 +158,22 @@ exports.createVentraSubscription = onRequest(
       await accountRef.set({ status: live.status || "cancelled", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     }
 
+    // Prueba gratis (subscription-rules.js): la tarjeta queda cargada y el primer cobro es en TRIAL_DAYS
+    // días. Una sola por cuenta de Google y por correo de Mercado Pago. El plan oculto de prueba
+    // siempre la tiene, para poder probar el circuito completo.
+    let trial = false;
+    try {
+      const refs = [...new Set([user.email, correoPagador])].map((e) => db.collection("ventra_trials").doc(trialKey(e)));
+      const used = (await db.getAll(...refs)).some((snap) => snap.exists);
+      trial = plan === "prueba" || trialEligible(prev, used);
+    } catch (err) {
+      logger.warn(`Ventra: no se pudo revisar la prueba gratis de ${user.uid}`, err.message);
+    }
+
     try {
       const response = await preapproval.create({
         body: {
-          reason: `Suscripción ${planInfo.name}`,
+          reason: trial ? `Suscripción ${planInfo.name} (${TRIAL_DAYS} días gratis)` : `Suscripción ${planInfo.name}`,
           external_reference: user.uid,
           payer_email: correoPagador,
           back_url: "https://ventra.store/cuenta.html",
@@ -170,6 +182,7 @@ exports.createVentraSubscription = onRequest(
             frequency_type: "months",
             transaction_amount: planInfo.amount,
             currency_id: "ARS",
+            ...(trial ? trialDates(Date.now()) : {}),
           },
           status: "pending",
         },
@@ -182,6 +195,8 @@ exports.createVentraSubscription = onRequest(
         planName: planInfo.name,
         status: "pending_payment",
         mpPreapprovalId: response.id,
+        // La prueba arranca cuando Mercado Pago autoriza la tarjeta (ver el webhook)
+        trialOffer: trial ? { preapprovalId: String(response.id), days: TRIAL_DAYS } : admin.firestore.FieldValue.delete(),
         // Solo si vino de una landing por rubro: un cambio de plan desde la home no lo borra
         ...(SIGNUP_RUBROS.has(rubro) ? { signupRubro: rubro } : {}),
         ...(cleanUtm(utm) ? { signupUtm: cleanUtm(utm) } : {}),
@@ -192,7 +207,7 @@ exports.createVentraSubscription = onRequest(
       // ese parámetro el checkout abre "Esta página no existe" (bug abierto en su SDK).
       // Se quita antes de mandárselo a la persona; sin él, el link abre normal.
       const initPoint = String(response.init_point || "").replace(/([?&])activation=true&?/, "$1").replace(/[?&]$/, "");
-      res.status(200).json({ initPoint });
+      res.status(200).json({ initPoint, trialDays: trial ? TRIAL_DAYS : 0 });
     } catch (err) {
       logger.error("Ventra: error creando la suscripción:", err);
       res.status(500).json({ error: "No se pudo iniciar la suscripción" });
@@ -237,6 +252,38 @@ exports.changeVentraPlan = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP
   }
 });
 
+// Baja desde Mi cuenta, tan fácil como el alta (botón de baja, Res. 316/2018). Mercado Pago deja de
+// cobrar y Ventra sigue andando hasta lo que ya está pago (o hasta el fin de la prueba gratis).
+exports.cancelVentraSubscription = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_MP_ACCESS_TOKEN] }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: "Iniciá sesión para darte de baja" });
+  const ref = db.collection("ventra_accounts").doc(user.uid);
+  const acc = (await ref.get()).data() || {};
+  if (!acc.mpPreapprovalId) return res.status(409).json({ error: "No encontramos una suscripción de Mercado Pago en tu cuenta. Escribinos por WhatsApp y lo vemos." });
+  const reason = String((req.body && req.body.reason) || "").trim().slice(0, 300);
+  const preapproval = mpPreApproval(String(VENTRA_MP_ACCESS_TOKEN.value() || "").trim());
+  try {
+    await preapproval.update({ id: acc.mpPreapprovalId, body: { status: "cancelled" } });
+  } catch (err) {
+    // Ya estaba dada de baja en Mercado Pago (por ejemplo desde su app): se anota igual
+    const live = await preapproval.get({ id: acc.mpPreapprovalId }).catch(() => null);
+    if (!live || live.status !== "cancelled") {
+      logger.error("Ventra: no se pudo dar de baja", user.uid, err);
+      return res.status(502).json({ error: "Mercado Pago no respondió. Probá de nuevo en un momento o escribinos por WhatsApp." });
+    }
+  }
+  await ref.set({
+    status: "cancelled",
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelledFrom: "cuenta",
+    ...(reason ? { cancelReason: reason } : {}),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  logger.info(`Ventra: ${user.uid} se dio de baja desde Mi cuenta`);
+  res.status(200).json({ ok: true, paidUntil: acc.paidUntil ? acc.paidUntil.toDate().toISOString() : null });
+});
+
 // Mercado Pago avisa cada cambio de una suscripción y cada cobro mensual.
 // Siempre se consulta el dato real en la API (nunca se confía en el payload).
 // Mercado Pago permite UNA sola URL de webhooks por app: llegan acá los avisos de las
@@ -261,11 +308,34 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
       const sub = await preapproval.get({ id });
       const uid = sub.external_reference;
       if (uid) {
-        await db.collection("ventra_accounts").doc(uid).set({
-          status: sub.status === "authorized" ? "active" : sub.status,
-          mpPreapprovalId: id,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        const ref = db.collection("ventra_accounts").doc(uid);
+        await db.runTransaction(async (tx) => {
+          const acc = (await tx.get(ref)).data() || {};
+          const upd = {
+            status: sub.status === "authorized" ? "active" : sub.status,
+            mpPreapprovalId: id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+          // Tarjeta autorizada con prueba gratis: Ventra anda desde ya hasta el primer cobro
+          const offer = acc.trialOffer;
+          if (sub.status === "authorized" && offer && offer.preapprovalId === String(id) && !acc.trialStartedAt) {
+            const end = trialEnd(sub, Date.now());
+            const endTs = admin.firestore.Timestamp.fromDate(end);
+            const cur = acc.paidUntil ? acc.paidUntil.toDate() : null;
+            if (!cur || cur < end) upd.paidUntil = endTs;
+            Object.assign(upd, { trialStartedAt: admin.firestore.FieldValue.serverTimestamp(), trialEndsAt: endTs, trialUsed: true, trialOffer: admin.firestore.FieldValue.delete() });
+            for (const e of new Set([acc.email, acc.mpEmail, sub.payer_email].filter(Boolean))) {
+              tx.set(db.collection("ventra_trials").doc(trialKey(e)), { uid, at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            }
+            logger.info(`Ventra: cuenta ${uid} empieza la prueba gratis hasta ${end.toISOString()}`);
+          }
+          // Baja hecha desde Mercado Pago: queda anotada igual que la del botón de Mi cuenta
+          if (sub.status === "cancelled" && acc.status !== "cancelled" && !acc.cancelledAt) {
+            upd.cancelledAt = admin.firestore.FieldValue.serverTimestamp();
+            upd.cancelledFrom = "mercadopago";
+          }
+          tx.set(ref, upd, { merge: true });
+        });
         logger.info(`Ventra: cuenta ${uid} -> ${sub.status}`);
       }
     } else if (type === "subscription_authorized_payment" && id) {
@@ -1022,7 +1092,8 @@ async function buildAdminOverview() {
     const { state, daysLeft } = accountState(paidUntil, now);
     const payments = (paymentsByUid[doc.id] || []).sort((x, y) => String(y.paidAt).localeCompare(String(x.paidAt)));
     const planInfo = VENTRA_PLANS[a.plan];
-    const renewing = a.status === "active" && (state === "ACTIVE" || state === "GRACE");
+    const inTrial = !!a.trialEndsAt && !payments.length && state === "ACTIVE";
+    const renewing = a.status === "active" && !inTrial && (state === "ACTIVE" || state === "GRACE");
     if (renewing && planInfo) mrr += planInfo.amount;
     byState[state] = (byState[state] || 0) + 1;
     if (a.plan) byPlan[a.plan] = (byPlan[a.plan] || 0) + 1;
@@ -1034,6 +1105,7 @@ async function buildAdminOverview() {
       planAmount: planInfo ? planInfo.amount : null,
       mpStatus: a.status || null,
       paidUntil: paidUntil ? paidUntil.toISOString() : null,
+      trial: inTrial,
       state,
       daysLeft,
       totalPaid: payments.reduce((s, p) => s + p.amount, 0),
@@ -1162,9 +1234,11 @@ async function buildAdminStats() {
   return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered, wa: { ...wa, messages: waCount, cost: waTotal, meta: mc.waMeta } };
 }
 
+// Clave de Claude (la usan ventraAi, ventraChat, el admin y la revisión semanal): declarada antes del admin
+const VENTRA_ANTHROPIC_KEY = defineSecret("VENTRA_ANTHROPIC_KEY");
 exports.ventraAdmin = onRequest(
   // El resumen recorre todas las cuentas, pagos y fotos: con 256 MiB se quedaba sin memoria
-  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL], memory: "1GiB", timeoutSeconds: 120 },
+  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL, VENTRA_ANTHROPIC_KEY], memory: "1GiB", timeoutSeconds: 300 },
   async (req, res) => {
     const user = await verifyUser(req);
     if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
@@ -1187,6 +1261,10 @@ exports.ventraAdmin = onRequest(
     try {
       // Uso del WhatsApp del dueño: teléfonos vinculados, mensajes del mes y lo que no supo contestar
       if (action === "waBot") return res.status(200).json(await require("./wa-owner-stats").report(db));
+      // Revisión de lo que la IA no supo responder: propuestas para aprobar y lo ya aprobado (ai-review.js)
+      if (action === "aiReview") return res.status(200).json(await require("./ai-review").list(db));
+      if (action === "aiReviewDecide") return res.status(200).json(await require("./ai-review").decide(db, { id: String(req.body.id || ""), decision: String(req.body.decision || ""), texto: req.body.texto, by: user.email }));
+      if (action === "aiReviewRun") return res.status(200).json(await runAiReview());
       // Boletas: avisos "Leyó mal" de los comercios y seguimiento del lector (invoice-admin.js)
       if (action === "boletas") return res.status(200).json(await require("./invoice-admin").report(db, { days: Math.min(180, Math.max(7, Number(days) || 30)) }));
       if (action === "boletasSeen") return res.status(200).json(await require("./invoice-admin").markSeen(db, req.body.id));
@@ -1813,7 +1891,6 @@ exports.ventraSiteEvent = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5, mem
 // ─── Asistente con IA de ventra.store (ver chat.js y chat/ventra-kb.md) ───
 // Sin una clave "sk-ant-…" cargada responde 503 y la página ofrece el WhatsApp.
 const chat = require("./chat");
-const VENTRA_ANTHROPIC_KEY = defineSecret("VENTRA_ANTHROPIC_KEY");
 exports.ventraChat = onRequest({
   cors: [...VENTRA_ORIGINS, /^http:\/\/localhost:\d+$/],
   secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 120, memory: "256MiB", maxInstances: 10,
@@ -2237,7 +2314,7 @@ exports.ventraWaOwnerInbox = onDocumentCreated({
   let timer = null;
   const late = new Promise((resolve) => { timer = setTimeout(() => resolve("late"), 270000); });
   const work = waOwner.processInbox(db, item, {
-    ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() },
+    ai, aiDeps: { db, logger, sql, apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim() }, isUnlimited: isAdminTenant,
     sql, logger, send: (to, text) => whatsapp.sendText(token, to, text),
     sendButtons: (to, text, buttons) => whatsapp.sendButtons(token, to, text, buttons),
     sendImage: (to, link, caption) => whatsapp.sendImage(token, to, link, caption),
@@ -2279,17 +2356,6 @@ exports.ventraWaWarm = onSchedule({ schedule: "*/10 0-1,7-23 * * *", timeZone: n
   ]);
 });
 
-/** Lecciones de proveedores a prueba: con y sin, sobre boletas confirmadas (lesson-trials.js) */
-async function runLessonTrials(opts = {}) {
-  const key = String(VENTRA_ANTHROPIC_KEY.value() || "").trim();
-  if (!key) return { spentUsd: 0, report: [], note: "Sin clave de la IA" };
-  return require("./lesson-trials").run({ db, bucket: admin.storage().bucket(), client: ai.anthropicClient({ apiKey: key, maxRetries: 2, timeout: 180 * 1000 }), ai, logger }, opts);
-}
-exports.ventraLessonTrialsWeekly = onSchedule({ schedule: "0 10 * * 1", timeZone: notify.TZ, secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 540, memory: "1GiB" }, async () => {
-  const r = await runLessonTrials().catch((err) => { logger.warn(`Lecciones a prueba: ${err.message}`); return null; });
-  if (r) logger.info(`Lecciones a prueba: US$ ${r.spentUsd}, ${r.report.filter((x) => x.decision).length} probadas`);
-});
-
 /** Resumen del día por WhatsApp, a la hora que pidió cada uno ("RESUMEN A LAS 21") */
 exports.ventraWaDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: notify.TZ, secrets: [VENTRA_WA_TOKEN, NEON_DATABASE_URL] }, async () => {
   const token = String(VENTRA_WA_TOKEN.value() || "").trim();
@@ -2308,7 +2374,18 @@ exports.ventraWaDailySummary = onSchedule({ schedule: "0 * * * *", timeZone: not
  * Lo que la IA no supo responder en la semana, agrupado: queda en ventra_ai_misses_weekly/{día}
  * para revisarlo y sumar las consultas que faltan. Los registros sueltos se borran a los 60 días.
  */
-exports.ventraAiMissesWeekly = onSchedule({ schedule: "0 9 * * 1", timeZone: notify.TZ }, async () => {
+/** Lecciones de proveedores a prueba: con y sin, sobre boletas confirmadas (lesson-trials.js) */
+async function runLessonTrials(opts = {}) {
+  const key = String(VENTRA_ANTHROPIC_KEY.value() || "").trim();
+  if (!key) return { spentUsd: 0, report: [], note: "Sin clave de la IA" };
+  return require("./lesson-trials").run({ db, bucket: admin.storage().bucket(), client: ai.anthropicClient({ apiKey: key, maxRetries: 2, timeout: 180 * 1000 }), ai, logger }, opts);
+}
+exports.ventraLessonTrialsWeekly = onSchedule({ schedule: "0 10 * * 1", timeZone: notify.TZ, secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 540, memory: "1GiB" }, async () => {
+  const r = await runLessonTrials().catch((err) => { logger.warn(`Lecciones a prueba: ${err.message}`); return null; });
+  if (r) logger.info(`Lecciones a prueba: US$ ${r.spentUsd}, ${r.report.filter((x) => x.decision).length} probadas`);
+});
+
+exports.ventraAiMissesWeekly = onSchedule({ schedule: "0 9 * * 1", timeZone: notify.TZ, secrets: [VENTRA_ANTHROPIC_KEY], timeoutSeconds: 300 }, async () => {
   const since = Date.now() - 7 * 86400000;
   const snap = await db.collection("ventra_ai_misses").where("at", ">=", since).get();
   const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
@@ -2327,7 +2404,35 @@ exports.ventraAiMissesWeekly = onSchedule({ schedule: "0 9 * * 1", timeZone: not
   const old = await db.collection("ventra_ai_misses").where("at", "<", Date.now() - 60 * 86400000).limit(400).get();
   await Promise.all(old.docs.map((d) => d.ref.delete()));
   logger.info(`IA: ${snap.size} preguntas sin respuesta esta semana (${groups.size} distintas)`);
+  // Propuestas de arreglo para aprobar en el admin (nada cambia en el bot sin aprobarlo)
+  try { await runAiReview([...groups.values()].sort((a, b) => b.count - a.count)); } catch (err) { logger.warn(`Revisión de la IA: ${err.message}`); }
 });
+
+/** Una IA lee lo que el bot no supo responder y propone arreglos (ai-review.js). groups: de la semana o, sin pasarlos, de los últimos 7 días */
+async function runAiReview(groups) {
+  const review = require("./ai-review");
+  if (!groups) {
+    const snap = await db.collection("ventra_ai_misses").where("at", ">=", Date.now() - 7 * 86400000).get();
+    const map = new Map();
+    snap.forEach((d) => {
+      const m = d.data();
+      const k = String(m.question || "").toLowerCase().trim().slice(0, 80);
+      const g = map.get(k) || { question: m.question, count: 0, reasons: [] };
+      g.count++;
+      for (const r of m.reasons || []) if (g.reasons.length < 3 && !g.reasons.includes(r)) g.reasons.push(r);
+      map.set(k, g);
+    });
+    groups = [...map.values()].sort((a, b) => b.count - a.count);
+  }
+  if (!groups.length) return { proposals: [], note: "No hubo preguntas sin respuesta esta semana" };
+  const SDK = require("@anthropic-ai/sdk");
+  const client = new (SDK.default || SDK)({ apiKey: String(VENTRA_ANTHROPIC_KEY.value() || "").trim(), maxRetries: 2, timeout: 240000 });
+  const guide = require("fs").readFileSync(require("path").join(__dirname, "chat", "ventra-ayuda.md"), "utf8");
+  const known = await review.knowledge(db, 0).catch(() => []);
+  const { proposals } = await review.propose(client, groups, guide, known);
+  const all = await review.saveProposals(db, proposals);
+  return { proposals: all };
+}
 
 // ─── Catálogo compartido de códigos de barras (ver barcodes.js) ───
 const barcodes = require("./barcodes");

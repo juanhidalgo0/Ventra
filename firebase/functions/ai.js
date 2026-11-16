@@ -28,9 +28,9 @@ const anthropicClient = (opts) => { const SDK = require("@anthropic-ai/sdk"); re
 const MODEL = "claude-haiku-5-5";
 // pricelist: leer una lista; match: buscar en el catálogo los renglones que la PC no encontró
 // (de una lista o de una boleta); ask: 2 usos por pregunta
-const LIMITS = { lesson: 400, order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200, organize: 20000 };
+const LIMITS = { lesson: 400, order: 300, invoice: 60, pricelist: 60, match: 300, ask: 300, help: 300, gocats: 200, photos: 20000, organize: 20000 };
 // Además, un tope por día: que nadie se gaste el mes en una tarde (ask: 2 usos por pregunta)
-const DAILY = { lesson: 60, order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60, organize: 6000 };
+const DAILY = { lesson: 60, order: 40, invoice: 15, pricelist: 8, match: 40, ask: 30, help: 30, gocats: 60, photos: 2000, organize: 6000 };
 // Fotos de boletas leídas de a una (stage "page"): las facturas se cuentan al juntarlas, esto es un techo
 const PAGE_LIMITS = { month: 600, day: 150 };
 // Dólares por millón de tokens (entrada / salida); cache: escritura 1,25x, lectura 0,1x de la entrada
@@ -1145,6 +1145,131 @@ async function goCategories(client, body) {
   return { result: { items: names.map((x) => ({ i: x.i, rubro: byI.get(x.i) || "Librería y varios › Varios" })) }, usage };
 }
 
+// ─── Fotos de productos ───
+// La PC busca las fotos en los supermercados; la IA hace lo que la búsqueda sola no puede:
+//  - "names": pasa nombres de boleta ("GALL.OREO 118G X1") a cómo se buscan en un súper
+//    ("Galletitas Oreo 118 g"). Una línea por producto, de a 50.
+//  - "pick": mira las fotos encontradas (chicas, ~150 px) y elige la que es ese producto, o ninguna.
+// Haiku: unos US$ 0,0001 por producto. Cada producto cuenta 1 por paso.
+const PHOTOS_MODEL = MODEL;
+const PHOTOS_NAMES_MAX = 100;
+const PHOTOS_PICK_MAX = 12; // productos por consulta
+const PHOTOS_PER_ITEM = 4;
+const PHOTO_B64_MAX = 400_000;
+
+const PHOTOS_NAMES_SYSTEM = `Recibís nombres de productos tal como están cargados en la caja de un comercio de Argentina (a veces copiados de la boleta del proveedor: abreviados, en mayúsculas, con códigos, "X12", "UN", "BULTO").
+
+Para cada uno, escribí en "busqueda" cómo se buscaría ese producto en la web de un supermercado argentino: tipo de producto + marca + variante (sabor, color, aroma) + tamaño. Ejemplos:
+- "GALL.OREO 118G X1" → "Galletitas Oreo 118 g"
+- "GASEOSA CC 2250CC" → "Coca-Cola 2,25 L"
+- "LAV.ALA MATIC 3L" → "Jabón líquido Ala Matic 3 L"
+- "ALF JORGITO CHOC" → "Alfajor Jorgito chocolate"
+Reglas:
+- Desarmá las abreviaturas comunes (GALL = galletitas, ALF = alfajor, LAV = lavandina o jabón según el caso, DET = detergente, CC = Coca-Cola en gaseosas, GTA = galleta).
+- Sacá lo que no sirve para buscar: cantidades del bulto ("X12", "6 UN"), códigos, "OFERTA", precios.
+- No inventes marca ni tamaño que no estén en el nombre. Si no entendés el nombre, devolvelo limpio tal cual.
+- "generico": true si no es un producto envasado de marca (fiambre o queso por kilo, verdura, fruta, carne, pan, un plato de comida, un servicio): ahí cualquier foto que muestre bien ese tipo de producto sirve. false si es de marca.`;
+
+const PHOTOS_NAMES_SCHEMA = {
+  type: "object",
+  properties: { items: { type: "array", items: { type: "object", properties: {
+    i: { type: "integer" }, busqueda: { type: "string" }, generico: { type: "boolean" },
+  }, required: ["i", "busqueda", "generico"], additionalProperties: false } } },
+  required: ["items"], additionalProperties: false,
+};
+
+const PHOTOS_PICK_SYSTEM = `Elegís la foto de cada producto de un comercio de Argentina. Para cada producto te muestro su nombre y hasta 4 fotos encontradas en tiendas online, cada una con el título que tenía en la tienda.
+
+En "foto" poné el número de la foto que muestra ESE producto, o 0 si ninguna sirve:
+- Tiene que coincidir el tipo de producto y la marca. La variante también (sabor, color, aroma, light/zero): una Coca-Cola Zero no sirve para una Coca-Cola común, ni unas galletitas de vainilla para unas de chocolate.
+- Si el tamaño es distinto pero es el mismo producto en el mismo tipo de envase (lata, botella, paquete), sirve: elegila con "segura": false.
+- Si el producto es genérico (fiambre por kilo, verdura, fruta, pan, carne, comida preparada), sirve una foto que muestre bien ese tipo de producto, sin marcas de otros.
+- No sirven: fotos de otra marca, de otro producto, collages, logos sueltos, fotos con mucho texto de promoción, fotos rotas o vacías.
+- Ante la duda, 0. Es peor una foto equivocada que no tener foto.
+"segura": true solo si estás seguro de que la foto es exactamente ese producto.`;
+
+const PHOTOS_PICK_SCHEMA = {
+  type: "object",
+  properties: { items: { type: "array", items: { type: "object", properties: {
+    i: { type: "integer" }, foto: { type: "integer" }, segura: { type: "boolean" },
+  }, required: ["i", "foto", "segura"], additionalProperties: false } } },
+  required: ["items"], additionalProperties: false,
+};
+
+function photoBlock(im) {
+  const mediaType = String(im && im.mediaType || "image/jpeg").toLowerCase();
+  const data = String(im && im.data || "").replace(/^data:[^,]+,/, "");
+  if (!IMAGE_TYPES.includes(mediaType) || !data || data.length > PHOTO_B64_MAX) return null;
+  return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+}
+
+/** Cuántos productos trae el pedido de fotos (lo que se cuenta del cupo). Pura. */
+function photosCount(body) {
+  const items = Array.isArray(body && body.items) ? body.items : [];
+  return body && body.step === "pick" ? Math.min(items.length, PHOTOS_PICK_MAX) : Math.min(items.length, PHOTOS_NAMES_MAX);
+}
+
+async function photos(client, body) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (body.step === "names") {
+    const list = items.slice(0, PHOTOS_NAMES_MAX).map((x, i) => ({ i, n: String(x && x.name || "").trim().slice(0, 120) })).filter((x) => x.n);
+    if (!list.length) throw new AiError(400, "EMPTY", "No hay productos.");
+    const chunks = [];
+    for (let k = 0; k < list.length; k += 50) chunks.push(list.slice(k, k + 50));
+    const usage = {};
+    const byI = new Map();
+    const results = await Promise.all(chunks.map((part) => jsonCall(client, {
+      model: PHOTOS_MODEL, max_tokens: 8000,
+      output_config: { effort: "low", format: { type: "json_schema", schema: PHOTOS_NAMES_SCHEMA } },
+      system: PHOTOS_NAMES_SYSTEM,
+      messages: [{ role: "user", content: part.map((x, j) => `${j}. ${x.n}`).join("\n") }],
+    }).then((r) => ({ part, ...r }))));
+    for (const { part, out, usage: u } of results) {
+      for (const x of out.items || []) {
+        const p = part[x.i];
+        const q = String(x.busqueda || "").trim().slice(0, 120);
+        if (p && q) byI.set(p.i, { query: q, generic: !!x.generico });
+      }
+      for (const k of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]) usage[k] = (usage[k] || 0) + (u[k] || 0);
+    }
+    // Lo que la IA no devolvió queda con el nombre tal cual
+    return { result: { items: list.map((x) => ({ i: x.i, ...(byI.get(x.i) || { query: x.n, generic: false }) })) }, usage, count: list.length };
+  }
+  if (body.step === "pick") {
+    const content = [];
+    const asked = [];
+    items.slice(0, PHOTOS_PICK_MAX).forEach((x, i) => {
+      const name = String(x && x.name || "").trim().slice(0, 120);
+      const shots = (Array.isArray(x && x.photos) ? x.photos : []).slice(0, PHOTOS_PER_ITEM)
+        .map((p) => ({ block: photoBlock(p), title: String(p && p.title || "").slice(0, 120) }));
+      if (!name || !shots.some((s) => s.block)) return;
+      asked.push({ i, n: shots.length });
+      content.push({ type: "text", text: `Producto ${i}: ${name}${x.generic ? " (genérico)" : ""}` });
+      shots.forEach((s, k) => {
+        if (!s.block) { content.push({ type: "text", text: `Foto ${k + 1}: (no se pudo abrir)` }); return; }
+        content.push({ type: "text", text: `Foto ${k + 1}${s.title ? ` (en la tienda: ${s.title})` : ""}:` }, s.block);
+      });
+    });
+    if (!asked.length) return { result: { items: [] }, usage: {}, count: 0 };
+    const { out, usage } = await jsonCall(client, {
+      model: PHOTOS_MODEL, max_tokens: 4000,
+      output_config: { effort: "low", format: { type: "json_schema", schema: PHOTOS_PICK_SCHEMA } },
+      system: PHOTOS_PICK_SYSTEM,
+      messages: [{ role: "user", content }],
+    });
+    const byI = new Map((out.items || []).map((x) => [x.i, x]));
+    return {
+      result: { items: asked.map(({ i, n }) => {
+        const x = byI.get(i);
+        const foto = x && Number.isInteger(x.foto) && x.foto >= 1 && x.foto <= n ? x.foto : 0;
+        return { i, photo: foto, sure: !!(foto && x.segura) };
+      }) },
+      usage, count: asked.length,
+    };
+  }
+  throw new AiError(400, "BAD_STEP", "Pedido inválido");
+}
+
 // ─── Entrada ───
 
 async function handle({ db, logger, apiKey, client: injected, sql, edits, images, api, bucket = null, unlimited = false }, uid, body) {
@@ -1164,6 +1289,8 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   const usedToday = Number(daySnap.exists && daySnap.data()[kind]) || 0;
   // Se cuenta por pregunta: el segundo paso de la versión vieja (redactar) no suma
   let need = kind === "ask" && body.step === "answer" && !agent ? 0 : 1;
+  // Fotos: cada producto cuenta 1 (si no entra entero en el cupo, no se hace)
+  if (kind === "photos") need = Math.max(1, photosCount(body));
   // Organizar: cada producto cuenta 1 (el árbol de categorías, 1)
   if (kind === "organize") need = Math.max(1, organizeMod.organizeCount(body));
   // Boletas de a una foto (caja nueva): cada hoja se lee aparte ("page") y al final se juntan ("group").
@@ -1189,12 +1316,13 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       help: `Llegaste al tope de consultas a la ayuda de este mes. Escribinos por WhatsApp y te ayudamos: ${HELP_WHATSAPP}`,
       gocats: "Llegaste al tope de productos ordenados con IA de este mes: lo que falta queda sin rubro hasta el mes que viene.",
       lesson: "Llegaste al tope de aprendizajes de boletas de este mes.",
+      photos: "Llegaste al tope de fotos buscadas con IA de este mes: las que faltan se buscan el mes que viene.",
       organize: "Llegaste al tope de productos organizados con IA de este mes. Se renueva el mes que viene.",
     };
     throw new AiError(429, "LIMIT", msgs[kind]);
   }
   if (!unlimited && usedToday + need > DAILY[kind]) {
-    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA", lesson: "aprendizajes de boletas", organize: "productos organizados con IA" }[kind];
+    const what = { order: "pedidos leídos con IA", invoice: "facturas leídas con IA", pricelist: "listas de precios leídas con IA", match: "búsquedas de productos con IA", ask: "preguntas", help: "consultas a la ayuda", gocats: "productos ordenados con IA", lesson: "aprendizajes de boletas", photos: "fotos buscadas con IA", organize: "productos organizados con IA" }[kind];
     throw new AiError(429, "DAILY_LIMIT", `Llegaste al tope de ${what} de hoy. Mañana podés seguir.`);
   }
   // client: solo en las pruebas (firebase/test/ai.test.cjs)
@@ -1215,7 +1343,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
       }
     } else {
       // invoice con multi: una lectura por foto (versión nueva de la caja); sin multi, como antes (PCs viejas)
-      const run = { order: parseOrder, invoice: (c, b) => (stage === "page" ? invoicePage(c, b, { db, uid, bucket, logger }) : stage === "group" ? finishInvoices(cleanReads(b.reads)) : b && b.multi ? parseInvoices(c, b, { db, uid, bucket, logger }) : parseInvoice(c, b)), lesson: (c, b) => lessonsMod.learn(c, db, uid, b), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories, organize: (c, b) => organizeMod.organize(c, b, { jsonCall, AiError, model: MODEL }) }[kind];
+      const run = { order: parseOrder, invoice: (c, b) => (stage === "page" ? invoicePage(c, b, { db, uid, bucket, logger }) : stage === "group" ? finishInvoices(cleanReads(b.reads)) : b && b.multi ? parseInvoices(c, b, { db, uid, bucket, logger }) : parseInvoice(c, b)), lesson: (c, b) => lessonsMod.learn(c, db, uid, b), pricelist: priceList, match: (c, b) => priceList(c, { ...b, mode: "match" }), ask, help, gocats: goCategories, photos, organize: (c, b) => organizeMod.organize(c, b, { jsonCall, AiError, model: MODEL }) }[kind];
       out = await run(client, body);
     }
   } catch (err) {
@@ -1225,7 +1353,7 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   }
   // Solo cuenta lo que salió bien. Varias fotos con varios comprobantes: cuenta uno por comprobante
   if (out.count > 1 && need) need = out.count;
-  if (kind === "organize") need = out.count || 0;
+  if (kind === "photos" || kind === "organize") need = out.count || 0;
   if (stage === "group") need = out.count || 0;
   const pages = stage === "page" ? { invoicePages: admin.firestore.FieldValue.increment(1) } : {};
   await ref.set({
@@ -1240,4 +1368,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, applyQr, cleanQr, fixCuit, validCuitDigits, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES };
+module.exports = { handle, AiError, applyQr, cleanQr, fixCuit, validCuitDigits, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES, photosCount };

@@ -522,6 +522,57 @@ async function clear() {
     ok(it.status === "replied" && calls.filter((c) => c.p === "C13/replies")[0].body.message === "¡Hola! Para kiosco va Full.", "segundo comentario de la misma persona: no se presenta de nuevo", it);
   }
 
+  console.log("Publicación educativa (Ventri explica: el aguinaldo)");
+  {
+    // La IA está simulada: acá se prueba que el prompt tenga las reglas y que el flujo no venda ni mande
+    // privados a quien no tiene comercio. Lo que contesta el modelo de verdad se revisa aparte.
+    const CAPTION = require("fs").readFileSync(require("path").join(__dirname, "../../marketing/ventri/ep02/texto-ig.txt"), "utf8");
+    ok(ig.SYSTEM.includes('Publicaciones educativas ("Ventri explica")') && ig.SYSTEM.includes("Ministerio de Trabajo")
+      && ig.SYSTEM.includes("no le vendas Ventra") && ig.SYSTEM.includes("no des asesoramiento legal")
+      && ig.SYSTEM.includes("no se pregunta"), "el prompt tiene las reglas de las publicaciones educativas");
+    ok(/Comentá CAJA/.test(CAPTION) && CAPTION.startsWith("Cómo calcular el aguinaldo de diciembre 2026 (Argentina)"), "la descripción del reel pide CAJA y arranca con lo que se busca");
+    const now = Date.now();
+    const empleados = [
+      ["E1", "¿y si me echaron en noviembre?", "Si te desvinculan, el aguinaldo proporcional va en la liquidación final. Para tu caso puntual, consultalo con tu contador o con el Ministerio de Trabajo 🙌"],
+      ["E2", "a mí no me lo pagaron el año pasado 😡", "Uh, qué bronca. Tiene que estar pago hasta el 18 de diciembre; para reclamarlo, consultá con el Ministerio de Trabajo o con tu gremio."],
+      ["E3", "¿se cobra junto con las vacaciones?", "La regla es el 50 % del mejor sueldo bruto del semestre, y vence el 18 de diciembre. Si tenés dudas con tu recibo, consultalo con tu contador."],
+      ["E4", "¿es sobre el bruto o el neto?", "Sobre el bruto: tu mejor sueldo de julio a diciembre dividido por 2, y después te descuentan los mismos aportes que al sueldo."],
+      ["E5", "¿y si entré en agosto?", "Te toca la parte proporcional al tiempo que trabajaste en el semestre 😉"],
+      ["E6", "soy monotributista pero también trabajo en blanco en un local, ¿cobro?", "Por el trabajo en relación de dependencia, sí. Para tu caso puntual, consultalo con tu contador."],
+      ["E7", "trabajo en negro, ¿me corresponde?", "Es un caso para ver bien: consultalo con el Ministerio de Trabajo o con tu gremio, que te asesoran gratis."],
+      ["E8", "¿lo pueden pagar en cuotas?", "La regla general es que la segunda cuota vence el 18 de diciembre. Si te proponen otra cosa, consultalo con el Ministerio de Trabajo."],
+      ["E9", "gracias Ventri, se lo mando a mi viejo 😂", "¡Mandáselo! Es el que siempre pregunta 😉"],
+    ];
+    const comercio = [
+      ["E10", "CAJA", "¡Listo! Te escribí por privado 🙌", "¡Hola! Te cuento cómo es Ventra para tu caja. ¿Qué comercio tenés?", ["demo"]],
+      ["E11", "tengo un almacén, ¿me sirve para el aguinaldo de mis empleados?", "¡Te escribí por privado para contarte!", "¡Hola! Ventra te ordena la caja del almacén. Te dejo la demo abajo para probarla gratis.", ["demo"]],
+    ];
+    const todos = [...empleados, ...comercio];
+    todos.forEach(([id, text], i) => {
+      const cm = { id, text, from: { id: "e" + i, username: "empleado" + i }, media: { id: "M_AGUINALDO" } };
+      state.comments.M_AGUINALDO = (state.comments.M_AGUINALDO || []).concat([{ ...cm, timestamp: new Date(now + i * 1000).toISOString(), username: cm.from.username }]);
+    });
+    for (const [id, text] of todos) {
+      const i = todos.findIndex((c) => c[0] === id);
+      await db.collection("ventra_ig_inbox").doc("c_" + id).set({ kind: "comment", commentId: id, replyTo: id, text, username: "empleado" + i, from: { id: "e" + i, username: "empleado" + i }, mediaId: "M_AGUINALDO", caption: CAPTION, at: admin.firestore.Timestamp.now(), status: "pending" });
+    }
+    for (const [id, , pub] of empleados) {
+      state.aiQueue.push({ action: "reply", text: pub, dm: "", botones: [], topic: "aguinaldo", rubro: "", intent: "consulta" });
+      const it = await processId("c_" + id);
+      const req = state.aiCalls[state.aiCalls.length - 1].messages[0].content;
+      const rep = calls.filter((c) => c.p === id + "/replies");
+      const priv = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === id);
+      ok(it.status === "replied" && rep.length === 1 && rep[0].body.message.endsWith(pub) && priv.length === 0 && req.includes("Cómo calcular el aguinaldo") && req.includes("[canal: comment]"),
+        `empleado ("${todos.find((c) => c[0] === id)[1]}"): responde en público con la regla, sin privado ni venta`, { status: it.status, priv: priv.length, rep: rep.map((c) => c.body.message) });
+    }
+    for (const [id, , pub, dm, botones] of comercio) {
+      state.aiQueue.push({ action: "reply", text: pub, dm, botones, topic: "caja", rubro: id === "E11" ? "almacén" : "", intent: "interesado" });
+      const it = await processId("c_" + id);
+      const priv = calls.filter((c) => c.p === "me/messages" && c.body.recipient.comment_id === id);
+      ok(it.status === "replied" && it.privateReply && priv.length === 1, `comercio ("${todos.find((c) => c[0] === id)[1]}"): ahí sí le escribe por privado`, { status: it.status, priv: priv.length });
+    }
+  }
+
   console.log("Publicaciones");
   {
     const posts = db.collection("ventra_ig_posts");

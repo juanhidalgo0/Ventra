@@ -22,6 +22,8 @@ Se pagan mes a mes con Mercado Pago (suscripción). No hay permanencia ni contra
 | Ventra Agenda | $9.900/mes | Solo turnos: página de turnos propia, varios profesionales, ficha de clientes, cobros y recordatorio por WhatsApp con un toque (el recordatorio por email llega próximamente). Sin caja ni productos. |
 | Ventra Agenda Pro | $19.900/mes | Todo lo de Agenda + 200 recordatorios automáticos por WhatsApp por mes. Si se terminan, se compran paquetes de 100 por $7.500 desde la app. |
 
+Costo de implementación, instalación o alta: no hay. Lo único que se paga es el plan mensual (y las cuentas nuevas empiezan con 7 días gratis). No se cobra la instalación, ni la app de Windows, ni la ayuda para pasar los productos, ni una matrícula inicial. Si preguntan "¿cuál es el costo total?", es el precio del plan por mes, nada más (por ejemplo Ventra Full: $24.900 por mes). El lector de código de barras y la impresora de tickets, si no los tiene, los compra aparte donde quiera (Ventra no los vende).
+
 No hay un plan solo de caja: la caja del local viene únicamente con Ventra Full. Si preguntan por un plan más barato solo para el mostrador, explicar que no existe y que Full ya incluye la tienda online y la agenda.
 
 Cómo elegir:
@@ -32,14 +34,19 @@ Cómo elegir:
 
 Cambio de plan: desde "Mi cuenta" (ventra.store/cuenta.html), sobre la misma suscripción de Mercado Pago. El plan nuevo rige al instante y el precio nuevo se cobra desde el próximo pago. Los productos, clientes y turnos se conservan.
 
+Prueba gratis: las cuentas nuevas usan Ventra 7 días gratis. Al empezar se carga la tarjeta en Mercado Pago, pero ese día no se cobra nada. A los 7 días Mercado Pago cobra el primer mes y desde ahí empieza el mes pago: los días de prueba no se descuentan del plan. Unos días antes del primer cobro llega un mail de aviso. Es una sola prueba por cuenta de Google y por correo de Mercado Pago.
+
+Baja: desde "Mi cuenta" (ventra.store/cuenta.html), botón "Darme de baja". Mercado Pago deja de cobrar al instante y llega una constancia por mail. Ventra sigue andando hasta el final de lo pagado (o de la prueba gratis); los datos quedan guardados por si vuelve. Si se da de baja durante la prueba, no se le cobra nada.
+
 Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona normal (esos días se descuentan del mes siguiente). Pasados los 7 días, el sistema queda en modo solo lectura hasta que se renueve.
 
 ## Cómo empezar
-- **Demo gratis**: app.ventra.store, sin registrarse ni tarjeta. Se elige qué plan probar y se usa con datos de ejemplo. La demo se reinicia sola cada pocas horas: no usarla para datos reales.
-- **Suscribirse (crear la cuenta)**: en https://ventra.store/empezar (o el botón "Empezar" de cualquier página), en 4 pasos: 1) qué negocio tenés, 2) el plan, 3) entrar con una cuenta de Google (esa es la cuenta de Ventra, no hay otra contraseña), 4) poner el correo de la cuenta de Mercado Pago (tiene que ser el de Mercado Pago, aunque sea distinto del de Google) y pagar en Mercado Pago. Al volver, "Mi cuenta" muestra los pasos que siguen.
+- **Demo gratis**: se entra desde la web https://ventra.store/ con el botón "Probar la demo gratis", sin registrarse ni tarjeta. Se elige qué plan probar y se usa con datos de ejemplo. La demo se reinicia sola cada pocas horas: no usarla para datos reales.
+- **Suscribirse (crear la cuenta)**: en https://ventra.store/empezar (o el botón "Empezar" de cualquier página), en 4 pasos: 1) qué negocio tenés, 2) el plan, 3) entrar con una cuenta de Google (esa es la cuenta de Ventra, no hay otra contraseña), 4) poner el correo de la cuenta de Mercado Pago (tiene que ser el de Mercado Pago, aunque sea distinto del de Google) y cargar la tarjeta en Mercado Pago para empezar los 7 días gratis (ese día no se cobra nada). Al volver, "Mi cuenta" muestra los pasos que siguen.
 - **Agenda y Tienda** se usan desde el navegador (web.ventra.store), en la compu o el celular. No hay que instalar nada.
 - **Full (caja del local)**: se puede usar desde el navegador (web.ventra.store) o instalar la app de Windows en la PC del local. La app se descarga desde "Mi cuenta" y la PC se vincula con un código de 8 caracteres. La versión instalada sigue vendiendo aunque se corte internet.
-- **Ayuda para arrancar**: el equipo de Ventra ayuda a pasar los productos y precios (por ejemplo desde una planilla de Excel). Se pide por WhatsApp.
+- **Ayuda para arrancar**: el equipo de Ventra ayuda a pasar los productos y precios (por ejemplo desde una planilla de Excel), sin costo. Se pide por WhatsApp.
+- **¿Es compatible con mi sistema actual?**: Ventra es un sistema propio y completo, no se conecta ni funciona adentro de otro sistema: lo reemplaza. Lo que sí se hace es pasar los productos, precios y stock desde el sistema que ya usa (casi todos exportan a Excel) o desde una planilla, sin costo, para no cargarlos uno por uno. Anda en cualquier PC con Windows o en el navegador de cualquier compu o celular.
 
 ## Caja (sistema de ventas)
 - Venta rápida: lector de código de barras, búsqueda instantánea, atajos de teclado; unidad, kilo o pack en la misma venta.
@@ -85,7 +92,10 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 - Varias cajas y terminales al mismo tiempo, cada usuario con su rol y permisos, sin pagar por cada una.
 - Impresora de tickets: cualquier impresora térmica de 80 mm instalada en la PC; también imprime etiquetas de código de barras. Lectores USB funcionan sin configurar nada.
 - Requisitos de la app instalada: Windows 10 u 11 de 64 bits.
+- Varios rubros a la vez: en la bienvenida y en Configuración se pueden marcar todos los rubros del comercio (por ejemplo, un almacén que también tiene carnicería o fiambrería) y se suman las funciones de todos. El primero que se marca es el principal (el que usa la práctica de la caja y los recorridos); se cambia con "Hacer principal". El consultorio de nutrición no se combina con otros rubros.
 - Funciones por rubro (se activan según el rubro elegido):
+  - Carnicería: todo por kilo (al tocar un corte se pide el peso o la plata, "$5.000 de picada"), etiquetas de la balanza y desposte. Etiquetas: la caja (y el celular con la cámara) lee el código que imprime la balanza (empieza con 2 y trae adentro el código del producto en la balanza, PLU, y el importe o el peso) y suma el corte con sus kilos, cobrando lo que dice la etiqueta. A cada producto se le pone su "Código de balanza (PLU)" (el mismo número que tiene en la balanza). En Configuración → General y POS → Balanza y etiquetas se prueba con una etiqueta real; si no la lee bien, se escribe qué código e importe (o peso) tiene impresos y Ventra detecta solo cómo viene armado el código de esa balanza (también se puede ajustar a mano). Desde ahí se baja la "Lista para la balanza" (código, nombre y precio) y se cargan de una los cortes de siempre (vacuno, cerdo, pollo, achuras y embutidos, elaborados) con su precio por kilo y código correlativo. Desposte (Productos → Desposte): se carga la media res (o cuarto, medio cerdo, cajón de pollo) con los kilos y el precio por kilo que se pagó y los kilos que salieron de cada corte; Ventra reparte lo pagado según lo que vale cada corte vendido, muestra el costo real por kilo y el % de ganancia de cada corte, el rendimiento (kilos de cortes sobre lo que entró) y la merma (hueso y grasa), y al guardar entra como una compra al proveedor: suma el stock de cada corte y deja su costo nuevo sin tocar los precios de venta (si quedó a cuenta, suma la deuda con el frigorífico). Lo que rindió cada corte se recuerda para estimar el próximo desposte con un botón.
+  - Fiambrería / quesería: venta por kilo o por plata ("$3.000 de jamón"), etiquetas de la balanza (igual que en carnicería) y vencimientos por lote. Carga de una de fiambres, quesos y salames con su precio por kilo.
   - Ferretería / corralón: presupuestos, acopio y remitos parciales, lista gremio, sustitutos, venta por metro/kilo/litro, fotos por medida.
   - Ropa / calzado: cada modelo con talles y colores, cada variante con su stock y código; cambio de talle en la caja.
   - Gastronomía (rotiserías, pizzerías, cafeterías): productos con tamaños, tipo de pedido (mesa, para llevar, delivery), aclaraciones por ítem, pizza mitad y mitad.
@@ -97,6 +107,8 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 ## Tienda online
 - Link propio y corto del tipo ventra.store/nombre-del-negocio (los links viejos tienda.ventra.store/… siguen andando), para la bio de Instagram, WhatsApp Business o Google Maps. Al compartirlo se ve con el nombre, el logo y la portada.
 - Catálogo con fotos, categorías, buscador y promos; productos sin stock ocultos o marcados. Logo, portada y color propios.
+- Con 4 categorías o más aparece el botón "Categorías": abre la lista de todas, con buscador (también encuentra subcategorías), y lleva directo a la elegida.
+- En tiendas de comida: fila "Lo más pedido" arriba de la carta (los platos más vendidos de los últimos 90 días, sin bebidas ni postres; se actualiza al sincronizar el catálogo desde Ventra) y, en el carrito, sugerencia de bebida si el pedido no tiene, o de postre si ya tiene bebida.
 - Carrito y pedido ordenado: el cliente elige, aclara y confirma; al comercio le llega con número de pedido, total, forma de entrega y forma de pago, por WhatsApp y con aviso al celular. Todos los pedidos quedan en un panel; si un pedido queda sin atender, se avisa.
 - Entrega: retiro en el local y/o envío a domicilio, con costo de envío, envío gratis desde cierto monto, zona de entrega y pedido mínimo. También envíos con GoDelivery (servicio de envíos independiente que cobra su envío aparte).
 - Pagos: el cliente elige cómo paga entre los medios que habilitó el comercio (efectivo, transferencia mostrando el alias, Mercado Pago, tarjeta). El cobro lo arregla el comercio con el cliente. La tienda todavía no cobra con tarjeta online dentro de la página.
@@ -134,8 +146,8 @@ Vencimiento: si un pago no entra, hay 7 días de gracia en los que todo funciona
 ## Contacto y datos
 - WhatsApp de Ventra: https://wa.me/5492212048533 . Contesta un asistente las 24 h y, con el botón "Hablar con persona" (o escribiendo "quiero hablar con una persona"), pasa la consulta a alguien del equipo.
 - Empezar / suscribirse: https://ventra.store/empezar
-- Mi cuenta (suscripción, cambio de plan, descarga de la app, vincular PC): https://ventra.store/cuenta.html
-- Demo: https://app.ventra.store
+- Mi cuenta (suscripción, cambio de plan, baja, descarga de la app, vincular PC): https://ventra.store/cuenta.html
+- Demo: desde https://ventra.store/ (botón "Probar la demo gratis")
 - Páginas: inicio https://ventra.store/ · sistema de ventas https://ventra.store/sistema-de-ventas · tienda online https://ventra.store/tienda-online · agenda de turnos https://ventra.store/turnos · peluquerías https://ventra.store/peluquerias
 - Privacidad: https://ventra.store/privacidad.html · Condiciones: https://ventra.store/terminos.html
 - Funciona en cualquier ciudad de Argentina.

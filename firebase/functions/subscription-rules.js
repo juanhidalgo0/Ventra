@@ -34,4 +34,41 @@ function nextPaidUntil(currentPaidUntil, paymentDate, months = 1) {
   return addMonths(paidAt, months);
 }
 
-module.exports = { GRACE_DAYS, DAY_MS, addMonths, nextPaidUntil };
+// ─── Prueba gratis ───
+// Las cuentas nuevas usan Ventra TRIAL_DAYS días sin pagar. La suscripción de Mercado Pago se crea
+// con la tarjeta cargada y el primer cobro en TRIAL_DAYS días (start_date): ese día empieza el primer
+// mes pago, así los días de prueba no se descuentan del plan. Mientras dura, `paidUntil` es el fin
+// de la prueba; el primer cobro lo extiende un mes desde ahí (nextPaidUntil).
+// Una sola prueba por cuenta de Google y por correo de Mercado Pago (colección ventra_trials).
+const TRIAL_DAYS = 7;
+
+/** ¿Le corresponde la prueba a esta cuenta? `usedEmails`: si alguno de sus correos ya la usó. Pura. */
+function trialEligible(account, usedEmails) {
+  const a = account || {};
+  if (a.paidUntil || a.trialStartedAt || a.trialUsed) return false;
+  return !usedEmails;
+}
+
+/** Fechas que se le mandan a Mercado Pago: primer cobro en TRIAL_DAYS días. Pura. */
+function trialDates(nowMs) {
+  const start = new Date(nowMs + TRIAL_DAYS * DAY_MS);
+  // start_date solo lo toma junto con end_date: se pone lejos (hay que renovar la suscripción en 10 años)
+  return { start_date: start.toISOString(), end_date: addMonths(new Date(nowMs), 120).toISOString() };
+}
+
+/**
+ * Fin de la prueba al autorizar la tarjeta: el primer cobro que informa Mercado Pago, acotado
+ * entre 1 y TRIAL_DAYS + 1 días desde ahora (si no lo informa o es raro, TRIAL_DAYS días). Pura.
+ */
+function trialEnd(sub, nowMs) {
+  const s = sub || {};
+  const ar = s.auto_recurring || {};
+  const t = Date.parse(s.next_payment_date || ar.start_date || "");
+  if (Number.isFinite(t) && t >= nowMs + DAY_MS && t <= nowMs + (TRIAL_DAYS + 1) * DAY_MS) return new Date(t);
+  return new Date(nowMs + TRIAL_DAYS * DAY_MS);
+}
+
+/** Clave de ventra_trials para un correo (sin guardar el correo a la vista). */
+const trialKey = (email) => require("crypto").createHash("sha256").update(String(email || "").trim().toLowerCase()).digest("hex").slice(0, 40);
+
+module.exports = { GRACE_DAYS, DAY_MS, TRIAL_DAYS, addMonths, nextPaidUntil, trialEligible, trialDates, trialEnd, trialKey };

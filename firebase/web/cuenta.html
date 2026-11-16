@@ -73,6 +73,7 @@
   .notice.GRACE{ background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-line); }
   .notice.READ_ONLY{ background:var(--red-bg); color:var(--red); border:1px solid var(--red-line); }
   .notice.UNPAID{ background:var(--sand); color:var(--ink-2); border:1px solid var(--line); }
+  .notice.ACTIVE{ background:var(--mint-50); color:var(--pine); border:1px solid var(--mint-100); }
   .notice.THANKS{ background:var(--mint-50); color:var(--pine); border:1px solid var(--mint-100); }
 
   .btn{ height:44px; padding:0 20px; border-radius:999px; font-size:14px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:8px;
@@ -103,6 +104,10 @@
   .code-row input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 3px var(--mint-50); }
   .msg{ margin-top:10px; font-size:13px; font-weight:600; min-height:20px; }
   .msg.ok{ color:var(--pine); } .msg.err{ color:var(--red); }
+  .cancel-row{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+  .cancel-row p{ margin:0; font-size:13.5px; color:var(--ink-2); max-width:46ch; }
+  .btn.quit{ background:#fff; color:var(--red); border-color:var(--red-line); }
+  .btn.quit:hover{ background:var(--red-bg); border-color:var(--red); color:var(--red); }
   .dl-meta{ margin-top:10px; font-size:12.5px; color:var(--ink-3); }
   .bar{ height:8px; border-radius:99px; background:var(--sand); overflow:hidden; margin-top:14px; }
   .bar i{ display:block; height:100%; border-radius:99px; background:var(--mint); transition:width .4s var(--ease); }
@@ -230,6 +235,16 @@
       <div class="msg" id="changeMsg"></div>
     </section>
 
+    <!-- Darse de baja: tan fácil como suscribirse -->
+    <section class="card hidden" id="cancelCard">
+      <h2>Darme de baja</h2>
+      <div class="cancel-row">
+        <p id="cancelText">Mercado Pago deja de cobrarte y Ventra sigue andando hasta el final de lo que ya pagaste. Tus datos quedan guardados por si volvés.</p>
+        <button class="btn quit" id="cancelBtn">Darme de baja</button>
+      </div>
+      <div class="msg" id="cancelMsg"></div>
+    </section>
+
     <!-- Descarga -->
     <section class="card hidden" id="downloadCard">
       <h2>Descargá Ventra</h2>
@@ -279,9 +294,10 @@
     var GRACE_DAYS = 7, DAY = 864e5;
     var PLANS = { caja:{ name:'Ventra Caja', amount:14900 }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda:{ name:'Ventra Agenda', amount:9900 }, agenda_pro:{ name:'Ventra Agenda Pro', amount:19900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
     var STATE_LABEL = { ACTIVE:'Activa', GRACE:'En período de gracia', READ_ONLY:'Vencida · solo lectura', UNPAID:'Esperando el pago' };
+    var CANCEL_URL = "https://us-central1-ventra-9cba5.cloudfunctions.net/cancelVentraSubscription";
 
     var $ = function(id){ return document.getElementById(id); };
-    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','startCard','planCard','remindersCard','changeCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
+    var show = function(ids){ ['gateCard','loadingCard','noPlanCard','startCard','planCard','remindersCard','changeCard','cancelCard','downloadCard','linkCard'].forEach(function(id){ $(id).classList.toggle('hidden', ids.indexOf(id) < 0); }); };
     var fdate = function(d){ return d.toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' }); };
     var money = function(n){ return '$ ' + Number(n).toLocaleString('es-AR'); };
     var params = new URLSearchParams(location.search);
@@ -310,18 +326,32 @@
       // Ya es cliente: en la web le aparece 'Abrir mi Ventra' en verde (ver menu.js)
       if (paidUntil) { try { localStorage.setItem('ventra_cliente', '1'); } catch(e){} }
 
+      // Prueba gratis: paidUntil es el fin de la prueba hasta que entra el primer cobro
+      var trialEnd = data.trialEndsAt && data.trialEndsAt.toDate ? data.trialEndsAt.toDate() : null;
+      var inTrial = s.state === 'ACTIVE' && !!trialEnd && !!paidUntil && trialEnd.getTime() === paidUntil.getTime();
+      var cancelled = data.status === 'cancelled';
+      var waitingTrial = s.state === 'UNPAID' && !!data.trialOffer;
+
       $('planName').textContent = data.planName || plan.name || 'Ventra';
-      $('statePill').className = 'pill ' + s.state; $('statePill').textContent = STATE_LABEL[s.state];
+      $('statePill').className = 'pill ' + s.state;
+      $('statePill').textContent = s.state === 'ACTIVE' && cancelled ? 'Dada de baja' : inTrial ? 'Prueba gratis' : waitingTrial ? 'Esperando la tarjeta' : STATE_LABEL[s.state];
       $('price').textContent = plan.amount ? money(plan.amount) + ' / mes' : '—';
       $('paidUntil').textContent = paidUntil ? fdate(paidUntil) : 'Pendiente';
-      $('untilLabel').textContent = s.state === 'ACTIVE' || s.state === 'UNPAID' ? 'Paga hasta' : 'Venció el';
+      $('untilLabel').textContent = inTrial ? (cancelled ? 'Gratis hasta' : 'Primer cobro')
+        : s.state === 'ACTIVE' && cancelled ? 'Funciona hasta'
+        : s.state === 'ACTIVE' || s.state === 'UNPAID' ? 'Paga hasta' : 'Venció el';
       $('daysLabel').textContent = s.state === 'GRACE' ? 'Días de gracia' : 'Días restantes';
       $('daysLeft').textContent = s.days == null ? '—' : String(s.days);
 
       var notice = $('notice'), text = '';
       if (s.state === 'GRACE') text = 'Tu suscripción venció. Ventra sigue funcionando ' + (s.days === 1 ? '1 día más' : s.days + ' días más') + '. Los días de gracia que uses se descuentan del próximo mes.';
       else if (s.state === 'READ_ONLY') text = 'Terminaron los días de gracia: Ventra está en modo solo lectura y no permite vender. Renová para volver a usarlo normalmente.';
-      else if (s.state === 'UNPAID') text = fromCheckout ? '¡Gracias por suscribirte! Estamos esperando la confirmación de Mercado Pago; puede tardar unos minutos.' : 'Todavía no se acreditó el primer pago de tu suscripción.';
+      else if (s.state === 'UNPAID') text = waitingTrial
+        ? (fromCheckout ? '¡Gracias! Estamos esperando que Mercado Pago confirme tu tarjeta para empezar la prueba gratis; suele tardar unos segundos.' : 'Para empezar la prueba gratis falta cargar la tarjeta en Mercado Pago. Hoy no se cobra nada.')
+        : fromCheckout ? '¡Gracias por suscribirte! Estamos esperando la confirmación de Mercado Pago; puede tardar unos minutos.' : 'Todavía no se acreditó el primer pago de tu suscripción.';
+      else if (cancelled) text = 'Te diste de baja: Mercado Pago no te va a cobrar más. Ventra sigue andando hasta el ' + fdate(paidUntil) + '. Si cambiás de idea, podés volver a suscribirte cuando quieras.';
+      else if (inTrial && !fromCheckout) text = 'Estás en la prueba gratis. El ' + fdate(paidUntil) + ' Mercado Pago te cobra ' + (plan.amount ? money(plan.amount) : 'el plan') + ' y empieza tu primer mes. Si no querés seguir, date de baja antes (abajo, en esta misma página) y no se cobra nada.';
+      else if (fromCheckout && inTrial) text = '¡Listo! Empezó tu prueba gratis: usá Ventra completo hasta el ' + fdate(paidUntil) + '. Hoy no se cobró nada; ese día empieza tu primer mes. Si no querés seguir, te das de baja desde esta página.';
       else if (fromCheckout) text = agendaOnly
         ? '¡Gracias por suscribirte! Tu agenda ya está activa: tocá "Abrir mi agenda" para cargar tus servicios y horarios. No hace falta instalar nada.'
         : storeOnly
@@ -335,26 +365,35 @@
         notice.className = 'notice THANKS';
       }
       notice.textContent = text; notice.classList.toggle('hidden', !text);
-      $('renewBtn').classList.toggle('hidden', !(s.state === 'GRACE' || s.state === 'READ_ONLY'));
+      $('renewBtn').classList.toggle('hidden', !(s.state === 'GRACE' || s.state === 'READ_ONLY' || cancelled));
+      $('renewBtn').textContent = cancelled ? 'Volver a suscribirme' : 'Renovar suscripción';
       if (PLANS[data.plan] && data.plan !== 'caja') $('renewBtn').href = '/empezar?plan=' + data.plan;
-      var welcome = renderStart(data, s.state, agendaOnly, storeOnly);
+      var welcome = renderStart(data, s.state, agendaOnly, storeOnly, inTrial);
 
       $('heroTitle').textContent = fromCheckout ? '¡Bienvenido a Ventra!' : 'Mi cuenta';
       var extra = [];
       if (REMINDER_PLANS[data.plan]) { renderReminders(data.plan); extra.push('remindersCard'); }
       if (renderPlanChange(data)) extra.push('changeCard');
+      // Baja: con una suscripción de Mercado Pago que todavía cobra
+      if (data.mpPreapprovalId && (data.status === 'active' || data.status === 'paused')) {
+        $('cancelText').textContent = inTrial
+          ? 'Estás en la prueba gratis: si te das de baja ahora no se te cobra nada, y Ventra sigue andando hasta el ' + fdate(paidUntil) + '.'
+          : 'Mercado Pago deja de cobrarte y Ventra sigue andando hasta el ' + (paidUntil ? fdate(paidUntil) : 'final de lo que ya pagaste') + '. Tus datos quedan guardados por si volvés.';
+        cancelInfo = { inTrial:inTrial, until:paidUntil };
+        extra.push('cancelCard');
+      }
       show((welcome ? ['startCard'] : []).concat(storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']).concat(extra));
     }
 
     // ── Primeros pasos: al volver de pagar (y mientras dure esta pestaña) se muestra qué
     // sigue. Full arranca en el navegador; instalar en la PC queda como opcional. ──
     var WA_HELP = 'https://wa.me/5492212048533?text=' + encodeURIComponent('Quiero hablar con una persona de Ventra: me acabo de suscribir y quiero ayuda para arrancar');
-    function renderStart(data, state, agendaOnly, storeOnly){
+    function renderStart(data, state, agendaOnly, storeOnly, inTrial){
       try { if (fromCheckout) sessionStorage.setItem('ventra_welcome', '1'); } catch(e){}
       var on = fromCheckout; try { on = on || sessionStorage.getItem('ventra_welcome') === '1'; } catch(e){}
       if (!on || state === 'READ_ONLY') return false;
       var paid = state === 'ACTIVE' || state === 'GRACE';
-      var steps = [{ ok:paid, t: paid ? 'Tu plan está activo' : 'Esperando la confirmación de Mercado Pago', p: paid ? (data.planName || 'Ventra') + ' ya está andando en tu cuenta.' : 'Suele tardar unos segundos. Esta página se actualiza sola.' }];
+      var steps = [{ ok:paid, t: inTrial ? 'Tu prueba gratis está activa' : paid ? 'Tu plan está activo' : 'Esperando la confirmación de Mercado Pago', p: paid ? (data.planName || 'Ventra') + ' ya está andando en tu cuenta.' : 'Suele tardar unos segundos. Esta página se actualiza sola.' }];
       if (agendaOnly) steps.push({ t:'Abrí tu agenda', p:'Cargá tus servicios y horarios. No hace falta instalar nada.', a:'Abrir mi agenda', href:'https://web.ventra.store' }, { t:'Compartí tu link', p:'Ponelo en tu Instagram y mandalo por WhatsApp: tus clientes reservan solos.' });
       else if (storeOnly) steps.push({ t:'Armá tu tienda', p:'Subí tus productos con fotos y precios. No hace falta instalar nada.', a:'Abrir mi tienda', href:'https://web.ventra.store' }, { t:'Compartí tu link', p:'En tu Instagram y por WhatsApp: los pedidos te llegan ordenados.' });
       else steps.push({ t:'Empezá a vender ahora', p:'Abrí Ventra en el navegador con esta misma cuenta de Google y cargá tus productos.', a:'Abrir mi Ventra', href:'https://web.ventra.store' }, { t:'Instalá la caja en la PC (opcional)', p:'Para seguir vendiendo aunque se corte internet. Más abajo está la descarga y cómo vincularla.', a:'Ir a la descarga', href:'#downloadCard', ghost:true });
@@ -446,6 +485,27 @@
         })
         .catch(function(err){ msgEl.className = 'msg err'; msgEl.textContent = err.message; btn.disabled = false; });
     }
+
+    // ── Darse de baja (cancelVentraSubscription): Mercado Pago deja de cobrar ──
+    var cancelInfo = null;
+    $('cancelBtn').onclick = function(){
+      var btn = this, user = firebase.auth().currentUser, m = $('cancelMsg');
+      if (!user || !cancelInfo) return;
+      var q = cancelInfo.inTrial
+        ? '¿Darte de baja? No se te cobra nada y Ventra sigue andando hasta el ' + fdate(cancelInfo.until) + '.'
+        : '¿Darte de baja? Mercado Pago no te cobra más' + (cancelInfo.until ? ' y Ventra sigue andando hasta el ' + fdate(cancelInfo.until) : '') + '.';
+      if (!confirm(q)) return;
+      btn.disabled = true; m.className = 'msg'; m.textContent = 'Dando de baja…';
+      user.getIdToken().then(function(token){
+        return fetch(CANCEL_URL, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body:'{}' });
+      }).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(res){
+          if (!res.ok) throw new Error(res.d.error || 'No se pudo dar de baja');
+          m.className = 'msg ok'; m.textContent = 'Listo, te diste de baja. Te mandamos la constancia por mail.';
+        })
+        .catch(function(err){ m.className = 'msg err'; m.textContent = err.message || 'Sin conexión. Probá de nuevo.'; })
+        .then(function(){ btn.disabled = false; });
+    };
 
     // Descarga directa del instalador. La versión la registra la compilación en la nube
     // (ventra_desktop/latest_version) cada vez que publica: así no dependemos de la API de

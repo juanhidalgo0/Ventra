@@ -678,6 +678,46 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(g.result.documents[0].impuestosInternos, "121");
   });
 
+  await t("fotos/names: nombre de boleta → búsqueda; lo que la IA no devuelve queda tal cual; cuenta 1 por producto", async () => {
+    const client = fakeClient({ items: [{ i: 0, busqueda: "Galletitas Oreo 118 g", generico: false }, { i: 1, busqueda: "Jamón cocido", generico: true }] });
+    const db = fakeDb();
+    const out = await ai.handle({ db, logger, client }, "u20", { kind: "photos", step: "names", items: [{ name: "GALL.OREO 118G X1" }, { name: "JAMON COCIDO X KG" }, { name: "COSA RARA" }] });
+    assert.deepStrictEqual(out.result.items, [
+      { i: 0, query: "Galletitas Oreo 118 g", generic: false },
+      { i: 1, query: "Jamón cocido", generic: true },
+      { i: 2, query: "COSA RARA", generic: false },
+    ]);
+    assert.strictEqual(Object.values(db.docs).find((d) => d.month).photos, 3);
+  });
+
+  await t("fotos/pick: número fuera de rango = ninguna; productos sin fotos no se mandan ni se cuentan", async () => {
+    const client = fakeClient({ items: [{ i: 0, foto: 2, segura: true }, { i: 2, foto: 9, segura: true }] });
+    const db = fakeDb();
+    const img = { mediaType: "image/jpeg", data: "QUJD" };
+    const out = await ai.handle({ db, logger, client }, "u21", { kind: "photos", step: "pick", items: [
+      { name: "Coca-Cola 2,25 L", photos: [img, { ...img, title: "Coca-Cola Original 2,25 L" }] },
+      { name: "Sin fotos", photos: [] },
+      { name: "Alfajor", photos: [img] },
+    ] });
+    assert.deepStrictEqual(out.result.items, [{ i: 0, photo: 2, sure: true }, { i: 2, photo: 0, sure: false }]);
+    const sent = client.calls[0].messages[0].content;
+    assert.strictEqual(sent.filter((b) => b.type === "image").length, 3);
+    assert.ok(!sent.some((b) => b.type === "text" && b.text.includes("Sin fotos")));
+    assert.strictEqual(Object.values(db.docs).find((d) => d.month).photos, 2);
+  });
+
+  await t("fotos: el tope diario corta antes de llamar a la IA", async () => {
+    const client = fakeClient({ items: [] });
+    const db = fakeDb();
+    const items = Array.from({ length: 10 }, (_, i) => ({ name: `P${i}` }));
+    // Se llena el día a mano: el documento diario es el que tiene "day"
+    await ai.handle({ db, logger, client: fakeClient({ items: [] }) }, "u22", { kind: "photos", step: "names", items: [{ name: "x" }] });
+    const dayDoc = Object.values(db.docs).find((d) => d.day);
+    dayDoc.photos = ai.DAILY.photos - 5;
+    await assert.rejects(() => ai.handle({ db, logger, client }, "u22", { kind: "photos", step: "names", items }), /fotos buscadas con IA de hoy/);
+    assert.strictEqual(client.calls.length, 0);
+  });
+
   // ─── Organizar automáticamente (ai-organize.js) ───
   await t("organizar, árbol: reusa lo que hay, limpia duplicados y cuenta 1", async () => {
     const client = fakeClient({ categorias: [

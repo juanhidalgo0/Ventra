@@ -7,8 +7,10 @@
 //   rechazo     Mercado Pago no pudo cobrar (ventra_accounts/{uid}/payment_issues, lo escribe el webhook)
 //   pc          se vinculó una PC (ventra_devices)
 //   plan        cambió de plan (ventra_accounts)
+//   prueba      empezó la prueba gratis (trialStartedAt): los primeros pasos y cuándo es el primer cobro
+//   baja        se dio de baja (status → cancelled): constancia, sin más cobros, hasta cuándo anda
 // Una vez por día (10 h):
-//   aviso       3 días antes del próximo cobro de Mercado Pago
+//   aviso       3 días antes del próximo cobro de Mercado Pago (en la prueba gratis: cuándo termina)
 //   arranque    a los 3 días del primer pago, si todavía no usó nada (sin caja sincronizada ni tienda/agenda)
 //   volve       a los 30 días de quedar en solo lectura, una sola vez
 // El 1° de cada mes:
@@ -99,9 +101,70 @@ function paymentEmail(p, a) {
   });
 }
 
+/** ¿El próximo cobro es el primero, al terminar la prueba gratis? */
+const trialCharge = (a) => !!a.trialEndsAt && ms(a.trialEndsAt) === ms(a.paidUntil);
+
+/** Empezó la prueba gratis: primeros pasos y cuándo se cobra. */
+function trialStartEmail(a, amount) {
+  const plan = a.planName || "Ventra";
+  return render({
+    subject: `Tu prueba gratis de ${plan} ya empezó`,
+    preheader: `Usalo completo hasta el ${longDate(a.trialEndsAt)}. Hoy no te cobramos nada.`,
+    badge: ["Prueba gratis", "ok"],
+    title: `${hola(a.name)} Ya podés usar ${plan}`,
+    paras: [
+      `Tenés <b>${esc(plan)}</b> completo, gratis, hasta el <b>${esc(longDate(a.trialEndsAt))}</b>. Hoy no te cobramos nada. Así arrancás:`,
+      ...firstSteps(a.plan),
+      amount ? `El <b>${esc(longDate(a.trialEndsAt))}</b> Mercado Pago te cobra <b>${esc(money(amount))}</b> y desde ahí empieza tu primer mes. Si no querés seguir, date de baja antes desde Mi cuenta y no se te cobra nada. Te avisamos unos días antes.` : "",
+    ].filter(Boolean),
+    rows: [["Plan", plan], ["Gratis hasta", shortDate(a.trialEndsAt)], ...(amount ? [["Después", `${money(amount)} por mes`]] : [])],
+    cta: isAgenda(a.plan) || a.plan === "tienda" ? ["Entrar a Ventra", APP] : ["Ir a Mi cuenta", CUENTA("prueba")],
+    help: "¿Querés que te ayudemos a cargar todo? Escribinos por WhatsApp y lo hacemos juntos.",
+    footer: footerAccount(a),
+  });
+}
+
+/** Se dio de baja: constancia. */
+function cancelEmail(a) {
+  const plan = a.planName || "Ventra";
+  const until = ms(a.paidUntil);
+  const stillOn = until && until > Date.now();
+  const inTrial = trialCharge(a);
+  return render({
+    subject: `Te diste de baja de ${plan}`,
+    preheader: "Mercado Pago no te va a cobrar más.",
+    badge: ["Baja confirmada", "info"],
+    title: `${hola(a.name)} Listo, te diste de baja`,
+    paras: [
+      `Cancelamos tu suscripción a <b>${esc(plan)}</b> en Mercado Pago: <b>no te vamos a cobrar más</b>.${inTrial ? " Como estabas en la prueba gratis, no se te cobró nada." : ""}`,
+      stillOn ? `Podés seguir usando Ventra hasta el <b>${esc(longDate(a.paidUntil))}</b>. Después queda en solo lectura: tus productos, clientes y ventas quedan guardados por si volvés.` : "Tus productos, clientes y ventas quedan guardados por si volvés.",
+      "Si te fuiste por algo que no te funcionó, contanos por WhatsApp: lo leemos todo.",
+    ],
+    rows: [["Plan", plan], ["Baja", shortDate(a.cancelledAt || Date.now())], ...(stillOn ? [["Funciona hasta", shortDate(a.paidUntil)]] : [])],
+    cta: ["Ver mi cuenta", CUENTA("baja")],
+    footer: `${footerAccount(a)} Guardá este mail como constancia de la baja.`,
+  });
+}
+
 /** 3 días antes del cobro automático. */
 function preChargeEmail(a, amount) {
   const plan = a.planName || "Ventra";
+  if (trialCharge(a)) {
+    return render({
+      subject: `Tu prueba gratis de ${plan} termina el ${longDate(a.paidUntil)}`,
+      preheader: `Ese día empieza tu primer mes: ${money(amount)} con Mercado Pago.`,
+      badge: ["Fin de la prueba", "info"],
+      title: `${hola(a.name)} Se termina tu prueba gratis`,
+      paras: [
+        `Tu prueba gratis de <b>${esc(plan)}</b> termina el <b>${esc(longDate(a.paidUntil))}</b>. Ese día Mercado Pago te cobra <b>${esc(money(amount))}</b> y empieza tu primer mes. Si querés seguir, no tenés que hacer nada.`,
+        "Si no querés seguir, date de baja antes de esa fecha desde Mi cuenta y no se te cobra nada.",
+      ],
+      rows: [["Plan", plan], ["Monto", money(amount)], ["Primer cobro", shortDate(a.paidUntil)]],
+      cta: ["Ver mi cuenta", CUENTA("aviso_prueba")],
+      help: "¿Te quedó algo por probar o no sabés si te conviene? Escribinos por WhatsApp.",
+      footer: footerAccount(a),
+    });
+  }
   return render({
     subject: `El ${longDate(a.paidUntil)} se renueva ${plan}`,
     preheader: `Te cobramos ${money(amount)} con Mercado Pago, como todos los meses.`,
@@ -312,11 +375,25 @@ async function onDevice(db, deps, { deviceId, before, after }) {
   return sendOnce(db, deps, { uid: after.uid, to: a.email, kind: "seguridad", step: "pc", key: `pc_${deviceId}_${ms(after.linkedAt)}`, build: () => deviceEmail(after, a) });
 }
 
-/** Cambio de plan de una cuenta que ya pagaba (no el alta). */
+/** Cambios de la cuenta: empezó la prueba, se dio de baja o cambió de plan. */
 async function onAccountUpdate(db, deps, { uid, before, after }) {
-  if (!before || !after || !before.plan || !after.plan || before.plan === after.plan) return "skip";
-  if (!before.paidUntil || !after.email || excluded(deps, after)) return "skip";
+  if (!before || !after) return "skip";
   const amount = deps.plans && deps.plans[after.plan] ? deps.plans[after.plan].amount : null;
+  if (!before.trialStartedAt && after.trialStartedAt && after.trialEndsAt) {
+    if (!after.email || excluded(deps, after)) return "skip";
+    return sendOnce(db, deps, { uid, to: after.email, kind: "cuenta", step: "prueba", key: `prueba_${ms(after.trialEndsAt)}`, build: () => trialStartEmail({ uid, ...after }, amount) });
+  }
+  if (before.status !== "cancelled" && after.status === "cancelled" && after.cancelledAt) {
+    if (!after.email || excluded(deps, after)) return "skip";
+    return sendOnce(db, deps, { uid, to: after.email, kind: "cuenta", step: "baja", key: `baja_${ms(after.cancelledAt) || after.mpPreapprovalId}`, build: () => cancelEmail({ uid, ...after }) });
+  }
+  return onPlanChange(db, deps, { uid, before, after, amount });
+}
+
+/** Cambio de plan de una cuenta que ya pagaba (no el alta). */
+async function onPlanChange(db, deps, { uid, before, after, amount }) {
+  if (!before.plan || !after.plan || before.plan === after.plan) return "skip";
+  if (!before.paidUntil || !after.email || excluded(deps, after)) return "skip";
   const day = new Date((deps.now || Date.now()) - 3 * 3600e3).toISOString().slice(0, 10);
   return sendOnce(db, deps, { uid, to: after.email, kind: "cuenta", step: "plan", key: `plan_${after.plan}_${day}`, build: () => planChangeEmail(before, { uid, ...after }, after.mpPreapprovalId ? amount : null) });
 }
@@ -409,6 +486,6 @@ async function monthlyRun(db, deps) {
 }
 
 module.exports = {
-  paymentEmail, preChargeEmail, paymentFailedEmail, winbackEmail, nudgeEmail, deviceEmail, planChangeEmail, summaryEmail, firstSteps,
+  paymentEmail, preChargeEmail, trialStartEmail, cancelEmail, paymentFailedEmail, winbackEmail, nudgeEmail, deviceEmail, planChangeEmail, summaryEmail, firstSteps,
   sendOnce, onPayment, onPaymentIssue, onDevice, onAccountUpdate, dailySteps, dailyRun, prevMonth, monthlyRun, hasActivity,
 };

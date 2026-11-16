@@ -608,9 +608,13 @@ async function lastSync(sql, tenant) {
 /** Nombre y rubro del comercio (store_settings viaja por la sincronización) */
 async function storeInfo(sql, tenant) {
   const rows = await run(sql, `SELECT id, data->>'value' AS value FROM sync_rows WHERE tenant_id = $1 AND tbl = 'store_settings' AND id = ANY($2)`,
-    [tenant, ["business_profile", "store_name"]]);
+    [tenant, ["business_profile", "business_profiles", "store_name"]]);
   const val = (id) => { const r = rows.find((x) => x.id === id); if (!r) return null; try { return JSON.parse(r.value); } catch { return r.value; } };
-  return { profile: val("business_profile") || null, name: val("store_name") || null };
+  // Varios rubros (un almacén con carnicería): lista en JSON, el principal primero
+  let profiles = val("business_profiles");
+  if (typeof profiles === "string") { try { profiles = JSON.parse(profiles); } catch { profiles = null; } }
+  profiles = Array.isArray(profiles) ? profiles.filter((p) => typeof p === "string").slice(0, 10) : null;
+  return { profile: val("business_profile") || null, profiles, name: val("store_name") || null };
 }
 
 module.exports = { runQueries, makeQueries, lastSync, storeInfo, range, toMs };

@@ -209,7 +209,7 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     const m = await run1(q({ tipo: "margen_bajo" }));
     assert.strictEqual(m.conMenosDe15PorCiento, 0);
     const info = await insights.storeInfo(sql, T);
-    assert.deepStrictEqual(info, { profile: "KIOSKO", name: "Kiosco Paulos" });
+    assert.deepStrictEqual(info, { profile: "KIOSKO", profiles: null, name: "Kiosco Paulos" });
   });
 
   // ── La IA con herramientas ──
@@ -221,8 +221,24 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     const names = (ctx) => agent.toolsFor(ctx).map((x) => x.name);
     assert.ok(names({ plan: "full", role: "ADMIN" }).includes("margen_bajo"));
     assert.ok(!names({ plan: "full", role: "SUPERVISOR" }).includes("margen_bajo"), "el encargado no ve márgenes");
-    assert.deepStrictEqual(names({ plan: "agenda", role: "ADMIN" }), ["turnos", "ayuda_ventra", "sin_respuesta"]);
+    assert.deepStrictEqual(names({ plan: "agenda", role: "ADMIN" }), ["turnos", "ayuda_ventra", "recordar", "olvidar", "sin_respuesta"]);
+    assert.ok(!names({ plan: "full", role: "SUPERVISOR" }).includes("recordar"), "el encargado no cambia la memoria");
     assert.deepStrictEqual(agent.scrub({ productos: [{ producto: "X", costo: 10, margen: "5%", precio: 20 }] }), { productos: [{ producto: "X", precio: 20 }] });
+  });
+  await t("memoria del comercio: guarda lo que el dueño enseña y lo usa en las preguntas siguientes", async () => {
+    const MEM = agent.MEMORY;
+    let client = agentClient([{ name: "recordar", input: { dato: "A la Coca de 2,25 el dueño le dice Coca grande." } }]);
+    await ai.handle(aiDeps(client), "TMEM", { kind: "agent", channel: "whatsapp", question: "acordate que a la coca de 2,25 le digo coca grande", plan: "full", info: { name: "Kiosco Paulos" } });
+    const saved = (db.cols[MEM] && db.cols[MEM].TMEM) || {};
+    assert.strictEqual((saved.notes || []).length, 1, JSON.stringify(db.cols[MEM]));
+    // La pregunta siguiente lleva lo recordado en las instrucciones
+    client = agentClient([]);
+    await ai.handle(aiDeps(client), "TMEM", { kind: "agent", channel: "whatsapp", question: "¿cuántas coca grande me quedan?", plan: "full", info: { name: "Kiosco Paulos" } });
+    assert.match(client.calls[0].system[0].text, /Coca grande/);
+    // Olvidar por número
+    client = agentClient([{ name: "olvidar", input: { numero: 1 } }]);
+    await ai.handle(aiDeps(client), "TMEM", { kind: "agent", channel: "whatsapp", question: "olvidate lo de la coca", plan: "full", info: { name: "Kiosco Paulos" } });
+    assert.strictEqual(db.cols[MEM].TMEM.notes.length, 0);
   });
   await t("busca los datos con herramientas, responde y cuenta una pregunta", async () => {
     const client = agentClient([{ name: "ventas", input: { desde: today, hasta: today } }, { name: "producto", input: { buscar: "coca 1,5" } }]);
@@ -321,6 +337,28 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     await waOwner.onMessage(db, send, msg("5491122222222", `VINCULAR ${code}`, "m2"), NOW);
     delete inbox().m2;
     assert.deepStrictEqual(Object.keys(db.cols.ventra_wa_owners), ["5491122222222"]);
+  });
+  await t("¿te sirvió?: la respuesta con datos lleva 👍/👎; el 👎 va a la revisión semanal y se vota una sola vez", async () => {
+    const buttons = [];
+    const sendButtons = async (to, text, btns) => { buttons.push({ to, text, btns }); };
+    await waOwner.onMessage(db, send, msg("5491122222222", "¿cuánto vendí hoy?", "fbq1"), NOW);
+    const item = inbox().fbq1; delete inbox().fbq1;
+    await waOwner.processInbox(db, item, { ai, aiDeps: aiDeps(agentClient([{ name: "ventas", input: { desde: today, hasta: today } }], "Hoy vendiste *$ 4.500*.")), sql, send, sendButtons, logger }, NOW);
+    const last = buttons.at(-1);
+    assert.ok(last && /4\.500/.test(last.text), "la respuesta va con los botones");
+    assert.deepStrictEqual(last.btns.map((b) => b.title), ["👍 Me sirvió", "👎 No me sirvió"]);
+    const down = last.btns[1].id;
+    const press = (id, mid) => waOwner.onMessage(db, send, { from: "5491122222222", id: mid, type: "interactive", interactive: { button_reply: { id } } }, NOW + 1000);
+    await press(down, "fbv1");
+    assert.match(sent.at(-1).text, /Gracias por avisar/);
+    const misses = Object.values(db.cols.ventra_ai_misses || {}).filter((m) => /no le sirvió/.test((m.reasons || []).join()));
+    assert.strictEqual(misses.length, 1);
+    assert.match(misses[0].question, /cuánto vendí/);
+    await press(down, "fbv2");
+    assert.strictEqual(Object.values(db.cols.ventra_ai_misses || {}).filter((m) => /no le sirvió/.test((m.reasons || []).join())).length, 1, "un voto por respuesta");
+    assert.ok(!inbox().fbv1, "votar no gasta una pregunta");
+    // Las pruebas que siguen cuentan las preguntas de este teléfono desde cero
+    db.cols.ventra_wa_owners["5491122222222"].questions = 0;
   });
   await t("un número que no está vinculado sigue como antes (clientes de la agenda)", async () => {
     assert.strictEqual(await waOwner.onMessage(db, send, msg("5491199999999", "hola, ¿cuánto vendí?"), NOW), false);
