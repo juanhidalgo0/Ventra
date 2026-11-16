@@ -23,9 +23,9 @@ const CHANGED = 'ventra:ventri-caja';
 export function getVentriCaja(): VentriCaja {
   try {
     const v = localStorage.getItem(LS_KEY);
-    return v === 'todos' || v === 'nadie' ? v : 'equipo';
+    return v === 'equipo' || v === 'nadie' ? v : 'todos';
   } catch {
-    return 'equipo';
+    return 'todos';
   }
 }
 
