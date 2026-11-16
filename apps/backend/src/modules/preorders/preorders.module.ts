@@ -5,13 +5,15 @@ import { DeliveryRunsController } from './delivery-runs.controller';
 import { DeliveryRunsService } from './delivery-runs.service';
 import { DistribReportsService } from './distrib-reports.service';
 import { TodayService } from './today.service';
+import { CommissionsService } from './commissions.service';
+import { CashRegisterModule } from '../cash-register/cash-register.module';
 import { PrismaModule } from '../../database/prisma.module';
 import { SalesModule } from '../sales/sales.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
 
 @Module({
-  imports: [PrismaModule, SalesModule, FiscalModule],
+  imports: [PrismaModule, SalesModule, FiscalModule, CashRegisterModule],
   controllers: [PreOrdersController, DeliveryRunsController],
-  providers: [PreOrdersService, DeliveryRunsService, TodayService, DistribReportsService],
+  providers: [PreOrdersService, DeliveryRunsService, TodayService, DistribReportsService, CommissionsService],
 })
 export class PreOrdersModule {}

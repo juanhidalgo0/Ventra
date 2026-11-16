@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { X, Search, DollarSign, Receipt, AlertCircle, Plus, ArrowLeft, CheckCircle } from 'lucide-react';
@@ -20,6 +21,7 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
+  const [cashSource, setCashSource] = useState<CashSource | null>(null);
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -82,10 +84,6 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
       toast.error('Por favor, ingresá un monto válido');
       return;
     }
-    if (!sessionId) {
-      toast.error('No hay caja abierta');
-      return;
-    }
     setIsSubmittingPayment(true);
     try {
       await api.post(`/suppliers/${selectedSupplier.id}/payments`, {
@@ -93,20 +91,13 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
         method: paymentMethod,
         reference: paymentReference,
         notes: paymentNotes,
-        userId: JSON.parse(localStorage.getItem('user') || '{}').id
+        // El servidor descuenta el efectivo de la caja elegida (antes salía siempre del turno)
+        cashSource: isCashMethod(paymentMethod) ? cashSource : null,
       });
-      // Also register a withdrawal/movement inside the active cash session to reflect cash decrease!
-      if (paymentMethod === 'Efectivo' || paymentMethod === 'Efectivo Caja') {
-        await api.post(`/cash/${sessionId}/movement`, {
-          type: 'EXPENSE',
-          amount: Number(paymentAmount),
-          description: `PAGO PROVEEDOR: ${selectedSupplier.name.toUpperCase()}`
-        });
-      }
-      toast.success('✅ Pago registrado correctamente y reflejado en caja');
+      toast.success(isCashMethod(paymentMethod) && cashSource?.source !== 'NONE' ? 'Pago registrado y descontado de la caja' : 'Pago registrado');
       onClose();
-    } catch {
-      toast.error('Error al registrar el pago');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al registrar el pago');
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -273,6 +264,7 @@ export default function ProveedoresModal({ sessionId, onClose }: { sessionId?: s
                       <option>Mercado Pago</option>
                       <option>Efectivo Caja</option>
                     </select>
+                    {isCashMethod(paymentMethod) && <div className="pt-2"><CashSourcePicker value={cashSource} onChange={setCashSource} /></div>}
                   </div>
                   <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ml-1">Referencia / Operación</label>

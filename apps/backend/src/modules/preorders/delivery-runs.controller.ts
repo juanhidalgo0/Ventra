@@ -38,6 +38,13 @@ export class DeliveryRunsController {
     return this.runs.drivers();
   }
 
+  /** Cobro de cuenta corriente que va a la caja del mes y no al cajón del mostrador */
+  @Post('collect-to-fund')
+  collectToFund(@Body() data: any, @Request() req: any) {
+    if (req?.user?.workRole === 'VENDEDOR' || req?.user?.workRole === 'CHOFER') throw new ForbiddenException('Los cobros a la caja del mes los hace el encargado');
+    return this.runs.collectToMonthFund(req?.user?.sub, data);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.runs.findOne(id);
@@ -73,6 +80,13 @@ export class DeliveryRunsController {
   saveDelivery(@Param('id') id: string, @Param('orderId') orderId: string, @Body() data: any, @Request() req: any) {
     can(req, 'route');
     return this.runs.saveDelivery(id, orderId, data);
+  }
+
+  /** Transferencia comprobada en el banco: la tilda el encargado o el dueño, no el chofer */
+  @Put(':id/stops/:orderId/transfer-check')
+  checkTransfer(@Param('id') id: string, @Param('orderId') orderId: string, @Body() data: any, @Request() req: any) {
+    if (req?.user?.workRole === 'VENDEDOR' || req?.user?.workRole === 'CHOFER') throw new ForbiddenException('Las transferencias las comprueba el encargado');
+    return this.runs.checkTransfer(id, orderId, !!data?.checked, req.user?.sub);
   }
 
   /** "Salió a reparto": los pedidos quedan como ventas a cuenta, sale el stock y la factura queda en cola */

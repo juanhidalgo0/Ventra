@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw, Users, MapPin, Package, XCircle, UserX, Wallet, ShoppingBag, MessageCircle, Phone } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Users, MapPin, Package, XCircle, UserX, Wallet, ShoppingBag, MessageCircle, Phone, HandCoins } from 'lucide-react';
+import CommissionsPanel from './CommissionsPanel';
+import { useOwnerAccess } from '../../utils/managerAccess';
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { ScreenHeader, Chips } from '../mobile/ui';
@@ -11,9 +13,10 @@ const qty = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('es
 const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : '—');
 const DAY = 86400000;
 
-type Tab = 'sellers' | 'zones' | 'products' | 'reasons' | 'lost' | 'debt' | 'buy';
+type Tab = 'sellers' | 'commissions' | 'zones' | 'products' | 'reasons' | 'lost' | 'debt' | 'buy';
 const TABS: [Tab, string, any][] = [
   ['sellers', 'Vendedores', Users],
+  ['commissions', 'Comisiones', HandCoins],
   ['zones', 'Zonas', MapPin],
   ['products', 'Productos', Package],
   ['reasons', 'Rechazos', XCircle],
@@ -36,6 +39,7 @@ const PERIODS: [string, string, () => { from: Date; to: Date }][] = [
 export default function DistribReportsScreen() {
   const navigate = useNavigate();
   const phone = useSmallScreen();
+  const isOwner = useOwnerAccess();
   const [tab, setTab] = useState<Tab>('sellers');
   const [period, setPeriod] = useState('30');
   const [data, setData] = useState<any | null>(null);
@@ -105,10 +109,11 @@ export default function DistribReportsScreen() {
               </tr>
             ))}
           </Table>}
-          <p className="text-[12.5px] text-slate-500">La comisión se calcula sobre lo entregado: lo rechazado y lo que todavía no salió no cuentan.</p>
+          <p className="text-[12.5px] text-slate-500">La comisión se calcula sobre lo entregado: lo rechazado y lo que todavía no salió no cuentan.{isOwner ? <> El % de cada vendedor y los pagos del mes están en <button onClick={() => setTab('commissions')} className="font-semibold text-rose-700 underline underline-offset-2 cursor-pointer">Comisiones</button>.</> : null}</p>
         </div>
       );
     }
+    if (tab === 'commissions') return <CommissionsPanel />;
     if (tab === 'zones' && phone) {
       return <PhoneList items={data.zones.map((z: any) => ({ key: z.zone, title: z.zone, value: money(z.delivered), valueLabel: 'entregado', sub: `${z.orders} pedidos · ${z.clients} clientes · pedido ${money(z.ordered)}${z.rejected ? ` · rechazó ${money(z.rejected)}` : ''}` }))} />;
     }
@@ -235,7 +240,7 @@ export default function DistribReportsScreen() {
         ))}
       </div>
     );
-  }, [data, buy, tab, commission, phone]);
+  }, [data, buy, tab, commission, phone, isOwner]);
 
   return (
     <div className={`h-full overflow-y-auto bg-slate-50 ${phone ? '' : 'p-6'}`}>
@@ -271,7 +276,7 @@ export default function DistribReportsScreen() {
         )}
 
         <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
-          {TABS.map(([k, l, Icon]) => (
+          {TABS.filter(([k]) => k !== 'commissions' || isOwner).map(([k, l, Icon]) => (
             <button key={k} onClick={() => setTab(k)} className={`shrink-0 h-10 px-3.5 rounded-xl text-[13.5px] font-semibold border cursor-pointer flex items-center gap-1.5 ${tab === k ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'}`}>
               <Icon className="w-4 h-4" /> {l}
             </button>

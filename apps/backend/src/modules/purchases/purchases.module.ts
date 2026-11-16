@@ -4,10 +4,11 @@ import { PurchasesController } from './purchases.controller';
 import { PurchasesService } from './purchases.service';
 import { ScanJobsService } from './scan-jobs.service';
 import { PrismaModule } from '../../database/prisma.module';
+import { CashRegisterModule } from '../cash-register/cash-register.module';
 import { ProductsModule } from '../products/products.module';
 
 @Module({
-  imports: [PrismaModule, ProductsModule, AiModule],
+  imports: [PrismaModule, ProductsModule, AiModule, CashRegisterModule],
   controllers: [PurchasesController],
   providers: [PurchasesService, ScanJobsService],
   exports: [PurchasesService],

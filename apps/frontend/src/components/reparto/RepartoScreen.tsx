@@ -18,7 +18,7 @@ import { loadEmisor, MissingStoreNameError, readNoteCopies, type Emisor } from '
 import SheetOptions from '../pos/SheetOptions';
 import DocumentPreview from '../common/DocumentPreview';
 import { LoadSheet, RouteSheet, RunRemitos, consolidate, liveOrders, bultosOf, looseOf } from './RunSheets';
-import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner } from './DeliverySheets';
+import { DeliverySheet, SettleSheet, DispatchSheet, DELIVERY_LABEL, paymentSummary, ShortagesBanner, TransferChecks } from './DeliverySheets';
 import RunInvoicesPreview from './RunInvoices';
 import SalesNotePreview from '../pos/SalesNotePreview';
 import { COMING_SOON } from '../../utils/comingSoon';
@@ -592,6 +592,9 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
           )}
 
+          {/* Después de rendir: seguir tildando las transferencias que se acreditan tarde */}
+          {run.status === 'CERRADO' && !['CHOFER', 'VENDEDOR'].includes(myWorkRole() || '') && <TransferChecks run={run} onChange={setRun} />}
+
           <div data-tour="ruta-docs" className="flex flex-wrap gap-2">
             <button onClick={() => openDoc('carga')} className={actionBtn}><Package className="w-4 h-4 text-rose-600" /> Hoja de carga</button>
             <button onClick={() => openDoc('ruta')} className={actionBtn}><Route className="w-4 h-4 text-rose-600" /> Hoja de ruta</button>
@@ -784,7 +787,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <DeliverySheet run={run} order={delivering} onClose={() => setDelivering(null)} onSaved={(r) => { setRun(r); setDelivering(null); offerClose(r); }} />
       )}
       {settling && (
-        <SettleSheet run={run} solo={solo} onClose={() => setSettling(false)} onDone={(r) => { setRun(r); setSettling(false); }} />
+        <SettleSheet run={run} solo={solo} onChange={setRun} onClose={() => setSettling(false)} onDone={(r) => { setRun(r); setSettling(false); }} />
       )}
 
       {adding && (

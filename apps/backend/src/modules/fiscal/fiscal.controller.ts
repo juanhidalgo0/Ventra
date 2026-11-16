@@ -50,6 +50,18 @@ export class FiscalController {
     return this.fiscal.invoiceSale(saleId, body || {}, req.user?.sub);
   }
 
+  /** Factura del mes: las ventas del cliente sin factura en el período, para elegir */
+  @Get('clients/:clientId/monthly')
+  monthlyCandidates(@Param('clientId') clientId: string, @Query('from') from: string, @Query('to') to: string) {
+    return this.fiscal.monthlyCandidates(clientId, { from, to });
+  }
+
+  /** Factura del mes: una sola factura con las ventas elegidas */
+  @Post('clients/:clientId/monthly')
+  invoiceMonthly(@Param('clientId') clientId: string, @Body() body: any, @Request() req: any) {
+    return this.fiscal.invoiceGroup(clientId, body?.saleIds, body?.receptor, req.user?.sub);
+  }
+
   /** Comprobantes de una venta (la factura vigente y su historia). */
   @Get('sales/:saleId/invoice')
   getSaleFiscal(@Param('saleId') saleId: string) {

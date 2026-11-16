@@ -6,6 +6,7 @@ import { BackupService } from '../system/backup.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
+import { closeMonthFund, depositToMonthFund, ensureMonthFund, readMonthFund } from './month-fund';
 
 @Injectable()
 export class CashRegisterService {
@@ -524,6 +525,39 @@ export class CashRegisterService {
     return movement;
   }
 
+  async paySources(userId?: string, role?: string) {
+    const open = await this.prisma.cashRegisterSession.findMany({
+      where: { status: 'OPEN' }, orderBy: { openedAt: 'desc' },
+      select: { id: true, terminalName: true, userId: true, user: { select: { fullName: true, username: true } } },
+    });
+    const sessions = open.map((s) => ({ id: s.id, terminalName: s.terminalName, user: s.user?.fullName || s.user?.username || '', mine: s.userId === userId }));
+    let fund: number | null = null;
+    if (role === 'ADMIN') fund = await readMonthFund(this.prisma, undefined).then((f: any) => f.balance).catch(() => null);
+    return { sessions, fund };
+  }
+
+  /**
+   * Plata que sale para pagar algo (un proveedor, una compra): queda como gasto en la caja que se
+   * eligió. SESSION = el cajón de una caja abierta; FUND = la caja del mes (solo el dueño);
+   * NONE = transferencia u otro medio: no sale de ninguna caja. Devuelve el movimiento, o null.
+   */
+  async payOut(userId: string, role: string | undefined, src: { source?: string; sessionId?: string } | null | undefined, amount: number, text: string) {
+    const value = Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
+    if (!src || !src.source || src.source === 'NONE' || !(value > 0)) return null;
+    const description = `PAGO PROVEEDOR: ${String(text || '').toUpperCase().slice(0, 150)} | METODO: CASH`;
+    if (src.source === 'FUND') {
+      if (role !== 'ADMIN') throw new ForbiddenException('De la caja del mes solo paga el dueño');
+      await ensureMonthFund(this.prisma, userId);
+      return this.addCashMovement('caja-del-mes', userId, { type: 'EXPENSE', amount: value, description }, 'ADMIN');
+    }
+    if (src.source === 'SESSION') {
+      const session = src.sessionId ? await this.prisma.cashRegisterSession.findUnique({ where: { id: src.sessionId } }) : null;
+      if (!session || session.status !== 'OPEN') throw new BadRequestException('Elegí una caja abierta para sacar la plata');
+      return this.addCashMovement(session.id, userId, { type: 'EXPENSE', amount: value, description }, role);
+    }
+    throw new BadRequestException('Elegí de dónde sale la plata');
+  }
+
   async getMovements(params?: { type?: string; from?: string; to?: string }) {
     const where: any = {};
     if (params?.type) {
@@ -965,6 +999,31 @@ export class CashRegisterService {
     });
 
     this.events.emitCashUpdated({ action: 'RECALCULATE', sessionId: session.id });
+  }
+
+  // ---- Caja del mes (ver month-fund.ts) ----
+  async getMonthFund(userId: string, month?: string) {
+    await ensureMonthFund(this.prisma, userId);
+    return readMonthFund(this.prisma, month);
+  }
+
+  /** Lo que se guarda del Cierre Z: una sola vez por Z. */
+  async monthFundFromZ(userId: string, data: { zReportId: string; amount: number }) {
+    const z = data?.zReportId ? await this.prisma.dailyZReport.findUnique({ where: { id: data.zReportId }, select: { id: true, generatedAt: true } }) : null;
+    if (!z) throw new NotFoundException('No se encontró el Cierre Z');
+    const amount = Number(data?.amount);
+    if (!(amount > 0)) throw new BadRequestException('Ingresá un monto válido');
+    const day = new Date(z.generatedAt).toLocaleDateString('es-AR');
+    const mov = await depositToMonthFund(this.prisma, userId, `z:${z.id}`, amount, `Efectivo del Cierre Z del ${day} (#Z-${z.id.substring(0, 8).toUpperCase()})`);
+    this.events.emitCashUpdated({ action: 'FUND', sessionId: 'caja-del-mes' });
+    return mov;
+  }
+
+  async closeMonthFund(userId: string, role: string | undefined, data: { month?: string; counted: number; notes?: string }) {
+    if (role !== 'ADMIN') throw new ForbiddenException('El balance del mes lo hace el administrador');
+    const res = await closeMonthFund(this.prisma, userId, data?.month, data?.counted, data?.notes);
+    this.events.emitCashUpdated({ action: 'FUND', sessionId: 'caja-del-mes' });
+    return res;
   }
 
   async resetAllCajas() {

@@ -19,7 +19,10 @@ import {
   Trash2,
   Link2,
   MessageCircle,
+  Receipt,
 } from 'lucide-react';
+import MonthlyInvoiceModal from './MonthlyInvoiceModal';
+import { StatementPreview } from './AccountStatement';
 import ZoneNotice from './ZoneNotice';
 import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,16 +38,16 @@ const IVA_OPTIONS: [string, string][] = [
 ];
 
 /** Distribuidora: localidad para el reparto, y CUIT + IVA para la nota de venta y la factura */
-function DeliveryFields({ value, onChange, localities }: { value: any; onChange: (patch: any) => void; localities: string[] }) {
+function DeliveryFields({ value, onChange, localities, delivery = true, invoicing = false }: { value: any; onChange: (patch: any) => void; localities: string[]; delivery?: boolean; invoicing?: boolean }) {
   const cls = 'w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700';
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
+        {delivery && <div className="space-y-1">
           <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Localidad</label>
           <input type="text" list="client-localities" value={value.locality || ''} onChange={(e) => onChange({ locality: e.target.value })} placeholder="Ej. Verónica" className={cls} />
           <datalist id="client-localities">{localities.map((l) => <option key={l} value={l} />)}</datalist>
-        </div>
+        </div>}
         <div className="space-y-1">
           <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">CUIT</label>
           <input type="text" inputMode="numeric" value={value.cuit || ''} onChange={(e) => onChange({ cuit: e.target.value })} placeholder="Sin guiones" className={cls} />
@@ -56,6 +59,15 @@ function DeliveryFields({ value, onChange, localities }: { value: any; onChange:
           {IVA_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
         </select>
       </div>
+      {invoicing && (
+        <label className="flex items-start gap-3 px-4 py-3 rounded-xl bg-slate-50 border border-slate-300 cursor-pointer">
+          <input type="checkbox" checked={!!value.monthlyInvoice} onChange={(e) => onChange({ monthlyInvoice: e.target.checked })} className="mt-1 w-4 h-4 accent-rose-600" />
+          <span>
+            <span className="block text-[13px] font-bold text-slate-800">Factura a fin de mes</span>
+            <span className="block text-[12px] text-slate-500">Para escuelas y organismos: sus compras no se facturan una por una, se juntan en una sola factura con "Factura del mes".</span>
+          </span>
+        </label>
+      )}
     </>
   );
 }
@@ -123,9 +135,16 @@ export default function CuentasCorrientesScreen() {
     tradeDiscountPercentage: '',
     locality: '',
     cuit: '',
-    ivaCondition: 'CONSUMIDOR_FINAL'
+    ivaCondition: 'CONSUMIDOR_FINAL',
+    monthlyInvoice: false,
   });
   const usesDelivery = hasFeature('delivery');
+  // Con la facturación activada: CUIT, IVA y factura del mes en cualquier rubro
+  const [invoicing, setInvoicing] = useState(false);
+  useEffect(() => { api.get('/fiscal/config').then((r) => setInvoicing(!!r.data?.enabled)).catch(() => {}); }, []);
+  const [monthlyFor, setMonthlyFor] = useState<any | null>(null);
+  const [statementFor, setStatementFor] = useState<any | null>(null);
+  const fiscalFields = usesDelivery || invoicing;
   const localities = Array.from(new Set(clients.map((c: any) => (c.locality || '').trim()).filter(Boolean))).sort() as string[];
   const [isSaving, setIsSaving] = useState(false);
 
@@ -168,15 +187,16 @@ export default function CuentasCorrientesScreen() {
         balance: Number(newClient.balance) || 0,
         priceList: newClient.priceList || 'RETAIL',
         tradeDiscountPercentage: newClient.tradeDiscountPercentage !== '' && !isNaN(Number(newClient.tradeDiscountPercentage)) ? Number(newClient.tradeDiscountPercentage) : null,
-        ...(usesDelivery ? {
-          locality: newClient.locality.trim() || null,
+        ...(fiscalFields ? {
+          ...(usesDelivery ? { locality: newClient.locality.trim() || null } : {}),
+          monthlyInvoice: !!newClient.monthlyInvoice,
           cuit: newClient.cuit.replace(/\D/g, '') || null,
           ivaCondition: newClient.ivaCondition || 'CONSUMIDOR_FINAL',
         } : {}),
       };
       await api.post('/clients', payload);
       setShowAddModal(false);
-      setNewClient({ name: '', dni: '', phone: '', address: '', email: '', creditLimit: '', authorizedPickups: '', balance: 0, priceList: 'RETAIL', tradeDiscountPercentage: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL' });
+      setNewClient({ name: '', dni: '', phone: '', address: '', email: '', creditLimit: '', authorizedPickups: '', balance: 0, priceList: 'RETAIL', tradeDiscountPercentage: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL', monthlyInvoice: false });
       loadClients();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al registrar el cliente. Verifique que el DNI no esté duplicado.');
@@ -204,8 +224,9 @@ export default function CuentasCorrientesScreen() {
         balance: Number(editingClient.balance) || 0,
         priceList: editingClient.priceList || 'RETAIL',
         tradeDiscountPercentage: editingClient.tradeDiscountPercentage !== '' && editingClient.tradeDiscountPercentage !== null && !isNaN(Number(editingClient.tradeDiscountPercentage)) ? Number(editingClient.tradeDiscountPercentage) : null,
-        ...(usesDelivery ? {
-          locality: editingClient.locality?.trim() || null,
+        ...(fiscalFields ? {
+          ...(usesDelivery ? { locality: editingClient.locality?.trim() || null } : {}),
+          monthlyInvoice: !!editingClient.monthlyInvoice,
           cuit: String(editingClient.cuit || '').replace(/\D/g, '') || null,
           ivaCondition: editingClient.ivaCondition || 'CONSUMIDOR_FINAL',
         } : {}),
@@ -418,6 +439,11 @@ export default function CuentasCorrientesScreen() {
                                  <DollarSign className="w-3.5 h-3.5" /> Abonar
                                </button>
                              )}
+                              {invoicing && client.monthlyInvoice && (
+                                <button onClick={() => setMonthlyFor(client)} className="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" title="Juntar las compras del mes en una sola factura">
+                                  <Receipt className="w-3.5 h-3.5" /> Factura del mes
+                                </button>
+                              )}
                               <button 
                                 onClick={() => handleViewMovements(client)}
                                 className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 transition-all text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border border-rose-100"
@@ -451,6 +477,9 @@ export default function CuentasCorrientesScreen() {
           </div>
         )}
       </div>
+
+      {statementFor && <StatementPreview client={statementFor} onClose={() => setStatementFor(null)} />}
+      {monthlyFor && <MonthlyInvoiceModal client={monthlyFor} onClose={() => { setMonthlyFor(null); loadClients(); }} />}
 
       {/* Create Client Modal */}
       <AnimatePresence>
@@ -523,7 +552,7 @@ export default function CuentasCorrientesScreen() {
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700"
                   />
                 </div>
-                {usesDelivery && <DeliveryFields value={newClient} onChange={(patch) => setNewClient({ ...newClient, ...patch })} localities={localities} />}
+                {fiscalFields && <DeliveryFields value={newClient} onChange={(patch) => setNewClient({ ...newClient, ...patch })} localities={localities} delivery={usesDelivery} invoicing={invoicing} />}
 
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Email</label>
@@ -703,7 +732,7 @@ export default function CuentasCorrientesScreen() {
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold transition-all text-slate-700"
                   />
                 </div>
-                {usesDelivery && <DeliveryFields value={editingClient} onChange={(patch) => setEditingClient({ ...editingClient, ...patch })} localities={localities} />}
+                {fiscalFields && <DeliveryFields value={editingClient} onChange={(patch) => setEditingClient({ ...editingClient, ...patch })} localities={localities} delivery={usesDelivery} invoicing={invoicing} />}
 
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block">Email</label>
@@ -831,6 +860,9 @@ export default function CuentasCorrientesScreen() {
                   <h3 className="text-base font-black text-slate-800">Historial de Cuenta Corriente</h3>
                   <p className="text-xs font-bold text-rose-600 mt-0.5">CLIENTE: {selectedClientForHistory.name.toUpperCase()}</p>
                 </div>
+                <button onClick={() => setStatementFor(selectedClientForHistory)} className="ml-auto mr-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5" title="Imprimir o mandar el resumen de cuenta">
+                  <FileText className="w-3.5 h-3.5" /> Resumen de cuenta
+                </button>
                 <button onClick={() => { setShowMovementsModal(false); setSelectedClientForHistory(null); }} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-650 transition-all"><X className="w-5 h-5" /></button>
               </div>
 

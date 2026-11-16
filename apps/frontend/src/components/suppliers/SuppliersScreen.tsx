@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
 import { 
   Truck, 
   Search, 
@@ -76,6 +77,7 @@ export default function SuppliersScreen() {
     paymentDays: ''
   });
 
+  const [cashSource, setCashSource] = useState<CashSource | null>(null);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
     method: 'Efectivo',
@@ -167,13 +169,13 @@ export default function SuppliersScreen() {
     e.preventDefault();
     if (!selectedSupplier) return;
     try {
-      await api.post(`/suppliers/${selectedSupplier.id}/payments`, paymentData);
+      await api.post(`/suppliers/${selectedSupplier.id}/payments`, { ...paymentData, cashSource: isCashMethod(paymentData.method) ? cashSource : null });
       toast.success('Pago registrado correctamente');
       setShowPaymentModal(false);
       setPaymentData({ amount: 0, method: 'Efectivo', reference: '', notes: '' });
       loadData();
-    } catch {
-      toast.error('Error al registrar el pago');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al registrar el pago');
     }
   };
 
@@ -588,6 +590,8 @@ export default function SuppliersScreen() {
                         <input type="text" value={paymentData.reference} onChange={e => setPaymentData({...paymentData, reference: e.target.value})} placeholder="Ej: 00012345" className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/50 transition-all" />
                      </div>
                   </div>
+
+                  {isCashMethod(paymentData.method) && <CashSourcePicker value={cashSource} onChange={setCashSource} />}
 
                   <div className="group">
                     <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Notas Internas</span>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
 import toast from 'react-hot-toast';
 import { Search, X, Plus, Truck, Phone, MessageCircle, Mail, HandCoins, ShoppingBag } from 'lucide-react';
 import api from '../../services/api';
@@ -117,6 +118,7 @@ function SupplierSheet({ supplier: s, purchases, debt, onClose, onChanged }: { s
   const [paying, setPaying] = useState(false);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('Efectivo');
+  const [cashSource, setCashSource] = useState<CashSource | null>(null);
   const [reference, setReference] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { setPaying(false); setAmount(''); setReference(''); setMethod('Efectivo'); }, [s]);
@@ -126,12 +128,12 @@ function SupplierSheet({ supplier: s, purchases, debt, onClose, onChanged }: { s
     if (value <= 0) return;
     setBusy(true);
     try {
-      await api.post(`/suppliers/${s.id}/payments`, { amount: value, method, reference, notes: '' });
+      await api.post(`/suppliers/${s.id}/payments`, { amount: value, method, reference, notes: '', cashSource: isCashMethod(method) ? cashSource : null });
       toast.success('Pago registrado');
       setPaying(false);
       onChanged();
-    } catch {
-      toast.error('No se pudo registrar el pago');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo registrar el pago');
     } finally {
       setBusy(false);
     }
@@ -161,6 +163,7 @@ function SupplierSheet({ supplier: s, purchases, debt, onClose, onChanged }: { s
               <button key={m} onClick={() => setMethod(m)} className={`h-9 px-3.5 rounded-full border text-[13px] font-medium ${method === m ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>{m}</button>
             ))}
           </div>
+          {isCashMethod(method) && <CashSourcePicker value={cashSource} onChange={setCashSource} />}
           <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Referencia (n.º de factura, comprobante…)" className="w-full h-11 px-3.5 rounded-2xl bg-slate-100 text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-rose-200" />
         </div>
       ) : (

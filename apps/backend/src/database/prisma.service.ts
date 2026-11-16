@@ -340,6 +340,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!productColumns.some(c => c.name === 'pack_price')) {
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN pack_price REAL DEFAULT NULL;`);
             }
+            // Dónde se vende el producto: mostrador, reparto (mayorista) o los dos (null)
+            if (!productColumns.some(c => c.name === 'sales_channel')) {
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN sales_channel TEXT DEFAULT NULL;`);
+            }
             // Preventa: el precio que tenía el producto antes del último cambio. Un pedido tomado sin
             // señal entra con el precio del momento en que se hizo (ver preorders.service). Lo anota
             // un trigger, así lo cubre cualquier camino: la ficha, el aumento masivo, la planilla o
@@ -521,7 +525,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             }
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_orders_run_id_idx" ON "pre_orders"("run_id");`);
             // Entrega y rendición del reparto
-                        for (const [col, type] of [['delivery_status', 'TEXT'], ['delivery_reason', 'TEXT'], ['delivered_items', 'TEXT'], ['paid_cash', 'REAL'], ['paid_transfer', 'REAL'], ['delivered_at', 'DATETIME'], ['prev_cash', 'REAL'], ['prev_transfer', 'REAL']]) {
+                        for (const [col, type] of [['delivery_status', 'TEXT'], ['delivery_reason', 'TEXT'], ['delivered_items', 'TEXT'], ['paid_cash', 'REAL'], ['paid_transfer', 'REAL'], ['delivered_at', 'DATETIME'], ['prev_cash', 'REAL'], ['prev_transfer', 'REAL'], ['transfer_checked_at', 'DATETIME'], ['transfer_checked_by', 'TEXT']]) {
               if (!preOrderCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE pre_orders ADD COLUMN ${col} ${type} DEFAULT NULL;`);
             }
             const runCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(delivery_runs);`);
@@ -531,6 +535,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                         // Qué hace cada usuario en la distribuidora (vendedor, chofer, mostrador)
             const workCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(users);`);
             if (!workCols.some(c => c.name === 'work_role')) await this.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN work_role TEXT DEFAULT NULL;`);
+            if (!workCols.some(c => c.name === 'commission_pct')) await this.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN commission_pct REAL DEFAULT NULL;`);
+            // Pagos de comisión a los vendedores (ver CommissionsService)
+            await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "seller_commission_payments" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "user_id" TEXT NOT NULL,
+              "month" TEXT NOT NULL,
+              "amount" REAL NOT NULL,
+              "source" TEXT NOT NULL,
+              "session_id" TEXT,
+              "movement_id" TEXT,
+              "notes" TEXT,
+              "created_by" TEXT,
+              "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );`);
+            await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "seller_commission_payments_user_id_month_idx" ON "seller_commission_payments"("user_id", "month");`);
             // Configuración del comercio compartida entre equipos (ver StoreSetting)
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "store_settings" (
               "id" TEXT NOT NULL PRIMARY KEY,
@@ -702,6 +721,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "fiscal_documents_sale_id_idx" ON "fiscal_documents"("sale_id");`);
           await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "fiscal_documents_status_idx" ON "fiscal_documents"("status");`);
           await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "fiscal_documents_created_at_idx" ON "fiscal_documents"("created_at");`);
+          // Factura del mes: las ventas que junta
+          const fiscalCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(fiscal_documents);`);
+          if (!fiscalCols.some((c) => c.name === 'group_sale_ids')) await this.$executeRawUnsafe(`ALTER TABLE fiscal_documents ADD COLUMN group_sale_ids TEXT DEFAULT NULL;`);
         } catch (err) {
           console.error('[PrismaService] Failed to create fiscal tables:', err);
         }
@@ -760,6 +782,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN trade_discount_percentage REAL DEFAULT NULL;`);
             }
             // Distribuidora: localidad del cliente, para el reparto y la nota de venta
+            // Factura a fin de mes (escuelas, organismos)
+            if (!clientColumns.some(c => c.name === 'monthly_invoice')) await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN monthly_invoice BOOLEAN NOT NULL DEFAULT false;`);
             if (!clientColumns.some(c => c.name === 'locality')) {
               await this.$executeRawUnsafe(`ALTER TABLE clients ADD COLUMN locality TEXT DEFAULT NULL;`);
             }

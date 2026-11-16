@@ -493,6 +493,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
 
   /** Reparto: la factura de cada venta queda en cola y sale sola (salir a repartir no espera a ARCA) */
   async queueInvoice(saleId: string, userId?: string) {
+    const sale = await this.prisma.sale.findUnique({ where: { id: saleId }, select: { client: { select: { monthlyInvoice: true } } } });
+    if (sale?.client?.monthlyInvoice) return null; // va en la factura del mes
     const id = await this.prepareInvoice(saleId, undefined, userId);
     this.kick();
     return id;
@@ -508,6 +510,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       if (sale.status === 'CANCELLED') throw new BadRequestException('No se puede facturar una venta anulada');
 
       const docs = await this.prisma.fiscalDocument.findMany({ where: { saleId, kind: 'FACTURA' }, orderBy: { createdAt: 'asc' } });
+      const enGrupo = await this.groupInvoiceOf(saleId, docs);
+      if (enGrupo) throw new ConflictException(`Esta venta va en la factura del mes de su cliente (${this.docLabel(enGrupo)})`);
       const credited = await this.creditedIds(docs.map((d) => d.id));
       const activa = docs.find((d) => (d.status === 'AUTHORIZED' && !credited.has(d.id)) || d.status === 'PENDING');
       const node = await nodeIndex(this.prisma);
@@ -572,7 +576,9 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const docId = await this.exclusive(async () => {
       if (await this.prisma.fiscalDocument.findUnique({ where: { id } })) return id;
       const config = await this.loadConfig();
-      const facturas = await this.prisma.fiscalDocument.findMany({ where: { saleId: originalSaleId, kind: 'FACTURA', status: { in: ['AUTHORIZED', 'PENDING'] } } });
+      let facturas = await this.prisma.fiscalDocument.findMany({ where: { saleId: originalSaleId, kind: 'FACTURA', status: { in: ['AUTHORIZED', 'PENDING'] } } });
+      const grupo = await this.groupInvoiceOf(originalSaleId);
+      if (grupo) facturas = [grupo];
       const factura = facturas.find((f) => f.status === 'AUTHORIZED') || null;
       if (!factura) {
         if (facturas.length) throw new BadRequestException('La factura de esta venta todavía no salió: la nota de crédito se hace cuando ARCA la autorice');
@@ -680,6 +686,12 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       await this.exclusive(async () => {
         const node = await nodeIndex(this.prisma);
         const docs = await this.prisma.fiscalDocument.findMany({ where: { saleId, kind: 'FACTURA' } });
+        const grupo = await this.groupInvoiceOf(saleId, docs);
+        if (grupo) {
+          // Ya salió: nota de crédito por lo de esta venta. En cola: sale sin ella (la cola la deja afuera)
+          if (grupo.status === 'AUTHORIZED') await this.groupMemberCreditNote(grupo, saleId, 'Anulación de la venta', userId);
+          return;
+        }
         for (const doc of docs) {
           if (doc.status === 'AUTHORIZED') {
             await this.ensureCreditNote(doc, 'Anulación de la venta', userId);
@@ -760,6 +772,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
         createdAt: { gte: desde },
         fiscalDocuments: { none: {} },
         items: { some: { productId: { notIn: ['PAGO_CTA_CTE', 'VIRTUAL_LOAD_1', 'VIRTUAL_LOAD_2'] } } },
+        NOT: { client: { monthlyInvoice: true } },
       },
       select: { id: true },
       take: 20,
@@ -770,7 +783,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
   /** Facturas autorizadas de ventas anuladas (en esta u otra caja) que todavía no tienen su nota de crédito. */
   private async sweepCancelled(node: number) {
     const facturas = await this.prisma.fiscalDocument.findMany({
-      where: { kind: 'FACTURA', status: 'AUTHORIZED', ownerNode: node, sale: { status: 'CANCELLED' } },
+      where: { kind: 'FACTURA', status: 'AUTHORIZED', ownerNode: node, groupSaleIds: null, sale: { status: 'CANCELLED' } },
       take: 50,
     });
     if (!facturas.length) return;
@@ -790,6 +803,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const sale = await this.saleForInvoice(saleId).catch(() => null);
     if (!sale || sale.status !== 'COMPLETED') return;
     if (config.startDate && sale.createdAt < new Date(config.startDate)) return;
+    if ((sale.client as any)?.monthlyInvoice) return; // va en la factura del mes
     const facturables = sale.items.filter((i) => esFacturable(i.productId));
     const node = await nodeIndex(this.prisma);
     if (!facturables.length || facturables.reduce((a, i) => a + i.total, 0) <= 0) {
@@ -871,13 +885,15 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const sale = await this.saleForInvoice(doc.saleId).catch(() => null);
+    const sale = await (doc.groupSaleIds ? this.groupSale(doc) : this.saleForInvoice(doc.saleId)).catch(() => null);
     if (!sale) {
       await this.prisma.fiscalDocument.update({ where: { id }, data: { status: 'VOID', error: 'La venta ya no existe', nextAttemptAt: null } });
       return;
     }
     if (doc.kind === 'FACTURA' && sale.status === 'CANCELLED' && doc.reservedNumber == null) {
-      await this.prisma.fiscalDocument.update({ where: { id }, data: { status: 'VOID', error: 'La venta se anuló antes de emitir la factura', errorKind: null, nextAttemptAt: null } });
+      await this.prisma.fiscalDocument.update({ where: { id }, data: { status: 'VOID', error: doc.groupSaleIds ? 'Se anularon todas las ventas de la factura del mes' : 'La venta se anuló antes de emitir la factura', errorKind: null, nextAttemptAt: null } });
+      // Las ventas vuelven a quedar sin factura
+      if (doc.groupSaleIds) await this.prisma.fiscalDocument.updateMany({ where: { status: 'GROUPED', assocDocumentId: id }, data: { status: 'VOID' } });
       return;
     }
 
@@ -903,6 +919,12 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
 
       // 2. Qué se emite, con la configuración de ahora
       const plan = await this.buildPlan(doc, sale, config);
+      // Factura del mes: quedan anotadas las ventas que entran de verdad (una anulada en la cola queda afuera)
+      if (doc.groupSaleIds && sale.includedIds) {
+        await this.prisma.fiscalDocument.update({ where: { id }, data: { groupSaleIds: JSON.stringify(sale.includedIds) } });
+        await this.prisma.fiscalDocument.updateMany({ where: { status: 'GROUPED', assocDocumentId: id, saleId: { notIn: sale.includedIds } }, data: { status: 'VOID' } });
+        doc.groupSaleIds = JSON.stringify(sale.includedIds);
+      }
       await this.prisma.fiscalDocument.update({
         where: { id },
         data: {
@@ -1021,7 +1043,13 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`CAE ${saved.cae} · ${this.docLabel(saved)} (venta ${saved.saleId})`);
 
     // La venta se anuló mientras la factura estaba en camino: corresponde la nota de crédito
-    if (saved.kind === 'FACTURA') {
+    if (saved.kind === 'FACTURA' && saved.groupSaleIds) {
+      // groupSaleIds ya quedó solo con las que entraron (ver emit): las anuladas después llevan su nota
+      const ids: string[] = JSON.parse(saved.groupSaleIds);
+      const anuladas = await this.prisma.sale.findMany({ where: { id: { in: ids }, status: 'CANCELLED' }, select: { id: true } });
+      for (const a of anuladas) await this.groupMemberCreditNote(saved, a.id, 'Anulación de la venta');
+      if (anuladas.length) this.kick();
+    } else if (saved.kind === 'FACTURA') {
       const sale = await this.prisma.sale.findUnique({ where: { id: saved.saleId }, select: { status: true } });
       if (sale?.status === 'CANCELLED') {
         await this.ensureCreditNote(saved, 'Anulación de la venta');
@@ -1135,8 +1163,13 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const sale = await this.prisma.sale.findUnique({ where: { id: saleId }, include: SALE_ITEMS });
     if (!sale) throw new NotFoundException('Venta no encontrada');
     const docs = await this.prisma.fiscalDocument.findMany({ where: { saleId }, orderBy: { createdAt: 'asc' } });
+    const grupo = await this.groupInvoiceOf(saleId, docs);
+    if (grupo) {
+      const view = await this.documentViewById(grupo.id);
+      return { invoice: view, documents: [view], grouped: true };
+    }
     const node = await nodeIndex(this.prisma);
-    const views = docs.map((d) => this.documentView(d, config, sale, docs, node));
+    const views = docs.filter((d) => d.status !== 'GROUPED').map((d) => this.documentView(d, config, sale, docs, node));
     const facturas = views.filter((v) => v.kind === 'FACTURA' && v.status !== 'VOID');
     // La vigente es la última sin nota de crédito autorizada (si se anuló y refacturó, la nueva)
     const invoice = [...facturas].reverse().find((v) => v.creditedBy?.status !== 'AUTHORIZED') || facturas[facturas.length - 1] || null;
@@ -1148,7 +1181,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     if (!doc) throw new NotFoundException('Comprobante no encontrado');
     const [config, sale, related, node] = await Promise.all([
       this.loadConfig(),
-      this.prisma.sale.findUnique({ where: { id: doc.saleId }, include: SALE_ITEMS }),
+      doc.groupSaleIds ? this.groupSale(doc).catch(() => null) : this.prisma.sale.findUnique({ where: { id: doc.saleId }, include: SALE_ITEMS }),
       this.prisma.fiscalDocument.findMany({ where: { saleId: doc.saleId } }),
       nodeIndex(this.prisma),
     ]);
@@ -1165,6 +1198,8 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     return {
       id: doc.id,
       saleId: doc.saleId,
+      // Factura del mes: qué ventas junta
+      group: sale?.groupSales || null,
       saleNumber: sale?.saleNumber ?? null,
       saleTotal: sale?.total ?? null,
       saleCreatedAt: sale?.createdAt ?? null,
@@ -1238,6 +1273,7 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const where: any = {};
     if (params.status === 'CONFIG') Object.assign(where, { status: 'PENDING', errorKind: 'CONFIG' });
     else if (params.status && params.status !== 'ALL') where.status = params.status;
+    else where.status = { not: 'GROUPED' };
     if (params.kind && params.kind !== 'ALL') where.kind = params.kind;
     if (params.from || params.to) {
       where.createdAt = {};
@@ -1269,13 +1305,13 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     const saleById = new Map(sales.map((s) => [s.id, s]));
 
     const summary: Record<string, number> = { PENDING: 0, AUTHORIZED: 0, REJECTED: 0, VOID: 0 };
-    for (const g of grouped) summary[g.status] = g._count._all;
+    for (const g of grouped) if (g.status !== 'GROUPED') summary[g.status] = g._count._all;
     summary.CONFIG = await this.prisma.fiscalDocument.count({ where: { status: 'PENDING', errorKind: 'CONFIG' } });
     summary.PENDING_MINE = await this.prisma.fiscalDocument.count({ where: { status: 'PENDING', ownerNode: node } });
 
     return {
       documents: docs.map((d) => {
-        const v = this.documentView(d, config, saleById.get(d.saleId), related, node);
+        const v = this.documentView(d, config, d.groupSaleIds ? { ...saleById.get(d.saleId), groupSales: JSON.parse(d.groupSaleIds).map((id: string) => ({ id })) } : saleById.get(d.saleId), related, node);
         // La lista no necesita el detalle de ítems
         const { lines: _l, excludedLines: _e, ...rest } = v;
         return rest;
@@ -1302,9 +1338,194 @@ export class FiscalService implements OnModuleInit, OnModuleDestroy {
     return sales
       .filter((s) => {
         const notas = new Set(s.fiscalDocuments.filter((d) => d.kind === 'NOTA_CREDITO' && d.status === 'AUTHORIZED').map((d) => d.assocDocumentId));
-        return !s.fiscalDocuments.some((d) => d.kind === 'FACTURA' && (d.status === 'PENDING' || (d.status === 'AUTHORIZED' && !notas.has(d.id))));
+        return !s.fiscalDocuments.some((d) => d.kind === 'FACTURA' && (d.status === 'PENDING' || d.status === 'GROUPED' || (d.status === 'AUTHORIZED' && !notas.has(d.id))));
       })
       .map(({ fiscalDocuments: _f, ...s }) => s);
+  }
+
+  // ─── Factura del mes ──────────────────────────────────────────────
+  //
+  // Escuelas, organismos: retiran varias veces en el mes a cuenta corriente y necesitan UNA factura
+  // con todo. La factura cuelga de la primera venta (saleId) y lleva la lista en groupSaleIds; cada
+  // una de las otras ventas lleva una fila GROUPED que apunta a la factura, así nadie la factura de
+  // nuevo (ni a mano, ni la factura automática, ni el reparto).
+
+  /** La factura del mes vigente (en cola o autorizada, sin anular) en la que va esta venta, si hay. */
+  private async groupInvoiceOf(saleId: string, docs?: FiscalDocument[]): Promise<FiscalDocument | null> {
+    const own = docs || (await this.prisma.fiscalDocument.findMany({ where: { saleId, kind: 'FACTURA' } }));
+    const candidates: FiscalDocument[] = [];
+    for (const d of own) {
+      if (d.groupSaleIds && (JSON.parse(d.groupSaleIds) as string[]).includes(saleId)) candidates.push(d);
+      else if (d.status === 'GROUPED' && d.assocDocumentId) {
+        const inv = await this.prisma.fiscalDocument.findUnique({ where: { id: d.assocDocumentId } });
+        if (inv) candidates.push(inv);
+      }
+    }
+    const live = candidates.filter((c) => c.status === 'PENDING' || c.status === 'AUTHORIZED');
+    if (!live.length) return null;
+    const credited = await this.creditedIds(live.map((c) => c.id));
+    return live.find((c) => !credited.has(c.id)) || null;
+  }
+
+  /**
+   * Las ventas de una factura del mes como si fueran una sola: los renglones del mismo producto al
+   * mismo precio se suman (y las devoluciones los restan). Las ventas anuladas quedan afuera.
+   */
+  private async groupSale(doc: { saleId: string; groupSaleIds: string | null }): Promise<any> {
+    const ids: string[] = JSON.parse(doc.groupSaleIds || '[]');
+    const sales = await this.prisma.sale.findMany({
+      where: { id: { in: ids } },
+      include: { items: { include: { product: { select: { taxRate: true } } } }, client: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!sales.length) throw new NotFoundException('Venta no encontrada');
+    const anchor = sales.find((s) => s.id === doc.saleId) || sales[0];
+    const included = sales.filter((s) => s.status !== 'CANCELLED');
+    const lines = new Map<string, any>();
+    for (const s of included) {
+      for (const it of s.items as any[]) {
+        const k = `${it.productId || it.productName}|${round2(it.unitPrice)}`;
+        const l = lines.get(k);
+        if (l) { l.quantity += it.quantity; l.total = round2(l.total + it.total); }
+        else lines.set(k, { ...it, id: k });
+      }
+    }
+    const items = [...lines.values()].filter((l) => Math.abs(l.total) >= 0.005 || Math.abs(l.quantity) > 1e-9);
+    return {
+      ...anchor,
+      status: included.length ? 'COMPLETED' : 'CANCELLED',
+      total: round2(included.reduce((t, s) => t + s.total, 0)),
+      discountAmount: round2(included.reduce((t, s) => t + (s.discountAmount || 0), 0)),
+      items,
+      includedIds: included.map((s) => s.id),
+      groupSales: included.map((s) => ({ id: s.id, saleNumber: s.saleNumber, createdAt: s.createdAt, total: s.total })),
+    };
+  }
+
+  /** Nota de crédito por una sola venta de una factura del mes (se anuló o devolvió después de facturar). */
+  private async groupMemberCreditNote(invoice: FiscalDocument, memberSaleId: string, reason: string, userId?: string): Promise<string | null> {
+    const id = `${memberSaleId}:NCG`;
+    if (await this.prisma.fiscalDocument.findUnique({ where: { id } })) return null;
+    if (invoice.status !== 'AUTHORIZED' || !invoice.cbteTipo) return null;
+    const config = await this.loadConfig();
+    const sale = await this.saleForInvoice(memberSaleId);
+    const items = sale.items.filter((i: any) => esFacturable(i.productId)).map((i: any) => ({ total: i.total, taxRate: i.product?.taxRate ?? 0 }));
+    if (items.reduce((t: number, i: any) => t + i.total, 0) <= 0) return null;
+    const tipo = notaCreditoDe(tipoDesdeCodigo(invoice.cbteTipo));
+    const imp = buildImportes(items, sale.discountAmount, tipo, config.defaultIvaRate);
+    const node = await nodeIndex(this.prisma);
+    await this.prisma.fiscalDocument.create({
+      data: {
+        id, saleId: memberSaleId, kind: 'NOTA_CREDITO', status: 'PENDING',
+        environment: invoice.environment, emisorCuit: invoice.emisorCuit, pointOfSale: invoice.pointOfSale,
+        total: imp.ImpTotal, neto: imp.ImpNeto, iva: imp.ImpIVA, ivaDetail: imp.Iva ? JSON.stringify(imp.Iva) : null,
+        receptorDocTipo: invoice.receptorDocTipo, receptorDocNro: invoice.receptorDocNro,
+        receptorName: invoice.receptorName, receptorIvaCondition: invoice.receptorIvaCondition,
+        assocDocumentId: invoice.id, reason: `${reason} (venta N° ${sale.saleNumber})`, ownerNode: node, createdById: userId || null,
+      },
+    });
+    return id;
+  }
+
+  /** ¿La venta ya tiene factura (suelta, del mes, o es una devolución con su nota)? */
+  private hasFiscal(docs: { kind: string; status: string; id: string; assocDocumentId: string | null }[]) {
+    const notas = new Set(docs.filter((d) => d.kind === 'NOTA_CREDITO' && d.status === 'AUTHORIZED').map((d) => d.assocDocumentId));
+    if (docs.some((d) => d.kind === 'NOTA_CREDITO' && d.status !== 'VOID' && d.status !== 'REJECTED')) return true;
+    return docs.some((d) => d.kind === 'FACTURA' && (d.status === 'PENDING' || d.status === 'GROUPED' || (d.status === 'AUTHORIZED' && !notas.has(d.id))));
+  }
+
+  /** Las ventas de un cliente sin factura en el período, para elegir cuáles van en la factura del mes. */
+  async monthlyCandidates(clientId: string, params: { from?: string; to?: string }) {
+    const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+    if (!client) throw new NotFoundException('Cliente no encontrado');
+    const now = new Date();
+    const from = params.from ? new Date(params.from) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = params.to ? new Date(params.to) : now;
+    const sales = await this.prisma.sale.findMany({
+      where: { clientId, status: 'COMPLETED', createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+      take: 500,
+      include: { items: true, fiscalDocuments: { select: { id: true, kind: true, status: true, assocDocumentId: true } } },
+    });
+    const config = await this.loadConfig();
+    const list = sales
+      .filter((s) => !this.hasFiscal(s.fiscalDocuments))
+      .map((s) => {
+        const fact = s.items.filter((i) => esFacturable(i.productId));
+        return {
+          id: s.id, saleNumber: s.saleNumber, createdAt: s.createdAt, total: s.total,
+          amount: round2(fact.reduce((t, i) => t + i.total, 0) - (s.total > 0 ? s.discountAmount || 0 : 0)),
+          lines: fact.length, isReturn: s.total < 0,
+          summary: fact.slice(0, 3).map((i) => `${Math.abs(i.quantity)} ${i.productName}`).join(', ') + (fact.length > 3 ? '…' : ''),
+        };
+      })
+      .filter((s) => s.lines > 0);
+    return {
+      enabled: Boolean(config.enabled && cuitValida(config.cuit)),
+      client: { id: client.id, name: client.name, cuit: client.cuit, dni: client.dni, ivaCondition: client.ivaCondition, monthlyInvoice: (client as any).monthlyInvoice },
+      sales: list,
+      total: round2(list.reduce((t, s) => t + s.amount, 0)),
+    };
+  }
+
+  /** Emite la factura del mes de un cliente con las ventas elegidas. */
+  async invoiceGroup(clientId: string, saleIds: string[], receptorInput?: ReceptorInput, userId?: string) {
+    const ids = [...new Set((Array.isArray(saleIds) ? saleIds : []).map(String))];
+    if (!ids.length) throw new BadRequestException('Elegí las ventas que van en la factura');
+    const docId = await this.exclusive(async () => {
+      const config = await this.loadConfig();
+      if (!config.enabled) throw new BadRequestException('La facturación electrónica no está activada');
+      if (!cuitValida(config.cuit)) throw new BadRequestException('Falta cargar la CUIT del comercio');
+      const sales = await this.prisma.sale.findMany({
+        where: { id: { in: ids } },
+        include: { fiscalDocuments: { select: { id: true, kind: true, status: true, assocDocumentId: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (sales.length !== ids.length) throw new NotFoundException('Alguna de las ventas ya no existe');
+      for (const s of sales) {
+        if (s.clientId !== clientId) throw new BadRequestException(`La venta N° ${s.saleNumber} es de otro cliente`);
+        if (s.status !== 'COMPLETED') throw new BadRequestException(`La venta N° ${s.saleNumber} está anulada`);
+        if (this.hasFiscal(s.fiscalDocuments)) throw new ConflictException(`La venta N° ${s.saleNumber} ya tiene factura`);
+      }
+      const anchor = sales.find((s) => s.total > 0);
+      if (!anchor) throw new BadRequestException('Elegí al menos una venta (las devoluciones solas no se facturan)');
+
+      const group = { saleId: anchor.id, groupSaleIds: JSON.stringify([anchor.id, ...sales.filter((s) => s.id !== anchor.id).map((s) => s.id)]) };
+      const merged = await this.groupSale(group);
+      if (merged.items.some((l: any) => esFacturable(l.productId) && l.total < -0.005)) {
+        throw new BadRequestException('Hay devoluciones de productos que no están en las ventas elegidas: sacalas o sumá la venta original');
+      }
+      const receptor = resolveReceptor({
+        cuit: receptorInput?.cuit ?? merged.client?.cuit,
+        dni: receptorInput?.dni ?? merged.client?.dni,
+        name: receptorInput?.name ?? merged.client?.name,
+        ivaCondition: receptorInput?.ivaCondition ?? merged.client?.ivaCondition,
+      });
+      try {
+        this.planFactura(merged, receptor, config);
+      } catch (err: any) {
+        if (err instanceof ComprobanteError) throw new BadRequestException(err.message);
+        throw err;
+      }
+
+      const node = await nodeIndex(this.prisma);
+      const count = async (saleId: string) => this.prisma.fiscalDocument.count({ where: { saleId, kind: 'FACTURA' } });
+      const id = `${anchor.id}:F${(await count(anchor.id)) + 1}`;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.fiscalDocument.create({
+          data: { id, saleId: anchor.id, kind: 'FACTURA', ...this.baseDoc(config, node), ...this.receptorData(receptor), groupSaleIds: group.groupSaleIds, createdById: userId || null,
+            observations: `Factura del mes: ${sales.length} ${sales.length === 1 ? 'venta' : 'ventas'} (N° ${sales.map((s) => s.saleNumber).join(', ')})` },
+        });
+        for (const s of sales.filter((x) => x.id !== anchor.id)) {
+          const n = s.fiscalDocuments.filter((d) => d.kind === 'FACTURA').length + 1;
+          await tx.fiscalDocument.create({
+            data: { id: `${s.id}:G${n}`, saleId: s.id, kind: 'FACTURA', ...this.baseDoc(config, node), status: 'GROUPED', ...this.receptorData(receptor), assocDocumentId: id, createdById: userId || null },
+          });
+        }
+      });
+      return id;
+    });
+    return this.emitInteractive(docId);
   }
 
   /** Libro de comprobantes para el contador: CSV con lo autorizado en el período. */

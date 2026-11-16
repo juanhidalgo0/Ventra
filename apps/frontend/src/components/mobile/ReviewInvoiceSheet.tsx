@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import CashSourcePicker, { CashSource } from '../common/CashSourcePicker';
 import toast from 'react-hot-toast';
 import { AlertTriangle, CheckCircle2, ChevronRight, Search, Trash2, Plus, PackagePlus, Link2 } from 'lucide-react';
 import api from '../../services/api';
@@ -39,6 +40,7 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [printed, setPrinted] = useState('');
   const [payment, setPayment] = useState<'PAID' | 'OWED'>('OWED');
+  const [cashSource, setCashSource] = useState<CashSource | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState<'' | 'save' | 'confirm'>('');
   const [editing, setEditing] = useState<number | null>(null);
@@ -100,6 +102,7 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
         invoiceNumber: invoiceNumber || undefined,
         manualTotal: printedN > 0 ? printedN : undefined,
         paymentStatus: payment,
+        cashSource: payment === 'PAID' ? cashSource : null,
         items: lines.filter((l) => l.quantity > 0).map((it) => ({
           productId: it.product?.id || undefined, quantity: it.quantity, cost: it.cost, buyFormat: 'UNIT',
           salePrice: it.suggestedSalePrice || undefined, source: { code: it.sku || undefined, name: it.name },
@@ -216,6 +219,7 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
                   <button key={v} onClick={() => { setPayment(v); setDirty(true); }} className={`h-11 rounded-xl text-[14px] font-semibold border ${payment === v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-700'}`}>{label}</button>
                 ))}
               </div>
+              {payment === 'PAID' && <div className="mt-2"><CashSourcePicker value={cashSource} onChange={setCashSource} /></div>}
             </div>
             <p className="text-[12px] text-slate-500 px-1">Hasta que se confirme, esta boleta no suma stock, no cambia precios y no cuenta como deuda.{!canConfirm ? ' La confirma el dueño o un encargado.' : ''}</p>
           </div>

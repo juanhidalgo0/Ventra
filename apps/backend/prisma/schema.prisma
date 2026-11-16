@@ -24,6 +24,8 @@ model User {
     role         String   @default("CASHIER") // ADMIN | SUPERVISOR | CASHIER
   // Qué hace en la distribuidora: VENDEDOR (preventa) | CHOFER (reparto) | MOSTRADOR. Sin valor: todo
   workRole     String?  @map("work_role")
+  // Distribuidora: % de comisión propio del vendedor (null = el general de Informes)
+  commissionPct Float?  @map("commission_pct")
   isActive     Boolean  @default(true) @map("is_active")
   avatarUrl    String?  @map("avatar_url")
   lastLogin    DateTime? @map("last_login")
@@ -251,6 +253,8 @@ model Product {
   variantAttrs     String? @map("variant_attrs") // JSON con los atributos de la variante, ej. {"talle":"M","color":"Negro"}
   trackExpiry      Boolean @default(false) @map("track_expiry") // Controla vencimientos por lote
   expiryAlertDays  Int     @default(7) @map("expiry_alert_days") // Avisar estos días antes de vencer
+  // Dónde se vende: null o BOTH = mostrador y reparto, RETAIL = solo mostrador, WHOLESALE = solo reparto (mayorista)
+  salesChannel     String? @map("sales_channel")
   packPrice        Float?  @map("pack_price") // Distribuidora: precio del bulto entero de unitsPerPack unidades
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
@@ -484,6 +488,8 @@ model Client {
   email     String?
   balance   Float    @default(0) // Positive means they owe us
   creditLimit Float? @map("credit_limit")
+  // Se le factura todo junto a fin de mes (escuelas, organismos): sus ventas no se facturan una por una
+  monthlyInvoice Boolean @default(false) @map("monthly_invoice")
   authorizedPickups String? @map("authorized_pickups")
   priceList String   @default("RETAIL") @map("price_list") // RETAIL | TRADE | WHOLESALE
   tradeDiscountPercentage Float? @map("trade_discount_percentage")
@@ -575,6 +581,7 @@ model FiscalDocument {
   kind                 String    // FACTURA | NOTA_CREDITO
   // PENDING: en cola · AUTHORIZED: con CAE · REJECTED: ARCA lo rechazó, hay que corregir algo
   // VOID: no se emitió y ya no hace falta (la venta se anuló antes)
+  // GROUPED: la venta va dentro de la factura del mes de su cliente (assocDocumentId)
   status               String    @default("PENDING")
   environment          String    // HOMOLOGACION | PRODUCCION
   emisorCuit           String    @map("emisor_cuit")
@@ -596,7 +603,10 @@ model FiscalDocument {
   receptorDocNro       String    @default("0") @map("receptor_doc_nro")
   receptorName         String?   @map("receptor_name")
   receptorIvaCondition String    @default("CONSUMIDOR_FINAL") @map("receptor_iva_condition")
-  assocDocumentId      String?   @map("assoc_document_id") // NC: la factura que anula
+  assocDocumentId      String?   @map("assoc_document_id") // NC: la factura que anula · GROUPED: la factura del mes que la incluye
+  // Factura del mes: las ventas que junta (JSON [saleId]). saleId es la primera de ellas.
+  // Cada una de las otras lleva una fila GROUPED que apunta acá, así no se factura de nuevo.
+  groupSaleIds         String?   @map("group_sale_ids")
   reason               String?   // NC: motivo
   ownerNode            Int       @default(0) @map("owner_node")
   attempts             Int       @default(0)
@@ -750,6 +760,9 @@ model PreOrder {
   // Lo que pagó en la entrega de lo que ya debía de antes (deuda vieja de la cuenta corriente)
   prevCash       Float?    @map("prev_cash")
   prevTransfer   Float?    @map("prev_transfer")
+  // El encargado vio en el banco la transferencia de esta parada (se borra si cambia el monto)
+  transferCheckedAt DateTime? @map("transfer_checked_at")
+  transferCheckedBy String?   @map("transfer_checked_by") // nombre de quien la comprobó
   deliveredAt    DateTime? @map("delivered_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -976,4 +989,21 @@ model WorkOrderItem {
 
   @@index([orderId])
   @@map("work_order_items")
+}
+
+/// Pagos de comisión a los vendedores de la preventa, por mes (ver CommissionsService)
+model SellerCommissionPayment {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id") // el vendedor
+  month      String   // YYYY-MM de lo que se le paga
+  amount     Float
+  source     String   // FUND (caja del mes) | SESSION (caja abierta) | TRANSFER
+  sessionId  String?  @map("session_id")
+  movementId String?  @map("movement_id") // el gasto en la caja, si salió efectivo
+  notes      String?
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, month])
+  @@map("seller_commission_payments")
 }

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins, Pencil, MapPin, Link2 } from 'lucide-react';
+import { Search, X, UserPlus, Users, Phone, MessageCircle, ArrowDownRight, ArrowUpRight, HandCoins, Pencil, MapPin, Link2, Receipt, FileText } from 'lucide-react';
 import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { hasFeature } from '../../stores/businessStore';
 import api from '../../services/api';
 import ZoneNotice from '../clients/ZoneNotice';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount } from './ui';
+import MonthlyInvoiceModal from '../clients/MonthlyInvoiceModal';
+import { StatementPreview } from '../clients/AccountStatement';
 import { useCashSession } from './useCashSession';
 import { getPaymentMethods } from './checkout';
 
@@ -131,6 +133,8 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
   const [client, setClient] = useState<any | null>(null);
   const [paying, setPaying] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [monthly, setMonthly] = useState(false);
+  const [statement, setStatement] = useState(false);
 
   const load = useCallback(() => {
     if (!clientId) return;
@@ -173,6 +177,12 @@ function ClientSheet({ clientId, onClose, onChanged }: { clientId: string | null
           {(client.address || client.locality) && (
             <p className="text-[13.5px] text-slate-600 flex items-start gap-1.5"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" /> {[client.address, client.locality].filter(Boolean).join(', ')}</p>
           )}
+          {client.monthlyInvoice && (
+            <button onClick={() => setMonthly(true)} className="w-full h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center gap-2 text-[14px] font-semibold"><Receipt className="w-4 h-4" /> Factura del mes</button>
+          )}
+          <button onClick={() => setStatement(true)} className="w-full h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><FileText className="w-4 h-4" /> Resumen de cuenta</button>
+          {statement && <StatementPreview client={client} onClose={() => setStatement(false)} />}
+          {monthly && <MonthlyInvoiceModal client={client} onClose={() => { setMonthly(false); load(); }} />}
           <button onClick={() => setEditing(true)} className="w-full h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2 text-[14px] font-medium text-slate-700"><Pencil className="w-4 h-4" /> Editar datos</button>
           {hasFeature('bulk') && (
             <button onClick={() => sendClientOrderLink(client)} className="w-full h-11 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center justify-center gap-2 text-[14px] font-semibold text-emerald-800"><Link2 className="w-4 h-4" /> Mandarle su link de pedidos</button>
@@ -276,7 +286,7 @@ const IVA_OPTIONS: [string, string][] = [
   ['MONOTRIBUTO', 'Monotributo'],
   ['EXENTO', 'Exento'],
 ];
-const EMPTY = { name: '', phone: '', dni: '', address: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL', creditLimit: '' };
+const EMPTY = { name: '', phone: '', dni: '', address: '', locality: '', cuit: '', ivaCondition: 'CONSUMIDOR_FINAL', creditLimit: '', monthlyInvoice: false };
 
 /**
  * Crear o corregir un cliente. En la distribuidora también la localidad (la zona del reparto),
@@ -286,12 +296,16 @@ function NewClientSheet({ open, onClose, onCreated, editing, localities = [] }: 
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const delivery = hasFeature('delivery');
+  const [invoicing, setInvoicing] = useState(false);
+  useEffect(() => { if (open) api.get('/fiscal/config').then((r) => setInvoicing(!!r.data?.enabled)).catch(() => {}); }, [open]);
+  const fiscal = delivery || invoicing;
   useEffect(() => {
     if (!open) return;
     setForm(editing ? {
       name: editing.name || '', phone: editing.phone || '', dni: editing.dni || '', address: editing.address || '',
       locality: editing.locality || '', cuit: editing.cuit || '', ivaCondition: editing.ivaCondition || 'CONSUMIDOR_FINAL',
       creditLimit: editing.creditLimit ? String(editing.creditLimit) : '',
+      monthlyInvoice: !!editing.monthlyInvoice,
     } : EMPTY);
   }, [open, editing]);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
@@ -306,7 +320,8 @@ function NewClientSheet({ open, onClose, onCreated, editing, localities = [] }: 
       address: form.address.trim() || undefined,
       creditLimit: form.creditLimit ? parseAmount(form.creditLimit) : undefined,
     };
-    if (delivery) Object.assign(body, { locality: form.locality.trim() || undefined, cuit: form.cuit.replace(/\D/g, '') || undefined, ivaCondition: form.ivaCondition });
+    if (delivery) Object.assign(body, { locality: form.locality.trim() || undefined });
+    if (fiscal) Object.assign(body, { cuit: form.cuit.replace(/\D/g, '') || undefined, ivaCondition: form.ivaCondition, ...(invoicing ? { monthlyInvoice: !!form.monthlyInvoice } : {}) });
     try {
       if (editing) await api.patch(`/clients/${editing.id}`, body);
       else await api.post('/clients', body);
@@ -327,13 +342,13 @@ function NewClientSheet({ open, onClose, onCreated, editing, localities = [] }: 
         <input className={input} placeholder={delivery ? 'Nombre del comercio' : 'Nombre y apellido'} value={form.name} onChange={set('name')} autoFocus={!editing} />
         <input className={input} placeholder="Teléfono (para WhatsApp)" inputMode="tel" value={form.phone} onChange={set('phone')} />
         <input className={input} placeholder="Dirección (opcional)" value={form.address} onChange={set('address')} />
-        {delivery && (
+        {fiscal && (
           <>
-            <div>
+            {delivery && <div>
               <label className={label}>Localidad (la zona del reparto)</label>
               <input className={input} list="mobile-client-localities" placeholder="Ej.: Verónica" value={form.locality} onChange={set('locality')} />
               <datalist id="mobile-client-localities">{localities.map((l) => <option key={l} value={l} />)}</datalist>
-            </div>
+            </div>}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={label}>CUIT</label>
@@ -346,6 +361,15 @@ function NewClientSheet({ open, onClose, onCreated, editing, localities = [] }: 
                 </select>
               </div>
             </div>
+            {invoicing && (
+              <label className="flex items-start gap-3 px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                <input type="checkbox" checked={!!form.monthlyInvoice} onChange={(e) => setForm({ ...form, monthlyInvoice: e.target.checked })} className="mt-1 w-5 h-5 accent-rose-600" />
+                <span>
+                  <span className="block text-[14px] font-semibold text-slate-800">Factura a fin de mes</span>
+                  <span className="block text-[12.5px] text-slate-500">Escuelas y organismos: sus compras se juntan en una sola factura.</span>
+                </span>
+              </label>
+            )}
           </>
         )}
         {!delivery && <input className={input} placeholder="DNI (opcional)" inputMode="numeric" value={form.dni} onChange={set('dni')} />}

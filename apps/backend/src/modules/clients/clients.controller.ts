@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request, Delete, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request, Delete, ForbiddenException, Query } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -9,6 +9,10 @@ export class ClientsController {
 
   @Get()
   findAll() { return this.clientsService.findAll(); }
+
+  /** Resumen de cuenta: saldo anterior, cada venta a cuenta y cada pago con el saldo que dejó, y el saldo final */
+  @Get(':id/statement')
+  statement(@Param('id') id: string, @Query('from') from?: string, @Query('to') to?: string) { return this.clientsService.statement(id, { from, to }); }
 
   @Get(':id')
   findOne(@Param('id') id: string) { return this.clientsService.findOne(id); }

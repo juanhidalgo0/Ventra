@@ -2,12 +2,13 @@ import { Controller, Get, Put, Post, Body, Param, Query, UseGuards, Request, For
 import { AuthGuard } from '@nestjs/passport';
 import { PreOrdersService } from './preorders.service';
 import { DistribReportsService } from './distrib-reports.service';
+import { CommissionsService } from './commissions.service';
 
 /** Pedidos de preventa (distribuidora). Ver PreOrdersService. */
 @Controller('preorders')
 @UseGuards(AuthGuard('jwt'))
 export class PreOrdersController {
-  constructor(private preOrders: PreOrdersService, private reports: DistribReportsService) {}
+  constructor(private preOrders: PreOrdersService, private reports: DistribReportsService, private commissions: CommissionsService) {}
 
   private manager(req: any) {
     if (req?.user?.role !== 'ADMIN' && req?.user?.role !== 'SUPERVISOR') throw new ForbiddenException('Los informes son del dueño o el encargado');
@@ -18,6 +19,32 @@ export class PreOrdersController {
   report(@Query('from') from: string, @Query('to') to: string, @Query('lostDays') lostDays: string, @Request() req: any) {
     this.manager(req);
     return this.reports.report({ from, to, lostDays: Number(lostDays) || undefined });
+  }
+
+  /** Comisiones de los vendedores: solo el dueño (es plata que se paga) */
+  private owner(req: any) {
+    if (req?.user?.role !== 'ADMIN') throw new ForbiddenException('Las comisiones las maneja el dueño');
+  }
+
+  /** Lo que le corresponde a cada vendedor en el mes, lo pagado y lo que falta */
+  @Get('commissions')
+  commissionsMonth(@Query('month') month: string, @Request() req: any) {
+    this.owner(req);
+    return this.commissions.month(month);
+  }
+
+  /** % propio de un vendedor (vacío = el general) */
+  @Put('commissions/:userId/pct')
+  commissionPct(@Param('userId') userId: string, @Body('pct') pct: any, @Request() req: any) {
+    this.owner(req);
+    return this.commissions.setPct(userId, pct);
+  }
+
+  /** Pagarle al vendedor: de la caja del mes, de una caja abierta o por transferencia */
+  @Post('commissions/pay')
+  commissionPay(@Body() data: any, @Request() req: any) {
+    this.owner(req);
+    return this.commissions.pay(req.user?.sub, data);
   }
 
   /** Qué comprar para cubrir los pedidos pendientes y el stock mínimo, por proveedor */

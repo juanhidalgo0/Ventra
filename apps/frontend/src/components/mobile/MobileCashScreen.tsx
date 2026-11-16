@@ -9,6 +9,8 @@ import { getPaymentMethods } from './checkout';
 import { downloadPrintableAsPdf, afterPaint } from '../../utils/printToPdf';
 import XReportPrint from '../cash-register/XReportPrint';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
+import ZToMonthFund from '../cash-register/ZToMonthFund';
+import { useFeature } from '../../stores/businessStore';
 import { useConfirm } from '../common/ConfirmDialog';
 import { ScreenHeader, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount, METHOD_LABELS } from './ui';
 
@@ -60,6 +62,8 @@ export default function MobileCashScreen() {
   const [closing, setClosing] = useState<{ session: any; mode: 'close' | 'arqueo' } | null>(null);
   const [historyItem, setHistoryItem] = useState<any | null>(null);
   const [zItem, setZItem] = useState<any | null>(null);
+  // El Z recién hecho desde el celular: ofrece pasar el efectivo a la caja del mes
+  const [zFresh, setZFresh] = useState<string | null>(null);
   /** Turnos cerrados que todavía no entraron en un Cierre Z (null = no hay) */
   const [zPending, setZPending] = useState<any | null>(null);
   const [makingZ, setMakingZ] = useState(false);
@@ -157,6 +161,7 @@ export default function MobileCashScreen() {
       await load();
       setTab('Z');
       setZItem(data);
+      setZFresh(data?.id || null);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'No se pudo hacer el Cierre Z');
     } finally {
@@ -301,7 +306,7 @@ export default function MobileCashScreen() {
       <SessionSheet session={selected} onClose={() => setSelected(null)} onCloseCash={(s) => { setSelected(null); setClosing({ session: s, mode: 'close' }); }} />
       <CloseSheet data={closing} onClose={() => setClosing(null)} onDone={() => { setClosing(null); load(); }} />
       <HistorySheet session={historyItem} onClose={() => setHistoryItem(null)} onPdf={downloadX} pdfBusy={!!pdfJob} />
-      <ZSheet report={zItem} onClose={() => setZItem(null)} onOpenSession={(s) => { setZItem(null); setHistoryItem(s); }} onPdf={downloadZ} pdfBusy={!!pdfJob} />
+      <ZSheet report={zItem} fresh={!!zItem && zItem.id === zFresh} onClose={() => { setZItem(null); setZFresh(null); }} onOpenSession={(s) => { setZItem(null); setHistoryItem(s); }} onPdf={downloadZ} pdfBusy={!!pdfJob} />
       {pdfJob?.kind === 'X' && <XReportPrint session={pdfJob.data} />}
       {pdfJob?.kind === 'Z' && <CierreDiaModal zReport={pdfJob.data} isHistory headless onClose={() => {}} />}
     </div>
@@ -678,17 +683,19 @@ function HistorySheet({ session: s, onClose, onPdf, pdfBusy }: { session: any | 
 }
 
 /** Detalle de un Cierre Z: el día completo, con todos sus turnos. */
-function ZSheet({ report: r, onClose, onOpenSession, onPdf, pdfBusy }: { report: any | null; onClose: () => void; onOpenSession: (s: any) => void; onPdf: (r: any) => void; pdfBusy: boolean }) {
+function ZSheet({ report: r, fresh = false, onClose, onOpenSession, onPdf, pdfBusy }: { report: any | null; fresh?: boolean; onClose: () => void; onOpenSession: (s: any) => void; onPdf: (r: any) => void; pdfBusy: boolean }) {
   const sum = r ? parseJson(r.summary) || {} : {};
   const methods = methodEntries(sum.paymentBreakdown);
   const declared = sum.posnetDeclarations || {};
   const sold = methods.reduce((t, [, v]) => t + v, 0);
   const sessions: any[] = r?.sessions?.length ? r.sessions : sum.sessions || [];
+  const usesFund = useFeature('monthfund');
   return (
     <Sheet open={!!r} onClose={onClose} title={r ? `Cierre Z · ${dayTime(r.generatedAt)}` : ''} footer={r ? <PdfButton onClick={() => onPdf(r)} busy={pdfBusy} /> : undefined}>
       {r && (
         <div className="space-y-4 pt-1">
           <p className="text-[13px] text-slate-500">Generado por {r.generatedBy?.fullName || '—'} · {sessions.length} {sessions.length === 1 ? 'turno' : 'turnos'}</p>
+          {fresh && usesFund && <ZToMonthFund zReport={{ ...r, sessions }} />}
 
           <div className="rounded-2xl bg-rose-50 px-4 py-3">
             <p className="text-[12px] text-rose-800">Vendido en el día</p>

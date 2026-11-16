@@ -43,6 +43,12 @@ export class CashRegisterController {
     return this.cashService.completeArqueo(sessionId, req.user.sub, dto);
   }
 
+  /** De dónde puede salir la plata de un pago: las cajas abiertas (sin sus ventas) y la caja del mes */
+  @Get('pay-sources')
+  async paySources(@Request() req) {
+    return this.cashService.paySources(req.user?.sub, req.user?.role);
+  }
+
   @Get('active')
   getActive() {
     return this.cashService.getActiveSessions();
@@ -76,6 +82,22 @@ export class CashRegisterController {
   @Post('z-report/generate')
   generateZReport(@Request() req, @Body() dto: { clientId?: string }) {
     return this.cashService.generateZReport(req.user.sub, dto?.clientId);
+  }
+
+  // Caja del mes: la plata guardada aparte (le entra el Z y lo que trae el chofer)
+  @Get('fund')
+  getMonthFund(@Request() req, @Query('month') month?: string) {
+    return this.cashService.getMonthFund(req.user.sub, month);
+  }
+
+  @Post('fund/from-z')
+  monthFundFromZ(@Request() req, @Body() dto: { zReportId: string; amount: number }) {
+    return this.cashService.monthFundFromZ(req.user.sub, dto);
+  }
+
+  @Post('fund/close-month')
+  closeMonthFund(@Request() req, @Body() dto: { month?: string; counted: number; notes?: string }) {
+    return this.cashService.closeMonthFund(req.user.sub, req.user.role, dto);
   }
 
   @Get('movements')

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
 import { readPurchaseAuto } from '../mobile/ScanInvoiceSheet';
 import { 
   ArrowLeft, 
@@ -396,6 +397,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'OWED'>(draft?.paymentStatus || 'PAID');
   const [paymentMethod, setPaymentMethod] = useState(draft?.paymentMethod || 'Efectivo');
+  // Pagada en efectivo: de qué caja sale la plata
+  const [cashSource, setCashSource] = useState<CashSource | null>(null);
+  const paidFrom = () => (paymentStatus === 'PAID' && isCashMethod(paymentMethod) ? cashSource : null);
+  const warnCash = (r: any) => { if (r?.data?.cashWarning) toast.error(r.data.cashWarning, { duration: 9000 }); };
   const [notes, setNotes] = useState(draft?.notes || '');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1249,8 +1254,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
           items: [],
           paymentStatus,
           paymentMethod: paymentStatus === 'PAID' ? paymentMethod : null,
+          cashSource: paidFrom(),
           notes
-        });
+        }).then((r: any) => { warnCash(r); return r; });
         toast.success('Compra registrada con éxito');
         clearDraft();
         (onConfirmed || onBack)();
@@ -1304,8 +1310,10 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         }),
         paymentStatus,
         paymentMethod: paymentStatus === 'PAID' ? paymentMethod : null,
+        cashSource: paidFrom(),
         notes
       });
+      warnCash(saved);
       toast.success('Compra registrada con éxito');
       clearDraft();
       // Las últimas 5 boletas de este proveedor salieron sin tocar nada: ofrecer que se carguen solas (tanda 6.2)
@@ -2395,6 +2403,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                          <option>Mercado Pago</option>
                          <option>Débito/Crédito</option>
                       </select>
+                      {isCashMethod(paymentMethod) && <div className="mt-3"><CashSourcePicker value={cashSource} onChange={setCashSource} /></div>}
                    </motion.div>
                  )}
                </AnimatePresence>

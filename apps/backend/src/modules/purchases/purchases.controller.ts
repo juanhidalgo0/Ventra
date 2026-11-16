@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
+import { ForbiddenException, Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { CashRegisterService } from '../cash-register/cash-register.service';
+import { PrismaService } from '../../database/prisma.service';
 import { PurchasesService } from './purchases.service';
 import { ScanJobsService } from './scan-jobs.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -8,7 +10,15 @@ import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 @Controller('purchases')
 @UseGuards(JwtAuthGuard)
 export class PurchasesController {
-  constructor(private purchasesService: PurchasesService, private scanJobs: ScanJobsService) {}
+  constructor(private purchasesService: PurchasesService, private scanJobs: ScanJobsService, private cash: CashRegisterService, private prisma: PrismaService) {}
+
+  /** Compra pagada en el momento: la plata sale de la caja elegida (cashSource), si es efectivo */
+  private async payPurchase(purchaseId: string, data: any, req: any) {
+    if (data?.paymentStatus !== 'PAID' || !data?.cashSource) return null;
+    const p: any = await (this.prisma as any).purchase.findUnique({ where: { id: purchaseId }, include: { supplier: { select: { name: true } } } });
+    if (!p || !(p.total > 0)) return null;
+    return this.cash.payOut(req.user.sub, req.user.role, data.cashSource, p.total, `${p.supplier?.name || 'Proveedor'}${p.invoiceNumber ? ` · ${p.invoiceNumber}` : ''}`);
+  }
 
   @Get()
   findAll() {
@@ -28,7 +38,12 @@ export class PurchasesController {
 
   @Post()
   async create(@Body() data: any, @Request() req) {
-    const p = await this.purchasesService.create({ ...data, userId: req.user.sub });
+    const { cashSource, ...rest } = data || {};
+    // Antes de cargar nada: si la caja elegida no sirve, que avise sin dejar la compra a medias
+    if (rest.paymentStatus === 'PAID' && cashSource?.source === 'FUND' && req.user.role !== 'ADMIN') throw new ForbiddenException('De la caja del mes solo paga el dueño');
+    const p = await this.purchasesService.create({ ...rest, userId: req.user.sub });
+    try { await this.payPurchase(p.id, data, req); }
+    catch (err: any) { (p as any).cashWarning = `La compra quedó cargada, pero la plata no se descontó: ${err?.message || 'error'}`; }
     // Aviso si un producto subió fuerte de costo con esta compra (tanda 8 de boletas)
     this.purchasesService.afterConfirmAlerts(p.id, data.supplierId).catch(() => {});
     return p;
@@ -188,11 +203,15 @@ export class PurchasesController {
   }
 
   @Put(':id/confirm')
-  confirmPending(
+  async confirmPending(
     @Param('id') id: string,
     @Body() data: any,
     @Request() req
   ) {
-    return this.purchasesService.confirmPending(id, { ...data, userId: req.user.sub });
+    const { cashSource, ...rest } = data || {};
+    const out: any = await this.purchasesService.confirmPending(id, { ...rest, userId: req.user.sub });
+    try { await this.payPurchase(id, data, req); }
+    catch (err: any) { if (out && typeof out === 'object') out.cashWarning = `La compra quedó confirmada, pero la plata no se descontó: ${err?.message || 'error'}`; }
+    return out;
   }
 }

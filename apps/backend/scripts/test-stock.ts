@@ -27,6 +27,7 @@ const { SalesService } = require('../src/modules/sales/sales.service');
 const { ProductsService } = require('../src/modules/products/products.service');
 const { PurchasesService } = require('../src/modules/purchases/purchases.service');
 const { DeliveryRunsService } = require('../src/modules/preorders/delivery-runs.service');
+const { CommissionsService } = require('../src/modules/preorders/commissions.service');
 const { PreOrdersService } = require('../src/modules/preorders/preorders.service');
 const { CashRegisterService } = require('../src/modules/cash-register/cash-register.service');
 
@@ -420,6 +421,53 @@ async function main() {
     assert.strictEqual(await stockDe(p.id), 10, 'armar o deshacer no mueve stock');
   });
 
+  await t('comisiones: % general o propio sobre lo entregado en repartos rendidos, y pagos que salen de la caja elegida', async () => {
+    const comm = new CommissionsService(prisma, cash);
+    const p = await nuevo('FERNET', 100);
+    const cli = await prisma.client.create({ data: { name: 'Kiosco Comisión' } });
+    const vende = await prisma.user.create({ data: { username: 'VENDE1', passwordHash: 'x', fullName: 'Rocío Vende', role: 'CASHIER', workRole: 'VENDEDOR' } as any });
+    const quieto = await prisma.user.create({ data: { username: 'VENDE2', passwordHash: 'x', fullName: 'Nico Quieto', role: 'CASHIER', workRole: 'VENDEDOR' } as any });
+    const mk = (id: string, n: number, q: number) => (prisma as any).preOrder.create({ data: { id, orderNumber: 930000 + n, clientId: cli.id, userId: vende.id, total: q * 1000, items: { create: [{ id: id + '-i', productId: p.id, productName: 'FERNET', quantity: q, unitPrice: 1000, total: q * 1000 }] } } });
+    await mk('po-com-a', 1, 10); await mk('po-com-b', 2, 10);
+    await prisma.storeSetting.upsert({ where: { id: 'seller_commission_pct' }, create: { id: 'seller_commission_pct', value: '5' }, update: { value: '5' } });
+
+    const run = await runs.create({ orderIds: ['po-com-a', 'po-com-b'] });
+    await runs.dispatch(run.id, {}, admin.id);
+    await runs.saveDelivery(run.id, 'po-com-a', { status: 'DELIVERED' });
+    await runs.saveDelivery(run.id, 'po-com-b', { status: 'PARTIAL', items: { 'po-com-b-i': 4 }, reason: 'Rechazó 6' });
+    let m = await comm.month();
+    let r = m.sellers.find((x: any) => x.userId === vende.id);
+    assert.strictEqual(r.delivered, 0, 'antes de rendir no cuenta');
+    assert.ok(m.sellers.some((x: any) => x.userId === quieto.id), 'el vendedor sin ventas aparece para ponerle su %');
+
+    await runs.settle(run.id, {}, admin.id);
+    m = await comm.month();
+    r = m.sellers.find((x: any) => x.userId === vende.id);
+    assert.strictEqual(r.delivered, 14000, 'lo rechazado no cuenta');
+    assert.strictEqual(r.pct, 5); assert.strictEqual(r.commission, 700);
+
+    await comm.setPct(vende.id, '8');
+    r = (await comm.month()).sellers.find((x: any) => x.userId === vende.id);
+    assert.strictEqual(r.pct, 8); assert.strictEqual(r.commission, 1120, 'su % propio gana al general');
+    await assert.rejects(() => comm.setPct(vende.id, 150), /entre 0 y 100/);
+
+    // Pago en dos partes: transferencia (solo se anota) y efectivo de la caja del mes (gasto)
+    await assert.rejects(() => comm.pay(admin.id, { userId: vende.id, amount: 2000, source: 'TRANSFER' }), /no se le puede pagar más/);
+    await comm.pay(admin.id, { userId: vende.id, amount: 500, source: 'TRANSFER' });
+    const after = await comm.pay(admin.id, { userId: vende.id, amount: 620, source: 'FUND' });
+    r = after.sellers.find((x: any) => x.userId === vende.id);
+    assert.strictEqual(r.paid, 1120); assert.strictEqual(r.owed, 0);
+    const gasto = await prisma.cashMovement.findFirst({ where: { sessionId: 'caja-del-mes', type: 'EXPENSE', description: { contains: 'COMISION ROCÍO VENDE' } } });
+    assert.ok(gasto && gasto.amount === 620, 'el efectivo sale de la caja del mes como gasto');
+    await assert.rejects(() => comm.pay(admin.id, { userId: vende.id, amount: 10, source: 'SESSION', sessionId: 'no-existe' }), /caja abierta|pagar más/);
+
+    // Volver al general
+    await comm.setPct(vende.id, '');
+    r = (await comm.month()).sellers.find((x: any) => x.userId === vende.id);
+    assert.strictEqual(r.ownPct, null); assert.strictEqual(r.pct, 5);
+    await prisma.storeSetting.delete({ where: { id: 'seller_commission_pct' } });
+  });
+
   await t('reparto: sale con venta a cuenta y el número del pedido; la rendición cobra, devuelve y reprograma', async () => {
     const p = await nuevo('QUILMES', 100);
     const cli = await prisma.client.create({ data: { name: 'Almacén Rendición' } });
@@ -446,6 +494,18 @@ async function main() {
     await runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, transfer: 400, reason: 'Rechazó un bulto' });
     await runs.saveDelivery(run.id, 'po-set-c', { status: 'NOT_DELIVERED', reason: 'Cerrado' });
 
+    // Transferencia comprobada en el banco: se tilda, se borra si cambia el monto, y no hay en efectivo
+    await assert.rejects(() => runs.checkTransfer(run.id, 'po-set-a', true, cajero.id), /no hubo transferencia/);
+    let vista = (await runs.checkTransfer(run.id, 'po-set-b', true, cajero.id)).orders.find((o: any) => o.id === 'po-set-b');
+    assert.ok(vista.transferCheckedAt, 'queda tildada');
+    await runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, transfer: 400, reason: 'Rechazó un bulto' });
+    vista = await (prisma as any).preOrder.findUnique({ where: { id: 'po-set-b' } });
+    assert.ok(vista.transferCheckedAt, 'mismo monto: sigue tildada');
+    await runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, transfer: 300, reason: 'Rechazó un bulto' });
+    vista = await (prisma as any).preOrder.findUnique({ where: { id: 'po-set-b' } });
+    assert.strictEqual(vista.transferCheckedAt, null, 'cambió el monto: se destilda');
+    await runs.saveDelivery(run.id, 'po-set-b', { status: 'PARTIAL', items: { 'po-set-b-i': 6 }, transfer: 400, reason: 'Rechazó un bulto' });
+
     const r = await runs.settle(run.id, { cashReceived: 1200 }, cajero.id);
     assert.deepStrictEqual(r.errors, []);
     assert.strictEqual(r.expectedCash, 1200);
@@ -461,6 +521,8 @@ async function main() {
     assert.notStrictEqual(c.orderNumber, 900203, 'vuelve con número nuevo: el suyo ya es de la venta');
     assert.strictEqual((await (prisma as any).deliveryRun.findUnique({ where: { id: run.id } })).status, 'CERRADO');
     await assert.rejects(() => runs.settle(run.id, {}, cajero.id), 'no se rinde dos veces');
+    vista = (await runs.checkTransfer(run.id, 'po-set-b', true, cajero.id)).orders.find((o: any) => o.id === 'po-set-b');
+    assert.ok(vista.transferCheckedAt, 'después de rendir también se puede tildar');
 
     // Varias de una vez: entregadas completas, todas a cuenta
     await mk('po-many-a', 4, 6); await mk('po-many-b', 5, 6);
@@ -603,6 +665,176 @@ async function main() {
     assert.strictEqual(movs.length, 2);
     assert.ok(movs.every((m: any) => m.type === 'EXPENSE'));
     assert.strictEqual(movs.reduce((s: number, m: any) => s + m.amount, 0), 300);
+  });
+
+  await t('caja del mes: le entra lo que trae el chofer y el Z una sola vez, y el balance deja la diferencia', async () => {
+    const { MONTH_FUND_ID, readMonthFund } = require('../src/modules/cash-register/month-fund');
+    // La rendición de arriba (Con gastos): trajo 700 contados
+    const gas = await (prisma as any).deliveryRun.findFirst({ where: { orders: { some: { id: 'po-gas-a' } } } });
+    const delReparto = await prisma.cashMovement.findMany({ where: { sessionId: MONTH_FUND_ID, description: { contains: `[reparto:${gas.id}]` } } });
+    assert.strictEqual(delReparto.length, 1);
+    assert.strictEqual(delReparto[0].amount, 700, 'entra lo que contó, no lo cobrado');
+    const fondo = await prisma.cashRegisterSession.findUnique({ where: { id: MONTH_FUND_ID } });
+    assert.strictEqual(fondo!.status, 'FONDO');
+    assert.strictEqual((await cash.getActiveSessions()).some((x: any) => x.id === MONTH_FUND_ID), false, 'no aparece como caja abierta');
+
+    const antes = (await cash.getMonthFund(admin.id)).balance;
+    const z = await prisma.dailyZReport.create({ data: { generatedById: admin.id, totalExpected: 5000, totalDeclared: 5000, differenceTotal: 0 } });
+    await cash.monthFundFromZ(cajero.id, { zReportId: z.id, amount: 4500 });
+    await cash.monthFundFromZ(cajero.id, { zReportId: z.id, amount: 4500 });
+    let f = await cash.getMonthFund(admin.id);
+    assert.strictEqual(f.balance, antes + 4500, 'el mismo Z no entra dos veces');
+    assert.ok(f.totals.fromZ >= 4500 && f.totals.fromReparto >= 700);
+
+    await cash.addCashMovement(MONTH_FUND_ID, admin.id, { type: 'EXPENSE', amount: 1000, description: '[Otro] LUZ | METODO: CASH' }, 'ADMIN');
+    await assert.rejects(() => cash.addCashMovement(MONTH_FUND_ID, cajero.id, { type: 'WITHDRAWAL', amount: 10 }, 'CAJERO'), 'solo el administrador saca de la caja del mes');
+    f = await cash.getMonthFund(admin.id);
+    assert.strictEqual(f.balance, antes + 3500);
+
+    await assert.rejects(() => cash.closeMonthFund(cajero.id, 'CAJERO', { counted: 1 }), 'el balance lo hace el administrador');
+    const cerrado = await cash.closeMonthFund(admin.id, 'ADMIN', { counted: f.balance - 200, notes: 'vuelto' });
+    assert.strictEqual(cerrado.closed.difference, -200, 'faltan 200');
+    assert.strictEqual(cerrado.balance, f.balance - 200, 'sigue con lo contado');
+    await assert.rejects(() => cash.closeMonthFund(admin.id, 'ADMIN', { counted: 0 }), 'un mes, un balance');
+    const prox = new Date(); prox.setMonth(prox.getMonth() + 1);
+    const siguiente = await readMonthFund(prisma, `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, '0')}`);
+    assert.strictEqual(siguiente.opening, f.balance - 200, 'el mes siguiente arranca con lo contado');
+  });
+
+  await t('cobro de cuenta corriente a la caja del mes: baja la deuda, no pasa por el mostrador y el efectivo entra una vez', async () => {
+    const { MONTH_FUND_ID } = require('../src/modules/cash-register/month-fund');
+    const cli = await prisma.client.create({ data: { name: 'Almacén Cobro', balance: 5000 } });
+    const antes = (await cash.getMonthFund(admin.id)).balance;
+    const datos = { key: 'k-cobro-1', clientId: cli.id, payments: [{ method: 'CASH', amount: 3000 }, { method: 'TRANSFERENCIA', amount: 1000 }] };
+    const r = await runs.collectToMonthFund(admin.id, datos);
+    await runs.collectToMonthFund(admin.id, datos);
+    assert.strictEqual(r.balance, 1000, 'debe lo que no pagó');
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: cli.id } }))!.balance, 1000, 'el reintento no cobra dos veces');
+    const venta = await prisma.sale.findUnique({ where: { id: 'cobrofondo-k-cobro-1' } });
+    assert.strictEqual(venta!.sessionId, 'reparto-cash', 'no entra al cajón del mostrador');
+    const f = await cash.getMonthFund(admin.id);
+    assert.strictEqual(f.balance, antes + 3000, 'solo el efectivo entra a la caja del mes');
+    assert.ok(f.totals.fromCollections >= 3000);
+    assert.strictEqual(await prisma.cashMovement.count({ where: { sessionId: MONTH_FUND_ID, description: { contains: '[cobro:k-cobro-1]' } } }), 1);
+  });
+
+  await t('factura del mes: varias ventas a cuenta de una escuela en una sola factura, sin facturarlas de nuevo', async () => {
+    const { FiscalService } = require('../src/modules/fiscal/fiscal.service');
+    const { WsaaService } = require('../src/modules/fiscal/wsaa.service');
+    // ARCA de mentira: numera y autoriza todo
+    let ultimo = 0;
+    const pedidos: any[] = [];
+    const wsfe: any = {
+      ultimoAutorizado: async () => ultimo,
+      solicitarCae: async (_ctx: any, req: any) => { ultimo = req.numero; pedidos.push(req); return { cae: `CAE${req.numero}`, caeVencimiento: '20991231', numero: req.numero, fecha: req.fecha, observaciones: [], replayed: false }; },
+      consultar: async () => null,
+    };
+    const fiscal = new FiscalService(prisma, new WsaaService(prisma), wsfe, mute(), mute());
+    (fiscal as any).transportFor = async () => ({ kind: 'direct' });
+    await prisma.fiscalConfig.upsert({
+      where: { id: 'fiscal_config' },
+      create: { id: 'fiscal_config', enabled: true, cuit: '20000000001', razonSocial: 'Libreria Prueba', ivaCondition: 'RESPONSABLE_INSCRIPTO', pointOfSale: 3, autoInvoice: true, autoInvoiceSince: new Date(Date.now() - 60_000) } as any,
+      update: { enabled: true, cuit: '20000000001', ivaCondition: 'RESPONSABLE_INSCRIPTO', pointOfSale: 3, autoInvoice: true, autoInvoiceSince: new Date(Date.now() - 60_000) } as any,
+    });
+
+    const escuela = await prisma.client.create({ data: { name: 'Escuela N° 12', monthlyInvoice: true } as any });
+    const resma = await nuevo('Resma A4 factura mes', 100, { salePrice: 1000, taxRate: 21 });
+    const tiza = await nuevo('Tiza factura mes', 100, { salePrice: 200, taxRate: 21 });
+    const fiado = (items: any[]) => crear({ sessionId: session.id, clientId: escuela.id, items, payments: [{ method: 'DEBT', amount: items.reduce((t: number, i: any) => t + i.quantity * i.price, 0) }] }, cajero.id);
+    const v1 = await fiado([{ productId: resma.id, quantity: 5, price: 1000 }]);
+    const v2 = await fiado([{ productId: resma.id, quantity: 2, price: 1000 }, { productId: tiza.id, quantity: 10, price: 200 }]);
+    const v3 = await fiado([{ productId: tiza.id, quantity: 5, price: 200 }]);
+    const dev = await fiado([{ productId: resma.id, quantity: -1, price: 1000 }]);
+
+    // La factura automática no las toca: el cliente es de factura mensual
+    await (fiscal as any).sweepAuto(await prisma.fiscalConfig.findUnique({ where: { id: 'fiscal_config' } }), 0);
+    await fiscal.onSaleCreated(v1.id);
+    assert.strictEqual(await prisma.fiscalDocument.count({ where: { saleId: { in: [v1.id, v2.id, v3.id, dev.id] } } }), 0, 'sin facturas sueltas');
+    assert.strictEqual(await fiscal.queueInvoice(v2.id, admin.id), null, 'el reparto tampoco la factura suelta');
+
+    const cand = await fiscal.monthlyCandidates(escuela.id, {});
+    assert.deepStrictEqual(cand.sales.map((x: any) => x.id), [v1.id, v2.id, v3.id, dev.id]);
+    assert.strictEqual(cand.total, 5000 + 4000 + 1000 - 1000);
+
+    await assert.rejects(() => fiscal.invoiceGroup(escuela.id, [dev.id], undefined, admin.id), /devoluciones solas/);
+    const doc = await fiscal.invoiceGroup(escuela.id, [v1.id, v2.id, v3.id, dev.id], undefined, admin.id);
+    assert.strictEqual(doc.status, 'AUTHORIZED');
+    assert.strictEqual(doc.total, 9000, 'una sola factura con todo, menos la devolución');
+    assert.strictEqual(pedidos.length, 1, 'un solo pedido a ARCA');
+    assert.deepStrictEqual(doc.lines.map((l: any) => [l.name, l.quantity, l.total]), [['Resma A4 factura mes', 6, 6000], ['Tiza factura mes', 15, 3000]], 'el mismo producto se suma');
+    assert.strictEqual(doc.group.length, 4);
+
+    // Ninguna se puede facturar de nuevo, y todas muestran la factura del mes
+    assert.strictEqual((await fiscal.getSaleFiscal(v2.id)).invoice.id, doc.id);
+    await assert.rejects(() => fiscal.invoiceSale(v2.id, {}, admin.id), /factura del mes/);
+    await assert.rejects(() => fiscal.invoiceSale(v1.id, {}, admin.id), /factura del mes|ya tiene/);
+    assert.strictEqual((await fiscal.monthlyCandidates(escuela.id, {})).sales.length, 0);
+    const sueltas = await fiscal.listUninvoiced({ from: new Date(Date.now() - 3600_000).toISOString() });
+    assert.ok(!sueltas.some((x: any) => [v1.id, v2.id, v3.id].includes(x.id)), 'no aparecen como sin factura');
+    const lista = await fiscal.listDocuments({});
+    assert.ok(!lista.documents.some((d: any) => d.status === 'GROUPED'), 'las marcas no son comprobantes');
+
+    // Se anula una venta después de facturar: nota de crédito solo por esa venta
+    await fiscal.onSaleCancelled(v3.id, admin.id);
+    const nc = await prisma.fiscalDocument.findUnique({ where: { id: `${v3.id}:NCG` } });
+    assert.ok(nc && nc.kind === 'NOTA_CREDITO' && nc.assocDocumentId === doc.id);
+    assert.strictEqual(nc!.total, 1000);
+    assert.strictEqual(await prisma.fiscalDocument.count({ where: { id: `${doc.id}:NC` } }), 0, 'la factura del mes no se anula entera');
+
+    // Con una venta anulada en la cola, la factura sale sin ella
+    const v4 = await fiado([{ productId: resma.id, quantity: 1, price: 1000 }]);
+    const v5 = await fiado([{ productId: tiza.id, quantity: 1, price: 200 }]);
+    (fiscal as any).transportFor = async () => { throw new Error('sin señal'); };
+    const enCola = await fiscal.invoiceGroup(escuela.id, [v4.id, v5.id], undefined, admin.id);
+    assert.strictEqual(enCola.status, 'PENDING');
+    await prisma.sale.update({ where: { id: v5.id }, data: { status: 'CANCELLED' } });
+    (fiscal as any).transportFor = async () => ({ kind: 'direct' });
+    await fiscal.retryDocument(enCola.id);
+    const salio = await fiscal.documentViewById(enCola.id);
+    assert.strictEqual(salio.status, 'AUTHORIZED'); assert.strictEqual(salio.total, 1000, 'la anulada quedó afuera');
+    assert.strictEqual((await prisma.fiscalDocument.findFirst({ where: { saleId: v5.id, assocDocumentId: enCola.id } }))!.status, 'VOID');
+
+    await prisma.fiscalConfig.update({ where: { id: 'fiscal_config' }, data: { enabled: false, autoInvoice: false } as any });
+  });
+
+  await t('pagar una compra o a un proveedor: la plata sale de la caja elegida', async () => {
+    const { PurchasesController } = require('../src/modules/purchases/purchases.controller');
+    const { SuppliersController } = require('../src/modules/suppliers/suppliers.controller');
+    const { SuppliersService } = require('../src/modules/suppliers/suppliers.service');
+    const ctrl = new PurchasesController(purchases, mute(), cash, prisma);
+    const supCtrl = new SuppliersController(new SuppliersService(prisma), cash);
+    const prov = await prisma.supplier.create({ data: { name: 'Mayorista Pagos' } });
+    const caja = await cash.open(admin.id, { terminalName: 'Caja pagos', openingAmount: 10000 });
+    const gastos = async (sessionId: string) => (await prisma.cashMovement.findMany({ where: { sessionId, type: 'EXPENSE' } })).reduce((t: number, m: any) => t + m.amount, 0);
+    const dueno = { user: { sub: admin.id, role: 'ADMIN' } };
+    const cajera = { user: { sub: cajero.id, role: 'CASHIER' } };
+
+    // Compra pagada en efectivo del cajón
+    await ctrl.create({ supplierId: prov.id, manualTotal: 3000, items: [], paymentStatus: 'PAID', paymentMethod: 'Efectivo', cashSource: { source: 'SESSION', sessionId: caja.id } }, dueno);
+    assert.strictEqual(await gastos(caja.id), 3000, 'sale del cajón');
+    const mv = await prisma.cashMovement.findFirst({ where: { sessionId: caja.id, type: 'EXPENSE' } });
+    assert.ok(/^PAGO PROVEEDOR: MAYORISTA PAGOS/.test(mv!.description || ''), 'se lee como pago a proveedor');
+    // A deber: no sale nada aunque venga la caja
+    await ctrl.create({ supplierId: prov.id, manualTotal: 500, items: [], paymentStatus: 'OWED', cashSource: { source: 'SESSION', sessionId: caja.id } }, dueno);
+    assert.strictEqual(await gastos(caja.id), 3000);
+    // De la caja del mes: solo el dueño
+    const antes = (await cash.getMonthFund(admin.id)).balance;
+    await ctrl.create({ supplierId: prov.id, manualTotal: 1000, items: [], paymentStatus: 'PAID', paymentMethod: 'Efectivo', cashSource: { source: 'FUND' } }, dueno);
+    assert.strictEqual((await cash.getMonthFund(admin.id)).balance, antes - 1000);
+    await assert.rejects(() => ctrl.create({ supplierId: prov.id, manualTotal: 1000, items: [], paymentStatus: 'PAID', cashSource: { source: 'FUND' } }, cajera), /solo paga el dueño/);
+    // Transferencia: no sale de ninguna caja
+    await ctrl.create({ supplierId: prov.id, manualTotal: 700, items: [], paymentStatus: 'PAID', paymentMethod: 'Transferencia', cashSource: { source: 'NONE' } }, dueno);
+    assert.strictEqual(await gastos(caja.id), 3000);
+
+    // Pago de deuda al proveedor desde el cajón; con una caja cerrada no se anota nada
+    await supCtrl.addPayment(prov.id, { amount: 2000, method: 'Efectivo', cashSource: { source: 'SESSION', sessionId: caja.id } }, dueno);
+    assert.strictEqual(await gastos(caja.id), 5000);
+    const pagos = await (prisma as any).supplierPayment.count({ where: { supplierId: prov.id } });
+    await assert.rejects(() => supCtrl.addPayment(prov.id, { amount: 10, method: 'Efectivo', cashSource: { source: 'SESSION', sessionId: 'no-existe' } }, dueno), /caja abierta/);
+    assert.strictEqual(await (prisma as any).supplierPayment.count({ where: { supplierId: prov.id } }), pagos, 'si la caja no sirve, el pago no queda anotado');
+    const fuentes = await cash.paySources(admin.id, 'ADMIN');
+    assert.ok(fuentes.sessions.some((x: any) => x.id === caja.id && x.mine)); assert.ok(fuentes.fund != null);
+    assert.strictEqual((await cash.paySources(cajero.id, 'CASHIER')).fund, null, 'la cajera no ve la caja del mes');
   });
 
   await t('certificado propio: la clave se guarda cifrada y se abre para firmar', async () => {
@@ -962,6 +1194,173 @@ async function main() {
     assert.strictEqual(remito.status, 'PENDING');
     assert.ok(remito.why.some((w: string) => /es un remito/.test(w)), remito.why.join(' | '));
     await prisma.storeSetting.delete({ where: { id: 'purchase_auto' } }).catch(() => {});
+  });
+
+  await t('lectura en segundo plano: foto por foto, hojas juntas, hoja ajena aparte, foto ilegible y todo a "Por revisar"', async () => {
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const { ScanJobsService } = require('../src/modules/purchases/scan-jobs.service');
+    // El mismo armado de hojas que la nube (firebase/functions/ai.js), sin IA
+    const cloud = require('../../../firebase/functions/ai.js');
+    const line = (name: string, qty: number, total: string, extra: any = {}) => ({ sku: '', barcode: '', name, packageQuantity: qty, unitsPerPack: 1, total, unitPrice: '', ...extra });
+    const page = (o: any) => ({ supplierName: 'MAYORISTA PRUEBA SA', supplierCuit: '', invoiceNumber: '1124-00000777', date: '2026-10-08', totalFacturaAPagar: '', subtotalNeto: '', ivaTotal: '', otrosImpuestos: '',
+      condicionVenta: 'contado', docType: 'factura', pageNumber: 0, pageCount: 0, verified: 'dos lecturas', items: [], ...o });
+    const reads: any[] = [
+      page({ pageNumber: 1, pageCount: 6, items: [line('GOTITAS PRUEBA 35 G', 12, '3.756,00', { handPrice: '600' })] }),
+      page({ pageNumber: 2, pageCount: 6, items: [line('LANA DE ACERO PRUEBA', 5, '5.726,45')] }),
+      // La lista de cervezas: tomó el número de la factura de atrás y trae su total
+      page({ totalFacturaAPagar: '2.793.498,08', condicionVenta: '', items: [line('CERVEZA PRUEBA LATA X24', 5, '214.500,00')] }),
+      { error: 'está muy oscura', unreadable: true, items: [] },
+    ];
+    const seen: number[] = [];
+    const fakeAi: any = {
+      shrink: async (files: any[]) => files.map(() => ({ data: 'x', mediaType: 'image/jpeg' })),
+      call: async (kind: string, body: any) => {
+        if (kind === 'match') return { result: { matches: [] } };
+        if (body.stage === 'page') { seen.push(body.index); return { result: { read: { image: body.index, ...reads[body.index] } }, left: 50 }; }
+        if (body.stage === 'group') return { result: cloud.finishInvoices(cloud.cleanReads(body.reads)).result, left: 48 };
+        throw new Error('no debería leer todo junto');
+      },
+    };
+    const purchases = new PurchasesService(prisma, mute(), fakeAi, new ProductMatcherService(prisma, fakeAi));
+    const jobs = new ScanJobsService(fakeAi, purchases);
+    const file = (n: string) => ({ buffer: Buffer.from('x'), size: 1, mimetype: 'image/jpeg', originalname: n }) as any;
+    const started = jobs.start([file('1.jpg'), file('2.jpg'), file('3.jpg'), file('4.jpg')], admin.id);
+    assert.strictEqual(started.total, 4);
+    assert.throws(() => jobs.get(started.id, 'otro-usuario'), /ya no está/, 'cada lectura es de quien la empezó');
+    let j: any = started;
+    for (let k = 0; k < 200 && (j.status === 'reading' || j.status === 'grouping'); k++) { await new Promise((r) => setTimeout(r, 10)); j = jobs.get(started.id, admin.id); }
+    assert.strictEqual(j.status, 'done', j.error || '');
+    assert.deepStrictEqual([...seen].sort(), [0, 1, 2, 3], 'una lectura por foto');
+    assert.strictEqual(j.photos[3].state, 'failed');
+    assert.match(j.photos[3].error, /muy oscura.*de nuevo/);
+    assert.strictEqual(j.photos[0].found.pageNumber, 1);
+    assert.strictEqual(j.documents.length, 2, 'la factura (2 hojas) y la lista aparte');
+    const [fact, lista] = j.documents;
+    assert.deepStrictEqual(fact.images, [0, 1]);
+    assert.ok(fact.why.some((w: string) => /faltan hojas \(3, 4, 5, 6\)/.test(w)), fact.why.join(' | '));
+    assert.match(fact.message, /Faltan las hojas 3, 4, 5 y 6 \(de 6\)/);
+    assert.ok(lista.why.some((w: string) => /otra factura de atrás/.test(w)), lista.why.join(' | '));
+    assert.strictEqual(lista.invoiceNumber, '');
+    assert.strictEqual(jobs.latest(admin.id).id, started.id);
+    // Quedan en "Por revisar" con lo leído: precio anotado a mano y contado
+    const rows = await purchases.findByIds([lista.purchaseId, fact.purchaseId]);
+    assert.deepStrictEqual(rows.map((r: any) => r.id), [lista.purchaseId, fact.purchaseId], 'en el orden pedido');
+    assert.ok(rows.every((r: any) => r.status === 'PENDING'));
+    const d = rows[1].draft;
+    assert.strictEqual(d.items.find((i: any) => /GOTITAS/.test(i.name)).suggestedSalePrice, 600, 'manda el precio escrito a mano');
+    assert.strictEqual(d.paymentSuggested, 'PAID');
+    assert.deepStrictEqual(d.missingPageNumbers, [3, 4, 5, 6]);
+  });
+
+  await t('al confirmar una boleta corregida, las diferencias van a la nube para aprender del proveedor', async () => {
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const calls: any[] = [];
+    const fakeAi: any = { call: async (kind: string, body: any) => { calls.push({ kind, body }); return { result: { matches: [] } }; } };
+    const svc = new PurchasesService(prisma, mute(), fakeAi, new ProductMatcherService(prisma, fakeAi));
+    const draft = { supplierCuit: '30-44444444-4', supplierName: 'MAYORISTA PRUEBA', items: [
+      { name: 'GOTITAS PRUEBA 35 G', quantity: 1, cost: 3756 },
+      { name: 'LANA DE ACERO PRUEBA', quantity: 5, cost: 1145.29 },
+      { name: 'PROMOCION 181820', quantity: 1, cost: 378.73 },
+    ] };
+    const diffs = svc.correctionsOf(draft, [
+      { quantity: 12, cost: 313, source: { name: 'GOTITAS PRUEBA 35 G' } },
+      { quantity: 5, cost: 1150, source: { name: 'LANA DE ACERO PRUEBA' } }, // menos de 3%: decisión del dueño, no error
+    ]);
+    assert.deepStrictEqual(diffs.map((d: any) => d.renglon), ['GOTITAS PRUEBA 35 G', 'PROMOCION 181820']);
+    assert.match(diffs[0].corregido, /cantidad x12/);
+    assert.match(diffs[1].corregido, /sacó este renglón/);
+    // Confirmar de verdad: la compra se carga y, aparte, se manda lo aprendido
+    const sup = await prisma.supplier.create({ data: { name: 'MAYORISTA PRUEBA' } });
+    const p = await svc.pendingFromPreview({ ...draft, matchedSupplier: { id: sup.id, name: sup.name }, items: draft.items.map((i) => ({ ...i, total: i.quantity * i.cost })) }, admin.id, 'fotos');
+    const prod = await prisma.product.findFirst({ where: { isActive: true } });
+    await svc.confirmPending(p.purchaseId, { supplierId: sup.id, userId: admin.id, paymentStatus: 'PAID', items: [{ productId: prod!.id, quantity: 12, cost: 313, source: { name: 'GOTITAS PRUEBA 35 G' } }] } as any);
+    await new Promise((r) => setTimeout(r, 50));
+    const lesson = calls.find((c) => c.kind === 'lesson');
+    assert.ok(lesson, 'mandó las correcciones');
+    assert.strictEqual(lesson.body.supplierCuit, '30444444444');
+    assert.strictEqual(lesson.body.diffs.length, 3);
+  });
+
+  await t('boletas reales: bultos en el nombre, renglones en $0, remito sin deuda y total con percepciones', async () => {
+    const { unitsInName } = require('../src/modules/purchases/purchases.service');
+    // Cómo escriben los bultos las distribuidoras (y lo que NO es un bulto)
+    assert.deepStrictEqual(['COCA-COLA 600*12 PET', 'COCA-COLA 1000*08 VR', 'MONSTER ENERGY GREEN 473ML*6L', 'COCA-COLA 2500*8 RPET', 'Albertus Viena X6', 'Albertus Lactal Blanco X350gr', 'VASO XMAS COCA-COLA X12U', 'CERVEZA ANDES 500CC X 24'].map(unitsInName), [12, 8, 6, 8, 0, 0, 0, 0]);
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const line = (name: string, qty: number, total: string, sku = '') => ({ sku, barcode: '', name, packageQuantity: qty, unitsPerPack: 1, total });
+    const fakeAi: any = {
+      shrink: async (files: any[]) => files.map(() => ({ data: 'x', mediaType: 'image/jpeg' })),
+      call: async (kind: string) => kind === 'match' ? { result: { matches: [] } } : { result: { failedImages: [], documents: [
+        { supplierName: 'GASEOSAS PRUEBA SA', supplierCuit: '30-33333333-3', invoiceNumber: '5623-00000001', date: '2026-11-11', docType: 'factura', images: [0], closes: true,
+          subtotalNeto: '110.054,40', totalFacturaAPagar: '139.896,67',
+          items: [line('GASEOSA PRUEBA 600*12 PET', 2, '44.000,12', '120'), line('VASO PRUEBA X12U', 1, '49.200,00', '8511'), line('PEDIDO AC DIGITAL', 3, '0,00', '9930')] },
+        { supplierName: 'GASEOSAS PRUEBA SA', supplierCuit: '30-33333333-3', invoiceNumber: '6246-00000002', date: '2026-11-11', docType: 'remito', images: [1], closes: null,
+          totalFacturaAPagar: '0,00', subtotalNeto: '0,00', items: [line('ENERGIZANTE PRUEBA 473ML*6L', 0.33, '4.132,76', '3860')] },
+      ] } },
+    };
+    const svc = new PurchasesService(prisma, mute(), fakeAi, new ProductMatcherService(prisma, fakeAi));
+    const file = (n: string) => ({ buffer: Buffer.from('x'), size: 1, mimetype: 'image/jpeg', originalname: n }) as any;
+    const r = await svc.scanInvoice([file('a.jpg'), file('b.jpg')], undefined, admin.id, { inline: true });
+    // "PEDIDO AC DIGITAL" en $0 no es mercadería: no se ofrece para crear, pero se avisa
+    assert.deepStrictEqual(r.items.map((i: any) => i.name), ['GASEOSA PRUEBA 600*12 PET', 'VASO PRUEBA X12U']);
+    assert.deepStrictEqual(r.skippedLines, ['PEDIDO AC DIGITAL']);
+    // 2 bultos de 12 = 24 botellas, con el costo por botella
+    const g = r.items[0];
+    assert.strictEqual(g.quantity, 24);
+    assert.strictEqual(g.packFromName, 12);
+    assert.ok(Math.abs(g.cost * 24 - g.total) < 0.5, 'el total del renglón no cambia: ' + g.cost * 24 + ' vs ' + g.total);
+    assert.strictEqual(r.items[1].quantity, 1, 'X12U es la presentación del vaso, no un bulto');
+    assert.strictEqual(r.printedTotal, 139896.67, 'el total a pagar, con la percepción');
+    // El remito: 0,33 bultos de 6 = 2 latas, y como pendiente no deja deuda
+    const rem = r.others[0];
+    assert.strictEqual(Math.round(rem.items[0].quantity), 2);
+    assert.strictEqual(rem.printedTotal, 0);
+    const pr = await svc.pendingFromPreview(rem, admin.id, 'fotos');
+    const row = await (prisma as any).purchase.findUnique({ where: { id: pr.purchaseId } });
+    assert.strictEqual(row.total, 0, 'un remito en $0 no es deuda');
+    const draft = JSON.parse((await prisma.$queryRawUnsafe<any[]>('SELECT draft FROM purchases WHERE id = ?', pr.purchaseId))[0].draft);
+    assert.ok(draft.why.some((w: string) => /remito/.test(w)), draft.why.join(' | '));
+    const pf = await svc.pendingFromPreview(r, admin.id, 'fotos');
+    assert.strictEqual((await (prisma as any).purchase.findUnique({ where: { id: pf.purchaseId } })).total, 139896.67);
+    // Las pendientes no son deuda ni gasto todavía
+    const dash: any = await sales.getTodaySummary();
+    assert.ok(dash.totalSupplierDebt < 139896, 'la boleta sin confirmar no suma a la deuda: ' + dash.totalSupplierDebt);
+  });
+
+  await t('descuento "15%" de un solo producto: baja el costo de ese producto, no el de todos (Vital)', async () => {
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const line = (name: string, qty: number, total: string) => ({ sku: '', barcode: '', name, packageQuantity: qty, quantity: qty, unitsPerPack: 1, total });
+    const fakeAi: any = {
+      shrink: async (files: any[]) => files.map(() => ({ data: 'x', mediaType: 'image/jpeg' })),
+      call: async (kind: string) => kind === 'match' ? { result: { matches: [] } } : { result: { failedImages: [], documents: [
+        { supplierName: 'SUPERMAYORISTA PRUEBA', invoiceNumber: '00984-00000001', date: '2026-10-08', docType: 'factura', images: [0], closes: true,
+          ivaTotal: '12.047,22', totalFacturaAPagar: '73.430,67', otrosImpuestos: '4.015,74',
+          items: [line('DURAZNO MITAD X820G', 6, '11.400,00'), line('JABON LIQ X800ML', 4, '10.905,80'), line('LUSTRAMUEBLES X360ML', 3, '12.979,35'),
+            line('PAPEL ALUMINIO 28CM', 4, '9.451,24'), line('PROT COLALESS X20U', 10, '8.917,40'), line('PROT MULTIESTILO X20U', 6, '4.953,72'),
+            line('TOA NOCTURNA X8U', 3, '2.342,97'), line('LIMPIEZA DEL HOGAR 15%', 4, '-1.635,87'), line('LIMPIEZA DEL HOGAR 15%', 3, '-1.946,90')] },
+      ] } },
+    };
+    const svc = new PurchasesService(prisma, mute(), fakeAi, new ProductMatcherService(prisma, fakeAi));
+    const r = await svc.scanInvoice([{ buffer: Buffer.from('x'), size: 1, mimetype: 'image/jpeg', originalname: 'v.jpg' } as any], undefined, admin.id, { inline: true });
+    const by = (n: string) => r.items.find((i: any) => i.name.startsWith(n));
+    assert.strictEqual(by('DURAZNO').cost, 1900, 'el durazno no tenía descuento');
+    assert.ok(Math.abs(by('JABON').cost - 2317.48) < 0.02, 'jabón con el 15%: ' + by('JABON').cost);
+    assert.ok(Math.abs(by('LUSTRAMUEBLES').cost - 3677.48) < 0.02, 'lustramuebles con el 15%: ' + by('LUSTRAMUEBLES').cost);
+    assert.strictEqual(r.check?.ok, true, r.check?.message);
+  });
+
+  await t('lista "Exento" a la que le falta una hoja: los precios son finales, no se les suma el 21%', async () => {
+    const { ProductMatcherService } = require('../src/modules/ai/product-matcher.service');
+    const fakeAi: any = {
+      shrink: async (files: any[]) => files.map(() => ({ data: 'x', mediaType: 'image/jpeg' })),
+      call: async (kind: string) => kind === 'match' ? { result: { matches: [] } } : { result: { failedImages: [], documents: [
+        { supplierName: '', invoiceNumber: '', docType: 'nota', images: [0], precios: 'finales', totalFacturaAPagar: '2.793.498,08',
+          items: [{ sku: '', barcode: '', name: 'CERVEZA PRUEBA 500CC LATA', packageQuantity: 15, unitsPerPack: 1, total: '577.500,00' }] },
+      ] } },
+    };
+    const svc = new PurchasesService(prisma, mute(), fakeAi, new ProductMatcherService(prisma, fakeAi));
+    const r = await svc.scanInvoice([{ buffer: Buffer.from('x'), size: 1, mimetype: 'image/jpeg', originalname: 'l.jpg' } as any], undefined, admin.id, { inline: true });
+    assert.ok(Math.abs(r.items[0].cost * 1.21 - 38500) < 0.05, 'costo con IVA = lo impreso: ' + r.items[0].cost * 1.21);
+    assert.ok(/suman \$ 577\.500 con IVA/.test(r.check?.message || ''), r.check?.message);
   });
 
   await prisma.$disconnect();

@@ -6,6 +6,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { holdLogout } from '../../utils/logoutHold';
 import { printReport } from '../../utils/ticketPrinter';
+import { useFeature } from '../../stores/businessStore';
+import ZToMonthFund from './ZToMonthFund';
 
 /**
  * headless: solo arma la hoja para imprimir (oculta), sin la ventana de pantalla. La usa el
@@ -15,6 +17,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
   const [printReady, setPrintReady] = useState(false);
   const [printMode, setPrintMode] = useState<'z-only' | 'z-and-x'>('z-only');
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const usesFund = useFeature('monthfund');
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
   const summary = JSON.parse(zReport.summary || '{}');
   // Turnos que cerró el Z: todos los que entraron, también los que no tuvieron movimiento
@@ -1244,6 +1247,7 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             <p className="text-slate-600 mb-8 max-w-sm">
               Se ha generado el Reporte Z maestro consolidando <b>{turnCount}</b> {turnCount === 1 ? 'turno' : 'turnos'}. Puedes imprimir el comprobante consolidado y los cierres a continuación.
             </p>
+            {usesFund && !isHistory && <ZToMonthFund zReport={zReport} />}
             <div className="flex flex-col gap-4 w-full">
               <button disabled={!printReady} onClick={() => handlePrint('z-only')} className="w-full py-3.5 rounded-xl border border-rose-600 text-rose-600 font-bold transition-all hover:bg-rose-50 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
                 <Printer className="w-5 h-5" /> Imprimir Solo Reporte Z

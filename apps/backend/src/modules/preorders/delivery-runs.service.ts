@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { numberRange, nextDocNumber } from '../sync/numbering';
 import { SalesService } from '../sales/sales.service';
 import { FiscalService } from '../fiscal/fiscal.service';
+import { depositToMonthFund } from '../cash-register/month-fund';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** Medio de pago de las transferencias que cobra el chofer (el cierre de caja suma cualquier medio) */
@@ -292,9 +293,34 @@ export class DeliveryRunsService {
       prev.prevTransfer = prevTransfer;
     }
 
+    // Si cambió lo transferido, la comprobación del banco ya no vale
+    const newPrevTransfer = prev.prevTransfer !== undefined ? prev.prevTransfer : round2(order.prevTransfer || 0);
+    const transferChanged = Math.abs(round2(order.paidTransfer || 0) - transfer) > 0.009 || Math.abs(round2(order.prevTransfer || 0) - newPrevTransfer) > 0.009;
+    const uncheck = transferChanged ? { transferCheckedAt: null, transferCheckedBy: null } : {};
+
     await this.db.preOrder.update({
       where: { id: orderId },
-      data: { deliveryStatus: status, deliveryReason: reason, deliveredItems, paidCash: cash, paidTransfer: transfer, deliveredAt: new Date(), ...prev },
+      data: { deliveryStatus: status, deliveryReason: reason, deliveredItems, paidCash: cash, paidTransfer: transfer, deliveredAt: new Date(), ...prev, ...uncheck },
+    });
+    return this.findOne(runId);
+  }
+
+  /**
+   * "Ya la vi en el banco": el encargado tilda la transferencia de una parada. Se puede hacer
+   * antes o después de rendir (la plata a veces se acredita al otro día) y se puede destildar.
+   */
+  async checkTransfer(runId: string, orderId: string, checked: boolean, userId: string) {
+    const order = await this.db.preOrder.findUnique({ where: { id: orderId } });
+    if (!order || order.runId !== runId) throw new NotFoundException('El pedido no está en este reparto');
+    if (round2((order.paidTransfer || 0) + (order.prevTransfer || 0)) <= 0) throw new BadRequestException('En esta parada no hubo transferencia');
+    let by: string | null = null;
+    if (checked) {
+      const u = userId ? await this.db.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } }) : null;
+      by = u?.fullName || u?.username || null;
+    }
+    await this.db.preOrder.update({
+      where: { id: orderId },
+      data: checked ? { transferCheckedAt: new Date(), transferCheckedBy: by } : { transferCheckedAt: null, transferCheckedBy: null },
     });
     return this.findOne(runId);
   }
@@ -489,7 +515,7 @@ export class DeliveryRunsService {
                 where: { id: order.id },
                 data: {
                   status: 'PENDING', saleId: null, runId: null, stopOrder: null, orderNumber,
-                                    deliveryStatus: null, deliveryReason: null, deliveredItems: null, paidCash: null, paidTransfer: null, prevCash: null, prevTransfer: null, deliveredAt: null,
+                                    deliveryStatus: null, deliveryReason: null, deliveredItems: null, paidCash: null, paidTransfer: null, prevCash: null, prevTransfer: null, transferCheckedAt: null, transferCheckedBy: null, deliveredAt: null,
                   notes: [order.notes, `Reprogramado (antes N° ${order.orderNumber})`].filter(Boolean).join(' · ').slice(0, 500),
                 },
               });
@@ -512,6 +538,9 @@ export class DeliveryRunsService {
             data: { sessionId, userId, type: 'EXPENSE', amount: expenses[i].amount, description: `Gasto del reparto N° ${run.runNumber}: ${expenses[i].concept} [gasto-${runId}-${i}]` },
           });
         }
+        // Lo que trae el chofer va a la caja del mes (lo contado; si no se contó, lo que tenía que traer)
+        const brought = cashReceived != null ? cashReceived : round2(allCash - expensesTotal);
+        await depositToMonthFund(tx, userId, `reparto:${runId}`, brought, `Rendición del reparto N° ${run.runNumber}${run.driverName ? ` (${run.driverName})` : ''}`);
         await tx.deliveryRun.update({
           where: { id: runId },
           data: {
@@ -522,6 +551,45 @@ export class DeliveryRunsService {
       });
     }
     return { errors, warnings, expectedCash: round2(expectedCash - (errors.length ? 0 : expensesTotal)), run: await this.findOne(runId) };
+  }
+
+  /**
+   * Cobro de cuenta corriente que no entra al cajón del mostrador: es plata de la distribuidora
+   * (un cliente que paga lo del reparto). Baja la deuda, queda como venta "pago de cuenta corriente"
+   * en la cuenta fija del reparto y el efectivo entra a la caja del mes. `key` lo hace repetible.
+   */
+  async collectToMonthFund(userId: string, data: { key: string; clientId: string; payments: { method: string; amount: number }[]; notes?: string }) {
+    const key = String(data?.key || '').replace(/[^\w-]/g, '').slice(0, 60);
+    if (!key) throw new BadRequestException('Falta la clave del cobro');
+    const payments = (Array.isArray(data?.payments) ? data.payments : [])
+      .map((p: any) => ({ method: String(p?.method || 'CASH'), amount: round2(Number(p?.amount) || 0) }))
+      .filter((p: any) => p.amount > 0);
+    const amount = round2(payments.reduce((s: number, p: any) => s + p.amount, 0));
+    if (!(amount > 0)) throw new BadRequestException('Ingresá un monto válido');
+    const client = await this.prisma.client.findUnique({ where: { id: data.clientId } });
+    if (!client) throw new NotFoundException('Cliente no encontrado');
+    const tag = `[cobro:${key}]`;
+    const notes = (data?.notes || 'Pago a cuenta corriente').slice(0, 200);
+    await this.prisma.$transaction(async (tx: any) => {
+      if (await tx.accountMovement.findFirst({ where: { clientId: client.id, description: { contains: tag } }, select: { id: true } })) return;
+      const c = await tx.client.findUnique({ where: { id: client.id } });
+      await tx.accountMovement.create({
+        data: { clientId: client.id, userId, type: 'PAYMENT', amount, balanceBefore: c.balance, balanceAfter: c.balance - amount, description: `${notes} · a la caja del mes ${tag}` },
+      });
+      await tx.client.update({ where: { id: client.id }, data: { balance: c.balance - amount } });
+    });
+    const sessionId = await this.dayCash(userId);
+    await this.sales.create(userId, {
+      clientSaleId: `cobrofondo-${key}`,
+      sessionId,
+      clientId: client.id,
+      notes: `${notes} · a la caja del mes`,
+      items: [{ productId: 'PAGO_CTA_CTE', productName: `PAGO CUENTA CORRIENTE - ${client.name}`.trim(), quantity: 1, price: amount }],
+      payments,
+    } as any);
+    const cash = round2(payments.filter((p: any) => p.method === 'CASH').reduce((s: number, p: any) => s + p.amount, 0));
+    await depositToMonthFund(this.prisma, userId, `cobro:${key}`, cash, `Cobro de cuenta corriente: ${client.name}`);
+    return { amount, cash, balance: (await this.prisma.client.findUnique({ where: { id: client.id }, select: { balance: true } }))?.balance };
   }
 
     /**

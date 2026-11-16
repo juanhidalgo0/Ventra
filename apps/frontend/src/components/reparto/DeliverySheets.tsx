@@ -4,6 +4,7 @@ import { useAutoTour } from '../common/tour/GuidedTour';
 import { X, Check, PackageX, Truck, Minus, Plus, Loader2, Banknote, Landmark, BookUser, AlertTriangle, Fuel } from 'lucide-react';
 import api from '../../services/api';
 import { COMING_SOON } from '../../utils/comingSoon';
+import { useFeature } from '../../stores/businessStore';
 
 /**
  * Etapa 4 del reparto: lo que pasó en cada parada (qué se entregó y cómo pagó) y la rendición
@@ -385,6 +386,66 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
   );
 }
 
+// ─── Transferencias comprobadas ───────────────────────────────────
+
+/**
+ * Las transferencias que dijeron los clientes en cada parada, para tildarlas a medida que se
+ * ven en el banco. Se puede hacer al rendir o después (a veces se acreditan al otro día).
+ */
+export function TransferChecks({ run, onChange, readOnly = false }: { run: any; onChange: (run: any) => void; readOnly?: boolean }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const list = (run.orders || []).filter((o: any) => o.status !== 'CANCELLED' && round2((o.paidTransfer || 0) + (o.prevTransfer || 0)) > 0);
+  if (!list.length) return null;
+  const amountOf = (o: any) => round2((o.paidTransfer || 0) + (o.prevTransfer || 0));
+  const checked = list.filter((o: any) => o.transferCheckedAt);
+  const missing = round2(list.filter((o: any) => !o.transferCheckedAt).reduce((s: number, o: any) => s + amountOf(o), 0));
+
+  const toggle = async (o: any) => {
+    if (readOnly || busy) return;
+    setBusy(o.id);
+    try {
+      const { data } = await api.put(`/delivery-runs/${run.id}/stops/${o.id}/transfer-check`, { checked: !o.transferCheckedAt });
+      onChange(data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo guardar');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section data-tour="rendir-transfers" className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[13px] font-bold text-slate-700">Transferencias para controlar en el banco</p>
+        <p className={`text-[12px] font-semibold whitespace-nowrap shrink-0 ${checked.length === list.length ? 'text-emerald-700' : 'text-slate-500'}`}>{checked.length} de {list.length} vistas</p>
+      </div>
+      <div className="rounded-2xl overflow-hidden bg-white border border-slate-200 divide-y divide-slate-100">
+        {list.map((o: any) => {
+          const ok = !!o.transferCheckedAt;
+          return (
+            <button key={o.id} type="button" onClick={() => toggle(o)} disabled={readOnly || busy === o.id} aria-pressed={ok}
+              className={`w-full text-left px-4 py-3 flex items-center gap-3 ${readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50'}`}>
+              <span className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${ok ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 bg-white'}`}>
+                {busy === o.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" /> : ok && <Check className="w-4 h-4 text-white" />}
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-slate-900 truncate">{o.client?.name || `Pedido N° ${o.orderNumber}`}</span>
+                <span className="block text-[12px] text-slate-500 truncate">
+                  {ok
+                    ? `Vista en el banco${o.transferCheckedBy ? ` por ${o.transferCheckedBy}` : ''} · ${new Date(o.transferCheckedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}`
+                    : (o.prevTransfer || 0) > 0 && (o.paidTransfer || 0) > 0 ? 'Incluye pago de deuda anterior' : (o.prevTransfer || 0) > 0 ? 'Pago de deuda anterior' : 'Sin ver todavía'}
+                </span>
+              </span>
+              <span className="text-[15px] font-bold text-slate-900 shrink-0">{money(amountOf(o))}</span>
+            </button>
+          );
+        })}
+      </div>
+      {missing > 0 && <p className="text-[12px] text-slate-500">{readOnly ? `Faltan ver ${money(missing)}.` : `Faltan ver ${money(missing)}. No hace falta para cerrar: lo podés tildar después, cuando se acredite.`}</p>}
+    </section>
+  );
+}
+
 // ─── Rendición ────────────────────────────────────────────────────
 
 /**
@@ -392,8 +453,12 @@ export function DispatchSheet({ run, onClose, onDone }: { run: any; onClose: () 
  * no tiene a quién rendirle, así que no se le pregunta cuánto "entregó el chofer". Ve lo que
  * cobró y cierra; si quiere, cuenta la plata igual.
  */
-export function SettleSheet({ run, solo = false, onClose, onDone }: { run: any; solo?: boolean; onClose: () => void; onDone: (run: any) => void }) {
+export function SettleSheet({ run: initialRun, solo = false, onClose, onDone, onChange }: { run: any; solo?: boolean; onClose: () => void; onDone: (run: any) => void; onChange?: (run: any) => void }) {
+  // Tildar transferencias trae el reparto de nuevo: se ve acá y en la pantalla de atrás
+  const [run, setRun] = useState(initialRun);
+  const onChecks = (r: any) => { setRun(r); onChange?.(r); };
   useAutoTour('distribRendir', !solo);
+  const usesFund = useFeature('monthfund');
   const orders = (run.orders || []).filter((o: any) => o.status === 'BILLED' && o.saleId);
   const delivered = orders.filter((o: any) => o.deliveryStatus === 'DELIVERED' || o.deliveryStatus === 'PARTIAL');
   const notDelivered = orders.filter((o: any) => o.deliveryStatus === 'NOT_DELIVERED');
@@ -474,9 +539,12 @@ export function SettleSheet({ run, solo = false, onClose, onDone }: { run: any; 
       subtitle={`Reparto N° ${run.runNumber}${run.driverName ? ` · ${run.driverName}` : ''}`}
       onClose={onClose}
       footer={
+        <>
+        {usesFund && <p className="text-[12.5px] text-slate-500 text-center mb-2">El efectivo que trae entra solo a la caja del mes (Tesorería).</p>}
                 <button data-tour="rendir-close" onClick={settle} disabled={saving} className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-[15px] font-bold cursor-pointer flex items-center justify-center gap-2">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Cerrar el reparto y registrar las ventas
         </button>
+        </>
       }
     >
       {unregistered.length > 0 && (
@@ -494,6 +562,8 @@ export function SettleSheet({ run, solo = false, onClose, onDone }: { run: any; 
         {prevCash + prevTransfer > 0.009 && row(<BookUser className="w-4 h-4 text-emerald-600" />, 'Incluye cobros de deudas anteriores', money(round2(prevCash + prevTransfer)))}
         {row(<BookUser className="w-4 h-4 text-slate-600" />, 'Quedó en cuenta corriente', money(debt > 0 ? debt : 0))}
       </section>
+
+      <TransferChecks run={run} onChange={onChecks} />
 
                   <section data-tour="rendir-expenses" className="space-y-2">
         <p className="text-[13px] font-bold text-slate-700">{solo ? '¿Gastaste algo de lo cobrado?' : '¿Gastó algo de lo cobrado?'} <span className="font-normal text-slate-400">(opcional)</span></p>

@@ -5,6 +5,8 @@ import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Clock, Loader2,
 import api from '../../services/api';
 import { useConfirm } from '../common/ConfirmDialog';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
+import { useFeature } from '../../stores/businessStore';
+import MonthFundPanel, { MONTH_FUND_ID, fundText, isFundTransfer } from './MonthFundPanel';
 
 const money = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0);
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -12,10 +14,12 @@ const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 
 const EXPENSE_CATEGORIES = ['Otro', 'Mercadería / Insumos', 'Servicios (Luz, Agua, etc)', 'Sueldos / Adelantos', 'Mantenimiento', 'Impuestos'];
 
 type MoveKind = 'INCOME' | 'EXPENSE' | 'WITHDRAWAL';
-const KIND_LABEL: Record<string, string> = { INCOME: 'Ingreso', EXPENSE: 'Gasto', WITHDRAWAL: 'Retiro' };
+const KIND_LABEL: Record<string, string> = { INCOME: 'Ingreso', EXPENSE: 'Gasto', WITHDRAWAL: 'Retiro', BALANCE: 'Balance' };
 
 /** "[Otro] PAGO | METODO: CASH" → "PAGO" */
-const cleanText = (desc?: string | null) => (desc || '').replace(/^\[.*?\]\s*/, '').replace(/\s*\|\s*METODO:\s*\S+\s*$/i, '').trim() || 'Sin detalle';
+const cleanDesc = (desc?: string | null) => (desc || '').replace(/^\[.*?\]\s*/, '').replace(/\s*\|\s*METODO:\s*\S+\s*$/i, '').trim() || 'Sin detalle';
+
+const cleanText = (m: any) => (m?.sessionId === MONTH_FUND_ID ? fundText(m) : cleanDesc(m?.description));
 
 /**
  * Tesorería: el efectivo de las cajas abiertas y los ingresos y egresos cargados a mano.
@@ -28,6 +32,8 @@ export default function TreasuryScreen() {
   const [movements, setMovements] = useState<any[] | null>(null);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [moving, setMoving] = useState<'INCOME' | 'OUT' | null>(null);
+  const usesFund = useFeature('monthfund');
+  const [fundTick, setFundTick] = useState(0);
 
   const loadSessions = useCallback(() => {
     api.get('/cash/active').then(({ data }) => setSessions(data || [])).catch(() => setSessions([]));
@@ -42,8 +48,10 @@ export default function TreasuryScreen() {
   useEffect(() => { setMovements(null); loadMovements(); }, [loadMovements]);
 
   const cash = (sessions || []).reduce((s, x) => s + (x.expectedAmount || 0), 0);
+  // Los pases a la caja del mes (Z, repartos) y el ajuste del balance no son ingresos ni egresos del negocio
   const totals = useMemo(() => (movements || []).reduce((acc, m) => {
-    if (m.type === 'INCOME') acc.income += m.amount; else acc.out += m.amount;
+    if (isFundTransfer(m)) return acc;
+    if (m.type === 'INCOME') acc.income += m.amount; else if (m.type === 'EXPENSE' || m.type === 'WITHDRAWAL') acc.out += m.amount;
     return acc;
   }, { income: 0, out: 0 }), [movements]);
 
@@ -58,6 +66,7 @@ export default function TreasuryScreen() {
       toast.success('Movimiento eliminado');
       loadMovements();
       loadSessions();
+      setFundTick((n) => n + 1);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'No se pudo eliminar');
     }
@@ -68,7 +77,7 @@ export default function TreasuryScreen() {
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
         <PageHeader
           title="Tesorería"
-          description="El efectivo de las cajas y los ingresos y egresos que se cargan a mano."
+          description={usesFund ? 'La caja del mes, el efectivo de las cajas abiertas y los ingresos y egresos que se cargan a mano.' : 'El efectivo de las cajas y los ingresos y egresos que se cargan a mano.'}
           actions={(
             <>
               <button onClick={() => setMoving('INCOME')} className={`${ui.btn} ${ui.btnPrimary}`}><ArrowDownLeft className="w-4 h-4" /> Registrar ingreso</button>
@@ -82,6 +91,8 @@ export default function TreasuryScreen() {
           <StatCard label={`Ingresos de ${MONTHS[month.getMonth()]}`} value={money(totals.income)} icon={ArrowDownLeft} tone="success" valueTone="success" hint="Cargados a mano" />
           <StatCard label={`Egresos de ${MONTHS[month.getMonth()]}`} value={money(totals.out)} icon={ArrowUpRight} tone="danger" valueTone="danger" hint="Gastos y retiros" />
         </div>
+
+        {usesFund && <MonthFundPanel month={month} refreshKey={fundTick} onChanged={loadMovements} />}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
           <Panel title="Cajas abiertas" icon={Wallet}>
@@ -132,12 +143,12 @@ export default function TreasuryScreen() {
                       {m.type === 'INCOME' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[14px] font-semibold text-slate-800 truncate">{cleanText(m.description)}</p>
+                      <p className="text-[14px] font-semibold text-slate-800 truncate">{cleanText(m)}</p>
                       <p className="text-[12.5px] text-slate-500 truncate">
                         {KIND_LABEL[m.type] || m.type} · {new Date(m.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {m.session?.terminalName} · {m.user?.fullName || m.user?.username}
                       </p>
                     </div>
-                    <p className={`text-[15px] font-bold tabular-nums shrink-0 ${m.type === 'INCOME' ? 'text-emerald-700' : 'text-red-600'}`}>{m.type === 'INCOME' ? '+' : '−'} {money(m.amount)}</p>
+                    <p className={`text-[15px] font-bold tabular-nums shrink-0 ${m.type === 'INCOME' || (m.type === 'BALANCE' && m.amount >= 0) ? 'text-emerald-700' : 'text-red-600'}`}>{m.type === 'INCOME' || (m.type === 'BALANCE' && m.amount >= 0) ? '+' : '−'} {money(Math.abs(m.amount))}</p>
                     <button onClick={() => remove(m)} aria-label="Eliminar movimiento" className="w-8 h-8 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 flex items-center justify-center shrink-0 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -151,9 +162,9 @@ export default function TreasuryScreen() {
       {moving && (
         <MoveModal
           direction={moving}
-          sessions={sessions || []}
+          sessions={usesFund ? [...(sessions || []), { id: MONTH_FUND_ID, terminalName: 'Caja del mes', fund: true }] : sessions || []}
           onClose={() => setMoving(null)}
-          onDone={() => { setMoving(null); loadMovements(); loadSessions(); }}
+          onDone={() => { setMoving(null); loadMovements(); loadSessions(); setFundTick((n) => n + 1); }}
         />
       )}
     </div>
@@ -210,7 +221,7 @@ function MoveModal({ direction, sessions, onClose, onDone }: { direction: 'INCOM
               <div>
                 <Segmented<MoveKind> options={[{ id: 'EXPENSE', label: 'Gasto del negocio' }, { id: 'WITHDRAWAL', label: 'Retiro de efectivo' }]} value={kind} onChange={setKind} />
                 <p className="text-[12.5px] text-slate-500 mt-1.5">
-                  {kind === 'EXPENSE' ? 'Se paga algo del negocio: aparece en Gastos y baja la ganancia.' : 'La plata sale del cajón pero no es un gasto: a la caja fuerte, al banco o un socio que retira.'}
+                  {kind === 'EXPENSE' ? 'Se paga algo del negocio: aparece en Gastos y baja la ganancia.' : 'La plata sale de la caja pero no es un gasto: al banco o un socio que retira.'}
                 </p>
               </div>
             )}
@@ -230,11 +241,11 @@ function MoveModal({ direction, sessions, onClose, onDone }: { direction: 'INCOM
               <label className={label}>Motivo</label>
               <input className={field} placeholder={direction === 'INCOME' ? 'Ej.: cambio para la caja' : 'Ej.: pago de luz'} value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
-            {sessions.length > 1 && (
+            {(sessions.length > 1 || sessions[0]?.fund) && (
               <div>
                 <label className={label}>Caja</label>
                 <select className={field} value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
-                  {sessions.map((s) => <option key={s.id} value={s.id}>{s.terminalName} · {money(s.expectedAmount)}</option>)}
+                  {sessions.map((s) => <option key={s.id} value={s.id}>{s.fund ? s.terminalName : `${s.terminalName} · ${money(s.expectedAmount)}`}</option>)}
                 </select>
               </div>
             )}
