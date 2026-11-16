@@ -241,7 +241,7 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
   const modalRef = useRef<HTMLDivElement>(null);
   // Distribuidora: unidades por bulto y precio del bulto entero
   const sellsByPack = useFeature('bulk');
-  const isHardwareStore = hasFeature('fractional') || (product?.unit && product.unit !== 'UNIT') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
+  const isHardwareStore = hasFeature('fractional') || (product?.unit && product.unit !== 'UNIT' && product.unit !== 'KG') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
 
   // ---- Variantes (talle / color) ----
   // En el celular conviene sacar la foto en el momento: `capture` abre la cámara directo
@@ -1834,7 +1834,7 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               title={isHardwareStore ? 'Presentación y medida' : 'Presentación'}
               hint={isHardwareStore ? 'Paquetes, metros, kilos, litros' : 'Unidad suelta o paquete de varias unidades'}
             >
-              <div className={`grid ${isHardwareStore || formData.presentationType === 'PACK' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Tipo de presentación</label>
                   <select value={formData.presentationType} onChange={e => setFormData({ ...formData, presentationType: e.target.value })} className={selectCls}>
@@ -1854,8 +1854,18 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                     </select>
                   </div>
                 )}
+                {!isHardwareStore && (
+                  // Fiambrería, verdulería, carnicería: el kilo sin prender "Medidas y fraccionado"
+                  <div>
+                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Se vende por</label>
+                    <select value={formData.unit === 'KG' ? 'KG' : 'UNIT'} onChange={e => setFormData({ ...formData, unit: e.target.value })} className={selectCls}>
+                      <option value="UNIT">Unidad</option>
+                      <option value="KG">Kilo (por peso o por $)</option>
+                    </select>
+                  </div>
+                )}
                 {formData.presentationType === 'PACK' && (
-                  <div className={isHardwareStore ? 'col-span-2' : ''}>
+                  <div className="col-span-2">
                     <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Unidades por paquete</label>
                     <input
                       type="number"

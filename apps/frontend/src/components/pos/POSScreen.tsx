@@ -584,6 +584,19 @@ export default function POSScreen() {
   // Quantity prompt states for Shift-key modifiers
   const [qtyPromptProduct, setQtyPromptProduct] = useState<any | null>(null);
   const [promptQtyValue, setPromptQtyValue] = useState<string>('');
+  // Productos por kilo: el cliente pide "300 g" (kg) o "$3.000 de jamón" ($)
+  const [qtyPromptMode, setQtyPromptMode] = useState<'qty' | 'money'>('qty');
+  const isByWeight = (p: any) => p?.unit === 'KG';
+  const isKgLine = (item: any) => !item?.isPromo && !item?.isReturn && !item?.packSize
+    && isByWeight(cachedProducts.find((p: any) => p.id === item.productId));
+  const fmtKgShort = (kg: number) => kg < 1
+    ? `${Math.round(kg * 1000)} g`
+    : `${kg.toLocaleString('es-AR', { maximumFractionDigits: 3 })} kg`;
+  const openQtyPrompt = (p: any) => {
+    setQtyPromptProduct(p);
+    setPromptQtyValue('');
+    setQtyPromptMode('qty');
+  };
 
   const [showCellularModal, setShowCellularModal] = useState(false);
   const [cellularQrCodeUrl, setCellularQrCodeUrl] = useState('');
@@ -765,13 +778,13 @@ export default function POSScreen() {
         qty = parseFloat(match[1].replace(',', '.')) || 1;
       }
     }
+    const explicitQty = (customQty !== undefined && customQty !== 1) || searchQuery.includes('*');
     if (product.allowCustomPrice) {
       setPricePromptProduct(product);
       setPromptPriceValue('');
       setSearchQuery('');
-    } else if (e?.shiftKey) {
-      setQtyPromptProduct(product);
-      setPromptQtyValue('');
+    } else if (e?.shiftKey || (isByWeight(product) && !explicitQty)) {
+      openQtyPrompt(product);
       setSearchQuery('');
     } else {
       addItem(product, qty);
@@ -1068,9 +1081,8 @@ export default function POSScreen() {
               if (data.allowCustomPrice) {
                 setPricePromptProduct(data);
                 setPromptPriceValue('');
-              } else if (e.shiftKey) {
-                setQtyPromptProduct(data);
-                setPromptQtyValue('');
+              } else if (e.shiftKey || isByWeight(data)) {
+                openQtyPrompt(data);
               } else {
                 addToCart(data);
                 setTimeout(() => searchRef.current?.focus(), 50);
@@ -1747,9 +1759,8 @@ export default function POSScreen() {
           setPricePromptProduct(matchedProduct);
           setPromptPriceValue('');
           setSearchQuery('');
-        } else if (shiftKey) {
-          setQtyPromptProduct(matchedProduct);
-          setPromptQtyValue('');
+        } else if (shiftKey || (isByWeight(matchedProduct) && multiplier === 1)) {
+          openQtyPrompt(matchedProduct);
           setSearchQuery('');
         } else {
           addItem(matchedProduct, multiplier);
@@ -1765,9 +1776,8 @@ export default function POSScreen() {
         if (finalData.allowCustomPrice) {
           setPricePromptProduct(finalData);
           setPromptPriceValue('');
-        } else if (shiftKey) {
-          setQtyPromptProduct(finalData);
-          setPromptQtyValue('');
+        } else if (shiftKey || (isByWeight(finalData) && multiplier === 1)) {
+          openQtyPrompt(finalData);
         } else {
           addItem(finalData, multiplier);
           focusSearch();
@@ -1898,6 +1908,8 @@ export default function POSScreen() {
       formatted = remainder > 0.001
         ? `${fullPieces}pz+${parseFloat(remainder.toFixed(2))}${unitLabel}`
         : `${fullPieces}pz`;
+    } else if (unit === 'KG') {
+      formatted = `${num.toLocaleString('es-AR', { maximumFractionDigits: 2 })} kg`;
     } else if (Math.abs(num) >= 10000) {
       formatted = (num / 1000).toFixed(1).replace('.0', '') + 'k';
     } else {
@@ -3115,12 +3127,13 @@ export default function POSScreen() {
                           ) : (() => {
                             const pack = sellsByPack && !item.isPromo && !item.isReturn && !item.isCustomPrice
                               ? packOf(cachedProducts.find((p: any) => p.id === item.productId), true) : null;
-                            if (!pack && item.quantity <= 1) return null;
+                            const kgLine = isKgLine(item);
+                            if (!pack && !kgLine && item.quantity <= 1) return null;
                             return (
                               <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                {item.quantity > 1 && (
+                                {(item.quantity > 1 || kgLine) && (
                                   <span className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-none inline-block">
-                                    {formatPrice(item.price)} c/u
+                                    {formatPrice(item.price)} {kgLine ? 'el kilo' : 'c/u'}
                                   </span>
                                 )}
                                 {pack && (
@@ -3139,6 +3152,13 @@ export default function POSScreen() {
                             <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 tracking-wider uppercase">
                               {item.quantity} Devuelto
                             </span>
+                          </div>
+                        ) : isKgLine(item) ? (
+                          // Por kilo: de a 100 g, y el peso escrito como se dice ("250 g")
+                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                            <button onClick={() => { const next = Math.round((item.quantity - 0.1) * 1000) / 1000; if (next > 0) trailSetQuantity(item.cartKey, next); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold" title="Restar 100 g"><Minus className="w-3 h-3 stroke-[3]" /></button>
+                            <span className="min-w-[52px] px-1 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">{fmtKgShort(item.quantity)}</span>
+                            <button onClick={() => { updateQuantity(item.cartKey, Math.round((item.quantity + 0.1) * 1000) / 1000); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold" title="Sumar 100 g"><Plus className="w-3 h-3 stroke-[3]" /></button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
@@ -4049,9 +4069,31 @@ export default function POSScreen() {
           </MotionDiv>
         )}
         {qtyPromptProduct && (() => {
-          const typedQty = parseFloat((promptQtyValue || '').replace(',', '.'));
-          const qty = promptQtyValue.trim() === '' ? 1 : typedQty;
+          const unitPrice = Number(qtyPromptProduct.salePrice) || 0;
+          const weighted = isByWeight(qtyPromptProduct);
+          const moneyMode = weighted && qtyPromptMode === 'money' && unitPrice > 0;
+          const raw = (promptQtyValue || '').trim();
+          // En $ el punto es de miles ("3.000"); en kg es decimal ("0.250")
+          const typedQty = moneyMode
+            ? parseFloat(raw.replace(/\./g, '').replace(',', '.'))
+            : parseFloat(raw.replace(',', '.'));
+          // Por kilo, un número entero grande es en gramos: "300" = 300 g
+          const asGrams = weighted && !moneyMode && /^\d+$/.test(raw) && typedQty >= 50;
+          let qty: number;
+          if (raw === '') qty = weighted ? NaN : 1;
+          else if (moneyMode) qty = Math.round((typedQty / unitPrice) * 1000) / 1000;
+          else if (asGrams) qty = typedQty / 1000;
+          else qty = typedQty;
           const validQty = !isNaN(qty) && qty > 0;
+          const fmtKg = (kg: number) => kg < 1
+            ? `${Math.round(kg * 1000).toLocaleString('es-AR')} g`
+            : `${kg.toLocaleString('es-AR', { maximumFractionDigits: 3 })} kg`;
+          const setMode = (m: 'qty' | 'money') => {
+            if (m === qtyPromptMode) return;
+            setQtyPromptMode(m);
+            setPromptQtyValue('');
+            setTimeout(() => document.getElementById('qty-prompt-input')?.focus(), 0);
+          };
           const closeQtyPrompt = () => { setQtyPromptProduct(null); focusSearch(); };
           const confirmQty = () => {
             if (!validQty) return;
@@ -4060,11 +4102,24 @@ export default function POSScreen() {
             setTimeout(() => searchRef.current?.focus(), 50);
             checkPromoSuggestion(qtyPromptProduct);
           };
-          const bump = (delta: number) => {
-            const base = promptQtyValue.trim() === '' || isNaN(typedQty) ? 1 : typedQty;
-            setPromptQtyValue(String(Math.max(1, Math.round((base + delta) * 1000) / 1000)));
+          const bump = (dir: number) => {
+            if (moneyMode) {
+              const base = isNaN(typedQty) ? 0 : typedQty;
+              const next = Math.round(base / 500) * 500 + dir * 500;
+              if (next > 0) setPromptQtyValue(String(next));
+              return;
+            }
+            if (weighted) {
+              // De a 100 g, siempre en gramos para que se lea fácil
+              const baseKg = validQty ? qty : 0;
+              const nextG = Math.round(baseKg * 10) * 100 + dir * 100;
+              if (nextG > 0) setPromptQtyValue(String(nextG));
+              return;
+            }
+            const base = raw === '' || isNaN(typedQty) ? 1 : typedQty;
+            const next = Math.round((base + dir) * 1000) / 1000;
+            if (next > 0) setPromptQtyValue(String(next));
           };
-          const unitPrice = Number(qtyPromptProduct.salePrice) || 0;
           return (
           <div
             className="fixed inset-0 z-[150] bg-slate-900/50 flex items-center justify-center p-4"
@@ -4078,10 +4133,10 @@ export default function POSScreen() {
             >
               <div className="flex items-start justify-between gap-3 px-5 pt-5">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Cantidad</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{weighted ? '¿Cuánto lleva?' : 'Cantidad'}</p>
                   <h3 className="mt-1 text-lg font-extrabold leading-snug text-slate-900 dark:text-white break-words">{qtyPromptProduct.name}</h3>
                   {unitPrice > 0 && (
-                    <p className="mt-0.5 text-[13px] font-semibold text-slate-500 dark:text-slate-400">{formatPrice(unitPrice)} c/u</p>
+                    <p className="mt-0.5 text-[13px] font-semibold text-slate-500 dark:text-slate-400">{formatPrice(unitPrice)} {weighted ? 'el kilo' : 'c/u'}</p>
                   )}
                 </div>
                 <button onClick={closeQtyPrompt} className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0" aria-label="Cerrar">
@@ -4090,6 +4145,22 @@ export default function POSScreen() {
               </div>
 
               <div className="px-5 pt-4">
+                {weighted && unitPrice > 0 && (
+                  <div className="mb-3 grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800" role="tablist" aria-label="Pedir por peso o por plata">
+                    {([['qty', 'Por peso (kg)'], ['money', 'Por plata ($)']] as const).map(([m, label]) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="tab"
+                        aria-selected={qtyPromptMode === m}
+                        onClick={() => setMode(m)}
+                        className={`h-10 rounded-lg text-sm font-bold transition-colors ${qtyPromptMode === m ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-stretch gap-2">
                   <button type="button" onClick={() => bump(-1)} className="w-14 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform" aria-label="Restar uno">
                     <Minus className="w-5 h-5" />
@@ -4098,28 +4169,51 @@ export default function POSScreen() {
                     inputMode="decimal"
                     autoFocus
                     value={promptQtyValue}
-                    onChange={(e) => setPromptQtyValue(e.target.value.replace(/[^\d.,]/g, ''))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // Si escriben "$" (o "k"/"g") cambia de modo, aunque el teclado no mande la tecla
+                      if (weighted && unitPrice > 0 && v.includes('$')) setQtyPromptMode('money');
+                      else if (weighted && /[kg]/i.test(v)) setQtyPromptMode('qty');
+                      setPromptQtyValue(v.replace(/[^\d.,]/g, ''));
+                    }}
                     onFocus={(e) => e.target.select()}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmQty(); }
                       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQtyPrompt(); }
                       else if (e.key === 'ArrowUp') { e.preventDefault(); bump(1); }
                       else if (e.key === 'ArrowDown') { e.preventDefault(); bump(-1); }
+                      // Atajos: "$" pasa a plata, "k" o "g" vuelve a peso
+                      else if (weighted && unitPrice > 0 && e.key === '$') { e.preventDefault(); setMode('money'); }
+                      else if (weighted && (e.key === 'k' || e.key === 'K' || e.key === 'g' || e.key === 'G')) { e.preventDefault(); setMode('qty'); }
                     }}
-                    placeholder="1"
-                    aria-label="Cantidad"
+                    id="qty-prompt-input"
+                    placeholder={moneyMode ? '$ 3000' : weighted ? '300 g' : '1'}
+                    aria-label={moneyMode ? 'Monto en pesos' : weighted ? 'Peso' : 'Cantidad'}
                     className="flex-1 min-w-0 h-16 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-center text-3xl font-black tabular-nums text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-colors"
                   />
                   <button type="button" onClick={() => bump(1)} className="w-14 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform" aria-label="Sumar uno">
                     <Plus className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-[13px]">
+                {weighted && (
+                  <div className="mt-3 flex items-center justify-between text-[13px]">
+                    <span className="text-slate-500 dark:text-slate-400">{moneyMode ? 'Hay que cortar' : 'Peso'}</span>
+                    <span className="text-base font-extrabold tabular-nums text-slate-900 dark:text-white">
+                      {validQty ? fmtKg(qty) : '—'}
+                    </span>
+                  </div>
+                )}
+                <div className={`${weighted ? 'mt-1' : 'mt-3'} flex items-center justify-between text-[13px]`}>
                   <span className="text-slate-500 dark:text-slate-400">Subtotal</span>
                   <span className="font-extrabold tabular-nums text-slate-900 dark:text-white">
                     {validQty && unitPrice > 0 ? formatPrice(unitPrice * qty) : '—'}
                   </span>
                 </div>
+                {weighted && (
+                  <p className="mt-2 text-[11.5px] text-slate-400 dark:text-slate-500">
+                    {moneyMode ? 'Escribí la plata que pide el cliente. Tecla K vuelve a peso.' : 'Escribí 300 para 300 g, o 1,5 para un kilo y medio. Tecla $ para pedir por plata.'}
+                  </p>
+                )}
               </div>
 
               <div className="px-5 pt-4 pb-5 grid grid-cols-[1fr_auto] gap-2">
