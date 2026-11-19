@@ -276,9 +276,15 @@ function serveStatic(req, res, session) {
   if (!file.startsWith(path.normalize(CFG.frontendDir))) return sendJson(res, 400, { message: 'Ruta inválida' });
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(CFG.frontendDir, 'index.html');
   const ext = path.extname(file);
-  if (session && session.support && ext === '.html') {
+  // La página sabe de qué comercio es (y si es una entrada de soporte): todos los comercios comparten
+  // esta dirección y el navegador guarda la configuración del comercio; sin esto, entrar a otra cuenta
+  // en el mismo navegador subía la configuración de la anterior (ver storeSettings.ts)
+  if (session && ext === '.html') {
     res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
-    return res.end(fs.readFileSync(file, 'utf8').replace('</body>', supportBanner(session) + '</body>'));
+    const who = `<script>window.__VENTRA_TENANT=${JSON.stringify(String(session.uid || ''))};window.__VENTRA_SUPPORT=${session.support ? 'true' : 'false'};</script>`;
+    let html = fs.readFileSync(file, 'utf8').replace('<head>', '<head>' + who);
+    if (session.support) html = html.replace('</body>', supportBanner(session) + '</body>');
+    return res.end(html);
   }
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',

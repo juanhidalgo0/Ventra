@@ -141,7 +141,32 @@ export function setStoreSetting(key: StoreSettingKey, value: string) {
  * tiene (primera vez después de actualizar) se suben desde este equipo; si dos equipos los
  * suben a la vez, gana el primero y el otro lo adopta en la vuelta siguiente.
  */
+/** Comercio de la caja web (lo pone cloud-host en la página) y si es una entrada de soporte de Ventra. */
+const TENANT_KEY = 'store_settings_tenant';
+const webTenant = (): string => { try { return String((window as any).__VENTRA_TENANT || ''); } catch { return ''; } };
+const isSupport = (): boolean => { try { return (window as any).__VENTRA_SUPPORT === true; } catch { return false; } };
+
+/**
+ * La configuración guardada en este navegador es de un comercio: si se entra a otro (todos comparten
+ * la dirección de la caja web), se olvida y se baja la del comercio nuevo. Antes se subía como propia
+ * (así le aparecieron a un cliente los datos de otro comercio al entrar soporte).
+ */
+function guardTenant() {
+  const tenant = webTenant();
+  if (!tenant) return; // app de escritorio: un solo comercio
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(TENANT_KEY); } catch { return; }
+  // Primera vez con la marca: en una entrada normal lo guardado es de este comercio; en soporte nunca
+  if (saved === tenant || (saved === null && !isSupport())) {
+    if (saved === null) try { localStorage.setItem(TENANT_KEY, tenant); } catch { /* sin espacio */ }
+    return;
+  }
+  forgetStoreSettings();
+  try { localStorage.setItem(TENANT_KEY, tenant); } catch { /* sin espacio */ }
+}
+
 export async function syncStoreSettings(): Promise<void> {
+  guardTenant();
   let remote: Record<string, unknown>;
   try {
     const { data } = await api.get('/settings', { silent: true } as any);
@@ -163,7 +188,8 @@ export async function syncStoreSettings(): Promise<void> {
       missing.push(key);
     }
   }
-  if (missing.length && isAdmin()) writePending([...readPending(), ...missing]);
+  // Soporte de Ventra: nunca sube lo de este navegador (es de otro comercio)
+  if (missing.length && isAdmin() && !isSupport()) writePending([...readPending(), ...missing]);
   if (changed.length) window.dispatchEvent(new CustomEvent(STORE_SETTINGS_EVENT, { detail: changed }));
   await flush();
 }
