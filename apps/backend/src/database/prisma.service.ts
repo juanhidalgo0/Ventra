@@ -340,6 +340,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!productColumns.some(c => c.name === 'pack_price')) {
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN pack_price REAL DEFAULT NULL;`);
             }
+            // Distribuidora: el bulto con un % de descuento sobre el precio de cada lista (en vez de un precio fijo)
+            if (!productColumns.some(c => c.name === 'pack_discount')) {
+              await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN pack_discount REAL DEFAULT NULL;`);
+            }
             // Dónde se vende el producto: mostrador, reparto (mayorista) o los dos (null)
             if (!productColumns.some(c => c.name === 'sales_channel')) {
               await this.$executeRawUnsafe(`ALTER TABLE products ADD COLUMN sales_channel TEXT DEFAULT NULL;`);

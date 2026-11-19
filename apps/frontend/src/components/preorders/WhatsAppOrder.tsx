@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { X, Sparkles, Loader2, ImagePlus, Trash2, AlertTriangle, Check } from 'lucide-react';
 import api from '../../services/api';
+import { priceFor } from '../../services/preorders';
 
 /**
  * Pedido de WhatsApp con IA: se pega el mensaje del cliente (o la foto de su lista) y la IA de
@@ -101,8 +102,8 @@ export default function WhatsAppOrder({ products, clients, onClose, onCreate }: 
         items: ok.map((l) => {
           const p: any = byId.get(l.productId!);
           const size = l.byPack && Number(p.unitsPerPack) > 1 ? Number(p.unitsPerPack) : 0;
-          // Precio del catálogo (el servidor lo vuelve a calcular igual): el del bulto o el de la unidad
-          const unitPrice = size ? (Number(p.packPrice) > 0 ? Number(p.packPrice) : Number(p.salePrice) * size) / size : Number(p.salePrice) || 0;
+          // Precio del catálogo para el cliente (el servidor lo vuelve a calcular igual): el del bulto o el de la unidad
+          const unitPrice = priceFor(p, size > 0, client).unitPrice;
           return { productId: p.id, productName: p.name, quantity: size ? l.qty * size : l.qty, packSize: size || null, unitPrice };
         }),
       });

@@ -106,7 +106,7 @@ export class PreOrdersService {
       const ids = [...new Set(items.map((i: any) => i.productId))] as string[];
       const products = await (this.prisma as any).product.findMany({
         where: { id: { in: ids } },
-        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true },
+        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, packDiscount: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true },
       });
       const tradeOff = Number(orderClient?.tradeDiscountPercentage) || 0;
       const retailUnit = (p: any) => {
@@ -134,8 +134,11 @@ export class PreOrdersService {
         if (!byPack) it.packSize = null;
         const asked = it.unitPrice;
         let unit = unitOf(Number(p.salePrice), Number(p.packPrice), it.packSize, retailUnit(p));
+        // Bulto con % de descuento: la unidad de la lista del cliente con el % (packOf/packForClient en la caja)
+        const packOff = Number(p.packDiscount) || 0;
+        if (it.packSize && packOff > 0 && packOff < 100) unit = Math.round(retailUnit(p) * (1 - packOff / 100) * 10000) / 10000;
         // Al mayorista, cada unidad del bulto no le sale más cara que su unidad suelta (packForClient en la caja)
-        if (it.packSize && isTrade && (Number(p.tradePrice) > 0 || tradeOff > 0)) unit = Math.min(unit, retailUnit(p));
+        else if (it.packSize && isTrade && (Number(p.tradePrice) > 0 || tradeOff > 0)) unit = Math.min(unit, retailUnit(p));
         const before = kept.get(`${it.productId}|${it.packSize || ''}`);
         const pr: any = prevById.get(it.productId);
         if (before !== undefined) unit = before;

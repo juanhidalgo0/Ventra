@@ -39,7 +39,8 @@ export function offersFor(p: any, promos: any[], prices: CatalogPrices, bulk: bo
   const unit = prices === 'TRADE' ? tradeUnit : retailUnit;
   // Bulto
   const pack = packOf(p, bulk);
-  if (pack) out.push(`Bulto x${pack.size}: ${pair(pack.price, packForClient(pack, p, TRADE_CLIENT).price)}`);
+  const packOff = Number(p.packDiscount) > 0 && Number(p.packDiscount) < 100 ? Number(p.packDiscount) : 0;
+  if (pack) out.push(`Bulto x${pack.size}${packOff ? ` (-${packOff}%)` : ''}: ${pair(pack.price, packForClient(pack, p, TRADE_CLIENT).price)}`);
   // Oferta por cantidad: vale para cualquier cliente, solo si le baja el precio
   const wq = Number(p.wholesaleMinQty), wp = Number(p.wholesalePrice);
   if (wq > 0 && wp > 0 && wp < unit - 0.005) out.push(`Desde ${wq} u.: ${fmt$(wp)} c/u`);

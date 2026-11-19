@@ -259,6 +259,7 @@ model Product {
   // Dónde se vende: null o BOTH = mostrador y reparto, RETAIL = solo mostrador, WHOLESALE = solo reparto (mayorista)
   salesChannel     String? @map("sales_channel")
   packPrice        Float?  @map("pack_price") // Distribuidora: precio del bulto entero de unitsPerPack unidades
+  packDiscount     Float?  @map("pack_discount") // Distribuidora: % de descuento del bulto sobre la lista de cada cliente (en vez de packPrice)
   equivalents      String?
   taxRate          Float   @default(0) @map("tax_rate")
   listPrice        Float?  @map("list_price") // Precio de lista del proveedor, sin IVA

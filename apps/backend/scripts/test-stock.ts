@@ -948,6 +948,16 @@ async function main() {
     assert.deepStrictEqual(mucho.items.map((i: any) => i.unitPrice), [850, 850], 'llegando a 60 entre bultos y sueltas, todo a 850');
   });
 
+  await t('preventa: bulto con % de descuento sobre la lista de cada cliente', async () => {
+    const pre = new PreOrdersService(prisma);
+    const p = await nuevo('Capsula power full', 500, { salePrice: 1400, tradePrice: 990, unitsPerPack: 20, packDiscount: 10 });
+    const may = await prisma.client.create({ data: { name: 'Mayorista bulto %', priceList: 'TRADE' } });
+    const min: any = await pre.save('po-bulto-pct-a', { items: [{ productId: p.id, productName: p.name, quantity: 20, packSize: 20, unitPrice: 1 }] }, cajero.id, false);
+    assert.strictEqual(Math.round(min.items[0].total), 25200, 'minorista: 20 x 1400 - 10%');
+    const tr: any = await pre.save('po-bulto-pct-b', { clientId: may.id, items: [{ productId: p.id, productName: p.name, quantity: 20, packSize: 20, unitPrice: 1 }] }, cajero.id, false);
+    assert.strictEqual(Math.round(tr.items[0].total), 17820, 'mayorista: 20 x 990 - 10%');
+  });
+
   await t('tienda online: el pedido aceptado entra una vez, con precios del catálogo, y el stock sale con el reparto', async () => {
     const pre = new PreOrdersService(prisma);
     const cli = await prisma.client.create({ data: { name: 'Almacén con link', locality: 'Bavio' } });

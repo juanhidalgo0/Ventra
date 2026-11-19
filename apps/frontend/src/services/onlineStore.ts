@@ -284,7 +284,7 @@ export interface OnlineProduct {
   /** "GRANDE", "M · NEGRO" */
   variantLabel?: string;
   /** Venta por bulto (distribuidora): unidades del bulto y precio del bulto entero */
-  pack?: { size: number; price: number };
+  pack?: { size: number; price: number; discount?: number };
   /** Oferta por cantidad: desde minQty unidades, cada una a price */
   wholesale?: { price: number; minQty: number };
   /**
@@ -347,7 +347,12 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
     unit: p.unit || 'UNIT',
     inStock: !!p.unlimitedStock || p.stock > 0,
     // Mismo precio del bulto que los pedidos (preorders.service): el de bulto o, si no tiene, la unidad por el tamaño
-    ...(Number(p.unitsPerPack) > 1 ? { pack: { size: Number(p.unitsPerPack), price: Number(p.packPrice) > 0 ? Number(p.packPrice) : Math.round(Number(p.salePrice) * Number(p.unitsPerPack) * 100) / 100 } } : {}),
+    // Con % de descuento por bulto, `discount` va también: la tienda lo aplica sobre el precio mayorista del cliente con link
+    ...(Number(p.unitsPerPack) > 1 ? { pack: (() => {
+      const size = Number(p.unitsPerPack), d = Number(p.packDiscount) > 0 && Number(p.packDiscount) < 100 ? Number(p.packDiscount) : 0;
+      const price = d ? Number(p.salePrice) * size * (1 - d / 100) : Number(p.packPrice) > 0 ? Number(p.packPrice) : Number(p.salePrice) * size;
+      return { size, price: Math.round(price * 100) / 100, ...(d ? { discount: d } : {}) };
+    })() } : {}),
     ...(Number(p.wholesalePrice) > 0 && Number(p.wholesaleMinQty) > 0 ? { wholesale: { price: Number(p.wholesalePrice), minQty: Number(p.wholesaleMinQty) } } : {}),
     ...(Number(p.tradePrice) > 0 ? { tradePrice: Number(p.tradePrice) } : {}),
     ...(p.variantGroupId ? { variantGroupId: p.variantGroupId, baseName: p.baseName || p.name, variantLabel } : {}),

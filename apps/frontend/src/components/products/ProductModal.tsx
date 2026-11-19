@@ -174,6 +174,9 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
     // Margen del precio mayorista sobre el costo (no se guarda: se deduce del precio y el costo)
     tradeMargin: '' as any,
     packPrice: product?.packPrice || '',
+    // Bulto con % de descuento sobre la lista de cada cliente (en vez de un precio fijo)
+    packDiscount: product?.packDiscount || '',
+    packMode: (Number(product?.packDiscount) > 0 ? 'PCT' : 'FIXED') as 'FIXED' | 'PCT',
     isKit: product?.isKit || false,
     equivalents: product?.equivalents || '',
     margin: 0,
@@ -963,8 +966,11 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
         taxRate: parseFloat(formData.taxRate as any) || 0,
         expiryAlertDays: Math.max(0, Math.round(parseFloat(formData.expiryAlertDays as any) || 0)),
         unitsPerPack: uPerPack,
-        packPrice: uPerPack > 1 && formData.packPrice !== '' && formData.packPrice !== null && parseFloat(formData.packPrice as any) > 0
+        packPrice: uPerPack > 1 && formData.packMode !== 'PCT' && formData.packPrice !== '' && formData.packPrice !== null && parseFloat(formData.packPrice as any) > 0
           ? Math.round(parseFloat(formData.packPrice as any) * 100) / 100
+          : null,
+        packDiscount: uPerPack > 1 && formData.packMode === 'PCT' && parseFloat(formData.packDiscount as any) > 0 && parseFloat(formData.packDiscount as any) < 100
+          ? Math.round(parseFloat(formData.packDiscount as any) * 100) / 100
           : null,
         pieceSize: ['MT', 'KG', 'L'].includes(formData.unit) && formData.pieceSize !== '' && formData.pieceSize !== null && !isNaN(parseFloat(formData.pieceSize as any)) && parseFloat(formData.pieceSize as any) > 0
           ? parseFloat(formData.pieceSize as any)
@@ -1681,13 +1687,23 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               const unitSale = (parseFloat(formData.salePrice as any) || 0) / (formData.presentationType === 'PACK' ? units : 1);
               const packPrice = parseFloat(formData.packPrice as any) || 0;
               const loose = unitSale * units;
+              const pct = formData.packMode === 'PCT';
+              const off = parseFloat(formData.packDiscount as any) || 0;
+              const offOk = off > 0 && off < 100;
+              const tradeUnit = parseFloat(formData.tradePrice as any) || 0;
+              const money0 = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`;
+              const modeBtn = (on: boolean) => `px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors ${on ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`;
               return (
                 <Collapsible
                   icon={Boxes}
                   title="Venta por bulto"
-                  hint="Caja, pack o fardo con su propio precio"
+                  hint="Caja, pack o fardo con su propio precio o un % de descuento"
                   defaultOpen
                 >
+                  <div className="flex gap-1.5 mb-3">
+                    <button type="button" className={modeBtn(!pct)} onClick={() => setFormData({ ...formData, packMode: 'FIXED' })}>Precio fijo</button>
+                    <button type="button" className={modeBtn(pct)} onClick={() => setFormData({ ...formData, packMode: 'PCT' })}>% de descuento</button>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Unidades por bulto</label>
@@ -1702,6 +1718,26 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                         className={inputCls}
                       />
                     </div>
+                    {pct ? (
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Descuento por bulto</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="99"
+                          placeholder="Ej: 10"
+                          value={formData.packDiscount}
+                          disabled={units <= 1}
+                          onChange={e => setFormData({ ...formData, packDiscount: e.target.value })}
+                          onFocus={e => e.target.select()}
+                          className={inputCls + ' pr-8 disabled:bg-slate-50 disabled:text-slate-400'}
+                        />
+                        <span className="absolute inset-y-0 right-3 flex items-center text-slate-400 font-semibold pointer-events-none">%</span>
+                      </div>
+                    </div>
+                    ) : (
                     <div>
                       <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio del bulto</label>
                       <div className="relative">
@@ -1718,10 +1754,15 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                         />
                       </div>
                     </div>
+                    )}
                   </div>
                   <p className="text-[11.5px] text-slate-500 mt-2 leading-snug">
                     {units <= 1
                       ? 'Poné cuántas unidades trae el bulto para poder venderlo entero.'
+                      : pct
+                      ? (offOk
+                        ? `El bulto sale ${units} unidades con ${off}% menos: minorista ${money0(loose * (1 - off / 100))}${tradeUnit > 0 ? `, mayorista ${money0(tradeUnit * units * (1 - off / 100))}` : ''}. Si cambian los precios, el bulto se mueve solo.`
+                        : 'Poné el % que se descuenta comprando el bulto entero. Vale sobre el precio de cada cliente (minorista o mayorista).')
                       : packPrice > 0
                         ? `Cada unidad dentro del bulto sale $${(packPrice / units).toLocaleString('es-AR', { maximumFractionDigits: 2 })}${loose > packPrice ? ` (suelta: $${unitSale.toLocaleString('es-AR', { maximumFractionDigits: 2 })})` : ''}. En la caja entra por bulto y se puede pasar a unidades.`
                         : `Sin precio de bulto, vale lo mismo que ${units} unidades sueltas${loose > 0 ? ` ($${Math.round(loose).toLocaleString('es-AR')})` : ''}.`}

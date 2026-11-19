@@ -909,7 +909,12 @@ async function applyTradePrices(ref, list){
     if(np>0){
       p.retailPrice=Number(p.price); p.price=np;
       // El bulto: cada unidad no le sale más cara que la suelta mayorista (igual que en la caja y order-check.js)
-      if(p.pack&&Number(p.pack.size)>1){ var tp=Math.round(np*Number(p.pack.size)*100)/100; if(tp<Number(p.pack.price)-0.005) p.pack={size:Number(p.pack.size),price:tp}; }
+      if(p.pack&&Number(p.pack.size)>1){
+        var d=Number(p.pack.discount)||0, sz=Number(p.pack.size);
+        // Bulto con % de descuento: sus unidades mayoristas con el %; si no, nunca más caro que las sueltas
+        if(d>0&&d<100) p.pack={size:sz,price:Math.round(np*sz*(1-d/100)*100)/100,discount:d};
+        else { var tp=Math.round(np*sz*100)/100; if(tp<Number(p.pack.price)-0.005) p.pack={size:sz,price:tp}; }
+      }
     }
   });
   (S.cfg.onlinePromos||[]).concat(S.cfg.onlineCombos||[]).forEach(function(pr){

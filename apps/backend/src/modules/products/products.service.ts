@@ -352,6 +352,7 @@ export class ProductsService {
         unit: true,
         unitsPerPack: true,
         packPrice: true,
+        packDiscount: true,
         salesChannel: true,
         // Packs y kits: su stock es lo que alcanza con las piezas (ver kit-stock.ts)
         isKit: true,
@@ -408,6 +409,7 @@ export class ProductsService {
       unit: p.unit,
       unitsPerPack: p.unitsPerPack,
       packPrice: p.packPrice,
+      packDiscount: (p as any).packDiscount ?? null,
       salesChannel: p.salesChannel,
       wholesalePrice: p.wholesalePrice,
       wholesaleMinQty: p.wholesaleMinQty,
@@ -439,7 +441,7 @@ export class ProductsService {
         id: true, name: true, description: true, salePrice: true, unit: true, stock: true, unlimitedStock: true,
         variantGroupId: true, baseName: true, variantAttrs: true, imageUrl: true, isKit: true,
         // Bulto, oferta por cantidad y precio mayorista: los publica la tienda (si no, siempre parecían cambiados)
-        unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true,
+        unitsPerPack: true, packPrice: true, packDiscount: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true,
         category: { select: { name: true, parentCategory: { select: { name: true } } } },
         brand: { select: { name: true } },
       },
@@ -778,7 +780,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'salesChannel'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'packDiscount', 'salesChannel'
     ];
     
     const productData: any = {};
@@ -897,7 +899,7 @@ export class ProductsService {
       'taxRate', 'isActive', 'isFavorite', 'allowCustomPrice', 'unlimitedStock', 'categoryId', 'brandId', 'supplierId',
       'wholesalePrice', 'wholesaleMinQty', 'tradePrice', 'isKit', 'equivalents', 'location', 'pieceSize', 'showOnline',
       'listPrice', 'discount1', 'discount2', 'discount3',
-      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'salesChannel'
+      'baseName', 'variantGroupId', 'variantAttrs', 'trackExpiry', 'expiryAlertDays', 'packPrice', 'packDiscount', 'salesChannel'
     ];
     
     const updateData: any = {};

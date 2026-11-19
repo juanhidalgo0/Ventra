@@ -79,8 +79,10 @@ function withTradePrice(x, id, trade) {
   if (!(t > 0 || trade.off > 0)) return Object.assign({}, x, { price });
   // El bulto: cada unidad no le sale más cara que la suelta mayorista (applyTradePrices en la tienda)
   const size = x.pack ? Number(x.pack.size) : 0;
-  const tp = size > 1 ? Math.round(price * size * 100) / 100 : 0;
-  const pack = size > 1 && tp < Number(x.pack.price) - 0.005 ? { size, price: tp } : x.pack;
+  const d = x.pack ? Number(x.pack.discount) || 0 : 0;
+  // Bulto con % de descuento: sus unidades mayoristas con el % (applyTradePrices en la tienda)
+  const tp = size > 1 ? Math.round(price * size * (d > 0 && d < 100 ? 1 - d / 100 : 1) * 100) / 100 : 0;
+  const pack = size > 1 && (d > 0 && d < 100 || tp < Number(x.pack.price) - 0.005) ? { size, price: tp } : x.pack;
   return Object.assign({}, x, { price }, pack ? { pack } : {});
 }
 
