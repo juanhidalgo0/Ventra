@@ -7,6 +7,7 @@ import { SyncImageService } from './sync-image.service';
 import { SharedCatalogService } from './shared-catalog.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
+import { PdfImagesService } from './pdf-images.service';
 import { PriceEditorService } from './price-editor.service';
 import { ProductsController } from './products.controller';
 import { SyncController } from './sync.controller';
@@ -16,7 +17,7 @@ import { GoModule } from '../go/go.module';
 @Module({
   imports: [WebsocketModule, GoModule],
   controllers: [ProductsController, SyncController, ProductImagesController],
-  providers: [ProductsService, FirebaseSyncService, SyncImageService, SharedCatalogService, VentraImportService, HardwareImageService, PriceEditorService, ProductMergeService],
+  providers: [ProductsService, FirebaseSyncService, SyncImageService, SharedCatalogService, VentraImportService, HardwareImageService, PdfImagesService, PriceEditorService, ProductMergeService],
   exports: [ProductsService, FirebaseSyncService, SyncImageService, SharedCatalogService],
 })
 export class ProductsModule {}

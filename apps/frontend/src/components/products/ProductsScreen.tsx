@@ -33,6 +33,7 @@ import {
   ChevronDown,
   Sparkles,
   BookOpen,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
@@ -48,6 +49,7 @@ import VentraImportModal from './VentraImportModal';
 import ToolbarMenu from '../common/ToolbarMenu';
 import { usePOSStore } from '../../stores/posStore';
 import ImageReviewModal from './ImageReviewModal';
+import PdfPhotosModal from './PdfPhotosModal';
 import { downloadFromApi } from '../../utils/download';
 import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
@@ -87,6 +89,7 @@ export default function ProductsScreen() {
   };
   const isHardwareStore = useFeature('hardwareImages');
   const [showImageReview, setShowImageReview] = useState(false);
+  const [showPdfPhotos, setShowPdfPhotos] = useState(false);
   const [pendingImageReviews, setPendingImageReviews] = useState(0);
   const refreshImageReviewCount = () => {
     if (!isHardwareStore) return;
@@ -1019,6 +1022,12 @@ export default function ProductsScreen() {
                     disabled: isHardwareStore,
                   },
                   {
+                    label: 'Fotos desde un catálogo PDF',
+                    description: 'Del PDF del proveedor: cada foto va al producto de su código',
+                    icon: <FileText className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowPdfPhotos(true),
+                  },
+                  {
                     label: 'Revisar fotos sugeridas',
                     description: 'Aceptar o descartar las dudosas',
                     icon: <Image className="w-3.5 h-3.5 text-amber-600" />,
@@ -1765,6 +1774,8 @@ export default function ProductsScreen() {
           </motion.div>
         </div>
       )}
+
+      {showPdfPhotos && <PdfPhotosModal onClose={() => setShowPdfPhotos(false)} onSaved={() => loadProducts(true)} />}
 
       {showImageReview && (
         <ImageReviewModal

@@ -6,6 +6,7 @@ import { SyncImageService } from './sync-image.service';
 import { SharedCatalogService } from './shared-catalog.service';
 import { VentraImportService } from './ventra-import.service';
 import { HardwareImageService } from './hardware-image.service';
+import { PdfImagesService } from './pdf-images.service';
 import { PriceEditorService } from './price-editor.service';
 import { ProductMergeService } from './product-merge.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -27,6 +28,7 @@ export class ProductsController {
     private syncImageService: SyncImageService,
     private ventraImport: VentraImportService,
     private hardwareImages: HardwareImageService,
+    private pdfImages: PdfImagesService,
     private priceEditor: PriceEditorService,
     private merger: ProductMergeService,
     private prisma: PrismaService,
@@ -358,6 +360,21 @@ export class ProductsController {
   importVentra(@UploadedFile() file: Express.Multer.File, @Body('updateStock') updateStock: string, @Request() req) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     return this.ventraImport.import(file.buffer, { updateStock: updateStock !== 'false' }, req.user?.sub);
+  }
+
+  // --- Fotos desde un catálogo en PDF: cada foto con el producto del código que tiene al lado ---
+  @Post('images/from-pdf/preview')
+  @Roles(...MANAGERS)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 60 * 1024 * 1024 } }))
+  previewPdfImages(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    return this.pdfImages.preview(file.buffer);
+  }
+
+  @Post('images/from-pdf/apply')
+  @Roles(...MANAGERS)
+  applyPdfImages(@Body('token') token: string, @Body('productIds') productIds: string[]) {
+    return this.pdfImages.apply(token, productIds);
   }
 
   // --- Fotos para ferretería (productos sin código de barras) ---
