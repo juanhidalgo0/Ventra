@@ -7,7 +7,11 @@ import type { BusinessProfile } from '../../stores/businessStore';
  * nombres y categorías: los precios los pone el carnicero (cambian cada semana) y el código de
  * balanza sale solo, siguiendo los que ya tiene.
  */
-export interface CutGroup { category: string; color: string; items: string[] }
+export interface CutGroup {
+  category: string; color: string; items: string[];
+  /** Cómo se vende lo del grupo: por kilo (lo normal) o por unidad (lechuga, atado de perejil, maple) */
+  unit?: 'KG' | 'UNIT';
+}
 
 export const CUT_PRESETS: Partial<Record<BusinessProfile, CutGroup[]>> = {
   CARNICERIA: [
@@ -36,6 +40,26 @@ export const CUT_PRESETS: Partial<Record<BusinessProfile, CutGroup[]>> = {
       ],
     },
     { category: 'Salames', color: '#9f1239', items: ['Salame Milán', 'Salamín picado fino', 'Salamín picado grueso', 'Longaniza', 'Sopressata'] },
+  ],
+  VERDULERIA: [
+    {
+      category: 'Verduras', color: '#16a34a', items: [
+        'Papa', 'Papa negra', 'Cebolla', 'Cebolla morada', 'Tomate redondo', 'Tomate perita', 'Zanahoria', 'Zapallo anco', 'Zapallito redondo',
+        'Zucchini', 'Batata', 'Morrón rojo', 'Morrón verde', 'Berenjena', 'Pepino', 'Remolacha', 'Ajo', 'Choclo', 'Chaucha', 'Brócoli',
+      ],
+    },
+    {
+      category: 'Frutas', color: '#f97316', items: [
+        'Banana', 'Manzana roja', 'Manzana verde', 'Naranja', 'Naranja de jugo', 'Mandarina', 'Limón', 'Pera', 'Durazno', 'Uva',
+        'Frutilla', 'Kiwi', 'Ciruela', 'Sandía', 'Melón', 'Palta',
+      ],
+    },
+    {
+      category: 'Por unidad', color: '#65a30d', unit: 'UNIT', items: [
+        'Lechuga', 'Acelga (atado)', 'Espinaca (atado)', 'Perejil (atado)', 'Verdeo (atado)', 'Rúcula (atado)', 'Ananá', 'Coliflor', 'Repollo',
+        'Huevos (maple x30)', 'Huevos (docena)',
+      ],
+    },
   ],
 };
 

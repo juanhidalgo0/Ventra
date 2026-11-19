@@ -6,7 +6,7 @@ import { parseAmount } from '../mobile/ui';
 import { PROFILE_LABELS, type BusinessProfile } from '../../stores/businessStore';
 import { CUT_PRESETS, loadCatalog, mergeIntoPosCatalog, nextPlu, normName } from './cuts';
 
-interface Row { name: string; category: string; color: string; on: boolean; price: string; exists: boolean }
+interface Row { name: string; category: string; color: string; unit: 'KG' | 'UNIT'; on: boolean; price: string; exists: boolean }
 
 /**
  * Cargar de una los cortes de la carnicería (o los fiambres y quesos): se marcan los que vende,
@@ -28,7 +28,7 @@ export default function CutsLoader({ rubros, onClose, onDone }: { rubros: Busine
       setStartPlu(nextPlu(products));
       setRows((CUT_PRESETS[rubro] || []).flatMap((g) => g.items.map((name) => {
         const exists = have.has(normName(name));
-        return { name, category: g.category, color: g.color, on: !exists, price: '', exists };
+        return { name, category: g.category, color: g.color, unit: g.unit || 'KG', on: !exists, price: '', exists };
       })));
     }).catch(() => toast.error('No se pudieron leer tus productos'));
     return () => { alive = false; };
@@ -70,7 +70,7 @@ export default function CutsLoader({ rubros, onClose, onDone }: { rubros: Busine
         for (let tries = 0; tries < 5; tries++) {
           try {
             await api.post('/products', {
-              name: r.name.toUpperCase(), sku: String(plu), unit: 'KG', presentationType: 'UNIT',
+              name: r.name.toUpperCase(), sku: String(plu), unit: r.unit, presentationType: 'UNIT',
               salePrice: parseAmount(r.price) || 0, costPrice: 0, stock: 0, minStock: 0,
               categoryId: catId.get(normName(r.category)) || null,
               trackExpiry: rubro === 'FIAMBRERIA' ? true : undefined,
@@ -85,7 +85,7 @@ export default function CutsLoader({ rubros, onClose, onDone }: { rubros: Busine
         }
       }
       await mergeIntoPosCatalog(since);
-      toast.success(`Listo: ${created} producto${created === 1 ? '' : 's'} por kilo, con código de balanza del ${startPlu} al ${plu - 1}`, { duration: 6000 });
+      toast.success(`Listo: ${created} producto${created === 1 ? '' : 's'}, con código de balanza del ${startPlu} al ${plu - 1}`, { duration: 6000 });
       onDone?.();
       onClose();
     } catch (err: any) {
@@ -102,10 +102,12 @@ export default function CutsLoader({ rubros, onClose, onDone }: { rubros: Busine
         <div className="px-5 pt-5 pb-3 flex items-start gap-3 border-b border-slate-100">
           <div className="flex-1 min-w-0">
             <h2 id="cuts-title" className="text-[19px] font-bold text-slate-900 tracking-tight">
-              {rubro === 'FIAMBRERIA' ? 'Cargar fiambres y quesos' : 'Cargar los cortes'}
+              {rubro === 'FIAMBRERIA' ? 'Cargar fiambres y quesos' : rubro === 'VERDULERIA' ? 'Cargar frutas y verduras' : 'Cargar los cortes'}
             </h2>
             <p className="text-[13px] text-slate-500 leading-snug mt-0.5">
-              Marcá los que vendés y poné el precio por kilo. Quedan por kilo, con código de balanza desde el <b className="text-slate-700">{startPlu}</b>.
+              {rubro === 'VERDULERIA'
+                ? <>Marcá lo que vendés y poné el precio. Lo de kilo queda por kilo y lo de unidad o atado, por unidad. Con código de balanza desde el <b className="text-slate-700">{startPlu}</b>.</>
+                : <>Marcá los que vendés y poné el precio por kilo. Quedan por kilo, con código de balanza desde el <b className="text-slate-700">{startPlu}</b>.</>}
             </p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center shrink-0" aria-label="Cerrar"><X className="w-5 h-5 text-slate-500" /></button>
@@ -148,7 +150,7 @@ export default function CutsLoader({ rubros, onClose, onDone }: { rubros: Busine
                         <input inputMode="decimal" value={row.price} disabled={!row.on} placeholder="0"
                           onChange={(e) => patch(i, { price: e.target.value.replace(/[^\d.,]/g, '') })}
                           className="w-24 h-8 px-2 rounded-lg border border-slate-300 text-right text-[14px] text-slate-900 tabular-nums outline-none focus:border-rose-500 disabled:bg-slate-50" />
-                        el kilo
+                        {row.unit === 'UNIT' ? 'c/u' : 'el kilo'}
                       </label>
                     )}
                   </li>

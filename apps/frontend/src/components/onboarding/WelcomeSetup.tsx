@@ -32,6 +32,7 @@ const RUBRO_CARD: Record<BusinessProfile, { title: string; line: string }> = {
   KIOSKO: { title: 'Kiosco o almacén', line: 'Venta rápida por unidad o pack' },
   CARNICERIA: { title: 'Carnicería', line: 'Por kilo, balanza y desposte' },
   FIAMBRERIA: { title: 'Fiambrería', line: 'Por kilo o por plata, con balanza' },
+  VERDULERIA: { title: 'Verdulería', line: 'Por kilo, por unidad y con balanza' },
   FERRETERIA: { title: 'Ferretería', line: 'Presupuestos, acopio y medidas' },
   INDUMENTARIA: { title: 'Ropa y calzado', line: 'Talles y colores con su stock' },
   GASTRONOMIA: { title: 'Gastronomía', line: 'Tamaños, promos y mitad y mitad' },

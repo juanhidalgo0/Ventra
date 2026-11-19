@@ -22,6 +22,7 @@ const PROFILES = {
   KIOSKO: "kiosco / almacén", FERRETERIA: "ferretería / corralón", INDUMENTARIA: "indumentaria / calzado", GASTRONOMIA: "gastronomía",
   MULTIRUBRO: "multirubro / bazar", DISTRIBUIDORA: "distribuidora mayorista", IMPRENTA: "imprenta / trabajos a pedido", NUTRICION: "consultorio de nutrición",
   CARNICERIA: "carnicería (vende por kilo, con balanza)", FIAMBRERIA: "fiambrería / quesería (vende por kilo, con balanza)",
+  VERDULERIA: "verdulería / frutería (frutas y verduras por kilo con balanza; lechuga, atados y huevos por unidad; mermas como egreso de stock)",
 };
 
 /** "kiosco / almacén + carnicería": todos los rubros del comercio (el principal primero) */
@@ -240,6 +241,7 @@ function welcome({ plan, profile, daily, monthly, channel = "whatsapp" }) {
   else if (profile === "DISTRIBUIDORA") uses = ["¿Qué pedidos tengo para el reparto de mañana?", "¿Qué clientes dejaron de pedir?", "¿Quién me debe más?", "¿Qué tengo que reponer?"];
   else if (profile === "CARNICERIA") uses = ["¿Cuántos kilos de asado vendí esta semana?", "¿Qué cortes me dejan más ganancia?", "¿Cuánto vendí hoy?", "¿Cuánto le debo al frigorífico?"];
   else if (profile === "FIAMBRERIA") uses = ["¿Qué fiambres y quesos vendí más esta semana?", "¿Qué está por vencer?", "¿Cuánto vendí hoy?", "¿Qué tengo que reponer?"];
+  else if (profile === "VERDULERIA") uses = ["¿Cuántos kilos de papa vendí esta semana?", "¿Qué me dejan más ganancia, frutas o verduras?", "¿Cuánto tiré de merma este mes?", "¿Cuánto le debo al del Mercado Central?"];
   else if (profile === "IMPRENTA") uses = ["¿Qué encargos tengo para hoy?", "¿Hay encargos atrasados?", "¿Cuánto me falta cobrar de encargos?", "¿Cuánto vendí esta semana?"];
   else if (profile === "NUTRICION") uses = ["¿Qué turnos tengo mañana?", "¿Quién faltó esta semana?", "¿Cuánto cobré online este mes?", "¿Cómo cargo una consulta?"];
   else uses = ["¿Cuánto vendí hoy?", "¿Cuántas Coca de 1,5 me quedan?", "¿Qué tengo que reponer?", "¿Quién me debe plata?", "¿Cómo viene la caja?"];

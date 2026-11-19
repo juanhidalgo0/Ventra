@@ -835,6 +835,8 @@ export default function ReportsScreen() {
                 m.reason?.toLowerCase().includes('vencido') || 
                 m.reason?.toLowerCase().includes('vencimiento') ||
                 m.reason?.toLowerCase().includes('roto') ||
+                m.reason?.toLowerCase().includes('rotura') ||
+                m.reason?.toLowerCase().includes('merma') ||
                 m.reason?.toLowerCase().includes('perdida') ||
                 m.reason?.toLowerCase().includes('deterioro')
               );

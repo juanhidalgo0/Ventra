@@ -68,7 +68,7 @@ export type BusinessFeature =
   | 'monthfund'      // Caja del mes: la plata guardada aparte, le entra el Z y lo que trae el chofer
   | 'desposte';      // Desposte de media res: entra como compra, suma el stock de cada corte con su costo real
 
-export type BusinessProfile = 'KIOSKO' | 'CARNICERIA' | 'FIAMBRERIA' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
+export type BusinessProfile = 'KIOSKO' | 'CARNICERIA' | 'FIAMBRERIA' | 'VERDULERIA' | 'FERRETERIA' | 'INDUMENTARIA' | 'GASTRONOMIA' | 'MULTIRUBRO' | 'DISTRIBUIDORA' | 'IMPRENTA' | 'NUTRICION';
 
 export const ALL_FEATURES: BusinessFeature[] = [
   'quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages', 'variants', 'expiry', 'bulk', 'delivery', 'preorders', 'workorders', 'clientorders', 'patients', 'scaleLabels', 'desposte', 'monthfund',
@@ -98,6 +98,7 @@ export const PROFILE_FEATURES: Record<BusinessProfile, BusinessFeature[]> = {
   KIOSKO: ['expiry'],
   CARNICERIA: ['scaleLabels', 'desposte'],
   FIAMBRERIA: ['scaleLabels', 'expiry'],
+  VERDULERIA: ['scaleLabels'],
   FERRETERIA: ['quotes', 'acopio', 'tradePricing', 'substitutes', 'fractional', 'hardwareImages'],
   INDUMENTARIA: ['variants'],
   GASTRONOMIA: ['variants', 'expiry'],
@@ -122,6 +123,11 @@ export const PROFILE_LABELS: Record<BusinessProfile, { emoji: string; title: str
     emoji: '🧀',
     title: 'Fiambrería / Quesería',
     description: 'Venta por kilo o por plata ("$3.000 de jamón"), etiquetas de la balanza y vencimientos por lote para fiambres y quesos.',
+  },
+  VERDULERIA: {
+    emoji: '🥬',
+    title: 'Verdulería / Frutería',
+    description: 'Frutas y verduras por kilo o por plata ("$2.000 de papa"), lo que va por unidad o atado, etiquetas de la balanza y mermas de lo que se tira.',
   },
   FERRETERIA: {
     emoji: '🔧',
@@ -360,7 +366,7 @@ export const rubrosTitle = (profiles: BusinessProfile[]): string =>
   profiles.map((p) => PROFILE_LABELS[p]?.title).filter(Boolean).join(' + ');
 
 /** Rubros que venden por kilo con balanza: los productos nuevos arrancan "por kilo". */
-export const SCALE_PROFILES: BusinessProfile[] = ['CARNICERIA', 'FIAMBRERIA'];
+export const SCALE_PROFILES: BusinessProfile[] = ['CARNICERIA', 'FIAMBRERIA', 'VERDULERIA'];
 
 /** Para leer fuera de React o dentro del render sin suscribirse (reemplazo directo del viejo localStorage.getItem). */
 export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStore.getState().features[feature];

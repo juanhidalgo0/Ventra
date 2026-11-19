@@ -65,6 +65,15 @@ function sampleCatalog(profile: BusinessProfile) {
         prod('Pan de miga x8', 4500, c[2]), prod('Aceitunas verdes 200g', 3200, c[2]),
       ] };
     }
+    case 'VERDULERIA': {
+      const c = [cat('pc_v1', 'Verduras', '#16a34a', 5), cat('pc_v2', 'Frutas', '#f97316', 4), cat('pc_v3', 'Por unidad', '#65a30d', 3)];
+      const kg = (plu: number) => ({ unit: 'KG', sku: String(plu), stock: 40 });
+      return { categories: c, products: [
+        prod('Papa', 1200, c[0], kg(10)), prod('Cebolla', 1100, c[0], kg(11)), prod('Tomate redondo', 2900, c[0], kg(12)), prod('Zanahoria', 1300, c[0], kg(13)), prod('Zapallo anco', 1500, c[0], kg(14)),
+        prod('Banana', 2200, c[1], kg(30)), prod('Manzana roja', 2600, c[1], kg(31)), prod('Naranja de jugo', 1400, c[1], kg(32)), prod('Limón', 1800, c[1], kg(33)),
+        prod('Lechuga', 1500, c[2], { sku: '50', stock: 20 }), prod('Perejil (atado)', 800, c[2], { sku: '51', stock: 15 }), prod('Huevos (docena)', 3600, c[2], { sku: '52', stock: 20 }),
+      ] };
+    }
     case 'FERRETERIA': {
       const c = [cat('pc_f1', 'Tornillería', '#64748b', 3), cat('pc_f2', 'Electricidad', '#f59e0b', 3), cat('pc_f3', 'Pinturería', '#3b82f6', 2)];
       return { categories: c, products: [
@@ -133,6 +142,7 @@ export function practiceTicket(profile: BusinessProfile, products: any[]): { pro
   const picks: [any, number][] =
     profile === 'CARNICERIA' ? [[by((p) => /Asado/.test(p.name)), 1.5], [by((p) => /Chorizo/.test(p.name)), 0.5]]
     : profile === 'FIAMBRERIA' ? [[by((p) => /cocido/.test(p.name)), 0.25], [by((p) => /máquina/.test(p.name)), 0.3]]
+    : profile === 'VERDULERIA' ? [[by((p) => /^Papa/.test(p.name)), 2], [by((p) => /Tomate/.test(p.name)), 1], [by((p) => /Lechuga/.test(p.name)), 1]]
     : profile === 'FERRETERIA' ? [[by((p) => p.unit === 'MT'), 5], [by((p) => /Tornillo/.test(p.name)), 20]]
     : profile === 'INDUMENTARIA' ? [[by((p) => /Remera.*M Negro/.test(p.name)), 1], [by((p) => /Gorra/.test(p.name)), 1]]
     : profile === 'GASTRONOMIA' ? [[by((p) => /muzzarella Grande/.test(p.name)), 1], [by((p) => /carne/.test(p.name)), 6], [by((p) => /Gaseosa/.test(p.name)), 1]]

@@ -12,7 +12,7 @@ import { DEMO_PRODUCTS, DEMO_CATEGORY_COLORS } from './demo-reset.service';
  * Volver a un rubro ya elegido reactiva lo suyo, sin duplicar nada.
  */
 
-export const DEMO_PROFILES = ['KIOSKO', 'CARNICERIA', 'FIAMBRERIA', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA', 'NUTRICION'] as const;
+export const DEMO_PROFILES = ['KIOSKO', 'CARNICERIA', 'FIAMBRERIA', 'VERDULERIA', 'FERRETERIA', 'INDUMENTARIA', 'GASTRONOMIA', 'MULTIRUBRO', 'DISTRIBUIDORA', 'IMPRENTA', 'NUTRICION'] as const;
 export type DemoProfile = typeof DEMO_PROFILES[number];
 
 interface Item {
@@ -29,7 +29,7 @@ interface Item {
   /** Variantes: nombre del modelo y atributos de esta variante */
   baseName?: string;
   attrs?: Record<string, string>;
-  /** Carnicería y fiambrería: código de la balanza (PLU). Va como código del producto */
+  /** Carnicería, fiambrería y verdulería: código de la balanza (PLU). Va como código del producto */
   plu?: number;
 }
 
@@ -42,6 +42,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Impresiones: '#3b82f6', 'Gráfica': '#8b5cf6', 'Gran formato': '#f97316', 'Sellos y regalos': '#ec4899',
   Vacuno: '#b91c1c', Cerdo: '#f472b6', Pollo: '#f59e0b', 'Achuras y embutidos': '#7c2d12', Elaborados: '#ea580c',
   Fiambres: '#e11d48', Quesos: '#eab308', Salames: '#9f1239', Fiambrería: '#e11d48',
+  Verduras: '#16a34a', Frutas: '#f97316', 'Por unidad': '#65a30d', 'Huevos y almacén': '#ca8a04',
 };
 
 /** Todas las combinaciones de los ejes (talle × color, tamaño…) como variantes de un modelo. */
@@ -76,6 +77,23 @@ const CATALOGS: Record<Exclude<DemoProfile, 'KIOSKO'>, Item[]> = {
     kilo(130, 'SALAME MILÁN', 24900, 'Salames', 5), kilo(131, 'SALAMÍN PICADO FINO', 26900, 'Salames', 4), kilo(132, 'LONGANIZA', 21900, 'Salames', 4),
     { name: 'ACEITUNAS VERDES 200G', price: 3200, category: 'Fiambrería', stock: 20 },
     { name: 'PAN DE MIGA X8', price: 4500, category: 'Fiambrería', stock: 15 },
+  ],
+  VERDULERIA: [
+    kilo(10, 'PAPA', 1200, 'Verduras', 80), kilo(11, 'PAPA NEGRA', 1500, 'Verduras', 30), kilo(12, 'CEBOLLA', 1100, 'Verduras', 60),
+    kilo(13, 'TOMATE REDONDO', 2900, 'Verduras', 25), kilo(14, 'TOMATE PERITA', 2500, 'Verduras', 20), kilo(15, 'ZANAHORIA', 1300, 'Verduras', 30),
+    kilo(16, 'ZAPALLO ANCO', 1500, 'Verduras', 25), kilo(17, 'ZAPALLITO REDONDO', 2200, 'Verduras', 12), kilo(18, 'BATATA', 1600, 'Verduras', 30),
+    kilo(19, 'MORRÓN ROJO', 5900, 'Verduras', 8), kilo(20, 'BERENJENA', 2400, 'Verduras', 10), kilo(21, 'AJO', 7900, 'Verduras', 4),
+    kilo(30, 'BANANA', 2200, 'Frutas', 40), kilo(31, 'MANZANA ROJA', 2600, 'Frutas', 35), kilo(32, 'MANZANA VERDE', 2800, 'Frutas', 20),
+    kilo(33, 'NARANJA DE JUGO', 1400, 'Frutas', 50), kilo(34, 'MANDARINA', 1900, 'Frutas', 30), kilo(35, 'LIMÓN', 1800, 'Frutas', 15),
+    kilo(36, 'PERA', 2700, 'Frutas', 20), kilo(37, 'FRUTILLA', 6900, 'Frutas', 6), kilo(38, 'PALTA', 8900, 'Frutas', 5),
+    { name: 'LECHUGA', price: 1500, category: 'Por unidad', stock: 25, plu: 50 },
+    { name: 'ACELGA (ATADO)', price: 1200, category: 'Por unidad', stock: 15, plu: 51 },
+    { name: 'PEREJIL (ATADO)', price: 800, category: 'Por unidad', stock: 20, plu: 52 },
+    { name: 'VERDEO (ATADO)', price: 900, category: 'Por unidad', stock: 15, plu: 53 },
+    { name: 'ANANÁ', price: 4500, category: 'Por unidad', stock: 8, plu: 54 },
+    { name: 'HUEVOS (MAPLE X30)', price: 8900, category: 'Huevos y almacén', stock: 12, plu: 60 },
+    { name: 'HUEVOS (DOCENA)', price: 3600, category: 'Huevos y almacén', stock: 20, plu: 61 },
+    { name: 'BOLSA DE CARBÓN 4KG', price: 6500, category: 'Huevos y almacén', stock: 10 },
   ],
   FERRETERIA: [
     { name: 'TORNILLO AUTOPERFORANTE 8X1"', price: 45, category: 'Tornillería', stock: 800, tradePrice: 40 },
@@ -198,6 +216,7 @@ export async function applyDemoProfile(db: any, profileOrList: DemoProfile | Dem
 
   if (profiles.includes('IMPRENTA')) await seedImprenta(db);
   if (profiles.includes('DISTRIBUIDORA')) await seedDistribuidora(db);
+  if (profiles.includes('VERDULERIA')) await seedVerduleria(db);
 }
 
 const DEMO_CATEGORY_NAMES = [...new Set([...Object.keys(CATEGORY_COLORS), ...Object.keys(DEMO_CATEGORY_COLORS)])];
@@ -396,5 +415,51 @@ async function seedDistribuidora(db: any) {
         items: { create: items },
       },
     });
+  }
+}
+
+/**
+ * Verdulería: el puestero del Mercado Central con dos compras (una pagada y otra que se le debe)
+ * y la merma de la semana (lo que se tiró), para que se vean la deuda y el informe de pérdidas.
+ */
+async function seedVerduleria(db: any) {
+  const SUPPLIER = 'Puesto 47 - Mercado Central';
+  if (await db.supplier.findFirst({ where: { name: SUPPLIER }, select: { id: true } })) return;
+  const userId = await adminId(db);
+  if (!userId) return;
+  const supplier = await db.supplier.create({ data: { name: SUPPLIER, contact: 'Rubén', phone: '1155550347' } });
+  const catalog = await db.product.findMany({ where: { sku: { startsWith: skuPrefix('VERDULERIA') } } });
+  const byName = (name: string) => catalog.find((p: any) => p.name === name);
+
+  // [días atrás, estado de pago, [producto, kilos o unidades]] — el costo es el de la ficha (60 % del precio)
+  const purchases: Array<[number, 'PAID' | 'OWED', Array<[string, number]>]> = [
+    [3, 'PAID', [['PAPA', 50], ['CEBOLLA', 40], ['ZANAHORIA', 20], ['NARANJA DE JUGO', 36], ['BANANA', 22]]],
+    [0, 'OWED', [['TOMATE REDONDO', 18], ['MANZANA ROJA', 18], ['ZAPALLO ANCO', 20], ['LECHUGA', 24], ['HUEVOS (MAPLE X30)', 10]]],
+  ];
+  for (const [ago, paymentStatus, lines] of purchases) {
+    const items = lines.map(([name, qty]) => {
+      const p = byName(name);
+      return p ? { productId: p.id, productName: p.name, quantity: qty, cost: p.costPrice, total: round2(p.costPrice * qty), buyFormat: 'UNIT' } : null;
+    }).filter(Boolean) as any[];
+    if (!items.length) continue;
+    await db.purchase.create({
+      data: {
+        supplierId: supplier.id, userId, total: round2(items.reduce((s, i) => s + i.total, 0)), paymentStatus,
+        paymentMethod: paymentStatus === 'PAID' ? 'CASH' : null, notes: paymentStatus === 'OWED' ? 'Se paga el sábado' : null,
+        createdAt: daysFromNow(-ago, 6), items: { create: items },
+      },
+    });
+  }
+
+  // Merma: lo golpeado o pasado que se tiró, como un egreso de Control de stock
+  const losses: Array<[string, number, number]> = [['TOMATE REDONDO', 2.5, 1], ['LECHUGA', 3, 2], ['BANANA', 1.8, 4], ['FRUTILLA', 0.5, 5]];
+  for (const [name, qty, ago] of losses) {
+    const p = byName(name);
+    if (!p) continue;
+    const stockAfter = round2(Math.max(0, p.stock - qty));
+    await db.inventoryMovement.create({
+      data: { productId: p.id, userId, type: 'EXIT', quantity: qty, stockBefore: p.stock, stockAfter, reason: 'Rotura / Merma', createdAt: daysFromNow(-ago, 19) },
+    });
+    await db.product.update({ where: { id: p.id }, data: { stock: stockAfter } });
   }
 }

@@ -34,6 +34,14 @@ const ICONS: Record<BusinessProfile, JSX.Element> = {
       <circle cx="23" cy="19" r="1.2" />
     </>
   ),
+  // Zanahoria con sus hojas
+  VERDULERIA: (
+    <>
+      <path d="M21.5 10.5c2 2 2 4.6.2 6.6L10 27.6c-1.5 1.3-3.6-.6-2.4-2.2l9.2-14c1.5-2 3-2.5 4.7-.9z" {...FILL} />
+      <path d="M21.5 10.5 25 5M22.6 11.6 27.5 9M20 9.6l-.5-5.1" />
+      <path d="M13.5 17.5l2 1.3M11 21.5l2 1.2" />
+    </>
+  ),
   // Llave y tornillo
   FERRETERIA: (
     <>

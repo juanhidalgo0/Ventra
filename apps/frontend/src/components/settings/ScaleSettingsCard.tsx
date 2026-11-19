@@ -12,7 +12,7 @@ import CutsLoader from '../carniceria/CutsLoader';
 import { loadCatalog, pluOf } from '../carniceria/cuts';
 
 /**
- * Configuración → Balanza (carnicería, fiambrería): cómo viene armado el código de las etiquetas.
+ * Configuración → Balanza (carnicería, fiambrería, verdulería): cómo viene armado el código de las etiquetas.
  * Se prueba pasando una etiqueta por el lector; si no la lee bien, se detecta el formato solo con
  * esa misma etiqueta y lo que tiene impreso. También baja la lista de códigos y precios para
  * cargarla en la balanza.
@@ -181,7 +181,7 @@ export default function ScaleSettingsCard() {
 
       <div className="flex flex-wrap gap-2 pt-1">
         <button type="button" onClick={() => setShowLoader(true)} className="h-9 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 flex items-center gap-1.5">
-          <PackagePlus className="w-4 h-4 text-emerald-600" /> Cargar cortes, fiambres y quesos
+          <PackagePlus className="w-4 h-4 text-emerald-600" /> {rubros.includes('VERDULERIA') && !rubros.includes('CARNICERIA') && !rubros.includes('FIAMBRERIA') ? 'Cargar frutas y verduras' : rubros.includes('VERDULERIA') ? 'Cargar cortes, fiambres, frutas y verduras' : 'Cargar cortes, fiambres y quesos'}
         </button>
         <button type="button" onClick={downloadList} disabled={!withPlu.length} className="h-9 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 flex items-center gap-1.5 disabled:opacity-40"
           title="Planilla con código, nombre y precio para pasar a la balanza">
