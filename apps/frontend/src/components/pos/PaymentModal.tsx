@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { usePOSStore } from '../../stores/posStore';
+import { usePOSStore, WALK_IN_TRADE, isWalkInTrade } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -78,21 +78,28 @@ function SaleClientPicker({ onPick }: { onPick: (client: any | null) => void }) 
   }, [clients, q]);
   const pick = (c: any | null) => {
     usePOSStore.getState().setSelectedClient(c);
-    onPick(c);
+    onPick(c && !isWalkInTrade(c) ? c : null);
     setOpen(false);
     setQ('');
   };
   const trade = client?.priceList === 'TRADE';
+  const walkIn = isWalkInTrade(client);
   return (
     <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
       <div className="flex items-center gap-2 px-3 py-2">
         <User className="w-4 h-4 text-slate-500 shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{client ? client.name : 'Consumidor final'}</p>
+          <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{client ? client.name : 'Consumidor final'}{walkIn ? ' (sin registrar)' : ''}</p>
           {trade && <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400">Precio {tradeListName().toLowerCase()}</p>}
         </div>
-        {client && (
+        {client && !walkIn && (
           <button type="button" onClick={() => pick(null)} className="text-[12px] font-semibold text-slate-500 hover:text-rose-600 px-2 py-1 cursor-pointer">Consumidor final</button>
+        )}
+        {!client && (
+          <button type="button" onClick={() => pick(WALK_IN_TRADE)} title="Sin registrar al cliente: la venta sigue a Consumidor final" className="text-[12px] font-bold text-amber-700 hover:underline px-2 py-1 cursor-pointer">Precio {tradeListName().toLowerCase()}</button>
+        )}
+        {walkIn && (
+          <button type="button" onClick={() => pick(null)} className="text-[12px] font-semibold text-slate-500 hover:text-rose-600 px-2 py-1 cursor-pointer">Precio minorista</button>
         )}
         <button type="button" onClick={() => setOpen(!open)} className="text-[12px] font-bold text-teal-700 dark:text-teal-400 hover:underline px-2 py-1 cursor-pointer">
           {client ? 'Cambiar' : 'Elegir cliente'}
@@ -1289,7 +1296,7 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
           {/* Distribuidora: a nombre de quién va la venta. Consumidor final si no se elige; con un
               cliente mayorista el ticket pasa solo a sus precios (y el total de arriba con él) */}
           {hasFeature('delivery') && !isDebtPayment && !practice && (
-            <SaleClientPicker onPick={(c) => { if (c) setSelectedClientId(c.id); }} />
+            <SaleClientPicker onPick={(c) => setSelectedClientId(c ? c.id : "")} />
           )}
 
           <div className="space-y-3">

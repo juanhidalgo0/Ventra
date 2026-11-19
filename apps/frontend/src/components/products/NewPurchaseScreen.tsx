@@ -1771,7 +1771,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                          >
                            <div>
                              <p className="text-slate-800 uppercase leading-none font-extrabold">{p.name}</p>
-                             <p className="text-[9px] text-slate-600 font-bold mt-0.5">{p.barcode || 'Sin código'}</p>
+                             <p className="text-[9px] text-slate-600 font-bold mt-0.5">{p.barcode || (p.sku ? `Cód. ${p.sku}` : 'Sin código')}</p>
                            </div>
                            <LinkIcon className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                          </button>
@@ -2292,7 +2292,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                                    <button key={p.id} type="button" onClick={() => addItem(p)} className="w-full text-left px-5 py-4 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0 group transition-colors border-0 cursor-pointer">
                                       <div className="flex flex-col">
                                          <div className="text-[12px] font-bold text-slate-700 group-hover:text-rose-600 transition-colors">{p.name}</div>
-                                         <div className="text-[9px] font-bold text-slate-600">{p.barcode || 'Sin código'}</div>
+                                         <div className="text-[9px] font-bold text-slate-600">{p.barcode || (p.sku ? `Cód. ${p.sku}` : 'Sin código')}</div>
                                       </div>
                                       <div className="px-3 py-1 rounded-lg bg-rose-50 text-rose-600 text-[9px] font-bold uppercase">Stock: {p.stock}</div>
                                    </button>

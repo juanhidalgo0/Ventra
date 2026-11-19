@@ -192,7 +192,7 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
                         <span className={label}>Código de barras</span>
                         {item.isNew
                           ? <input type="text" value={item.barcode} placeholder="Escaneá o escribí" onChange={(e) => p.update(rowId(item), 'barcode' as keyof T, e.target.value)} className={`${small} w-44`} />
-                          : <div className="h-8 flex items-center text-[12.5px] text-slate-700">{item.barcode || 'Sin código'}</div>}
+                          : <div className="h-8 flex items-center text-[12.5px] text-slate-700">{item.barcode || ((item as any).sku ? `Cód. ${(item as any).sku}` : 'Sin código')}</div>}
                       </div>
                       {item.isNew && (
                         <div>

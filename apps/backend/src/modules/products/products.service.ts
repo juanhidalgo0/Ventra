@@ -109,7 +109,7 @@ export class ProductsService {
     private trail: PosTrailService,
   ) {}
 
-  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string }): any {
+  private buildSearchWhere(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string; trade?: 'with' | 'without' }): any {
     // Hide the internal "Venta Rápida" product from inventory lists.
     const where: any = { id: { notIn: ['VENTA_RAPIDA', 'SERVICIO'] } };
     if (params?.isActive !== undefined) {
@@ -141,6 +141,12 @@ export class ProductsService {
     if (params?.channel === 'WHOLESALE' || params?.channel === 'RETAIL') {
       const channelOr = { OR: [{ salesChannel: null }, { salesChannel: 'BOTH' }, { salesChannel: params.channel }] };
       where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), channelOr];
+    }
+
+    // Lista Mayorista: los que tienen precio mayorista propio, o los que todavía no
+    if (params?.trade) {
+      const tradeCond = params.trade === 'with' ? { tradePrice: { gt: 0 } } : { OR: [{ tradePrice: null }, { tradePrice: { lte: 0 } }] };
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), tradeCond];
     }
 
     if (params?.hasImage !== undefined) {
@@ -447,7 +453,7 @@ export class ProductsService {
     return Object.fromEntries(rows.map((r) => [r.id, Number(r.costPrice) || 0]));
   }
 
-  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string; skip?: number; take?: number }) {
+  async findAll(params?: { search?: string; categoryId?: string; isActive?: boolean; isFavorite?: boolean; lowStock?: boolean; hasImage?: boolean; noBarcode?: boolean; channel?: string; trade?: 'with' | 'without'; skip?: number; take?: number }) {
     try {
       const where = this.buildSearchWhere(params);
 
@@ -578,7 +584,7 @@ export class ProductsService {
     }
   }
 
-  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean; noBarcode?: boolean; channel?: string }) {
+  async count(params?: { search?: string; categoryId?: string; hasImage?: boolean; noBarcode?: boolean; channel?: string; trade?: 'with' | 'without' }) {
     try {
       const where = this.buildSearchWhere(params);
       return await this.prisma.product.count({ where });

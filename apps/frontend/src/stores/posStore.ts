@@ -116,6 +116,13 @@ interface POSState {
  * Lista Mayorista: la misma promo con el precio para comercios. El combo usa su precio mayorista y
  * el descuento su % mayorista; si la promo no tiene uno cargado, queda el de siempre.
  */
+/**
+ * Consumidor final con precio mayorista: para el que viene a revender una vez y no se registra.
+ * Es un "cliente" sin id: la venta no queda a nombre de nadie, solo cambia la lista de precios.
+ */
+export const WALK_IN_TRADE = Object.freeze({ id: '', name: 'Consumidor final', priceList: 'TRADE', tradeDiscountPercentage: null, walkIn: true });
+export const isWalkInTrade = (c: any) => !!c?.walkIn;
+
 export function promoForClient(promo: any, client: any): any {
   if (!promo || client?.priceList !== 'TRADE') return promo;
   const trade = Number(promo.tradeFixedPrice);
@@ -758,7 +765,11 @@ export const usePOSStore = create<POSState>()(
   }),
 
   // Vaciar el ticket también lo desvincula del presupuesto
-  clearCart: () => set({ cart: [], activeQuote: null, activeOrder: null, activeGoOrder: null }),
+  // El precio mayorista sin cliente vale para ese ticket: el próximo arranca en minorista
+  clearCart: () => {
+    if (isWalkInTrade(get().selectedClient)) get().setSelectedClient(null);
+    set({ cart: [], activeQuote: null, activeOrder: null, activeGoOrder: null });
+  },
   
   getTotal: () => {
     const total = get().cart.reduce((sum, item) => {

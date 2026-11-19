@@ -7,7 +7,7 @@ import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/on
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useWorkRole } from '../../services/workRole';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { usePOSStore, packOf, type CartItem } from '../../stores/posStore';
+import { usePOSStore, packOf, type CartItem , WALK_IN_TRADE } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2671,10 +2671,10 @@ export default function POSScreen() {
                               <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1">
                                 {product.name}
                               </h3>
-                              {product.barcode && !gastro && (
+                              {(product.barcode || product.sku) && !gastro && (
                                 <div className="mt-0.5">
                                   <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none tracking-tight select-all">
-                                    {product.barcode}
+                                    {product.barcode || product.sku}
                                   </span>
                                 </div>
                               )}
@@ -2765,9 +2765,9 @@ export default function POSScreen() {
                                   {product.name}
                                 </h3>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  {product.barcode && (
+                                  {(product.barcode || product.sku) && (
                                     <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none select-all">
-                                      {product.barcode}
+                                      {product.barcode || product.sku}
                                     </span>
                                   )}
                                   {product.location && (
@@ -2911,6 +2911,13 @@ export default function POSScreen() {
                       </span>
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">{canTradePrice ? '+ Asignar Gremio / Cliente' : '+ Elegir cliente'}</span>
                     </button>
+                    {/* Sin registrar a nadie: la venta sigue a Consumidor final, con la lista mayorista */}
+                    {usesDelivery && (
+                      <button type="button" onClick={() => setSelectedClient(WALK_IN_TRADE)}
+                        className="mt-1 w-full py-1 px-3 rounded-lg text-[10.5px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center justify-center gap-1 cursor-pointer">
+                        🏪 Cobrar con precio mayorista (sin registrar cliente)
+                      </button>
+                    )}
 
                     {showClientSelector && (
                       <div className="absolute top-full left-0 right-0 mt-1 p-2 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 space-y-2">
