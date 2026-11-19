@@ -796,10 +796,45 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
     return res.status(401).json({ error: "Anfitrión no autorizado" });
   }
 
-  const { idToken, supportTicket, needCredentials, botUid } = req.body || {};
+  const { idToken, supportTicket, needCredentials, botUid, staffTicket, staffDevice, staffLabel } = req.body || {};
   let user;
   let supportAdmin = null;
-  if (botUid) {
+  let staffDeviceId = null;
+  if (staffTicket || staffDevice) {
+    // Celular de un empleado (sin la cuenta de Google del dueño): canjea el código que generó
+    // el dueño en Configuración → Personal, o vuelve a mostrar el celular ya habilitado
+    try {
+      if (staffTicket) {
+        const ref = db.collection("ventra_staff_codes").doc(sha256(String(staffTicket)));
+        const dev = db.collection("ventra_staff_devices").doc();
+        const uid = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          const t = snap.exists ? snap.data() : null;
+          if (!t || t.usedAt || t.expiresAt.toMillis() < Date.now()) return null;
+          tx.update(ref, { usedAt: admin.firestore.FieldValue.serverTimestamp(), deviceId: dev.id });
+          tx.set(dev, {
+            uid: t.uid, label: String(staffLabel || "").slice(0, 160), name: t.name || null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(), lastSeenAt: admin.firestore.FieldValue.serverTimestamp(), revoked: false,
+          });
+          return t.uid;
+        });
+        if (!uid) return res.status(401).json({ error: "El código venció o ya se usó. Pedile al dueño uno nuevo." });
+        staffDeviceId = dev.id;
+        user = { uid, email: null };
+      } else {
+        const ref = db.collection("ventra_staff_devices").doc(String(staffDevice).slice(0, 64));
+        const snap = await ref.get();
+        if (!snap.exists || snap.data().revoked) return res.status(403).json({ error: "Este celular fue dado de baja." });
+        staffDeviceId = ref.id;
+        user = { uid: snap.data().uid, email: null };
+        const last = snap.data().lastSeenAt;
+        if (!last || !last.toMillis || Date.now() - last.toMillis() > 6 * 3600e3) ref.update({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+      }
+    } catch (err) {
+      logger.error("Ventra: no se pudo validar el celular del empleado", err);
+      return res.status(500).json({ error: "No se pudo validar el celular" });
+    }
+  } else if (botUid) {
     // El bot de WhatsApp del dueño (wa-owner.js → ventra-api) usa la caja en la nube del comercio:
     // el anfitrión ya probó el secreto y el teléfono del dueño ya está vinculado a este comercio
     if (!/^[A-Za-z0-9_-]{6,128}$/.test(String(botUid))) return res.status(400).json({ error: "Comercio inválido" });
@@ -839,7 +874,7 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
   const account = await db.collection("ventra_accounts").doc(user.uid).get();
   if (!account.exists) return res.status(403).json({ error: "Esta cuenta no tiene un plan de Ventra" });
 
-  const result = { ok: true, uid: user.uid, email: user.email || null, planName: account.data().planName || null, supportAdmin };
+  const result = { ok: true, uid: user.uid, email: user.email || null, planName: account.data().planName || null, supportAdmin, ...(staffDeviceId ? { staffDevice: staffDeviceId } : {}) };
   if (needCredentials) {
     // Una sola caja en la nube por comercio: la anterior se reemplaza
     const old = await db.collection("ventra_devices").where("uid", "==", user.uid).where("kind", "==", "cloud").get();
@@ -857,6 +892,46 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
     logger.info(`Ventra: caja en la nube para ${user.uid}`);
   }
   return res.status(200).json(result);
+});
+
+// ─── Celulares de empleados (caja web sin la cuenta de Google del dueño) ───
+// Lo pide la caja del comercio (PC o caja en la nube, con sus credenciales de equipo), solo
+// para el administrador: código de un solo uso y 15 minutos, la lista y la baja.
+const STAFF_CODE_MS = 15 * 60 * 1000;
+exports.ventraStaffDevices = onRequest({ cors: false }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret, action, id, name } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado" });
+  try {
+    if (action === "pair") {
+      const code = crypto.randomBytes(24).toString("hex");
+      await db.collection("ventra_staff_codes").doc(sha256(code)).set({
+        uid, name: name ? String(name).slice(0, 60) : null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + STAFF_CODE_MS),
+      });
+      return res.status(200).json({ ok: true, code, expiresInSeconds: STAFF_CODE_MS / 1000 });
+    }
+    if (action === "list") {
+      const snap = await db.collection("ventra_staff_devices").where("uid", "==", uid).get();
+      const ms = (t) => (t && t.toMillis ? t.toMillis() : null);
+      const devices = snap.docs.map((d) => ({ id: d.id, name: d.data().name || null, label: d.data().label || "", createdAt: ms(d.data().createdAt), lastSeenAt: ms(d.data().lastSeenAt), revoked: !!d.data().revoked }))
+        .filter((d) => !d.revoked).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return res.status(200).json({ ok: true, devices });
+    }
+    if (action === "revoke") {
+      const ref = db.collection("ventra_staff_devices").doc(String(id || "").slice(0, 64));
+      const snap = await ref.get();
+      if (!snap.exists || snap.data().uid !== uid) return res.status(404).json({ error: "No encontramos ese celular" });
+      await ref.update({ revoked: true, revokedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return res.status(200).json({ ok: true });
+    }
+    return res.status(400).json({ error: "Acción desconocida" });
+  } catch (err) {
+    logger.error("Ventra: celulares de empleados", err);
+    return res.status(500).json({ error: "No se pudo completar" });
+  }
 });
 
 // ─── Panel de administración (ventra.store/admin) ───────────────────

@@ -50,6 +50,7 @@ import { setStoreSetting } from '../../services/storeSettings';
 import { usePOSStore } from '../../stores/posStore';
 import StoreLogoField from '../common/StoreLogoField';
 import ScaleSettingsCard from './ScaleSettingsCard';
+import StaffDevicesCard from './StaffDevicesCard';
 import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfiles, rubrosTitle, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
 import { usePlanStore } from '../../stores/planStore';
 import { effectiveIntents } from '../../utils/gettingStarted';
@@ -1530,6 +1531,9 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                     </div>
                   )}
                 </div>
+
+                {/* Celulares de empleados: entran a la caja web sin la cuenta de Google del dueño */}
+                <StaffDevicesCard />
 
                 {/* Password Change Card */}
                 <div className="card p-6 space-y-4">

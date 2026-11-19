@@ -1,3 +1,4 @@
+import { StaffDevicesModule } from './modules/staff-devices/staff-devices.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './database/prisma.module';
@@ -35,6 +36,7 @@ import { PosTrailModule } from './modules/pos-trail/pos-trail.module';
 @Module({
   imports: [
     SubscriptionModule,
+    StaffDevicesModule,
     SyncModule,
     ConfigModule.forRoot({
       isGlobal: true,

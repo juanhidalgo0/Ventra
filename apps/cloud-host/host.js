@@ -47,6 +47,10 @@ const RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 const COOKIE = 'ventra_web';
 // Soporte desde ventra.store/admin: la sesión dura una jornada y no se renueva sola
 const SUPPORT_HOURS = 8;
+/** Celular de un empleado (entró con el código del dueño, sin Google): hasta que el dueño lo dé de baja */
+const STAFF_DAYS = 400;
+/** Cada cuánto se vuelve a preguntar si el celular del empleado sigue habilitado */
+const STAFF_CHECK_MS = 10 * 60 * 1000;
 // Llave con la que la caja acepta la entrada automática de soporte. Cada caja recibe
 // una distinta al arrancar; solo la conoce este anfitrión y nunca llega al navegador.
 const SUPPORT_HEADER = 'x-ventra-support-key';
@@ -209,6 +213,24 @@ async function createSession(auth) {
   if (!probe.ok) throw Object.assign(new Error(data.error || 'No autorizado'), { status: probe.status });
   const uid = data.uid;
   if (!/^[A-Za-z0-9_-]{6,128}$/.test(uid)) throw Object.assign(new Error('Cuenta inválida'), { status: 400 });
+  if (auth.staffTicket || auth.staffDevice) {
+    const staff = data.staffDevice || auth.staffDevice;
+    // Comercio que nunca entró a web.ventra.store: el celular ya habilitado da de alta su caja
+    if (!fs.existsSync(credsFile(uid))) {
+      const r = await fetch(`${CFG.functionsUrl}/ventraCloudAccess`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cloud-secret': CFG.hostSecret },
+        body: JSON.stringify({ staffDevice: staff, needCredentials: true }),
+      });
+      const setup = await r.json().catch(() => ({}));
+      if (!r.ok || !setup.deviceId || setup.uid !== uid) throw Object.assign(new Error(setup.error || 'No se pudo preparar la caja'), { status: r.status || 500 });
+      fs.mkdirSync(tenantDir(uid), { recursive: true });
+      fs.writeFileSync(credsFile(uid), JSON.stringify({ deviceId: setup.deviceId, deviceSecret: setup.deviceSecret }), { mode: 0o600 });
+      log(`Caja en la nube dada de alta para ${uid} (celular de empleado)`);
+    }
+    staffChecks.set(staff, { ok: true, at: Date.now() });
+    log(`Celular de empleado habilitado en la caja de ${uid}`);
+    return { uid, email: null, staff, exp: Date.now() + STAFF_DAYS * 864e5 };
+  }
   if (auth.supportTicket) {
     // Comercio que nunca entró a web.ventra.store: el mismo pase (segundo y último uso)
     // da de alta su caja en la nube, así soporte puede entrar igual
@@ -237,6 +259,25 @@ async function createSession(auth) {
     log(`Caja en la nube dada de alta para ${uid}`);
   }
   return { uid, email: data.email || null, exp: Date.now() + SESSION_DAYS * 864e5 };
+}
+
+/** Celulares de empleados: si el dueño lo dio de baja, la sesión se corta (se revisa cada 10 min) */
+const staffChecks = new Map(); // staffDeviceId -> { ok, at }
+async function staffStillOk(id) {
+  const c = staffChecks.get(id);
+  if (c && Date.now() - c.at < STAFF_CHECK_MS) return c.ok;
+  let ok = true;
+  try {
+    const r = await fetch(`${CFG.functionsUrl}/ventraCloudAccess`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cloud-secret': CFG.hostSecret },
+      body: JSON.stringify({ staffDevice: id }), signal: AbortSignal.timeout(5000),
+    });
+    // Solo un "dado de baja" corta: sin conexión con la nube el cajero sigue trabajando
+    if (r.status === 401 || r.status === 403) ok = false;
+  } catch { /* la nube no respondió: se vuelve a probar en la próxima */ }
+  if (staffChecks.size > 5000) staffChecks.clear();
+  staffChecks.set(id, { ok, at: Date.now() });
+  return ok;
 }
 
 // ── Proxy ──────────────────────────────────────────────
@@ -298,6 +339,12 @@ const escHtml = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;
 /** Cartel fijo para que quede claro que se está dentro del sistema de un cliente. */
 function supportBanner(session) {
   return `<div id="ventra-support-bar" style="position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 88px);transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:#7c2d12;color:#fff;font:600 12px/1.2 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100vw - 32px)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Soporte Ventra · sistema de ${escHtml(session.email || session.uid)}</span><a href="/_ventra/support-exit" style="flex:none;padding:5px 10px;border-radius:999px;background:#fff;color:#7c2d12;text-decoration:none">Salir</a></div>`;
+}
+
+/** Página simple para un código de empleado vencido o ya usado. */
+function sendStaffError(res, code, message) {
+  res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ventra</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font:15px/1.5 system-ui,sans-serif;color:#0f172a;padding:16px;box-sizing:border-box"><div style="max-width:420px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:24px"><h1 style="margin:0 0 8px;font-size:18px">No se pudo habilitar este celular</h1><p style="margin:0;color:#475569">${escHtml(message)}</p><p style="margin:12px 0 0;color:#64748b;font-size:13px">El dueño lo genera en Ventra: Configuración → Personal y cajeros → Celulares de empleados.</p></div></body></html>`);
 }
 
 /** Página simple para los errores de la entrada de soporte (se abre en una pestaña nueva). */
@@ -400,6 +447,19 @@ const server = http.createServer(async (req, res) => {
       setCookie(res, '', 0); res.writeHead(302, { Location: 'https://ventra.store/admin' }); return res.end();
     }
     if (url === '/_ventra/logout') { setCookie(res, '', 0); res.writeHead(302, { Location: '/_ventra/login' }); return res.end(); }
+    // Celular de un empleado: canjea el código (QR o link) que generó el dueño, sin Google.
+    // Después el empleado entra con su usuario y contraseña de Ventra, como en la PC.
+    if (url.startsWith('/_ventra/staff?')) {
+      const ticket = new URL(url, 'http://x').searchParams.get('t') || '';
+      try {
+        if (!/^[a-f0-9]{48}$/.test(ticket)) throw Object.assign(new Error('El link no es válido. Pedile al dueño uno nuevo.'), { status: 400 });
+        const session = await createSession({ staffTicket: ticket, staffLabel: String(req.headers['user-agent'] || '').slice(0, 160) });
+        setCookie(res, signSession(session), STAFF_DAYS * 86400);
+        res.writeHead(302, { Location: '/#/login', 'Cache-Control': 'no-store' }); return res.end();
+      } catch (err) {
+        return sendStaffError(res, err.status || 500, err.message || 'No se pudo habilitar este celular.');
+      }
+    }
     // El bot de WhatsApp del dueño (solo la función de Ventra, con el secreto compartido)
     if (url === '/_ventra/bot' && req.method === 'POST') {
       // Hasta 12 MB: las fotos de boletas viajan en el cuerpo
@@ -410,9 +470,15 @@ const server = http.createServer(async (req, res) => {
     if (!url.startsWith('/api/') && isPublicAsset(url)) return serveStatic(req, res);
 
     const session = readSession(req);
-    // Renovación automática: una vez por día de uso vuelve a durar 400 días
+    // Celular de empleado dado de baja por el dueño: se corta la sesión
+    if (session && session.staff && !(await staffStillOk(session.staff))) {
+      setCookie(res, '', 0);
+      if (url.startsWith('/api/') || url.startsWith('/socket.io/')) return sendJson(res, 401, { message: 'Este celular fue dado de baja' });
+      res.writeHead(302, { Location: '/_ventra/login?baja=1' }); return res.end();
+    }
+    // Renovación automática: una vez por día de uso vuelve a durar 400 días (el celular de un empleado sigue siéndolo)
     if (session && !session.support && !CFG.devTenant && session.exp - Date.now() < SESSION_DAYS * 864e5 - RENEW_AFTER_MS) {
-      setCookie(res, signSession({ uid: session.uid, email: session.email, exp: Date.now() + SESSION_DAYS * 864e5 }), SESSION_DAYS * 86400);
+      setCookie(res, signSession({ uid: session.uid, email: session.email, ...(session.staff ? { staff: session.staff } : {}), exp: Date.now() + SESSION_DAYS * 864e5 }), SESSION_DAYS * 86400);
     }
     const isApi = url.startsWith('/api/') || url.startsWith('/socket.io/') || url.startsWith('/uploads/');
     if (!session) {
@@ -440,7 +506,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(PREPARING_HTML);
     }
     // La app pregunta si es una sesión de soporte para entrar sola como administrador
-    if (url === '/_ventra/whoami') return sendJson(res, 200, { email: session.email || null, support: session.support || null });
+    if (url === '/_ventra/whoami') return sendJson(res, 200, { email: session.email || null, support: session.support || null, staff: !!session.staff });
     if (isApi) {
       const port = await ensureTenant(session.uid);
       return proxyHttp(req, res, port, session.support ? tenants.get(session.uid)?.supportKey : undefined);
