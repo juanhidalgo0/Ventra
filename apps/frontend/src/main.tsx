@@ -1,3 +1,4 @@
+import './demo/resetEpoch'; // demo pública: reinicio general (antes que todo, los stores leen el navegador al cargar)
 import './perfModeDefault';
 import './utils/pwaInstall';
 import './utils/externalLinks'; // en la app de escritorio, los enlaces externos abren el navegador // escucha desde el arranque el aviso de "se puede instalar"

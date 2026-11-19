@@ -23,7 +23,12 @@ interface DemoVisitor { id: string; client: PrismaClient; lastUsed: number }
 
 export const demoContext = new AsyncLocalStorage<DemoVisitor>();
 
-const COOKIE = 'ventra_demo';
+/**
+ * Cambiar el nombre reinicia la demo de todos: las cookies viejas dejan de valer y cada
+ * visitante arranca una base nueva (las viejas se borran solas en un día). Va junto con
+ * DEMO_EPOCH del navegador (apps/frontend/src/demo/resetEpoch.ts).
+ */
+const COOKIE = 'ventra_demo_20261119';
 const ID_RE = /^[a-f0-9]{32}$/;
 /** Una demo dura un día desde el último uso */
 const KEEP_MS = 24 * 3600e3;
