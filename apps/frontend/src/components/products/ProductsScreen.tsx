@@ -31,11 +31,13 @@ import {
   Barcode,
   ArrowUpCircle,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  BookOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductModal from './ProductModal';
 import PriceEditorModal from './PriceEditorModal';
+import CatalogPdfModal from './CatalogPdfModal';
 import PriceListModal from './PriceListModal';
 import OrganizeModal from './OrganizeModal';
 import PriceChangesLabelsModal from './PriceChangesLabelsModal';
@@ -65,6 +67,7 @@ export default function ProductsScreen() {
   const [showPriceChangeLabels, setShowPriceChangeLabels] = useState(false);
   const [showVentraImport, setShowVentraImport] = useState(false);
   const [showRoundPrices, setShowRoundPrices] = useState(false);
+  const [showCatalogPdf, setShowCatalogPdf] = useState(false);
   const [isRoundingPrices, setIsRoundingPrices] = useState(false);
 
   const handleRoundPrices = async () => {
@@ -923,6 +926,12 @@ export default function ProductsScreen() {
                     onClick: () => setShowBulkPriceModal(true),
                   },
                   {
+                    label: 'Catálogo en PDF',
+                    description: 'Por categoría, con fotos y precio minorista o mayorista, para mandar por WhatsApp',
+                    icon: <BookOpen className="w-3.5 h-3.5 text-rose-500" />,
+                    onClick: () => setShowCatalogPdf(true),
+                  },
+                  {
                     label: 'Redondear precios',
                     description: 'Hacia arriba, a múltiplos de 10, sin decimales',
                     icon: <ArrowUpCircle className="w-3.5 h-3.5 text-rose-500" />,
@@ -1745,6 +1754,8 @@ export default function ProductsScreen() {
           onLegacyImport={handleLegacyImport}
         />
       )}
+
+      {showCatalogPdf && <CatalogPdfModal onClose={() => setShowCatalogPdf(false)} />}
 
       {showBulkPriceModal && (
         <PriceEditorModal

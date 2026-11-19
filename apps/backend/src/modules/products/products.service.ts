@@ -336,6 +336,8 @@ export class ProductsService {
         stock: true,
         categoryId: true,
         category: { select: { id: true, name: true, color: true } },
+        // La marca: la usa el catálogo en PDF
+        brand: { select: { name: true } },
         // imageUrl NO: las fotos guardadas en la base (base64) pesan ~65 MB en total.
         // Se resuelven abajo como enlaces livianos que el navegador pide cuando las muestra.
         allowCustomPrice: true,
@@ -393,6 +395,7 @@ export class ProductsService {
       ...(p.isKit ? { isKit: true, kitItems: p.kitItems } : {}),
       categoryId: p.categoryId,
       category: p.category,
+      ...(p.brand?.name ? { brand: { name: p.brand.name } } : {}),
       imageUrl: imageById.get(p.id) ?? null,
       allowCustomPrice: p.allowCustomPrice,
       unlimitedStock: p.unlimitedStock,
