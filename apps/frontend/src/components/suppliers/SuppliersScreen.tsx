@@ -16,9 +16,12 @@ import {
   Save,
   RefreshCw,
   FileText,
-  DollarSign
+  DollarSign,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ContactImportModal from '../clients/ContactImportModal';
+import { useOwnerAccess } from '../../utils/managerAccess';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -57,6 +60,8 @@ function SupplierTerms({ supplier, onSaved }: { supplier: any; onSaved: () => vo
 
 export default function SuppliersScreen() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const isOwner = useOwnerAccess();
+  const [showImport, setShowImport] = useState(false);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -219,6 +224,12 @@ export default function SuppliersScreen() {
           <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">Gestión integral de abastecimiento</p>
         </div>
         <div className="flex items-center gap-2">
+           {isOwner && (
+             <button onClick={() => setShowImport(true)} title="Importar proveedores desde una planilla de Excel" className="flex-1 sm:flex-none justify-center border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
+               <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Importar
+             </button>
+           )}
+           {showImport && <ContactImportModal kind="suppliers" onClose={() => setShowImport(false)} onDone={() => { void loadData(); }} />}
            <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
               <Plus className="w-4 h-4" /> Nuevo
            </button>

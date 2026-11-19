@@ -20,10 +20,13 @@ import {
   Link2,
   MessageCircle,
   Receipt,
+  FileSpreadsheet,
 } from 'lucide-react';
 import MonthlyInvoiceModal from './MonthlyInvoiceModal';
 import { StatementPreview } from './AccountStatement';
 import ZoneNotice from './ZoneNotice';
+import ContactImportModal from './ContactImportModal';
+import { useOwnerAccess } from '../../utils/managerAccess';
 import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -138,6 +141,8 @@ export default function CuentasCorrientesScreen() {
     ivaCondition: 'CONSUMIDOR_FINAL',
     monthlyInvoice: false,
   });
+  const isOwner = useOwnerAccess();
+  const [showImport, setShowImport] = useState(false);
   const usesDelivery = hasFeature('delivery');
   // Con la facturación activada: CUIT, IVA y factura del mes en cualquier rubro
   const [invoicing, setInvoicing] = useState(false);
@@ -327,6 +332,13 @@ export default function CuentasCorrientesScreen() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={loadClients} className="p-3 rounded-2xl bg-slate-50 text-slate-600 hover:bg-slate-100 transition-all"><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /></button>
+            {isOwner && (
+              <button onClick={() => setShowImport(true)} title="Importar clientes desde una planilla de Excel"
+                className="h-12 px-4 rounded-2xl border border-slate-300 bg-white text-slate-700 text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-slate-50 transition-all flex items-center gap-2 cursor-pointer">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Importar
+              </button>
+            )}
+            {showImport && <ContactImportModal kind="clients" onClose={() => setShowImport(false)} onDone={loadClients} />}
                         <button
               data-tour="clients-new"
               onClick={() => setShowAddModal(true)}
