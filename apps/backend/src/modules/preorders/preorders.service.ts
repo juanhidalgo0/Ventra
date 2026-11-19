@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { nextDocNumber } from '../sync/numbering';
+import { applyCombos, combosFromPromotions, comboShares } from './combos';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -70,20 +71,31 @@ export class PreOrdersService {
       if (existing) return existing;
       canSetPrices = false;
     }
-    const items = (Array.isArray(data?.items) ? data.items : [])
+    const parsed = (Array.isArray(data?.items) ? data.items : [])
       .map((i: any) => {
         const quantity = Number(i.quantity);
-        const unitPrice = Number(i.unitPrice);
+        // Un renglón de combo que vuelve al editar el pedido: cuenta como suelto (el combo se arma de nuevo abajo)
+        const unitPrice = i.promoId && Number(i.regularPrice) > 0 ? Number(i.regularPrice) : Number(i.unitPrice);
         const packSize = Number(i.packSize) > 1 ? Math.round(Number(i.packSize)) : null;
         return {
           productId: String(i.productId || ''),
           productName: String(i.productName || 'Producto').slice(0, 200),
           quantity, packSize, unitPrice,
           total: round2(quantity * unitPrice),
-        };
+        } as any;
       })
       .filter((i: any) => i.productId && Number.isFinite(i.quantity) && i.quantity > 0 && Number.isFinite(i.unitPrice) && i.unitPrice >= 0);
+    // El mismo producto, de la misma forma y al mismo precio, va en un solo renglón
+    const items: any[] = [];
+    for (const it of parsed) {
+      const same = items.find((x) => x.productId === it.productId && x.packSize === it.packSize && Math.abs(x.unitPrice - it.unitPrice) < 1e-9);
+      if (same) { same.quantity += it.quantity; same.total = round2(same.quantity * same.unitPrice); } else items.push(it);
+    }
         if (!items.length) throw new BadRequestException('El pedido no tiene productos');
+    // Lista Mayorista: el cliente paga el precio mayorista de la unidad (el bulto tiene su propio precio) y el de los combos
+    const orderClient = data?.clientId ? await (this.prisma as any).client.findUnique({ where: { id: String(data.clientId) }, select: { priceList: true, tradeDiscountPercentage: true } }) : null;
+    const isTrade = orderClient?.priceList === 'TRADE';
+    const existingItems: any[] = await (this.prisma as any).preOrderItem.findMany({ where: { orderId: id }, select: { productId: true, packSize: true, unitPrice: true, promoId: true, regularPrice: true } });
     // Precios del catálogo: el del bulto si va por bulto, si no el de la unidad. Así un pedido
     // tomado en el celular no puede salir con un precio inventado (el dueño sí puede cambiarlo).
     //
@@ -96,9 +108,6 @@ export class PreOrdersService {
         where: { id: { in: ids } },
         select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true },
       });
-      // Lista Mayorista: el cliente paga el precio mayorista de la unidad (el bulto tiene su propio precio)
-      const orderClient = data?.clientId ? await (this.prisma as any).client.findUnique({ where: { id: String(data.clientId) }, select: { priceList: true, tradeDiscountPercentage: true } }) : null;
-      const isTrade = orderClient?.priceList === 'TRADE';
       const tradeOff = Number(orderClient?.tradeDiscountPercentage) || 0;
       const retailUnit = (p: any) => {
         const sale = Number(p.salePrice) || 0;
@@ -111,8 +120,8 @@ export class PreOrdersService {
       ).catch(() => []) : [];
       const prevById = new Map(prev.map((r: any) => [r.id, r]));
       const byId = new Map(products.map((p: any) => [p.id, p]));
-      const existingItems: any[] = await (this.prisma as any).preOrderItem.findMany({ where: { orderId: id }, select: { productId: true, packSize: true, unitPrice: true } });
-      const kept = new Map(existingItems.map((e) => [`${e.productId}|${e.packSize || ''}`, Number(e.unitPrice)]));
+      // El renglón que estaba en un combo guarda aparte su precio suelto
+      const kept = new Map(existingItems.map((e) => [`${e.productId}|${e.packSize || ''}`, e.promoId && Number(e.regularPrice) > 0 ? Number(e.regularPrice) : Number(e.unitPrice)]));
       const takenRaw = data?.takenAt ? new Date(data.takenAt).getTime() : NaN;
       const takenAt = Number.isFinite(takenRaw) ? Math.min(Date.now(), Math.max(Date.now() - 7 * 86400000, takenRaw)) : Date.now();
       const unitOf = (salePrice: number, packPrice: number, packSize: number | null, looseUnit?: number) => packSize
@@ -149,7 +158,9 @@ export class PreOrdersService {
         }
       }
     }
-    const total = round2(items.reduce((s: number, i: any) => s + i.total, 0));
+    // Combos (también con precios puestos por el dueño): las unidades del combo pasan a su propio renglón
+    const lines = await this.withCombos(items, isTrade, new Set(existingItems.map((e) => e.promoId).filter(Boolean)));
+    const total = round2(lines.reduce((s: number, i: any) => s + i.total, 0));
     const clientId = data?.clientId ? String(data.clientId) : null;
     const notes = data?.notes ? String(data.notes).slice(0, 500) : null;
     const deliveryDate = data?.deliveryDate && !isNaN(new Date(data.deliveryDate).getTime()) ? new Date(data.deliveryDate) : null;
@@ -165,15 +176,45 @@ export class PreOrdersService {
           throw new BadRequestException(existing.status === 'BILLED' ? 'Este pedido ya se cobró en la caja: no se puede cambiar' : 'Este pedido está cancelado');
         }
         await tx.preOrderItem.deleteMany({ where: { orderId: id } });
-        return tx.preOrder.update({ where: { id }, data: { clientId, notes, deliveryDate, total, items: { create: items } }, include: INCLUDE });
+        return tx.preOrder.update({ where: { id }, data: { clientId, notes, deliveryDate, total, items: { create: lines } }, include: INCLUDE });
       }
       // Mismo número que va a tener la venta (ver nextDocNumber)
       const orderNumber = await nextDocNumber(tx);
       return tx.preOrder.create({
-        data: { id, orderNumber, clientId, userId, notes, deliveryDate, total, items: { create: items } },
+        data: { id, orderNumber, clientId, userId, notes, deliveryDate, total, items: { create: lines } },
         include: INCLUDE,
       });
     });
+  }
+
+  /**
+   * Arma los combos de Promociones con las unidades sueltas del pedido (ver combos.ts). Cada
+   * producto que entra en un combo queda en un renglón aparte con su parte del precio del combo,
+   * así el reparto, la rendición y la caja cobran lo mismo sin otra cuenta.
+   */
+  async withCombos(items: any[], isTrade: boolean, keep: Set<string>): Promise<any[]> {
+    const loose = items.map((it, i) => ({ it, key: String(i) })).filter(({ it }) => !it.packSize);
+    if (!loose.length) return items;
+    const promos = await (this.prisma as any).promotion.findMany({ where: { type: 'FIXED_COMBO' }, include: { products: true } }).catch(() => []);
+    const combos = combosFromPromotions(promos, { trade: isTrade, keep });
+    if (!combos.length) return items;
+    const uses = applyCombos(loose.map(({ it, key }) => ({ key, productId: it.productId, quantity: it.quantity, price: it.unitPrice })), combos);
+    if (!uses.length) return items;
+    const out = items.map((it) => ({ ...it }));
+    const extra: any[] = [];
+    for (const use of uses) {
+      for (const sh of comboShares(use)) {
+        const base = out[Number(sh.key)];
+        base.quantity = Math.round((base.quantity - sh.quantity) * 1000) / 1000;
+        base.total = round2(base.quantity * base.unitPrice);
+        extra.push({
+          productId: base.productId, productName: base.productName, quantity: sh.quantity, packSize: null,
+          unitPrice: sh.total / sh.quantity, total: sh.total,
+          promoId: use.id, promoName: use.name.slice(0, 120), regularPrice: base.unitPrice,
+        });
+      }
+    }
+    return [...out.filter((it) => it.quantity > 1e-9), ...extra];
   }
 
   async cancel(id: string) {

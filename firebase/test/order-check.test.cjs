@@ -81,7 +81,7 @@ const t = async (name, fn) => {
   const trade = fakeStore([[{ productId: "lav", price: 800 }, { productId: "det", price: 1100 }]], {
     TOKMAY: { clientId: "c1", priceList: "TRADE", tradeDiscount: 10, priceKey: "KEY1", active: true },
     TOKMIN: { clientId: "c2", priceList: "RETAIL", active: true },
-    KEY1: { prices: { lav: 650 } },
+    KEY1: { prices: { lav: 650 }, combos: { cmb: 1300 } },
   });
   const tStore = { catalogParts: 1, wholesale: { enabled: true } };
   await t("mayorista con link: su precio mayorista y su % no se marcan como más baratos", async () => {
@@ -97,6 +97,31 @@ const t = async (name, fn) => {
     assert.ok(await priceProblem(trade, tStore, { clientToken: "TOKMIN", items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
     assert.ok(await priceProblem(trade, tStore, { items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
     assert.ok(await priceProblem(trade, tStore, { clientToken: "NOEXISTE", items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
+  });
+  // Combos: lavandina + detergente a $1.500 (sueltos $1.900); mayorista a $1.300. Docena de empanadas a $9.000.
+  const comboStore = { catalogParts: 1, wholesale: { enabled: true }, onlineCombos: [{ id: "cmb", name: "Limpieza", price: 1500, groups: [{ qty: 1, productIds: ["lav"] }, { qty: 1, productIds: ["det"] }] }] };
+  const par = (lav, det) => [{ productId: "lav", name: "Lavandina", price: lav, qty: 2 }, { productId: "det", name: "Detergente", price: det, qty: 3 }];
+  await t("combo de varios productos: el descuento de los combos que se arman no se marca", async () => {
+    assert.strictEqual(await priceProblem(trade, comboStore, { discount: 800, items: par(800, 1100) }), null);
+    assert.strictEqual(await priceProblem(trade, comboStore, { discount: 400, items: par(800, 1100) }), null, "menos descuento, nunca es problema");
+  });
+  await t("combo de varios productos: más descuento que el de los combos se marca", async () => {
+    const p = await priceProblem(trade, comboStore, { discount: 1200, items: par(800, 1100) });
+    assert.ok(p && /promos/.test(p) && p.includes("800"), p);
+    assert.ok(await priceProblem(trade, { catalogParts: 1 }, { discount: 100, items: par(800, 1100) }), "sin combos publicados no hay descuento");
+  });
+  await t("combo mayorista: con su link vale el precio mayorista del combo; sin link, el de siempre", async () => {
+    // Mayorista: lavandina 650 + detergente 990 = 1.640, combo 1.300 → 340 cada uno
+    assert.strictEqual(await priceProblem(trade, comboStore, { clientToken: "TOKMAY", discount: 680, items: par(650, 990) }), null);
+    assert.ok(await priceProblem(trade, comboStore, { clientToken: "TOKMAY", discount: 800, items: par(650, 990) }), "el ahorro minorista no le corresponde");
+  });
+  await t("combo de un grupo (docena de cualquier gusto) y el bulto que no cuenta", async () => {
+    const emp = fakeStore([[{ productId: "e1", price: 900 }, { productId: "e2", price: 1000, pack: { size: 12, price: 10000 } }]]);
+    const st = { catalogParts: 1, onlinePromos: [{ id: "doc", name: "Docena", qty: 12, price: 9000, productIds: ["e1", "e2"] }] };
+    const items = [{ productId: "e1", name: "Carne", price: 900, qty: 6 }, { productId: "e2", name: "Pollo", price: 1000, qty: 6 }];
+    assert.strictEqual(await priceProblem(emp, st, { discount: 2400, items }), null);
+    assert.ok(await priceProblem(emp, st, { discount: 2500, items }));
+    assert.ok(await priceProblem(emp, Object.assign({ wholesale: { enabled: true } }, st), { discount: 1000, items: [{ productId: "e2", name: "Pollo", price: 10000, qty: 1, packSize: 12 }] }), "el bulto no arma combos");
   });
   await t("pedido sin renglones válidos: sin problema", async () => {
     assert.strictEqual(await priceProblem(ref, store, { items: [] }), null);

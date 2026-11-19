@@ -186,6 +186,7 @@ export function compressImageFile(file: File, maxWidth: number, maxHeight: numbe
 }
 
 export async function publishOnlinePromos(_storeId: string, _ids: Set<string>): Promise<number> { return 0; }
+export async function refreshOnlinePromos(): Promise<void> {}
 export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
   return { productId: p.id, name: p.name, price: p.salePrice, imageUrl, category: p.category?.name || 'Varios', inStock: true };
 }

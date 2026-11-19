@@ -17,7 +17,7 @@ import { useMobileFocus } from '../mobile/MobileShell';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { setTourScreen } from '../common/tour/tourContext';
 import {
-  newPreOrderId, savePreOrder, flushPreOrderQueue, readQueue, loadPreOrderIntoCart, priceFor, withOffers,
+  newPreOrderId, savePreOrder, flushPreOrderQueue, readQueue, loadPreOrderIntoCart, priceFor, withOffers, previewCombos, withoutCombos,
   PREORDER_QUEUE_EVENT, type PreOrderItem,
 } from '../../services/preorders';
 import OnlineInbox from './OnlineInbox';
@@ -38,6 +38,7 @@ const COMMITTED_CACHE = 'ventra_preventa_committed';
 const LAST_CACHE = 'ventra_preventa_last_orders';
 /** El pedido que se está armando: si se cierra la app o se sale sin querer, no se pierde */
 const DRAFT_KEY = 'ventra_preorder_draft';
+const PROMOS_CACHE = 'ventra_preorder_promos';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qtyFmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -53,7 +54,11 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 const readJson = (k: string, fallback: any) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v ?? fallback; } catch { return fallback; } };
 const writeJson = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin espacio: se sigue con lo que hay */ } };
 
-interface Draft { id: string; takenAt?: string; orderNumber?: number; client: any | null; items: PreOrderItem[]; notes: string; savedAt?: string }
+interface Draft {
+  id: string; takenAt?: string; orderNumber?: number; client: any | null; items: PreOrderItem[]; notes: string; savedAt?: string;
+  /** Combos que el pedido ya tenía: siguen valiendo al corregirlo aunque la promo se haya pausado */
+  keepPromos?: string[];
+}
 const readDraft = (): Draft | null => {
   const d = readJson(DRAFT_KEY, null);
   return d && (d.client || d.items?.length) ? d : null;
@@ -66,17 +71,27 @@ function useCatalog() {
     const [clients, setClients] = useState<any[]>(() => readJson(CLIENTS_CACHE, []));
     const [committed, setCommitted] = useState<Record<string, number>>(() => readJson(COMMITTED_CACHE, {}));
   const [lastOrders, setLastOrders] = useState<Record<string, any>>(() => readJson(LAST_CACHE, {}));
+  const [promotions, setPromotions] = useState<any[]>(() => readJson(PROMOS_CACHE, []));
   useEffect(() => {
+    // Combos de Promociones: se muestran mientras se toma el pedido (los arma el servidor al guardar)
+    api.get('/promotions', { silent: true } as any).then(({ data }) => {
+      const list = (Array.isArray(data) ? data : []).filter((p: any) => p.type === 'FIXED_COMBO')
+        .map((p: any) => ({ id: p.id, name: p.name, type: p.type, isActive: p.isActive, fixedPrice: p.fixedPrice, tradeFixedPrice: p.tradeFixedPrice, startDate: p.startDate, endDate: p.endDate, limitType: p.limitType, limitStock: p.limitStock, soldStock: p.soldStock, products: (p.products || []).map((x: any) => ({ productId: x.productId, quantity: x.quantity, groupId: x.groupId })) }));
+      setPromotions(list);
+      writeJson(PROMOS_CACHE, list);
+    }).catch(() => {});
     api.get('/products/pos-catalog', { silent: true } as any).then(({ data }) => {
       const list = (data?.products || []).map((p: any) => ({
         id: p.id, name: p.name, barcode: p.barcode, sku: p.sku, salePrice: p.salePrice, stock: p.stock,
         unitsPerPack: p.unitsPerPack, packPrice: p.packPrice, salesCount: p.salesCount || 0,
+        // Lista mayorista y oferta por cantidad: el vendedor ve el mismo precio que guarda el servidor
+        tradePrice: p.tradePrice, wholesalePrice: p.wholesalePrice, wholesaleMinQty: p.wholesaleMinQty,
       }));
       setProducts(list);
       writeJson(CATALOG_CACHE, list);
     }).catch(() => {});
     api.get('/clients', { silent: true } as any).then(({ data }) => {
-            const list = (data || []).map((c: any) => ({ id: c.id, name: c.name, locality: c.locality, address: c.address, phone: c.phone, cuit: c.cuit, dni: c.dni, ivaCondition: c.ivaCondition, balance: c.balance, creditLimit: c.creditLimit }));
+            const list = (data || []).map((c: any) => ({ id: c.id, name: c.name, locality: c.locality, address: c.address, phone: c.phone, cuit: c.cuit, dni: c.dni, ivaCondition: c.ivaCondition, balance: c.balance, creditLimit: c.creditLimit, priceList: c.priceList, tradeDiscountPercentage: c.tradeDiscountPercentage }));
       setClients(list);
             writeJson(CLIENTS_CACHE, list);
     }).catch(() => {});
@@ -89,7 +104,7 @@ function useCatalog() {
       writeJson(LAST_CACHE, data || {});
     }).catch(() => {});
   }, []);
-  return { products, clients, committed, lastOrders };
+  return { products, clients, committed, lastOrders, promotions };
 }
 
 function useQueue() {
@@ -122,7 +137,9 @@ export default function PreventaScreen() {
   const startNew = () => open({ id: newPreOrderId(), takenAt: new Date().toISOString(), client: null, items: [], notes: '' });
   const fromOrder = (o: any): Draft => ({
     id: o.id, orderNumber: o.orderNumber, client: o.client || null, notes: o.notes || '',
-    items: (o.items || []).map((i: any) => ({ productId: i.productId, productName: i.productName, quantity: Number(i.quantity), packSize: i.packSize || null, unitPrice: Number(i.unitPrice) })),
+    // Los renglones del combo vuelven a sueltos: el combo se arma solo otra vez
+    items: withoutCombos(o.items || []),
+    keepPromos: Array.from(new Set((o.items || []).map((i: any) => i.promoId).filter(Boolean))) as string[],
   });
 
   if (editing) {
@@ -452,7 +469,7 @@ function OrderList({ clients, products, queue, draft, onNew, onResume, onDiscard
                             <span className="w-20 shrink-0 font-bold text-slate-800">
                               {Number(it.packSize) > 1 ? plural(it.quantity / it.packSize, 'bulto', 'bultos') : plural(it.quantity, 'unidad', 'unidades')}
                             </span>
-                            <span className="flex-1 min-w-0 text-slate-700">{it.productName}</span>
+                            <span className="flex-1 min-w-0 text-slate-700">{it.productName}{it.promoId && <span className="ml-1.5 text-[11.5px] font-bold text-emerald-700">· {it.promoName || 'Combo'}</span>}</span>
                             <span className="font-semibold text-slate-800">{money(it.total)}</span>
                           </li>
                         ))}
@@ -579,7 +596,7 @@ function NewClientCard({ zones, defaultZone, defaultName, onCancel, onCreated }:
   );
 }
 
-function OrderEditor({ initial, products, clients: baseClients, committed, lastOrders, onExit }: { initial: Draft; products: any[]; clients: any[]; committed: Record<string, number>; lastOrders: Record<string, any>; onExit: (keptDraft: boolean) => void }) {
+function OrderEditor({ initial, products, clients: baseClients, committed, lastOrders, promotions, onExit }: { initial: Draft; products: any[]; clients: any[]; committed: Record<string, number>; lastOrders: Record<string, any>; promotions: any[]; onExit: (keptDraft: boolean) => void }) {
   const user = useAuthStore((s) => s.user);
   // Los que el vendedor da de alta en la calle se suman a la lista sin esperar a la próxima bajada
   const [added, setAdded] = useState<any[]>([]);
@@ -610,7 +627,11 @@ function OrderEditor({ initial, products, clients: baseClients, committed, lastO
 
   // Con la oferta por cantidad aplicada (los renglones guardan el precio de lista)
   const priced = useMemo(() => withOffers(items, products), [items, products]);
-  const total = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const cliForCombos = (client && baseClients.find((c) => c.id === client.id)) || client;
+  // Combos (lavandina + detergente a precio fijo): los mismos que arma el servidor al guardar
+  const combos = useMemo(() => previewCombos(priced, promotions, cliForCombos, new Set(initial.keepPromos || [])), [priced, promotions, cliForCombos?.id, cliForCombos?.priceList]);
+  const comboDiscount = combos.reduce((s, c) => s + c.discount, 0);
+  const total = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0) - comboDiscount;
   const bultos = items.reduce((s, i) => s + (i.packSize ? i.quantity / i.packSize : 0), 0);
   const zones = useMemo(() => Array.from(new Set(clients.map((c) => (c.locality || '').trim()).filter(Boolean))).sort(), [clients]);
 
@@ -908,6 +929,16 @@ function OrderEditor({ initial, products, clients: baseClients, committed, lastO
                         removes={it.quantity <= (it.packSize || 1)}
                       />
                       <span className="w-[76px] text-right text-[14px] font-bold text-slate-900 shrink-0">{money(it.quantity * it.unitPrice)}</span>
+                    </div>
+                  ))}
+                  {combos.map((c) => (
+                    <div key={c.id} className="px-4 py-2.5 flex items-center gap-2.5 bg-emerald-50/60">
+                      <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <p className="min-w-0 flex-1 text-[13.5px] font-semibold text-emerald-900 leading-tight">
+                        {c.name}{c.times > 1 ? ` x${c.times}` : ''}
+                        <span className="block text-[12px] font-normal text-emerald-800">{c.times > 1 ? `${c.times} combos de ${money(c.price)}` : `Combo a ${money(c.price)}`}</span>
+                      </p>
+                      <span className="text-right text-[14px] font-bold text-emerald-700 shrink-0">-{money(c.discount)}</span>
                     </div>
                   ))}
                 </div>

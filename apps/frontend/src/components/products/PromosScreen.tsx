@@ -50,6 +50,7 @@ export default function PromosScreen() {
     if (!confirm('¿Estás seguro de eliminar esta promoción?')) return;
     try {
       await api.delete(`/promotions/${id}`);
+      import('../../services/onlineStore').then((m) => m.refreshOnlinePromos()).catch(() => {});
       loadPromos();
     } catch {
       toast.error('Error al eliminar');

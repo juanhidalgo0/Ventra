@@ -752,25 +752,66 @@ function saveCart(){ try{ localStorage.setItem(cartKey(),JSON.stringify(S.cart))
 function cartItems(){ return Object.keys(S.cart).map(function(k){ var p=S.byId[pidOf(k)]; return p?{key:k,p:p,qty:S.cart[k],unit:unitOf(k),name:lineName(k),title:lineTitle(k),extras:extrasOf(k),half:halfOf(k)}:null; }).filter(Boolean); }
 function cartCount(){ return cartItems().reduce(function(a,x){return a+x.qty;},0); }
 function subtotal(){ return cartItems().reduce(function(a,x){return a+x.qty*x.unit;},0); }
-/* Promos por cantidad (ej. 12 empanadas de cualquier gusto a precio fijo). Se toman primero las
-   unidades más caras. Devuelve [{name, times, discount, missing}] */
+/* ───────── combos ─────────
+   Promos de Ventra a precio fijo: de un solo grupo (12 empanadas de cualquier gusto, onlinePromos)
+   o de varios productos (lavandina + detergente, onlineCombos). Misma cuenta que los pedidos de
+   Ventra (apps/backend/src/modules/preorders/combos.ts) y que el control de la nube
+   (firebase/functions/order-check.js): mantener iguales. Se arman primero los de más unidades;
+   cada uno, tantas veces como se pueda, con las unidades más caras primero, mientras ahorre algo.
+   Solo cuentan unidades sueltas (el bulto tiene su propio precio). */
+function allCombos(){
+  var out=[];
+  (S.cfg.onlinePromos||[]).forEach(function(pr){ if(pr&&pr.productIds&&pr.productIds.length) out.push({id:String(pr.id),name:pr.name,price:Number(pr.price),groups:[{qty:Math.max(1,Number(pr.qty)||1),productIds:pr.productIds}]}); });
+  (S.cfg.onlineCombos||[]).forEach(function(pr){ if(pr&&pr.groups&&pr.groups.length) out.push({id:String(pr.id),name:pr.name,price:Number(pr.price),groups:pr.groups.map(function(g){ return {qty:Math.max(1,Number(g.qty)||1),productIds:g.productIds||[]}; })}); });
+  return out.filter(function(c){ return c.price>0; });
+}
+function comboUnits(c){ return c.groups.reduce(function(a,g){ return a+g.qty; },0); }
+function applyCombos(lines,combos){
+  var left={}, out=[];
+  lines.forEach(function(l){ left[l.key]=(left[l.key]||0)+Math.max(0,Math.floor(Number(l.quantity)+1e-9)); });
+  combos.slice().sort(function(a,b){ return comboUnits(b)-comboUnits(a) || (a.id<b.id?-1:a.id>b.id?1:0); }).forEach(function(c){
+    var used={}, times=0, regular=0;
+    while(c.maxTimes===undefined || times<c.maxTimes){
+      var taken={}, ok=true, sum=0;
+      for(var gi=0;gi<c.groups.length;gi++){
+        var g=c.groups[gi];
+        var cands=lines.filter(function(l){ return g.productIds.indexOf(l.productId)>=0 && (left[l.key]||0)-(taken[l.key]||0)>0; })
+          .sort(function(a,b){ return b.price-a.price || (a.key<b.key?-1:a.key>b.key?1:0); });
+        var need=g.qty;
+        for(var i=0;i<cands.length && need>0;i++){
+          var l=cands[i], n=Math.min(need,(left[l.key]||0)-(taken[l.key]||0));
+          taken[l.key]=(taken[l.key]||0)+n; sum+=n*l.price; need-=n;
+        }
+        if(need>0){ ok=false; break; }
+      }
+      if(!ok || sum-c.price<=0.005) break;
+      Object.keys(taken).forEach(function(k){ left[k]-=taken[k]; used[k]=(used[k]||0)+taken[k]; });
+      times++; regular+=sum;
+    }
+    if(times) out.push({id:c.id,name:c.name,times:times,price:c.price,regular:r2(regular),discount:r2(regular-times*c.price),used:used});
+  });
+  return {uses:out,left:left};
+}
+/* Lo que vale cada unidad para el combo: el producto (sin agregados) o, en la venta a comercios, la unidad con su oferta */
+function comboLines(){
+  return Object.keys(S.cart).filter(function(k){ return S.byId[pidOf(k)] && lineSize(k)<=1; }).map(function(k){
+    var p=S.byId[pidOf(k)];
+    return {key:k,productId:pidOf(k),quantity:S.cart[k],price:WS()?unitOf(k):Number(p.price)};
+  });
+}
+/* Devuelve [{name, times, discount, missing, price, qty, saves}] */
 function promoLines(){
-  // Primero las de más unidades: con 18 empanadas se arma una docena y después una media docena
-  var promos=(S.cfg.onlinePromos||[]).slice().sort(function(a,b){ return b.qty-a.qty; }), left={}, out=[];
-  Object.keys(S.cart).forEach(function(k){ left[k]=S.cart[k]; });
-  promos.forEach(function(pr){
-    var units=[];
-    // Las promos cuentan unidades del producto (los extras se cobran aparte)
-    Object.keys(left).forEach(function(k){ var p=S.byId[pidOf(k)]; if(p && pr.productIds.indexOf(pidOf(k))>=0) for(var i=0;i<left[k];i++) units.push({id:k,price:p.price}); });
-    var n=units.length, times=Math.floor(n/pr.qty);
-    if(!times){ if(n>0) out.push({name:pr.name,times:0,discount:0,missing:pr.qty-n,price:pr.price,qty:pr.qty,saves:promoSaves(pr)}); return; }
-    units.sort(function(a,b){ return b.price-a.price; });
-    var used=units.slice(0,times*pr.qty), regular=used.reduce(function(a,u){ return a+u.price; },0);
-    var discount=regular-times*pr.price;
-    if(discount<=0) return;
-    used.forEach(function(u){ left[u.id]--; });
-    var rest=n-times*pr.qty;
-    out.push({name:pr.name,times:times,discount:discount,missing:rest>0?pr.qty-rest:0,price:pr.price,qty:pr.qty,saves:promoSaves(pr)});
+  var combos=allCombos(), lines=comboLines(), r=applyCombos(lines,combos), out=[];
+  combos.forEach(function(c){
+    var u=r.uses.filter(function(x){ return x.id===c.id; })[0];
+    // "Sumá N más": solo en los de un grupo (12 de cualquier gusto), con lo que quedó suelto
+    var missing=0, single=c.groups.length===1;
+    if(single){
+      var n=lines.reduce(function(a,l){ return a+(c.groups[0].productIds.indexOf(l.productId)>=0?(r.left[l.key]||0):0); },0);
+      if(n>0 && n<c.groups[0].qty) missing=c.groups[0].qty-n;
+    }
+    if(!u && !missing) return;
+    out.push({name:c.name,times:u?u.times:0,discount:u?u.discount:0,missing:missing,price:c.price,qty:comboUnits(c),saves:promoSaves(c)});
   });
   return out;
 }
@@ -861,7 +902,7 @@ async function applyTradePrices(ref, list){
     var np=t>0?t:(off>0?Math.round(Number(p.price)*(1-off/100)*100)/100:0);
     if(np>0){ p.retailPrice=Number(p.price); p.price=np; }
   });
-  (S.cfg.onlinePromos||[]).forEach(function(pr){ var t=Number(combos[pr.id]); if(t>0){ pr.retailPrice=pr.price; pr.price=t; } });
+  (S.cfg.onlinePromos||[]).concat(S.cfg.onlineCombos||[]).forEach(function(pr){ var t=Number(combos[pr.id]); if(t>0){ pr.retailPrice=pr.price; pr.price=t; } });
   S.tradePrices=true;
 }
 async function loadCatalog(ref, cfg){
@@ -1069,17 +1110,30 @@ function extrasFor(p,sel){
 function hasExtras(p){ return extrasFor(p,null).length>0; }
 /* Nombre de categoría para mostrar: en la carta, "AGUA SABORIZADA" se ve "Agua saborizada" */
 function catName(c){ return nice(c); }
-/* Una promo ahorra si su precio es menor a lo que salen esas unidades sueltas (al precio más barato) */
-function promoSaves(pr){
-  var prices=pr.productIds.map(function(id){ var p=S.byId[id]; return p?p.price:0; }).filter(function(v){ return v>0; });
-  return prices.length>0 && pr.price < pr.qty*Math.min.apply(null,prices);
+/* Un combo ahorra si su precio es menor a lo que salen esas unidades sueltas (al precio más barato de cada grupo) */
+function promoSaves(c){
+  var full=0;
+  for(var i=0;i<c.groups.length;i++){
+    var g=c.groups[i], prices=g.productIds.map(function(id){ var p=S.byId[id]; return p?Number(p.price):0; }).filter(function(v){ return v>0; });
+    if(!prices.length) return false;
+    full+=g.qty*Math.min.apply(null,prices);
+  }
+  return c.price<full-0.005;
+}
+/* "Lavandina + 2 Detergente a elección" */
+function comboText(c){
+  if(c.groups.length===1){ var g=c.groups[0]; return g.qty+' a '+money(c.price)+(g.productIds.length>1?' · mezclá como quieras':''); }
+  return c.groups.map(function(g){
+    var p=g.productIds.length===1?S.byId[g.productIds[0]]:null;
+    return (g.qty>1?g.qty+' ':'')+(p?p.name:'a elección');
+  }).join(' + ')+' a '+money(c.price);
 }
 function promoStripHtml(){
-  var pr=(S.cfg.onlinePromos||[]).filter(promoSaves).sort(function(a,b){ return a.qty-b.qty; });
+  var pr=allCombos().filter(promoSaves).sort(function(a,b){ return comboUnits(a)-comboUnits(b); });
   if(!pr.length) return '';
   return '<div class="promo-strip">'+pr.map(function(x){
-    var first=S.byId[x.productIds[0]], cat=first?(first.top||first.category):'';
-    return '<button class="promo-card" data-act="promo-go" data-cat="'+esc(cat)+'"><small>Promo</small><b>'+esc(x.name)+'</b><span>'+x.qty+' a '+money(x.price)+(x.productIds.length>1?' · mezclá como quieras':'')+'</span></button>';
+    var first=S.byId[x.groups[0].productIds[0]], cat=first?(first.top||first.category):'';
+    return '<button class="promo-card" data-act="promo-go" data-cat="'+esc(cat)+'"><small>'+(x.groups.length>1?'Combo':'Promo')+'</small><b>'+esc(x.name)+'</b><span>'+esc(comboText(x))+'</span></button>';
   }).join('')+'</div>';
 }
 /* Bebidas y postres de la carta (por la categoría) */
