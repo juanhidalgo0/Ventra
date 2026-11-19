@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import QuickSaleIcon from './QuickSaleIcon';
 
 /**
  * Venta rápida: productos sin código ni inventario (caramelos, bolsas, propinas).
  * Solo pide precio y cantidad. Se abre con el código "1" o con F1 en el POS.
+ * La descripción es opcional y solo aparece tocando "Agregar descripción": el Enter
+ * (precio → cantidad → al carrito) no pasa por ella.
  */
 export const QUICK_SALE_PRODUCT_ID = 'VENTA_RAPIDA';
 
@@ -23,7 +25,7 @@ export function buildQuickSaleProduct(price: number) {
 
 interface Props {
   onClose: () => void;
-  onConfirm: (price: number, quantity: number) => void;
+  onConfirm: (price: number, quantity: number, description?: string) => void;
 }
 
 function parseAmount(raw: string) {
@@ -38,6 +40,8 @@ function parseAmount(raw: string) {
 export default function QuickSaleModal({ onClose, onConfirm }: Props) {
   const [price, setPrice] = useState('');
   const [qty, setQty] = useState('1');
+  const [showDesc, setShowDesc] = useState(false);
+  const [desc, setDesc] = useState('');
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
 
@@ -64,7 +68,7 @@ export default function QuickSaleModal({ onClose, onConfirm }: Props) {
 
   const submit = () => {
     if (!valid) return;
-    onConfirm(priceNum, qtyNum);
+    onConfirm(priceNum, qtyNum, desc.trim().slice(0, 80) || undefined);
   };
 
   // Enter en precio pasa a cantidad; Enter en cantidad agrega al carrito
@@ -134,6 +138,30 @@ export default function QuickSaleModal({ onClose, onConfirm }: Props) {
             />
           </label>
         </div>
+
+        {showDesc ? (
+          <label className="block mt-3">
+            <span className="block text-[13px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Descripción <span className="font-normal text-slate-400">(opcional)</span></span>
+            <input
+              autoFocus
+              value={desc}
+              maxLength={80}
+              onChange={(e) => setDesc(e.target.value)}
+              onKeyDown={onFieldKey}
+              placeholder="Ej.: bolsa de regalo"
+              className="w-full h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-850 text-[15px] text-slate-900 dark:text-white outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/15 transition-all placeholder:text-slate-300"
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowDesc(true)}
+            className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+          >
+            <Plus className="w-3.5 h-3.5" /> Agregar descripción
+          </button>
+        )}
 
         {valid && qtyNum !== 1 && (
           <p className="mt-3 text-[12.5px] text-slate-500">

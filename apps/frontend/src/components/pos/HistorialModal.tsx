@@ -138,12 +138,14 @@ export default function HistorialModal({ sessionId, onClose }: { sessionId?: str
 
   return (
     <MotionDiv 
-      {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} 
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      // Sin desenfoque de fondo ni animación de salida: en algunas PCs la ventana quedaba dibujada
+      // después de cerrarla (una imagen fantasma que no respondía) y había que recargar la página.
+      {...(perfMode ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 } })} 
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <MotionDiv
-        {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0, y: 20 }, animate: { scale: 1, opacity: 1, y: 0 }, exit: { scale: 0.95, opacity: 0, y: 20 } })}
+        {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0, y: 20 }, animate: { scale: 1, opacity: 1, y: 0 } })}
         className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl overflow-hidden shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col h-[90vh]"
         onClick={(e: any) => e.stopPropagation()}
       >
@@ -170,11 +172,11 @@ export default function HistorialModal({ sessionId, onClose }: { sessionId?: str
               <div className="flex gap-6">
                 <button onClick={() => { setActiveTab('sales'); setSelectedSale(null); }} className={`pb-2.5 text-xs font-bold transition-all relative cursor-pointer ${activeTab === 'sales' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                   Ventas ({sales.filter(s => s.status === 'COMPLETED').length})
-                  {activeTab === 'sales' && <motion.div layoutId="tab-active" className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600 dark:bg-rose-400 rounded-full" />}
+                  {activeTab === 'sales' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600 dark:bg-rose-400 rounded-full" />}
                 </button>
                 <button onClick={() => { setActiveTab('returns'); setSelectedSale(null); }} className={`pb-2.5 text-xs font-bold transition-all relative cursor-pointer ${activeTab === 'returns' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                   Devoluciones ({sales.filter(s => s.status !== 'COMPLETED').length})
-                  {activeTab === 'returns' && <motion.div layoutId="tab-active" className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600 dark:bg-rose-400 rounded-full" />}
+                  {activeTab === 'returns' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600 dark:bg-rose-400 rounded-full" />}
                 </button>
               </div>
 

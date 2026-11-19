@@ -1453,6 +1453,41 @@ async function main() {
     assert.ok(/suman \$ 577\.500 con IVA/.test(r.check?.message || ''), r.check?.message);
   });
 
+  await t('anular: la venta sale de la plata del turno abierto y del cierre X; con Cierre Z no se puede', async () => {
+    const caj2 = await prisma.user.create({ data: { username: 'ANULA', passwordHash: 'x', fullName: 'Anula', role: 'CASHIER' } });
+    const turno = await cash.open(caj2.id, { terminalName: 'Caja anulaciones', openingAmount: 0 });
+    const p = await nuevo('LAVANDINA ANULAR', 50, { unitsPerPack: 6 });
+    const venta = (items: any[], monto: number) => crear({ sessionId: turno.id, items, payments: [{ method: 'CASH', amount: monto }] }, caj2.id);
+    const a = await venta([{ productId: p.id, quantity: 2, price: 1000 }], 2000);
+    const b = await venta([{ productId: p.id, quantity: 12, price: 900, packSize: 6 }], 10800);
+    const r = await venta([{ productId: 'VENTA_RAPIDA', quantity: 1, price: 500, productName: 'BOLSA DE REGALO' }], 500);
+    assert.strictEqual(await stockDe(p.id), 36);
+    const item = await prisma.saleItem.findFirst({ where: { saleId: r.id } });
+    assert.strictEqual(item!.productName, 'BOLSA DE REGALO', 'la venta rápida guarda su descripción');
+
+    // Turno abierto: el bulto vuelve entero al stock y la venta deja de contar en la caja
+    await sales.cancel(b.id, caj2.id);
+    assert.strictEqual(await stockDe(p.id), 48);
+    await assert.rejects(() => sales.cancel(b.id, caj2.id), /ya fue anulada|Solo se pueden/);
+    const cerrado: any = await cash.close(turno.id, caj2.id, { closingAmountCounted: 2500 });
+    assert.strictEqual(cerrado.closingAmountExpected, 2500, '2000 + 500, sin el bulto anulado');
+    assert.strictEqual(cerrado.difference, 0);
+
+    // Turno ya cerrado (Cierre X): se recalcula lo esperado y la diferencia
+    await sales.cancel(a.id, admin.id);
+    let s: any = await prisma.cashRegisterSession.findUnique({ where: { id: turno.id } });
+    assert.strictEqual(s.closingAmountExpected, 500, 'sin la venta anulada después del cierre');
+    assert.strictEqual(s.difference, 2000, 'lo contado (2500) contra lo que debía haber (500)');
+    assert.strictEqual(await stockDe(p.id), 50);
+
+    // Con Cierre Z: no se toca (el Z quedaría distinto de la caja)
+    const z = await prisma.dailyZReport.create({ data: { generatedById: admin.id, totalExpected: 500, totalDeclared: 2500, differenceTotal: 2000 } });
+    await prisma.cashRegisterSession.update({ where: { id: turno.id }, data: { zReportId: z.id } });
+    await assert.rejects(() => sales.cancel(r.id, admin.id), /Cierre Z/);
+    s = await prisma.sale.findUnique({ where: { id: r.id } });
+    assert.strictEqual(s.status, 'COMPLETED');
+  });
+
   await prisma.$disconnect();
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n${ok} bien, ${fallas} con falla`);

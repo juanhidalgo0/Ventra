@@ -3912,8 +3912,9 @@ export default function POSScreen() {
         {showQuickSale && (
           <QuickSaleModal
             onClose={() => setShowQuickSale(false)}
-            onConfirm={(price, qty) => {
-              addToCart(buildQuickSaleProduct(price), price, qty);
+            onConfirm={(price, qty, description) => {
+              // Con descripción: el renglón (ticket, historial) dice lo que se vendió y va aparte de las otras ventas rápidas
+              addToCart(description ? { ...buildQuickSaleProduct(price), name: description, lineTag: description } : buildQuickSaleProduct(price), price, qty);
               setShowQuickSale(false);
             }}
           />
