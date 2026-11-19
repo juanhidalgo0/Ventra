@@ -28,7 +28,7 @@ import { sendClientOrderLink } from '../distribuidora/clientLink';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '../pos/PaymentModal';
-import { hasFeature } from '../../stores/businessStore';
+import { hasFeature, hasTradeList, tradeListName } from '../../stores/businessStore';
 
 const IVA_OPTIONS: [string, string][] = [
   ['CONSUMIDOR_FINAL', 'Consumidor final'],
@@ -232,6 +232,8 @@ export default function CuentasCorrientesScreen() {
         } : {}),
       };
       await api.patch(`/clients/${editingClient.id}`, payload);
+      // Si tiene link de la tienda, su lista de precios (mayorista o minorista) lo sigue
+      if (hasTradeList()) import('../../services/onlineStore').then((m) => m.refreshClientPriceList({ ...editingClient, ...payload })).catch(() => {});
       setShowEditModal(false);
       setEditingClient(null);
       loadClients();
@@ -412,9 +414,9 @@ export default function CuentasCorrientesScreen() {
                             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-600 shrink-0">{initialLetter}</div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-slate-800">{displayName}</span>
-                              {hasFeature('tradePricing') && client.priceList === 'TRADE' && (
+                              {hasTradeList() && client.priceList === 'TRADE' && (
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-850 border border-amber-300 shrink-0">
-                                  🔧 GREMIO {client.tradeDiscountPercentage ? `(-${client.tradeDiscountPercentage}%)` : ''}
+                                  {tradeListName() === 'Mayorista' ? '🏪 MAYORISTA' : '🔧 GREMIO'} {client.tradeDiscountPercentage ? `(-${client.tradeDiscountPercentage}%)` : ''}
                                 </span>
                               )}
                             </div>
@@ -608,7 +610,7 @@ export default function CuentasCorrientesScreen() {
                 </div>
 
                 {/* Lista de Precios / Gremio (Solo Ferretería) */}
-                {hasFeature('tradePricing') && (
+                {hasTradeList() && (
                   <div className="grid grid-cols-2 gap-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl">
                     <div className="space-y-1">
                       <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">Lista de Precios</label>
@@ -617,12 +619,12 @@ export default function CuentasCorrientesScreen() {
                         onChange={(e) => setNewClient({...newClient, priceList: e.target.value})}
                         className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 outline-none focus:border-amber-500 font-bold text-xs text-slate-700 cursor-pointer"
                       >
-                        <option value="RETAIL">Mostrador (Minorista)</option>
-                        <option value="TRADE">🔧 Gremio / Instalador</option>
+                        <option value="RETAIL">{tradeListName() === 'Mayorista' ? 'Minorista (consumidor final)' : 'Mostrador (Minorista)'}</option>
+                        <option value="TRADE">{tradeListName() === 'Mayorista' ? '🏪 Mayorista (comercios)' : '🔧 Gremio / Instalador'}</option>
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">% Descuento Gremio</label>
+                      <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">% Descuento {tradeListName()} <span className="normal-case font-medium text-amber-800/70">(si el producto no tiene precio {tradeListName().toLowerCase()})</span></label>
                       <div className="relative">
                         <input 
                           type="number"
@@ -784,7 +786,7 @@ export default function CuentasCorrientesScreen() {
                 </div>
 
                 {/* Lista de Precios / Gremio (Solo Ferretería) */}
-                {hasFeature('tradePricing') && (
+                {hasTradeList() && (
                   <div className="grid grid-cols-2 gap-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl">
                     <div className="space-y-1">
                       <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">Lista de Precios</label>
@@ -793,12 +795,12 @@ export default function CuentasCorrientesScreen() {
                         onChange={(e) => setEditingClient({...editingClient, priceList: e.target.value})}
                         className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 outline-none focus:border-amber-500 font-bold text-xs text-slate-700 cursor-pointer"
                       >
-                        <option value="RETAIL">Mostrador (Minorista)</option>
-                        <option value="TRADE">🔧 Gremio / Instalador</option>
+                        <option value="RETAIL">{tradeListName() === 'Mayorista' ? 'Minorista (consumidor final)' : 'Mostrador (Minorista)'}</option>
+                        <option value="TRADE">{tradeListName() === 'Mayorista' ? '🏪 Mayorista (comercios)' : '🔧 Gremio / Instalador'}</option>
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">% Descuento Gremio</label>
+                      <label className="text-[10px] text-amber-900 uppercase font-bold tracking-wider block">% Descuento {tradeListName()} <span className="normal-case font-medium text-amber-800/70">(si el producto no tiene precio {tradeListName().toLowerCase()})</span></label>
                       <div className="relative">
                         <input 
                           type="number"

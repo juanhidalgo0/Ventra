@@ -645,12 +645,24 @@ function OrderEditor({ initial, products, clients: baseClients, committed, lastO
 
   // Cuenta corriente del cliente: lo que debe y su límite (del último catálogo bajado)
   const cli = (client && clients.find((c) => c.id === client.id)) || client;
+  // Al cambiar de cliente, lo suelto pasa a su lista (mayorista o minorista). No al abrir un pedido ya guardado.
+  const pricedFor = useRef(client?.id || null);
+  useEffect(() => {
+    const id = client?.id || null;
+    if (pricedFor.current === id) return;
+    pricedFor.current = id;
+    const byId = new Map(products.map((p: any) => [p.id, p]));
+    setItems((prev) => prev.map((it) => {
+      const p = byId.get(it.productId);
+      return p && !it.packSize ? { ...it, unitPrice: priceFor(p, false, cli).unitPrice } : it;
+    }));
+  }, [client?.id]);
   const balance = Number(cli?.balance) || 0;
   const limit = Number(cli?.creditLimit) || 0;
   const overBy = limit > 0 ? Math.round((balance + total - limit) * 100) / 100 : 0;
 
   const add = (p: any, byPack: boolean) => {
-    const { unitPrice, packSize } = priceFor(p, byPack);
+    const { unitPrice, packSize } = priceFor(p, byPack, cli);
     const step = packSize || 1;
     const free = freeOf(p);
     const mineUnits = inOrder(p.id).reduce((s, m) => s + m.quantity, 0);
@@ -681,7 +693,7 @@ function OrderEditor({ initial, products, clients: baseClients, committed, lastO
       const bultos = it.packSize ? it.quantity / it.packSize : 0;
       const pack = packOf(p, true);
       const byPack = !!(it.packSize && pack);
-      const { unitPrice, packSize } = priceFor(p, byPack);
+      const { unitPrice, packSize } = priceFor(p, byPack, cli);
       const quantity = byPack && pack ? Math.max(1, Math.round(bultos)) * pack.size : it.quantity;
       const i = next.findIndex((x) => x.productId === p.id && (x.packSize || null) === (packSize || null));
       if (i >= 0) next[i] = { ...next[i], quantity: next[i].quantity + quantity };

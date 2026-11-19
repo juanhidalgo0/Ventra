@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { useTradeList, tradeListName } from '../../stores/businessStore';
 
 interface PromotionModalProps {
   onClose: () => void;
@@ -41,6 +42,8 @@ interface ComboGroup {
 }
 
 export default function PromotionModal({ onClose, onSuccess, promotion }: PromotionModalProps) {
+  const tradeList = useTradeList();
+  const tradeName = tradeListName();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -57,6 +60,9 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
     mValue: promotion?.mValue || 2,
     fixedPrice: promotion?.fixedPrice || 0,
     discountPercentage: promotion?.discountPercentage || 0,
+    // Lista Mayorista: el mismo combo o descuento para mayoristas (vacío = el mismo precio)
+    tradeFixedPrice: promotion?.tradeFixedPrice || 0,
+    tradeDiscountPercentage: promotion?.tradeDiscountPercentage || 0,
     limitType: promotion?.limitType || 'NONE', // NONE | STOCK | DATE
     limitStock: promotion?.limitStock || 100,
     endDate: promotion?.endDate ? new Date(promotion.endDate).toISOString().split('T')[0] : '',
@@ -802,6 +808,21 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
                           className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-orange-500 transition-all outline-none" 
                         />
                       </div>
+                      {tradeList && (
+                        <div className="mt-3">
+                          <span className="text-[9px] font-bold text-amber-800 uppercase tracking-widest mb-1.5 block ml-1">Descuento para clientes {tradeName === 'Mayorista' ? 'mayoristas' : tradeName} (%)</span>
+                          <div className="relative">
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold">%</span>
+                            <input
+                              type="number"
+                              value={formData.tradeDiscountPercentage || ''}
+                              onChange={e => setFormData({ ...formData, tradeDiscountPercentage: parseFloat(e.target.value) || 0 })}
+                              placeholder="Vacío = el mismo"
+                              className="w-full bg-amber-50/60 border border-amber-300 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-amber-500 transition-all outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
@@ -817,6 +838,22 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
                         />
                       </div>
                       <p className="text-[10px] text-slate-600 font-bold mt-2 ml-1 uppercase tracking-widest">Valor estimado de referencia: ${calculateTotalOriginal().toFixed(2)}</p>
+                      {tradeList && (
+                        <div className="mt-3">
+                          <span className="text-[9px] font-bold text-amber-800 uppercase tracking-widest mb-1.5 block ml-1">🏪 Precio del combo para clientes {tradeName === 'Mayorista' ? 'mayoristas' : tradeName}</span>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                            <input
+                              type="number"
+                              value={formData.tradeFixedPrice || ''}
+                              onChange={e => setFormData({ ...formData, tradeFixedPrice: parseFloat(e.target.value) || 0 })}
+                              placeholder="Vacío = el mismo precio"
+                              className="w-full bg-amber-50/60 border border-amber-300 rounded-xl pl-8 pr-4 py-3 text-lg font-black text-slate-800 focus:bg-white focus:border-amber-500 transition-all outline-none"
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1.5 ml-1">En la caja, al elegir un cliente {tradeName.toLowerCase()}, el combo sale a este precio.</p>
+                        </div>
+                      )}
                     </div>
                   )}
 

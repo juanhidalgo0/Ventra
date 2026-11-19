@@ -1053,6 +1053,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!hasEndDate) {
               await this.$executeRawUnsafe(`ALTER TABLE promotions ADD COLUMN end_date DATETIME DEFAULT NULL;`);
             }
+            if (!promoColumns.some(c => c.name === 'trade_fixed_price')) {
+              await this.$executeRawUnsafe(`ALTER TABLE promotions ADD COLUMN trade_fixed_price REAL DEFAULT NULL;`);
+            }
+            if (!promoColumns.some(c => c.name === 'trade_discount_percentage')) {
+              await this.$executeRawUnsafe(`ALTER TABLE promotions ADD COLUMN trade_discount_percentage REAL DEFAULT NULL;`);
+            }
           }
         } catch (err) {
           console.error('[PrismaService] Failed to auto-migrate promotions table:', err);

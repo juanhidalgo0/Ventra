@@ -159,6 +159,9 @@ model Promotion {
   mValue             Int?               @map("m_value") // For NX_M
   fixedPrice         Float?             @map("fixed_price") // For FIXED_COMBO
   discountPercentage Float?             @map("discount_percentage") // For DISCOUNT_PERCENT
+  // Lista Mayorista: el mismo combo o descuento con otro precio para los clientes de la lista Comercio (null = el mismo)
+  tradeFixedPrice    Float?             @map("trade_fixed_price")
+  tradeDiscountPercentage Float?        @map("trade_discount_percentage")
   isActive           Boolean            @default(true) @map("is_active")
   limitType          String             @default("NONE") @map("limit_type") // NONE | STOCK | DATE
   limitStock         Float?             @map("limit_stock") // Max items sold under promo

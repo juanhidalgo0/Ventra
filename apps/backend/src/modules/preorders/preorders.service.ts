@@ -94,8 +94,18 @@ export class PreOrdersService {
       const ids = [...new Set(items.map((i: any) => i.productId))] as string[];
       const products = await (this.prisma as any).product.findMany({
         where: { id: { in: ids } },
-        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true },
+        select: { id: true, salePrice: true, unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true },
       });
+      // Lista Mayorista: el cliente paga el precio mayorista de la unidad (el bulto tiene su propio precio)
+      const orderClient = data?.clientId ? await (this.prisma as any).client.findUnique({ where: { id: String(data.clientId) }, select: { priceList: true, tradeDiscountPercentage: true } }) : null;
+      const isTrade = orderClient?.priceList === 'TRADE';
+      const tradeOff = Number(orderClient?.tradeDiscountPercentage) || 0;
+      const retailUnit = (p: any) => {
+        const sale = Number(p.salePrice) || 0;
+        if (!isTrade) return sale;
+        if (Number(p.tradePrice) > 0) return Number(p.tradePrice);
+        return tradeOff > 0 ? Math.round(sale * (1 - tradeOff / 100) * 100) / 100 : sale;
+      };
       const prev: any[] = ids.length ? await this.prisma.$queryRawUnsafe<any[]>(
         `SELECT id, CAST(prev_sale_price AS REAL) AS ps, CAST(prev_pack_price AS REAL) AS pp, CAST(price_changed_at AS REAL) AS at FROM products WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids,
       ).catch(() => []) : [];
@@ -105,16 +115,16 @@ export class PreOrdersService {
       const kept = new Map(existingItems.map((e) => [`${e.productId}|${e.packSize || ''}`, Number(e.unitPrice)]));
       const takenRaw = data?.takenAt ? new Date(data.takenAt).getTime() : NaN;
       const takenAt = Number.isFinite(takenRaw) ? Math.min(Date.now(), Math.max(Date.now() - 7 * 86400000, takenRaw)) : Date.now();
-      const unitOf = (salePrice: number, packPrice: number, packSize: number | null) => packSize
+      const unitOf = (salePrice: number, packPrice: number, packSize: number | null, looseUnit?: number) => packSize
         ? (packPrice > 0 ? packPrice : salePrice * packSize) / packSize
-        : salePrice || 0;
+        : looseUnit ?? (salePrice || 0);
       for (const it of items) {
         const p: any = byId.get(it.productId);
         if (!p) throw new BadRequestException(`El producto "${it.productName}" ya no está en el catálogo`);
         const byPack = it.packSize && Number(p.unitsPerPack) === it.packSize;
         if (!byPack) it.packSize = null;
         const asked = it.unitPrice;
-        let unit = unitOf(Number(p.salePrice), Number(p.packPrice), it.packSize);
+        let unit = unitOf(Number(p.salePrice), Number(p.packPrice), it.packSize, retailUnit(p));
         const before = kept.get(`${it.productId}|${it.packSize || ''}`);
         const pr: any = prevById.get(it.productId);
         if (before !== undefined) unit = before;

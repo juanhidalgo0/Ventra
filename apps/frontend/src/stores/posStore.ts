@@ -60,7 +60,10 @@ interface POSState {
   setActiveOrder: (order: ActiveOrder | null) => void;
   activeGoOrder: ActiveGoOrder | null;
   setActiveGoOrder: (order: ActiveGoOrder | null) => void;
+  /** Las promos para el cliente elegido: con la lista Comercio, el combo y el % mayorista (ver promosForClient) */
   promotions: any[];
+  /** Las promos como vienen del servidor (con los dos precios) */
+  rawPromotions: any[];
   setPromotions: (promos: any[]) => void;
   /** exactPrice: el precio a mano no se redondea a centavos (etiqueta de balanza: el renglón suma justo lo impreso) */
   addToCart: (product: any, customPrice?: number, quantity?: number, isReturn?: boolean, exactPrice?: boolean) => void;
@@ -105,6 +108,32 @@ interface POSState {
   order: { type: 'LLEVAR' | 'MESA' | 'DELIVERY'; table: string; address: string };
   setOrder: (patch: Partial<{ type: 'LLEVAR' | 'MESA' | 'DELIVERY'; table: string; address: string }>) => void;
   resetOrder: () => void;
+}
+
+/**
+ * Lista Mayorista: la misma promo con el precio para comercios. El combo usa su precio mayorista y
+ * el descuento su % mayorista; si la promo no tiene uno cargado, queda el de siempre.
+ */
+export function promoForClient(promo: any, client: any): any {
+  if (!promo || client?.priceList !== 'TRADE') return promo;
+  const trade = Number(promo.tradeFixedPrice);
+  const tradePct = Number(promo.tradeDiscountPercentage);
+  if (!(trade > 0) && !(tradePct > 0)) return promo;
+  return {
+    ...promo,
+    ...(trade > 0 ? { fixedPrice: trade } : {}),
+    ...(tradePct > 0 ? { discountPercentage: tradePct } : {}),
+    forTrade: true,
+  };
+}
+export const promosForClient = (promos: any[], client: any) => (promos || []).map((p) => promoForClient(p, client));
+
+/** Precio de un combo ya en el ticket con la promo dada (al cambiar de cliente se vuelve a calcular) */
+function promoLinePrice(item: CartItem, promo: any): number {
+  const original = (item.productsMetadata || []).reduce((s, m) => s + (Number(m.price) || 0) * (Number(m.quantity) || 0), 0);
+  if (promo.type === 'FIXED_COMBO') return promo.fixedPrice ?? item.price;
+  if (promo.type === 'DISCOUNT_PERCENT' && original > 0) return Math.round(original * (1 - (promo.discountPercentage || 0) / 100) * 100) / 100;
+  return item.price;
 }
 
 function autoCombineCombos(cart: CartItem[], promotions: any[], productsList: any[] = []): CartItem[] {
@@ -249,6 +278,7 @@ export const usePOSStore = create<POSState>()(
       activeGoOrder: null,
       setActiveGoOrder: (activeGoOrder) => set({ activeGoOrder }),
       promotions: [],
+      rawPromotions: [],
       products: [],
       categories: [],
       clients: [],
@@ -314,7 +344,7 @@ export const usePOSStore = create<POSState>()(
         });
       },
 
-      setPromotions: (promos) => set({ promotions: promos }),
+      setPromotions: (promos) => set((state) => ({ rawPromotions: promos || [], promotions: promosForClient(promos, state.selectedClient) })),
       // Las fotos del catálogo vienen como ruta del servidor ("/api/product-images/..."):
       // acá se convierten a la dirección completa, para que se vean tanto en la app de
       // escritorio (que sirve la pantalla desde otro origen) como en la web.
@@ -331,7 +361,14 @@ export const usePOSStore = create<POSState>()(
           const isTrade = client?.priceList === 'TRADE';
           const tradeDiscount = Number(client?.tradeDiscountPercentage) || 0;
 
+          // Las promos con precio mayorista cambian con el cliente (y los combos que ya están en el ticket)
+          const promotions = promosForClient(state.rawPromotions?.length ? state.rawPromotions : state.promotions, client);
+          const promoById = new Map(promotions.map((p: any) => [p.id, p]));
+
           const updatedCart = state.cart.map((item) => {
+            if (item.isPromo && !item.isReturn && item.promoId && promoById.has(item.promoId)) {
+              return { ...item, price: promoLinePrice(item, promoById.get(item.promoId)) };
+            }
             // El bulto tiene su propio precio: la lista del cliente no lo toca
             if (item.isCustomPrice || item.isPromo || item.isReturn || item.packSize) return item;
 
@@ -358,7 +395,7 @@ export const usePOSStore = create<POSState>()(
             };
           });
 
-          return { selectedClient: client, cart: updatedCart };
+          return { selectedClient: client, cart: updatedCart, promotions };
         });
       },
       setIsWarmed: (isWarmed) => set({ isWarmed }),
@@ -479,8 +516,10 @@ export const usePOSStore = create<POSState>()(
     }
   },
 
-  addPromoToCart: (promo, productsList = [], customSelectedMetadata) => {
+  addPromoToCart: (promoArg, productsList = [], customSelectedMetadata) => {
     set((state) => {
+      // Con el precio del cliente elegido ahora (la promo pudo quedar guardada con la otra lista)
+      const promo = state.promotions.find((p: any) => p.id === promoArg?.id) || promoArg;
       const pList = productsList.length > 0 ? productsList : state.products;
       const productsMap = new Map<string, any>(pList.map(p => [p.id, p]));
       let originalPrice = 0;
@@ -590,8 +629,10 @@ export const usePOSStore = create<POSState>()(
     });
   },
 
-  applySuggestedPromo: (promo, productsList = []) => {
+  applySuggestedPromo: (promoArg, productsList = []) => {
     set((state) => {
+      // Con el precio del cliente elegido ahora (la promo pudo quedar guardada con la otra lista)
+      const promo = state.promotions.find((p: any) => p.id === promoArg?.id) || promoArg;
       let newCart = [...state.cart];
       const pList = productsList.length > 0 ? productsList : state.products;
       const productsMap = new Map<string, any>(pList.map(p => [p.id, p]));

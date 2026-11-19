@@ -93,7 +93,7 @@ const MobileSettingsSection = lazy(() => import('./components/mobile/MobileSetti
 /** Guarda en el equipo lo que se bajó al abrir: con eso se arranca la próxima vez si no hay señal */
 function rememberWarmData() {
   const st = usePOSStore.getState();
-  saveWarmData({ categories: st.categories, products: st.products, promotions: st.promotions, clients: st.clients });
+  saveWarmData({ categories: st.categories, products: st.products, promotions: st.rawPromotions?.length ? st.rawPromotions : st.promotions, clients: st.clients });
 }
 
 /**
@@ -107,7 +107,7 @@ async function refreshCatalog() {
     api.get('/categories', { silent: true } as any),
     api.get('/products/pos-catalog', { silent: true } as any),
     api.get('/clients', { silent: true } as any),
-    api.get('/promotions', { silent: true } as any).catch(() => ({ data: usePOSStore.getState().promotions })),
+    api.get('/promotions', { silent: true } as any).catch(() => ({ data: usePOSStore.getState().rawPromotions })),
   ]);
   const raw = catalogRes.data?.products || (Array.isArray(catalogRes.data) ? catalogRes.data : []);
   const products = raw.map((p: any) => {

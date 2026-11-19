@@ -153,6 +153,7 @@
   .ws-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border-radius:16px;background:var(--brand-soft);color:var(--brand-ink)}
   .ws-txt{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px;font-size:13.5px}
   .ws-txt b{font-size:15px}
+  .ws-may{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--brand-ink);color:#fff;font:700 11px Inter;vertical-align:2px}
   .pk-rows{display:flex;flex-direction:column;gap:10px;margin-top:16px}
   .pk-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px}
   .pk-txt{flex:1;display:flex;flex-direction:column}
@@ -845,6 +846,24 @@ function setQty(id,qty,force){
 /* ───────── arranque ───────── */
 // El catálogo viene agrupado en pocos documentos (catalog/p0, p1...): 1-3 lecturas por visita.
 // Tiendas que todavía no lo publicaron así (o si falla): un documento por producto.
+/* Precios mayoristas: el de cada producto (si tiene) o el precio de siempre con el % del cliente.
+   El bulto conserva su precio (igual que en la caja). Los combos también tienen el suyo. */
+async function applyTradePrices(ref, list){
+  var c=S.client, prices={}, combos={}, off=Number(c.tradeDiscount)||0;
+  if(c.priceKey){
+    try{
+      var td=await ref.collection('tradePrices').doc(String(c.priceKey)).get();
+      if(td.exists){ prices=td.data().prices||{}; combos=td.data().combos||{}; }
+    }catch(e){ console.warn('Precios mayoristas no disponibles',e); }
+  }
+  list.forEach(function(p){
+    var t=Number(prices[p.id]);
+    var np=t>0?t:(off>0?Math.round(Number(p.price)*(1-off/100)*100)/100:0);
+    if(np>0){ p.retailPrice=Number(p.price); p.price=np; }
+  });
+  (S.cfg.onlinePromos||[]).forEach(function(pr){ var t=Number(combos[pr.id]); if(t>0){ pr.retailPrice=pr.price; pr.price=t; } });
+  S.tradePrices=true;
+}
 async function loadCatalog(ref, cfg){
   var n=Number(cfg.catalogParts)||0;
   if(n>0){
@@ -889,6 +908,21 @@ async function init(){
     applyBrand(cfg);
 
     var list=S.turnoOnly?[]:await loadCatalog(doc.ref, cfg);
+    // Venta a comercios: el link personal del cliente (?c=…) trae sus datos y su último pedido
+    if(WS()){
+      var tkKey='ventra_client_'+S.storeId, tk=(new URLSearchParams(location.search).get('c')||'').replace(/[^A-Za-z0-9]/g,'').slice(0,64);
+      try{ if(!tk) tk=localStorage.getItem(tkKey)||''; }catch(e){}
+      if(tk){
+        try{
+          var cd=await doc.ref.collection('clients').doc(tk).get();
+          if(cd.exists && cd.data().active!==false){ S.client=cd.data(); S.clientToken=tk; try{ localStorage.setItem(tkKey,tk); }catch(e){} }
+          else { try{ localStorage.removeItem(tkKey); }catch(e){} }
+        }catch(e){ console.warn('No se pudo leer el cliente',e); }
+      }
+    }
+    // Cliente mayorista (su link dice priceList TRADE): ve y paga los precios mayoristas. No están en el
+    // catálogo público: se leen de tradePrices/{priceKey}, que solo se abre sabiendo la clave del link.
+    if(S.client && S.client.priceList==='TRADE') await applyTradePrices(doc.ref, list);
     // Opción de la tienda: vender todo aunque en el sistema figure sin stock. En gastronomía se cocina a pedido: el stock no cuenta
     if(cfg.alwaysInStock || S.food) list.forEach(function(p){ p.inStock=true; });
     // Pausados a mano ("hoy no hay"): se ven, pero no se pueden pedir
@@ -930,18 +964,6 @@ async function init(){
     var rank=function(c){ return c==='Varios'||c==='Otros'?3:S.food&&/postre|dulce|helad/i.test(c)?2:S.food&&/bebida|gaseosa|cerveza|vino|trago|agua|jugo/i.test(c)?1:0; };
     S.cats=Object.keys(cs).sort(function(a,b){ return rank(a)-rank(b) || a.localeCompare(b,'es'); });
     S.cart=loadCart();
-    // Venta a comercios: el link personal del cliente (?c=…) trae sus datos y su último pedido
-    if(WS()){
-      var tkKey='ventra_client_'+S.storeId, tk=(new URLSearchParams(location.search).get('c')||'').replace(/[^A-Za-z0-9]/g,'').slice(0,64);
-      try{ if(!tk) tk=localStorage.getItem(tkKey)||''; }catch(e){}
-      if(tk){
-        try{
-          var cd=await doc.ref.collection('clients').doc(tk).get();
-          if(cd.exists && cd.data().active!==false){ S.client=cd.data(); S.clientToken=tk; try{ localStorage.setItem(tkKey,tk); }catch(e){} }
-          else { try{ localStorage.removeItem(tkKey); }catch(e){} }
-        }catch(e){ console.warn('No se pudo leer el cliente',e); }
-      }
-    }
     try{ var nt=JSON.parse(localStorage.getItem(cartKey()+'_notes')||'{}'); Object.keys(nt).forEach(function(id){ if(S.cart[id]) S.notes[id]=nt[id]; }); }catch(e){}
     S.delivery = cfg.pickupEnabled ? 'PICKUP' : (cfg.deliveryEnabled ? 'DELIVERY' : (cfg.goDeliveryEnabled ? 'GODELIVERY' : null));
     if(WS()) S.delivery='REPARTO';
@@ -1172,7 +1194,7 @@ function wsBarHtml(){
   var w=WS(); if(!w) return '';
   if(S.client){
     var nr=nextRun(clientLoc()), last=(S.client.lastItems||[]).length;
-    return '<div class="ws-bar"><div class="ws-txt"><b>Hola, '+esc(S.client.name)+'</b><span>'+(nr?'Tu próximo reparto: '+esc(nr):'Hacé tu pedido y te lo llevamos en el reparto')+'</span></div>'
+    return '<div class="ws-bar"><div class="ws-txt"><b>Hola, '+esc(S.client.name)+(S.tradePrices?' <span class="ws-may">Precios mayoristas</span>':'')+'</b><span>'+(nr?'Tu próximo reparto: '+esc(nr):'Hacé tu pedido y te lo llevamos en el reparto')+'</span></div>'
       +(last?'<button class="btn btn-brand" data-act="ws-repeat">'+ic('check')+'Repetir último pedido</button>':'')+'</div>';
   }
   return w.note?'<div class="ws-bar"><div class="ws-txt"><span>'+esc(w.note)+'</span></div></div>':'';

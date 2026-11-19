@@ -49,6 +49,34 @@ function wholesaleFloor(x, it, unitsByProduct) {
   return per * size;
 }
 
+/**
+ * Cliente mayorista (pedido hecho con su link, clientToken): su precio de cada producto. Es el
+ * mayorista publicado aparte (tradePrices/{priceKey}) o el de siempre con su %. null si no es
+ * mayorista o no se puede leer (entonces se compara con el precio público, como siempre).
+ */
+async function tradePricesFor(storeRef, order) {
+  const token = order && typeof order.clientToken === "string" ? order.clientToken.slice(0, 64) : "";
+  if (!token) return null;
+  const c = await storeRef.collection("clients").doc(token).get();
+  if (!c.exists) return null;
+  const client = c.data() || {};
+  if (client.priceList !== "TRADE" || client.active === false) return null;
+  let prices = {};
+  if (typeof client.priceKey === "string" && client.priceKey) {
+    const t = await storeRef.collection("tradePrices").doc(client.priceKey).get();
+    if (t.exists) prices = (t.data() || {}).prices || {};
+  }
+  return { prices, off: Number(client.tradeDiscount) || 0 };
+}
+
+/** El producto publicado con el precio de la unidad del cliente mayorista (el bulto queda igual) */
+function withTradePrice(x, id, trade) {
+  if (!trade || !x) return x;
+  const t = Number(trade.prices[id]);
+  const price = t > 0 ? t : trade.off > 0 ? Math.round(Number(x.price) * (1 - trade.off / 100) * 100) / 100 : Number(x.price);
+  return Object.assign({}, x, { price });
+}
+
 /** Mitad y mitad: la mitad de cada pizza, redondeado para arriba a $1.000. Misma cuenta que halfPrice en la tienda. */
 const halfPrice = (a, b) => Math.ceil(Math.round((Number(a) + Number(b)) / 2) / 1000) * 1000;
 
@@ -60,7 +88,9 @@ async function priceProblem(storeRef, store, order) {
   const idsOf = (it) => [it && it.productId, it && it.half && it.half.productId].filter((x) => typeof x === "string" && x && x.length <= 200);
   const ids = new Set(items.flatMap(idsOf));
   if (!ids.size) return null;
-  const products = await publishedProducts(storeRef, store, ids);
+  const published = await publishedProducts(storeRef, store, ids);
+  const trade = await tradePricesFor(storeRef, order).catch(() => null);
+  const products = new Map([...published].map(([id, x]) => [id, withTradePrice(x, id, trade)]));
   const prices = new Map([...products].map(([id, x]) => [id, Number(x.price)]));
   const wholesale = !!(store.wholesale && store.wholesale.enabled);
   const unitsByProduct = new Map();
@@ -88,4 +118,4 @@ async function priceProblem(storeRef, store, order) {
   return `Precios más bajos que los publicados: ${lower.slice(0, 5).join("; ")}${more}`;
 }
 
-module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor, halfPrice };
+module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor, halfPrice, tradePricesFor, withTradePrice };

@@ -87,6 +87,8 @@ export class PromotionsController {
       mValue: num(data.mValue) === null ? null : Math.round(num(data.mValue)),
       fixedPrice: num(data.fixedPrice),
       discountPercentage: num(data.discountPercentage),
+      tradeFixedPrice: num(data.tradeFixedPrice),
+      tradeDiscountPercentage: num(data.tradeDiscountPercentage),
       limitType: data.limitType || 'NONE',
       limitStock: num(data.limitStock),
       endDate: data.endDate ? new Date(String(data.endDate).slice(0, 10) + 'T23:59:59.999Z') : null,

@@ -374,3 +374,14 @@ export const hasFeature = (feature: BusinessFeature): boolean => useBusinessStor
 /** Igual que `hasFeature` pero re-renderiza cuando se cambia la configuración. */
 export const useFeature = (feature: BusinessFeature): boolean =>
   useBusinessStore((s) => s.features[feature]);
+
+/**
+ * Segunda lista de precios por cliente: "Gremio" en la ferretería y "Mayorista" en la distribuidora
+ * (la otra es la minorista, de consumidor final). El cliente con la lista paga ese precio en los
+ * productos y en las promos.
+ */
+export const hasTradeList = (): boolean => hasFeature('tradePricing') || hasFeature('delivery');
+export const useTradeList = (): boolean =>
+  useBusinessStore((s) => Boolean(s.features.tradePricing || s.features.delivery));
+/** Cómo se llama la segunda lista en este rubro */
+export const tradeListName = (): string => (hasFeature('delivery') ? 'Mayorista' : 'Gremio');

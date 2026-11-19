@@ -34,7 +34,15 @@ import { toast } from 'react-hot-toast';
 import { usePOSStore } from '../../stores/posStore';
 import ImageSearchPicker from './ImageSearchPicker';
 import ExpiryLotsEditor, { PendingLot } from './ExpiryLotsEditor';
-import { hasFeature, useFeature, useBusinessStore, SCALE_PROFILES } from '../../stores/businessStore';
+import { hasFeature, useFeature, useBusinessStore, SCALE_PROFILES, useTradeList, tradeListName } from '../../stores/businessStore';
+
+/** Costo de UNA unidad (el precio mayorista es por unidad; en un paquete el costo cargado es del paquete) */
+function tradeCostBase(f: any): number {
+  const cost = parseFloat(f.costPrice) || 0;
+  const units = f.presentationType === 'PACK' ? Math.max(1, parseInt(f.unitsPerPack) || 1) : 1;
+  return cost / units;
+}
+const roundTrade = (n: number) => (n > 0 ? Math.ceil(n / 10 - 1e-9) * 10 : 0);
 
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
@@ -163,6 +171,8 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
     wholesalePrice: product?.wholesalePrice || '',
     wholesaleMinQty: product?.wholesaleMinQty || '',
     tradePrice: product?.tradePrice || '',
+    // Margen del precio mayorista sobre el costo (no se guarda: se deduce del precio y el costo)
+    tradeMargin: '' as any,
     packPrice: product?.packPrice || '',
     isKit: product?.isKit || false,
     equivalents: product?.equivalents || '',
@@ -242,6 +252,9 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
   const modalRef = useRef<HTMLDivElement>(null);
   // Distribuidora: unidades por bulto y precio del bulto entero
   const sellsByPack = useFeature('bulk');
+  // Segunda lista de precios: Mayorista (distribuidora) o Gremio (ferretería)
+  const tradeList = useTradeList();
+  const tradeName = tradeListName();
   const isHardwareStore = hasFeature('fractional') || (product?.unit && product.unit !== 'UNIT' && product.unit !== 'KG') || Boolean(product?.location) || Boolean(product?.wholesalePrice);
 
   // ---- Variantes (talle / color) ----
@@ -422,6 +435,10 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
     if (formData.costPrice && formData.salePrice) {
       const margin = ((formData.salePrice / formData.costPrice) - 1) * 100;
       setFormData(prev => ({ ...prev, margin: parseFloat(margin.toFixed(2)) }));
+    }
+    const unitCost = tradeCostBase(formData);
+    if (unitCost > 0 && Number(formData.tradePrice) > 0) {
+      setFormData(prev => ({ ...prev, tradeMargin: parseFloat(((Number(prev.tradePrice) / unitCost - 1) * 100).toFixed(2)) }));
     }
   }, [product]);
 
@@ -669,10 +686,36 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
     const validCost = isNaN(cost) ? 0 : cost;
     const validMargin = parseFloat(formData.margin as any) || 0;
     const sale = validCost * (1 + validMargin / 100);
-    setFormData(prev => ({ 
-      ...prev, 
-      costPrice: isNaN(cost) ? '' as any : cost, 
-      salePrice: isNaN(cost) ? '' as any : parseFloat(sale.toFixed(2)) 
+    setFormData(prev => {
+      const next: any = {
+        ...prev,
+        costPrice: isNaN(cost) ? '' as any : cost,
+        salePrice: isNaN(cost) ? '' as any : parseFloat(sale.toFixed(2)),
+      };
+      // Lista Mayorista: con margen cargado, el precio mayorista sigue al costo
+      const tm = parseFloat(prev.tradeMargin as any);
+      const unitCost = tradeCostBase(next);
+      if (!isNaN(tm) && unitCost > 0) next.tradePrice = roundTrade(unitCost * (1 + tm / 100));
+      return next;
+    });
+  };
+
+  /** Precio comercio desde su margen (redondeado a $10 como el de venta) */
+  const handleTradeMarginChange = (margin: number) => {
+    const unitCost = tradeCostBase(formData);
+    setFormData(prev => ({
+      ...prev,
+      tradeMargin: isNaN(margin) ? '' as any : margin,
+      tradePrice: isNaN(margin) || !(unitCost > 0) ? prev.tradePrice : roundTrade(unitCost * (1 + margin / 100)),
+    }));
+  };
+  const handleTradePriceChange = (raw: string) => {
+    const price = parseFloat(raw);
+    const unitCost = tradeCostBase(formData);
+    setFormData(prev => ({
+      ...prev,
+      tradePrice: raw,
+      tradeMargin: !isNaN(price) && unitCost > 0 ? parseFloat(((price / unitCost - 1) * 100).toFixed(2)) : '' as any,
     }));
   };
 
@@ -1584,6 +1627,55 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               </label>
             </div>
 
+            {tradeList && (() => {
+              const unitCost = tradeCostBase(formData);
+              const tp = parseFloat(formData.tradePrice as any) || 0;
+              return (
+                <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4">
+                  <div className="flex items-baseline justify-between gap-2 mb-2">
+                    <label className="text-[13px] font-bold text-amber-900">Precio {tradeName.toLowerCase()}</label>
+                    <span className="text-[11.5px] text-amber-800/80">{tradeName === 'Mayorista' ? 'Para los comercios (el de arriba es el minorista)' : `Para los clientes con la lista ${tradeName}`}{formData.presentationType === 'PACK' ? ' · por unidad' : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Margen {tradeName.toLowerCase()}</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.tradeMargin === '' || formData.tradeMargin === null || formData.tradeMargin === undefined ? '' : formData.tradeMargin}
+                          onChange={e => handleTradeMarginChange(parseFloat(e.target.value))}
+                          onFocus={e => e.target.select()}
+                          placeholder={unitCost > 0 ? 'Ej: 25' : 'Cargá el costo'}
+                          disabled={!(unitCost > 0)}
+                          className={inputCls + ' pr-8 bg-white'}
+                        />
+                        <span className="absolute inset-y-0 right-3 flex items-center text-slate-400 font-semibold pointer-events-none">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Precio {tradeName.toLowerCase()}</label>
+                      <div className="relative">
+                        <span className={moneyPrefix}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.tradePrice}
+                          onChange={e => handleTradePriceChange(e.target.value)}
+                          onFocus={e => e.target.select()}
+                          placeholder="Vacío = el de venta"
+                          className={inputCls + ' pl-7 bg-white'}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {tp > 0 && unitCost > 0 && (
+                    <p className="text-[11.5px] text-amber-800 mt-1.5">Ganancia +$ {(tp - unitCost).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por unidad. Cuando cambia el costo, se mueve igual que el de venta.</p>
+                  )}
+                </div>
+              );
+            })()}
+
             {sellsByPack && (() => {
               const units = Math.max(1, parseInt(formData.unitsPerPack as any) || 1);
               const unitSale = (parseFloat(formData.salePrice as any) || 0) / (formData.presentationType === 'PACK' ? units : 1);
@@ -1681,7 +1773,7 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                   )}
                 </Collapsible>
 
-                {isHardwareStore && <Collapsible
+                {isHardwareStore && !tradeList && <Collapsible
                   icon={Wrench}
                   title="Precio gremio / oficio"
                   hint="Para instaladores y profesionales"

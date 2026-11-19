@@ -14,7 +14,7 @@ import { useCashSession } from './useCashSession';
 import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart } from '../../services/posTrail';
 import { applySurcharges, applyManualSurcharge, getPaymentMethods, manualSurchargeNote, parseSurchargeValue, serviceItems, servicesTotal, type ManualSurcharge, type ServiceCharge } from './checkout';
 import { useRubroAdd, tilePrice, MEASURE } from './SellPickers';
-import { hasFeature } from '../../stores/businessStore';
+import { hasFeature, hasTradeList, tradeListName } from '../../stores/businessStore';
 import { packOf } from '../../stores/posStore';
 import { collapseVariantGroups } from '../../utils/variants';
 import { parseScaleLabel, buildPluIndex, scaleLine } from '../../utils/scaleLabel';
@@ -374,6 +374,13 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
   const [services, setServices] = useState<ServiceCharge[]>([]);
   const [serviceEdit, setServiceEdit] = useState<{ name: string; amount: string } | null>(null);
 
+  // El cliente elegido manda en los precios: con lista Mayorista, el ticket pasa a sus precios (y vuelve al cerrar)
+  useEffect(() => {
+    const c = open && clientId ? clients.find((x: any) => String(x.id) === String(clientId)) || null : null;
+    const st = usePOSStore.getState();
+    if ((st.selectedClient?.id || null) !== (c?.id || null)) st.setSelectedClient(c);
+  }, [open, clientId]);
+
   useEffect(() => {
     if (!open) return;
     setMethod('CASH'); setReceived(''); setClientId(''); setClientSearch(''); setDone(null); setManual(null); setManualEdit(null); setServices([]); setServiceEdit(null);
@@ -424,7 +431,11 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
       .slice(0, 30);
   }, [clients, clientSearch]);
 
-  const needsClient = method === 'DEBT' || hasFeature('delivery');
+  // A cuenta corriente hace falta el cliente. En la distribuidora se puede elegir (nota, remito, precio
+  // mayorista) o dejar Consumidor final, la venta de mostrador de siempre.
+  const needsClient = method === 'DEBT';
+  const delivery = hasFeature('delivery');
+  const showClients = needsClient || delivery;
   const confirm = async () => {
     if (!sessionId) return toast.error('No hay una caja abierta en este celular');
     if (needsClient && !clientId) return toast.error('Elegí el cliente');
@@ -434,7 +445,7 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         sessionId,
         items,
         payments: [{ method, amount: finalTotal }],
-        clientId: needsClient ? clientId : undefined,
+        clientId: showClients && clientId ? clientId : undefined,
         appliedPromotions: appliedPromos(),
         notes: manualSurchargeNote(manual, manualTotal, money),
       });
@@ -603,9 +614,15 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
         </div>
       )}
 
-      {needsClient && (
+      {showClients && (
         <div className="mt-5">
           <p className="mb-2 text-[12.5px] font-medium text-slate-500">{method === 'DEBT' ? '¿A qué cliente se le anota?' : '¿A qué cliente le vendés?'}</p>
+          {!needsClient && (
+            <button onClick={() => setClientId('')} className={`mb-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl border text-left ${!clientId ? 'border-teal-600 bg-teal-50' : 'border-slate-200 bg-white'}`}>
+              <span className="flex-1 text-[14px] font-medium text-slate-800">Consumidor final</span>
+              {!clientId && <Check className="w-4 h-4 text-teal-700" />}
+            </button>
+          )}
           <div className="relative">
             <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-slate-400" />
             <input
@@ -621,7 +638,7 @@ function CheckoutSheet({ open, onClose, sessionId, total, clients, buildItems, a
               <button key={c.id} onClick={() => setClientId(c.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 text-left ${clientId === c.id ? 'bg-rose-50' : 'bg-white'}`}>
                 <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-[13px] font-semibold flex items-center justify-center shrink-0">{(c.name || '?')[0]}</span>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-[14px] text-slate-800 truncate">{c.name}</span>
+                  <span className="block text-[14px] text-slate-800 truncate">{c.name}{c.priceList === 'TRADE' && hasTradeList() && <span className="ml-1.5 text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-px align-middle">{tradeListName()}</span>}</span>
                   {typeof c.balance === 'number' && c.balance !== 0 && (
                     <span className={`block text-[11.5px] ${c.balance > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                       {c.balance > 0 ? `Debe ${money(c.balance)}` : `A favor ${money(-c.balance)}`}

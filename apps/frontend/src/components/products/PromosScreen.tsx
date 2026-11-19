@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import PromotionModal from './PromotionModal';
+import { tradeListName } from '../../stores/businessStore';
 
 export default function PromosScreen() {
   const [promos, setPromos] = useState<any[]>([]);
@@ -249,6 +250,12 @@ export default function PromosScreen() {
                     <div className="flex items-center justify-between">
                        <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-lg">
                           {promo.type === 'FIXED_COMBO' ? `$${promo.fixedPrice}` : promo.type === 'DISCOUNT_PERCENT' ? `-${promo.discountPercentage}%` : <TrendingUp className="w-5 h-5" />}
+                          {promo.type === 'FIXED_COMBO' && Number(promo.tradeFixedPrice) > 0 && (
+                            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-1.5 py-0.5">{tradeListName()} ${promo.tradeFixedPrice}</span>
+                          )}
+                          {promo.type === 'DISCOUNT_PERCENT' && Number(promo.tradeDiscountPercentage) > 0 && (
+                            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-1.5 py-0.5">{tradeListName()} -{promo.tradeDiscountPercentage}%</span>
+                          )}
                        </div>
                        <div className="flex items-center gap-1 text-[9px] font-bold text-slate-600 uppercase tracking-tight">
                           <Calendar className="w-3 h-3 text-slate-300" /> 

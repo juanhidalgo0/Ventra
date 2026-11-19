@@ -429,6 +429,8 @@ export class ProductsService {
       select: {
         id: true, name: true, description: true, salePrice: true, unit: true, stock: true, unlimitedStock: true,
         variantGroupId: true, baseName: true, variantAttrs: true, imageUrl: true, isKit: true,
+        // Bulto, oferta por cantidad y precio mayorista: los publica la tienda (si no, siempre parecían cambiados)
+        unitsPerPack: true, packPrice: true, wholesalePrice: true, wholesaleMinQty: true, tradePrice: true,
         category: { select: { name: true, parentCategory: { select: { name: true } } } },
         brand: { select: { name: true } },
       },

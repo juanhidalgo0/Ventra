@@ -4,8 +4,9 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { usePOSStore } from '../../stores/posStore';
 import { useConfirm } from '../common/ConfirmDialog';
+import { useTradeList, tradeListName } from '../../stores/businessStore';
 import {
-  ALL_FIELDS, FIELD_LABELS, SELL_FIELDS, adjust, followCost, hasField, marginPct, money, pctChange, pctText, realChanges,
+  ALL_FIELDS, FIELD_LABELS, SELL_FIELDS, adjust, followCost, hasField, marginPct, money, pctChange, pctText, realChanges, setMargin,
   type Adjustment, type EditorProduct, type PriceField, type Prices,
 } from './priceEditorMath';
 
@@ -60,7 +61,12 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
   const [shown, setShown] = useState(PAGE);
 
   // La tanda
-  const [direction, setDirection] = useState<'up' | 'down'>('up');
+  // 'margin': cada precio elegido queda en costo + el % (arma la lista de venta y la mayorista)
+  const [direction, setDirection] = useState<'up' | 'down' | 'margin'>('up');
+  const tradeList = useTradeList();
+  // En la distribuidora la segunda lista es "Mayorista"; la oferta por cantidad pasa a "Por cantidad"
+  const fieldLabel = (f: PriceField) => (tradeList && f === 'tradePrice' ? tradeListName()
+    : tradeList && f === 'wholesalePrice' && tradeListName() === 'Mayorista' ? 'Por cantidad' : FIELD_LABELS[f]);
   const [mode, setMode] = useState<'pct' | 'amount'>('pct');
   const [value, setValue] = useState('');
   const [fields, setFields] = useState<PriceField[]>(['salePrice']);
@@ -149,8 +155,8 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
 
   // Qué precios existen en lo que se ve (mayorista, comercio y bulto solo si alguno los tiene)
   const availableFields = useMemo(
-    () => ALL_FIELDS.filter((f) => f === 'salePrice' || f === 'costPrice' || rows.some((p) => hasField(p, f))),
-    [rows],
+    () => ALL_FIELDS.filter((f) => f === 'salePrice' || f === 'costPrice' || (f === 'tradePrice' && tradeList) || rows.some((p) => hasField(p, f))),
+    [rows, tradeList],
   );
 
   const toggleField = (f: PriceField) => setFields((fs) => (fs.includes(f) ? fs.filter((x) => x !== f) : [...fs, f]));
@@ -160,11 +166,27 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
 
   const applyBatch = () => {
     const v = Number(String(value).replace(',', '.'));
-    if (!(v > 0)) { toast.error(mode === 'pct' ? 'Escribí el porcentaje' : 'Escribí el monto'); valueRef.current?.focus(); return; }
+    if (!(v > 0)) { toast.error(mode === 'pct' || direction === 'margin' ? 'Escribí el porcentaje' : 'Escribí el monto'); valueRef.current?.focus(); return; }
     if (!fields.length) { toast.error('Elegí qué precios se mueven'); return; }
     if (!checkedRows.length) { toast.error('No hay productos tildados'); return; }
+    if (direction === 'margin') {
+      const sell = fields.filter((f) => f !== 'costPrice');
+      if (!sell.length) { toast.error('Elegí qué precios van con ese margen (el costo no)'); return; }
+      const how = `margen ${v}%`;
+      const next: Record<string, Draft> = { ...drafts };
+      let n = 0, noCost = 0;
+      for (const p of checkedRows) {
+        const prices = setMargin(p, v, sell, round);
+        if (!Object.keys(prices).length) { if (!(p.costPrice > 0)) noCost++; continue; }
+        next[p.id] = { prices: { ...(next[p.id]?.prices || {}), ...prices }, how };
+        n++;
+      }
+      setDrafts(next);
+      toast.success(`Margen ${v}% a ${n} producto${n === 1 ? '' : 's'}${noCost ? ` (${noCost} sin costo quedaron igual)` : ''}. Falta guardar.`);
+      return;
+    }
     if (mode === 'pct' && direction === 'down' && v >= 100) { toast.error('No se puede bajar 100 % o más'); return; }
-    const a: Adjustment = { direction, mode, value: v, fields, round };
+    const a: Adjustment = { direction: direction === 'down' ? 'down' : 'up', mode, value: v, fields, round };
     const how = `${direction === 'up' ? '+' : '−'}${mode === 'pct' ? `${v}%` : money(v)}`;
     let n = 0;
     const next: Record<string, Draft> = { ...drafts };
@@ -376,6 +398,9 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
           <div className="flex gap-1">
             <button type="button" className={chip(direction === 'up')} onClick={() => setDirection('up')}><TrendingUp className="w-3.5 h-3.5 inline -mt-0.5" /> Subir</button>
             <button type="button" className={chip(direction === 'down')} onClick={() => setDirection('down')}><TrendingDown className="w-3.5 h-3.5 inline -mt-0.5" /> Bajar</button>
+            <button type="button" className={chip(direction === 'margin')} onClick={() => { setDirection('margin'); setFields((fs) => fs.filter((f) => f !== 'costPrice').length ? fs.filter((f) => f !== 'costPrice') : ['salePrice']); }} title="Cada precio elegido queda en el costo más este %">
+              <Percent className="w-3.5 h-3.5 inline -mt-0.5" /> Margen sobre costo
+            </button>
           </div>
           <div className="flex items-center gap-1">
             <input
@@ -383,17 +408,19 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
               value={value}
               onChange={(e) => setValue(e.target.value.replace(/[^\d.,]/g, ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyBatch(); } }}
-              placeholder={mode === 'pct' ? '12' : '100'}
+              placeholder={direction === 'margin' ? '40' : mode === 'pct' ? '12' : '100'}
               inputMode="decimal"
               className="w-20 bg-white border-2 border-rose-200 rounded-lg px-2 py-1 text-sm font-bold text-slate-800 outline-none focus:border-rose-600"
             />
-            <button type="button" className={chip(mode === 'pct')} onClick={() => setMode('pct')}>%</button>
-            <button type="button" className={chip(mode === 'amount')} onClick={() => setMode('amount')}>$</button>
+            {direction === 'margin' ? <span className="text-sm font-bold text-slate-600">%</span> : (<>
+              <button type="button" className={chip(mode === 'pct')} onClick={() => setMode('pct')}>%</button>
+              <button type="button" className={chip(mode === 'amount')} onClick={() => setMode('amount')}>$</button>
+            </>)}
           </div>
           <div className="flex items-center gap-1 flex-wrap">
             <span className="text-xs text-slate-500">Precios:</span>
-            {availableFields.map((f) => (
-              <button key={f} type="button" className={chip(fields.includes(f))} onClick={() => toggleField(f)}>{FIELD_LABELS[f]}</button>
+            {availableFields.filter((f) => direction !== 'margin' || f !== 'costPrice').map((f) => (
+              <button key={f} type="button" className={chip(fields.includes(f))} onClick={() => toggleField(f)}>{fieldLabel(f)}</button>
             ))}
           </div>
           <div className="flex items-center gap-1">
@@ -407,6 +434,9 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
             Mantener la ganancia
           </label>
           <button type="button" onClick={applyBatch} className="ml-auto btn-primary !py-1.5 !px-4 text-sm">Aplicar a tildados</button>
+          {direction === 'margin' && (
+            <p className="w-full text-[11px] text-slate-500 -mt-1">Ej.: tildá Venta y poné 40 → venta = costo + 40 %. Después tildá {tradeList ? fieldLabel('tradePrice') : 'otro precio'} y poné 25 → ese precio = costo + 25 %. Los que no tienen costo quedan igual.</p>
+          )}
           {keepMargin && fields.includes('costPrice') && sellChosen && (
             <p className="w-full text-[11px] text-slate-500 -mt-1">Con "Mantener la ganancia", al mover el costo la venta lo acompaña en la misma proporción.</p>
           )}
@@ -447,7 +477,7 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
                 const sale = c.salePrice ?? p.salePrice;
                 const m = marginPct(sale, cost);
                 const below = cost > 0 && sale < cost;
-                const others = (['wholesalePrice', 'tradePrice', 'packPrice'] as PriceField[]).filter((f) => hasField(p, f));
+                const others = (['wholesalePrice', 'tradePrice', 'packPrice'] as PriceField[]).filter((f) => hasField(p, f) || c[f] !== undefined);
                 const touched = Object.keys(c).length > 0;
                 return (
                   <tr key={p.id} className={`border-t border-slate-100 align-top ${touched ? 'bg-emerald-50/50' : ''} ${checked[p.id] ? '' : 'opacity-60'}`}>
@@ -465,7 +495,7 @@ export default function PriceEditorModal({ onClose, onSaved, onPrintLabels }: { 
                         <div className="text-[11px] text-slate-600 mt-0.5 flex flex-wrap gap-x-3">
                           {others.map((f) => (
                             <span key={f}>
-                              {FIELD_LABELS[f]}{f === 'packPrice' && p.unitsPerPack > 1 ? ` x${p.unitsPerPack}` : ''}: {money(p[f] as number)}
+                              {fieldLabel(f)}{f === 'packPrice' && p.unitsPerPack > 1 ? ` x${p.unitsPerPack}` : ''}: {hasField(p, f) ? money(p[f] as number) : 'nuevo'}
                               {c[f] !== undefined && <> → <b className="text-emerald-700">{money(c[f])}</b></>}
                             </span>
                           ))}

@@ -282,6 +282,11 @@ export interface OnlineProduct {
   pack?: { size: number; price: number };
   /** Oferta por cantidad: desde minQty unidades, cada una a price */
   wholesale?: { price: number; minQty: number };
+  /**
+   * Precio mayorista de la unidad. Solo en la PC: NO va al catálogo público, se publica aparte
+   * en tradePrices/{clave}, que leen solo los clientes mayoristas con su link (ver publishTradePrices).
+   */
+  tradePrice?: number;
   /** Puesto en ventas de los últimos 90 días (1 = el más vendido); la tienda arma "Lo más pedido" */
   rank?: number;
 }
@@ -333,6 +338,7 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
     // Mismo precio del bulto que los pedidos (preorders.service): el de bulto o, si no tiene, la unidad por el tamaño
     ...(Number(p.unitsPerPack) > 1 ? { pack: { size: Number(p.unitsPerPack), price: Number(p.packPrice) > 0 ? Number(p.packPrice) : Math.round(Number(p.salePrice) * Number(p.unitsPerPack) * 100) / 100 } } : {}),
     ...(Number(p.wholesalePrice) > 0 && Number(p.wholesaleMinQty) > 0 ? { wholesale: { price: Number(p.wholesalePrice), minQty: Number(p.wholesaleMinQty) } } : {}),
+    ...(Number(p.tradePrice) > 0 ? { tradePrice: Number(p.tradePrice) } : {}),
     ...(p.variantGroupId ? { variantGroupId: p.variantGroupId, baseName: p.baseName || p.name, variantLabel } : {}),
   };
 }
@@ -349,6 +355,7 @@ export async function publishOnlinePromos(storeId: string, onlineIds: Set<string
   if (!Array.isArray(data)) throw new Error('Respuesta inválida de promociones');
   const now = Date.now();
   const promos: OnlinePromo[] = [];
+  const tradeCombos: Record<string, number> = {};
   for (const pr of (data || []) as any[]) {
     if (!pr.isActive || pr.type !== 'FIXED_COMBO' || !(pr.fixedPrice > 0)) continue;
     if (pr.endDate && new Date(pr.endDate).getTime() < now) continue;
@@ -362,9 +369,12 @@ export async function publishOnlinePromos(storeId: string, onlineIds: Set<string
     const productIds = items.map((x) => String(x.productId)).filter((id) => onlineIds.has(id));
     if (!productIds.length) continue;
     promos.push({ id: pr.id, name: pr.name, qty, price: Number(pr.fixedPrice), productIds });
+    if (Number(pr.tradeFixedPrice) > 0) tradeCombos[pr.id] = Number(pr.tradeFixedPrice);
   }
   await claimStore(storeId);
   await updateDoc(doc(getDb(), 'ventra_stores', storeId), { onlinePromos: promos, updatedAt: serverTimestamp() });
+  // El precio mayorista de los combos tampoco es público: va con los precios mayoristas
+  await publishTradePrices(storeId, { combos: tradeCombos }).catch((e) => console.warn('[OnlineStore] Combos mayoristas sin publicar', e));
   return promos.length;
 }
 
@@ -473,7 +483,10 @@ async function bestSellerRanks(): Promise<Map<string, number>> {
 
 export async function syncCatalogToStore(storeId: string, products: OnlineProduct[]): Promise<void> {
   const ranks = await bestSellerRanks();
-  products = products.map(({ rank: _old, ...p }) => (ranks.has(p.productId) ? { ...p, rank: ranks.get(p.productId) } : p));
+  // El precio mayorista no se publica en el catálogo (lo vería cualquiera): va aparte
+  const tradePrices: Record<string, number> = {};
+  for (const p of products) if (Number(p.tradePrice) > 0) tradePrices[p.productId] = Number(p.tradePrice);
+  products = products.map(({ rank: _old, tradePrice: _tp, ...p }) => (ranks.has(p.productId) ? { ...p, rank: ranks.get(p.productId) } : p));
   await claimStore(storeId);
   const db = getDb();
   const productsRef = collection(db, 'ventra_stores', storeId, 'products');
@@ -505,6 +518,87 @@ export async function syncCatalogToStore(storeId: string, products: OnlineProduc
     await batch.commit();
   }
   await publishCatalogParts(storeId, products);
+  await publishTradePrices(storeId, { prices: tradePrices }).catch((e) => console.warn('[OnlineStore] Precios mayoristas sin publicar', e));
+}
+
+// ─── Precios mayoristas en la tienda (venta a comercios) ──────────────
+//
+// El público ve el precio minorista. Los clientes con lista Mayorista entran con su link (?c=…):
+// su documento (clients/{token}) dice priceList TRADE y trae priceKey, la clave del documento
+// tradePrices/{priceKey} con los precios mayoristas. Ese documento se puede leer solo sabiendo la
+// clave (las reglas no dejan listarlos), así que un consumidor final no ve los precios mayoristas.
+
+/** La clave del documento de precios mayoristas (se crea la primera vez). Solo el dueño puede listarlos. */
+async function tradeKeyOf(storeId: string): Promise<string> {
+  const found = await getDocs(query(collection(getDb(), 'ventra_stores', storeId, 'tradePrices'), limit(1)));
+  if (found.docs[0]) return found.docs[0].id;
+  // La primera vez se crea vacío: así la clave que reciben los links no cambia al publicar
+  const key = randomToken();
+  await setDoc(doc(getDb(), 'ventra_stores', storeId, 'tradePrices', key), { prices: {}, combos: {}, updatedAt: serverTimestamp() });
+  return key;
+}
+
+/**
+ * Publica los precios mayoristas (los de los productos, los de los combos, o los dos) y deja al día
+ * la lista de precios de cada cliente con link. Solo si la tienda tiene la venta a comercios.
+ */
+export async function publishTradePrices(storeId: string, data: { prices?: Record<string, number>; combos?: Record<string, number> }): Promise<void> {
+  const cfg = await loadStoreConfig(storeId);
+  if (!cfg.wholesale?.enabled) return;
+  const key = await tradeKeyOf(storeId);
+  const fields = Object.keys(data);
+  await setDoc(doc(getDb(), 'ventra_stores', storeId, 'tradePrices', key), { ...data, updatedAt: serverTimestamp() }, { mergeFields: [...fields, 'updatedAt'] });
+  await syncClientPriceLists(storeId, key);
+}
+
+/** Lo que la tienda tiene que saber del precio de un cliente con link */
+function priceListFields(client: any, key: string) {
+  const trade = client?.priceList === 'TRADE';
+  return {
+    priceList: (trade ? 'TRADE' : 'RETAIL') as 'TRADE' | 'RETAIL',
+    tradeDiscount: trade && Number(client?.tradeDiscountPercentage) > 0 ? Number(client.tradeDiscountPercentage) : null,
+    priceKey: trade ? key : null,
+  };
+}
+
+/** Si en Ventra un cliente pasó a Mayorista (o volvió a Minorista), su link lo sigue */
+async function syncClientPriceLists(storeId: string, key: string): Promise<void> {
+  const snap = await getDocs(collection(getDb(), 'ventra_stores', storeId, 'clients'));
+  if (snap.empty) return;
+  const { default: api } = await import('./api');
+  const { data } = await api.get('/clients', { silent: true } as any);
+  const byId = new Map(((Array.isArray(data) ? data : data?.clients) || []).map((c: any) => [String(c.id), c]));
+  const batch = writeBatch(getDb());
+  let n = 0;
+  for (const d of snap.docs) {
+    const c = byId.get(String((d.data() as any).clientId));
+    if (!c) continue;
+    const want = priceListFields(c, key);
+    const has = d.data() as any;
+    if (has.priceList === want.priceList && (has.tradeDiscount ?? null) === want.tradeDiscount && (has.priceKey ?? null) === want.priceKey) continue;
+    batch.update(d.ref, want);
+    n++;
+  }
+  if (n) await batch.commit();
+}
+
+/** Al guardar un cliente en Ventra: si tiene link de la tienda, su lista de precios queda al día. Sin tienda o sin conexión no hace nada. */
+export async function refreshClientPriceList(client: any): Promise<void> {
+  const storeId = localStorage.getItem(STORE_ID_KEY);
+  if (!storeId || !client?.id) return;
+  await ensureVentraSession();
+  const cfg = await loadStoreConfig(storeId);
+  if (!cfg.wholesale?.enabled) return;
+  const found = await getDocs(query(collection(getDb(), 'ventra_stores', storeId, 'clients'), where('clientId', '==', String(client.id)), limit(1)));
+  if (!found.docs[0]) return;
+  const key = client.priceList === 'TRADE' ? await tradeKeyOf(storeId) : '';
+  await updateDoc(found.docs[0].ref, priceListFields(client, key));
+}
+
+/** Los precios mayoristas publicados (null si todavía no hay) */
+async function loadPublishedTradePrices(storeId: string): Promise<Record<string, number> | null> {
+  const found = await getDocs(query(collection(getDb(), 'ventra_stores', storeId, 'tradePrices'), limit(1)));
+  return found.docs[0] ? (((found.docs[0].data() as any).prices || {}) as Record<string, number>) : null;
 }
 
 /**
@@ -804,6 +898,16 @@ export async function countPendingCatalog(storeId: string, config: StoreConfig):
   const [local, published] = await Promise.all([fetchOnlineSummary(), loadPublishedCatalog(storeId, config.catalogParts)]);
   const d = diffCatalog(local, published, !!config.alwaysInStock || config.rubro === 'GASTRONOMIA');
   if (d.unknown) return local.length ? -1 : 0;
+  // Venta a comercios: un precio mayorista que cambió también hay que publicarlo
+  if (config.wholesale?.enabled) {
+    const trade = await loadPublishedTradePrices(storeId).catch(() => undefined);
+    if (trade !== undefined) {
+      for (const p of local) {
+        if (d.added.has(p.productId)) continue;
+        if (Math.abs((Number(p.tradePrice) || 0) - (Number(trade?.[p.productId]) || 0)) >= 0.01) d.changed.add(p.productId);
+      }
+    }
+  }
   return d.added.size + d.removed.size + d.changed.size;
 }
 
@@ -877,6 +981,12 @@ export interface WholesaleClientDoc {
   /** Su último pedido, para "Repetir último pedido" en la tienda (cantidades en unidades) */
   lastItems?: { productId: string; qty: number; packSize?: number | null }[];
   active: boolean;
+  /** Lista de precios del cliente: con TRADE la tienda le muestra los precios mayoristas */
+  priceList?: 'RETAIL' | 'TRADE';
+  /** % de descuento mayorista para los productos sin precio mayorista propio */
+  tradeDiscount?: number | null;
+  /** Clave de tradePrices/{priceKey} (solo para mayoristas) */
+  priceKey?: string | null;
 }
 
 function randomToken() {
@@ -902,7 +1012,7 @@ async function lastItemsOf(clientId: string) {
  * último pedido. Errores: WHOLESALE_OFF (la venta a comercios está apagada), STORE_OFF (la tienda
  * no está publicada).
  */
-export async function clientOrderLink(client: { id: string; name: string; phone?: string | null; address?: string | null; locality?: string | null }): Promise<string> {
+export async function clientOrderLink(client: { id: string; name: string; phone?: string | null; address?: string | null; locality?: string | null; priceList?: string | null; tradeDiscountPercentage?: number | null }): Promise<string> {
   await ensureVentraSession();
   const storeId = await resolveStoreId();
   const cfg = await loadStoreConfig(storeId);
@@ -912,9 +1022,11 @@ export async function clientOrderLink(client: { id: string; name: string; phone?
   const col = collection(getDb(), 'ventra_stores', storeId, 'clients');
   const found = await getDocs(query(col, where('clientId', '==', String(client.id)), limit(1)));
   const token = found.docs[0]?.id || randomToken();
+  const trade = (client as any).priceList === 'TRADE';
   const data: WholesaleClientDoc & { updatedAt: any } = {
     clientId: String(client.id), name: client.name, phone: client.phone || null, address: client.address || null,
     locality: client.locality || null, lastItems: await lastItemsOf(String(client.id)), active: true, updatedAt: serverTimestamp(),
+    ...priceListFields(client, trade ? await tradeKeyOf(storeId) : ''),
   };
   await setDoc(doc(col, token), data, { merge: true });
   const url = publicStoreUrl(cfg.subdomain);

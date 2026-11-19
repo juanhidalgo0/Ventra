@@ -139,9 +139,19 @@ export function withOffers(items: PreOrderItem[], products: any[]): (PreOrderIte
   });
 }
 
-/** Precio con el que entra al pedido: el del bulto o el de la unidad suelta */
-export function priceFor(product: any, byPack: boolean) {
+/**
+ * Precio con el que entra al pedido: el del bulto o el de la unidad suelta. Con un cliente de la
+ * lista Comercio, la unidad suelta va a su precio mayorista (o con su % si el producto no tiene).
+ * El servidor hace la misma cuenta al guardar.
+ */
+export function priceFor(product: any, byPack: boolean, client?: any) {
   const pack = packOf(product, true);
   if (byPack && pack) return { unitPrice: pack.price / pack.size, packSize: pack.size };
-  return { unitPrice: Number(product.salePrice) || 0, packSize: null };
+  const sale = Number(product.salePrice) || 0;
+  if (client?.priceList === 'TRADE') {
+    if (Number(product.tradePrice) > 0) return { unitPrice: Number(product.tradePrice), packSize: null };
+    const off = Number(client.tradeDiscountPercentage) || 0;
+    if (off > 0) return { unitPrice: Math.round(sale * (1 - off / 100) * 100) / 100, packSize: null };
+  }
+  return { unitPrice: sale, packSize: null };
 }

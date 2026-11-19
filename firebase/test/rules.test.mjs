@@ -105,6 +105,15 @@ test('venta a comercios: el link del cliente se lee con su código; listarlos o 
   await assertFails(setDoc(doc(as(null), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { clientId: 'otro' }));
   await assertFails(updateDoc(doc(as('intruso'), 'ventra_stores/owned/clients/TOKEN1234567890abcd'), { name: 'x' }));
 });
+test('venta a comercios: los precios mayoristas se leen solo sabiendo la clave; listarlos o escribirlos, solo el dueño', async () => {
+  await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/tradePrices/KEY1234567890abcdefgh'), { prices: { p: 650 } }));
+  await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/tradePrices/KEY1234567890abcdefgh')));
+  await assertFails(getDocs(collection(as(null), 'ventra_stores/owned/tradePrices')));
+  await assertFails(getDocs(collection(as('intruso'), 'ventra_stores/owned/tradePrices')));
+  await assertSucceeds(getDocs(collection(as('posA'), 'ventra_stores/owned/tradePrices')));
+  await assertFails(setDoc(doc(as(null), 'ventra_stores/owned/tradePrices/KEY1234567890abcdefgh'), { prices: { p: 1 } }));
+  await assertFails(setDoc(doc(as('intruso'), 'ventra_stores/owned/tradePrices/OTRA'), { prices: { p: 1 } }));
+});
 test('venta a comercios: el stock libre lo lee cualquiera y lo escribe solo el dueño', async () => {
   await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/stock/free'), { units: { p: 5 } }));
   await assertSucceeds(getDoc(doc(as(null), 'ventra_stores/owned/stock/free')));

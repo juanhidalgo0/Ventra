@@ -191,6 +191,12 @@ service cloud.firestore {
       }
       // Venta a comercios: unidades libres de cada producto (stock menos lo comprometido en pedidos),
       // para que la tienda no deje pedir de más. Lo escribe solo el dueño (refreshWholesaleStock).
+      // Venta a comercios: precios mayoristas. Se leen solo sabiendo la clave (la tiene el link de cada
+      // cliente mayorista, clients/{token}.priceKey): no se pueden listar, así el público no los ve.
+      match /tradePrices/{key} {
+        allow get: if true;
+        allow list, write: if storeOwner();
+      }
       match /stock/{docId} {
         allow get: if true;
         allow list, write: if storeOwner();

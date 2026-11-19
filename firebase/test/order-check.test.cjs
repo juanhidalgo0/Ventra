@@ -77,6 +77,27 @@ const t = async (name, fn) => {
     ] }), null);
     assert.ok(await priceProblem(ws, wsStore, { items: [{ productId: "galle", name: "Galletitas", price: 33600, qty: 3, packSize: 12 }] }), "36 unidades no llegan a 48");
   });
+  // Cliente mayorista con link: lavandina $800 al público, $650 mayorista; detergente sin precio mayorista (10 % del cliente)
+  const trade = fakeStore([[{ productId: "lav", price: 800 }, { productId: "det", price: 1100 }]], {
+    TOKMAY: { clientId: "c1", priceList: "TRADE", tradeDiscount: 10, priceKey: "KEY1", active: true },
+    TOKMIN: { clientId: "c2", priceList: "RETAIL", active: true },
+    KEY1: { prices: { lav: 650 } },
+  });
+  const tStore = { catalogParts: 1, wholesale: { enabled: true } };
+  await t("mayorista con link: su precio mayorista y su % no se marcan como más baratos", async () => {
+    assert.strictEqual(await priceProblem(trade, tStore, { clientToken: "TOKMAY", items: [
+      { productId: "lav", name: "Lavandina", price: 650, qty: 2 },
+      { productId: "det", name: "Detergente", price: 990, qty: 1 },
+    ] }), null);
+  });
+  await t("mayorista con link: más barato que su precio mayorista sí se marca", async () => {
+    assert.ok(await priceProblem(trade, tStore, { clientToken: "TOKMAY", items: [{ productId: "lav", name: "Lavandina", price: 500, qty: 1 }] }));
+  });
+  await t("minorista o sin link: el precio mayorista se marca (no le corresponde)", async () => {
+    assert.ok(await priceProblem(trade, tStore, { clientToken: "TOKMIN", items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
+    assert.ok(await priceProblem(trade, tStore, { items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
+    assert.ok(await priceProblem(trade, tStore, { clientToken: "NOEXISTE", items: [{ productId: "lav", name: "Lavandina", price: 650, qty: 1 }] }));
+  });
   await t("pedido sin renglones válidos: sin problema", async () => {
     assert.strictEqual(await priceProblem(ref, store, { items: [] }), null);
     assert.strictEqual(await priceProblem(ref, store, {}), null);

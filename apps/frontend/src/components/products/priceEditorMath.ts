@@ -92,6 +92,23 @@ export function followCost(p: EditorProduct, newCost: number, round: number): Pr
   return out;
 }
 
+/**
+ * "Margen sobre el costo": cada precio elegido pasa a costo × (1 + margen). Sirve para armar las dos
+ * listas de una vez (ej. venta +40 % y comercio +25 %). El precio comercio se crea aunque el
+ * producto no lo tuviera; el mayorista y el bulto solo si ya existen. Sin costo no se toca nada.
+ */
+export function setMargin(p: EditorProduct, margin: number, fields: PriceField[], round: number): Prices {
+  const out: Prices = {};
+  if (!(p.costPrice > 0)) return out;
+  for (const f of fields) {
+    if (f === 'costPrice') continue;
+    if (f !== 'salePrice' && f !== 'tradePrice' && !hasField(p, f)) continue;
+    const units = f === 'packPrice' ? Math.max(1, p.unitsPerPack || 1) : 1;
+    out[f] = roundUp(p.costPrice * units * (1 + margin / 100), round);
+  }
+  return out;
+}
+
 /** Ganancia sobre el costo, como en la ficha del producto: (venta / costo − 1) × 100 */
 export function marginPct(sale: number, cost: number): number | null {
   if (!(cost > 0) || !(sale > 0)) return null;

@@ -102,6 +102,14 @@ async function main() {
     // costo 1500 → 1620 (+8 %): venta 2500 → 2700, mayorista 2200 → 2376 → 2380, bulto 26000 → 28080
     assert.deepStrictEqual(M.followCost(base, 1620, 10), { costPrice: 1620, salePrice: 2700, wholesalePrice: 2380, packPrice: 28080 });
   });
+  await t('cuentas: margen sobre costo arma la venta y crea el precio comercio', () => {
+    // costo 1500: venta +40 % = 2100; comercio +25 % = 1875 → 1880 (aunque no tenía precio comercio)
+    assert.deepStrictEqual(M.setMargin(base, 40, ['salePrice'], 10), { salePrice: 2100 });
+    assert.deepStrictEqual(M.setMargin(base, 25, ['tradePrice', 'costPrice'], 10), { tradePrice: 1880 });
+  });
+  await t('cuentas: margen sobre costo no toca productos sin costo', () => {
+    assert.deepStrictEqual(M.setMargin({ ...base, costPrice: 0 }, 40, ['salePrice', 'tradePrice'], 10), {});
+  });
   await t('cuentas: redondeo sin error de coma flotante (2800,0000001 no sube a 2810)', () => {
     assert.strictEqual(M.roundUp(2500 * 1.12, 10), 2800);
   });

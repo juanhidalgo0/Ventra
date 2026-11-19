@@ -6,7 +6,7 @@ import {
   Truck, Store as StoreIcon, CreditCard, ShoppingCart, X, Globe, Printer, ClipboardList,
 } from 'lucide-react';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
-import { updateOrderStage, lockOrderForCharge, canAcceptOrder, reviewInProgress, type OrderStage, type StoreOrder, type StoreOrderItem } from '../../services/onlineStore';
+import { updateOrderStage, lockOrderForCharge, canAcceptOrder, reviewInProgress, wholesaleClientOf, type OrderStage, type StoreOrder, type StoreOrderItem } from '../../services/onlineStore';
 import { usePOSStore, packOf } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePlanStore } from '../../stores/planStore';
@@ -34,10 +34,19 @@ const when = (o: StoreOrder) => {
     : d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 };
 /** Lo que vale el renglón con los precios de la caja (bulto u unidad, con la oferta por cantidad si llega) */
-function catalogPrice(o: StoreOrder, it: StoreOrderItem, p: any) {
+/** Precio de la unidad para el cliente: con lista Mayorista, su precio mayorista (o el de siempre con su %) */
+function unitPriceFor(p: any, client: any) {
+  const sale = Number(p.salePrice) || 0;
+  if (client?.priceList !== 'TRADE') return sale;
+  if (Number(p.tradePrice) > 0) return Number(p.tradePrice);
+  const off = Number(client.tradeDiscountPercentage) || 0;
+  return off > 0 ? Math.round(sale * (1 - off / 100) * 100) / 100 : sale;
+}
+
+function catalogPrice(o: StoreOrder, it: StoreOrderItem, p: any, client?: any) {
   const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
   const pack = size ? packOf(p, true) : null;
-  let price = size ? (pack && pack.size === size ? pack.price : Number(p.salePrice) * size) : Number(p.salePrice);
+  let price = size ? (pack && pack.size === size ? pack.price : Number(p.salePrice) * size) : unitPriceFor(p, client);
   const offer = Number(p.wholesalePrice) || 0;
   const min = Number(p.wholesaleMinQty) || 0;
   const units = o.items.filter((x) => x.productId === it.productId).reduce((s, x) => s + x.qty * (Number(x.packSize) > 1 ? Number(x.packSize) : 1), 0);
@@ -236,23 +245,28 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
 
   /** Carga el pedido en la caja para cobrarlo como una venta normal (ahí se descuenta el stock). */
   const chargeInPos = async () => {
-    const { products, addToCart, addPackToCart, clearCart, cart } = usePOSStore.getState();
+    const { products, addToCart, addPackToCart, clearCart, cart, clients, setSelectedClient } = usePOSStore.getState();
     if (cart.length && !window.confirm('La caja tiene productos cargados. ¿Reemplazarlos por este pedido?')) return;
     // Un pedido termina en un solo lado: si ya pasó a Pedidos (o lo están pasando), no se cobra acá
     const free = await lockOrderForCharge(storeId, o.id).catch(() => undefined);
     if (free === undefined) { toast.error('No se pudo tomar el pedido: revisá la conexión.'); return; }
     if (!free) { toast.error('Este pedido ya está en Pedidos (o lo están pasando ahora): se cobra desde ahí.', { duration: 6000 }); return; }
+    // Pedido con el link de un cliente: la venta va a su nombre y, si es mayorista, con sus precios
+    const linked = o.clientToken ? await wholesaleClientOf(storeId, o.clientToken).catch(() => null) : null;
+    const client = linked ? clients.find((c: any) => String(c.id) === String(linked.clientId)) || null : null;
     // El precio del pedido lo manda el navegador del cliente: si alguno es más bajo que el de la
     // caja, se avisa y decide el cajero (puede ser un cambio de precio reciente o un pedido alterado)
     const cheaper = o.items
       .map((it) => ({ it, p: products.find((x: any) => x.id === it.productId) }))
-      .filter(({ it, p }) => p && Number(it.price) < catalogPrice(o, it, p) - 1);
+      .filter(({ it, p }) => p && Number(it.price) < catalogPrice(o, it, p, client) - 1);
     const useSystemPrice = cheaper.length > 0 && window.confirm(
       'Este pedido trae precios más bajos que los de la caja:\n\n'
-      + cheaper.slice(0, 8).map(({ it, p }) => `• ${it.name}: pedido ${money(Number(it.price))}, caja ${money(catalogPrice(o, it, p))}`).join('\n')
+      + cheaper.slice(0, 8).map(({ it, p }) => `• ${it.name}: pedido ${money(Number(it.price))}, caja ${money(catalogPrice(o, it, p, client))}`).join('\n')
       + '\n\nAceptar: cobrar con los precios de la caja.\nCancelar: respetar los precios del pedido.',
     );
     clearCart();
+    // Antes de cargar los productos: así entran con la lista del cliente
+    if (client) setSelectedClient(client);
     const missing: string[] = [];
     for (const it of o.items) {
       const p = products.find((x: any) => x.id === it.productId);
@@ -260,13 +274,14 @@ function OrderDetail({ order: o, storeId, onClose, onCharged }: { order: StoreOr
       // Por bulto: entra como bulto (descuenta cantidad × unidades del bulto, no "un" producto)
       const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
       if (size) {
-        const sys = catalogPrice(o, it, p);
+        const sys = catalogPrice(o, it, p, client);
         addPackToCart(p, { size, price: Number(it.price) < sys - 1 && useSystemPrice ? sys : Number(it.price) }, it.qty);
         continue;
       }
       // Se respeta el precio que vio el cliente en la tienda, salvo que el cajero elija el de la caja
-      const lower = Number(it.price) < Number(p.salePrice) - 1;
-      addToCart(p, Number(p.salePrice) === it.price || (lower && useSystemPrice) ? undefined : it.price, it.qty);
+      const base = unitPriceFor(p, client);
+      const lower = Number(it.price) < base - 1;
+      addToCart(p, Math.abs(base - Number(it.price)) < 0.01 || (lower && useSystemPrice) ? undefined : it.price, it.qty);
     }
     if (missing.length) toast.error(`No encontramos en el catálogo: ${missing.join(', ')}. Cargalos a mano.`, { duration: 7000 });
     if (stage === 'NEW') await updateOrderStage(storeId, o.id, 'PREPARING').catch(() => {});
