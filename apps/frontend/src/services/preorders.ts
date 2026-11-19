@@ -1,6 +1,7 @@
 import api from './api';
 import { usePOSStore, packOf } from '../stores/posStore';
 import { hasFeature } from '../stores/businessStore';
+import { applyCombos, combosFromPromotions, type ComboUse } from './combos';
 
 /**
  * Preventa (distribuidora): el vendedor toma el pedido en el celular y en la PC se pasa a la
@@ -15,6 +16,10 @@ export interface PreOrderItem {
   quantity: number;
   packSize?: number | null;
   unitPrice: number;
+  /** Renglón dentro de un combo: unitPrice es su parte del combo y regularPrice, la unidad suelta (lo arma el servidor) */
+  promoId?: string | null;
+  promoName?: string | null;
+  regularPrice?: number | null;
 }
 
 export interface PreOrderDraft {
@@ -103,22 +108,61 @@ export function loadPreOrderIntoCart(order: any): string[] {
   const st = usePOSStore.getState();
   const missing: string[] = [];
   st.clearCart();
-  for (const it of order.items || []) {
-    const product = st.products.find((p: any) => p.id === it.productId);
-    if (!product) { missing.push(it.productName); continue; }
-    const pack = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
-    if (pack && packOf(product, hasFeature('bulk'))) {
-      st.addPackToCart(product, { size: pack, price: Math.round(Number(it.unitPrice) * pack * 100) / 100 }, Number(it.quantity) / pack);
-    } else {
-      st.addToCart(product, Number(it.unitPrice), Number(it.quantity));
-    }
-  }
+  // Primero el cliente y sin armar combos: el pedido ya trae los suyos con su precio (los arma el
+  // servidor, igual que en el reparto). Si no, la caja los volvería a armar o les cambiaría el precio.
   if (order.client) {
     const client = st.clients.find((c: any) => c.id === order.client.id) || order.client;
     st.setSelectedClient(client);
   }
+  const promotions = usePOSStore.getState().promotions;
+  usePOSStore.setState({ promotions: [] });
+  try {
+    for (const it of order.items || []) {
+      const product = st.products.find((p: any) => p.id === it.productId);
+      if (!product) { missing.push(it.productName); continue; }
+      const pack = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
+      if (pack && packOf(product, hasFeature('bulk'))) {
+        st.addPackToCart(product, { size: pack, price: Math.round(Number(it.unitPrice) * pack * 100) / 100 }, Number(it.quantity) / pack);
+      } else if (it.promoId) {
+        // Renglón del combo: aparte, con el nombre del combo y su parte del precio exacta
+        st.addToCart({ ...product, name: `${product.name} (${it.promoName || 'combo'})`, lineTag: `combo_${it.promoId}` }, Number(it.unitPrice), Number(it.quantity), false, true);
+        const key = `${product.id}_custom_${Number(it.unitPrice)}_combo_${it.promoId}`;
+        usePOSStore.setState((s) => ({ cart: s.cart.map((c) => (c.cartKey === key ? { ...c, comboOf: String(it.promoId) } : c)) }));
+      } else {
+        st.addToCart(product, Number(it.unitPrice), Number(it.quantity));
+      }
+    }
+  } finally {
+    usePOSStore.setState({ promotions });
+  }
   st.setActiveOrder({ id: order.id, number: order.orderNumber, clientName: order.client?.name || '' });
   return missing;
+}
+
+/**
+ * Los combos que va a armar el servidor con este pedido (para mostrarlos mientras se toma). Mismas
+ * cuentas que preorders.service: unidades sueltas, al precio que ya tienen (con la oferta).
+ */
+export function previewCombos(items: PreOrderItem[], promotions: any[], client: any, keep: Set<string> = new Set()): ComboUse[] {
+  const combos = combosFromPromotions(promotions, { trade: client?.priceList === 'TRADE', keep });
+  if (!combos.length) return [];
+  const lines = items
+    .map((it, i) => ({ key: String(i), productId: it.productId, quantity: it.quantity, price: it.unitPrice, pack: it.packSize }))
+    .filter((l) => !l.pack);
+  return applyCombos(lines, combos);
+}
+
+/** Al corregir un pedido: los renglones del combo vuelven a sueltos, a su precio de siempre (el combo se arma solo) */
+export function withoutCombos(items: any[]): PreOrderItem[] {
+  const out: PreOrderItem[] = [];
+  for (const i of items || []) {
+    const unitPrice = i.promoId && Number(i.regularPrice) > 0 ? Number(i.regularPrice) : Number(i.unitPrice);
+    const packSize = i.packSize || null;
+    const same = out.find((x) => x.productId === i.productId && (x.packSize || null) === packSize && Math.abs(x.unitPrice - unitPrice) < 1e-9);
+    if (same) same.quantity += Number(i.quantity);
+    else out.push({ productId: i.productId, productName: i.productName, quantity: Number(i.quantity), packSize, unitPrice });
+  }
+  return out;
 }
 
 /**

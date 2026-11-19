@@ -19,6 +19,8 @@ export interface CartItem {
   isPromo?: boolean;
   isReturn?: boolean;
   promoId?: string;
+  /** Unidades que ya vienen dentro de un combo de un pedido (con su precio): no entran en otras promos */
+  comboOf?: string;
   categoryId?: string;
   productsMetadata?: { productId: string; name: string; price: number; quantity: number }[];
   imageUrl?: string;
@@ -168,7 +170,7 @@ function autoCombineCombos(cart: CartItem[], promotions: any[], productsList: an
       const groups = Array.from(groupsMap.values());
       if (groups.length === 0) continue;
 
-      const normalItems = newCart.filter(item => !item.isPromo && !item.isReturn);
+      const normalItems = newCart.filter(item => !item.isPromo && !item.isReturn && !item.comboOf);
       const tempAvailable = new Map<string, number>();
       normalItems.forEach(item => {
         tempAvailable.set(item.productId, (tempAvailable.get(item.productId) || 0) + item.quantity);
@@ -205,7 +207,7 @@ function autoCombineCombos(cart: CartItem[], promotions: any[], productsList: an
         for (const deduction of itemsToDeduct) {
           let toRemove = deduction.quantity;
           newCart = newCart.map(item => {
-            if (!item.isPromo && !item.isReturn && item.productId === deduction.productId && toRemove > 0) {
+            if (!item.isPromo && !item.isReturn && !item.comboOf && item.productId === deduction.productId && toRemove > 0) {
               const reduceBy = Math.min(item.quantity, toRemove);
               toRemove -= reduceBy;
               return { ...item, quantity: item.quantity - reduceBy };
@@ -785,7 +787,7 @@ export const usePOSStore = create<POSState>()(
       return true;
     };
 
-    const normalCart = cart.filter(item => !item.isPromo);
+    const normalCart = cart.filter(item => !item.isPromo && !item.comboOf);
 
     // 1. NX_M Promotions
     promotions.filter(p => p.type === 'NX_M' && isPromoActive(p)).forEach(promo => {
@@ -922,7 +924,7 @@ export const usePOSStore = create<POSState>()(
       return true;
     };
 
-    const normalCart = cart.filter(item => !item.isPromo);
+    const normalCart = cart.filter(item => !item.isPromo && !item.comboOf);
 
     promotions.filter(isPromoActive).forEach(promo => {
       let promoDiscount = 0;

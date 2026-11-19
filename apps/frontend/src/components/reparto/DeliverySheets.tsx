@@ -213,7 +213,7 @@ export function DeliverySheet({ run, order, onClose, onSaved }: { run: any; orde
               return (
                 <div key={it.id} className="px-3 py-2.5 flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-slate-900 leading-tight">{it.productName}</p>
+                    <p className="text-[14px] font-semibold text-slate-900 leading-tight">{it.productName}{it.promoId && <span className="ml-1.5 text-[11.5px] font-bold text-emerald-700">· {it.promoName || 'Combo'}</span>}</p>
                     <p className="text-[12px] text-slate-500 mt-0.5">
                       Pidió {size ? `${qty(it.quantity / size)} bultos` : `${qty(it.quantity)} u.`}
                       {back > 0 && <span className="text-rose-700 font-semibold"> · vuelve {size ? `${qty(back / size)} bulto(s)` : `${qty(back)} u.`}</span>}

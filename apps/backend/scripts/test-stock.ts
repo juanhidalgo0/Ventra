@@ -993,6 +993,96 @@ async function main() {
     assert.strictEqual(await stockDe(p.id), 88);
   });
 
+  await t('combos: la cuenta (varios productos, unidades más caras primero, tope y centavos justos)', async () => {
+    const { applyCombos, comboShares } = require('../src/modules/preorders/combos');
+    const combos = [
+      { id: 'mix', name: 'Lavandina + detergente', price: 2000, groups: [{ qty: 1, productIds: ['lav'] }, { qty: 1, productIds: ['det'] }] },
+      { id: 'doc', name: 'Docena', price: 9000, groups: [{ qty: 12, productIds: ['e1', 'e2'] }] },
+    ];
+    const lines = [
+      { key: 'a', productId: 'lav', quantity: 3, price: 1000 },
+      { key: 'b', productId: 'det', quantity: 2, price: 1500 },
+      { key: 'c', productId: 'e1', quantity: 10, price: 800 },
+      { key: 'd', productId: 'e2', quantity: 5, price: 900 },
+    ];
+    const uses = applyCombos(lines, combos);
+    const mix = uses.find((u: any) => u.id === 'mix');
+    assert.strictEqual(mix.times, 2, 'dos combos: el detergente alcanza para dos');
+    assert.strictEqual(mix.discount, 1000);
+    const doc = uses.find((u: any) => u.id === 'doc');
+    assert.strictEqual(doc.times, 1);
+    assert.deepStrictEqual(doc.used.map((u: any) => [u.key, u.quantity]).sort(), [['c', 7], ['d', 5]], 'primero las más caras');
+    assert.strictEqual(doc.discount, 7 * 800 + 5 * 900 - 9000);
+    // No ahorra: no se arma
+    assert.strictEqual(applyCombos([{ key: 'a', productId: 'lav', quantity: 1, price: 900 }, { key: 'b', productId: 'det', quantity: 1, price: 900 }], combos).length, 0);
+    // Tope de la promo
+    assert.strictEqual(applyCombos(lines, [{ ...combos[0], maxTimes: 1 }])[0].times, 1);
+    // Unidades sueltas que no son enteras no cuentan
+    assert.strictEqual(applyCombos([{ key: 'a', productId: 'lav', quantity: 0.5, price: 1000 }, { key: 'b', productId: 'det', quantity: 1, price: 1500 }], combos).length, 0);
+    // El precio repartido da exacto, aunque no divida justo
+    const sh = comboShares({ id: 'x', name: 'x', times: 1, price: 1000, regular: 1500, discount: 500, used: [
+      { key: 'a', productId: 'a', quantity: 1, price: 500 }, { key: 'b', productId: 'b', quantity: 1, price: 500 }, { key: 'c', productId: 'c', quantity: 1, price: 500 },
+    ] });
+    assert.strictEqual(Math.round(sh.reduce((s: number, x: any) => s + x.total, 0) * 100), 100000);
+  });
+
+  await t('preventa con combos: minorista y mayorista, editar sin descontar dos veces, reparto y rechazo', async () => {
+    const pre = new PreOrdersService(prisma);
+    const lav = await nuevo('Lavandina combo', 100, { salePrice: 1000, tradePrice: 900 });
+    const det = await nuevo('Detergente combo', 100, { salePrice: 1500, tradePrice: 1300 });
+    const promo = await prisma.promotion.create({ data: {
+      name: 'Combo limpieza', type: 'FIXED_COMBO', fixedPrice: 2000, tradeFixedPrice: 1800,
+      products: { create: [{ productId: lav.id, quantity: 1, groupId: 'g1' }, { productId: det.id, quantity: 1, groupId: 'g2' }] },
+    } as any });
+    const minorista = await prisma.client.create({ data: { name: 'Consumidor combo', locality: 'Bavio' } });
+    const mayorista = await prisma.client.create({ data: { name: 'Almacén combo', locality: 'Bavio', priceList: 'TRADE' } as any });
+    const pedido = (clientId: string, items?: any[]) => ({ clientId, items: items || [
+      { productId: lav.id, productName: lav.name, quantity: 3, unitPrice: 1000 },
+      { productId: det.id, productName: det.name, quantity: 2, unitPrice: 1500 },
+    ] });
+
+    const o: any = await pre.save('po-combo-min', pedido(minorista.id), cajero.id, false);
+    assert.strictEqual(o.total, 5000, '1 lavandina suelta + 2 combos de 2000');
+    const enCombo = o.items.filter((i: any) => i.promoId === promo.id);
+    assert.strictEqual(enCombo.length, 2);
+    assert.strictEqual(Math.round(enCombo.reduce((s: number, i: any) => s + i.total, 0)), 4000);
+    assert.strictEqual(enCombo.find((i: any) => i.productId === lav.id).regularPrice, 1000);
+    assert.strictEqual(enCombo[0].promoName, 'Combo limpieza');
+    assert.strictEqual(o.items.find((i: any) => !i.promoId).quantity, 1);
+
+    // Mayorista: precios mayoristas y el combo a su precio mayorista
+    const m: any = await pre.save('po-combo-may', pedido(mayorista.id), cajero.id, false);
+    assert.strictEqual(m.total, 900 + 2 * 1800);
+
+    // Editarlo mandando los renglones como vinieron no vuelve a descontar
+    const again: any = await pre.save('po-combo-min', { clientId: minorista.id, items: o.items }, cajero.id, false);
+    assert.strictEqual(again.total, 5000);
+    // Se pausa la promo: el pedido que ya la tenía la conserva al editarlo; uno nuevo ya no
+    await prisma.promotion.update({ where: { id: promo.id }, data: { isActive: false } });
+    const kept: any = await pre.save('po-combo-min', { clientId: minorista.id, items: again.items }, cajero.id, false);
+    assert.strictEqual(kept.total, 5000);
+    const sinPromo: any = await pre.save('po-combo-nuevo', pedido(minorista.id), cajero.id, false);
+    assert.strictEqual(sinPromo.total, 6000);
+    await pre.cancel('po-combo-nuevo');
+    await prisma.promotion.update({ where: { id: promo.id }, data: { isActive: true } });
+
+    // Pedido de la tienda aceptado en Pedidos: también con el combo
+    const online: any = await pre.save('tienda-combo-0001', { fromOnline: true, takenAt: new Date().toISOString(), ...pedido(mayorista.id) }, admin.id, true);
+    assert.strictEqual(online.total, 4500);
+
+    // Sale el reparto: la venta vale lo mismo que el pedido; el detergente rechazado vuelve a su precio del combo
+    const run = await runs.create({ orderIds: ['po-combo-min'] });
+    await runs.dispatch(run.id, {}, admin.id);
+    const billed = await (prisma as any).preOrder.findUnique({ where: { id: 'po-combo-min' } });
+    const sale = await prisma.sale.findUnique({ where: { id: billed.saleId } });
+    assert.ok(Math.abs(sale!.total - 5000) < 0.01, 'venta del reparto: ' + sale!.total);
+    const detLine = await (prisma as any).preOrderItem.findFirst({ where: { orderId: 'po-combo-min', productId: det.id } });
+    await runs.saveDelivery(run.id, 'po-combo-min', { status: 'PARTIAL', items: { [detLine.id]: 1 }, cash: 5000 - detLine.unitPrice });
+    await runs.settle(run.id, { cashReceived: 5000 - detLine.unitPrice }, admin.id);
+    assert.strictEqual(await stockDe(det.id), 99);
+    assert.strictEqual((await prisma.client.findUnique({ where: { id: minorista.id } }))!.balance, 0, 'pagó lo entregado y no debe nada');
+  });
+
   await t('reparto: recuerda el orden de visita de cada cliente', async () => {
     const p = await nuevo('Agua visita', 100);
     const cs = [];

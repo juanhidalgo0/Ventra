@@ -462,6 +462,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               CONSTRAINT "pre_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "pre_orders" ("id") ON DELETE CASCADE ON UPDATE CASCADE
             );`);
             await this.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "pre_order_items_order_id_idx" ON "pre_order_items"("order_id");`);
+            // Combos en los pedidos (ver preorders/combos.ts)
+            const preItemCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(pre_order_items);`);
+            for (const [col, type] of [['promo_id', 'TEXT'], ['promo_name', 'TEXT'], ['regular_price', 'REAL']]) {
+              if (!preItemCols.some(c => c.name === col)) await this.$executeRawUnsafe(`ALTER TABLE pre_order_items ADD COLUMN ${col} ${type} DEFAULT NULL;`);
+            }
             // Encargos (imprenta, trabajos a pedido): ver WorkOrder
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "work_orders" (
               "id" TEXT NOT NULL PRIMARY KEY,

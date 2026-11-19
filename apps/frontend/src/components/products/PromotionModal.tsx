@@ -337,6 +337,8 @@ export default function PromotionModal({ onClose, onSuccess, promotion }: Promot
         await api.post('/promotions', payload);
         toast.success('Promoción creada');
       }
+      // La tienda online muestra los combos al día (si hay tienda; si no, no hace nada)
+      import('../../services/onlineStore').then((m) => m.refreshOnlinePromos()).catch((e) => console.warn('[Promos] Tienda sin actualizar', e));
       onSuccess();
       onClose();
     } catch (err: any) {

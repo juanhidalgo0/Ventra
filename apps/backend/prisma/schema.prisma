@@ -820,6 +820,11 @@ model PreOrderItem {
   packSize    Int?    @map("pack_size") // pedido por bulto
   unitPrice   Float   @map("unit_price")
   total       Float
+  // Combo (promo FIXED_COMBO): estas unidades van dentro del combo y unitPrice es su parte del
+  // precio del combo; regularPrice, lo que vale la unidad suelta (ver preorders/combos.ts)
+  promoId      String? @map("promo_id")
+  promoName    String? @map("promo_name")
+  regularPrice Float?  @map("regular_price")
 
   order PreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 

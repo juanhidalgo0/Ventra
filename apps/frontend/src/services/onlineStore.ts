@@ -156,6 +156,11 @@ export interface StoreConfig {
   pausedIds?: string[];
   /** Promos por cantidad publicadas desde Promociones (ej. docena de empanadas de cualquier gusto) */
   onlinePromos?: OnlinePromo[];
+  /**
+   * Combos de varios productos distintos (lavandina + detergente a precio fijo). Van aparte de
+   * onlinePromos para que una tienda que todavía no los entiende no los cuente mal.
+   */
+  onlineCombos?: OnlineCombo[];
   /** Cuántas partes tiene el catálogo agrupado publicado (catalog/p0, p1...) */
   catalogParts?: number;
   ownerUid?: string;
@@ -318,6 +323,8 @@ export interface ExtraGroup {
 
 /** Combo "N unidades de estos productos (mezclados) a precio fijo", para aplicar en la tienda. */
 export interface OnlinePromo { id: string; name: string; qty: number; price: number; productIds: string[] }
+/** Combo de varios grupos: de cada grupo, qty unidades de cualquiera de sus productos; todo junto a price. */
+export interface OnlineCombo { id: string; name: string; price: number; groups: { qty: number; productIds: string[] }[] }
 
 /** Un producto del sistema tal como se publica en la tienda. */
 export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
@@ -344,17 +351,28 @@ export function toOnlineProduct(p: any, imageUrl = ''): OnlineProduct {
 }
 
 /**
- * Publica en la tienda las promos por cantidad de Promociones: combos de un solo grupo
- * ("12 empanadas de cualquier gusto a $12.000"). Los combos de varios productos distintos
- * (pizza + gaseosa) por ahora solo se aplican en la caja.
+ * Publica en la tienda los combos de Promociones: los de un solo grupo ("12 empanadas de cualquier
+ * gusto a $12.000") en onlinePromos y los de varios productos ("lavandina + detergente a $5.000")
+ * en onlineCombos. La tienda los arma con la misma cuenta que los pedidos (ver services/combos.ts).
+ * El precio mayorista de cada combo no es público: va en tradePrices/{clave}.combos.
  */
 export async function publishOnlinePromos(storeId: string, onlineIds: Set<string>): Promise<number> {
   const { default: api } = await import('./api');
   // Si no se pudieron leer las promociones, se deja la tienda como estaba (nunca se borran por un error)
   const { data } = await api.get('/promotions');
   if (!Array.isArray(data)) throw new Error('Respuesta inválida de promociones');
-  const now = Date.now();
+  const { promos, combos, tradeCombos } = onlinePromosFrom(data, onlineIds);
+  await claimStore(storeId);
+  await updateDoc(doc(getDb(), 'ventra_stores', storeId), { onlinePromos: promos, onlineCombos: combos, updatedAt: serverTimestamp() });
+  // El precio mayorista de los combos tampoco es público: va con los precios mayoristas
+  await publishTradePrices(storeId, { combos: tradeCombos }).catch((e) => console.warn('[OnlineStore] Combos mayoristas sin publicar', e));
+  return promos.length + combos.length;
+}
+
+/** Lo que se publica de cada combo de Promociones (solo con los productos que están a la venta online) */
+export function onlinePromosFrom(data: any[], onlineIds: Set<string>, now = Date.now()) {
   const promos: OnlinePromo[] = [];
+  const combos: OnlineCombo[] = [];
   const tradeCombos: Record<string, number> = {};
   for (const pr of (data || []) as any[]) {
     if (!pr.isActive || pr.type !== 'FIXED_COMBO' || !(pr.fixedPrice > 0)) continue;
@@ -362,7 +380,22 @@ export async function publishOnlinePromos(storeId: string, onlineIds: Set<string
     if (pr.startDate && new Date(pr.startDate).getTime() > now) continue;
     const items = (pr.products || []) as any[];
     const groups = new Set(items.map((x) => x.groupId || `single_${x.productId}`));
-    if (groups.size !== 1 || !items.length) continue;
+    if (!items.length) continue;
+    if (groups.size > 1) {
+      // Mismos grupos que arma la caja (combosFromPromotions): por groupId o cada producto suelto
+      const byGroup = new Map<string, { qty: number; productIds: string[] }>();
+      items.forEach((x, idx) => {
+        const gid = x.groupId || `single_${x.productId}_${idx}`;
+        if (!byGroup.has(gid)) byGroup.set(gid, { qty: Math.max(1, Math.round(Number(x.quantity) || 1)), productIds: [] });
+        byGroup.get(gid)!.productIds.push(String(x.productId));
+      });
+      // Solo si de cada grupo hay algún producto publicado (si no, en la tienda no se puede armar)
+      const list = [...byGroup.values()].map((g) => ({ qty: g.qty, productIds: g.productIds.filter((id) => onlineIds.has(id)) }));
+      if (list.some((g) => !g.productIds.length)) continue;
+      combos.push({ id: pr.id, name: pr.name, price: Number(pr.fixedPrice), groups: list });
+      if (Number(pr.tradeFixedPrice) > 0) tradeCombos[pr.id] = Number(pr.tradeFixedPrice);
+      continue;
+    }
     const qty = Math.max(1, Number(items[0].quantity) || 1);
     // Un combo de un solo producto sin cantidad no es una promo por cantidad
     if (qty < 2) continue;
@@ -371,11 +404,21 @@ export async function publishOnlinePromos(storeId: string, onlineIds: Set<string
     promos.push({ id: pr.id, name: pr.name, qty, price: Number(pr.fixedPrice), productIds });
     if (Number(pr.tradeFixedPrice) > 0) tradeCombos[pr.id] = Number(pr.tradeFixedPrice);
   }
-  await claimStore(storeId);
-  await updateDoc(doc(getDb(), 'ventra_stores', storeId), { onlinePromos: promos, updatedAt: serverTimestamp() });
-  // El precio mayorista de los combos tampoco es público: va con los precios mayoristas
-  await publishTradePrices(storeId, { combos: tradeCombos }).catch((e) => console.warn('[OnlineStore] Combos mayoristas sin publicar', e));
-  return promos.length;
+  return { promos, combos, tradeCombos };
+}
+
+/**
+ * Al guardar o borrar una promo en Promociones: si el comercio tiene tienda, sus combos se
+ * vuelven a publicar con los productos que ya están a la venta online. Sin tienda o sin
+ * conexión no hace nada (se publican la próxima vez que se publique el catálogo).
+ */
+export async function refreshOnlinePromos(): Promise<void> {
+  const storeId = localStorage.getItem(STORE_ID_KEY);
+  if (!storeId) return;
+  await ensureVentraSession();
+  const ids = new Set((await fetchOnlineSummary()).map((p) => String(p.productId)));
+  if (!ids.size) return;
+  await publishOnlinePromos(storeId, ids);
 }
 
 /**

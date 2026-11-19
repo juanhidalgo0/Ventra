@@ -62,11 +62,12 @@ async function tradePricesFor(storeRef, order) {
   const client = c.data() || {};
   if (client.priceList !== "TRADE" || client.active === false) return null;
   let prices = {};
+  let combos = {};
   if (typeof client.priceKey === "string" && client.priceKey) {
     const t = await storeRef.collection("tradePrices").doc(client.priceKey).get();
-    if (t.exists) prices = (t.data() || {}).prices || {};
+    if (t.exists) { prices = (t.data() || {}).prices || {}; combos = (t.data() || {}).combos || {}; }
   }
-  return { prices, off: Number(client.tradeDiscount) || 0 };
+  return { prices, combos, off: Number(client.tradeDiscount) || 0 };
 }
 
 /** El producto publicado con el precio de la unidad del cliente mayorista (el bulto queda igual) */
@@ -75,6 +76,63 @@ function withTradePrice(x, id, trade) {
   const t = Number(trade.prices[id]);
   const price = t > 0 ? t : trade.off > 0 ? Math.round(Number(x.price) * (1 - trade.off / 100) * 100) / 100 : Number(x.price);
   return Object.assign({}, x, { price });
+}
+
+/**
+ * Combos publicados (onlinePromos de un grupo y onlineCombos de varios), con el precio mayorista
+ * del combo si el cliente es de esa lista y el combo lo tiene.
+ */
+function publishedCombos(store, trade) {
+  const out = [];
+  for (const pr of Array.isArray(store.onlinePromos) ? store.onlinePromos : []) {
+    if (pr && Array.isArray(pr.productIds) && pr.productIds.length) out.push({ id: String(pr.id), name: pr.name, price: Number(pr.price), groups: [{ qty: Math.max(1, Number(pr.qty) || 1), productIds: pr.productIds.map(String) }] });
+  }
+  for (const pr of Array.isArray(store.onlineCombos) ? store.onlineCombos : []) {
+    if (pr && Array.isArray(pr.groups) && pr.groups.length) out.push({ id: String(pr.id), name: pr.name, price: Number(pr.price), groups: pr.groups.map((g) => ({ qty: Math.max(1, Number(g.qty) || 1), productIds: (g.productIds || []).map(String) })) });
+  }
+  for (const c of out) {
+    const t = trade && trade.combos ? Number(trade.combos[c.id]) : 0;
+    if (t > 0) c.price = t;
+  }
+  return out.filter((c) => c.price > 0);
+}
+
+/**
+ * Arma los combos con los renglones del pedido. Misma cuenta que applyCombos en
+ * apps/backend/src/modules/preorders/combos.ts y en firebase/tienda/index.html: mantener iguales.
+ * lines: [{ key, productId, quantity, price }]. Devuelve el ahorro total.
+ */
+function comboDiscount(lines, combos) {
+  const left = new Map();
+  for (const l of lines) left.set(l.key, (left.get(l.key) || 0) + Math.max(0, Math.floor(Number(l.quantity) + 1e-9)));
+  const units = (c) => c.groups.reduce((s, g) => s + g.qty, 0);
+  const sorted = [...combos].sort((a, b) => units(b) - units(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let total = 0;
+  for (const c of sorted) {
+    for (let guard = 0; guard < 10000; guard++) {
+      const taken = new Map();
+      let ok = true;
+      let sum = 0;
+      for (const g of c.groups) {
+        const cands = lines
+          .filter((l) => g.productIds.includes(l.productId) && (left.get(l.key) || 0) - (taken.get(l.key) || 0) > 0)
+          .sort((a, b) => b.price - a.price || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+        let need = g.qty;
+        for (const l of cands) {
+          if (need <= 0) break;
+          const n = Math.min(need, (left.get(l.key) || 0) - (taken.get(l.key) || 0));
+          taken.set(l.key, (taken.get(l.key) || 0) + n);
+          sum += n * l.price;
+          need -= n;
+        }
+        if (need > 0) { ok = false; break; }
+      }
+      if (!ok || sum - c.price <= 0.005) break;
+      for (const [k, n] of taken) left.set(k, (left.get(k) || 0) - n);
+      total += sum - c.price;
+    }
+  }
+  return Math.round(total * 100) / 100;
 }
 
 /** Mitad y mitad: la mitad de cada pizza, redondeado para arriba a $1.000. Misma cuenta que halfPrice en la tienda. */
@@ -113,9 +171,26 @@ async function priceProblem(storeRef, store, order) {
       lower.push(`${String(it.name || it.title || "Producto").slice(0, 60)}: ${Number.isFinite(paid) ? money(paid) : "sin precio"} (publicado ${money(base)})`);
     }
   }
-  if (!lower.length) return null;
+  // Descuento de promos y combos: no puede pasar lo que dan los combos publicados con este pedido
+  let promoProblem = null;
+  const disc = Number(order && order.discount) || 0;
+  if (disc > 0) {
+    const known = items.every((it) => products.has(String(it && it.productId)));
+    if (known) {
+      const lines = items
+        .map((it, i) => ({ it, key: String(i).padStart(3, "0") }))
+        .filter(({ it }) => !(Number(it && it.packSize) > 1))
+        .map(({ it, key }) => {
+          const pub = products.get(String(it.productId));
+          return { key, productId: String(it.productId), quantity: Number(it.qty) || 0, price: wholesale ? wholesaleFloor(pub, it, unitsByProduct) : Number(pub.price) };
+        });
+      const max = comboDiscount(lines, publishedCombos(store, trade));
+      if (disc > max + 1) promoProblem = `Descuento de promos ${money(disc)}, más que el de las promos publicadas (${money(max)})`;
+    }
+  }
+  if (!lower.length) return promoProblem;
   const more = lower.length > 5 ? ` y ${lower.length - 5} más` : "";
-  return `Precios más bajos que los publicados: ${lower.slice(0, 5).join("; ")}${more}`;
+  return [`Precios más bajos que los publicados: ${lower.slice(0, 5).join("; ")}${more}`, promoProblem].filter(Boolean).join(". ");
 }
 
-module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor, halfPrice, tradePricesFor, withTradePrice };
+module.exports = { priceProblem, publishedPrices, publishedProducts, wholesaleFloor, halfPrice, tradePricesFor, withTradePrice, publishedCombos, comboDiscount };
