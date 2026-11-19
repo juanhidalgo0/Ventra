@@ -936,7 +936,7 @@ function OrderEditor({ initial, products, clients: baseClients, committed, lastO
                       <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
                       <p className="min-w-0 flex-1 text-[13.5px] font-semibold text-emerald-900 leading-tight">
                         {c.name}{c.times > 1 ? ` x${c.times}` : ''}
-                        <span className="block text-[12px] font-normal text-emerald-800">{c.times > 1 ? `${c.times} combos de ${money(c.price)}` : `Combo a ${money(c.price)}`}</span>
+                        <span className="block text-[12px] font-normal text-emerald-800">{c.ratio !== undefined ? (c.times > 1 ? `Promo aplicada ${c.times} veces` : 'Promo aplicada') : c.times > 1 ? `${c.times} combos de ${money(c.price)}` : `Combo a ${money(c.price)}`}</span>
                       </p>
                       <span className="text-right text-[14px] font-bold text-emerald-700 shrink-0">-{money(c.discount)}</span>
                     </div>

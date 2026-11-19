@@ -63,19 +63,25 @@ async function tradePricesFor(storeRef, order) {
   if (client.priceList !== "TRADE" || client.active === false) return null;
   let prices = {};
   let combos = {};
+  let ratios = {};
   if (typeof client.priceKey === "string" && client.priceKey) {
     const t = await storeRef.collection("tradePrices").doc(client.priceKey).get();
-    if (t.exists) { prices = (t.data() || {}).prices || {}; combos = (t.data() || {}).combos || {}; }
+    if (t.exists) { prices = (t.data() || {}).prices || {}; combos = (t.data() || {}).combos || {}; ratios = (t.data() || {}).ratios || {}; }
   }
-  return { prices, combos, off: Number(client.tradeDiscount) || 0 };
+  return { prices, combos, ratios, off: Number(client.tradeDiscount) || 0 };
 }
 
-/** El producto publicado con el precio de la unidad del cliente mayorista (el bulto queda igual) */
+/** El producto publicado con el precio de la unidad del cliente mayorista (y el bulto, si así sale más barato) */
 function withTradePrice(x, id, trade) {
   if (!trade || !x) return x;
   const t = Number(trade.prices[id]);
   const price = t > 0 ? t : trade.off > 0 ? Math.round(Number(x.price) * (1 - trade.off / 100) * 100) / 100 : Number(x.price);
-  return Object.assign({}, x, { price });
+  if (!(t > 0 || trade.off > 0)) return Object.assign({}, x, { price });
+  // El bulto: cada unidad no le sale más cara que la suelta mayorista (applyTradePrices en la tienda)
+  const size = x.pack ? Number(x.pack.size) : 0;
+  const tp = size > 1 ? Math.round(price * size * 100) / 100 : 0;
+  const pack = size > 1 && tp < Number(x.pack.price) - 0.005 ? { size, price: tp } : x.pack;
+  return Object.assign({}, x, { price }, pack ? { pack } : {});
 }
 
 /**
@@ -85,7 +91,9 @@ function withTradePrice(x, id, trade) {
 function publishedCombos(store, trade) {
   const out = [];
   for (const pr of Array.isArray(store.onlinePromos) ? store.onlinePromos : []) {
-    if (pr && Array.isArray(pr.productIds) && pr.productIds.length) out.push({ id: String(pr.id), name: pr.name, price: Number(pr.price), groups: [{ qty: Math.max(1, Number(pr.qty) || 1), productIds: pr.productIds.map(String) }] });
+    // "Llevá 3, pagá 2" y "%": sin precio fijo, pagan `ratio` de lo que valen
+    const ratio = pr && typeof pr.ratio === "number" && pr.ratio >= 0 && pr.ratio < 1 ? pr.ratio : undefined;
+    if (pr && Array.isArray(pr.productIds) && pr.productIds.length) out.push({ id: String(pr.id), name: pr.name, price: Number(pr.price), ...(ratio !== undefined ? { ratio } : {}), groups: [{ qty: Math.max(1, Number(pr.qty) || 1), productIds: pr.productIds.map(String) }] });
   }
   for (const pr of Array.isArray(store.onlineCombos) ? store.onlineCombos : []) {
     if (pr && Array.isArray(pr.groups) && pr.groups.length) out.push({ id: String(pr.id), name: pr.name, price: Number(pr.price), groups: pr.groups.map((g) => ({ qty: Math.max(1, Number(g.qty) || 1), productIds: (g.productIds || []).map(String) })) });
@@ -93,8 +101,10 @@ function publishedCombos(store, trade) {
   for (const c of out) {
     const t = trade && trade.combos ? Number(trade.combos[c.id]) : 0;
     if (t > 0) c.price = t;
+    const rt = trade && trade.ratios ? trade.ratios[c.id] : undefined;
+    if (c.ratio !== undefined && typeof rt === "number" && rt >= 0 && rt < 1) c.ratio = rt;
   }
-  return out.filter((c) => c.price > 0);
+  return out.filter((c) => c.price > 0 || c.ratio !== undefined);
 }
 
 /**
@@ -127,9 +137,10 @@ function comboDiscount(lines, combos) {
         }
         if (need > 0) { ok = false; break; }
       }
-      if (!ok || sum - c.price <= 0.005) break;
+      const pay = c.ratio !== undefined ? Math.round(sum * c.ratio * 100) / 100 : c.price;
+      if (!ok || sum - pay <= 0.005) break;
       for (const [k, n] of taken) left.set(k, (left.get(k) || 0) - n);
-      total += sum - c.price;
+      total += sum - pay;
     }
   }
   return Math.round(total * 100) / 100;
@@ -165,7 +176,9 @@ async function priceProblem(storeRef, store, order) {
     const pub = products.get(String(it.productId));
     // Mitad y mitad con un gusto que ya no está publicado: no se puede sacar la cuenta
     if (it.half && known.length < 2) continue;
-    const base = it.half ? halfPrice(known[0], known[1]) : wholesale && pub ? wholesaleFloor(pub, it, unitsByProduct) : known[0];
+    // La oferta por cantidad vale en toda tienda (no solo en la venta a comercios), como en la caja
+    const offer = pub && pub.wholesale && Number(pub.wholesale.price) > 0 && Number(pub.wholesale.minQty) > 0;
+    const base = it.half ? halfPrice(known[0], known[1]) : (wholesale || offer) && pub ? wholesaleFloor(pub, it, unitsByProduct) : known[0];
     const paid = Number(it.price);
     if (!Number.isFinite(paid) || paid < base - 1) {
       lower.push(`${String(it.name || it.title || "Producto").slice(0, 60)}: ${Number.isFinite(paid) ? money(paid) : "sin precio"} (publicado ${money(base)})`);

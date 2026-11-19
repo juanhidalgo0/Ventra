@@ -1,5 +1,5 @@
 import api from './api';
-import { usePOSStore, packOf } from '../stores/posStore';
+import { usePOSStore, packOf, packForClient } from '../stores/posStore';
 import { hasFeature } from '../stores/businessStore';
 import { applyCombos, combosFromPromotions, type ComboUse } from './combos';
 
@@ -190,7 +190,10 @@ export function withOffers(items: PreOrderItem[], products: any[]): (PreOrderIte
  */
 export function priceFor(product: any, byPack: boolean, client?: any) {
   const pack = packOf(product, true);
-  if (byPack && pack) return { unitPrice: pack.price / pack.size, packSize: pack.size };
+  if (byPack && pack) {
+    const forClient = packForClient(pack, product, client);
+    return { unitPrice: forClient.price / forClient.size, packSize: pack.size };
+  }
   const sale = Number(product.salePrice) || 0;
   if (client?.priceList === 'TRADE') {
     if (Number(product.tradePrice) > 0) return { unitPrice: Number(product.tradePrice), packSize: null };

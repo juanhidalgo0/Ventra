@@ -322,7 +322,11 @@ export interface ExtraGroup {
 }
 
 /** Combo "N unidades de estos productos (mezclados) a precio fijo", para aplicar en la tienda. */
-export interface OnlinePromo { id: string; name: string; qty: number; price: number; productIds: string[] }
+/**
+ * Promo de un grupo: qty unidades de cualquiera de sus productos a price. "Llevá 3, pagá 2" y "15%"
+ * no tienen precio fijo (price 0): pagan `ratio` de lo que valen (2/3, 0,85) y `label` es el texto.
+ */
+export interface OnlinePromo { id: string; name: string; qty: number; price: number; productIds: string[]; ratio?: number; label?: string }
 /** Combo de varios grupos: de cada grupo, qty unidades de cualquiera de sus productos; todo junto a price. */
 export interface OnlineCombo { id: string; name: string; price: number; groups: { qty: number; productIds: string[] }[] }
 
@@ -361,11 +365,11 @@ export async function publishOnlinePromos(storeId: string, onlineIds: Set<string
   // Si no se pudieron leer las promociones, se deja la tienda como estaba (nunca se borran por un error)
   const { data } = await api.get('/promotions');
   if (!Array.isArray(data)) throw new Error('Respuesta inválida de promociones');
-  const { promos, combos, tradeCombos } = onlinePromosFrom(data, onlineIds);
+  const { promos, combos, tradeCombos, tradeRatios } = onlinePromosFrom(data, onlineIds);
   await claimStore(storeId);
   await updateDoc(doc(getDb(), 'ventra_stores', storeId), { onlinePromos: promos, onlineCombos: combos, updatedAt: serverTimestamp() });
   // El precio mayorista de los combos tampoco es público: va con los precios mayoristas
-  await publishTradePrices(storeId, { combos: tradeCombos }).catch((e) => console.warn('[OnlineStore] Combos mayoristas sin publicar', e));
+  await publishTradePrices(storeId, { combos: tradeCombos, ratios: tradeRatios }).catch((e) => console.warn('[OnlineStore] Combos mayoristas sin publicar', e));
   return promos.length + combos.length;
 }
 
@@ -374,10 +378,30 @@ export function onlinePromosFrom(data: any[], onlineIds: Set<string>, now = Date
   const promos: OnlinePromo[] = [];
   const combos: OnlineCombo[] = [];
   const tradeCombos: Record<string, number> = {};
+  const tradeRatios: Record<string, number> = {};
   for (const pr of (data || []) as any[]) {
-    if (!pr.isActive || pr.type !== 'FIXED_COMBO' || !(pr.fixedPrice > 0)) continue;
+    if (!pr.isActive) continue;
     if (pr.endDate && new Date(pr.endDate).getTime() < now) continue;
     if (pr.startDate && new Date(pr.startDate).getTime() > now) continue;
+    if (pr.limitType === 'STOCK' && pr.limitStock != null && Number(pr.soldStock) >= Number(pr.limitStock)) continue;
+    const ids = [...new Set(((pr.products || []) as any[]).map((x) => String(x.productId)))].filter((id) => onlineIds.has(id));
+    // Llevá N, pagá M: de cada producto por separado (como en la caja), un id por producto
+    if (pr.type === 'NX_M') {
+      const n = Math.round(Number(pr.nValue) || 0), m = Math.round(Number(pr.mValue) || 0);
+      if (!(n >= 2) || !(m >= 0) || m >= n) continue;
+      for (const id of ids) promos.push({ id: `${pr.id}~${id}`, name: pr.name || `${n}x${m}`, qty: n, price: 0, productIds: [id], ratio: m / n, label: `Llevá ${n}, pagá ${m}` });
+      continue;
+    }
+    // % de descuento: cada unidad de esos productos
+    if (pr.type === 'DISCOUNT_PERCENT') {
+      const pct = Number(pr.discountPercentage) || 0;
+      if (!(pct > 0 && pct < 100) || !ids.length) continue;
+      promos.push({ id: String(pr.id), name: pr.name || `${pct}% off`, qty: 1, price: 0, productIds: ids, ratio: 1 - pct / 100, label: `${pct}% off` });
+      const tp = Number(pr.tradeDiscountPercentage) || 0;
+      if (tp > 0 && tp < 100) tradeRatios[String(pr.id)] = 1 - tp / 100;
+      continue;
+    }
+    if (pr.type !== 'FIXED_COMBO' || !(pr.fixedPrice > 0)) continue;
     const items = (pr.products || []) as any[];
     const groups = new Set(items.map((x) => x.groupId || `single_${x.productId}`));
     if (!items.length) continue;
@@ -404,7 +428,7 @@ export function onlinePromosFrom(data: any[], onlineIds: Set<string>, now = Date
     promos.push({ id: pr.id, name: pr.name, qty, price: Number(pr.fixedPrice), productIds });
     if (Number(pr.tradeFixedPrice) > 0) tradeCombos[pr.id] = Number(pr.tradeFixedPrice);
   }
-  return { promos, combos, tradeCombos };
+  return { promos, combos, tradeCombos, tradeRatios };
 }
 
 /**
@@ -585,7 +609,7 @@ async function tradeKeyOf(storeId: string): Promise<string> {
  * Publica los precios mayoristas (los de los productos, los de los combos, o los dos) y deja al día
  * la lista de precios de cada cliente con link. Solo si la tienda tiene la venta a comercios.
  */
-export async function publishTradePrices(storeId: string, data: { prices?: Record<string, number>; combos?: Record<string, number> }): Promise<void> {
+export async function publishTradePrices(storeId: string, data: { prices?: Record<string, number>; combos?: Record<string, number>; ratios?: Record<string, number> }): Promise<void> {
   const cfg = await loadStoreConfig(storeId);
   if (!cfg.wholesale?.enabled) return;
   const key = await tradeKeyOf(storeId);

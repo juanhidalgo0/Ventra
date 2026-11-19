@@ -34,6 +34,8 @@ export interface CartItem {
    */
   packSize?: number;
   packPrice?: number;
+  /** Precio del bulto de la ficha (sin la lista del cliente): para volver a calcularlo al cambiar de cliente */
+  listPackPrice?: number;
 }
 
 /**
@@ -45,6 +47,28 @@ export function packOf(product: any, bulkEnabled: boolean): { size: number; pric
   if (!bulkEnabled || size <= 1) return null;
   const price = Number(product?.packPrice) > 0 ? Number(product.packPrice) : Number(product?.salePrice || 0) * size;
   return { size, price: Math.round(price * 100) / 100 };
+}
+
+/**
+ * Unidad suelta del cliente de lista Mayorista: su precio mayorista o, si el producto no tiene,
+ * el de venta con el % del cliente. null si el cliente no es mayorista o no le baja el precio.
+ */
+export function tradeUnitOf(product: { salePrice?: any; tradePrice?: any }, client?: any): number | null {
+  if (client?.priceList !== 'TRADE') return null;
+  if (Number(product?.tradePrice) > 0) return Number(product.tradePrice);
+  const off = Number(client?.tradeDiscountPercentage) || 0;
+  return off > 0 ? Math.round(Number(product?.salePrice || 0) * (1 - off / 100) * 100) / 100 : null;
+}
+
+/**
+ * Bulto para el cliente: al mayorista cada unidad del bulto no le sale más cara que su unidad
+ * suelta (si el bulto no tiene precio propio, vale sus unidades a precio mayorista). Misma cuenta
+ * en preorders.service (servidor) y en la tienda.
+ */
+export function packForClient(pack: { size: number; price: number }, product: any, client?: any): { size: number; price: number } {
+  const t = tradeUnitOf(product, client);
+  if (t === null || t * pack.size >= pack.price - 0.005) return pack;
+  return { size: pack.size, price: Math.round(t * pack.size * 100) / 100 };
 }
 
 /** Presupuesto cargado al carrito: al cobrar esa venta, el presupuesto queda aceptado */
@@ -378,7 +402,13 @@ export const usePOSStore = create<POSState>()(
             if (item.isPromo && !item.isReturn && item.promoId && promoById.has(item.promoId)) {
               return { ...item, price: promoLinePrice(item, promoById.get(item.promoId)) };
             }
-            // El bulto tiene su propio precio: la lista del cliente no lo toca
+            // Bulto: su precio, salvo que al mayorista le salga más barato por unidad suelta
+            if (item.packSize && !item.isCustomPrice && !item.isPromo && !item.isReturn) {
+              const listPack = item.listPackPrice ?? item.packPrice ?? item.price * item.packSize;
+              const pack = packForClient({ size: item.packSize, price: listPack }, { salePrice: item.originalSalePrice, tradePrice: item.tradePrice }, client);
+              const unit = pack.price / pack.size;
+              return { ...item, price: unit, regularPrice: unit, packPrice: pack.price, listPackPrice: listPack };
+            }
             if (item.isCustomPrice || item.isPromo || item.isReturn || item.packSize) return item;
 
             const basePrice = item.originalSalePrice ?? item.regularPrice ?? item.price;
@@ -484,8 +514,9 @@ export const usePOSStore = create<POSState>()(
     });
   },
 
-  addPackToCart: (product, pack, packs = 1) => {
+  addPackToCart: (product, listPack, packs = 1) => {
     set((state) => {
+      const pack = packForClient(listPack, product, state.selectedClient);
       const cartKey = `${product.id}_pack`;
       const unitPrice = pack.price / pack.size; // sin redondear: el bulto suma justo pack.price
       const addUnits = pack.size * packs;
@@ -506,6 +537,8 @@ export const usePOSStore = create<POSState>()(
             imageUrl: product.imageUrl,
             packSize: pack.size,
             packPrice: pack.price,
+            listPackPrice: listPack.price,
+            tradePrice: Number(product.tradePrice) > 0 ? Number(product.tradePrice) : undefined,
           }];
       return { cart: autoCombineCombos(cart, state.promotions, [product]) };
     });

@@ -1771,6 +1771,14 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                   {hasFeature('bulk') && Number(formData.unitsPerPack) > 1 && Number(formData.wholesaleMinQty) > 0 && (
                     <p className="text-[11.5px] text-slate-500 mt-1.5">= {Math.round((Number(formData.wholesaleMinQty) / Number(formData.unitsPerPack)) * 100) / 100} bulto(s) de {formData.unitsPerPack}</p>
                   )}
+                  {hasFeature('bulk') && (
+                    <p className="text-[11.5px] text-slate-500 mt-1.5 leading-snug">
+                      {Number(formData.wholesaleMinQty) > 0 && Number(formData.wholesalePrice) > 0
+                        ? `Si en un mismo ticket o pedido llevan ${formData.wholesaleMinQty} o más, cada unidad se cobra $${Number(formData.wholesalePrice).toLocaleString('es-AR', { maximumFractionDigits: 2 })}. Con menos, va el precio normal.`
+                        : 'Ej: a partir de 10, $850: si en un mismo ticket o pedido llevan 10 o más, cada unidad se cobra $850. Con menos, va el precio normal.'}
+                      {' '}Vale para cualquier cliente; no es el precio mayorista, que depende del cliente.
+                    </p>
+                  )}
                 </Collapsible>
 
                 {isHardwareStore && !tradeList && <Collapsible

@@ -667,8 +667,10 @@ function extrasOf(key){ return (S.lines[key]&&S.lines[key].extras)||[]; }
 function halfOf(key){ var h=S.lines[key]&&S.lines[key].half; return h&&S.byId[h.id]?S.byId[h.id]:null; }
 function unitOf(key){
   var p=S.byId[pidOf(key)], h=halfOf(key), base=p?p.price:0;
-  // Venta a comercios: el bulto (o la unidad) con la oferta por cantidad
+  // Venta a comercios: el bulto (o la unidad) con la oferta por cantidad. En cualquier tienda, la
+  // oferta por cantidad baja la unidad (igual que en la caja), salvo mitad y mitad o con agregados
   if(p && WS() && (lineSize(key)>1 || offerOf(p))){ var sz=lineSize(key); return r2(perUnit(p,sz)*sz); }
+  if(p && !h && !extrasOf(key).length && offerOf(p)) return r2(perUnit(p,1));
   if(h) base=halfPrice(base,h.price); return base+extrasOf(key).reduce(function(a,x){ return a+(Number(x.price)||0); },0);
 }
 /* Nombre de la línea: "Mitad Muzzarela / mitad Napolitana (Grande)" en mitad y mitad */
@@ -690,7 +692,8 @@ function packOf(p){ return WS()&&p&&!p.isGroup&&p.pack&&Number(p.pack.size)>1&&N
 function packKey(pid){ return pid+'~B'; }
 function lineSize(key){ var l=S.lines[key]; return l&&l.pack?Number(l.pack):1; }
 function unitsOf(pid){ return Object.keys(S.cart).reduce(function(a,k){ return a+(pidOf(k)===pid?S.cart[k]*lineSize(k):0); },0); }
-function offerOf(p){ var w=WS()&&p&&p.wholesale; return w&&Number(w.price)>0&&Number(w.minQty)>0?w:null; }
+/* Oferta por cantidad ("desde 10 u., $850 c/u"): en toda tienda, como en la caja */
+function offerOf(p){ var w=p&&!p.isGroup&&p.wholesale; return w&&Number(w.price)>0&&Number(w.minQty)>0&&Number(w.price)<Number(p.price)-1e-9?w:null; }
 function offerOn(p){ var o=offerOf(p); return o&&unitsOf(p.id)>=Number(o.minQty)-1e-9?o:null; }
 /* Precio de una unidad suelta o de la unidad dentro del bulto, con la oferta si corresponde */
 function perUnit(p,size){ var per=size>1&&p.pack?Number(p.pack.price)/size:Number(p.price)||0, o=offerOn(p); if(o&&Number(o.price)<per-1e-9) per=Number(o.price); return per; }
@@ -761,16 +764,18 @@ function subtotal(){ return cartItems().reduce(function(a,x){return a+x.qty*x.un
    Solo cuentan unidades sueltas (el bulto tiene su propio precio). */
 function allCombos(){
   var out=[];
-  (S.cfg.onlinePromos||[]).forEach(function(pr){ if(pr&&pr.productIds&&pr.productIds.length) out.push({id:String(pr.id),name:pr.name,price:Number(pr.price),groups:[{qty:Math.max(1,Number(pr.qty)||1),productIds:pr.productIds}]}); });
+  (S.cfg.onlinePromos||[]).forEach(function(pr){ if(pr&&pr.productIds&&pr.productIds.length) out.push({id:String(pr.id),name:pr.name,price:Number(pr.price),ratio:(typeof pr.ratio==='number'?pr.ratio:undefined),label:pr.label||'',groups:[{qty:Math.max(1,Number(pr.qty)||1),productIds:pr.productIds}]}); });
   (S.cfg.onlineCombos||[]).forEach(function(pr){ if(pr&&pr.groups&&pr.groups.length) out.push({id:String(pr.id),name:pr.name,price:Number(pr.price),groups:pr.groups.map(function(g){ return {qty:Math.max(1,Number(g.qty)||1),productIds:g.productIds||[]}; })}); });
-  return out.filter(function(c){ return c.price>0; });
+  return out.filter(function(c){ return c.price>0 || (c.ratio!==undefined && c.ratio>=0 && c.ratio<1); });
 }
+/* Lo que se paga por un combo: el precio fijo o, en "llevá 3, pagá 2" y "%", la parte (ratio) de lo que valen */
+function comboPay(c,sum){ return c.ratio!==undefined?r2(sum*c.ratio):c.price; }
 function comboUnits(c){ return c.groups.reduce(function(a,g){ return a+g.qty; },0); }
 function applyCombos(lines,combos){
   var left={}, out=[];
   lines.forEach(function(l){ left[l.key]=(left[l.key]||0)+Math.max(0,Math.floor(Number(l.quantity)+1e-9)); });
   combos.slice().sort(function(a,b){ return comboUnits(b)-comboUnits(a) || (a.id<b.id?-1:a.id>b.id?1:0); }).forEach(function(c){
-    var used={}, times=0, regular=0;
+    var used={}, times=0, regular=0, paid=0;
     while(c.maxTimes===undefined || times<c.maxTimes){
       var taken={}, ok=true, sum=0;
       for(var gi=0;gi<c.groups.length;gi++){
@@ -784,11 +789,12 @@ function applyCombos(lines,combos){
         }
         if(need>0){ ok=false; break; }
       }
-      if(!ok || sum-c.price<=0.005) break;
+      var pay=comboPay(c,sum);
+      if(!ok || sum-pay<=0.005) break;
       Object.keys(taken).forEach(function(k){ left[k]-=taken[k]; used[k]=(used[k]||0)+taken[k]; });
-      times++; regular+=sum;
+      times++; regular+=sum; paid+=pay;
     }
-    if(times) out.push({id:c.id,name:c.name,times:times,price:c.price,regular:r2(regular),discount:r2(regular-times*c.price),used:used});
+    if(times) out.push({id:c.id,name:c.name,times:times,price:r2(paid/times),regular:r2(regular),discount:r2(regular-paid),used:used});
   });
   return {uses:out,left:left};
 }
@@ -811,7 +817,7 @@ function promoLines(){
       if(n>0 && n<c.groups[0].qty) missing=c.groups[0].qty-n;
     }
     if(!u && !missing) return;
-    out.push({name:c.name,times:u?u.times:0,discount:u?u.discount:0,missing:missing,price:c.price,qty:comboUnits(c),saves:promoSaves(c)});
+    out.push({name:c.name,times:u?u.times:0,discount:u?u.discount:0,missing:missing,price:c.price,label:c.label,qty:comboUnits(c),saves:promoSaves(c)});
   });
   return out;
 }
@@ -823,7 +829,7 @@ function promoHtml(){
   lines.forEach(function(x){ if(x.saves && x.missing>0 && x.missing<x.qty && (!hint || x.missing<hint.missing)) hint=x; });
   return lines.map(function(x){
     return x.discount?'<div class="sum promo"><span>'+esc(x.name)+(x.times>1?' x'+x.times:'')+'</span><span>-'+money(x.discount)+'</span></div>':'';
-  }).join('')+(hint?'<div class="promo-hint">Sumá '+hint.missing+' más y aprovechás la promo “'+esc(hint.name)+'” ('+hint.qty+' a '+money(hint.price)+')</div>':'');
+  }).join('')+(hint?'<div class="promo-hint">Sumá '+hint.missing+' más y aprovechás la promo “'+esc(hint.name)+'” ('+(hint.label?esc(hint.label):hint.qty+' a '+money(hint.price))+')</div>':'');
 }
 function deliveryCost(){
   var c=S.cfg; if(S.delivery!=='DELIVERY') return 0;
@@ -888,21 +894,28 @@ function setQty(id,qty,force){
 // El catálogo viene agrupado en pocos documentos (catalog/p0, p1...): 1-3 lecturas por visita.
 // Tiendas que todavía no lo publicaron así (o si falla): un documento por producto.
 /* Precios mayoristas: el de cada producto (si tiene) o el precio de siempre con el % del cliente.
-   El bulto conserva su precio (igual que en la caja). Los combos también tienen el suyo. */
+   El bulto conserva su precio salvo que por unidad mayorista salga más barato. Los combos también tienen el suyo. */
 async function applyTradePrices(ref, list){
-  var c=S.client, prices={}, combos={}, off=Number(c.tradeDiscount)||0;
+  var c=S.client, prices={}, combos={}, ratios={}, off=Number(c.tradeDiscount)||0;
   if(c.priceKey){
     try{
       var td=await ref.collection('tradePrices').doc(String(c.priceKey)).get();
-      if(td.exists){ prices=td.data().prices||{}; combos=td.data().combos||{}; }
+      if(td.exists){ prices=td.data().prices||{}; combos=td.data().combos||{}; ratios=td.data().ratios||{}; }
     }catch(e){ console.warn('Precios mayoristas no disponibles',e); }
   }
   list.forEach(function(p){
     var t=Number(prices[p.id]);
     var np=t>0?t:(off>0?Math.round(Number(p.price)*(1-off/100)*100)/100:0);
-    if(np>0){ p.retailPrice=Number(p.price); p.price=np; }
+    if(np>0){
+      p.retailPrice=Number(p.price); p.price=np;
+      // El bulto: cada unidad no le sale más cara que la suelta mayorista (igual que en la caja y order-check.js)
+      if(p.pack&&Number(p.pack.size)>1){ var tp=Math.round(np*Number(p.pack.size)*100)/100; if(tp<Number(p.pack.price)-0.005) p.pack={size:Number(p.pack.size),price:tp}; }
+    }
   });
-  (S.cfg.onlinePromos||[]).concat(S.cfg.onlineCombos||[]).forEach(function(pr){ var t=Number(combos[pr.id]); if(t>0){ pr.retailPrice=pr.price; pr.price=t; } });
+  (S.cfg.onlinePromos||[]).concat(S.cfg.onlineCombos||[]).forEach(function(pr){
+    var t=Number(combos[pr.id]); if(t>0){ pr.retailPrice=pr.price; pr.price=t; }
+    var rt=ratios[pr.id]; if(typeof rt==='number' && rt>=0 && rt<1 && typeof pr.ratio==='number'){ pr.ratio=rt; pr.label=Math.round((1-rt)*100)+'% off'; }
+  });
   S.tradePrices=true;
 }
 async function loadCatalog(ref, cfg){
@@ -1112,6 +1125,7 @@ function hasExtras(p){ return extrasFor(p,null).length>0; }
 function catName(c){ return nice(c); }
 /* Un combo ahorra si su precio es menor a lo que salen esas unidades sueltas (al precio más barato de cada grupo) */
 function promoSaves(c){
+  if(c.ratio!==undefined) return c.ratio<1;
   var full=0;
   for(var i=0;i<c.groups.length;i++){
     var g=c.groups[i], prices=g.productIds.map(function(id){ var p=S.byId[id]; return p?Number(p.price):0; }).filter(function(v){ return v>0; });
@@ -1122,6 +1136,7 @@ function promoSaves(c){
 }
 /* "Lavandina + 2 Detergente a elección" */
 function comboText(c){
+  if(c.ratio!==undefined){ var g0=c.groups[0], p0=g0.productIds.length===1?S.byId[g0.productIds[0]]:null; return (c.label||'Promo')+(p0?' · '+p0.name:''); }
   if(c.groups.length===1){ var g=c.groups[0]; return g.qty+' a '+money(c.price)+(g.productIds.length>1?' · mezclá como quieras':''); }
   return c.groups.map(function(g){
     var p=g.productIds.length===1?S.byId[g.productIds[0]]:null;
@@ -1369,9 +1384,15 @@ function productCard(p){
     + (S.food&&!noImg?'<div class="fc-media"><div class="card-img" data-act="product" data-id="'+esc(p.id)+'">'+imgOrPh(p.imageUrl,p.name)+'</div><div class="fc-btn">'+buyControl(p.id,qty,out)+'</div></div>':'')
     + '</article>';
 }
+/* "Llevá 3, pagá 2" o "15% off" del producto (las promos sin precio fijo) */
+function promoTagOf(p){
+  var ids=[p.id].concat(p.variants?p.variants.map(function(v){ return v.id; }):[]);
+  var c=allCombos().filter(function(x){ return x.ratio!==undefined && x.label && x.groups[0].productIds.some(function(id){ return ids.indexOf(id)>=0; }); })[0];
+  return c?'<span class="ws-tag">'+esc(c.label)+'</span>':'';
+}
 function priceHtml(p){
   var pk=packOf(p), o=offerOf(p);
-  var tag=o?'<span class="ws-tag">Oferta: '+o.minQty+'+ u. a '+money(o.price)+' c/u</span>':'';
+  var tag=(o?'<span class="ws-tag">Oferta: '+o.minQty+'+ u. a '+money(o.price)+' c/u</span>':'')+promoTagOf(p);
   if(pk) return '<span class="price">'+money(pk.price)+'<small> bulto x'+pk.size+'</small></span>'+tag;
   return priceHtmlBase(p)+tag;
 }

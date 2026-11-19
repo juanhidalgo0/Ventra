@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useOnlineOrders, isNewOrder } from '../../services/onlineStoreOrders';
 import { updateOrderStage, lockOrderForCharge, canAcceptOrder, reviewInProgress, wholesaleClientOf, type OrderStage, type StoreOrder, type StoreOrderItem } from '../../services/onlineStore';
-import { usePOSStore, packOf } from '../../stores/posStore';
+import { usePOSStore, packOf, packForClient } from '../../stores/posStore';
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { usePlanStore } from '../../stores/planStore';
 import { useFeature } from '../../stores/businessStore';
@@ -46,7 +46,8 @@ function unitPriceFor(p: any, client: any) {
 function catalogPrice(o: StoreOrder, it: StoreOrderItem, p: any, client?: any) {
   const size = Number(it.packSize) > 1 ? Number(it.packSize) : 0;
   const pack = size ? packOf(p, true) : null;
-  let price = size ? (pack && pack.size === size ? pack.price : Number(p.salePrice) * size) : unitPriceFor(p, client);
+  // El bulto, al mayorista, como en la caja (packForClient)
+  let price = size ? (pack && pack.size === size ? packForClient(pack, p, client).price : Number(p.salePrice) * size) : unitPriceFor(p, client);
   const offer = Number(p.wholesalePrice) || 0;
   const min = Number(p.wholesaleMinQty) || 0;
   const units = o.items.filter((x) => x.productId === it.productId).reduce((s, x) => s + x.qty * (Number(x.packSize) > 1 ? Number(x.packSize) : 1), 0);

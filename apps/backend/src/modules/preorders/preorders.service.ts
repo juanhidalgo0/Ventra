@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { nextDocNumber } from '../sync/numbering';
-import { applyCombos, combosFromPromotions, comboShares } from './combos';
+import { applyCombos, combosFromPromotions, comboShares, COMBO_TYPES } from './combos';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -92,7 +92,7 @@ export class PreOrdersService {
       if (same) { same.quantity += it.quantity; same.total = round2(same.quantity * same.unitPrice); } else items.push(it);
     }
         if (!items.length) throw new BadRequestException('El pedido no tiene productos');
-    // Lista Mayorista: el cliente paga el precio mayorista de la unidad (el bulto tiene su propio precio) y el de los combos
+    // Lista Mayorista: el cliente paga el precio mayorista de la unidad (y del bulto, si le sale más barato así) y el de los combos
     const orderClient = data?.clientId ? await (this.prisma as any).client.findUnique({ where: { id: String(data.clientId) }, select: { priceList: true, tradeDiscountPercentage: true } }) : null;
     const isTrade = orderClient?.priceList === 'TRADE';
     const existingItems: any[] = await (this.prisma as any).preOrderItem.findMany({ where: { orderId: id }, select: { productId: true, packSize: true, unitPrice: true, promoId: true, regularPrice: true } });
@@ -134,6 +134,8 @@ export class PreOrdersService {
         if (!byPack) it.packSize = null;
         const asked = it.unitPrice;
         let unit = unitOf(Number(p.salePrice), Number(p.packPrice), it.packSize, retailUnit(p));
+        // Al mayorista, cada unidad del bulto no le sale más cara que su unidad suelta (packForClient en la caja)
+        if (it.packSize && isTrade && (Number(p.tradePrice) > 0 || tradeOff > 0)) unit = Math.min(unit, retailUnit(p));
         const before = kept.get(`${it.productId}|${it.packSize || ''}`);
         const pr: any = prevById.get(it.productId);
         if (before !== undefined) unit = before;
@@ -195,7 +197,7 @@ export class PreOrdersService {
   async withCombos(items: any[], isTrade: boolean, keep: Set<string>): Promise<any[]> {
     const loose = items.map((it, i) => ({ it, key: String(i) })).filter(({ it }) => !it.packSize);
     if (!loose.length) return items;
-    const promos = await (this.prisma as any).promotion.findMany({ where: { type: 'FIXED_COMBO' }, include: { products: true } }).catch(() => []);
+    const promos = await (this.prisma as any).promotion.findMany({ where: { type: { in: COMBO_TYPES } }, include: { products: true } }).catch(() => []);
     const combos = combosFromPromotions(promos, { trade: isTrade, keep });
     if (!combos.length) return items;
     const uses = applyCombos(loose.map(({ it, key }) => ({ key, productId: it.productId, quantity: it.quantity, price: it.unitPrice })), combos);
