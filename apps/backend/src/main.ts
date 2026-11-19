@@ -78,6 +78,8 @@ async function bootstrap() {
   app.use('/api/purchases/pending-from-preview', (req: any, res: any, next: any) => bigJson(req, res, next));
   // Organizar automáticamente: lo tildado de miles de productos va en un solo guardado
   app.use('/api/ai/organize/apply', (req: any, res: any, next: any) => bigJson(req, res, next));
+  // Fotos desde un catálogo PDF: la pantalla manda las fotos elegidas (de a 40)
+  app.use('/api/products/images/from-pdf/apply', (req: any, res: any, next: any) => bigJson(req, res, next));
 
   // Demo pública: cada pedido va a la base de su visitante. El cuerpo se lee antes (con las
   // mismas opciones que usa Nest, que al verlo ya registrado no lo repite): leerlo después

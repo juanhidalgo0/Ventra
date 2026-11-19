@@ -373,8 +373,8 @@ export class ProductsController {
 
   @Post('images/from-pdf/apply')
   @Roles(...MANAGERS)
-  applyPdfImages(@Body('token') token: string, @Body('productIds') productIds: string[]) {
-    return this.pdfImages.apply(token, productIds);
+  applyPdfImages(@Body('token') token: string, @Body('productIds') productIds: string[], @Body('images') images: Record<string, string>) {
+    return this.pdfImages.apply(token, productIds, images);
   }
 
   // --- Fotos para ferretería (productos sin código de barras) ---

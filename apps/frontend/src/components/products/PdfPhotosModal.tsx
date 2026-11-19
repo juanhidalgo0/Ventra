@@ -49,9 +49,11 @@ export default function PdfPhotosModal({ onClose, onSaved }: { onClose: () => vo
     setSaving(true);
     try {
       let saved = 0;
-      // De a tandas: así un catálogo grande no queda en un solo pedido largo
-      for (let i = 0; i < chosen.length; i += 100) {
-        const { data } = await api.post('/products/images/from-pdf/apply', { token: res.token, productIds: chosen.slice(i, i + 100).map((x) => x.productId) }, { timeout: 120000 } as any);
+      // De a tandas, con las fotos: así se guarda aunque el servidor se haya reiniciado en el medio
+      for (let i = 0; i < chosen.length; i += 40) {
+        const part = chosen.slice(i, i + 40);
+        const images = Object.fromEntries(part.map((x) => [x.productId, x.image]));
+        const { data } = await api.post('/products/images/from-pdf/apply', { token: res.token, productIds: part.map((x) => x.productId), images }, { timeout: 120000 } as any);
         saved += data.saved || 0;
       }
       toast.success(`Listo: ${saved} ${saved === 1 ? 'foto puesta' : 'fotos puestas'}`);

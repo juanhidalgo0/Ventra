@@ -125,21 +125,27 @@ export class PdfImagesService {
     return { token, images, unmatched, matched: items.length, withImage: items.filter((i) => i.hasImage).length, items };
   }
 
-  /** Guarda las fotos elegidas de lo que encontró preview. */
-  async apply(token: string, productIds: string[]) {
+  /**
+   * Guarda las fotos elegidas. Si el servidor todavía tiene lo que encontró preview, usa esas; si
+   * se reinició en el medio (una actualización, la caja web que se apaga sola), las que manda la
+   * pantalla, que son las mismas: JPEG chicos, solo para los productos que existen.
+   */
+  async apply(token: string, productIds: string[], images?: Record<string, string>) {
     const pend = token ? this.pending.get(token) : undefined;
-    if (!pend || Date.now() - pend.at > TTL_MS) throw new BadRequestException('Pasó mucho tiempo: volvé a subir el PDF');
-    const ids = Array.isArray(productIds) ? productIds.map(String) : [];
+    const fresh = pend && Date.now() - pend.at <= TTL_MS ? pend : undefined;
+    const sent = images && typeof images === 'object' ? images : {};
+    const ids = Array.isArray(productIds) ? productIds.map(String).slice(0, 500) : [];
+    if (!fresh && !ids.some((id) => typeof sent[id] === 'string')) throw new BadRequestException('Pasó mucho tiempo: volvé a subir el PDF');
     let saved = 0;
     for (const id of ids) {
-      const f = pend.items.get(id);
+      const img = sent[id];
+      const f = fresh?.items.get(id) ?? (typeof img === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img) && img.length < 400_000 ? { productId: id, image: img } : undefined);
       if (!f) continue;
       const ok = await this.prisma.product.update({ where: { id }, data: { imageUrl: f.image } }).then(() => true).catch(() => false);
       if (!ok) continue;
       this.events.emitProductUpdated({ id, imageUrl: f.image });
       saved++;
     }
-    this.pending.delete(token);
     return { saved };
   }
 
