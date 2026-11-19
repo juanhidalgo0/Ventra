@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { usePOSStore } from '../../stores/posStore';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2, Clock, Loader2 } from 'lucide-react';
+import { X, Banknote, CreditCard, Smartphone, Shuffle, Check, Printer, CornerDownLeft, QrCode, AlertCircle, AlertTriangle, HelpCircle , FileText, Maximize2, Clock, Loader2, User } from 'lucide-react';
 import InvoiceModal, { nombreComprobante, numeroComprobante, qrImagen } from './InvoiceModal';
 import TicketReceipt from './TicketReceipt';
 import SalesNotePreview from './SalesNotePreview';
@@ -16,7 +16,7 @@ import { saleNote } from './gastro';
 import { chargeTurnosOfSale } from './turnoCobro';
 import { useTourStore } from '../common/tour/tourStore';
 import { lockShortcuts, isFunctionKey } from '../../utils/shortcutLock';
-import { hasFeature } from '../../stores/businessStore';
+import { hasFeature, tradeListName } from '../../stores/businessStore';
 import { getPointTerminals, isMercadoPagoMethod } from '../../utils/mpPoint';
 import PointChargeOverlay from './PointChargeOverlay';
 import { useAuthStore } from '../../stores/authStore';
@@ -64,6 +64,65 @@ function playSaleSuccessSound() {
   } catch (e) {
     // Audio autoplay restrictions or unsupported
   }
+}
+
+/** Cliente de la venta en el cobro: Consumidor final o uno de la lista, con buscador */
+function SaleClientPicker({ onPick }: { onPick: (client: any | null) => void }) {
+  const client = usePOSStore((s) => s.selectedClient);
+  const clients = usePOSStore((s) => s.clients);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return (clients || []).filter((c: any) => c.isActive !== false && (!t || `${c.name} ${c.locality || ''} ${c.cuit || ''} ${c.dni || ''}`.toLowerCase().includes(t))).slice(0, 40);
+  }, [clients, q]);
+  const pick = (c: any | null) => {
+    usePOSStore.getState().setSelectedClient(c);
+    onPick(c);
+    setOpen(false);
+    setQ('');
+  };
+  const trade = client?.priceList === 'TRADE';
+  return (
+    <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <User className="w-4 h-4 text-slate-500 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{client ? client.name : 'Consumidor final'}</p>
+          {trade && <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400">Precio {tradeListName().toLowerCase()}</p>}
+        </div>
+        {client && (
+          <button type="button" onClick={() => pick(null)} className="text-[12px] font-semibold text-slate-500 hover:text-rose-600 px-2 py-1 cursor-pointer">Consumidor final</button>
+        )}
+        <button type="button" onClick={() => setOpen(!open)} className="text-[12px] font-bold text-teal-700 dark:text-teal-400 hover:underline px-2 py-1 cursor-pointer">
+          {client ? 'Cambiar' : 'Elegir cliente'}
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-slate-200 dark:border-slate-700 p-2 space-y-1.5">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } if (e.key === 'Enter' && list[0]) { e.preventDefault(); e.stopPropagation(); pick(list[0]); } }}
+            placeholder="Buscar cliente..."
+            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none focus:ring-1 focus:ring-teal-500"
+          />
+          <div className="max-h-40 overflow-y-auto">
+            {list.map((c: any) => (
+              <button key={c.id} type="button" onClick={() => pick(c)} className="w-full px-2 py-1.5 rounded-lg text-left text-[13px] flex items-center justify-between hover:bg-white dark:hover:bg-slate-800 cursor-pointer">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{c.name}</span>
+                <span className="text-[10.5px] shrink-0 ml-2 text-slate-500">
+                  {c.priceList === 'TRADE' ? <b className="text-amber-700">{tradeListName()}</b> : c.locality || ''}
+                </span>
+              </button>
+            ))}
+            {list.length === 0 && <p className="text-center py-2 text-xs text-slate-400">No hay clientes con esa búsqueda</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PaymentModal({ total, sessionId, onClose, onSuccess, isDebtPayment, debtClient, onSurchargeChange, onServicesChange, practice }: { total: number; sessionId: string; onClose: () => void; onSuccess: () => void; isDebtPayment?: boolean; debtClient?: any; onSurchargeChange?: (surcharge: number) => void; /** Total de los cargos por servicio, para mostrarlo en la caja */ onServicesChange?: (amount: number) => void; /** Modo práctica del recorrido: muestra un cobro en efectivo y nunca registra la venta */ practice?: boolean }) {
@@ -1226,6 +1285,12 @@ export default function PaymentModal({ total, sessionId, onClose, onSuccess, isD
 
           {/* Con el recargo puesto o abierto, el botón de servicio va solo debajo */}
           {manualSurchargeAllowed && !serviceEditor && (surchargeEditor || (manualSurcharge && manualTotal > 0)) && addServiceButton}
+
+          {/* Distribuidora: a nombre de quién va la venta. Consumidor final si no se elige; con un
+              cliente mayorista el ticket pasa solo a sus precios (y el total de arriba con él) */}
+          {hasFeature('delivery') && !isDebtPayment && !practice && (
+            <SaleClientPicker onPick={(c) => { if (c) setSelectedClientId(c.id); }} />
+          )}
 
           <div className="space-y-3">
             {finalTotal >= 0 ? (

@@ -333,18 +333,10 @@ export default function POSScreen() {
     const usesPreorders = useFeature('preorders');
   const workRole = useWorkRole();
   /**
-   * Abre el cobro. En la distribuidora la venta va a nombre de un cliente (nota, remito, cuenta);
-   * la venta de mostrador sale a Consumidor final con un toque, o siempre si esta caja lo tiene así.
+   * Abre el cobro. Sin cliente elegido, la venta va a Consumidor final (la de mostrador de siempre);
+   * en la distribuidora el cliente se puede elegir o cambiar ahí mismo, en el cobro.
    */
-  const openPayment = (walkIn = false) => {
-    if (hasFeature('delivery') && !usePOSStore.getState().selectedClient && !walkIn && !walkInDefault) {
-      setPayAfterClient(true);
-      setShowClientSelector(true);
-      return;
-    }
-    setPayAfterClient(false);
-    setShowPayment(true);
-  };
+  const openPayment = () => setShowPayment(true);
   // Carnicería y fiambrería: etiquetas de la balanza con el código del producto (PLU) adentro
   const scaleLabelsOn = useFeature('scaleLabels');
   const pluIndex = useMemo(() => (scaleLabelsOn ? buildPluIndex(cachedProducts) : null), [scaleLabelsOn, cachedProducts]);
@@ -368,14 +360,6 @@ export default function POSScreen() {
   );
   const [posClients, setPosClients] = useState<any[]>([]);
   const [showClientSelector, setShowClientSelector] = useState(false);
-  /** Distribuidora: se tocó Cobrar sin cliente; al elegirlo (o Consumidor final) sigue al cobro */
-  const [payAfterClient, setPayAfterClient] = useState(false);
-  /** Distribuidora: en esta caja, sin cliente elegido la venta sale directo a Consumidor final */
-  const [walkInDefault, setWalkInDefault] = useState(() => { try { return localStorage.getItem('ventra_pos_walkin_default') === '1'; } catch { return false; } });
-  const toggleWalkInDefault = (on: boolean) => {
-    setWalkInDefault(on);
-    try { localStorage.setItem('ventra_pos_walkin_default', on ? '1' : '0'); } catch { /* sin almacenamiento: vale hasta cerrar */ }
-  };
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const selectedClient = usePOSStore(state => state.selectedClient);
   const setSelectedClient = usePOSStore(state => state.setSelectedClient);
@@ -2918,7 +2902,7 @@ export default function POSScreen() {
                   <div className="relative">
                     <button
                       type="button"
-                      data-tour="pos-cliente" onClick={() => { setPayAfterClient(false); setShowClientSelector(!showClientSelector); }}
+                      data-tour="pos-cliente" onClick={() => setShowClientSelector(!showClientSelector)}
                       className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-rose-400 text-slate-600 dark:text-slate-300 hover:text-rose-600 text-xs font-semibold flex items-center justify-between transition-all bg-white dark:bg-slate-800 cursor-pointer"
                     >
                       <span className="flex items-center gap-1.5">
@@ -2930,27 +2914,6 @@ export default function POSScreen() {
 
                     {showClientSelector && (
                       <div className="absolute top-full left-0 right-0 mt-1 p-2 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 space-y-2">
-                        {usesDelivery && (
-                          <>
-                            {payAfterClient && <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 px-0.5">¿A nombre de quién va la venta?</p>}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowClientSelector(false);
-                                setClientSearchQuery('');
-                                if (payAfterClient && cart.length > 0) openPayment(true);
-                              }}
-                              className="w-full py-2 px-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold flex items-center justify-between cursor-pointer"
-                            >
-                              <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Consumidor final</span>
-                              <span className="text-[10px] font-semibold text-teal-100">{payAfterClient ? 'Cobrar' : 'Mostrador'}</span>
-                            </button>
-                            <label className="flex items-center gap-2 px-0.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer select-none">
-                              <input type="checkbox" checked={walkInDefault} onChange={(e) => toggleWalkInDefault(e.target.checked)} className="accent-teal-700" />
-                              En esta caja, si no elijo cliente, cobrar directo a Consumidor final
-                            </label>
-                          </>
-                        )}
                         <div className="relative">
                           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                           <input
@@ -2973,7 +2936,6 @@ export default function POSScreen() {
                                   setSelectedClient(c);
                                   setShowClientSelector(false);
                                   setClientSearchQuery('');
-                                  if (payAfterClient && cart.length > 0) openPayment(true);
                                 }}
                                 className="w-full p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs flex items-center justify-between cursor-pointer"
                               >
