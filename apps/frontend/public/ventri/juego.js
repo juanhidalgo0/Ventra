@@ -15,7 +15,7 @@
  *
  * Dónde se abre (es secreto):
  *   - Caja: escribirle "jugar" a Ventri en la Ayuda (components/common/Ventri.tsx, abrirJuegoVentri),
- *     el atajo ↑ ↑ ↓ ↓ ← → ← → B A (components/pos/VentriCaja.tsx)
+ *     Ctrl+Alt+J o ↑ ↑ ↓ ↓ ← → ← → B A (components/pos/VentriCaja.tsx)
  *     o ventraVentri.juego() en la consola. Mientras está abierto se traga todas las teclas, así no
  *     se dispara nada de la caja; si pasan un código con el lector, se cierra solo (y ese código
  *     no entra a medias en la venta: hay que volver a pasarlo).

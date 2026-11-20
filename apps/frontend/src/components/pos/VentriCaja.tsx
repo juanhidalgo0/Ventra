@@ -18,7 +18,7 @@ import { VentriImg, abrirJuegoVentri, esNavidad, useVentri, type VentriCara } fr
  * "Mostrar a Ventri en la caja". Para probar sin esperar, en la consola:
  *   ventraVentri.muestra()  ·  ventraVentri.reposo('mate')  ·  ventraVentri.festejo(100)  ·  ventraVentri.buenDia()
  *   ventraVentri.juego()  (el minijuego secreto; el cajero lo abre escribiéndole "jugar" en la Ayuda
- *   o con el atajo ↑ ↑ ↓ ↓ ← → ← → B A en la caja)
+ *   o con Ctrl+Alt+J o ↑ ↑ ↓ ↓ ← → ← → B A en la caja)
  */
 
 const QUIETA_MS = 3 * 60_000;          // caja sin tocar
@@ -151,14 +151,21 @@ export function VentriEnReposo({ libre, inicioTurno }: { libre: boolean; inicioT
   const inicioRef = useRef(inicioTurno);
   inicioRef.current = inicioTurno;
 
-  // Atajo secreto del minijuego: ↑ ↑ ↓ ↓ ← → ← → B A (con Ventri prendida). Las flechas no escriben
-  // nada; la B y la A solo se "tragan" cuando ya vinieron las 8 flechas, así no se ensucia el buscador.
+  // Atajos secretos del minijuego (con Ventri prendida): Ctrl+Alt+J, o ↑ ↑ ↓ ↓ ← → ← → B A.
+  // (Ctrl+Shift+J no: en Chrome y Edge abre la consola y la página no lo puede evitar.)
+  // Las flechas no escriben nada; la B y la A solo se "tragan" cuando ya vinieron las 8 flechas,
+  // así no se ensucia el buscador.
   useEffect(() => {
     if (!on) return;
     const SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
     let i = 0;
     const onKey = (e: KeyboardEvent) => {
       if ((window as any).ventriJuego?.abierto?.()) return;
+      if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyJ') {
+        e.preventDefault(); e.stopPropagation(); i = 0;
+        abrirJuegoVentri();
+        return;
+      }
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (k === SEQ[i]) {
         if (i >= 8) { e.preventDefault(); e.stopPropagation(); }
