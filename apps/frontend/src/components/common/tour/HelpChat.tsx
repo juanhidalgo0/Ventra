@@ -4,7 +4,7 @@ import { MessageCircleQuestion, Loader2, SendHorizontal, X } from 'lucide-react'
 import api from '../../../services/api';
 import { AnswerText } from '../AskBusiness';
 import { lockShortcuts } from '../../../utils/shortcutLock';
-import { VentriDice, VentriImg, useVentri } from '../Ventri';
+import { PIDE_JUEGO, VentriDice, VentriImg, abrirJuegoVentri, useVentri } from '../Ventri';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -45,6 +45,8 @@ export default function HelpChat({ pathname, onClose }: { pathname: string; onCl
   const send = async (q = text) => {
     const content = q.trim();
     if (!content || busy) return;
+    // Secreto: "jugar" abre el minijuego de Ventri (no va a la IA). Solo con Ventri prendida.
+    if (ventriOn && PIDE_JUEGO.test(content)) { setText(''); onClose(); abrirJuegoVentri(); return; }
     const next: Msg[] = [...messages, { role: 'user', content }];
     setMessages(next); setText(''); setBusy(true); setError('');
     try {

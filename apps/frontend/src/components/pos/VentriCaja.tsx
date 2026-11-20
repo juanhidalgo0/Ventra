@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { VentriImg, esNavidad, useVentri, type VentriCara } from '../common/Ventri';
+import { VentriImg, abrirJuegoVentri, esNavidad, useVentri, type VentriCara } from '../common/Ventri';
 
 /**
  * Ventri en la caja, en los momentos quietos (ver components/common/Ventri y la biblia del personaje):
@@ -17,6 +17,8 @@ import { VentriImg, esNavidad, useVentri, type VentriCara } from '../common/Vent
  * gorrito, que sí puede llevarlo, y hay saludos propios. Todo respeta el interruptor
  * "Mostrar a Ventri en la caja". Para probar sin esperar, en la consola:
  *   ventraVentri.muestra()  ·  ventraVentri.reposo('mate')  ·  ventraVentri.festejo(100)  ·  ventraVentri.buenDia()
+ *   ventraVentri.juego()  (el minijuego secreto; el cajero lo abre escribiéndole "jugar" en la Ayuda
+ *   o con el atajo ↑ ↑ ↓ ↓ ← → ← → B A en la caja)
  */
 
 const QUIETA_MS = 3 * 60_000;          // caja sin tocar
@@ -119,7 +121,7 @@ if (typeof window !== 'undefined') {
   const festejo = (n = 1) => window.dispatchEvent(new CustomEvent(EV_FESTEJO, { detail: n }));
   const buenDia = () => window.dispatchEvent(new Event(EV_SALUDO));
   (window as any).ventraVentri = {
-    reposo, festejo, buenDia,
+    reposo, festejo, buenDia, juego: abrirJuegoVentri,
     /** Muestra todas las animaciones seguidas (con el carrito vacío y la caja abierta) */
     muestra: () => {
       const pasos: [string, () => void][] = [
@@ -148,6 +150,27 @@ export function VentriEnReposo({ libre, inicioTurno }: { libre: boolean; inicioT
   libreRef.current = libre;
   const inicioRef = useRef(inicioTurno);
   inicioRef.current = inicioTurno;
+
+  // Atajo secreto del minijuego: ↑ ↑ ↓ ↓ ← → ← → B A (con Ventri prendida). Las flechas no escriben
+  // nada; la B y la A solo se "tragan" cuando ya vinieron las 8 flechas, así no se ensucia el buscador.
+  useEffect(() => {
+    if (!on) return;
+    const SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+    let i = 0;
+    const onKey = (e: KeyboardEvent) => {
+      if ((window as any).ventriJuego?.abierto?.()) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === SEQ[i]) {
+        if (i >= 8) { e.preventDefault(); e.stopPropagation(); }
+        i++;
+        if (i === SEQ.length) { i = 0; abrirJuegoVentri(); }
+      } else {
+        i = k === SEQ[0] ? 1 : 0;
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [on]);
 
   // Cualquier tecla, toque o rueda del mouse cuenta como actividad (para saber cuándo la caja está
   // quieta). No la hace irse: no tapa nada y así se llega a ver. Se va cuando se carga un producto

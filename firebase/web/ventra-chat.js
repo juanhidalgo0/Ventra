@@ -155,6 +155,10 @@ html:not(.vc-scrolled) .vc-launch,html:not(.vc-scrolled) .wa-fab{opacity:0;point
   async function ask(text){
     text = String(text || '').trim();
     if (!text || busy) return;
+    // Secreto: "jugar" abre el minijuego de Ventri (ventri.js), no va a la IA
+    if (/^\s*[¡!¿]*\s*(a\s+)?(jugar|juego|jugamos)\s*[!?.]*\s*$/i.test(text) && window.ventri && window.ventri.jugar) {
+      input.value = ''; window.ventri.jugar(); return;
+    }
     if (state.messages.filter(function(m){ return m.role === 'user'; }).length >= MAX_TURNS) {
       bubble('assistant', 'Llegamos al límite de esta conversación. Para seguir, escribinos por WhatsApp: ' + WA);
       return;

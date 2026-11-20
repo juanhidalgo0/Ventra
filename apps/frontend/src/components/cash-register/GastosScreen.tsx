@@ -450,7 +450,7 @@ export default function GastosScreen() {
                                 setEditingGasto(mov);
                                 setShowModal(true);
                               }} 
-                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer mr-1"
+                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-all cursor-pointer mr-1"
                               title="Editar gasto"
                             >
                               <Edit2 className="w-4 h-4" />
@@ -460,7 +460,7 @@ export default function GastosScreen() {
                                 e.stopPropagation();
                                 handleDelete(mov.id);
                               }} 
-                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                              className="p-2 rounded-xl text-slate-600 hover:bg-rose-50 hover:text-rose-500 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-all cursor-pointer"
                               title="Eliminar gasto"
                             >
                               <Trash2 className="w-4 h-4" />

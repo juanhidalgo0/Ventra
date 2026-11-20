@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { setStoreSetting, STORE_SETTINGS_EVENT } from '../../services/storeSettings';
+import { lockShortcuts } from '../../utils/shortcutLock';
 
 /**
  * Ventri: la mascota de Ventra (un ticket de caja en caricatura, la misma de los reels y la que
@@ -50,6 +51,31 @@ export function useVentri(): boolean {
   if (mode === 'nadie') return false;
   if (mode === 'todos') return true;
   return role === 'ADMIN' || role === 'SUPERVISOR';
+}
+
+/** "jugar", "juego", "¿jugamos?", "a jugar": lo que abre el juego secreto si se lo escriben a Ventri en la Ayuda */
+export const PIDE_JUEGO = /^\s*[¡!¿]*\s*(a\s+)?(jugar|juego|jugamos)\s*[!?.]*\s*$/i;
+
+/**
+ * Hora pico: el minijuego secreto de Ventri (public/ventri/juego.js, un archivo sin dependencias
+ * que se baja recién cuando se abre). Mientras está abierto, los atajos de la caja no se disparan
+ * y el juego se traga todas las teclas; si pasan un código con el lector, se cierra solo.
+ */
+export function abrirJuegoVentri() {
+  const w = window as any;
+  if (w.ventriJuego?.abierto?.()) return; // ya está abierto: no tocar los atajos de la caja
+  const soltar = lockShortcuts();
+  const abrir = () => {
+    if (!w.ventriJuego?.abrir({ contexto: 'caja', alCerrar: soltar })) soltar();
+  };
+  if (w.ventriJuego) { abrir(); return; }
+  const s = document.createElement('script');
+  // Ruta relativa a propósito: en la PC la caja se abre desde un archivo (file://), donde
+  // "/ventri/…" apuntaría a la raíz del disco. Con HashRouter la página siempre es index.html.
+  s.src = 'ventri/juego.js?v=1';
+  s.onload = abrir;
+  s.onerror = soltar;
+  document.head.appendChild(s);
 }
 
 /** Ancho/alto de cada cara (public/ventri) y dónde está el centro de la "cabeza" del ticket, para el gorrito */

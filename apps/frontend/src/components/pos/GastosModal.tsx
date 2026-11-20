@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -35,11 +35,11 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
       const catMatch = descStr.match(/^\[(.*?)\]/);
       const methodMatch = descStr.match(/\| METODO: (CASH|TRANSFER)$/i);
       
+      // Un retiro se guarda como "[Otro] RETIRO A CAJA FUERTE": se reconoce por el tipo
       let parsedCategory = 'Otro';
-      if (catMatch) {
-        parsedCategory = catMatch[1];
-        setCategory(parsedCategory);
-      }
+      if (localEditingGasto.type === 'WITHDRAWAL') parsedCategory = 'Retiro a caja fuerte';
+      else if (catMatch) parsedCategory = catMatch[1];
+      setCategory(parsedCategory);
       
       if (methodMatch) {
         setMethod(methodMatch[1].toUpperCase());
@@ -94,22 +94,26 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
     loadSession();
   }, []);
 
+  // Enter guarda y Escape cierra, siempre con lo que hay en pantalla en ese momento (antes la
+  // lista de dependencias no tenía el tipo y podía guardar un retiro como gasto o al revés)
+  const submitRef = useRef<() => void>(() => {});
+  const closeRef = useRef(onClose);
+  const detailOpenRef = useRef(false);
   useEffect(() => {
     const handleGastosKeys = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         const activeElement = document.activeElement;
-        if (activeElement?.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-          handleSubmit();
-        }
+        if (activeElement?.tagName === 'TEXTAREA' || activeElement?.tagName === 'SELECT' || detailOpenRef.current) return;
+        e.preventDefault();
+        submitRef.current();
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        closeRef.current();
       }
     };
     window.addEventListener('keydown', handleGastosKeys);
     return () => window.removeEventListener('keydown', handleGastosKeys);
-  }, [sessionId, amount, description, category, method, selectedUser, hoursWorked, onClose, localEditingGasto]);
+  }, []);
 
   const loadSession = async () => {
     try {
@@ -152,12 +156,25 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
     } catch (err: any) { toast.error(err.response?.data?.message || 'Error'); }
   };
 
+  submitRef.current = handleSubmit;
+  closeRef.current = onClose;
+  detailOpenRef.current = !!selectedMovement;
+  // Al cambiar la categoría (también editando): el retiro a caja fuerte es un retiro, lo demás un gasto
+  const changeCategory = (c: string) => {
+    setCategory(c);
+    if (localEditingGasto) setType(c === 'Retiro a caja fuerte' ? 'WITHDRAWAL' : 'EXPENSE');
+  };
+  const BASE_CATEGORIES = ['Otro', 'Retiro a caja fuerte', 'Cobrar Sueldo', 'Mercadería / Insumos', 'Servicios (Luz, Agua, etc)', 'Mantenimiento', 'Impuestos'];
+  // Un gasto con otra categoría (sueldos, pagos a proveedores…) la muestra tal cual al editarlo
+  const categories = BASE_CATEGORIES.includes(category) ? BASE_CATEGORIES : [...BASE_CATEGORIES, category];
+
   const fmt = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p);
 
   // Expected Cash calculation in Drawer
   const cashPayments = session?.sales?.reduce((s: number, v: any) => s + v.payments.filter((p: any) => p.method === 'CASH').reduce((a: number, p: any) => a + p.amount, 0), 0) || 0;
-  const expenses = session?.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0;
-  const withdrawals = session?.cashMovements?.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0;
+  const others = (session?.cashMovements || []).filter((m: any) => !localEditingGasto || m.id !== localEditingGasto.id);
+  const expenses = others.filter((m: any) => m.type === 'EXPENSE').reduce((s: number, m: any) => s + m.amount, 0) || 0;
+  const withdrawals = others.filter((m: any) => m.type === 'WITHDRAWAL').reduce((s: number, m: any) => s + m.amount, 0) || 0;
   const expectedCash = cashPayments - expenses - withdrawals;
 
   const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
@@ -186,6 +203,7 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
                     setLocalEditingGasto(null);
                     setAmount(0);
                     setCategory('Otro');
+                    setType('EXPENSE');
                     setDescription('');
                     setMethod('CASH');
                   }}
@@ -214,7 +232,7 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
                   type="number" 
                   value={amount || ''} 
                   onChange={(e) => setAmount(Number(e.target.value))} 
-                  disabled={category === 'Cobrar Sueldo'}
+                  disabled={category === 'Cobrar Sueldo' && !localEditingGasto}
                   className="w-full bg-white dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-lg pl-7 pr-4 py-3 text-lg font-bold text-slate-800 dark:text-slate-100 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 dark:focus:ring-rose-900 outline-none transition-all disabled:bg-slate-50 dark:disabled:bg-slate-800/50 disabled:text-slate-700 dark:disabled:text-slate-500" 
                   placeholder="0,00" 
                   autoFocus 
@@ -225,14 +243,8 @@ export default function GastosModal({ sessionId, terminalName, onClose, editingG
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-semibold text-slate-700 dark:text-slate-400 uppercase tracking-wider mb-1.5">Categoría</label>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 dark:focus:ring-rose-900 outline-none transition-all appearance-none">
-                  <option>Otro</option>
-                  <option>Retiro a caja fuerte</option>
-                  <option>Cobrar Sueldo</option>
-                  <option>Mercadería / Insumos</option>
-                  <option>Servicios (Luz, Agua, etc)</option>
-                  <option>Mantenimiento</option>
-                  <option>Impuestos</option>
+                <select value={category} onChange={(e) => changeCategory(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-400 dark:border-slate-600 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 dark:focus:ring-rose-900 outline-none transition-all appearance-none">
+                  {categories.filter((c) => !(localEditingGasto && c === 'Cobrar Sueldo')).map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
 

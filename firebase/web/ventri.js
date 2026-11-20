@@ -10,6 +10,9 @@
 //   data-pos     mock (asomada al costado de la captura del inicio), final (en el cierre oscuro,
 //                arriba de los botones), paso (en /empezar), centro (página de error)
 // window.ventri.decir(el, texto, cara?) le cambia lo que dice a una Ventri ya dibujada.
+// window.ventri.jugar() abre "Hora pico", el minijuego secreto (/ventri/juego.js, se baja recién
+// ahí). Secretos para abrirlo: tocar 5 veces seguidas a Ventri, escribirle "jugar" en el chat
+// (ventra-chat.js) o entrar a cualquier página con #jugar (es el link que comparte el juego).
 (function () {
   if (window.ventri) return;
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -36,6 +39,10 @@
     // En /empezar, al lado del título del paso
     '.vt-paso{margin:0 0 14px;--vt-h:84px}.vt-paso p.vt-globo{font-size:13.5px!important;max-width:280px!important}' +
     '.vt-centro{justify-content:center;--vt-h:170px}' +
+    // Ventri se puede tocar (es la puerta al juego secreto): un saltito por toque
+    '.vt .vt-img{pointer-events:auto;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}' +
+    '.vt.vt-on .vt-img.vt-toc{animation:vt-toc .32s ease}' +
+    '@keyframes vt-toc{40%{transform:scale(1.07,.93)}75%{transform:scale(.97,1.03)}}' +
     '@media (prefers-reduced-motion:reduce){.vt .vt-img,.vt .vt-globo{transition:none;opacity:1;transform:none}}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
@@ -82,7 +89,48 @@
       if (cara) { var img = el.querySelector('.vt-img'); if (img) img.src = '/ventri/' + cara + '.webp'; }
     },
     gesto: function (el, gesto) { if (el) { el.setAttribute('data-gesto', gesto); aparecer(el); } },
+    jugar: jugar,
   };
+
+  // ---- Hora pico, el minijuego secreto
+  var cargandoJuego = false;
+  function jugar() {
+    if (window.ventriJuego) { window.ventriJuego.abrir({ contexto: 'web', alCerrar: sacarHash }); return; }
+    if (cargandoJuego) return;
+    cargandoJuego = true;
+    var s = document.createElement('script');
+    s.src = '/ventri/juego.js?v=1';
+    s.onload = function () { cargandoJuego = false; if (window.ventriJuego) window.ventriJuego.abrir({ contexto: 'web', alCerrar: sacarHash }); };
+    s.onerror = function () { cargandoJuego = false; };
+    document.head.appendChild(s);
+  }
+  // Al salir del juego se saca el #jugar, así al recargar no se vuelve a abrir
+  function sacarHash() {
+    if (location.hash === '#jugar' && history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+  }
+  if (location.hash === '#jugar') jugar();
+  window.addEventListener('hashchange', function () { if (location.hash === '#jugar') jugar(); });
+
+  // 5 toques seguidos a Ventri: al tercero se hace la sorprendida, al cuarto avisa, al quinto juega
+  var toques = { el: null, n: 0, t: 0 };
+  document.addEventListener('click', function (e) {
+    var img = e.target && e.target.closest ? e.target.closest('.vt .vt-img') : null;
+    if (!img) return;
+    var el = img.closest('.vt'), ahora = Date.now();
+    toques.n = toques.el === el && ahora - toques.t < 1500 ? toques.n + 1 : 1;
+    toques.el = el; toques.t = ahora;
+    img.classList.remove('vt-toc'); void img.offsetWidth; img.classList.add('vt-toc');
+    var globo = el.querySelector('.vt-globo');
+    if (globo && !el.__vtTexto) { el.__vtTexto = globo.innerHTML; el.__vtCara = img.getAttribute('src'); }
+    if (toques.n === 3 && globo) window.ventri.decir(el, '¿Qué hacés? 👀', 'sorprendida');
+    if (toques.n === 4 && globo) window.ventri.decir(el, 'Uno más y te muestro **algo secreto**…', 'guino');
+    if (toques.n >= 5) {
+      toques.n = 0;
+      jugar();
+      // Vuelve a decir lo de siempre
+      if (globo && el.__vtTexto) setTimeout(function () { globo.innerHTML = el.__vtTexto; img.src = el.__vtCara; }, 600);
+    }
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 })();
