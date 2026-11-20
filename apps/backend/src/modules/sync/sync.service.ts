@@ -357,6 +357,26 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         // recién despertada) la volvía a poner en todas las cajas.
         if (have.has(`${TRIGGER_PREFIX}upd_${t}`)) await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${TRIGGER_PREFIX}upd_${t}"`);
         await create(`${TRIGGER_PREFIX}updl_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} AND NEW.last_login IS OLD.last_login BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
+      } else if ((await this.counterCols(t)).length) {
+        // Tablas con contadores (stock, saldo, vendidos de una promo): una venta solo cambia el
+        // contador (que viaja aparte, como diferencia) y updated_at. Eso NO sube la fila: antes la
+        // subía entera con hora nueva y deshacía un aumento de precio hecho en otra caja (CE-1).
+        // El trigger lleva en el nombre una marca de las columnas que mira: si aparece una columna
+        // nueva, se reemplaza solo.
+        const counters = await this.counterCols(t);
+        const watch = (await this.columns(t, true)).filter((c) => c !== 'id' && c !== 'updated_at' && !counters.includes(c));
+        const mark = crypto.createHash('sha1').update(watch.join(',')).digest('hex').slice(0, 8);
+        const name = `${TRIGGER_PREFIX}updc_${t}_${mark}`;
+        for (const old of [...have].filter((n) => n === `${TRIGGER_PREFIX}upd_${t}` || (n.startsWith(`${TRIGGER_PREFIX}updc_${t}_`) && n !== name))) {
+          await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${old}"`);
+        }
+        const changed = watch.map((c) => `NEW."${c}" IS NOT OLD."${c}"`).join(' OR ') || '0';
+        const body = `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} AND (${changed}) BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`;
+        // Reemplazar el trigger de una tabla que ya se sincronizaba no es "tabla nueva": no hay
+        // que volver a subirla entera (eso sí podría pisar cambios más nuevos de otra caja)
+        const replacing = [...have].some((n) => n === `${TRIGGER_PREFIX}upd_${t}` || n.startsWith(`${TRIGGER_PREFIX}updc_${t}_`));
+        if (replacing) { if (!have.has(name)) await this.prisma.$executeRawUnsafe(`CREATE TRIGGER IF NOT EXISTS "${name}" ${body}`); }
+        else await create(name, body);
       } else {
         await create(`${TRIGGER_PREFIX}upd_${t}`, `AFTER UPDATE ON "${t}" WHEN ${NOT_APPLYING} BEGIN INSERT INTO sync_outbox (tbl, row_id, op, ts) VALUES ('${t}', NEW.id, 'U', ${NOW_MS}); END`);
       }
@@ -1219,6 +1239,64 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
    * Lo mismo que applyRow(full = true) para una tanda entera, de a una consulta por tabla en vez
    * de cinco por fila: con 270 mil registros la bajada completa eran más de un millón de consultas.
    */
+  /** Columnas con índice único propio (de una sola columna, sin contar id) y si aceptan vacío */
+  private uniqueColsCache = new Map<string, { col: string; nullable: boolean }[]>();
+  private async uniqueCols(tx: Tx, t: string) {
+    if (this.uniqueColsCache.has(t)) return this.uniqueColsCache.get(t)!;
+    const idx: any[] = await tx.$queryRawUnsafe(`PRAGMA index_list("${t}")`);
+    const info: any[] = await tx.$queryRawUnsafe(`PRAGMA table_info("${t}")`);
+    const notNull = new Map(info.map((c) => [String(c.name), Number(c.notnull) === 1]));
+    const out: { col: string; nullable: boolean }[] = [];
+    for (const i of idx) {
+      if (Number(i.unique) !== 1 || i.origin === 'pk') continue;
+      const cols: any[] = await tx.$queryRawUnsafe(`PRAGMA index_info("${String(i.name).replace(/"/g, '')}")`);
+      if (cols.length !== 1) continue;
+      const col = String(cols[0].name);
+      if (col !== 'id' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(col)) out.push({ col, nullable: !notNull.get(col) });
+    }
+    this.uniqueColsCache.set(t, out);
+    return out;
+  }
+
+  /**
+   * Dos cajas dieron de alta lo mismo (el mismo código de barras, o una categoría o un usuario con
+   * el mismo nombre), cada una con su id. Antes la fila que bajaba chocaba con la local, se deshacía
+   * la tanda entera y esa caja no recibía nada más, nunca (CE-2). Ahora gana siempre la del id
+   * menor, igual en todas las cajas: la otra queda sin el código (o con el nombre marcado, si no
+   * puede quedar vacío). No se pierde ningún producto: los dos siguen, el dueño ve el repetido.
+   */
+  private async settleUniqueClashes(tx: Tx, t: string, datas: any[]) {
+    const uniq = await this.uniqueCols(tx, t);
+    if (!uniq.length || !datas.length) return;
+    const loser = (u: { nullable: boolean }, value: any, id: string) => (u.nullable ? null : `${value} (${String(id).slice(0, 6)})`);
+    const batchIds = new Set(datas.map((d) => String(d.id)));
+    for (const u of uniq) {
+      // Dentro de la misma tanda (una caja nueva baja las dos filas juntas)
+      const holder = new Map<string, any>();
+      for (const d of [...datas].sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))) {
+        const v = d[u.col];
+        if (v === null || v === undefined || v === '') continue;
+        if (holder.has(String(v))) { d[u.col] = loser(u, v, String(d.id)); continue; }
+        holder.set(String(v), d);
+      }
+      if (!holder.size) continue;
+      // Contra lo que ya tiene esta caja con otro id
+      const local: any[] = await tx.$queryRawUnsafe(
+        `SELECT id, "${u.col}" AS v FROM "${t}" WHERE "${u.col}" IN (SELECT value FROM json_each(?))`, JSON.stringify([...holder.keys()]));
+      for (const l of local) {
+        const lid = String(l.id);
+        const d = holder.get(String(l.v));
+        if (!d || batchIds.has(lid) || String(d.id) === lid) continue;
+        if (String(d.id) < lid) {
+          await tx.$executeRawUnsafe(`UPDATE "${t}" SET "${u.col}" = ? WHERE id = ?`, loser(u, l.v, lid), lid);
+        } else {
+          d[u.col] = loser(u, d[u.col], String(d.id));
+        }
+        console.warn(`[Sync] ${t}: "${l.v}" estaba en dos registros (${lid} y ${d.id}); se queda en ${String(d.id) < lid ? d.id : lid}`);
+      }
+    }
+  }
+
   private async applyRowsBulk(tx: Tx, tables: string[], rows: CloudRow[], fromArchive = false) {
     const byTable = new Map<string, CloudRow[]>();
     for (const r of rows) {
@@ -1254,6 +1332,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
         }
       }
+
+      await this.settleUniqueClashes(tx, t, datas);
 
       // Filas con las mismas columnas van en un solo INSERT ... ON CONFLICT
       const cols = await this.columns(t);
@@ -1314,6 +1394,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    await this.settleUniqueClashes(tx, r.t, [data]);
     const present = cols.filter((c) => Object.prototype.hasOwnProperty.call(data, c));
     if (!present.includes('id')) return;
     const exists: any[] = await tx.$queryRawUnsafe(`SELECT 1 FROM "${r.t}" WHERE id = ?`, r.id);
