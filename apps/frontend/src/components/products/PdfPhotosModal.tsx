@@ -49,14 +49,17 @@ export default function PdfPhotosModal({ onClose, onSaved }: { onClose: () => vo
     setSaving(true);
     try {
       let saved = 0;
+      let shared = 0;
       // De a tandas, con las fotos: así se guarda aunque el servidor se haya reiniciado en el medio
       for (let i = 0; i < chosen.length; i += 40) {
         const part = chosen.slice(i, i + 40);
         const images = Object.fromEntries(part.map((x) => [x.productId, x.image]));
         const { data } = await api.post('/products/images/from-pdf/apply', { token: res.token, productIds: part.map((x) => x.productId), images }, { timeout: 120000 } as any);
         saved += data.saved || 0;
+        shared += data.shared || 0;
       }
-      toast.success(`Listo: ${saved} ${saved === 1 ? 'foto puesta' : 'fotos puestas'}`);
+      // Las que tienen código de barras de verdad también le llegan a otros comercios con el mismo código
+      toast.success(`Listo: ${saved} ${saved === 1 ? 'foto puesta' : 'fotos puestas'}${shared ? ` (${shared} con código de barras, compartidas con otros comercios)` : ''}`);
       onSaved();
       onClose();
     } catch (err: any) {

@@ -134,6 +134,9 @@ export class SyncImageService {
       candidates.push({ imageUrl: h.imageUrl, source: h.source, name: h.name, doubtful: doubtful || off });
     };
     if (chosen) add(chosen);
+    // Lo que cargó otro comercio (aunque sea uno solo) siempre entra entre las opciones
+    const fromShared = hits.find((h) => h.source === 'shared');
+    if (fromShared) add(fromShared);
     hits.forEach((h) => add(h));
     // Sin ninguna foto confiable: las de Bing van como opción, nunca solas
     if (!candidates.length) {

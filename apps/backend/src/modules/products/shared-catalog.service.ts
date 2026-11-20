@@ -84,6 +84,26 @@ export class SharedCatalogService {
     } catch { /* se pierde ese voto: no es crítico */ }
   }
 
+  /**
+   * Fotos guardadas en la base (las de un catálogo PDF): la nube las sube y vota con su enlace, así le
+   * llegan al próximo comercio que cargue el mismo código. Solo códigos de barras de verdad, de a 10
+   * por llamada. Devuelve cuántas quedaron compartidas.
+   */
+  async share(items: { barcode: string; name?: string | null; dataUrl: string }[]): Promise<number> {
+    const creds = this.subscription.getDeviceCredentials();
+    if (!creds || !items.length) return 0;
+    let shared = 0;
+    for (let i = 0; i < items.length; i += 10) {
+      const part = items.slice(i, i + 10).map((x) => ({ barcode: x.barcode, name: String(x.name || '').trim().slice(0, 120) || null, dataUrl: x.dataUrl }));
+      try {
+        const { data } = await axios.post(`${FUNCTIONS_URL}/ventraBarcodes`, { ...creds, action: 'share', items: part }, { timeout: 30000 });
+        shared += Number(data?.saved) || 0;
+        for (const x of part) this.cache.delete(x.barcode);
+      } catch { /* sin conexión o la nube sin esta versión: esas fotos no se comparten, no es crítico */ }
+    }
+    return shared;
+  }
+
   /** Lo confirmó el dueño: suma su voto. La foto solo si es un enlace (no las guardadas en la base). */
   async confirm(items: { barcode?: string | null; name?: string | null; imageUrl?: string | null }[]): Promise<void> {
     const clean = items

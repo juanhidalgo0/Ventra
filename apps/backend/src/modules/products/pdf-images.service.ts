@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { Jimp } from 'jimp';
 import { PrismaService } from '../../database/prisma.service';
 import { EventsGateway } from '../../websockets/events.gateway';
+import { isBarcode } from '../purchases/invoice-reader/barcode-check';
+import { SharedCatalogService } from './shared-catalog.service';
 
 /**
  * Fotos desde un catálogo en PDF (el que manda un proveedor o el del sistema anterior): cada foto
@@ -44,7 +46,7 @@ const norm = (s: string) => String(s || '').trim().toUpperCase();
 export class PdfImagesService {
   private pending = new Map<string, Pending>();
 
-  constructor(private prisma: PrismaService, private events: EventsGateway) {}
+  constructor(private prisma: PrismaService, private events: EventsGateway, private shared: SharedCatalogService) {}
 
   /** Lee el PDF y devuelve qué foto le tocaría a cada producto (sin guardar nada todavía). */
   async preview(buffer: Buffer) {
@@ -137,16 +139,22 @@ export class PdfImagesService {
     const ids = Array.isArray(productIds) ? productIds.map(String).slice(0, 500) : [];
     if (!fresh && !ids.some((id) => typeof sent[id] === 'string')) throw new BadRequestException('Pasó mucho tiempo: volvé a subir el PDF');
     let saved = 0;
+    const toShare: { barcode: string; name: string; dataUrl: string }[] = [];
     for (const id of ids) {
       const img = sent[id];
       const f = fresh?.items.get(id) ?? (typeof img === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img) && img.length < 400_000 ? { productId: id, image: img } : undefined);
       if (!f) continue;
-      const ok = await this.prisma.product.update({ where: { id }, data: { imageUrl: f.image } }).then(() => true).catch(() => false);
-      if (!ok) continue;
+      const product = await this.prisma.product.update({ where: { id }, data: { imageUrl: f.image }, select: { name: true, barcode: true } }).catch(() => null);
+      if (!product) continue;
       this.events.emitProductUpdated({ id, imageUrl: f.image });
       saved++;
+      // Con código de barras de verdad (no uno interno), la foto le sirve a los demás comercios
+      const barcode = String(product.barcode || '').trim();
+      if (isBarcode(barcode)) toShare.push({ barcode, name: product.name, dataUrl: f.image });
     }
-    return { saved };
+    // En segundo plano: el dueño no espera a la nube
+    if (toShare.length) this.shared.share(toShare).catch(() => 0);
+    return { saved, shared: toShare.length };
   }
 
   private prune() {

@@ -61,6 +61,36 @@ async function confirm(db, uid, rawItems) {
   return { saved };
 }
 
+// ─── Fotos guardadas en la caja (por ejemplo, sacadas de un catálogo PDF) ───
+// La caja no tiene un enlace para compartirlas: la nube guarda la foto (una por comercio y código)
+// en Storage con un enlace de descarga y suma el voto como cualquier otro. Pasa por best() igual:
+// con un solo comercio queda como opción; desde dos, la pone sola.
+const SHARE_MAX_BYTES = 400 * 1024;
+const SHARE_PER_CALL = 10;
+function sharePath(barcode, uid) {
+  return `shared-barcodes/${barcode}/${String(uid).replace(/[^A-Za-z0-9_-]/g, "_")}.jpg`;
+}
+async function share(db, bucket, uid, rawItems) {
+  const items = (Array.isArray(rawItems) ? rawItems : []).slice(0, SHARE_PER_CALL);
+  const votes = [];
+  for (const i of items) {
+    const barcode = String(i && i.barcode || "").trim();
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s.exec(String(i && i.dataUrl || ""));
+    if (!BARCODE.test(barcode) || !m) continue;
+    const buffer = Buffer.from(m[2], "base64");
+    if (!buffer.length || buffer.length > SHARE_MAX_BYTES) continue;
+    const path = sharePath(barcode, uid);
+    const token = require("crypto").randomUUID();
+    await bucket.file(path).save(buffer, {
+      contentType: m[1], resumable: false,
+      metadata: { cacheControl: "public, max-age=31536000", metadata: { firebaseStorageDownloadTokens: token } },
+    });
+    const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+    votes.push({ barcode, name: i.name, imageUrl });
+  }
+  return votes.length ? confirm(db, uid, votes) : { saved: 0 };
+}
+
 // ─── Buscar por nombre (plan-boletas-ia.md, tanda 7.1) ───
 // Un producto nuevo de una boleta que no trae código de barras: se busca su nombre en este catálogo
 // para proponer el código. Siempre es una sugerencia que el dueño confirma con un toque, nunca solo.
@@ -105,4 +135,4 @@ async function search(db, names) {
   return { results };
 }
 
-module.exports = { get, confirm, best, search, nameWords, indexKeys, similarity };
+module.exports = { get, confirm, share, sharePath, best, search, nameWords, indexKeys, similarity };

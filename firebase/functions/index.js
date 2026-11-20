@@ -2519,6 +2519,8 @@ exports.ventraBarcodes = onRequest({ maxInstances: 20, timeoutSeconds: 30, memor
   try {
     if (action === "get") return res.status(200).json(await barcodes.get(db, req.body.barcodes));
     if (action === "confirm") return res.status(200).json(await barcodes.confirm(db, uid, req.body.items));
+    // Foto guardada en la caja (catálogo PDF): la nube la guarda y vota con su enlace
+    if (action === "share") return res.status(200).json(await barcodes.share(db, admin.storage().bucket(), uid, req.body.items));
     // Mapa compartido código del proveedor → código de barras (supplier-codes.js, tanda 3 de boletas)
     if (action === "supplierGet") return res.status(200).json(await require("./supplier-codes").get(db, uid, req.body.cuit, req.body.codes));
     if (action === "supplierConfirm") return res.status(200).json(await require("./supplier-codes").confirm(db, uid, req.body.cuit, req.body.items));
