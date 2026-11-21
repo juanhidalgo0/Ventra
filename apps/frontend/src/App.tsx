@@ -12,6 +12,7 @@ import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import api, { resolveServerUrl } from './services/api';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
+import AdminBroadcast from './components/common/AdminBroadcast';
 import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
@@ -787,6 +788,7 @@ export default function App() {
       />
     </Routes>
     <Updater />
+    <AdminBroadcast />
     <SyncDownloadBanner />
     <GlobalLoadingBar />
 

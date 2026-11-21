@@ -357,6 +357,8 @@ pub fn run() {
         .setup(move |app| {
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).ok();
+            // Versión instalada: el backend la informa a la nube (panel de versiones del admin)
+            let app_version = app.package_info().version.to_string();
 
             let db_path = app_data_dir.join("dev.db");
             let db_path_clean = clean_unc_path(db_path.clone());
@@ -536,6 +538,7 @@ pub fn run() {
                         .env("PORT", port.to_string())
                         .env("DATABASE_URL", &database_url)
                         .env("GEMINI_API_KEY", &gemini_api_key)
+                        .env("VENTRA_APP_VERSION", &app_version)
                         // Solo para la demo y las pruebas: en una PC, una variable de Windows con
                         // este nombre apagaba el control de la suscripción
                         .env_remove("VENTRA_SUBSCRIPTION_EXEMPT")

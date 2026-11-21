@@ -510,7 +510,9 @@ exports.ventraDeviceStatus = onRequest({ cors: true, secrets: [VENTRA_LICENSE_PR
   const privateKey = crypto.createPrivateKey(String(VENTRA_LICENSE_PRIVATE_KEY.value() || "").trim());
   const signature = crypto.sign(null, Buffer.from(license), privateKey).toString("base64");
 
-  await device.ref.set({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  // Versión instalada (la manda la PC desde la 1.0.119): panel de versiones del admin
+  const appVersion = /^\d+\.\d+\.\d+([-.][\w.]+)?$/.test(String((req.body || {}).appVersion || "")) ? String(req.body.appVersion) : null;
+  await device.ref.set({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp(), ...(appVersion ? { appVersion } : {}) }, { merge: true });
   res.status(200).json({ linked: true, license, signature });
 });
 
@@ -798,7 +800,7 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
 
   const { idToken, supportTicket, needCredentials, botUid, staffTicket, staffDevice, staffLabel } = req.body || {};
   let user;
-  let supportAdmin = null;
+  let supportAdmin = null; let supportReadOnly = false;
   let staffDeviceId = null;
   if (staffTicket || staffDevice) {
     // Celular de un empleado (sin la cuenta de Google del dueño): canjea el código que generó
@@ -861,6 +863,7 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
       });
       if (!ticket) return res.status(401).json({ error: "El acceso de soporte venció o ya se usó. Generá otro desde el panel." });
       supportAdmin = ticket.admin;
+      supportReadOnly = !!ticket.readOnly;
       const account = await db.collection("ventra_accounts").doc(ticket.uid).get();
       user = { uid: ticket.uid, email: (account.exists && account.data().email) || null };
     } catch (err) {
@@ -874,7 +877,7 @@ exports.ventraCloudAccess = onRequest({ secrets: [CLOUD_HOST_SECRET] }, async (r
   const account = await db.collection("ventra_accounts").doc(user.uid).get();
   if (!account.exists) return res.status(403).json({ error: "Esta cuenta no tiene un plan de Ventra" });
 
-  const result = { ok: true, uid: user.uid, email: user.email || null, planName: account.data().planName || null, supportAdmin, ...(staffDeviceId ? { staffDevice: staffDeviceId } : {}) };
+  const result = { ok: true, uid: user.uid, email: user.email || null, planName: account.data().planName || null, supportAdmin, ...(supportReadOnly ? { supportReadOnly: true } : {}), ...(staffDeviceId ? { staffDevice: staffDeviceId } : {}) };
   if (needCredentials) {
     // Una sola caja en la nube por comercio: la anterior se reemplaza
     const old = await db.collection("ventra_devices").where("uid", "==", user.uid).where("kind", "==", "cloud").get();
@@ -1067,6 +1070,12 @@ function adminRenewals(config) {
 // y el panel lee lo guardado. Solo se recalcula al abrir el panel si no hay medición reciente.
 const ADMIN_SIZES = () => db.collection("ventra_config").doc("adminSizes");
 const ADMIN_SIZES_MAX_AGE = 26 * 3600 * 1000;
+// Actividad de ventas y uso de funciones de cada comercio, medida de noche (admin-insights.js)
+const ADMIN_INSIGHTS = () => db.collection("ventra_config").doc("adminInsights");
+const insights = require("./admin-insights");
+// Aviso a todas las cajas (lo lee la caja: ventra_desktop es de lectura pública)
+const BROADCAST = () => db.collection("ventra_desktop").doc("broadcast");
+const CLIENT_ERRORS = "ventra_client_errors";
 
 async function adminSizes({ force = false } = {}) {
   const snap = await ADMIN_SIZES().get().catch(() => null);
@@ -1082,6 +1091,15 @@ async function adminSizes({ force = false } = {}) {
   const update = { ...(cloud ? { cloud } : {}), ...(storage ? { storage } : {}) };
   if (cloud && storage) update.at = admin.firestore.FieldValue.serverTimestamp();
   if (Object.keys(update).length) await ADMIN_SIZES().set(update, { merge: true });
+  // Actividad de ventas y funciones usadas por comercio (admin-insights.js): misma pasada nocturna
+  if (force) {
+    try {
+      const m = await insights.measure(cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim()), cloudSync.run);
+      await ADMIN_INSIGHTS().set({ ...m, at: admin.firestore.FieldValue.serverTimestamp() });
+    } catch (err) {
+      logger.warn("Ventra admin: sin medición de actividad", err.message);
+    }
+  }
   return { cloud: cloud || saved.cloud || {}, storage: storage || saved.storage || {}, at: cloud && storage ? new Date().toISOString() : tsToIso(saved.at) };
 }
 
@@ -1117,6 +1135,7 @@ async function adminAccountsData() {
       kind: data.kind || "pc",
       linkedAt: tsToIso(data.linkedAt),
       lastSeenAt: tsToIso(data.lastSeenAt),
+      appVersion: data.appVersion || null,
     });
   });
   return { accountsSnap, devicesSnap, paymentsSnap, devicesByUid };
@@ -1190,6 +1209,11 @@ async function buildAdminOverview() {
       store: storeByUid[doc.id] || null,
       createdAt: tsToIso(a.createdAt) || tsToIso(a.updatedAt),
       notes: a.adminNotes || "",
+      // Seguimiento que te anotás para un día ("llamarlo el jueves"): aparece en Para atender y te avisa
+      followUp: a.adminFollowUp && a.adminFollowUp.date ? { date: a.adminFollowUp.date, text: a.adminFollowUp.text || "" } : null,
+      trialUsed: !!a.trialUsed,
+      rubro: a.signupRubro || null,
+      source: a.signupUtm ? (a.signupUtm.source || a.signupUtm.utm_source || null) : null,
     };
   });
   const staleDevices = accounts.filter((a) => a.state === "ACTIVE").reduce((n, a) => n + a.devices.filter((d) => d.kind !== "cloud" && d.lastSeenAt && now - Date.parse(d.lastSeenAt) > 3 * DAY).length, 0);
@@ -1224,6 +1248,11 @@ async function buildAdminOverview() {
     logger.warn("Ventra admin: no se pudo leer la facturación", err.message);
   }
 
+  // Cobrado, altas pagas y bajas de cada mes (admin-insights.js)
+  const revenueMonths = insights.revenueMonths({ accounts, graceDays: GRACE_DAYS, months: 12, now });
+  const latest = await db.collection("ventra_desktop").doc("latest_version").get().catch(() => null);
+  const broadcast = await BROADCAST().get().catch(() => null);
+
   const stateOrder = { GRACE: 0, READ_ONLY: 1, UNPAID: 2, ACTIVE: 3 };
   accounts.sort((x, y) => (stateOrder[x.state] - stateOrder[y.state]) || String(x.email).localeCompare(String(y.email)));
 
@@ -1237,7 +1266,10 @@ async function buildAdminOverview() {
       devices: devicesSnap.size,
       byState, byPlan,
       monthly: Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([month, amount]) => ({ month, amount })),
+      revenueMonths,
     },
+    latestVersion: latest && latest.exists ? latest.data().version || null : null,
+    broadcast: broadcast && broadcast.exists && broadcast.data().text ? { ...broadcast.data(), updatedAt: tsToIso(broadcast.data().updatedAt) } : null,
     accounts,
     system: { staleDevices, fiscal, renewals: adminRenewals(config) },
     costs: adminCostsView(config, month),
@@ -1306,14 +1338,83 @@ async function buildAdminStats() {
     .map((u) => ({ ...u, store: storeByUid[u.uid] || null, devices: (devicesByUid[u.uid] || []).length }))
     .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
 
-  return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered, wa: { ...wa, messages: waCount, cost: waTotal, meta: mc.waMeta } };
+  let insightsView = null;
+  try {
+    insightsView = await adminInsightsView({ now, month, accountsSnap, devicesByUid, storeByUid, authUsers, syncTimes, registered });
+  } catch (err) {
+    logger.warn("Ventra admin: sin salud de clientes", err.message);
+  }
+
+  return { generatedAt: new Date(now).toISOString(), sizesAt: sizes.at, system, byUid, registered, insights: insightsView ? { ...insightsView, rows: undefined } : null, wa: { ...wa, messages: waCount, cost: waTotal, meta: mc.waMeta } };
+}
+
+/** Gasto de IA del mes por cuenta (ventra_ai_usage/{mes}_{uid}.costUsd, ver ai.js). */
+async function aiUsdByUid(month) {
+  const snap = await db.collection("ventra_ai_usage").where("month", "==", month).get();
+  const out = {};
+  snap.forEach((d) => { const x = d.data(); if (x.uid) out[x.uid] = Number(x.costUsd) || 0; });
+  return out;
+}
+
+/**
+ * Salud de cada cliente, funciones que usa, embudo y errores de las cajas (admin-insights.js).
+ * Lo comparten el panel (buildAdminStats) y los avisos (ventraAdminWatch).
+ */
+async function adminInsightsView({ now, month, accountsSnap, devicesByUid, storeByUid, authUsers, syncTimes }) {
+  const months = insights.lastMonths(6, now);
+  const [measured, aiUsd, siteSnaps, errSnap] = await Promise.all([
+    ADMIN_INSIGHTS().get().then((d) => (d.exists ? d.data() : {})).catch(() => ({})),
+    aiUsdByUid(month).catch(() => ({})),
+    Promise.all(months.map((m) => db.collection("ventra_site_stats").doc(m).get().catch(() => null))),
+    db.collection(CLIENT_ERRORS).orderBy("lastAt", "desc").limit(200).get().catch(() => ({ docs: [] })),
+  ]);
+  const signIn = Object.fromEntries((authUsers || []).map((u) => [u.uid, u.lastSignInAt || null]));
+  const activity = measured.activity || {}, tables = measured.tables || {};
+  const byUid = {}, raw = [];
+  accountsSnap.docs.forEach((doc) => {
+    const a = doc.data();
+    const paidUntil = a.paidUntil ? a.paidUntil.toDate() : null;
+    const { state, daysLeft } = accountState(paidUntil, now);
+    const trialEnd = a.trialEndsAt && a.trialEndsAt.toMillis ? a.trialEndsAt.toMillis() : null;
+    const acc = {
+      uid: doc.id, email: a.email || null, plan: a.plan || null, planName: a.planName || null,
+      planAmount: VENTRA_PLANS[a.plan] ? VENTRA_PLANS[a.plan].amount : null, state, daysLeft,
+      trial: !!trialEnd && trialEnd > now && state === "ACTIVE", mpStatus: a.status || null,
+      paidUntil: paidUntil ? paidUntil.toISOString() : null, createdAt: tsToIso(a.createdAt) || tsToIso(a.updatedAt),
+      devices: devicesByUid[doc.id] || [],
+    };
+    const feats = insights.features(tables[doc.id], { store: storeByUid[doc.id], aiThisMonth: aiUsd[doc.id] ? 1 : 0 });
+    const ctx = { activity: activity[doc.id] || null, sync: (syncTimes || {})[doc.id] || null, feats, lastSignInAt: signIn[doc.id] !== undefined ? signIn[doc.id] : undefined, now };
+    const h = insights.health(acc, ctx);
+    byUid[doc.id] = { health: h, features: feats, activity: ctx.activity, aiUsd: aiUsd[doc.id] || 0 };
+    raw.push({ a: acc, h, activity: ctx.activity, sync: ctx.sync, aiUsd: aiUsd[doc.id] || 0, followUp: a.adminFollowUp || null, payments: 0 });
+  });
+  const site = {};
+  siteSnaps.forEach((d, i) => { if (d && d.exists) site[months[i]] = d.data(); });
+  const funnelAccounts = accountsSnap.docs.map((d) => ({ createdAt: tsToIso(d.data().createdAt), trialUsed: !!d.data().trialUsed, payments: 0, uid: d.id }));
+  // Pagos por cuenta (cuántos): primer y segundo pago del embudo
+  const paySnap = await db.collectionGroup("payments").get().catch(() => ({ docs: [] }));
+  const payCount = {};
+  paySnap.docs.forEach((p) => { const uid = p.ref.parent.parent && p.ref.parent.parent.id; if (uid && Number(p.data().amount) > 0) payCount[uid] = (payCount[uid] || 0) + 1; });
+  funnelAccounts.forEach((a) => { a.payments = payCount[a.uid] || 0; });
+  const admins = new Set(ADMIN_EMAILS);
+  const errors = errSnap.docs.map((d) => ({ id: d.id, ...d.data(), firstAt: tsToIso(d.data().firstAt), lastAt: tsToIso(d.data().lastAt), resolvedAt: tsToIso(d.data().resolvedAt) }));
+  return {
+    measuredAt: tsToIso(measured.at),
+    byUid,
+    rows: raw,
+    funnel: insights.funnel({ site, authUsers: (authUsers || []).filter((u) => !admins.has(u.email)), accounts: funnelAccounts, months: 6, now }),
+    errors,
+  };
 }
 
 // Clave de Claude (la usan ventraAi, ventraChat, el admin y la revisión semanal): declarada antes del admin
 const VENTRA_ANTHROPIC_KEY = defineSecret("VENTRA_ANTHROPIC_KEY");
+// Mails (Resend): la usan los avisos del admin, los recordatorios de la agenda y los mails de cuenta
+const VENTRA_RESEND_KEY = defineSecret("VENTRA_RESEND_KEY");
 exports.ventraAdmin = onRequest(
   // El resumen recorre todas las cuentas, pagos y fotos: con 256 MiB se quedaba sin memoria
-  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL, VENTRA_ANTHROPIC_KEY], memory: "1GiB", timeoutSeconds: 300 },
+  { cors: VENTRA_ORIGINS, secrets: [NEON_DATABASE_URL, VENTRA_ANTHROPIC_KEY, VENTRA_RESEND_KEY], memory: "1GiB", timeoutSeconds: 300 },
   async (req, res) => {
     const user = await verifyUser(req);
     if (!isAdmin(user)) return res.status(403).json({ error: "Sin acceso" });
@@ -1350,6 +1451,40 @@ exports.ventraAdmin = onRequest(
       // Un mail del registro, completo (asunto y HTML), para verlo tal cual le llegó
       if (action === "emailView") return res.status(200).json(await require("./signup-emails").viewEmail(db, admin, req.body.logId));
 
+      // Aviso a todas las cajas (o a un plan, rubro o versión): lo muestran arriba hasta que lo cierren
+      if (action === "setBroadcast") {
+        const b = req.body || {};
+        const text = String(b.text || "").trim().slice(0, 280);
+        if (text.length < 3) return res.status(400).json({ error: "Escribí el aviso" });
+        const list = (v, ok) => (Array.isArray(v) ? v.map(String).filter((x) => ok.test(x)).slice(0, 20) : []);
+        const until = b.until && !isNaN(Date.parse(b.until)) ? new Date(b.until).toISOString() : null;
+        const maxVersion = /^\d+\.\d+\.\d+$/.test(String(b.maxVersion || "")) ? String(b.maxVersion) : null;
+        const link = /^https:\/\/[\w.-]+(\/[^\s]*)?$/.test(String(b.link || "")) ? String(b.link).slice(0, 200) : null;
+        const doc = {
+          id: `b${Date.now()}`, text, level: ["info", "warn", "bad"].includes(b.level) ? b.level : "info",
+          plans: list(b.plans, /^[a-z_]{2,20}$/), rubros: list(b.rubros, /^[A-Z_]{2,30}$/), maxVersion, until, link,
+          by: user.email, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        await BROADCAST().set(doc);
+        await log({ text, plans: doc.plans, rubros: doc.rubros, maxVersion, until });
+        return res.status(200).json({ ok: true, id: doc.id });
+      }
+      if (action === "clearBroadcast") {
+        await BROADCAST().set({ text: "", id: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        await log({});
+        return res.status(200).json({ ok: true });
+      }
+      // Errores de las cajas: marcar como arreglado (si vuelve a pasar, se reabre solo)
+      if (action === "errorResolve") {
+        const id = String((req.body && req.body.id) || "");
+        if (!/^[a-f0-9]{16,64}$/.test(id)) return res.status(400).json({ error: "Error inválido" });
+        const resolved = req.body.resolved !== false;
+        await db.collection(CLIENT_ERRORS).doc(id).set({ resolved, resolvedAt: resolved ? admin.firestore.FieldValue.serverTimestamp() : null }, { merge: true });
+        return res.status(200).json({ ok: true });
+      }
+      // Probar los avisos del admin (push + mail) o mandar el resumen del lunes ahora
+      if (action === "adminWatchRun") return res.status(200).json(await adminWatch({ dryRun: !!req.body.dryRun, weeklyNow: !!req.body.weekly }));
+
       // Entrar al sistema del cliente en app.ventra.store como su administrador.
       // Se entrega un pase de un solo uso que vence en 2 minutos; lo canjea el
       // anfitrión de cajas por medio de ventraCloudAccess.
@@ -1361,10 +1496,12 @@ exports.ventraAdmin = onRequest(
         await db.collection("ventra_support_tickets").doc(sha256(ticket)).set({
           uid: String(uid),
           admin: user.email,
+          // Solo mirar: el anfitrión de cajas no deja guardar nada (ver apps/cloud-host)
+          readOnly: !!(req.body && req.body.readOnly),
           expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 2 * 60 * 1000),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        await log({ uid: String(uid) });
+        await log({ uid: String(uid), readOnly: !!(req.body && req.body.readOnly) });
         return res.status(200).json({ url: `${CLOUD_APP_URL}/_ventra/support?t=${ticket}` });
       }
 
@@ -1565,6 +1702,13 @@ exports.ventraAdmin = onRequest(
         await ref.set(updates, { merge: true });
         await log({ uid, amount: amt, months: m, to: newUntil.toISOString() });
         return res.status(200).json({ ok: true, paidUntil: newUntil.toISOString() });
+      } else if (action === "followUp") {
+        // Seguimiento: una fecha y qué hacer. Sin fecha se borra.
+        const d = String((req.body && req.body.date) || "");
+        if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: "Fecha inválida" });
+        await ref.set({ adminFollowUp: d ? { date: d, text: String((req.body && req.body.text) || "").slice(0, 300), by: user.email } : admin.firestore.FieldValue.delete() }, { merge: true });
+        await log({ uid, date: d || null });
+        return res.status(200).json({ ok: true });
       } else if (action === "notes") {
         await ref.set({ adminNotes: String(notes || "").slice(0, 2000) }, { merge: true });
         await log({ uid });
@@ -1976,7 +2120,7 @@ exports.ventraChat = onRequest({
 // Mientras no se cargue la clave real de Resend, el secreto puede tener un valor provisorio:
 // sin una clave "re_…" no se manda nada.
 const emailReminders = require("./email-reminders");
-const VENTRA_RESEND_KEY = defineSecret("VENTRA_RESEND_KEY");
+// VENTRA_RESEND_KEY: declarada antes de ventraAdmin (los avisos del admin mandan mail)
 exports.agendaEmailReminders = onSchedule({ schedule: "every 15 minutes", timeZone: "America/Argentina/Buenos_Aires", secrets: [VENTRA_RESEND_KEY] }, async () => {
   const r = await emailReminders.emailRemindersRun(db, { apiKey: String(VENTRA_RESEND_KEY.value() || "").trim() });
   if (r.sent || r.failed) logger.info(`Email: pasada de recordatorios · ${r.sent} enviado(s), ${r.failed} con error`);
@@ -2811,4 +2955,161 @@ exports.ventraSupportAdmin = onRequest({ cors: VENTRA_ORIGINS, secrets: [VENTRA_
     logger.error("Soporte admin: error", err);
     return res.status(500).json({ error: "No se pudo completar" });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Avisos para el dueño de Ventra (admin-insights.js): al celular (app de Ventra) y por mail
+// ═══════════════════════════════════════════════════════════════════
+
+/** Push a las cuentas de support.ALERT_EMAILS y un mail. Devuelve { push, mail }. */
+async function adminNotify({ title, body, html, url = "https://ventra.store/admin", tag, badge = ["Aviso", "info"], push = true }) {
+  const kit = require("./mail-kit");
+  const out = { push: 0, mail: "sin clave de Resend" };
+  if (push) {
+    for (const email of support.ALERT_EMAILS) {
+      const u = await admin.auth().getUserByEmail(email).catch(() => null);
+      if (!u) continue;
+      const r = await notify.sendToAccount(db, u.uid, "admin", { title, body, url, tag: tag || `admin-${Date.now()}` }).catch(() => null);
+      out.push += (r && r.sent) || 0;
+    }
+  }
+  const apiKey = String(VENTRA_RESEND_KEY.value() || "").trim();
+  if (kit.keyOk(apiKey)) {
+    const msg = kit.render({ subject: title, preheader: body, badge, title, paras: html || [kit.esc(body)], cta: ["Abrir el admin", url], footer: "Aviso interno del panel de Ventra." });
+    try {
+      const r = await kit.sendEmail(apiKey, { from: kit.FROM, to: support.ALERT_EMAILS, subject: msg.subject, html: msg.html, text: msg.text, tags: [{ name: "kind", value: "admin_aviso" }] });
+      out.mail = "enviado";
+      await kit.logSend(db, admin, Date.now(), { kind: "admin", step: tag || "aviso", to: support.ALERT_EMAILS.join(", "), ok: true, id: r && r.id, msg });
+    } catch (err) {
+      out.mail = `error: ${err.message}`;
+      logger.warn("Admin: no se pudo mandar el mail del aviso", err.message);
+    }
+  }
+  return out;
+}
+
+const ADMIN_ALERTS = "ventra_admin_alerts";
+const ALERT_REPEAT_MS = 7 * DAY;
+
+/**
+ * Revisa clientes, cajas, IA, seguimientos y errores; avisa lo nuevo (la misma clave no se repite en 7 días).
+ * Los lunes (o weeklyNow) manda también el resumen de la semana. dryRun: arma todo sin mandar ni marcar.
+ */
+async function adminWatch({ dryRun = false, weeklyNow = false } = {}) {
+  const now = Date.now();
+  const month = usage.monthKey();
+  const neon = String(NEON_DATABASE_URL.value() || "").trim();
+  const [{ accountsSnap, devicesByUid }, storeByUid, authUsers, syncTimes, configSnap, overview] = await Promise.all([
+    adminAccountsData(),
+    adminStoresByOwner().catch(() => ({})),
+    listAuthUsersWithEmail().catch(() => []),
+    cloudSync.syncTimes(neon).catch(() => ({})),
+    ADMIN_CONFIG().get(),
+    buildAdminOverview(),
+  ]);
+  const view = await adminInsightsView({ now, month, accountsSnap, devicesByUid, storeByUid, authUsers, syncTimes });
+  const config = configSnap.exists ? configSnap.data() : {};
+  const fx = Number(usage.monthCosts(config, month).wa.fx) || 1500;
+  const list = insights.alerts({ rows: view.rows, errors: view.errors, now, fx });
+
+  // Lo ya avisado en los últimos 7 días no se repite
+  const fresh = [];
+  for (const al of list) {
+    const ref = db.collection(ADMIN_ALERTS).doc(al.key.replace(/[/]/g, "_").slice(0, 200));
+    const snap = await ref.get();
+    const sent = snap.exists && snap.data().sentAt && snap.data().sentAt.toMillis ? snap.data().sentAt.toMillis() : 0;
+    if (now - sent >= ALERT_REPEAT_MS) fresh.push({ ...al, ref });
+  }
+  const kit = require("./mail-kit");
+  const result = { alerts: list.length, nuevos: fresh.length, enviados: 0, semanal: null };
+  if (!dryRun && fresh.length) {
+    // Un push por aviso (hasta 6) y un solo mail con todos
+    for (const al of fresh.slice(0, 6)) {
+      await adminNotify({ title: al.title, body: al.body, tag: `admin-${al.key}`, url: `https://ventra.store/admin#${al.uid ? "clientes" : "cajas"}`, push: true, html: null }).catch(() => null);
+      result.enviados++;
+    }
+    await Promise.all(fresh.map((al) => al.ref.set({ key: al.key, title: al.title, body: al.body, level: al.level, uid: al.uid || null, sentAt: admin.firestore.FieldValue.serverTimestamp() })));
+  }
+  result.lista = fresh.map((al) => ({ key: al.key, level: al.level, title: al.title, body: al.body }));
+
+  // Resumen del lunes
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: notify.TZ, weekday: "short" }).format(new Date(now));
+  if (weekday === "Mon" || weeklyNow) {
+    const aiUsdMonth = Object.values(view.byUid).reduce((s, x) => s + (x.aiUsd || 0), 0);
+    const w = insights.weekly({ accounts: overview.accounts, rows: view.rows, authUsers, errors: view.errors, mrr: overview.metrics.mrr, aiUsdMonth, now });
+    result.semanal = w;
+    const key = `weekly:${new Date(now).toISOString().slice(0, 10)}`;
+    const ref = db.collection(ADMIN_ALERTS).doc(key.replace(/:/g, "_"));
+    const already = !weeklyNow && (await ref.get()).exists;
+    if (!dryRun && !already) {
+      const m = (n) => "$ " + Math.round(Number(n) || 0).toLocaleString("es-AR");
+      const body = `Cobrado ${m(w.paid)} · ${w.newPaying} pagaron por primera vez · ${w.lost} baja(s) · ${w.riskCount} en riesgo`;
+      const html = [
+        `<b>Cobrado en la semana:</b> ${m(w.paid)}<br><b>Ingreso mensual recurrente:</b> ${m(w.mrr)}`,
+        `<b>Altas:</b> ${w.registered} se registraron, ${w.newAccounts} eligieron plan, ${w.newPaying} pagaron por primera vez<br><b>Bajas:</b> ${w.lost}`,
+        w.risk.length ? `<b>En riesgo (${w.riskCount}):</b><br>${w.risk.map((r) => `${kit.esc(r.email)} · ${r.score}/100 · ${kit.esc(r.why)}`).join("<br>")}` : "Ningún cliente en riesgo.",
+        `<b>IA este mes:</b> US$ ${w.aiUsdMonth.toFixed(2)} · <b>Errores de las cajas en la semana:</b> ${w.errors}`,
+      ];
+      await adminNotify({ title: "Resumen de la semana", body, html, tag: "admin-weekly", badge: ["Semana", "ok"], url: "https://ventra.store/admin#resumen" });
+      await ref.set({ key, sentAt: admin.firestore.FieldValue.serverTimestamp(), summary: w });
+    }
+  }
+  return result;
+}
+
+// Todos los días a las 9 (después de la medición de las 5:30): avisos nuevos y, los lunes, el resumen
+exports.ventraAdminWatch = onSchedule({ schedule: "0 9 * * *", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL, VENTRA_RESEND_KEY], memory: "1GiB", timeoutSeconds: 300 }, async () => {
+  const r = await adminWatch();
+  logger.info(`Admin: ${r.alerts} aviso(s), ${r.nuevos} nuevo(s), ${r.enviados} enviado(s)${r.semanal ? " + resumen semanal" : ""}`);
+});
+
+// Alta nueva (eligió plan en /empezar): aviso al momento, con plan, rubro y de dónde vino
+exports.ventraNewAccountAlert = onDocumentCreated({ document: "ventra_accounts/{uid}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  const a = event.data && event.data.data();
+  if (!a || a.status === "manual" || ADMIN_EMAILS.includes(String(a.email || "").toLowerCase())) return;
+  const plan = (VENTRA_PLANS[a.plan] && VENTRA_PLANS[a.plan].name) || a.plan || "sin plan";
+  const utm = a.signupUtm || {};
+  const from = utm.source || utm.utm_source || "";
+  const body = [plan, a.signupRubro ? `rubro ${String(a.signupRubro).toLowerCase()}` : "", from ? `vino de ${from}` : ""].filter(Boolean).join(" · ");
+  await adminNotify({ title: `Alta nueva: ${a.email || event.params.uid}`, body, tag: `admin-alta-${event.params.uid}`, badge: ["Alta", "ok"], url: "https://ventra.store/admin#clientes" })
+    .catch((err) => logger.warn("Admin: no se pudo avisar el alta", err.message));
+});
+
+// Errores de las cajas (PC, caja web y celular): se agrupan por mensaje + lugar del código.
+// Sin datos personales: mensaje, pila, versión, qué pantalla y el comercio (uid o email que ya conoce la caja).
+exports.ventraClientError = onRequest({ cors: true, maxInstances: 3, memory: "256MiB" }, async (req, res) => {
+  if (req.method !== "POST") return res.status(204).end();
+  let b = req.body;
+  if (typeof b === "string") { try { b = JSON.parse(b); } catch { b = {}; } }
+  b = b || {};
+  const clip = (v, n) => String(v == null ? "" : v).slice(0, n);
+  const message = clip(b.message, 300).trim();
+  if (!message) return res.status(204).end();
+  const stack = clip(b.stack, 1500);
+  const version = /^\d+\.\d+\.\d+/.test(String(b.version || "")) ? clip(b.version, 20) : null;
+  const where = ["pc", "web", "celular"].includes(b.where) ? b.where : "pc";
+  const tenant = /^[\w@.+-]{3,80}$/.test(String(b.tenant || "")) ? String(b.tenant) : null;
+  // Huella: el mensaje sin números ni textos citados + la primera línea de la pila sin posiciones
+  const frame = (stack.split("\n").find((l) => /\bat\b|@/.test(l)) || "").replace(/:\d+:\d+/g, "").replace(/\?[^)\s]*/g, "").replace(/[a-f0-9]{8,}/gi, "#").replace(/-[A-Za-z0-9_]{8}\.js/g, ".js").trim();
+  const norm = message.replace(/\d+/g, "N").replace(/(["'`])[^"'`]{0,80}\1/g, "S");
+  const id = crypto.createHash("sha256").update(`${norm}|${frame}`).digest("hex").slice(0, 32);
+  const ref = db.collection(CLIENT_ERRORS).doc(id);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const cur = snap.exists ? snap.data() : null;
+      const add = (arr, v) => { const a = Array.isArray(arr) ? arr : []; return v && !a.includes(v) && a.length < 20 ? [...a, v] : a; };
+      const upd = {
+        count: admin.firestore.FieldValue.increment(1), lastAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastVersion: version, lastWhere: where, lastPath: clip(b.path, 120),
+        versions: add(cur && cur.versions, version), tenants: add(cur && cur.tenants, tenant),
+      };
+      if (!cur) Object.assign(upd, { message, stack, firstAt: admin.firestore.FieldValue.serverTimestamp(), resolved: false });
+      else if (cur.resolved) Object.assign(upd, { resolved: false, reopened: true });
+      tx.set(ref, upd, { merge: true });
+    });
+  } catch (err) {
+    logger.warn("Errores de cajas: no se pudo guardar", err.message);
+  }
+  res.status(204).end();
 });

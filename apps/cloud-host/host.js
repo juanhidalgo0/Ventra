@@ -25,6 +25,8 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+// Versión de la caja web (la del package.json raíz que copia el Dockerfile): va al panel de versiones del admin
+const APP_VERSION = (() => { try { return require(path.join(ROOT, 'package.json')).version || ''; } catch { return ''; } })();
 const CFG = {
   port: Number(process.env.PORT || 8080),
   dataDir: process.env.DATA_DIR || '/data/tenants',
@@ -54,6 +56,8 @@ const STAFF_CHECK_MS = 10 * 60 * 1000;
 // Llave con la que la caja acepta la entrada automática de soporte. Cada caja recibe
 // una distinta al arrancar; solo la conoce este anfitrión y nunca llega al navegador.
 const SUPPORT_HEADER = 'x-ventra-support-key';
+// Lo único que se deja hacer en modo solo mirar fuera de GET: entrar (login) y lo que la caja pide para leer
+const READ_ONLY_ALLOWED = /^\/api\/auth\/(login|support-login|admin-unlock|refresh)(\?|$)/;
 // Sitios desde los que se puede entrar directo con la sesión de Google ya iniciada
 const HANDOFF_ORIGINS = ['https://ventra.store', 'https://www.ventra.store', 'https://ventra-9cba5.web.app', 'https://ventra-9cba5.firebaseapp.com'];
 
@@ -139,6 +143,7 @@ function ensureTenant(uid) {
       NODE_ENV: 'production',
       DATABASE_URL: 'file:' + path.join(dir, 'dev.db').split(path.sep).join('/'),
       VENTRA_NODE_KIND: 'cloud',
+      VENTRA_APP_VERSION: APP_VERSION,
       VENTRA_FUNCTIONS_URL: CFG.functionsUrl,
       VENTRA_SUPPORT_KEY: supportKey,
       // Secretos del anfitrión: la caja no los necesita
@@ -246,7 +251,7 @@ async function createSession(auth) {
       log(`Soporte: ${data.supportAdmin} dio de alta la caja en la nube de ${uid}`);
     }
     log(`Soporte: ${data.supportAdmin} entró a la caja de ${uid}`);
-    return { uid, email: data.email || null, support: data.supportAdmin, exp: Date.now() + SUPPORT_HOURS * 3600e3 };
+    return { uid, email: data.email || null, support: data.supportAdmin, ...(data.supportReadOnly ? { readOnly: true } : {}), exp: Date.now() + SUPPORT_HOURS * 3600e3 };
   }
 
   // Primera vez: se da de alta la caja en la nube de este comercio
@@ -338,7 +343,7 @@ function serveStatic(req, res, session) {
 const escHtml = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** Cartel fijo para que quede claro que se está dentro del sistema de un cliente. */
 function supportBanner(session) {
-  return `<div id="ventra-support-bar" style="position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 88px);transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:#7c2d12;color:#fff;font:600 12px/1.2 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100vw - 32px)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Soporte Ventra · sistema de ${escHtml(session.email || session.uid)}</span><a href="/_ventra/support-exit" style="flex:none;padding:5px 10px;border-radius:999px;background:#fff;color:#7c2d12;text-decoration:none">Salir</a></div>`;
+  return `<div id="ventra-support-bar" style="position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 88px);transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:#7c2d12;color:#fff;font:600 12px/1.2 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100vw - 32px)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Soporte Ventra${session.readOnly ? ' · solo mirar' : ''} · sistema de ${escHtml(session.email || session.uid)}</span><a href="/_ventra/support-exit" style="flex:none;padding:5px 10px;border-radius:999px;background:#fff;color:#7c2d12;text-decoration:none">Salir</a></div>`;
 }
 
 /** Página simple para un código de empleado vencido o ya usado. */
@@ -508,6 +513,10 @@ const server = http.createServer(async (req, res) => {
     // La app pregunta si es una sesión de soporte para entrar sola como administrador
     if (url === '/_ventra/whoami') return sendJson(res, 200, { email: session.email || null, support: session.support || null, staff: !!session.staff });
     if (isApi) {
+      // Soporte en modo "solo mirar": se puede navegar todo pero no guardar nada (entrar sí)
+      if (session.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !READ_ONLY_ALLOWED.test(url)) {
+        return sendJson(res, 403, { message: 'Modo solo mirar: desde el soporte no se puede guardar nada en este comercio.' });
+      }
       const port = await ensureTenant(session.uid);
       return proxyHttp(req, res, port, session.support ? tenants.get(session.uid)?.supportKey : undefined);
     }

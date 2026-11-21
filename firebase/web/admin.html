@@ -406,6 +406,48 @@
     .cost-kpis .kpi-value{ font-size:19px; }
   }
   @media (max-width: 340px){ .kpis, .cost-kpis{ grid-template-columns:1fr; } }
+  /* ── Salud de clientes, embudo, altas y bajas, cajas ── */
+  .hb{ display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px; border-radius:999px; font-size:11.5px; font-weight:700; font-family:var(--mono); vertical-align:middle; }
+  .hb i{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .hb.ok{ background:var(--mint-50); color:var(--pine); } .hb.watch{ background:var(--amber-bg); color:var(--amber); } .hb.risk{ background:var(--red-bg); color:var(--red); }
+  .reasons{ list-style:none; margin:8px 0 0; padding:0; display:grid; gap:6px; font-size:13px; }
+  .reasons li{ display:flex; gap:8px; align-items:flex-start; }
+  .reasons li::before{ content:''; flex:none; width:6px; height:6px; margin-top:7px; border-radius:50%; background:var(--amber); }
+  .reasons li.bad::before{ background:var(--red); }
+  .feats{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .feat{ height:24px; display:inline-flex; align-items:center; padding:0 9px; border-radius:999px; font-size:12px; font-weight:600; background:var(--gray-bg); color:var(--ink-3); }
+  .feat.on{ background:var(--mint-50); color:var(--pine); } .feat.old{ background:var(--sand); color:var(--ink-2); }
+  .risk-list{ list-style:none; margin:10px 0 0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:6px; }
+  .risk-list li{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--r-sm); background:#fff; cursor:pointer; }
+  .risk-list li:hover{ border-color:var(--mint); }
+  .risk-list .grow{ flex:1; min-width:0; } .risk-list .em{ font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .risk-list .why{ font-size:12px; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .risk-list .empty-li{ cursor:default; color:var(--ink-2); font-size:13px; }
+  .funnel{ display:grid; gap:7px; margin-top:12px; }
+  .fstep{ display:grid; grid-template-columns:132px minmax(0,1fr) 92px; gap:10px; align-items:center; font-size:12.5px; }
+  .fstep .fbar{ height:16px; border-radius:6px; background:var(--gray-bg); overflow:hidden; }
+  .fstep .fbar span{ display:block; height:100%; min-width:2px; background:var(--mint); border-radius:6px; }
+  .fstep .fval{ text-align:right; font-family:var(--mono); font-size:12px; } .fstep .fval small{ color:var(--ink-3); margin-left:4px; }
+  .mini-table{ width:100%; border-collapse:collapse; font-size:12.5px; margin-top:10px; }
+  .mini-table th, .mini-table td{ padding:6px; border-bottom:1px solid var(--line-2); text-align:right; white-space:nowrap; }
+  .mini-table th:first-child, .mini-table td:first-child{ text-align:left; }
+  .mini-table th{ font-weight:600; color:var(--ink-3); font-size:11.5px; }
+  .vtag{ display:inline-flex; height:20px; align-items:center; padding:0 7px; border-radius:6px; font-family:var(--mono); font-size:11.5px; background:var(--mint-50); color:var(--pine); }
+  .vtag.old{ background:var(--amber-bg); color:var(--amber); } .vtag.none{ background:var(--gray-bg); color:var(--ink-3); font-family:var(--sans); }
+  .err-row{ padding:10px 12px; border:1px solid var(--line); border-radius:var(--r-sm); background:#fff; }
+  .err-row.res{ opacity:.65; }
+  .err-top{ display:flex; gap:10px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; }
+  .err-msg{ font-family:var(--mono); font-size:12.5px; font-weight:600; word-break:break-word; }
+  .err-row pre{ white-space:pre-wrap; word-break:break-word; font-size:11px; max-height:180px; overflow:auto; background:var(--paper); padding:8px; border-radius:8px; margin:8px 0 0; }
+  .bc-form{ display:grid; gap:10px; margin-top:10px; }
+  .bc-checks{ display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px; margin-top:4px; }
+  .bc-checks label{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .bc-now{ margin-top:10px; padding:10px 12px; border-radius:var(--r-sm); background:var(--mint-50); color:var(--pine-800); font-size:13px; }
+  .panels.three{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .watch-out{ margin-top:10px; display:grid; gap:6px; font-size:13px; }
+  .panels.three > *{ min-width:0; }
+  @media (max-width: 1100px){ .panels.three{ grid-template-columns:repeat(2,minmax(0,1fr)); } .panels.three > :first-child{ grid-column:1 / -1; } }
+  @media (max-width: 720px){ .panels.three{ grid-template-columns:minmax(0,1fr); } .fstep{ grid-template-columns:104px minmax(0,1fr) 78px; } }
 </style>
 </head>
 <body>
@@ -429,6 +471,7 @@
       <div class="tabs-in">
         <a href="#resumen" data-view="resumen">Resumen</a>
         <a href="#clientes" data-view="clientes">Clientes <b class="tbadge hidden" id="tbClientes"></b></a>
+        <a href="#cajas" data-view="cajas">Cajas <b class="tbadge hot hidden" id="tbCajas"></b></a>
         <a href="#soporte" data-view="soporte">Soporte <b class="tbadge hot hidden" id="tbSoporte"></b></a>
         <a href="#mails" data-view="mails">Mails <b class="tbadge hot hidden" id="tbMails"></b></a>
         <a href="#bot" data-view="bot">WhatsApp del dueño</a>
@@ -469,10 +512,73 @@
           <div id="plans" style="margin-top:8px"></div>
         </div>
       </section>
+      <section class="panels three">
+        <div class="panel">
+          <h2>Clientes para cuidar</h2>
+          <div class="panel-sub" id="riskSub">Puntaje de salud de 0 a 100: ventas, sincronización, pagos y funciones que usa</div>
+          <ul class="risk-list" id="riskList"></ul>
+        </div>
+        <div class="panel">
+          <h2>Embudo</h2>
+          <div class="panel-sub" id="funnelSub">De la visita a la web al segundo pago</div>
+          <div class="chips" id="funnelChips" style="margin-top:10px"></div>
+          <div class="funnel" id="funnel"></div>
+        </div>
+        <div class="panel">
+          <h2>Altas y bajas</h2>
+          <div class="panel-sub">Por mes: lo cobrado, los que pagaron por primera vez, las bajas y cuántos pagan a fin de mes</div>
+          <div style="overflow-x:auto"><table class="mini-table" id="churnTable"></table></div>
+        </div>
+      </section>
       <section class="ops">
         <div class="section-head"><h2 class="h2">Estado del sistema</h2><span class="small" id="healthSum"></span></div>
         <div class="health" id="health"></div>
       </section>
+      <details class="howto"><summary>Avisos al celular y resumen del lunes</summary>
+        <p>Todos los días a las 9 te llega un aviso (a la app de Ventra en tu celular y por mail) cuando un cliente deja de vender, una PC está prendida pero no sincroniza, alguien no renueva el pago, termina una prueba gratis, la IA de un cliente gasta más del 30% de lo que paga, vence un seguimiento que te anotaste o aparecen errores nuevos en las cajas. El mismo aviso no se repite en 7 días. Las altas nuevas llegan al momento. Los lunes, además, el resumen de la semana.</p>
+        <div class="actions" style="margin-top:8px"><button class="btn sm" id="watchDry" type="button">Ver qué avisaría hoy</button><button class="btn sm" id="watchWeekly" type="button">Mandarme el resumen ahora</button></div>
+        <div class="watch-out" id="watchOut"></div>
+      </details>
+    </div>
+
+    <!-- ═══ Cajas: versiones instaladas, errores y aviso a las cajas ═══ -->
+    <div class="view" data-view="cajas" id="cajasSection">
+      <div class="page-head">
+        <div><h1>Cajas</h1><div class="sub" id="cajasSub">Versiones instaladas, errores y avisos a las cajas</div></div>
+      </div>
+      <div class="cost-kpis" id="verKpis"></div>
+      <div class="panel" style="margin-top:12px">
+        <h2>Aviso a las cajas</h2>
+        <div class="panel-sub">Aparece arriba en la caja (PC, caja web y celular) hasta que lo cierran. Va a todos, o solo a los planes, rubros o versiones que elijas.</div>
+        <div id="bcNow"></div>
+        <div class="bc-form">
+          <textarea id="bcText" maxlength="280" placeholder="Ej.: Hay versión nueva de Ventra: cerrá y abrí la caja para actualizar."></textarea>
+          <div class="form-grid">
+            <div class="field"><label for="bcLevel">Color</label><select id="bcLevel"><option value="info">Normal</option><option value="warn">Importante (amarillo)</option><option value="bad">Urgente (rojo)</option></select></div>
+            <div class="field"><label for="bcMax">Solo hasta la versión</label><input id="bcMax" placeholder="Ej.: 1.0.110 · vacío = todas"></div>
+            <div class="field"><label for="bcUntil">Mostrar hasta el</label><input id="bcUntil" type="date"></div>
+            <div class="field"><label for="bcLink">Link (opcional)</label><input id="bcLink" placeholder="https://ventra.store/…"></div>
+          </div>
+          <div><div class="small">Planes (sin marcar = todos)</div><div class="bc-checks" id="bcPlans"></div></div>
+          <div><div class="small">Rubros (sin marcar = todos)</div><div class="bc-checks" id="bcRubros"></div></div>
+          <div class="actions" style="justify-content:flex-end"><button class="btn" id="bcClear" type="button">Quitar el aviso</button><button class="btn primary" id="bcSend" type="button">Publicar aviso</button></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>Errores de las cajas</h2>
+        <div class="panel-sub">Fallas que nadie atrapó, agrupadas por error (llegan desde la versión 1.0.119). Si uno que marcaste como arreglado vuelve a pasar, se reabre solo.</div>
+        <div class="chips" id="errChips" style="margin-top:10px"></div>
+        <div id="errList" style="display:grid;gap:8px;margin-top:10px"></div>
+      </div>
+      <div class="table-wrap cards" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Cliente</th><th>Equipo</th><th>Versión</th><th>Última conexión</th><th>Última sincronización</th></tr></thead>
+          <tbody id="verRows"></tbody>
+        </table>
+      </div>
+      <details class="howto"><summary>¿De dónde sale la versión?</summary>
+        <p>Cada PC informa su versión al revisar la suscripción (cada 30 minutos con la caja abierta), desde la 1.0.119. Las anteriores aparecen como “sin dato” hasta que se actualicen. La caja web informa la versión publicada en fly.</p>
+      </details>
     </div>
 
     <!-- ═══ Clientes ═══ -->
@@ -738,7 +844,7 @@
     }
 
     // ── Secciones (pestañas): una por vez, con la dirección (#clientes, #soporte…) para volver o compartir ──
-    var VIEWS = ['resumen', 'clientes', 'soporte', 'mails', 'bot', 'boletas', 'costos'];
+    var VIEWS = ['resumen', 'clientes', 'cajas', 'soporte', 'mails', 'bot', 'boletas', 'costos'];
     var view = null;
     function showView(name, keepScroll){
       if (VIEWS.indexOf(name) < 0) name = 'resumen';
@@ -751,8 +857,19 @@
       if (changed && !keepScroll) window.scrollTo(0, 0);
       if (name === 'soporte' && changed) $('supBox').classList.remove('chat-open');
     }
-    window.addEventListener('hashchange', function(){ showView(location.hash.slice(1)); });
-    showView(location.hash.slice(1), true);
+    var pendingClient = null;
+    function route(){
+      var h = location.hash.slice(1);
+      if (h.indexOf('cliente=') === 0){
+        pendingClient = decodeURIComponent(h.slice(8));
+        history.replaceState(null, '', '#clientes'); showView('clientes');
+        if (data) { openDrawer(pendingClient); pendingClient = null; }
+        return;
+      }
+      showView(h);
+    }
+    window.addEventListener('hashchange', route);
+    route();
 
     // En el celular las tablas se ven como tarjetas: cada dato lleva el nombre de su columna
     function labelTable(tbody){
@@ -791,6 +908,7 @@
       $('refreshBtn').disabled = true;
       return api('GET').then(function(d){
         data = d; merge(); render(); showApp();
+        if (pendingClient) { openDrawer(pendingClient); pendingClient = null; }
         if (!stats) loadStats();
         loadWaBot();
         loadBoletas();
@@ -822,6 +940,7 @@
       data.accounts.forEach(function(a){
         var x = byUid[a.uid] || {};
         a.cloud = x.cloud || null; a.usage = x.usage || {}; a.cost = x.cost; uids[a.uid] = true;
+        a.ins = s.insights && s.insights.byUid ? s.insights.byUid[a.uid] || null : null;
       });
       // Quien acaba de recibir un plan ya figura en las cuentas: no se repite como registrado
       data.registered = (s.registered || []).filter(function(u){ return !uids[u.uid]; });
@@ -854,6 +973,8 @@
       renderPlans(m.byPlan);
       renderChips();
       renderRows();
+      renderInsights();
+      renderCajas();
       renderTodo();
       setBadge('tbClientes', (s.GRACE || 0) + (s.READ_ONLY || 0));
       if (openUid && !keepDrawer) openDrawer(openUid);
@@ -869,6 +990,17 @@
       if (grace.length) add('warn', '⏳', grace.length + (grace.length === 1 ? ' cliente en período de gracia' : ' clientes en período de gracia'), grace.slice(0, 3).map(function(a){ return esc(a.email); }).join(' · ') + (grace.length > 3 ? '…' : ''), '#clientes');
       if (ro.length) add('bad', '🔒', ro.length + (ro.length === 1 ? ' cliente quedó en solo lectura' : ' clientes quedaron en solo lectura'), 'En las últimas dos semanas', '#clientes');
       if (todoExtra.mailErr) add('bad', '✉', todoExtra.mailErr + (todoExtra.mailErr === 1 ? ' mail no salió' : ' mails no salieron') + ' en los últimos 30 días', 'Mirá el error en Mails', '#mails');
+      var today = new Date().toLocaleDateString('en-CA');
+      data.accounts.filter(function(a){ return a.followUp && a.followUp.date <= today; }).forEach(function(a){
+        add('warn', '📌', 'Seguimiento: ' + esc(a.email || a.uid), esc(a.followUp.text || 'Te lo anotaste para el ' + fdate(a.followUp.date + 'T12:00:00')), '#cliente=' + encodeURIComponent(a.uid));
+      });
+      var paying = function(a){ return a.state === 'ACTIVE' || a.state === 'GRACE'; };
+      var stuck = data.accounts.filter(function(a){ return a.ins && paying(a) && a.ins.health.reasons.some(function(r){ return /no sincroniza/.test(r.text); }); });
+      if (stuck.length) add('bad', '🔄', stuck.length + (stuck.length === 1 ? ' caja prendida que no sincroniza' : ' cajas prendidas que no sincronizan'), stuck.slice(0, 3).map(function(a){ return esc(a.email); }).join(' · '), stuck.length === 1 ? '#cliente=' + encodeURIComponent(stuck[0].uid) : '#cajas');
+      var risky = data.accounts.filter(function(a){ return a.ins && paying(a) && !a.trial && a.ins.health.level === 'risk'; });
+      if (risky.length) add('warn', '📉', risky.length + (risky.length === 1 ? ' cliente en riesgo' : ' clientes en riesgo'), risky.slice(0, 3).map(function(a){ return esc(a.email) + ' (' + esc((a.ins.health.reasons[0] || {}).text || '') + ')'; }).join(' · '), risky.length === 1 ? '#cliente=' + encodeURIComponent(risky[0].uid) : '#resumen');
+      var newErr = openErrors().filter(function(e){ return e.firstAt && Date.now() - new Date(e.firstAt) < 864e5; }).length;
+      if (newErr) add('warn', '🐞', newErr + (newErr === 1 ? ' error nuevo en las cajas' : ' errores nuevos en las cajas'), 'En las últimas 24 horas', '#cajas');
       var bad = stats ? [].filter.call(document.querySelectorAll('#health .hcard.bad'), function(){ return true; }).length : 0;
       if (bad) add('bad', '⚠', bad + (bad === 1 ? ' servicio con problemas' : ' servicios con problemas'), 'Revisá Estado del sistema, más abajo', '#resumen');
       $('todo').innerHTML = items.length ? '<div class="section-head" style="margin-bottom:2px"><h2 class="h2" style="font-size:15px">Para atender</h2></div>' + items.join('') : '';
@@ -1126,13 +1258,14 @@
     }
 
     function counts(){
-      var c = { ALL: data.accounts.length + registered().length, ACTIVE:0, GRACE:0, READ_ONLY:0, UNPAID:0, NOPLAN: registered().length };
-      data.accounts.forEach(function(a){ c[a.state]++; }); return c;
+      var c = { ALL: data.accounts.length + registered().length, ACTIVE:0, GRACE:0, READ_ONLY:0, UNPAID:0, NOPLAN: registered().length, RISK:0 };
+      data.accounts.forEach(function(a){ c[a.state]++; if (a.ins && a.ins.health.level === 'risk') c.RISK++; }); return c;
     }
 
     function renderChips(){
       var c = counts();
-      var items = [['ALL','Todos'],['ACTIVE','Activas'],['GRACE','En gracia'],['READ_ONLY','Solo lectura'],['UNPAID','Sin pago'],['NOPLAN','Registrados sin plan']];
+      var items = [['ALL','Todos'],['ACTIVE','Activas'],['GRACE','En gracia'],['READ_ONLY','Solo lectura'],['UNPAID','Sin pago'],['RISK','En riesgo'],['NOPLAN','Registrados sin plan']];
+      if (!stats) items = items.filter(function(it){ return it[0] !== 'RISK'; });
       $('chips').innerHTML = items.map(function(it){
         return '<button class="chip' + (filter === it[0] ? ' on' : '') + '" data-f="' + it[0] + '">' + it[1] + ' <span class="c">' + c[it[0]] + '</span></button>';
       }).join('');
@@ -1146,7 +1279,8 @@
     function renderRows(){
       var q = query.trim().toLowerCase();
       var rows = filter === 'NOPLAN' ? [] : data.accounts.filter(function(a){
-        if (filter !== 'ALL' && a.state !== filter) return false;
+        if (filter === 'RISK') { if (!(a.ins && a.ins.health.level === 'risk')) return false; }
+        else if (filter !== 'ALL' && a.state !== filter) return false;
         var st = a.store ? (a.store.name || '') + ' ' + (a.store.subdomain || '') : '';
         return !q || String(a.email).toLowerCase().indexOf(q) >= 0 || String(a.planName).toLowerCase().indexOf(q) >= 0 || st.toLowerCase().indexOf(q) >= 0;
       });
@@ -1161,7 +1295,7 @@
         var dt = daysText(a);
         return '<tr data-uid="' + esc(a.uid) + '">' +
           '<td><div class="client">' + avatarHtml(a.email) + '<div style="min-width:0"><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · <span class="num">' + money(a.planAmount) + '</span>' : '') + (a.mpStatus === 'cancelled' ? ' · cancelada en MP' : '') + (a.store && a.store.subdomain ? ' <span class="store-tag' + (a.store.published ? '' : ' off') + '" title="' + esc(a.store.url) + '">Tienda' + (a.store.published ? '' : ' (sin publicar)') + '</span>' : '') + '</div></div></div></td>' +
-          '<td><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span></td>' +
+          '<td><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span> ' + hbadge(a.ins) + '</td>' +
           '<td><div class="days">' + dt.main + '</div><div class="days-sub">' + dt.sub + '</div></td>' +
           '<td class="hide-sm"><span class="pcs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span class="num">' + a.devices.length + '</span></span></td>' +
           '<td class="r hide-sm num">' + money(a.totalPaid) + '</td></tr>';
@@ -1223,7 +1357,7 @@
       openUid = uid;
       var dt = daysText(a);
       var devices = a.devices.length ? a.devices.map(function(d){
-        return '<div class="list-row"><div class="grow"><div style="font-weight:600">' + esc(d.name) + '</div><div class="muted" style="font-size:12px">Vinculada ' + fdate(d.linkedAt) + ' · última conexión ' + ago(d.lastSeenAt) + '</div></div><button class="btn sm danger" data-unlink="' + esc(d.deviceId) + '">Desvincular</button></div>';
+        return '<div class="list-row"><div class="grow"><div style="font-weight:600">' + esc(d.name) + ' ' + vtag(d) + '</div><div class="muted" style="font-size:12px">Vinculada ' + fdate(d.linkedAt) + ' · última conexión ' + ago(d.lastSeenAt) + '</div></div><button class="btn sm danger" data-unlink="' + esc(d.deviceId) + '">Desvincular</button></div>';
       }).join('') : '<div class="list-empty">Ninguna PC vinculada todavía</div>';
       var payments = a.payments.length ? a.payments.map(function(p){
         var how = p.method && p.method !== 'mercadopago' ? esc(p.method) + (p.months > 1 ? ' · ' + p.months + ' meses' : '') : 'Mercado Pago';
@@ -1244,8 +1378,9 @@
             '<div class="fact"><dt>Datos en la nube</dt><dd>' + (!stats ? 'Calculando…' : a.cloud ? '<span class="num">' + (a.cloud.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB</span> · ' + a.cloud.rows.toLocaleString('es-AR') + ' registros' : 'Sin copia todavía') + '</dd></div>' +
             '<div class="fact"><dt>Última sincronización</dt><dd>' + (!stats ? 'Calculando…' : a.cloud ? ago(a.cloud.lastPushAt) : '—') + '</dd></div>' +
           '</dl></div>' +
-          '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
-            '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado.</p></div>' +
+          healthSection(a) +
+          '<div class="section"><div class="actions"><button class="btn primary" style="flex:1" id="supportBtn">Entrar a su sistema ↗</button><button class="btn" style="flex:1" id="supportRoBtn" title="Ves todo igual, pero no se puede guardar nada">Solo mirar ↗</button><a class="btn" style="flex:1" target="_blank" rel="noopener" href="/panel.html?tenant=' + encodeURIComponent(a.uid) + '">Ver su panel (ventas, caja, stock) ↗</a></div>' +
+            '<p class="warn">Abre su Ventra en app.ventra.store como su administrador, con sus productos, cajas y ventas. Todo lo que hagas ahí se sincroniza con sus PCs y queda registrado. “Solo mirar” abre lo mismo sin poder guardar nada.</p></div>' +
           usageSection(a) +
           storeSection(a) +
           '<div class="section"><h4>Plan</h4><div class="actions"><select id="planSelect" style="flex:1;min-width:200px">' + Object.keys(data.plans).filter(function(k){ return !data.plans[k].legacy || k === a.plan; }).map(function(k){ return '<option value="' + k + '"' + (k === a.plan ? ' selected' : '') + '>' + esc(data.plans[k].name) + ' · ' + money(data.plans[k].amount) + '</option>'; }).join('') + '</select><button class="btn" id="savePlanBtn">Guardar plan</button></div></div>' +
@@ -1264,6 +1399,8 @@
           '<div class="section"><h4>PCs vinculadas</h4><div class="list">' + devices + '</div>' +
             '<p class="warn">Desvincular libera la PC: vuelve a funcionar sin control de suscripción. Para cortar el acceso usá “Pasar a solo lectura”.</p></div>' +
           '<div class="section"><h4>Cobros</h4><div class="list">' + payments + '</div></div>' +
+          '<div class="section"><h4>Seguimiento</h4><div class="date-row" style="align-items:center;flex-wrap:wrap"><input type="date" id="fuDate" value="' + esc(a.followUp ? a.followUp.date : '') + '"><input id="fuText" maxlength="300" placeholder="Qué hacer: llamarlo, ofrecerle la tienda…" value="' + esc(a.followUp ? a.followUp.text : '') + '" style="flex:1;min-width:180px;height:36px;border:1px solid var(--line);border-radius:999px;padding:0 14px;font-size:13px"><button class="btn primary" id="fuSave">Guardar</button>' + (a.followUp ? '<button class="btn" id="fuDone">Listo</button>' : '') + '</div>' +
+            '<p class="warn">Ese día te aparece en Para atender y te llega un aviso al celular.</p></div>' +
           '<div class="section"><h4>Notas internas</h4><textarea id="notes" placeholder="Datos de contacto, acuerdos, recordatorios…">' + esc(a.notes) + '</textarea>' +
             '<div style="margin-top:8px;text-align:right"><button class="btn sm" id="saveNotes">Guardar notas</button></div></div>' +
         '</div>';
@@ -1271,7 +1408,7 @@
       $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('open');
       $('closeDrawer').onclick = closeDrawer;
       bindStoreSection(a);
-      $('supportBtn').onclick = function(){
+      var openSupport = function(readOnly, btnId){
         if (DEMO) return toast('No disponible en la demo', true);
         // La pestaña se abre ya (si no, el navegador la bloquea) y se carga cuando llega el pase
         var win = window.open('about:blank', '_blank');
@@ -1279,14 +1416,21 @@
           win.opener = null;
           try { win.document.write('<title>Abriendo…</title><p style="font:15px system-ui,sans-serif;color:#475569;padding:24px">Abriendo el sistema de ' + esc(a.email || 'este cliente') + '…</p>'); } catch (e) {}
         }
-        $('supportBtn').disabled = true;
-        api('POST', { action:'supportAccess', uid:a.uid }).then(function(d){
+        $(btnId).disabled = true;
+        api('POST', { action:'supportAccess', uid:a.uid, readOnly:readOnly }).then(function(d){
           if (win) win.location.href = d.url; else location.href = d.url;
         }).catch(function(err){
           if (win) win.close();
           toast(err.message || 'No se pudo abrir su sistema', true);
-        }).then(function(){ $('supportBtn').disabled = false; });
+        }).then(function(){ $(btnId).disabled = false; });
       };
+      $('supportBtn').onclick = function(){ openSupport(false, 'supportBtn'); };
+      $('supportRoBtn').onclick = function(){ openSupport(true, 'supportRoBtn'); };
+      $('fuSave').onclick = function(){
+        var d = $('fuDate').value; if (!d) return toast('Elegí el día', true);
+        act({ action:'followUp', uid:a.uid, date:d, text:$('fuText').value }, 'Seguimiento anotado');
+      };
+      if ($('fuDone')) $('fuDone').onclick = function(){ act({ action:'followUp', uid:a.uid, date:'' }, 'Seguimiento cerrado'); };
       Array.prototype.forEach.call(document.querySelectorAll('[data-extend]'), function(b){
         b.onclick = function(){ act({ action:'extend', uid:a.uid, days:Number(b.getAttribute('data-extend')) }, 'Se sumaron ' + b.getAttribute('data-extend') + ' días'); };
       });
@@ -1324,6 +1468,177 @@
           act({ action:'manualPayment', uid:a.uid, months:months, amount:amount, method:$('payMethod').value, plan:$('planSelect').value }, 'Pago registrado');
       };
     }
+
+    // ── Salud de cada cliente, embudo y altas/bajas (los calcula admin-insights.js en la nube) ──
+    var LEVEL = { ok:'Bien', watch:'Para mirar', risk:'En riesgo' };
+    function hbadge(x){ return x && x.health ? '<span class="hb ' + x.health.level + '" title="Salud: ' + LEVEL[x.health.level] + '"><i></i>' + x.health.score + '</span>' : ''; }
+    var cmpV = function(a, b){
+      var pa = String(a || '').split(/[.-]/).map(function(x){ return parseInt(x, 10) || 0; }), pb = String(b || '').split(/[.-]/).map(function(x){ return parseInt(x, 10) || 0; });
+      for (var i = 0; i < Math.max(pa.length, pb.length); i++){ var d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+      return 0;
+    };
+    function vtag(d){
+      if (!d.appVersion) return '<span class="vtag none" title="Informa la versión desde la 1.0.119">sin dato</span>';
+      var old = data.latestVersion && cmpV(d.appVersion, data.latestVersion) < 0;
+      return '<span class="vtag' + (old ? ' old' : '') + '" title="' + (old ? 'Atrasada: la última es ' + esc(data.latestVersion) : 'Al día') + '">' + esc(d.appVersion) + '</span>';
+    }
+
+    function healthSection(a){
+      if (!stats) return '<div class="section"><h4>Salud</h4><p class="small">Calculando…</p></div>';
+      var x = a.ins;
+      if (!x) return '';
+      var h = x.health, act = x.activity;
+      var reasons = h.reasons.length ? '<ul class="reasons">' + h.reasons.map(function(r){ return '<li class="' + r.level + '">' + esc(r.text) + ' <span class="small">−' + r.pts + '</span></li>'; }).join('') + '</ul>'
+        : '<p class="small" style="margin:6px 0 0">Viene bien: vende, sincroniza y paga al día.</p>';
+      var fact = function(k, v){ return '<div class="fact"><dt>' + k + '</dt><dd>' + v + '</dd></div>'; };
+      var facts = act ? '<dl class="facts" style="margin-top:10px">' + fact('Ventas en 7 días', '<span class="num">' + int(act.s7) + '</span>') + fact('Promedio por semana', '<span class="num">' + int((act.s28 || 0) / 4) + '</span>') + fact('Última venta', ago(act.last)) + fact('Vendido en 30 días', '<span class="num">' + money(act.amount30) + '</span>') + '</dl>' : '';
+      var feats = (x.features || []).map(function(f){
+        return '<span class="feat' + (f.recent ? ' on' : f.used ? ' old' : '') + '" title="' + (f.recent ? 'La usó en los últimos 30 días' : f.used ? 'La probó, pero no en los últimos 30 días' : 'No la usó nunca') + '">' + esc(f.label) + '</span>';
+      }).join('');
+      return '<div class="section"><h4>Salud ' + hbadge(x) + (h.trial ? ' <span class="small">en prueba gratis</span>' : '') + (x.aiUsd ? ' <span class="small">· IA US$ ' + x.aiUsd.toFixed(2) + ' este mes</span>' : '') + '</h4>' + reasons + facts +
+        '<div class="small" style="margin-top:10px">Funciones que usa (verde: en los últimos 30 días)</div><div class="feats">' + feats + '</div></div>';
+    }
+
+    var funnelRange = 'cur';
+    function renderInsights(){
+      // Clientes para cuidar: los que pagan (o están en gracia), de peor a mejor
+      var i = stats && stats.insights;
+      if (!stats) $('riskList').innerHTML = '<li class="empty-li">Calculando…</li>';
+      else if (!i) $('riskList').innerHTML = '<li class="empty-li">No se pudo calcular la salud de los clientes.</li>';
+      else {
+        var list = data.accounts.filter(function(a){ return a.ins && (a.state === 'ACTIVE' || a.state === 'GRACE') && a.ins.health.level !== 'ok'; })
+          .sort(function(x, y){ return x.ins.health.score - y.ins.health.score; });
+        var okN = data.accounts.filter(function(a){ return a.ins && (a.state === 'ACTIVE' || a.state === 'GRACE') && a.ins.health.level === 'ok'; }).length;
+        $('riskList').innerHTML = list.length ? list.slice(0, 8).map(function(a){
+          return '<li data-uid="' + esc(a.uid) + '">' + hbadge(a.ins) + '<div class="grow"><div class="em">' + esc(a.email || a.uid) + (a.trial ? ' <span class="small">prueba</span>' : '') + '</div><div class="why">' + esc((a.ins.health.reasons[0] || {}).text || '') + '</div></div><span class="go">›</span></li>';
+        }).join('') + (list.length > 8 ? '<li class="empty-li">y ' + (list.length - 8) + ' más (filtro “En riesgo” en Clientes)</li>' : '')
+          : '<li class="empty-li">Todos los clientes activos vienen bien 👌</li>';
+        $('riskSub').textContent = okN + ' bien · ' + list.length + ' para mirar o en riesgo' + (i.measuredAt ? ' · ventas medidas ' + ago(i.measuredAt) : ' · las ventas se miden cada noche');
+      }
+
+      // Embudo
+      var f = (i && i.funnel) || [];
+      var ranges = [['cur','Este mes'],['prev','Mes pasado'],['all','6 meses']];
+      $('funnelChips').innerHTML = ranges.map(function(r){ return '<button class="chip' + (funnelRange === r[0] ? ' on' : '') + '" data-fr="' + r[0] + '">' + r[1] + '</button>'; }).join('');
+      if (!stats) $('funnel').innerHTML = '<p class="small">Calculando…</p>';
+      else if (!f.length) $('funnel').innerHTML = '<p class="small">Sin datos todavía.</p>';
+      else {
+        var rows = funnelRange === 'cur' ? f.slice(-1) : funnelRange === 'prev' ? f.slice(-2, -1) : f;
+        var sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+        var steps = [['visits','Visitas a la web'],['empezar','Entraron a /empezar'],['google','Tocaron Google'],['registered','Se registraron'],['accounts','Eligieron plan'],['trial','Probaron gratis'],['paid','Pagaron'],['renewed','Pagaron 2.º mes']];
+        var vals = steps.map(function(st){ return sum(st[0]); }), max = Math.max.apply(null, vals.concat([1]));
+        $('funnel').innerHTML = steps.map(function(st, k){
+          var v = vals[k], prev = k ? vals[k - 1] : 0;
+          var pct = k && prev ? Math.round(100 * v / prev) + '%' : '';
+          return '<div class="fstep"><span>' + st[1] + '</span><div class="fbar"><span style="width:' + (100 * v / max) + '%"></span></div><span class="fval">' + int(v) + (pct ? '<small>' + pct + '</small>' : '') + '</span></div>';
+        }).join('');
+        $('funnelSub').textContent = vals[0] ? 'De la visita a la web al segundo pago (el % es contra el paso anterior)' : 'Las visitas aparecen cuando se publique la medición de la web; el resto ya cuenta';
+      }
+
+      // Altas y bajas
+      var rm = (data.metrics.revenueMonths || []).slice(-6).reverse();
+      $('churnTable').innerHTML = '<thead><tr><th>Mes</th><th>Cobrado</th><th>Nuevos</th><th>Bajas</th><th>% baja</th><th>Pagan</th></tr></thead><tbody>' +
+        (rm.length ? rm.map(function(r){
+          return '<tr><td>' + new Date(r.month + '-15').toLocaleDateString('es-AR', { month:'short', year:'2-digit' }).replace('.', '') + '</td><td class="num">' + money(r.revenue) + '</td><td class="num">' + (r.newPaying ? '+' + r.newPaying : '0') + '</td><td class="num">' + (r.churned ? '−' + r.churned : '0') + '</td><td class="num">' + (r.churnPct == null ? '—' : r.churnPct + '%') + '</td><td class="num">' + r.payingEnd + '</td></tr>';
+        }).join('') : '<tr><td colspan="6" class="small">Sin cobros todavía</td></tr>') + '</tbody>';
+    }
+    $('funnelChips').addEventListener('click', function(e){ var b = e.target.closest('[data-fr]'); if (!b) return; funnelRange = b.getAttribute('data-fr'); renderInsights(); });
+    $('riskList').addEventListener('click', function(e){ var li = e.target.closest('li[data-uid]'); if (li) openDrawer(li.getAttribute('data-uid')); });
+
+    // ── Cajas: versiones, errores y aviso ─────────
+    var errFilter = 'open';
+    function allErrors(){ return (stats && stats.insights && stats.insights.errors) || []; }
+    function openErrors(){ return allErrors().filter(function(e){ return !e.resolved; }); }
+    var RUBROS = [['KIOSKO','Kiosco'],['MULTIRUBRO','Multirubro'],['FERRETERIA','Ferretería'],['INDUMENTARIA','Ropa'],['GASTRONOMIA','Gastronomía'],['DISTRIBUIDORA','Distribuidora'],['CARNICERIA','Carnicería'],['FIAMBRERIA','Fiambrería'],['VERDULERIA','Verdulería'],['IMPRENTA','Imprenta'],['NUTRICION','Nutrición']];
+    var bcBuilt = false;
+    function renderCajas(){
+      var latest = data.latestVersion, devs = [];
+      data.accounts.forEach(function(a){ a.devices.forEach(function(d){ devs.push({ a:a, d:d }); }); });
+      var pcs = devs.filter(function(x){ return x.d.kind !== 'cloud'; });
+      var withV = pcs.filter(function(x){ return x.d.appVersion; }), old = withV.filter(function(x){ return latest && cmpV(x.d.appVersion, latest) < 0; });
+      var openE = openErrors().length;
+      $('verKpis').innerHTML =
+        '<div class="kpi"><div class="kpi-label">Última versión publicada</div><div class="kpi-value num">' + esc(latest || '—') + '</div><div class="kpi-foot">La que reciben las PCs al actualizarse</div></div>' +
+        '<div class="kpi"><div class="kpi-label">PCs al día</div><div class="kpi-value num">' + (withV.length - old.length) + '</div><div class="kpi-foot">de ' + pcs.length + ' PCs vinculadas</div></div>' +
+        '<div class="kpi"><div class="kpi-label">PCs atrasadas</div><div class="kpi-value num">' + old.length + '</div><div class="kpi-foot">' + (pcs.length - withV.length) + ' todavía sin dato (anteriores a la 1.0.119)</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Errores abiertos</div><div class="kpi-value num">' + (stats ? openE : '…') + '</div><div class="kpi-foot">' + (stats ? allErrors().length + ' distintos en total' : 'Cargando…') + '</div></div>';
+      setBadge('tbCajas', openErrors().filter(function(e){ return e.firstAt && Date.now() - new Date(e.firstAt) < 3 * 864e5; }).length);
+
+      var rank = function(x){ return !x.d.appVersion ? 1 : latest && cmpV(x.d.appVersion, latest) < 0 ? 0 : 2; };
+      devs.sort(function(x, y){ return rank(x) - rank(y) || String(x.a.email).localeCompare(String(y.a.email)); });
+      $('verRows').innerHTML = devs.length ? devs.map(function(x){
+        return '<tr data-uid="' + esc(x.a.uid) + '"><td>' + esc(x.a.email || x.a.uid) + '</td><td>' + esc(x.d.kind === 'cloud' ? 'Caja web' : x.d.name) + '</td><td>' + vtag(x.d) + '</td><td>' + ago(x.d.lastSeenAt) + '</td><td>' + (!stats ? '…' : x.a.cloud ? ago(x.a.cloud.lastPushAt) : '—') + '</td></tr>';
+      }).join('') : '<tr><td colspan="5" class="empty">Ninguna PC vinculada todavía.</td></tr>';
+
+      // Aviso actual
+      var b = data.broadcast;
+      $('bcNow').innerHTML = b ? '<div class="bc-now"><b>Publicado:</b> ' + esc(b.text) + '<div class="small" style="margin-top:4px">' +
+        [b.plans && b.plans.length ? 'planes ' + b.plans.map(function(k){ return data.plans[k] ? data.plans[k].name : k; }).join(', ') : 'todos los planes',
+         b.rubros && b.rubros.length ? 'rubros ' + b.rubros.map(function(k){ var r = RUBROS.filter(function(x){ return x[0] === k; })[0]; return r ? r[1] : k; }).join(', ') : 'todos los rubros',
+         b.maxVersion ? 'hasta la ' + esc(b.maxVersion) : 'todas las versiones', b.until ? 'hasta el ' + fdate(b.until) : 'sin vencimiento'].join(' · ') + (b.updatedAt ? ' · ' + ago(b.updatedAt) : '') + '</div></div>' : '';
+      if (!bcBuilt){
+        bcBuilt = true;
+        $('bcPlans').innerHTML = Object.keys(data.plans).filter(function(k){ return k !== 'prueba'; }).map(function(k){ return '<label><input type="checkbox" value="' + k + '">' + esc(data.plans[k].name) + '</label>'; }).join('');
+        $('bcRubros').innerHTML = RUBROS.map(function(r){ return '<label><input type="checkbox" value="' + r[0] + '">' + r[1] + '</label>'; }).join('');
+      }
+      renderErrors();
+    }
+    function renderErrors(){
+      var all = allErrors(), list = all.filter(function(e){ return errFilter === 'open' ? !e.resolved : !!e.resolved; });
+      $('errChips').innerHTML = [['open','Abiertos', openErrors().length],['res','Arreglados', all.length - openErrors().length]].map(function(c){ return '<button class="chip' + (errFilter === c[0] ? ' on' : '') + '" data-ef="' + c[0] + '">' + c[1] + ' <span class="c">' + c[2] + '</span></button>'; }).join('');
+      if (!stats) { $('errList').innerHTML = '<p class="small">Cargando…</p>'; return; }
+      $('errList').innerHTML = list.length ? list.slice(0, 60).map(function(e){
+        var where = { pc:'PC', web:'Caja web', celular:'Celular' }[e.lastWhere] || e.lastWhere || '';
+        return '<div class="err-row' + (e.resolved ? ' res' : '') + '"><div class="err-top"><div style="min-width:0;flex:1"><div class="err-msg">' + esc(e.message) + '</div>' +
+          '<div class="small" style="margin-top:4px">' + int(e.count) + (e.count === 1 ? ' vez' : ' veces') + ' · ' + (e.tenants || []).length + ((e.tenants || []).length === 1 ? ' comercio' : ' comercios') + ' · última ' + ago(e.lastAt) + ' · primera ' + ago(e.firstAt) + (where ? ' · ' + where : '') + (e.lastPath ? ' · ' + esc(e.lastPath) : '') + (e.reopened && !e.resolved ? ' · <b>volvió a pasar</b>' : '') + '</div>' +
+          '<div class="small">Versiones: ' + ((e.versions || []).map(esc).join(', ') || '—') + (e.tenants && e.tenants.length ? ' · ' + e.tenants.slice(0, 4).map(esc).join(', ') + (e.tenants.length > 4 ? '…' : '') : '') + '</div></div>' +
+          '<button class="btn sm" data-err="' + esc(e.id) + '" data-res="' + (e.resolved ? '0' : '1') + '">' + (e.resolved ? 'Reabrir' : 'Arreglado') + '</button></div>' +
+          (e.stack ? '<details><summary class="small" style="cursor:pointer;margin-top:6px">Ver dónde falló</summary><pre>' + esc(e.stack) + '</pre></details>' : '') + '</div>';
+      }).join('') : '<p class="small">' + (errFilter === 'open' ? 'No hay errores abiertos 👌' : 'Ninguno marcado como arreglado.') + '</p>';
+    }
+    $('errChips').addEventListener('click', function(e){ var b = e.target.closest('[data-ef]'); if (!b) return; errFilter = b.getAttribute('data-ef'); renderErrors(); });
+    $('errList').addEventListener('click', function(e){
+      var b = e.target.closest('[data-err]'); if (!b) return;
+      var id = b.getAttribute('data-err'), resolved = b.getAttribute('data-res') === '1';
+      b.disabled = true;
+      api('POST', { action:'errorResolve', id:id, resolved:resolved }).then(function(){
+        allErrors().forEach(function(x){ if (x.id === id) { x.resolved = resolved; x.reopened = false; } });
+        toast(resolved ? 'Marcado como arreglado' : 'Reabierto'); renderCajas(); renderTodo();
+      }).catch(function(err){ b.disabled = false; toast(err.message || 'No se pudo cambiar', true); });
+    });
+    $('verRows').addEventListener('click', function(e){ var tr = e.target.closest('tr[data-uid]'); if (tr) openDrawer(tr.getAttribute('data-uid')); });
+    var checked = function(id){ return [].map.call(document.querySelectorAll('#' + id + ' input:checked'), function(i){ return i.value; }); };
+    $('bcSend').onclick = function(){
+      var text = $('bcText').value.trim();
+      if (text.length < 3) return toast('Escribí el aviso', true);
+      var max = $('bcMax').value.trim();
+      if (max && !/^\d+\.\d+\.\d+$/.test(max)) return toast('La versión va como 1.0.110', true);
+      var body = { action:'setBroadcast', text:text, level:$('bcLevel').value, plans:checked('bcPlans'), rubros:checked('bcRubros'), maxVersion:max, until: $('bcUntil').value ? $('bcUntil').value + 'T23:59:59-03:00' : '', link:$('bcLink').value.trim() };
+      if (!confirm('¿Publicar este aviso en las cajas?\n\n' + text)) return;
+      var btn = this; btn.disabled = true;
+      api('POST', body).then(function(){ toast('Aviso publicado'); $('bcText').value = ''; return load(); })
+        .catch(function(err){ toast(err.message || 'No se pudo publicar', true); }).then(function(){ btn.disabled = false; });
+    };
+    $('bcClear').onclick = function(){
+      if (!data.broadcast) return toast('No hay ningún aviso publicado');
+      if (confirm('¿Quitar el aviso de todas las cajas?')) act({ action:'clearBroadcast' }, 'Aviso quitado');
+    };
+
+    // Probar los avisos del celular: qué saldría hoy (sin mandar) y el resumen de la semana ya
+    var showWatch = function(r){
+      var items = (r.lista || []).map(function(x){ return '<div class="todo-item ' + (x.level === 'bad' ? 'bad' : 'warn') + '" style="cursor:default"><span class="tt">' + esc(x.title) + '<small>' + esc(x.body) + '</small></span></div>'; }).join('');
+      $('watchOut').innerHTML = (items || '<p class="small">Hoy no saldría ningún aviso nuevo (o ya se mandaron en los últimos 7 días).</p>') +
+        (r.semanal ? '<p class="small">Resumen: cobrado ' + money(r.semanal.paid) + ' · ' + r.semanal.newPaying + ' pagaron por primera vez · ' + r.semanal.riskCount + ' en riesgo.</p>' : '');
+    };
+    $('watchDry').onclick = function(){
+      var btn = this; btn.disabled = true; $('watchOut').innerHTML = '<p class="small">Revisando…</p>';
+      api('POST', { action:'adminWatchRun', dryRun:true }).then(showWatch).catch(function(err){ $('watchOut').innerHTML = ''; toast(err.message || 'No se pudo revisar', true); }).then(function(){ btn.disabled = false; });
+    };
+    $('watchWeekly').onclick = function(){
+      if (!confirm('¿Mandarte ahora el resumen de la semana (celular y mail)? También salen los avisos nuevos de hoy.')) return;
+      var btn = this; btn.disabled = true;
+      api('POST', { action:'adminWatchRun', weekly:true }).then(function(r){ showWatch(r); toast('Resumen enviado'); }).catch(function(err){ toast(err.message || 'No se pudo mandar', true); }).then(function(){ btn.disabled = false; });
+    };
 
     function usageSection(a){
       var u = a.usage || {}, c = a.cost || {}, has = (c.total || 0) > 0, fixed = effCosts().total || 0;
@@ -1864,6 +2179,10 @@
           suppliers:[ { supplier:'BEBIDAS DEL VALLE S.A.', cuit:'30714446785', invoices:6, untouched:2, untouchedPct:33, corrected:9, flagged:1, escalated:3, costPerInvoice:0.041 },
             { supplier:'DISTRIBUIDORA LOS ALAMOS S.A.', cuit:'30715551239', invoices:14, untouched:11, untouchedPct:79, corrected:5, flagged:1, escalated:2, costPerInvoice:0.012 },
             { supplier:'MAYORISTA EL PUENTE SRL', cuit:'30716662345', invoices:22, untouched:16, untouchedPct:73, corrected:9, flagged:0, escalated:4, costPerInvoice:0.015 } ] } });
+      if (method === 'POST' && body && body.action === 'adminWatchRun') return Promise.resolve({ alerts:3, nuevos:2, enviados:0, lista:[
+        { key:'nosales:x', level:'bad', title:'kiosco.lucia@gmail.com dejó de vender', body:'Su última venta fue hace 8 días. Vendía ~45 por semana.' },
+        { key:'stuck:y', level:'bad', title:'La caja de maxikiosco.sol@hotmail.com no sincroniza', body:'La PC se conecta pero no sube datos hace 3 días. Entrá a su sistema o pedile que reinicie Ventra.' } ],
+        semanal: body.weekly ? { paid: 49800, newPaying: 2, riskCount: 3 } : null });
       if (method === 'POST' && body && body.action === 'emailBot') return Promise.resolve(demoMailBot());
       if (method === 'POST' && body && body.action === 'emailView') return Promise.resolve(demoMailView(body.logId));
       if (method === 'POST') return Promise.resolve({ ok:true });
@@ -1871,7 +2190,7 @@
       var plans = { caja:{ name:'Ventra Caja', amount:14900, legacy:true }, full:{ name:'Ventra Full', amount:24900 }, tienda:{ name:'Ventra Tienda', amount:9900 }, agenda_pro:{ name:'Ventra Agenda Pro', amount:19900 }, prueba:{ name:'Ventra Prueba', amount:100 } };
       var mk = function(email, plan, paidInDays, state, daysLeft, nPay, pcs, mp){
         var payments = []; for (var i = 0; i < nPay; i++) payments.push({ id:'p' + i, amount:plans[plan].amount, paidAt:iso(now - (i * 30 + 3) * day) });
-        var devices = []; for (var j = 0; j < pcs; j++) devices.push({ deviceId:email + j, name:['CAJA-1','MOSTRADOR','DEPOSITO'][j], linkedAt:iso(now - 80 * day), lastSeenAt:iso(now - (j + 1) * 37 * 60000) });
+        var devices = []; for (var j = 0; j < pcs; j++) devices.push({ deviceId:email + j, name:['CAJA-1','MOSTRADOR','DEPOSITO'][j], linkedAt:iso(now - 80 * day), lastSeenAt:iso(now - (j + 1) * 37 * 60000), appVersion:[ '1.0.119', '1.0.104', null ][(email.length + j) % 3] });
         return { cloud: pcs ? { rows: 4000 + nPay * 2100, bytes: (3 + nPay) * 1048576, lastPushAt: iso(now - pcs * 11 * 60000) } : null, uid:email, email:email, plan:plan, planName:plans[plan].name, planAmount:plans[plan].amount, mpStatus:mp || 'active', paidUntil: paidInDays == null ? null : iso(now + paidInDays * day), state:state, daysLeft:daysLeft, totalPaid:payments.reduce(function(s,p){ return s + p.amount; }, 0), payments:payments, devices:devices, createdAt:iso(now - nPay * 30 * day), notes:'' };
       };
       var accounts = [
@@ -1935,12 +2254,35 @@
           { uid:'r2', email:'despensa.el.sol@gmail.com', name:'Carlos Sol', photoUrl:null, createdAt:iso(now - 9 * day), lastSignInAt:iso(now - 6 * day), store:null, devices:1 }
         ]
       };
+      // Panel nuevo: versiones, seguimiento, aviso a las cajas, altas y bajas
+      full.latestVersion = '1.0.119';
+      full.broadcast = null;
+      accounts[4].followUp = { date: new Date().toLocaleDateString('en-CA'), text:'Llamarlo: ofrecerle la tienda online' };
+      full.metrics.revenueMonths = monthly.map(function(m, k){ return { month:m.month, revenue:m.amount, newPaying: k > 5 ? (k % 3) + 1 : k % 2, churned: k > 8 ? k % 2 : 0, payingEnd: Math.max(0, k - 2), churnPct: k > 8 && k % 2 ? Math.round(1000 / Math.max(1, k - 3)) / 10 : (k ? 0 : null) }; });
       if (part !== 'stats') return Promise.resolve(full);
       var byUid = {};
       accounts.forEach(function(a){ byUid[a.uid] = { cloud:a.cloud, usage:a.usage, cost:a.cost }; });
       var sy = full.system;
       return new Promise(function(r){ setTimeout(r, 900); }).then(function(){
-        return { generatedAt: iso(now), sizesAt: iso(now - 5 * 3600000), byUid: byUid, registered: full.registered, wa: Object.assign({ meta: effDemo.waMeta }, waDemo), system: { neon:sy.neon, cloudHost:sy.cloudHost, backup:sy.backup, firestore:sy.firestore } };
+        var featsOf = function(on, old){ return ['Compras','Cuenta corriente','Cierres Z','Promos','Combos y packs','Presupuestos','Pedidos y preventa','Reparto','Encargos','Vencimientos','Factura electrónica','Pagos a proveedores','Recargos','Comisiones','Tienda online','IA (boletas, preguntas)'].map(function(l, k){ return { key:'f' + k, label:l, used: on.indexOf(k) >= 0 || old.indexOf(k) >= 0, recent: on.indexOf(k) >= 0, count: on.indexOf(k) >= 0 ? 12 : 0 }; }); };
+        var R = function(text, pts, level){ return { text:text, pts:pts, level:level || 'warn' }; };
+        var insDemo = [
+          { health:{ score:30, level:'risk', reasons:[R('No se renovó el pago (está en gracia)', 25, 'bad'), R('Hace 8 días que no vende', 35, 'bad'), R('Sus PCs no se conectan hace 8 días', 10)] }, features: featsOf([0, 2], [3]), activity:{ s7:0, s28:180, amount30: 412000, last: iso(now - 8 * day) }, aiUsd: 0.4 },
+          { health:{ score:10, level:'risk', reasons:[R('Quedó en solo lectura', 55, 'bad'), R('Hace 19 días que no vende', 35, 'bad')] }, features: featsOf([], [0]), activity:{ s7:0, s28:0, amount30:0, last: iso(now - 19 * day) }, aiUsd: 0 },
+          { health:{ score:20, level:'risk', reasons:[R('Nunca pagó', 45, 'bad'), R('Todavía no vendió nada con Ventra', 35, 'bad')] }, features: featsOf([], []), activity:null, aiUsd: 0 },
+          { health:{ score:100, level:'ok', reasons:[] }, features: featsOf([0, 1, 2, 3, 4, 5, 10, 14, 15], [7]), activity:{ s7:640, s28:2420, amount30: 6830000, last: iso(now - 25 * 60000) }, aiUsd: 2.1 },
+          { health:{ score:65, level:'watch', reasons:[R('Vende menos de la mitad que antes (41 esta semana, ~120 por semana)', 15), R('La PC está prendida pero no sincroniza hace 3 días', 10, 'bad'), R('Solo usa la caja (ninguna otra función)', 5)] }, features: featsOf([], []), activity:{ s7:41, s28:480, amount30: 960000, last: iso(now - 3 * 3600000) }, aiUsd: 0 },
+          { health:{ score:80, level:'ok', reasons:[R('No entra hace 20 días', 20)] }, features: featsOf([14], []), activity:null, aiUsd: 0 },
+          { health:{ score:100, level:'ok', reasons:[] }, features: featsOf([], []), activity:null, aiUsd: 0 }
+        ];
+        var insBy = {}; accounts.forEach(function(a, k){ insBy[a.uid] = insDemo[k]; });
+        var fm = monthly.slice(-6).map(function(m, k){ return { month:m.month, visits: 900 + k * 260, empezar: 120 + k * 30, google: 40 + k * 9, registered: 22 + k * 5, accounts: 6 + k * 2, trial: 4 + k, paid: 2 + k, renewed: Math.max(0, k - 1) }; });
+        var errs = [
+          { id:'a1b2c3d4e5f60718293a4b5c6d7e8f90', message:"TypeError: Cannot read properties of undefined (reading 'price')", stack:"TypeError: Cannot read properties of undefined (reading 'price')\n    at calcTotal (assets/PosScreen-Bx81.js:1:2041)\n    at onScan (assets/PosScreen-Bx81.js:1:9921)", count:14, tenants:['kiosco.lucia@gmail.com','maxikiosco.sol@hotmail.com'], versions:['1.0.119'], lastWhere:'pc', lastPath:'#/pos', firstAt: iso(now - 5 * 3600000), lastAt: iso(now - 20 * 60000), resolved:false },
+          { id:'0f1e2d3c4b5a69788796a5b4c3d2e1f0', message:'Promesa: Request failed with status code 500', stack:'', count:3, tenants:['ferreteria.central@gmail.com'], versions:['1.0.119'], lastWhere:'web', lastPath:'#/inventory', firstAt: iso(now - 6 * day), lastAt: iso(now - 2 * day), resolved:false, reopened:true },
+          { id:'99887766554433221100aabbccddeeff', message:'ReferenceError: printer is not defined', stack:'ReferenceError: printer is not defined\n    at printTicket (assets/print-77aa.js:1:300)', count:51, tenants:['kiosco.lucia@gmail.com'], versions:['1.0.104'], lastWhere:'pc', lastPath:'#/pos', firstAt: iso(now - 20 * day), lastAt: iso(now - 9 * day), resolved:true }
+        ];
+        return { insights:{ measuredAt: iso(now - 9 * 3600000), byUid: insBy, funnel: fm, errors: errs }, generatedAt: iso(now), sizesAt: iso(now - 5 * 3600000), byUid: byUid, registered: full.registered, wa: Object.assign({ meta: effDemo.waMeta }, waDemo), system: { neon:sy.neon, cloudHost:sy.cloudHost, backup:sy.backup, firestore:sy.firestore } };
       });
     }
   })();

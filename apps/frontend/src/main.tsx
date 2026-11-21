@@ -14,8 +14,12 @@ MotionGlobalConfig.skipAnimations = !(window.matchMedia?.('(pointer: coarse)').m
 import { HashRouter } from 'react-router-dom';
 import AppToaster from './components/common/AppToaster';
 import App from './App';
+import { installErrorReport } from './services/errorReport';
 import './fonts';
 import './index.css';
+
+// Errores que nadie atrapa: van al admin (pestaña Cajas)
+installErrorReport();
 
 // React root render
 

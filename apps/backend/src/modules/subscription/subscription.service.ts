@@ -311,7 +311,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async fetchSigned(deviceId: string, deviceSecret: string) {
-    const { data } = await axios.post(`${FUNCTIONS_URL}/ventraDeviceStatus`, { deviceId, deviceSecret }, {
+    const { data } = await axios.post(`${FUNCTIONS_URL}/ventraDeviceStatus`, { deviceId, deviceSecret, appVersion: process.env.VENTRA_APP_VERSION || null }, {
       timeout: 15000,
       validateStatus: (s) => s === 200 || s === 401,
     });

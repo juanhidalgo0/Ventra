@@ -43,6 +43,8 @@ COPY --from=build /repo/apps/backend/prisma apps/backend/prisma
 COPY --from=build /repo/apps/backend/package.json apps/backend/package.json
 COPY --from=build /repo/apps/frontend/dist apps/frontend/dist
 COPY apps/cloud-host apps/cloud-host
+# Solo para leer la versión (panel de versiones del admin)
+COPY package.json package.json
 
 RUN mkdir -p /data/tenants
 VOLUME ["/data"]
