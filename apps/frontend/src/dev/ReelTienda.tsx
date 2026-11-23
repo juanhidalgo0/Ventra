@@ -15,7 +15,8 @@ import toast from 'react-hot-toast';
 // La grabación cierra los avisos antes de tocar botones que quedan debajo
 (window as any).__toast = toast;
 
-localStorage.setItem('user', JSON.stringify(new URLSearchParams(location.search).get('rubro') === 'pelu'
+// ?pro=<id>: el profesional lo arma reelPreviewBoot (se importa antes que los stores)
+if (!new URLSearchParams(location.search).get('pro')) localStorage.setItem('user', JSON.stringify(new URLSearchParams(location.search).get('rubro') === 'pelu'
   ? { id: 'demo', username: 'diego', fullName: 'Diego', role: 'ADMIN' }
   : { id: 'demo', username: 'mia', fullName: 'Mía', role: 'ADMIN' }));
 
@@ -67,6 +68,10 @@ api.defaults.adapter = async (config: any) => {
       : PLAN === 'caja'
         ? { state: 'ACTIVE', enforced: true, plan: 'caja', planName: 'Ventra Caja', features: { caja: true, tienda: false, agenda: false }, daysLeft: 30 }
         : { state: 'ACTIVE', enforced: true, plan: 'tienda', planName: 'Ventra Tienda', features: { caja: false, tienda: true, agenda: true }, daysLeft: 30 }) };
+  else if (url === '/agenda-pros' && m === 'get') data = [{ staffId: 's', userId: 'u-pro', username: 'SOFI', isActive: true }];
+  else if (url === '/agenda-pros/grant' || url === '/agenda-pros/qr') data = { link: 'https://web.ventra.store/_ventra/staff?t=demo0123456789', expiresInSeconds: 900, username: JSON.parse(config.data || '{}').username || 'SOFI', warning: null };
+  else if (url === '/agenda-pros/revoke') data = { ok: true, cloud: true };
+  else if (url === '/auth/me') data = JSON.parse(localStorage.getItem('user') || 'null');
   else if (url.startsWith('/settings/activation')) data = { products: NUEVA ? 0 : products.length, users: 1, hasSales: !NUEVA };
   else if (url === '/settings' && m === 'get') data = {};
   else if (url.startsWith('/auth/license/status')) data = { isActive: true, status: 'ACTIVE', plan: 'PRO', expiresAt: '2099-01-01T00:00:00Z', daysRemaining: 9999 };

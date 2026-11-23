@@ -113,10 +113,30 @@ service cloud.firestore {
         allow write: if storeOwner();
       }
 
-      // Agenda de turnos: los turnos (con datos del cliente) solo los ve el dueño.
+      // Profesional de la agenda con usuario propio (barbero, estilista...): su sesión trae vStore/vStaff
+      // (la da ventraStoreSession) y vale mientras el dueño no le saque el acceso (se borra agenda_pros).
+      function proStaff() {
+        return signedIn()
+          && request.auth.token.get('vStore', null) == storeId
+          && request.auth.token.get('vStaff', null) is string
+          && get(/databases/$(database)/documents/ventra_stores/$(storeId)/agenda_pros/$(request.auth.token.vStaff)).data.get('uid', null) == request.auth.uid;
+      }
+      // Quién tiene acceso: lo escribe la función; el dueño lo ve y lo puede borrar (sacar el acceso)
+      match /agenda_pros/{staffId} {
+        allow read, delete: if storeOwner();
+        allow write: if false;
+      }
+
+      // Agenda de turnos: los turnos (con datos del cliente) los ve el dueño; cada profesional con
+      // usuario propio, solo los suyos (y los bloqueos de todo el local, sin tocarlos).
       // El público reserva por la función agendaBook, que evita turnos superpuestos.
       match /bookings/{bookingId} {
         allow read, write: if storeOwner();
+        allow read: if resource.data.get('staffId', null) in [request.auth.token.get('vStaff', ''), 'ALL'] && proStaff();
+        allow create: if request.resource.data.get('staffId', null) == request.auth.token.get('vStaff', '') && proStaff();
+        allow update: if resource.data.get('staffId', null) == request.auth.token.get('vStaff', '')
+          && request.resource.data.get('staffId', null) == resource.data.staffId && proStaff();
+        allow delete: if resource.data.get('staffId', null) == request.auth.token.get('vStaff', '') && proStaff();
       }
       // Clientes de la agenda (resumen por cliente y nota del dueño): solo el dueño.
       match /agenda_clients/{clientId} {

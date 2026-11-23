@@ -526,9 +526,20 @@ exports.ventraDeviceStatus = onRequest({ cors: true, secrets: [VENTRA_LICENSE_PR
 // cuenta, siempre que la cuenta todavía no tenga otra tienda.
 exports.ventraStoreSession = onRequest({ cors: true }, async (req, res) => {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-  const { deviceId, deviceSecret, legacyStoreId, legacyIdToken } = req.body || {};
+  const { deviceId, deviceSecret, legacyStoreId, legacyIdToken, proStaffId, revokeProStaffId } = req.body || {};
   const uid = await deviceTenant(deviceId, deviceSecret);
   if (!uid) return res.status(401).json({ error: "Equipo no vinculado" });
+
+  // El dueño le sacó el acceso a un profesional de la agenda: su sesión deja de valer enseguida
+  if (revokeProStaffId !== undefined) {
+    try {
+      await revokeAgendaPro(uid, String(revokeProStaffId));
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      logger.error("Ventra: no se pudo sacar el acceso del profesional", err);
+      return res.status(500).json({ error: "No se pudo sacar el acceso" });
+    }
+  }
 
   // El plan Caja no incluye la tienda online (Tienda y Full sí)
   const account = await db.collection("ventra_accounts").doc(uid).get();
@@ -537,6 +548,9 @@ exports.ventraStoreSession = onRequest({ cors: true }, async (req, res) => {
   }
 
   try {
+    // Profesional de la agenda (lo decide la caja según el usuario que entró): sesión que solo ve sus turnos
+    if (proStaffId !== undefined) return res.status(200).json(await agendaProSession(uid, String(proStaffId)));
+
     // Primero la sesión: si no se puede crear (permisos de la cuenta de servicio),
     // no se toca nada y el equipo sigue usando su sesión anónima con su tienda.
     const customToken = await admin.auth().createCustomToken(uid, { ventraStore: true });
@@ -575,10 +589,63 @@ exports.ventraStoreSession = onRequest({ cors: true }, async (req, res) => {
 
     res.status(200).json({ uid, customToken, storeId });
   } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
     logger.error("Ventra: error en la sesión de la tienda", err);
     res.status(500).json({ error: "No se pudo abrir la tienda online" });
   }
 });
+
+// ─── Profesionales de la agenda con usuario propio ──────────────────
+// Un barbero o estilista entra a la caja con su usuario y ve solo sus turnos. Su sesión de Firebase
+// es otra cuenta (pro_<dueño>_<profesional>) con los datos vStore/vStaff, y vale mientras exista
+// ventra_stores/{tienda}/agenda_pros/{profesional} con ese uid (firestore.rules): al sacarle el
+// acceso se borra ese registro y se cortan sus sesiones.
+const AGENDA_STAFF_RE = /^[\w-]{1,40}$/;
+const agendaProUid = (ownerUid, staffId) => `pro_${ownerUid}_${staffId}`.slice(0, 128);
+
+/** La tienda de la cuenta (la configurada y más reciente): la misma que le toca al dueño */
+async function accountStoreId(uid) {
+  const snap = await db.collection("ventra_stores").where("ownerUid", "==", uid).get();
+  const updatedMs = (d) => { const t = d.data().updatedAt; return t && t.toMillis ? t.toMillis() : 0; };
+  const docs = snap.docs.sort((a, b) => (Number(!!b.data().subdomain) - Number(!!a.data().subdomain)) || (updatedMs(b) - updatedMs(a)));
+  return docs.length ? docs[0] : null;
+}
+
+async function agendaProSession(ownerUid, staffId) {
+  if (!AGENDA_STAFF_RE.test(staffId)) { const e = new Error("Profesional inválido"); e.status = 400; throw e; }
+  const store = await accountStoreId(ownerUid);
+  const staff = store && ((store.data().agenda || {}).staff || []).find((x) => x && x.id === staffId && x.active !== false);
+  if (!staff) { const e = new Error("Ese profesional ya no está en la agenda"); e.status = 404; throw e; }
+  const proUid = agendaProUid(ownerUid, staffId);
+  await store.ref.collection("agenda_pros").doc(staffId).set({
+    uid: proUid, staffName: String(staff.name || "").slice(0, 60), activeAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  const customToken = await admin.auth().createCustomToken(proUid, { vStore: store.id, vStaff: staffId });
+  return { uid: proUid, customToken, storeId: store.id, staffId };
+}
+
+async function revokeAgendaPro(ownerUid, staffId) {
+  if (!AGENDA_STAFF_RE.test(staffId)) return;
+  const store = await accountStoreId(ownerUid);
+  if (store) await store.ref.collection("agenda_pros").doc(staffId).delete();
+  const proUid = agendaProUid(ownerUid, staffId);
+  await admin.auth().revokeRefreshTokens(proUid).catch(() => {}); // si nunca entró, no existe
+  await db.collection("ventra_push").doc(proUid).collection("tokens").get()
+    .then((snap) => Promise.all(snap.docs.map((d) => d.ref.delete()))).catch(() => {});
+}
+
+/** Aviso de un turno: al dueño y, si el turno es de un profesional con usuario propio, también a sus celulares */
+async function sendBookingPush(ownerUid, storeId, booking, msg) {
+  await notify.sendToAccount(db, ownerUid, "bookings", msg, { storeId });
+  const staffId = booking && booking.staffId;
+  if (!staffId || staffId === "ALL" || !AGENDA_STAFF_RE.test(String(staffId))) return;
+  try {
+    const pro = await db.collection("ventra_stores").doc(storeId).collection("agenda_pros").doc(String(staffId)).get();
+    if (pro.exists && pro.data().uid) await notify.sendToAccount(db, pro.data().uid, "bookings", msg);
+  } catch (err) {
+    logger.warn("No se pudo avisar al profesional", { storeId, staffId, err: err.message });
+  }
+}
 
 // ─── Réplica en la nube (Neon) ──────────────────────────────────────
 // La PC vinculada sube sus cambios y, al recuperar, baja todo. Se autentica
@@ -2011,11 +2078,11 @@ exports.agendaPayHook = onRequest({ maxInstances: 10, secrets: [VENTRA_MP_CLIENT
         "paid-cancelled": [`Pagó un turno cancelado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount} un turno que ya estaba cancelado. Volvé a darle el turno o devolvele el pago.`],
         paid: [`Turno pagado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount} por Mercado Pago.`],
       }[done.outcome] || [`Turno pagado: ${b.serviceName || "turno"} · ${when}`, `${who} pagó $${done.amount}${b.staffName ? " · con " + b.staffName : ""}. El turno quedó confirmado.`];
-      await notify.sendToAccount(db, done.ownerUid, "bookings", {
+      await sendBookingPush(done.ownerUid, String(req.query.s || ""), b, {
         title: msg[0],
         body: msg[1],
         url: "/#/agenda?turno=" + encodeURIComponent(b.id), tag: "booking-" + b.id,
-      }, { storeId: String(req.query.s || "") }).catch((err) => logger.warn("No se pudo avisar el pago del turno", err.message));
+      }).catch((err) => logger.warn("No se pudo avisar el pago del turno", err.message));
     }
   } catch (err) {
     logger.error("Agenda: error procesando el pago del turno", err);
@@ -2235,11 +2302,11 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (uid) {
-      await notify.sendToAccount(db, uid, "bookings", {
+      await sendBookingPush(uid, storeId, after, {
         title: `Turno cambiado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"} lo pasó desde su link. Antes era ${agenda.fmtDay(before.dateKey)} ${agenda.hhmm(before.startMin)}: ese horario quedó libre.`,
         url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
-      }, { storeId });
+      });
     }
     return;
   }
@@ -2250,11 +2317,11 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (uid) {
-      await notify.sendToAccount(db, uid, "bookings", {
+      await sendBookingPush(uid, storeId, after, {
         title: `Turno cancelado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"} lo canceló ${after.cancelVia === "whatsapp" ? "desde el recordatorio de WhatsApp" : "desde su link"}. El horario quedó libre.${paidNote(after.deposit)}`,
         url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
-      }, { storeId });
+      });
     }
     return;
   }
@@ -2265,11 +2332,11 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (uid) {
-      await notify.sendToAccount(db, uid, "bookings", {
+      await sendBookingPush(uid, storeId, after, {
         title: `Turno confirmado: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
         body: `${after.customerName || "El cliente"}${after.staffName ? " con " + after.staffName : ""} confirmó desde el recordatorio de WhatsApp.${after.status === "PENDING" ? " Todavía está por confirmar de tu lado." : ""}`,
         url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
-      }, { storeId });
+      });
     }
     return;
   }
@@ -2281,11 +2348,11 @@ exports.ventraBookingWritten = onDocumentWritten("ventra_stores/{storeId}/bookin
     const store = await db.collection("ventra_stores").doc(storeId).get();
     const uid = store.exists && store.data().ownerUid;
     if (!uid) return;
-    await notify.sendToAccount(db, uid, "bookings", {
+    await sendBookingPush(uid, storeId, after, {
       title: `Nuevo turno: ${after.serviceName || "turno"} · ${agenda.fmtDay(after.dateKey)} ${agenda.hhmm(after.startMin)}`,
       body: `${after.customerName || "Un cliente"}${after.staffName ? " con " + after.staffName : ""}${after.status === "PENDING" ? " · para confirmar" : ""}`,
       url: "/#/agenda?turno=" + encodeURIComponent(event.params.bookingId), tag: "booking-" + event.params.bookingId,
-    }, { storeId });
+    });
   }
 });
 

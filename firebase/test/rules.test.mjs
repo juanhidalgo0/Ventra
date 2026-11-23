@@ -217,3 +217,67 @@ test('nutri: el link del portal lo crea solo el dueño y nadie más lo lee', asy
   await assertFails(updateDoc(doc(as('posA'), `nutri_portal/${token}`), { patientId: 'p2' }));
   await assertSucceeds(deleteDoc(doc(as('posA'), `nutri_portal/${token}`)));
 });
+
+// ─── Agenda: profesionales con usuario propio ───────────────────────
+// Sesión del profesional: otra cuenta (pro_<dueño>_<profesional>) con vStore/vStaff, que vale
+// mientras exista agenda_pros/<profesional> con ese uid (lo escribe la función ventraStoreSession).
+const pro = (staff = 'juan', store = 'owned', uid = `pro_posA_${staff}`) => env.authenticatedContext(uid, { vStore: store, vStaff: staff }).firestore();
+const turno = (staffId, extra = {}) => ({ kind: 'booking', staffId, dateKey: '2026-12-01', startMin: 600, endMin: 630, status: 'CONFIRMED', customerName: 'Ana', ...extra });
+async function seedPros() {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'ventra_stores/owned/agenda_pros/juan'), { uid: 'pro_posA_juan' });
+    await setDoc(doc(db, 'ventra_stores/owned/bookings/bJuan'), turno('juan'));
+    await setDoc(doc(db, 'ventra_stores/owned/bookings/bPedro'), turno('pedro'));
+    await setDoc(doc(db, 'ventra_stores/owned/bookings/bAll'), turno('ALL', { kind: 'block' }));
+  });
+}
+
+test('profesional: lee sus turnos y los bloqueos del local, no los de otro', async () => {
+  await seedPros();
+  await assertSucceeds(getDoc(doc(pro(), 'ventra_stores/owned/bookings/bJuan')));
+  await assertSucceeds(getDoc(doc(pro(), 'ventra_stores/owned/bookings/bAll')));
+  await assertFails(getDoc(doc(pro(), 'ventra_stores/owned/bookings/bPedro')));
+  // La consulta de la app (filtrada por profesional) anda; sin filtrar, no
+  await assertSucceeds(getDocs(query(collection(pro(), 'ventra_stores/owned/bookings'), where('staffId', 'in', ['juan', 'ALL']), where('dateKey', '>=', '2026-11-01'), where('dateKey', '<=', '2026-12-31'))));
+  await assertFails(getDocs(query(collection(pro(), 'ventra_stores/owned/bookings'), where('dateKey', '>=', '2026-11-01'))));
+  await assertFails(getDocs(query(collection(pro(), 'ventra_stores/owned/bookings'), where('staffId', '==', 'pedro'))));
+});
+test('profesional: carga, cambia y borra solo lo suyo', async () => {
+  await seedPros();
+  await assertSucceeds(addDoc(collection(pro(), 'ventra_stores/owned/bookings'), turno('juan')));
+  await assertFails(addDoc(collection(pro(), 'ventra_stores/owned/bookings'), turno('pedro')));
+  await assertFails(addDoc(collection(pro(), 'ventra_stores/owned/bookings'), turno('ALL', { kind: 'block' })));
+  await assertSucceeds(updateDoc(doc(pro(), 'ventra_stores/owned/bookings/bJuan'), { status: 'DONE' }));
+  await assertFails(updateDoc(doc(pro(), 'ventra_stores/owned/bookings/bJuan'), { staffId: 'pedro' }));
+  await assertFails(updateDoc(doc(pro(), 'ventra_stores/owned/bookings/bPedro'), { status: 'CANCELLED' }));
+  await assertFails(deleteDoc(doc(pro(), 'ventra_stores/owned/bookings/bAll')));
+  await assertFails(deleteDoc(doc(pro(), 'ventra_stores/owned/bookings/bPedro')));
+  await assertSucceeds(deleteDoc(doc(pro(), 'ventra_stores/owned/bookings/bJuan')));
+});
+test('profesional: sin el registro de acceso (se lo sacaron) o con otro uid, no ve nada', async () => {
+  await seedPros();
+  await assertFails(getDoc(doc(pro('juan', 'owned', 'pro_falso'), 'ventra_stores/owned/bookings/bJuan')));
+  await assertFails(getDoc(doc(pro('pedro'), 'ventra_stores/owned/bookings/bPedro'))); // pedro no tiene acceso
+  await assertFails(getDoc(doc(pro('juan', 'otra'), 'ventra_stores/owned/bookings/bJuan'))); // datos de otra tienda
+  await env.withSecurityRulesDisabled((ctx) => deleteDoc(doc(ctx.firestore(), 'ventra_stores/owned/agenda_pros/juan')));
+  await assertFails(getDoc(doc(pro(), 'ventra_stores/owned/bookings/bJuan')));
+});
+test('profesional: no toca la tienda, los clientes, los pedidos ni el registro de accesos', async () => {
+  await seedPros();
+  await assertFails(updateDoc(doc(pro(), 'ventra_stores/owned'), { businessName: 'x' }));
+  await assertFails(getDocs(collection(pro(), 'ventra_stores/owned/agenda_clients')));
+  await assertFails(getDocs(collection(pro(), 'ventra_stores/owned/orders')));
+  await assertFails(setDoc(doc(pro(), 'ventra_stores/owned/agenda_pros/juan'), { uid: 'pro_posA_juan' }));
+  await assertFails(setDoc(doc(pro(), 'ventra_stores/owned/agenda_pros/pedro'), { uid: 'pro_posA_juan' }));
+  // Sus celulares para los avisos: los guarda en su propia cuenta
+  await assertSucceeds(setDoc(doc(pro(), 'ventra_push/pro_posA_juan/tokens/t1'), { token: 'x' }));
+});
+test('dueño: ve todos los turnos y ve/borra los accesos; nadie más los ve', async () => {
+  await seedPros();
+  await assertSucceeds(getDocs(collection(as('posA'), 'ventra_stores/owned/bookings')));
+  await assertSucceeds(getDoc(doc(as('posA'), 'ventra_stores/owned/agenda_pros/juan')));
+  await assertFails(setDoc(doc(as('posA'), 'ventra_stores/owned/agenda_pros/juan'), { uid: 'otro' }));
+  await assertFails(getDoc(doc(as('intruso'), 'ventra_stores/owned/agenda_pros/juan')));
+  await assertSucceeds(deleteDoc(doc(as('posA'), 'ventra_stores/owned/agenda_pros/juan')));
+});

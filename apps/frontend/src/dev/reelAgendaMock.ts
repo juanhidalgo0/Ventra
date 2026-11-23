@@ -52,13 +52,16 @@ const clientsNow = (): AgendaClient[] => {
 };
 const emit = () => subs.forEach((f) => f());
 
+// ?pro=<id>: como la nube con un profesional, solo sus turnos y los bloqueos de todo el local
+const PRO = new URLSearchParams(location.search).get('pro');
+const mine = (b: Booking) => !PRO || b.staffId === PRO || b.staffId === 'ALL';
 export function subscribeBookings(_storeId: string, fromKey: string, toKey: string, onChange: (l: Booking[]) => void) {
-  const f = () => onChange(list.filter((b) => b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
+  const f = () => onChange(list.filter((b) => mine(b) && b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
   subs.add(f); setTimeout(f, 50);
   return () => { subs.delete(f); };
 }
 export function subscribePending(_storeId: string, onChange: (l: Booking[]) => void) {
-  const f = () => onChange(list.filter((b) => b.status === 'PENDING' && b.dateKey >= today).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
+  const f = () => onChange(list.filter((b) => mine(b) && b.status === 'PENDING' && b.dateKey >= today).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
   subs.add(f); setTimeout(f, 50);
   return () => { subs.delete(f); };
 }
@@ -98,7 +101,7 @@ export async function saveClientNote(_s: string, c: AgendaClient, note: string) 
 export async function hasAnyBooking() { return list.some((b) => b.kind === 'booking'); }
 export async function rebuildClients() { return clientsNow().length; }
 export async function fetchBookingsRange(_s: string, fromKey: string, toKey: string) {
-  return list.filter((b) => b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
+  return list.filter((b) => mine(b) && b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
 }
 export async function waRemindersAvailable() { return true; }
 export async function markReminded(_s: string, id: string) { list = list.map((b) => (b.id === id ? { ...b, remindedAt: Date.now() } : b)); emit(); }

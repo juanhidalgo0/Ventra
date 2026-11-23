@@ -32,6 +32,7 @@ import { VentriImprimiendo, useVentri } from './components/common/Ventri';
 
 // Code-split / Lazy-loaded screens
 const ProductsScreen = lazy(() => import('./components/products/ProductsScreen'));
+const ProAgendaShell = lazy(() => import('./components/agenda/ProAgendaShell'));
 const CashRegisterScreen = lazy(() => import('./components/cash-register/CashRegisterScreen'));
 const CashControlScreen = lazy(() => import('./components/cash-register/CashControlScreen'));
 const HistorialScreen = lazy(() => import('./components/pos/HistorialScreen'));
@@ -198,6 +199,23 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
   const isAdminUnlocked = sessionStorage.getItem('admin_unlocked') === 'true';
   return isAuthenticated && (user?.role === 'ADMIN' || isAdminUnlocked) ? <>{children}</> : <Navigate to="/pos" replace />;
+}
+
+/**
+ * Profesional de la agenda con usuario propio (barbero, estilista...): ve solo su agenda, sin la
+ * caja ni los menús del comercio. Si el dueño pone el candado en ese equipo, ve todo como siempre.
+ */
+function ProAgendaOr({ children }: { children: React.ReactNode }) {
+  const staffId = useAuthStore((s) => s.user?.agendaStaffId);
+  const unlocked = sessionStorage.getItem('admin_unlocked') === 'true';
+  if (staffId && !unlocked) {
+    return (
+      <Suspense fallback={<div className="h-screen flex items-center justify-center text-[13px] text-slate-500">Cargando tu agenda…</div>}>
+        <ProAgendaShell staffId={staffId} />
+      </Suspense>
+    );
+  }
+  return <>{children}</>;
 }
 
 /** Solo el dueño (con su cuenta o con el candado sobre la del cajero): nunca un encargado */
@@ -710,6 +728,7 @@ export default function App() {
           path="/*"
           element={
             <PrivateRoute>
+              <ProAgendaOr>
               <MainLayout>
                 <Suspense fallback={
                   <div className="h-full w-full flex flex-col items-center justify-center p-8 text-slate-400">
@@ -783,6 +802,7 @@ export default function App() {
                   </Routes>
                 </Suspense>
               </MainLayout>
+              </ProAgendaOr>
             </PrivateRoute>
         }
       />

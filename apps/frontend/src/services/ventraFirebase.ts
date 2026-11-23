@@ -45,6 +45,21 @@ let mode: 'account' | 'device' | null = null;
 /** Clave donde cada equipo recuerda el id de su tienda online. */
 export const STORE_ID_KEY = 'ventra_store_id';
 
+/**
+ * Profesional de la agenda con usuario propio: la sesión de la nube solo ve sus turnos (ver
+ * firestore.rules). null = la sesión del dueño. Se sabe recién al abrir la sesión.
+ */
+let proStaffId: string | null = null;
+export const sessionProStaffId = () => proStaffId;
+/** Para quién se abrió la sesión: el usuario de la caja que entró (o el dueño con el candado) */
+let signedFor: string | null = null;
+function identityKey(): string {
+  try {
+    if (sessionStorage.getItem('adminAccessToken')) return 'admin';
+    return JSON.parse(localStorage.getItem('user') || 'null')?.id || '';
+  } catch { return ''; }
+}
+
 function waitForRestoredUser(): Promise<User | null> {
   const auth = getAuth(getVentraApp());
   return new Promise((resolve, reject) => {
@@ -65,7 +80,8 @@ function waitForRestoredUser(): Promise<User | null> {
 export function ensureVentraSession(): Promise<User> {
   const auth = getAuth(getVentraApp());
   const current = auth.currentUser;
-  if (current && ((mode === 'account' && !current.isAnonymous) || mode === 'device')) return Promise.resolve(current);
+  // Si entró otro usuario (un profesional, o el dueño con el candado), se pide la sesión de nuevo
+  if (current && signedFor === identityKey() && ((mode === 'account' && !current.isAnonymous) || mode === 'device')) return Promise.resolve(current);
   if (signingIn) return signingIn;
   signingIn = (async () => {
     const restored = await waitForRestoredUser();
@@ -89,6 +105,8 @@ export function ensureVentraSession(): Promise<User> {
 
     if (data?.linked && data.customToken) {
       mode = 'account';
+      proStaffId = typeof data.staffId === 'string' ? data.staffId : null;
+      signedFor = identityKey();
       const user = restored && !restored.isAnonymous && restored.uid === data.uid
         ? restored
         : (await signInWithCustomToken(auth, data.customToken)).user;
@@ -101,6 +119,8 @@ export function ensureVentraSession(): Promise<User> {
 
     // PC sin vincular: la tienda queda atada a este equipo (sesión anónima guardada)
     mode = 'device';
+    proStaffId = null;
+    signedFor = identityKey();
     if (restored) return restored;
     return (await signInAnonymously(auth)).user;
   })().finally(() => { signingIn = null; });

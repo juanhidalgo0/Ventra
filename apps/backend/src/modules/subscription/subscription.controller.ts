@@ -1,4 +1,6 @@
-import { Controller, Get, Post, Body, UseGuards, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Request, UseGuards, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
+import { agendaStaffIdOf } from '../agenda-pros/agenda-pros.store';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { SubscriptionService } from './subscription.service';
@@ -6,7 +8,7 @@ import { SubscriptionService } from './subscription.service';
 @Controller('subscription')
 @UseGuards(JwtAuthGuard)
 export class SubscriptionController {
-  constructor(private subscription: SubscriptionService) {}
+  constructor(private subscription: SubscriptionService, private prisma: PrismaService) {}
 
   @Get('status')
   status() {
@@ -28,7 +30,7 @@ export class SubscriptionController {
 
   /** Sesión de la cuenta para la tienda online. { linked: false } si esta instalación no está vinculada. */
   @Post('store-session')
-  async storeSession(@Body() body: { legacyStoreId?: string; legacyIdToken?: string }) {
+  async storeSession(@Request() req: any, @Body() body: { legacyStoreId?: string; legacyIdToken?: string }) {
     // Demo pública: nunca una sesión de la cuenta. La app de la demo usa su Firebase local
     // (VENTRA_DEMO); cualquier otra se niega a seguir al ver demo: true (ver ventraFirebase.ts).
     if (process.env.DEMO_MODE === 'true') return { linked: false, demo: true };
@@ -40,8 +42,12 @@ export class SubscriptionController {
         message: 'Tu plan Ventra Caja no incluye la tienda online. Pasate al plan Full en ventra.store para usarla.',
       });
     }
+    // Profesional de la agenda (barbero, estilista...): una sesión que solo ve y toca sus turnos.
+    // Con el candado la llamada viaja con el token del administrador, así que el dueño ve todo.
+    const proStaffId = await agendaStaffIdOf(this.prisma, req.user);
     try {
       const session = await this.subscription.storeSession({
+        ...(proStaffId ? { proStaffId } : {}),
         legacyStoreId: typeof body?.legacyStoreId === 'string' ? body.legacyStoreId : undefined,
         legacyIdToken: typeof body?.legacyIdToken === 'string' ? body.legacyIdToken : undefined,
       });

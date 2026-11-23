@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Ban, Settings, Clock, User, Phone, MessageCircle, Check, X, Trash2,
@@ -37,6 +37,7 @@ import { useConfirm } from '../common/ConfirmDialog';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
 import { COMING_SOON, comingSoon } from '../../utils/comingSoon';
 import PageLook from './PageLook';
+import { ProAccess, useAgendaPros } from './ProAccess';
 import { ComingSoonBadge } from '../common/ComingSoon';
 
 /** Los turnos se cobran en la agenda (y no en la caja) sin caja en el plan, o en un consultorio, que no usa la caja. */
@@ -45,6 +46,19 @@ const useChargesHere = () => {
   const consultorio = useBusinessStore((s) => isConsultorio(s.profile));
   return noCaja || consultorio;
 };
+
+/**
+ * Profesional con usuario propio (barbero, estilista...): la agenda muestra solo lo suyo, sin la
+ * configuración ni la página. Lo pone ProAgendaShell; null = el dueño (ve todo).
+ */
+export const AgendaProCtx = createContext<string | null>(null);
+const useAgendaPro = () => useContext(AgendaProCtx);
+
+/** La agenda recortada a un profesional: él solo y los servicios que hace */
+function scopeToPro(a: AgendaConfig, staffId: string): AgendaConfig {
+  const staff = a.staff.filter((x) => x.id === staffId && x.active !== false);
+  return { ...a, staff, services: staff[0] ? a.services.filter((sv) => canDo(staff[0], sv)) : [] };
+}
 
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -56,8 +70,10 @@ const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Vierne
  * Con el plan Agenda (solo turnos) es la pantalla de inicio: la "tienda" es solo la
  * página de reservas, y se arma y se publica desde acá.
  */
-export default function AgendaScreen() {
-  const mobile = useOwnerMobile().active;
+export default function AgendaScreen({ proActions, forceMobile }: { /** Botones del profesional (avisos, salir) */ proActions?: React.ReactNode; forceMobile?: boolean } = {}) {
+  const proId = useAgendaPro();
+  const ownerMobile = useOwnerMobile().active;
+  const mobile = ownerMobile || !!forceMobile;
   const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const { storeId } = useOnlineOrders();
   const [config, setConfig] = useState<StoreConfig | null>(null);
@@ -70,16 +86,19 @@ export default function AgendaScreen() {
     if (!storeId) return;
     loadStoreConfig(storeId).then((c) => {
       setConfig(c);
-      if (!(c as any).agenda?.services?.length) setTab('config');
+      if (!(c as any).agenda?.services?.length && !proId) setTab('config');
     }).catch(() => toast.error('No se pudo cargar la tienda'));
   }, [storeId]);
 
-  const agenda = useMemo(() => fullAgenda((config as any)?.agenda), [config]);
+  const agenda = useMemo(() => {
+    const full = fullAgenda((config as any)?.agenda);
+    return proId ? scopeToPro(full, proId) : full;
+  }, [config, proId]);
   // Los recorridos hablan el idioma del rubro (pacientes, alumnos, barberos...)
   setTourScreen({ agendaKind: detectAgendaKind(agenda), mobile });
   const ready = !!storeId && !!config;
-  useAutoTour('agenda', ready && tab === 'agenda' && agenda.services.length > 0 && agenda.staff.length > 0);
-  useAutoTour('agendaConfig', ready && tab === 'config');
+  useAutoTour('agenda', ready && !proId && tab === 'agenda' && agenda.services.length > 0 && agenda.staff.length > 0);
+  useAutoTour('agendaConfig', ready && !proId && tab === 'config');
   const startTour = useTourStore((s) => s.start);
   const saveAgenda = async (next: AgendaConfig) => {
     if (!storeId) return;
@@ -134,7 +153,16 @@ export default function AgendaScreen() {
     </div>
   );
 
-  const body = !storeId ? (
+  const body = proId ? (
+    !storeId || !config ? <div className="p-10 text-center text-[14px] text-slate-500">Cargando…</div>
+      : !agenda.staff.length ? (
+        <div className="p-6 max-w-md mx-auto text-center">
+          <CalendarClock className="w-10 h-10 text-slate-300 mx-auto" />
+          <p className="mt-3 text-[16px] font-bold text-slate-900">Tu agenda no está disponible</p>
+          <p className="text-[13.5px] text-slate-500 mt-1">No te encontramos entre los profesionales del local. Pedile al dueño que revise tu acceso.</p>
+        </div>
+      ) : <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => {}} />
+  ) : !storeId ? (
     <PageSetup mobile={mobile} agendaOnly={agendaOnly} onSave={savePage} />
   ) : !config ? (
     <div className="p-10 text-center text-[14px] text-slate-500">Cargando…</div>
@@ -147,6 +175,31 @@ export default function AgendaScreen() {
         kindLabel={AGENDA_TEMPLATES.find((t) => t.id === agenda.kind)?.title}
         onSaved={(patch) => setConfig((c) => (c ? { ...c, ...patch } : c))} />} />
   );
+
+  if (proId) {
+    const who = agenda.staff[0]?.name;
+    if (mobile) {
+      return (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <ScreenHeader title="Mi agenda" subtitle={[who, config?.businessName].filter(Boolean).join(' · ') || 'Cargando…'} action={proActions} />
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain"><div className="ag-fade">{body}</div></div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
+        <div className="max-w-5xl w-full mx-auto px-6 pt-6 flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[12px] font-semibold tracking-[0.14em] text-rose-600">{(config?.businessName || 'TURNOS').toUpperCase()}</p>
+            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Mi agenda</h1>
+            {who && <p className="text-[13px] text-slate-500">{who}</p>}
+          </div>
+          <div className="flex items-center gap-2">{proActions}</div>
+        </div>
+        <div className="ag-fade">{body}</div>
+      </div>
+    );
+  }
 
   if (mobile) {
     return (
@@ -201,7 +254,8 @@ export default function AgendaScreen() {
 // ─── Agenda del día ─────────────────────────────────────────
 
 function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: { storeId: string; agenda: AgendaConfig; businessName: string; slug?: string; mobile: boolean; onConfigure: () => void }) {
-  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
+  const proId = useAgendaPro();
+  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features)) && !proId;
   const today = localNow().dateKey;
   const [day, setDay] = useState(today);
   const [staffFilter, setStaffFilter] = useState<string>('ALL');
@@ -286,6 +340,17 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   const canCharge = useChargesHere();
   const dayCharged = visible.reduce((s, b) => s + (b.payment ? Number(b.payment.amount) || 0 : 0), 0);
 
+  if (proId && !agenda.services.length) {
+    return (
+      <div className={`${mobile ? 'px-4 py-6' : 'p-6 max-w-5xl mx-auto'}`}>
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
+          <ClipboardList className="w-10 h-10 text-slate-300 mx-auto" />
+          <p className="mt-3 text-[16px] font-bold text-slate-900">Todavía no tenés servicios</p>
+          <p className="text-[13.5px] text-slate-500 mt-1 max-w-sm mx-auto">Pedile al dueño que te asigne los servicios que hacés (en la agenda, Configurar). Después vas a ver y cargar tus turnos acá.</p>
+        </div>
+      </div>
+    );
+  }
   if (!agenda.services.length || !staff.length) {
     return (
       <div className={`${mobile ? 'px-4 py-6' : 'p-6 max-w-5xl mx-auto'} space-y-4`}>
@@ -303,7 +368,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   return (
     <div className={`${mobile ? 'px-4 py-4' : 'p-6 max-w-5xl w-full mx-auto'} space-y-4`}>
       {agendaOnly && mobile && <GettingStartedCard mobile />}
-      {!agenda.enabled && (
+      {!agenda.enabled && !proId && (
         <button onClick={onConfigure} className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
           <CalendarClock className="w-5 h-5 text-amber-700 shrink-0" />
           <span className="flex-1 text-[13.5px] text-amber-900">Los turnos online están apagados: podés cargar turnos a mano, pero tus clientes todavía no pueden reservar. Tocá para activarlos.</span>
@@ -485,6 +550,8 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   const [charging, setCharging] = useState(false);
   const [ask, askDialog] = useConfirm();
   const canCharge = useChargesHere();
+  // El profesional no tiene la caja en su celular: lo cobra el local (él lo marca como atendido)
+  const proId = useAgendaPro();
   const st = STATUS[b.status];
   const act = async (status: BookingStatus, msg: string) => {
     setBusy(true);
@@ -530,10 +597,11 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   if (b.kind === 'block') {
     return (
       <Modal title="Horario bloqueado" onClose={onClose}
-        footer={<button disabled={busy} onClick={async () => { setBusy(true); try { await deleteBooking(storeId, b.id); toast.success('Horario liberado'); onClose(); } catch { toast.error('No se pudo liberar'); setBusy(false); } }} className="w-full h-12 rounded-2xl bg-red-50 text-red-700 font-semibold flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Liberar horario</button>}>
+        footer={proId && b.staffId === 'ALL' ? undefined : <button disabled={busy} onClick={async () => { setBusy(true); try { await deleteBooking(storeId, b.id); toast.success('Horario liberado'); onClose(); } catch { toast.error('No se pudo liberar'); setBusy(false); } }} className="w-full h-12 rounded-2xl bg-red-50 text-red-700 font-semibold flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Liberar horario</button>}>
         <div className="space-y-2 text-[14px] text-slate-700">
           <p><b>{dayLabel(b.dateKey)}</b>, de {hhmm(b.startMin)} a {hhmm(b.endMin)}</p>
           <p>{b.staffId === 'ALL' ? 'Todo el local' : b.staffName}{b.reason ? ` · ${b.reason}` : ''}</p>
+          {proId && b.staffId === 'ALL' && <p className="text-[12.5px] text-slate-400">Lo bloqueó el local: solo el dueño lo puede liberar.</p>}
         </div>
       </Modal>
     );
@@ -553,7 +621,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
         b.payment ? (
           <div className="flex items-center gap-3">
             <span className="flex-1 min-w-0 text-[14px] text-emerald-800 font-semibold flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Cobrado {money(b.payment.amount)} · {b.payment.method}</span>
-            <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>
+            {!proId && <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>}
           </div>
         ) : paidInFull(b) ? (
           <div className="flex items-center gap-3">
@@ -564,7 +632,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           <button onClick={() => setCharging(true)} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
             <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
-        ) : (
+        ) : proId ? undefined : (
           <button onClick={chargeInCaja} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
             <ShoppingCart className="w-5 h-5" /> Cobrar en la caja{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
@@ -1031,8 +1099,10 @@ function NewBooking({ storeId, agenda, initialDay, onClose }: { storeId: string;
 
 function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; agenda: AgendaConfig; initialDay: string; onClose: () => void }) {
   const [ask, askDialog] = useConfirm();
+  const proId = useAgendaPro();
   const staff = agenda.staff.filter((s) => s.active !== false);
-  const [staffId, setStaffId] = useState('ALL');
+  // El profesional bloquea solo su horario; todo el local, solo el dueño
+  const [staffId, setStaffId] = useState(proId || 'ALL');
   const [day, setDay] = useState(initialDay < localNow().dateKey ? localNow().dateKey : initialDay);
   const [allDay, setAllDay] = useState(false);
   const [from, setFrom] = useState('13:00');
@@ -1061,14 +1131,14 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
     <Modal title="Bloquear horario" onClose={onClose} footer={<button disabled={busy} onClick={save} className="w-full h-12 rounded-2xl bg-slate-900 text-white font-semibold disabled:opacity-60">Bloquear</button>}>
       <div className="space-y-4">
         <p className="text-[13px] text-slate-500">Nadie va a poder reservar en ese horario (almuerzo, trámite, día libre).</p>
-        <div>
+        {!proId && <div>
           <span className={label}>Quién</span>
           <div className="flex flex-wrap gap-2">
             {[{ id: 'ALL', name: 'Todo el local' }, ...staff].map((s) => (
               <button key={s.id} onClick={() => setStaffId(s.id)} className={`h-9 px-3.5 rounded-full text-[13px] font-semibold border ${staffId === s.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>{s.name}</button>
             ))}
           </div>
-        </div>
+        </div>}
         <div><span className={label}>Día</span><DayPicker value={day} onChange={setDay} days={90} /></div>
         <label className="flex items-center gap-2 text-[14px] text-slate-700"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} className="w-4 h-4 accent-rose-600" /> Todo el día</label>
         {!allDay && (
@@ -1229,6 +1299,8 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
   const [a, setA] = useState<AgendaConfig>(agenda);
   const [saving, setSaving] = useState(false);
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
+  // Profesionales con usuario propio (ven solo sus turnos desde su celular)
+  const pros = useAgendaPros();
   const [ask, askDialog] = useConfirm();
   useEffect(() => { setA(agenda); }, [agenda]);
   const dirty = JSON.stringify(a) !== JSON.stringify(agenda);
@@ -1378,6 +1450,11 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
                   <button onClick={async () => { if (await ask({ title: `¿Borrar a ${p.name || 'este profesional'}?`, message: 'Sus turnos ya cargados no se borran.', confirmLabel: 'Borrar', cancelLabel: 'Volver', danger: true })) setA((cur) => ({ ...cur, staff: cur.staff.filter((x) => x.id !== p.id), services: cur.services.map((s) => ({ ...s, staffIds: (s.staffIds || []).filter((x) => x !== p.id) })) })); }} className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0" aria-label="Borrar"><Trash2 className="w-4 h-4 text-slate-500" /></button>
                 </div>
                 <p className="text-[12px] text-slate-500 mt-1.5">{hoursSummary(p.hours)}</p>
+                {a.kind !== 'deportes' && (
+                  <ProAccess storeId={storeId} staffId={p.id} staffName={(agenda.staff.find((x) => x.id === p.id)?.name || p.name || '').trim()}
+                    saved={agenda.staff.some((x) => x.id === p.id && x.active !== false && !!x.name?.trim())}
+                    link={pros.list?.find((x) => x.staffId === p.id)} onChange={pros.reload} />
+                )}
                 {editingStaff === p.id && (
                   <div className="mt-2 anim-rise">
                     <div className="flex flex-wrap gap-1.5 mb-2">

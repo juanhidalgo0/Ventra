@@ -5,7 +5,7 @@ import { wsService } from '../services/websocket';
 // Versiones anteriores guardaban la clave de administrador en texto plano: se borra al abrir
 try { localStorage.removeItem('admin_password'); } catch { /* sin almacenamiento */ }
 
-interface User { id: string; username: string; fullName: string; role: string; /** Distribuidora: VENDEDOR | CHOFER | MOSTRADOR */ workRole?: string | null; avatarUrl?: string; }
+interface User { id: string; username: string; fullName: string; role: string; /** Distribuidora: VENDEDOR | CHOFER | MOSTRADOR */ workRole?: string | null; avatarUrl?: string; /** Profesional de la agenda con usuario propio: ve solo sus turnos */ agendaStaffId?: string | null; }
 
 interface AuthState {
   user: User | null;

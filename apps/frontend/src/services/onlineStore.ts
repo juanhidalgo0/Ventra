@@ -19,7 +19,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getVentraDb, getVentraStorage, ensureVentraSession, STORE_ID_KEY } from './ventraFirebase';
+import { getVentraDb, getVentraStorage, ensureVentraSession, sessionProStaffId, STORE_ID_KEY } from './ventraFirebase';
 import { resolveServerUrl } from './api';
 
 import { RESERVED_SLUGS, publicStoreUrl } from '../utils/storeLinks';
@@ -39,6 +39,8 @@ export class StoreOwnedElsewhereError extends Error {
  */
 export async function claimStore(storeId: string): Promise<void> {
   const user = await ensureVentraSession();
+  // Un profesional de la agenda usa la tienda del dueño: no la reclama (ni podría)
+  if (sessionProStaffId()) return;
   const db = getDb();
   const ref = doc(db, 'ventra_stores', storeId);
   const snap = await getDoc(ref);

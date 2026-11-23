@@ -5,3 +5,5 @@ export function getVentraApp(): any { return {}; }
 export function getVentraDb(): any { return {}; }
 export function getVentraStorage(): any { return {}; }
 export function ensureVentraSession(): Promise<any> { return Promise.resolve({ uid: 'reel-demo' }); }
+/** ?pro=<id del profesional>: la agenda como la ve un profesional con usuario propio */
+export function sessionProStaffId(): string | null { return new URLSearchParams(location.search).get('pro'); }

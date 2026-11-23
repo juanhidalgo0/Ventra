@@ -2,7 +2,7 @@ import toast from 'react-hot-toast';
 import { haptic } from '../utils/haptics';
 import { create } from 'zustand';
 import { STORE_ID_KEY, subscribeToStoreOrders, loadStoreConfig, type StoreOrder } from './onlineStore';
-import { ensureVentraSession } from './ventraFirebase';
+import { ensureVentraSession, sessionProStaffId } from './ventraFirebase';
 
 /**
  * Pedidos de la tienda online, en vivo, para toda la app: la sección "Pedidos online",
@@ -78,6 +78,8 @@ export async function startOnlineOrdersSync() {
     const storeId = localStorage.getItem(STORE_ID_KEY);
     // Este comercio todavía no tiene tienda online (tampoco venta a comercios)
     if (!storeId) { useOnlineOrders.setState({ wholesale: false }); return; }
+    // Profesional de la agenda: solo usa la agenda (los pedidos y el stock de la tienda son del dueño)
+    if (sessionProStaffId()) { useOnlineOrders.setState({ storeId }); return; }
 
     let seen: Set<string>;
     try { seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { seen = new Set(); }

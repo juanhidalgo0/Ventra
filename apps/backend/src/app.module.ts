@@ -1,4 +1,5 @@
 import { StaffDevicesModule } from './modules/staff-devices/staff-devices.module';
+import { AgendaProsModule } from './modules/agenda-pros/agenda-pros.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './database/prisma.module';
@@ -37,6 +38,7 @@ import { PosTrailModule } from './modules/pos-trail/pos-trail.module';
   imports: [
     SubscriptionModule,
     StaffDevicesModule,
+    AgendaProsModule,
     SyncModule,
     ConfigModule.forRoot({
       isGlobal: true,

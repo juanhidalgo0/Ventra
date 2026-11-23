@@ -65,5 +65,5 @@ export class StaffDevicesController {
   revoke(@Param('id') id: string) { return this.service.revoke(id); }
 }
 
-@Module({ controllers: [StaffDevicesController], providers: [StaffDevicesService] })
+@Module({ controllers: [StaffDevicesController], providers: [StaffDevicesService], exports: [StaffDevicesService] })
 export class StaffDevicesModule {}

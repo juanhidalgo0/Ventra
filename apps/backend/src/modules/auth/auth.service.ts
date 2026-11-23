@@ -8,6 +8,7 @@ import { ProductsService } from '../products/products.service';
 import { assertValidPassword } from './password-policy';
 import { LoginThrottle } from './login-throttle';
 import { logPasswordChange } from './password-audit';
+import { agendaStaffIdOf } from '../agenda-pros/agenda-pros.store';
 
 @Injectable()
 export class AuthService {
@@ -95,6 +96,8 @@ export class AuthService {
         role: user.role,
         workRole: user.workRole ?? null,
         avatarUrl: user.avatarUrl,
+        // Profesional de la agenda: la app le muestra solo sus turnos
+        agendaStaffId: await agendaStaffIdOf(this.prisma, user),
       },
     };
   }
@@ -132,7 +135,7 @@ export class AuthService {
   async validateUser(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado o inactivo');
-    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, workRole: user.workRole ?? null, avatarUrl: user.avatarUrl };
+    return { id: user.id, username: user.username, fullName: user.fullName, role: user.role, workRole: user.workRole ?? null, avatarUrl: user.avatarUrl, agendaStaffId: await agendaStaffIdOf(this.prisma, user) };
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {

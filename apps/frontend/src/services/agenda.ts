@@ -1,5 +1,5 @@
 import { collection, doc, query, where, orderBy, limit, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch, deleteField, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { getVentraDb, ensureVentraSession } from './ventraFirebase';
+import { getVentraDb, ensureVentraSession, sessionProStaffId } from './ventraFirebase';
 import { IS_DEMO_BUILD } from '../demo/flag';
 import { publicStoreUrl, RESERVED_SLUGS } from '../utils/storeLinks';
 import { claimStore } from './onlineStore';
@@ -73,6 +73,11 @@ export async function buyReminderPack(): Promise<string> {
 const bookingsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'bookings');
 const clientsCol = (storeId: string) => collection(getVentraDb(), 'ventra_stores', storeId, 'agenda_clients');
 const docsOf = (snap: any): Booking[] => snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }));
+/**
+ * Profesional con usuario propio: la nube solo le deja leer sus turnos y los bloqueos de todo el
+ * local, así que cada consulta tiene que pedir eso (si no, Firestore rechaza la consulta entera).
+ */
+const scoped = () => { const id = sessionProStaffId(); return id ? [where('staffId', 'in', [id, 'ALL'])] : []; };
 
 /** Turnos y bloqueos entre dos días (inclusive), en vivo. */
 export function subscribeBookings(storeId: string, fromKey: string, toKey: string, onChange: (list: Booking[]) => void, onError?: (e: Error) => void) {
@@ -80,7 +85,7 @@ export function subscribeBookings(storeId: string, fromKey: string, toKey: strin
   let cancelled = false;
   claimStore(storeId).then(() => {
     if (cancelled) return;
-    const q = query(bookingsCol(storeId), where('dateKey', '>=', fromKey), where('dateKey', '<=', toKey), orderBy('dateKey'));
+    const q = query(bookingsCol(storeId), ...scoped(), where('dateKey', '>=', fromKey), where('dateKey', '<=', toKey), orderBy('dateKey'));
     unsub = onSnapshot(q, (snap) => {
       onChange(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })).sort((a: Booking, b: Booking) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
     }, (err) => { console.warn('[Agenda] Error escuchando turnos:', err.message); onError?.(err); });
@@ -146,7 +151,7 @@ export async function createSeries(storeId: string, b: Parameters<typeof createM
 /** Turnos de la misma serie desde un día (sin contar uno), que todavía están por venir. */
 export async function seriesUpcoming(storeId: string, seriesId: string, fromKey: string, exceptId?: string): Promise<Booking[]> {
   await ensureVentraSession();
-  const snap = await getDocs(query(bookingsCol(storeId), where('seriesId', '==', seriesId)));
+  const snap = await getDocs(query(bookingsCol(storeId), ...scoped(), where('seriesId', '==', seriesId)));
   return docsOf(snap).filter((x) => x.id !== exceptId && x.dateKey >= fromKey && (x.status === 'CONFIRMED' || x.status === 'PENDING')).sort((x, y) => x.dateKey.localeCompare(y.dateKey));
 }
 
@@ -258,6 +263,8 @@ async function refreshClient(storeId: string, key: string, sample?: Partial<Book
 }
 
 function refreshClientOf(storeId: string, b: Partial<Booking>) {
+  // Los clientes son del dueño: para los turnos de un profesional los actualiza la nube (ventraBookingWritten)
+  if (sessionProStaffId()) return;
   const key = clientKeyOf(b);
   if (key) refreshClient(storeId, key, b).catch((err) => console.warn('[Agenda] No se pudo actualizar el cliente', err?.message));
 }
@@ -325,7 +332,7 @@ export function subscribePending(storeId: string, onChange: (list: Booking[]) =>
   let cancelled = false;
   claimStore(storeId).then(() => {
     if (cancelled) return;
-    unsub = onSnapshot(query(bookingsCol(storeId), where('status', '==', 'PENDING')), (snap) => {
+    unsub = onSnapshot(query(bookingsCol(storeId), ...scoped(), where('status', '==', 'PENDING')), (snap) => {
       const today = localNow().dateKey;
       onChange(docsOf(snap).filter((b) => b.dateKey >= today).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
     }, (err) => console.warn('[Agenda] Error escuchando los turnos por confirmar:', err.message));
@@ -362,7 +369,7 @@ export function subscribePaidBetween(storeId: string, fromMs: number, toMs: numb
 /** Turnos entre dos días (inclusive), una sola lectura: para los cobros del período. */
 export async function fetchBookingsRange(storeId: string, fromKey: string, toKey: string): Promise<Booking[]> {
   await claimStore(storeId);
-  const q = query(bookingsCol(storeId), where('dateKey', '>=', fromKey), where('dateKey', '<=', toKey), orderBy('dateKey'));
+  const q = query(bookingsCol(storeId), ...scoped(), where('dateKey', '>=', fromKey), where('dateKey', '<=', toKey), orderBy('dateKey'));
   return docsOf(await getDocs(q)).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin);
 }
 

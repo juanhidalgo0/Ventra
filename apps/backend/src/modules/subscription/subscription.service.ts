@@ -285,11 +285,21 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
    * ventraStoreSession). Devuelve null si este equipo no está vinculado: en ese
    * caso la tienda sigue funcionando con la sesión anónima del navegador.
    */
-  async storeSession(legacy: { legacyStoreId?: string; legacyIdToken?: string }) {
+  async storeSession(legacy: { legacyStoreId?: string; legacyIdToken?: string; proStaffId?: string }) {
     const creds = this.getDeviceCredentials();
     if (!creds) return null;
     const { data } = await axios.post(`${FUNCTIONS_URL}/ventraStoreSession`, { ...creds, ...legacy }, { timeout: 15000 });
-    return data as { uid: string; customToken: string; storeId: string | null };
+    // Un profesional nunca recibe la sesión del dueño (por ejemplo si la nube todavía no sabe de profesionales)
+    if (legacy.proStaffId && data?.staffId !== legacy.proStaffId) throw new Error('La nube no devolvió la sesión del profesional');
+    return data as { uid: string; customToken: string; storeId: string | null; staffId?: string | null };
+  }
+
+  /** Corta en la nube la sesión de un profesional de la agenda al que el dueño le sacó el acceso. */
+  async revokeAgendaPro(staffId: string) {
+    const creds = this.getDeviceCredentials();
+    if (!creds) return false;
+    await axios.post(`${FUNCTIONS_URL}/ventraStoreSession`, { ...creds, revokeProStaffId: staffId }, { timeout: 15000 });
+    return true;
   }
 
   isReadOnly(): boolean {
