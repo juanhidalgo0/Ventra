@@ -3,7 +3,8 @@ import { getVentraDb, ensureVentraSession, sessionProStaffId } from './ventraFir
 import { IS_DEMO_BUILD } from '../demo/flag';
 import { publicStoreUrl, RESERVED_SLUGS } from '../utils/storeLinks';
 import { claimStore } from './onlineStore';
-import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, addDays, occupies, phoneKeyOf, nameKeyOf, waPhone, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient } from './agendaCore';
+import { startAtMs, dayLabel, hhmm, localNow, clientKeyOf, aggregateClient, addDays, occupies, phoneKeyOf, nameKeyOf, waPhone, isDeskKey, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type BookingPayment, type AgendaClient, type StaffPrivate } from './agendaCore';
+import type { DayHours } from './onlineStore';
 
 export * from './agendaCore';
 
@@ -77,7 +78,53 @@ const docsOf = (snap: any): Booking[] => snap.docs.map((d: any) => ({ id: d.id, 
  * Profesional con usuario propio: la nube solo le deja leer sus turnos y los bloqueos de todo el
  * local, así que cada consulta tiene que pedir eso (si no, Firestore rechaza la consulta entera).
  */
-const scoped = () => { const id = sessionProStaffId(); return id ? [where('staffId', 'in', [id, 'ALL'])] : []; };
+const scoped = () => { const id = sessionProStaffId(); return id && !isDeskKey(id) ? [where('staffId', 'in', [id, 'ALL'])] : []; };
+
+/** Permisos y forma de cobro de cada profesional (privado). Con staffId, solo ese (lo que lee el profesional). */
+export function subscribeStaffPrivate(storeId: string, staffId: string | null, onChange: (map: Record<string, StaffPrivate>) => void) {
+  let unsub: (() => void) | null = null;
+  let cancelled = false;
+  ensureVentraSession().then(() => {
+    if (cancelled) return;
+    const col = collection(getVentraDb(), 'ventra_stores', storeId, 'agenda_staff');
+    unsub = staffId
+      ? onSnapshot(doc(col, staffId), (d) => onChange(d.exists() ? { [d.id]: d.data() as StaffPrivate } : {}), () => onChange({}))
+      : onSnapshot(col, (snap) => onChange(Object.fromEntries(snap.docs.map((d) => [d.id, d.data() as StaffPrivate]))), () => onChange({}));
+  }).catch(() => onChange({}));
+  return () => { cancelled = true; unsub?.(); };
+}
+
+export async function saveStaffPrivate(storeId: string, staffId: string, data: StaffPrivate) {
+  await ensureVentraSession();
+  await setDoc(doc(getVentraDb(), 'ventra_stores', storeId, 'agenda_staff', staffId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/** El profesional cambia su propio horario (si el dueño se lo permite): lo guarda la nube en la página de turnos */
+export async function saveMyHours(hours: DayHours[]) {
+  const user = await ensureVentraSession();
+  const res = await fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/agendaProEdit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ hours }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'No se pudo guardar tu horario');
+}
+
+/** Días libres o vacaciones: un bloqueo de día entero por cada día (hasta 62) */
+export async function createDaysOff(storeId: string, b: { fromKey: string; toKey: string; staffId: string; staffName?: string; reason?: string }) {
+  await ensureVentraSession();
+  const batch = writeBatch(getVentraDb());
+  let n = 0;
+  for (let k = b.fromKey; k <= b.toKey && n < 62; k = addDays(k, 1), n++) {
+    batch.set(doc(bookingsCol(storeId)), {
+      kind: 'block', dateKey: k, startMin: 0, endMin: 24 * 60, startAt: Timestamp.fromMillis(startAtMs(k, 0)),
+      staffId: b.staffId, staffName: b.staffName || '', reason: (b.reason || '').trim(), status: 'BLOCK', source: 'manual', createdAt: serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  return n;
+}
 
 /** Turnos y bloqueos entre dos días (inclusive), en vivo. */
 export function subscribeBookings(storeId: string, fromKey: string, toKey: string, onChange: (list: Booking[]) => void, onError?: (e: Error) => void) {

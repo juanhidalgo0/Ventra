@@ -614,13 +614,16 @@ async function accountStoreId(uid) {
 async function agendaProSession(ownerUid, staffId) {
   if (!AGENDA_STAFF_RE.test(staffId)) { const e = new Error("Profesional inválido"); e.status = 400; throw e; }
   const store = await accountStoreId(ownerUid);
-  const staff = store && ((store.data().agenda || {}).staff || []).find((x) => x && x.id === staffId && x.active !== false);
+  if (!store) { const e = new Error("El comercio todavía no tiene agenda"); e.status = 404; throw e; }
+  // Recepción (desk-…): maneja la agenda de todos, no es un profesional de la lista
+  const desk = staffId.startsWith("desk-");
+  const staff = desk ? { name: "Recepción" } : ((store.data().agenda || {}).staff || []).find((x) => x && x.id === staffId && x.active !== false);
   if (!staff) { const e = new Error("Ese profesional ya no está en la agenda"); e.status = 404; throw e; }
   const proUid = agendaProUid(ownerUid, staffId);
   await store.ref.collection("agenda_pros").doc(staffId).set({
     uid: proUid, staffName: String(staff.name || "").slice(0, 60), activeAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
-  const customToken = await admin.auth().createCustomToken(proUid, { vStore: store.id, vStaff: staffId });
+  const customToken = await admin.auth().createCustomToken(proUid, desk ? { vStore: store.id, vStaff: staffId, vDesk: true } : { vStore: store.id, vStaff: staffId });
   return { uid: proUid, customToken, storeId: store.id, staffId };
 }
 
@@ -634,14 +637,67 @@ async function revokeAgendaPro(ownerUid, staffId) {
     .then((snap) => Promise.all(snap.docs.map((d) => d.ref.delete()))).catch(() => {});
 }
 
+/**
+ * El profesional cambia su propio horario semanal desde su celular, si el dueño le dio ese permiso
+ * (agenda_staff/{profesional}.perms.hours). La página de turnos es pública y la escribe solo el
+ * dueño, por eso pasa por acá: se cambia solo el horario de ese profesional.
+ */
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+function cleanHours(list) {
+  if (!Array.isArray(list) || list.length !== 7) return null;
+  const out = [];
+  for (const h of list) {
+    if (!h || typeof h !== "object") return null;
+    const ranges = (Array.isArray(h.ranges) && h.ranges.length ? h.ranges : [{ from: h.from, to: h.to }]).slice(0, 3);
+    if (!ranges.every((r) => r && HHMM_RE.test(String(r.from)) && HHMM_RE.test(String(r.to)))) return null;
+    const rs = ranges.map((r) => ({ from: String(r.from), to: String(r.to) }));
+    out.push({ open: !!h.open, from: rs[0].from, to: rs[0].to, ranges: rs });
+  }
+  return out;
+}
+exports.agendaProEdit = onRequest({ cors: true, maxInstances: 5 }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  try {
+    const m = String(req.headers.authorization || "").match(/^Bearer (.+)$/);
+    if (!m) return res.status(401).json({ error: "Falta la sesión" });
+    const tok = await admin.auth().verifyIdToken(m[1]);
+    const storeId = tok.vStore, staffId = tok.vStaff;
+    if (!storeId || !staffId || tok.vDesk || !AGENDA_STAFF_RE.test(String(staffId))) return res.status(403).json({ error: "Solo un profesional puede cambiar su horario" });
+    const ref = db.collection("ventra_stores").doc(String(storeId));
+    const [pro, priv] = await Promise.all([ref.collection("agenda_pros").doc(staffId).get(), ref.collection("agenda_staff").doc(staffId).get()]);
+    if (!pro.exists || pro.data().uid !== tok.uid) return res.status(403).json({ error: "Ya no tenés acceso a esta agenda" });
+    const perms = (priv.exists && priv.data().perms) || {};
+    if (perms.hours !== true) return res.status(403).json({ error: "El dueño no te habilitó a cambiar tu horario" });
+    const hours = cleanHours((req.body || {}).hours);
+    if (!hours) return res.status(400).json({ error: "Horario inválido" });
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const agenda = (snap.exists && snap.data().agenda) || {};
+      const staff = Array.isArray(agenda.staff) ? agenda.staff : [];
+      const i = staff.findIndex((x) => x && x.id === staffId);
+      if (i < 0) { const e = new Error("Ya no estás en la agenda"); e.status = 404; throw e; }
+      const next = staff.map((x, j) => (j === i ? { ...x, hours } : x));
+      tx.update(ref, { "agenda.staff": next, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    if (err && /id-token|auth\//.test(String(err.code || ""))) return res.status(401).json({ error: "Sesión vencida: volvé a entrar" });
+    logger.error("Agenda: error al cambiar el horario del profesional", err);
+    res.status(500).json({ error: "No se pudo guardar tu horario" });
+  }
+});
+
 /** Aviso de un turno: al dueño y, si el turno es de un profesional con usuario propio, también a sus celulares */
 async function sendBookingPush(ownerUid, storeId, booking, msg) {
   await notify.sendToAccount(db, ownerUid, "bookings", msg, { storeId });
-  const staffId = booking && booking.staffId;
-  if (!staffId || staffId === "ALL" || !AGENDA_STAFF_RE.test(String(staffId))) return;
+  const staffId = booking && booking.staffId ? String(booking.staffId) : "";
   try {
-    const pro = await db.collection("ventra_stores").doc(storeId).collection("agenda_pros").doc(String(staffId)).get();
-    if (pro.exists && pro.data().uid) await notify.sendToAccount(db, pro.data().uid, "bookings", msg);
+    // El profesional del turno y la recepción (que maneja la agenda de todos)
+    const pros = await db.collection("ventra_stores").doc(storeId).collection("agenda_pros").get();
+    const uids = pros.docs.filter((d) => d.id.startsWith("desk-") || (staffId && staffId !== "ALL" && d.id === staffId))
+      .map((d) => d.data().uid).filter(Boolean);
+    for (const uid of new Set(uids)) await notify.sendToAccount(db, uid, "bookings", msg);
   } catch (err) {
     logger.warn("No se pudo avisar al profesional", { storeId, staffId, err: err.message });
   }

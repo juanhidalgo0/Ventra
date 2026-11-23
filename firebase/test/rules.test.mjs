@@ -281,3 +281,45 @@ test('dueño: ve todos los turnos y ve/borra los accesos; nadie más los ve', as
   await assertFails(getDoc(doc(as('intruso'), 'ventra_stores/owned/agenda_pros/juan')));
   await assertSucceeds(deleteDoc(doc(as('posA'), 'ventra_stores/owned/agenda_pros/juan')));
 });
+
+// ─── Agenda: recepción y datos privados de cada profesional ─────────
+const desk = (key = 'desk-ab12', store = 'owned') => env.authenticatedContext(`pro_posA_${key}`, { vStore: store, vStaff: key, vDesk: true }).firestore();
+async function seedDesk() {
+  await seedPros();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'ventra_stores/owned/agenda_pros/desk-ab12'), { uid: 'pro_posA_desk-ab12' });
+    await setDoc(doc(db, 'ventra_stores/owned/agenda_staff/juan'), { pay: { mode: 'commission', pct: 50 }, perms: { hours: true } });
+    await setDoc(doc(db, 'ventra_stores/owned/agenda_staff/pedro'), { pay: { mode: 'chair', amount: 60000, every: 'week' } });
+    await setDoc(doc(db, 'ventra_stores/owned/agenda_clients/p1155'), { name: 'Ana' });
+  });
+}
+test('recepción: ve y maneja los turnos de todos y lee los clientes', async () => {
+  await seedDesk();
+  await assertSucceeds(getDocs(collection(desk(), 'ventra_stores/owned/bookings')));
+  await assertSucceeds(updateDoc(doc(desk(), 'ventra_stores/owned/bookings/bPedro'), { status: 'DONE' }));
+  await assertSucceeds(addDoc(collection(desk(), 'ventra_stores/owned/bookings'), turno('pedro')));
+  await assertSucceeds(deleteDoc(doc(desk(), 'ventra_stores/owned/bookings/bAll')));
+  await assertSucceeds(getDoc(doc(desk(), 'ventra_stores/owned/agenda_clients/p1155')));
+  await assertFails(setDoc(doc(desk(), 'ventra_stores/owned/agenda_clients/p1155'), { name: 'x' }));
+});
+test('recepción: no toca la tienda, la plata de los profesionales ni los accesos; sin registro no entra', async () => {
+  await seedDesk();
+  await assertFails(updateDoc(doc(desk(), 'ventra_stores/owned'), { businessName: 'x' }));
+  await assertFails(getDoc(doc(desk(), 'ventra_stores/owned/agenda_staff/juan')));
+  await assertFails(getDoc(doc(desk(), 'ventra_stores/owned/agenda_pros/juan')));
+  await assertFails(getDocs(collection(desk(), 'ventra_stores/owned/orders')));
+  await assertFails(getDoc(doc(desk('desk-zz99'), 'ventra_stores/owned/bookings/bJuan'))); // sin agenda_pros
+  // Un profesional no puede hacerse pasar por recepción con su sesión
+  await assertFails(getDoc(doc(pro(), 'ventra_stores/owned/bookings/bPedro')));
+});
+test('datos privados: cada profesional lee solo los suyos y no los cambia; el dueño todo', async () => {
+  await seedDesk();
+  await assertSucceeds(getDoc(doc(pro(), 'ventra_stores/owned/agenda_staff/juan')));
+  await assertFails(getDoc(doc(pro(), 'ventra_stores/owned/agenda_staff/pedro')));
+  await assertFails(setDoc(doc(pro(), 'ventra_stores/owned/agenda_staff/juan'), { perms: { hours: true, phones: true } }));
+  await assertFails(getDocs(collection(pro(), 'ventra_stores/owned/agenda_staff')));
+  await assertSucceeds(getDocs(collection(as('posA'), 'ventra_stores/owned/agenda_staff')));
+  await assertSucceeds(setDoc(doc(as('posA'), 'ventra_stores/owned/agenda_staff/pedro'), { pay: { mode: 'commission', pct: 40 } }, { merge: true }));
+  await assertFails(getDoc(doc(as('intruso'), 'ventra_stores/owned/agenda_staff/juan')));
+});

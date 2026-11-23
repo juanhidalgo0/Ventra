@@ -121,10 +121,19 @@ service cloud.firestore {
           && request.auth.token.get('vStaff', null) is string
           && get(/databases/$(database)/documents/ventra_stores/$(storeId)/agenda_pros/$(request.auth.token.vStaff)).data.get('uid', null) == request.auth.uid;
       }
+      // Recepción: un usuario que maneja la agenda de todos (turnos y bloqueos), sin configuración ni plata
+      function deskUser() {
+        return request.auth != null && request.auth.token.get('vDesk', false) == true && proStaff();
+      }
       // Quién tiene acceso: lo escribe la función; el dueño lo ve y lo puede borrar (sacar el acceso)
       match /agenda_pros/{staffId} {
         allow read, delete: if storeOwner();
         allow write: if false;
+      }
+      // Permisos y forma de cobro de cada profesional: los pone el dueño; cada profesional lee solo los suyos
+      match /agenda_staff/{staffId} {
+        allow read, write: if storeOwner();
+        allow read: if request.auth != null && staffId == request.auth.token.get('vStaff', '') && proStaff();
       }
 
       // Agenda de turnos: los turnos (con datos del cliente) los ve el dueño; cada profesional con
@@ -132,6 +141,7 @@ service cloud.firestore {
       // El público reserva por la función agendaBook, que evita turnos superpuestos.
       match /bookings/{bookingId} {
         allow read, write: if storeOwner();
+        allow read, write: if deskUser();
         allow read: if resource.data.get('staffId', null) in [request.auth.token.get('vStaff', ''), 'ALL'] && proStaff();
         allow create: if request.resource.data.get('staffId', null) == request.auth.token.get('vStaff', '') && proStaff();
         allow update: if resource.data.get('staffId', null) == request.auth.token.get('vStaff', '')
@@ -141,6 +151,7 @@ service cloud.firestore {
       // Clientes de la agenda (resumen por cliente y nota del dueño): solo el dueño.
       match /agenda_clients/{clientId} {
         allow read, write: if storeOwner();
+        allow read: if deskUser();
       }
       // Consultorio de nutrición: datos de salud, solo el dueño. La historia clínica se guarda
       // (ley 26.529): el paciente no se borra, se archiva.

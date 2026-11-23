@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Banknote, Clock, Package } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useOnlineOrders, startOnlineOrdersSync } from '../../services/onlineStoreOrders';
 import { subscribeBookings, subscribePaidBetween, localNow, addDays, weekday, dayLabel, hhmm, startAtMs, PAY_METHODS, type Booking } from '../../services/agenda';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
@@ -12,11 +13,11 @@ import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
 const DEPOSIT_METHOD = 'Mercado Pago (online)';
 const msOf = (t: any) => (t?.toMillis ? t.toMillis() : 0);
 
-type Period = 'day' | 'week' | 'month';
+export type Period = 'day' | 'week' | 'month';
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 /** Primer y último día del período que contiene `anchor`. La semana va de lunes a domingo. */
-function rangeOf(period: Period, anchor: string): [string, string] {
+export function rangeOf(period: Period, anchor: string): [string, string] {
   if (period === 'day') return [anchor, anchor];
   if (period === 'week') {
     const from = addDays(anchor, -((weekday(anchor) + 6) % 7));
@@ -27,7 +28,7 @@ function rangeOf(period: Period, anchor: string): [string, string] {
   return [`${anchor.slice(0, 7)}-01`, `${anchor.slice(0, 7)}-${String(last).padStart(2, '0')}`];
 }
 
-function shift(period: Period, anchor: string, dir: number) {
+export function shift(period: Period, anchor: string, dir: number) {
   if (period === 'day') return addDays(anchor, dir);
   if (period === 'week') return addDays(anchor, 7 * dir);
   const [y, m] = anchor.split('-').map(Number);
@@ -35,7 +36,7 @@ function shift(period: Period, anchor: string, dir: number) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
-function periodLabel(period: Period, from: string, to: string, today: string) {
+export function periodLabel(period: Period, from: string, to: string, today: string) {
   if (period === 'day') return from === today ? 'Hoy' : dayLabel(from);
   if (period === 'week') {
     const f = (k: string) => `${+k.slice(8)}/${+k.slice(5, 7)}`;
@@ -50,6 +51,7 @@ function periodLabel(period: Period, from: string, to: string, today: string) {
  */
 export default function AgendaPaymentsScreen() {
   const mobile = useOwnerMobile().active;
+  const navigate = useNavigate();
   const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
   const { storeId } = useOnlineOrders();
   const today = localNow().dateKey;
@@ -157,7 +159,10 @@ export default function AgendaPaymentsScreen() {
 
         {data.staff.length > 1 && (
           <section className="bg-white rounded-2xl border border-slate-200/80 p-4">
-            <p className="text-[14px] font-bold text-slate-900 mb-3">Por profesional</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[14px] font-bold text-slate-900">Por profesional</p>
+              <button onClick={() => navigate('/agenda/liquidacion')} className="text-[12.5px] font-semibold text-rose-700">Liquidación</button>
+            </div>
             <div className="space-y-2.5">
               {data.staff.map(([who, v]) => (
                 <div key={who} className="flex justify-between text-[13.5px]"><span className="text-slate-700">{who}</span><span className="font-semibold text-slate-900 tabular-nums">{money(v)}</span></div>

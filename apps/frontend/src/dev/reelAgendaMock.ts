@@ -1,6 +1,6 @@
 // SOLO DESARROLLO: reemplaza a services/agenda en /reel-tienda.html (ver vite.reel.config.ts).
 // Los turnos viven en memoria, con algunos de ejemplo para hoy y mañana.
-import { localNow, addDays, startAtMs, dayLabel, hhmm, clientKeyOf, aggregateClient, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type AgendaClient } from '../services/agendaCore';
+import { localNow, addDays, startAtMs, dayLabel, hhmm, clientKeyOf, aggregateClient, type AgendaService, type AgendaStaff, type Booking, type BookingStatus, type AgendaClient, type StaffPrivate } from '../services/agendaCore';
 
 export * from '../services/agendaCore';
 
@@ -54,7 +54,7 @@ const emit = () => subs.forEach((f) => f());
 
 // ?pro=<id>: como la nube con un profesional, solo sus turnos y los bloqueos de todo el local
 const PRO = new URLSearchParams(location.search).get('pro');
-const mine = (b: Booking) => !PRO || b.staffId === PRO || b.staffId === 'ALL';
+const mine = (b: Booking) => !PRO || PRO.startsWith('desk-') || b.staffId === PRO || b.staffId === 'ALL';
 export function subscribeBookings(_storeId: string, fromKey: string, toKey: string, onChange: (l: Booking[]) => void) {
   const f = () => onChange(list.filter((b) => mine(b) && b.dateKey >= fromKey && b.dateKey <= toKey).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startMin - b.startMin));
   subs.add(f); setTimeout(f, 50);
@@ -134,3 +134,28 @@ export async function createSeries(s: string, b: Parameters<typeof createManualB
 export async function seriesUpcoming(): Promise<Booking[]> { return []; }
 export async function cancelBookings(_s: string, l: Booking[]) { const ids = new Set(l.map((x) => x.id)); list = list.map((b) => (ids.has(b.id) ? { ...b, status: 'CANCELLED' } : b)); emit(); }
 export async function fetchBooking(_s: string, id: string) { return list.find((b) => b.id === id) || null; }
+
+// Permisos y forma de cobro de cada profesional (en memoria)
+let staffPriv: Record<string, StaffPrivate> = {
+  s: { perms: { hours: true, phones: true, earnings: true }, pay: { mode: 'commission', pct: 50 } },
+  m: { pay: { mode: 'chair', amount: 60000, every: 'week' } },
+};
+const privSubs = new Set<() => void>();
+export function subscribeStaffPrivate(_s: string, staffId: string | null, onChange: (m: Record<string, StaffPrivate>) => void) {
+  const f = () => onChange(staffId ? (staffPriv[staffId] ? { [staffId]: staffPriv[staffId] } : {}) : { ...staffPriv });
+  privSubs.add(f); setTimeout(f, 30);
+  return () => { privSubs.delete(f); };
+}
+export async function saveStaffPrivate(_s: string, staffId: string, data: StaffPrivate) {
+  staffPriv = { ...staffPriv, [staffId]: { ...staffPriv[staffId], ...data } };
+  privSubs.forEach((f) => f());
+}
+export async function saveMyHours() { await new Promise((r) => setTimeout(r, 300)); }
+export async function createDaysOff(_s: string, b: { fromKey: string; toKey: string; staffId: string; staffName?: string; reason?: string }) {
+  let n = 0;
+  for (let k = b.fromKey; k <= b.toKey && n < 62; k = addDays(k, 1), n++) {
+    list = [...list, { id: 'off' + k + b.staffId, kind: 'block', dateKey: k, startMin: 0, endMin: 1440, staffId: b.staffId, staffName: b.staffName, reason: b.reason, status: 'BLOCK' } as any];
+  }
+  emit();
+  return n;
+}

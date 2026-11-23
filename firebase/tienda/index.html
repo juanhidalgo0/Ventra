@@ -1351,7 +1351,14 @@ function render(){
   renderList(); refreshCartBar();
   var q=$('#q');
   if(q) q.addEventListener('input',function(){ S.q=q.value; $('#searchBox').classList.toggle('has',!!S.q); renderList(); });
-  if((location.hash==='#turnos'||PATH[1]==='turnos') && agendaOn()) setTimeout(function(){ openBooking(null); },200);
+  // Link propio de un profesional (?con=<id>): la reserva abre directo con esa persona
+  var conId=(new URLSearchParams(location.search).get('con')||'').replace(/[^\w-]/g,'').slice(0,40);
+  S.onlyStaff=conId&&agendaOn()?agStaff().filter(function(x){ return x.id===conId; })[0]||null:null;
+  if(S.onlyStaff){ var mine=agServices().filter(function(v){ return bkStaffFor(v).length>0; }); if(!mine.length) S.onlyStaff=null; }
+  if((location.hash==='#turnos'||PATH[1]==='turnos'||S.onlyStaff) && agendaOn()){
+    var only=S.onlyStaff?agServices().filter(function(v){ return bkStaffFor(v).length>0; }):[];
+    setTimeout(function(){ openBooking(only.length===1?only[0].id:null); },200);
+  }
   var linkTurno=PATH[1]==='turno'&&/^[A-Za-z0-9]{8}$/.test(PATH[2]||'')?String(PATH[2]).toUpperCase():null;
   // Link del turno. Los pagos de antes volvían de Mercado Pago con sus datos pegados atrás (#turno=…?collection_status=…)
   var tm=(window.__PREVIEW_TURNO||location.hash).match(/^#turno=([A-Za-z0-9_]+)\.([A-Za-z0-9]{4})(?![A-Za-z0-9])/);
@@ -2049,7 +2056,7 @@ function servicesHtml(){
 
 S.bk={step:'service'}; S.bkBusy={};
 function bkService(){ return agServices().filter(function(x){ return x.id===S.bk.serviceId; })[0]; }
-function bkStaffFor(sv){ return agStaff().filter(function(st){ return canDo(st,sv); }); }
+function bkStaffFor(sv){ return agStaff().filter(function(st){ return canDo(st,sv) && (!S.onlyStaff||st.id===S.onlyStaff.id); }); }
 function openBooking(serviceId){
   S.bk={step:serviceId?'staff':'service',serviceId:serviceId||null,staffId:null,day:null,time:null,dayPicked:false};
   if(serviceId && bkStaffFor(bkService()).length===1){ S.bk.staffId=bkStaffFor(bkService())[0].id; S.bk.step='time'; }
@@ -2123,8 +2130,8 @@ function renderBooking(){
 function renderBookingStep(){
   var el=$('#bookSheet'), b=S.bk, sv=bkService();
   if(b.step==='service'){
-    el.innerHTML=bkHead('¿Qué querés reservar?',false)+'<div class="sheet-body"><div class="bk-list">'
-      +agServices().map(function(v){
+    el.innerHTML=bkHead(S.onlyStaff?'¿Qué querés reservar con '+esc(String(S.onlyStaff.name).split(' ')[0])+'?':'¿Qué querés reservar?',false)+'<div class="sheet-body"><div class="bk-list">'
+      +agServices().filter(function(v){ return bkStaffFor(v).length>0; }).map(function(v){
         return '<button class="bk-opt bk-svc" data-act="bk-pick-svc" data-id="'+esc(v.id)+'"><span class="bk-svc-top"><span class="bk-opt-ic">'+initial(v.name)+'</span>'
           +'<span class="bk-opt-main"><b>'+esc(v.name)+'</b><span class="bk-opt-meta"><span class="bk-chip">'+ic('clock')+durLabel(Number(v.durationMin)||30)+'</span>'
           +(v.price>0?'<span class="bk-price">'+money(v.price)+'</span>':'')+'</span></span>'+ic('back','fwd')+'</span>'

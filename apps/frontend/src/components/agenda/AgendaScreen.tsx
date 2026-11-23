@@ -26,6 +26,7 @@ import {
   createManualBooking, createBlock, setBookingStatus, deleteBooking, whatsappToCustomer, chargeBooking, unchargeBooking, PAY_METHODS,
   rescheduleBooking, fetchBookingsRange, fetchBooking, markReminded, depositPaid, paidInFull, waRemindersAvailable, REMINDER_WHEN,
   subscribeReminderQuota, buyReminderPack, REMINDER_PACK, seriesDates, createSeries, seriesUpcoming, cancelBookings, depositFor, subscribePending, type ReminderQuota,
+  isDeskKey, permsOf, staffBookingLink, payoutFor, subscribeStaffPrivate, saveMyHours, createDaysOff, type StaffPerms, type StaffPrivate,
   type ReminderWhen, type AgendaConfig, type AgendaService, type AgendaStaff, type Booking, type BookingStatus,
 } from '../../services/agenda';
 import { useOwnerMobile } from '../../utils/ownerMobile';
@@ -37,7 +38,7 @@ import { useConfirm } from '../common/ConfirmDialog';
 import { GettingStartedCard } from '../onboarding/GettingStarted';
 import { COMING_SOON, comingSoon } from '../../utils/comingSoon';
 import PageLook from './PageLook';
-import { ProAccess, useAgendaPros } from './ProAccess';
+import { ProAccess, StaffExtras, DeskAccess, useAgendaPros } from './ProAccess';
 import { ComingSoonBadge } from '../common/ComingSoon';
 
 /** Los turnos se cobran en la agenda (y no en la caja) sin caja en el plan, o en un consultorio, que no usa la caja. */
@@ -52,7 +53,13 @@ const useChargesHere = () => {
  * configuración ni la página. Lo pone ProAgendaShell; null = el dueño (ve todo).
  */
 export const AgendaProCtx = createContext<string | null>(null);
-const useAgendaPro = () => useContext(AgendaProCtx);
+/** Permisos del profesional que mira (el dueño y la recepción: todo a la vista) */
+const ProPermsCtx = createContext<Required<StaffPerms>>(permsOf({ phones: true, earnings: true, hours: true }));
+
+/** Quien no es el dueño (profesional o recepción): sin configuración, sin plata */
+const useAgendaKey = () => useContext(AgendaProCtx);
+/** Profesional con agenda propia (no la recepción, que ve a todos) */
+const useAgendaPro = () => { const k = useContext(AgendaProCtx); return k && !isDeskKey(k) ? k : null; };
 
 /** La agenda recortada a un profesional: él solo y los servicios que hace */
 function scopeToPro(a: AgendaConfig, staffId: string): AgendaConfig {
@@ -71,7 +78,10 @@ const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Vierne
  * página de reservas, y se arma y se publica desde acá.
  */
 export default function AgendaScreen({ proActions, forceMobile }: { /** Botones del profesional (avisos, salir) */ proActions?: React.ReactNode; forceMobile?: boolean } = {}) {
-  const proId = useAgendaPro();
+  const proKey = useAgendaKey();
+  const desk = isDeskKey(proKey);
+  const proId = desk ? null : proKey;
+  const [proPerms, setProPerms] = useState<Required<StaffPerms>>(() => permsOf(null));
   const ownerMobile = useOwnerMobile().active;
   const mobile = ownerMobile || !!forceMobile;
   const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
@@ -86,10 +96,14 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
     if (!storeId) return;
     loadStoreConfig(storeId).then((c) => {
       setConfig(c);
-      if (!(c as any).agenda?.services?.length && !proId) setTab('config');
+      if (!(c as any).agenda?.services?.length && !proKey) setTab('config');
     }).catch(() => toast.error('No se pudo cargar la tienda'));
   }, [storeId]);
 
+  useEffect(() => {
+    if (!storeId || !proId) return;
+    return subscribeStaffPrivate(storeId, proId, (m) => setProPerms(permsOf(m[proId]?.perms)));
+  }, [storeId, proId]);
   const agenda = useMemo(() => {
     const full = fullAgenda((config as any)?.agenda);
     return proId ? scopeToPro(full, proId) : full;
@@ -97,8 +111,8 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
   // Los recorridos hablan el idioma del rubro (pacientes, alumnos, barberos...)
   setTourScreen({ agendaKind: detectAgendaKind(agenda), mobile });
   const ready = !!storeId && !!config;
-  useAutoTour('agenda', ready && !proId && tab === 'agenda' && agenda.services.length > 0 && agenda.staff.length > 0);
-  useAutoTour('agendaConfig', ready && !proId && tab === 'config');
+  useAutoTour('agenda', ready && !proKey && tab === 'agenda' && agenda.services.length > 0 && agenda.staff.length > 0);
+  useAutoTour('agendaConfig', ready && !proKey && tab === 'config');
   const startTour = useTourStore((s) => s.start);
   const saveAgenda = async (next: AgendaConfig) => {
     if (!storeId) return;
@@ -153,7 +167,7 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
     </div>
   );
 
-  const body = proId ? (
+  const body = proKey ? (
     !storeId || !config ? <div className="p-10 text-center text-[14px] text-slate-500">Cargando…</div>
       : !agenda.staff.length ? (
         <div className="p-6 max-w-md mx-auto text-center">
@@ -161,7 +175,12 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
           <p className="mt-3 text-[16px] font-bold text-slate-900">Tu agenda no está disponible</p>
           <p className="text-[13.5px] text-slate-500 mt-1">No te encontramos entre los profesionales del local. Pedile al dueño que revise tu acceso.</p>
         </div>
-      ) : <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => {}} />
+      ) : (
+        <>
+          {proId && <ProTools storeId={storeId} staff={agenda.staff[0]} slug={config.subdomain} mobile={mobile} />}
+          <DayView storeId={storeId} agenda={agenda} businessName={config.businessName} slug={config.subdomain} mobile={mobile} onConfigure={() => {}} />
+        </>
+      )
   ) : !storeId ? (
     <PageSetup mobile={mobile} agendaOnly={agendaOnly} onSave={savePage} />
   ) : !config ? (
@@ -176,28 +195,32 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
         onSaved={(patch) => setConfig((c) => (c ? { ...c, ...patch } : c))} />} />
   );
 
-  if (proId) {
-    const who = agenda.staff[0]?.name;
+  if (proKey) {
+    const who = desk ? 'Recepción' : agenda.staff[0]?.name;
     if (mobile) {
       return (
+        <ProPermsCtx.Provider value={proPerms}>
         <div className="flex-1 min-h-0 flex flex-col">
-          <ScreenHeader title="Mi agenda" subtitle={[who, config?.businessName].filter(Boolean).join(' · ') || 'Cargando…'} action={proActions} />
+          <ScreenHeader title={desk ? 'Agenda' : 'Mi agenda'} subtitle={[who, config?.businessName].filter(Boolean).join(' · ') || 'Cargando…'} action={proActions} />
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain"><div className="ag-fade">{body}</div></div>
         </div>
+        </ProPermsCtx.Provider>
       );
     }
     return (
+      <ProPermsCtx.Provider value={proPerms}>
       <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
         <div className="max-w-5xl w-full mx-auto px-6 pt-6 flex items-end justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[12px] font-semibold tracking-[0.14em] text-rose-600">{(config?.businessName || 'TURNOS').toUpperCase()}</p>
-            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Mi agenda</h1>
+            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">{desk ? 'Agenda' : 'Mi agenda'}</h1>
             {who && <p className="text-[13px] text-slate-500">{who}</p>}
           </div>
           <div className="flex items-center gap-2">{proActions}</div>
         </div>
         <div className="ag-fade">{body}</div>
       </div>
+      </ProPermsCtx.Provider>
     );
   }
 
@@ -255,7 +278,10 @@ export default function AgendaScreen({ proActions, forceMobile }: { /** Botones 
 
 function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: { storeId: string; agenda: AgendaConfig; businessName: string; slug?: string; mobile: boolean; onConfigure: () => void }) {
   const proId = useAgendaPro();
-  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features)) && !proId;
+  const proKey = useAgendaKey();
+  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features)) && !proKey;
+  // Sin permiso para ver teléfonos, tampoco los recordatorios por WhatsApp (los manda el local)
+  const perms = useContext(ProPermsCtx);
   const today = localNow().dateKey;
   const [day, setDay] = useState(today);
   const [staffFilter, setStaffFilter] = useState<string>('ALL');
@@ -368,7 +394,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
   return (
     <div className={`${mobile ? 'px-4 py-4' : 'p-6 max-w-5xl w-full mx-auto'} space-y-4`}>
       {agendaOnly && mobile && <GettingStartedCard mobile />}
-      {!agenda.enabled && !proId && (
+      {!agenda.enabled && !proKey && (
         <button onClick={onConfigure} className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
           <CalendarClock className="w-5 h-5 text-amber-700 shrink-0" />
           <span className="flex-1 text-[13.5px] text-amber-900">Los turnos online están apagados: podés cargar turnos a mano, pero tus clientes todavía no pueden reservar. Tocá para activarlos.</span>
@@ -377,6 +403,7 @@ function DayView({ storeId, agenda, businessName, slug, mobile, onConfigure }: {
       )}
       {/* Recordatorios de mañana: un toque por cliente, quedan marcados */}
       {(() => {
+        if (!perms.phones) return null;
         const list = tomorrowList.filter((b) => b.kind === 'booking' && (b.status === 'PENDING' || b.status === 'CONFIRMED') && b.customerPhone);
         const left = list.filter((b) => !b.remindedAt).length;
         if (!list.length || !left) return null;
@@ -552,6 +579,8 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   const canCharge = useChargesHere();
   // El profesional no tiene la caja en su celular: lo cobra el local (él lo marca como atendido)
   const proId = useAgendaPro();
+  const proKey = useAgendaKey();
+  const perms = useContext(ProPermsCtx);
   const st = STATUS[b.status];
   const act = async (status: BookingStatus, msg: string) => {
     setBusy(true);
@@ -578,7 +607,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
   const wa = (kind: 'confirm' | 'remind' | 'cancel' | 'moved', bk: Booking = b) => openExternal(whatsappToCustomer(bk, businessName, kind, slug));
   // Abre el WhatsApp del dueño con el mensaje listo: lo manda él (no sale solo)
   const offerWa = async (kind: 'cancel' | 'moved', bk: Booking) => {
-    if (!bk.customerPhone) return;
+    if (!bk.customerPhone || !perms.phones) return;
     const ok = await ask({
       title: kind === 'cancel' ? '¿Le avisás que se canceló?' : '¿Le avisás el nuevo horario?',
       message: `Se abre tu WhatsApp con el mensaje para ${String(bk.customerName || 'el cliente').split(' ')[0]} ya escrito: solo tenés que tocar enviar.`,
@@ -621,7 +650,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
         b.payment ? (
           <div className="flex items-center gap-3">
             <span className="flex-1 min-w-0 text-[14px] text-emerald-800 font-semibold flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Cobrado {money(b.payment.amount)} · {b.payment.method}</span>
-            {!proId && <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>}
+            {!proKey && <button disabled={busy} onClick={uncharge} className="h-10 px-3 rounded-xl bg-slate-100 text-slate-600 text-[13px] font-semibold shrink-0">Quitar cobro</button>}
           </div>
         ) : paidInFull(b) ? (
           <div className="flex items-center gap-3">
@@ -632,7 +661,7 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           <button onClick={() => setCharging(true)} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
             <Banknote className="w-5 h-5" /> Cobrar{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
-        ) : proId ? undefined : (
+        ) : proKey ? undefined : (
           <button onClick={chargeInCaja} className="w-full h-12 rounded-2xl bg-rose-600 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99]">
             <ShoppingCart className="w-5 h-5" /> Cobrar en la caja{b.price ? ` ${money(Math.max(0, b.price - depositPaid(b)))}` : ''}
           </button>
@@ -660,12 +689,12 @@ function BookingDetail({ storeId, agenda, slug, booking: b, businessName, onClos
           <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-slate-400" /> {dayLabel(b.dateKey)}, {hhmm(b.startMin)} a {hhmm(b.endMin)}</p>
           <p className="flex items-center gap-2.5"><ClipboardList className="w-4 h-4 text-slate-400" /> {b.serviceName}{b.price ? ` · ${money(b.price)}` : ''}</p>
           {b.staffName && <p className="flex items-center gap-2.5"><User className="w-4 h-4 text-slate-400" /> {b.staffName}</p>}
-          {b.customerPhone && <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium" href={`tel:${b.customerPhone}`}>{b.customerPhone}</a></p>}
-          {b.customerEmail && <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium break-all" href={`mailto:${b.customerEmail}`}>{b.customerEmail}</a></p>}
+          {b.customerPhone && perms.phones && <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium" href={`tel:${b.customerPhone}`}>{b.customerPhone}</a></p>}
+          {b.customerEmail && perms.phones && <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-slate-400" /> <a className="text-rose-700 font-medium break-all" href={`mailto:${b.customerEmail}`}>{b.customerEmail}</a></p>}
           {b.customerNote && <p className="text-[13px] text-slate-500 whitespace-pre-line border-t border-slate-200 pt-2.5">“{b.customerNote}”</p>}
         </div>
 
-        {b.customerPhone && (
+        {b.customerPhone && perms.phones && (
           <div>
             <p className={label}>Avisarle por WhatsApp</p>
             <div className="grid grid-cols-2 gap-2">
@@ -1105,11 +1134,31 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
   const [staffId, setStaffId] = useState(proId || 'ALL');
   const [day, setDay] = useState(initialDay < localNow().dateKey ? localNow().dateKey : initialDay);
   const [allDay, setAllDay] = useState(false);
+  // Vacaciones o días libres: un bloqueo de día entero desde `day` hasta `untilDay`
+  const [several, setSeveral] = useState(false);
+  const [untilDay, setUntilDay] = useState(addDays(initialDay < localNow().dateKey ? localNow().dateKey : initialDay, 6));
   const [from, setFrom] = useState('13:00');
   const [to, setTo] = useState('14:00');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const saveSeveral = async () => {
+    if (untilDay < day) return toast.error('El último día tiene que ser después del primero');
+    setBusy(true);
+    const inside = (await fetchBookingsRange(storeId, day, untilDay).catch(() => [] as Booking[]))
+      .filter((x) => x.kind === 'booking' && occupies(x) && x.status !== 'DONE' && (staffId === 'ALL' || x.staffId === staffId));
+    if (inside.length && !(await ask({
+      title: inside.length === 1 ? 'Hay 1 turno en esos días' : `Hay ${inside.length} turnos en esos días`,
+      message: `${inside.slice(0, 4).map((x) => `${dayLabel(x.dateKey, true)} ${hhmm(x.startMin)} ${x.customerName || ''}`.trim()).join(', ')}${inside.length > 4 ? '…' : ''}. El bloqueo no los cancela: reprogramalos o avisales.`,
+      confirmLabel: 'Bloquear igual', cancelLabel: 'Volver',
+    }))) { setBusy(false); return; }
+    try {
+      const n = await createDaysOff(storeId, { fromKey: day, toKey: untilDay, staffId, staffName: staff.find((x) => x.id === staffId)?.name, reason: reason || 'Vacaciones' });
+      toast.success(n === 1 ? 'Día bloqueado' : `${n} días bloqueados`);
+      onClose();
+    } catch { toast.error('No se pudo bloquear'); setBusy(false); }
+  };
   const save = async () => {
+    if (several) return saveSeveral();
     const s = allDay ? 0 : toMin(from), e = allDay ? 24 * 60 : toMin(to);
     if (e <= s) return toast.error('La hora de fin tiene que ser después del inicio');
     setBusy(true);
@@ -1139,9 +1188,15 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
             ))}
           </div>
         </div>}
-        <div><span className={label}>Día</span><DayPicker value={day} onChange={setDay} days={90} /></div>
-        <label className="flex items-center gap-2 text-[14px] text-slate-700"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} className="w-4 h-4 accent-rose-600" /> Todo el día</label>
-        {!allDay && (
+        <div className="inline-flex p-1 rounded-xl bg-slate-100">
+          {([[false, 'Un día'], [true, 'Varios días (vacaciones)']] as const).map(([v, t]) => (
+            <button key={String(v)} onClick={() => setSeveral(v)} className={`ag-press h-8 px-3 rounded-lg text-[13px] font-semibold ${several === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{t}</button>
+          ))}
+        </div>
+        <div><span className={label}>{several ? 'Desde' : 'Día'}</span><DayPicker value={day} onChange={(k) => { setDay(k); if (untilDay < k) setUntilDay(k); }} days={90} /></div>
+        {several && <div><span className={label}>Hasta (inclusive)</span><DayPicker value={untilDay} onChange={setUntilDay} days={120} /></div>}
+        {!several && <label className="flex items-center gap-2 text-[14px] text-slate-700"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} className="w-4 h-4 accent-rose-600" /> Todo el día</label>}
+        {!allDay && !several && (
           <div className="flex items-center gap-2 text-[13px] text-slate-500">
             De <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className="h-10 px-2 rounded-lg border border-slate-200 text-[14px]" />
             a <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className="h-10 px-2 rounded-lg border border-slate-200 text-[14px]" />
@@ -1150,6 +1205,87 @@ function NewBlock({ storeId, agenda, initialDay, onClose }: { storeId: string; a
         <div><span className={label}>Motivo (opcional)</span><input className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Almuerzo" /></div>
       </div>
       {askDialog}
+    </Modal>
+  );
+}
+
+// ─── Herramientas del profesional (su link, su horario, sus números) ─────────
+
+function ProTools({ storeId, staff, slug, mobile }: { storeId: string; staff: AgendaStaff; slug?: string; mobile: boolean }) {
+  const perms = useContext(ProPermsCtx);
+  const agendaOnly = usePlanStore((s) => isAgendaOnly(s.features));
+  const [open, setOpen] = useState<null | 'hours' | 'numbers'>(null);
+  const link = staffBookingLink(publicStoreUrl(slug, agendaOnly ? '' : 'turnos'), staff.id);
+  const share = async () => {
+    if (!link) return toast.error('El local todavía no publicó su página de turnos');
+    const text = `Reservá tu turno conmigo:`;
+    try {
+      if (navigator.share) await navigator.share({ title: staff.name, text, url: link });
+      else { await navigator.clipboard.writeText(`${text} ${link}`); toast.success('Link copiado: pegalo en tu Instagram o WhatsApp'); }
+    } catch (err: any) { if (err?.name !== 'AbortError') toast.error('No se pudo compartir'); }
+  };
+  const chip = 'ag-press h-9 px-3.5 rounded-full bg-white border border-slate-200 text-[13px] font-semibold text-slate-700 flex items-center gap-1.5 shrink-0';
+  return (
+    <div className={`${mobile ? 'px-4 pt-4' : 'px-6 pt-4 max-w-5xl mx-auto'} flex gap-2 overflow-x-auto no-scrollbar`}>
+      <button onClick={share} className={chip}><Share2 className="w-4 h-4 text-rose-600" /> Mi link de reservas</button>
+      {perms.hours && <button onClick={() => setOpen('hours')} className={chip}><Clock className="w-4 h-4 text-rose-600" /> Mi horario</button>}
+      {perms.earnings && <button onClick={() => setOpen('numbers')} className={chip}><Wallet className="w-4 h-4 text-rose-600" /> Mis números</button>}
+      {open === 'hours' && <MyHoursSheet staff={staff} onClose={() => setOpen(null)} />}
+      {open === 'numbers' && <MyNumbersSheet storeId={storeId} staff={staff} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+function MyHoursSheet({ staff, onClose }: { staff: AgendaStaff; onClose: () => void }) {
+  const [hours, setHours] = useState<DayHours[]>(() => staff.hours || []);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await saveMyHours(hours);
+      toast.success('Horario guardado: tus clientes ya reservan con este horario');
+      onClose();
+    } catch (e: any) { toast.error(e?.message || 'No se pudo guardar'); setBusy(false); }
+  };
+  return (
+    <Modal title="Mi horario" onClose={onClose} footer={<button disabled={busy} onClick={save} className="w-full h-12 rounded-2xl bg-rose-600 text-white font-semibold disabled:opacity-60">{busy ? 'Guardando…' : 'Guardar mi horario'}</button>}>
+      <p className="text-[13px] text-slate-500 mb-3">Los días y horas en que atendés. Para un día suelto o vacaciones, usá <b>Bloquear</b>.</p>
+      <HoursEditor hours={hours} onChange={setHours} />
+    </Modal>
+  );
+}
+
+function MyNumbersSheet({ storeId, staff, onClose }: { storeId: string; staff: AgendaStaff; onClose: () => void }) {
+  const today = localNow().dateKey;
+  const monday = addDays(today, -((weekday(today) + 6) % 7));
+  const monthFrom = `${today.slice(0, 7)}-01`;
+  const [list, setList] = useState<Booking[] | null>(null);
+  const [pay, setPay] = useState<StaffPrivate['pay']>(null);
+  useEffect(() => subscribeStaffPrivate(storeId, staff.id, (m) => setPay(m[staff.id]?.pay || null)), [storeId, staff.id]);
+  useEffect(() => {
+    const from = monday < monthFrom ? monday : monthFrom;
+    fetchBookingsRange(storeId, from, today).then((l) => setList(l.filter((b) => b.staffId === staff.id))).catch(() => setList([]));
+  }, [storeId, staff.id, today]);
+  const rows: [string, string][] = [['Esta semana', monday], ['Este mes', monthFrom]];
+  return (
+    <Modal title="Mis números" onClose={onClose}>
+      {!list ? <p className="text-[13px] text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</p> : (
+        <div className="space-y-3">
+          {rows.map(([t, from]) => {
+            const p = payoutFor(pay, list, from, today);
+            return (
+              <div key={t} className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[12.5px] font-semibold text-slate-500 uppercase tracking-wide">{t}</p>
+                <p className="mt-1 text-[14px] text-slate-700">{p.count} turno{p.count === 1 ? '' : 's'} atendido{p.count === 1 ? '' : 's'} · {money(p.revenue)}</p>
+                {pay?.mode === 'commission' && <p className="mt-1 text-[18px] font-bold text-emerald-700">Te toca {money(p.toStaff)} <span className="text-[12.5px] font-medium text-slate-500">({pay.pct}%)</span></p>}
+                {pay?.mode === 'chair' && <p className="mt-1 text-[14px] text-slate-700">Alquiler del sillón: <b>{money(p.rent)}</b> · te queda <b className="text-emerald-700">{money(p.toStaff)}</b></p>}
+              </div>
+            );
+          })}
+          {!pay && <p className="text-[12.5px] text-slate-400">El local todavía no cargó cómo cobrás (comisión o alquiler): por ahora ves lo que atendiste.</p>}
+          <p className="text-[11.5px] text-slate-400">Cuentan los turnos marcados como atendidos o cobrados, hasta hoy.</p>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -1299,8 +1435,11 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
   const [a, setA] = useState<AgendaConfig>(agenda);
   const [saving, setSaving] = useState(false);
   const [editingStaff, setEditingStaff] = useState<string | null>(null);
-  // Profesionales con usuario propio (ven solo sus turnos desde su celular)
+  // Profesionales con usuario propio (ven solo sus turnos desde su celular), cómo cobra cada uno y sus permisos
   const pros = useAgendaPros();
+  const [staffPriv, setStaffPriv] = useState<Record<string, StaffPrivate>>({});
+  useEffect(() => (IS_DEMO_BUILD ? undefined : subscribeStaffPrivate(storeId, null, setStaffPriv)), [storeId]);
+  const navigate = useNavigate();
   const [ask, askDialog] = useConfirm();
   useEffect(() => { setA(agenda); }, [agenda]);
   const dirty = JSON.stringify(a) !== JSON.stringify(agenda);
@@ -1446,7 +1585,7 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color }} />
                   <input className={input} value={p.name} onChange={(e) => setStaff(p.id, { name: e.target.value })} placeholder="Nombre" />
-                  <button onClick={() => setEditingStaff(editingStaff === p.id ? null : p.id)} className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-[13px] font-semibold text-slate-700 shrink-0">{editingStaff === p.id ? 'Listo' : 'Horarios'}</button>
+                  <button onClick={() => setEditingStaff(editingStaff === p.id ? null : p.id)} className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 text-[13px] font-semibold text-slate-700 shrink-0">{editingStaff === p.id ? 'Listo' : 'Editar'}</button>
                   <button onClick={async () => { if (await ask({ title: `¿Borrar a ${p.name || 'este profesional'}?`, message: 'Sus turnos ya cargados no se borran.', confirmLabel: 'Borrar', cancelLabel: 'Volver', danger: true })) setA((cur) => ({ ...cur, staff: cur.staff.filter((x) => x.id !== p.id), services: cur.services.map((s) => ({ ...s, staffIds: (s.staffIds || []).filter((x) => x !== p.id) })) })); }} className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0" aria-label="Borrar"><Trash2 className="w-4 h-4 text-slate-500" /></button>
                 </div>
                 <p className="text-[12px] text-slate-500 mt-1.5">{hoursSummary(p.hours)}</p>
@@ -1462,11 +1601,23 @@ function ConfigView({ storeId, agenda, storeHours, mobile, onSave, publicUrl, pa
                     </div>
                     <HoursEditor hours={p.hours} onChange={(hours) => setStaff(p.id, { hours })} />
                     <label className="mt-2 flex items-center gap-2 text-[13px] text-slate-600"><input type="checkbox" className="w-4 h-4 accent-rose-600" checked={p.active !== false} onChange={(e) => setStaff(p.id, { active: e.target.checked })} /> Atiende (desmarcalo si está de vacaciones)</label>
+                    {a.kind !== 'deportes' && agenda.staff.some((x) => x.id === p.id) && (
+                      <StaffExtras storeId={storeId} staffId={p.id} staffName={(p.name || '').trim() || 'este profesional'} storeUrl={publicUrl}
+                        priv={staffPriv[p.id]} hasAccess={!!pros.list?.some((x) => x.staffId === p.id && x.isActive)} />
+                    )}
                   </div>
                 )}
               </div>
             ))}
           </div>
+        )}
+        {a.kind !== 'deportes' && a.staff.length > 0 && (
+          <>
+            <DeskAccess storeId={storeId} links={pros.list || []} onChange={pros.reload} />
+            <button onClick={() => navigate('/agenda/liquidacion')} className="mt-3 ag-press w-full h-11 rounded-xl bg-slate-50 border border-slate-200 text-[13.5px] font-semibold text-slate-700 flex items-center justify-center gap-2">
+              <Wallet className="w-4 h-4" /> Ver la liquidación de cada uno
+            </button>
+          </>
         )}
       </Card>
 

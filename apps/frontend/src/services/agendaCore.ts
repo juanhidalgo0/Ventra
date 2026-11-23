@@ -319,3 +319,73 @@ export function freeStarts(agenda: AgendaConfig, staff: AgendaStaff, service: Ag
   }
   return out;
 }
+
+// ─── Profesionales con usuario propio: permisos, cómo cobran y liquidación ───
+
+/** Mesa de recepción: un usuario que maneja la agenda de todos (sin la configuración ni la plata) */
+export const isDeskKey = (k?: string | null) => !!k && k.startsWith('desk-');
+
+/** Qué puede hacer cada profesional desde su celular (lo elige el dueño) */
+export interface StaffPerms {
+  /** Cambiar su propio horario semanal */
+  hours?: boolean;
+  /** Ver el teléfono de sus clientes (y escribirles por WhatsApp) */
+  phones?: boolean;
+  /** Ver sus números: turnos atendidos, lo facturado y lo que le toca */
+  earnings?: boolean;
+}
+export const DEFAULT_STAFF_PERMS: Required<StaffPerms> = { hours: false, phones: true, earnings: true };
+export const permsOf = (p?: StaffPerms | null): Required<StaffPerms> => ({ ...DEFAULT_STAFF_PERMS, ...(p || {}) });
+
+/** Cómo cobra: comisión sobre lo que atiende, o alquila el sillón (se queda con todo y paga un fijo) */
+export type StaffPay =
+  | { mode: 'commission'; pct: number }
+  | { mode: 'chair'; amount: number; every: 'week' | 'month' };
+
+/** Datos privados de cada profesional (ventra_stores/{id}/agenda_staff/{staffId}): no van en la página pública */
+export interface StaffPrivate { perms?: StaffPerms; pay?: StaffPay | null }
+
+/** Lo que dejó un turno atendido: lo cobrado (en la agenda o pagado online) o, si no se registró, el precio */
+export const bookingRevenue = (b: Booking) =>
+  b.payment ? Number(b.payment.amount) || 0 : paidInFull(b) ? depositPaid(b) : Math.max(Number(b.price) || 0, depositPaid(b));
+
+/** Turnos que cuentan para la liquidación: atendidos o cobrados */
+export const countsForPayout = (b: Booking) => b.kind === 'booking' && (b.status === 'DONE' || !!b.payment);
+
+export interface Payout {
+  /** Turnos atendidos en el período */
+  count: number;
+  /** Lo que facturaron esos turnos */
+  revenue: number;
+  /** Lo que le toca al profesional */
+  toStaff: number;
+  /** Lo que queda para el local (con alquiler: lo que paga el profesional) */
+  toStore: number;
+  /** Con alquiler: el fijo del período (proporcional a los días si el período no coincide) */
+  rent: number;
+}
+
+/** Liquidación de un profesional entre dos días (inclusive). Sin forma de cobro: todo queda para el local. */
+export function payoutFor(pay: StaffPay | null | undefined, bookings: Booking[], fromKey: string, toKey: string): Payout {
+  const list = bookings.filter((b) => countsForPayout(b) && b.dateKey >= fromKey && b.dateKey <= toKey);
+  const revenue = list.reduce((s, b) => s + bookingRevenue(b), 0);
+  const days = Math.round((startAtMs(toKey, 0) - startAtMs(fromKey, 0)) / 86400000) + 1;
+  if (pay?.mode === 'commission') {
+    const toStaff = Math.round(revenue * Math.min(100, Math.max(0, Number(pay.pct) || 0)) / 100);
+    return { count: list.length, revenue, toStaff, toStore: revenue - toStaff, rent: 0 };
+  }
+  if (pay?.mode === 'chair') {
+    const base = pay.every === 'week' ? 7 : 30;
+    const whole = (pay.every === 'week' && days === 7) || (pay.every === 'month' && days >= 28);
+    const rent = Math.round((Number(pay.amount) || 0) * (whole ? 1 : days / base));
+    return { count: list.length, revenue, toStaff: revenue - rent, toStore: rent, rent };
+  }
+  return { count: list.length, revenue, toStaff: 0, toStore: revenue, rent: 0 };
+}
+
+/** Link de reservas que abre directo con un profesional (para que lo comparta en su Instagram) */
+export function staffBookingLink(storeUrl: string, staffId: string) {
+  if (!storeUrl) return '';
+  const [base, hash] = storeUrl.split('#');
+  return `${base}${base.includes('?') ? '&' : '?'}con=${encodeURIComponent(staffId)}${hash ? `#${hash}` : ''}`;
+}
