@@ -18,6 +18,25 @@ import { installErrorReport } from './services/errorReport';
 import './fonts';
 import './index.css';
 
+// Chrome manda teclas "falsas" (sin key ni code) cuando autocompleta un campo: se frenan acá,
+// antes que cualquier otro oyente, para que nadie lea e.key.length sobre undefined.
+window.addEventListener('keydown', (e) => {
+  if (typeof e.key !== 'string') e.stopImmediatePropagation();
+}, true);
+
+// Si se publicó una caja web nueva con la pestaña abierta, los pedazos viejos ya no existen
+// ("Failed to fetch dynamically imported module"): se recarga una vez para tomar la versión nueva.
+window.addEventListener('vite:preloadError', (ev) => {
+  try {
+    const KEY = 'ventra_reload_chunk';
+    const last = Number(sessionStorage.getItem(KEY) || 0);
+    if (Date.now() - last < 60_000) return; // ya se recargó hace poco: que siga y se reporte
+    sessionStorage.setItem(KEY, String(Date.now()));
+    ev.preventDefault();
+    window.location.reload();
+  } catch { /* sin sessionStorage: que siga el error normal */ }
+});
+
 // Errores que nadie atrapa: van al admin (pestaña Cajas)
 installErrorReport();
 

@@ -1853,8 +1853,8 @@ export default function POSScreen() {
         processCodeRef.current(code, e.shiftKey);
         return;
       }
-      let ch = e.key.length === 1 ? e.key : '';
-      if (e.shiftKey && e.code.startsWith('Digit')) ch = e.code.slice(5);
+      let ch = e.key?.length === 1 ? e.key : '';
+      if (e.shiftKey && e.code?.startsWith('Digit')) ch = e.code.slice(5);
       if (!ch) {
         // Borrar, flechas...: primero se pasa lo juntado, después actúa la tecla
         clearTimeout(flushTimer);

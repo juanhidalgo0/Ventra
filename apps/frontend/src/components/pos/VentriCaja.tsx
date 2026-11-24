@@ -166,6 +166,7 @@ export function VentriEnReposo({ libre, inicioTurno }: { libre: boolean; inicioT
         abrirJuegoVentri();
         return;
       }
+      if (typeof e.key !== 'string') return; // autocompletar de Chrome: tecla sin key
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (k === SEQ[i]) {
         if (i >= 8) { e.preventDefault(); e.stopPropagation(); }
