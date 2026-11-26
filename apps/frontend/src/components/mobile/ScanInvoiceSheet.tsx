@@ -9,11 +9,16 @@ import { enqueueScan, isOffline } from '../../utils/scanQueue';
 import { preparePhoto, type PreparedPhoto } from '../../utils/shrinkPhoto';
 import { useScanJob, startScanJob, resetScanJob } from '../../utils/scanInvoiceJob';
 
+/** A cuánto se redondean (para arriba) los precios de venta que calcula una boleta. 0 = sin redondeo. */
+export const PRICE_ROUND_STEPS = [0, 10, 50, 100, 1000];
+/** Redondea para arriba al múltiplo (0 = a los centavos), igual que la nube al cargar la boleta sola */
+export const roundPriceUp = (v: number, step: number) => (step ? Math.ceil(v / step - 1e-9) * step : Math.round(v * 100) / 100);
+
 /** Cómo se cargan las boletas (Compras): JSON en el ajuste del comercio purchase_auto */
 export function readPurchaseAuto(): { enabled: boolean; keepMargin: boolean; round: number } {
   let v: any = null;
   try { v = JSON.parse(localStorage.getItem('purchase_auto') || 'null'); } catch { /* sin ajuste */ }
-  return { enabled: v?.enabled === true, keepMargin: v?.keepMargin !== false, round: [0, 10, 100].includes(Number(v?.round)) ? Number(v.round) : 10 };
+  return { enabled: v?.enabled === true, keepMargin: v?.keepMargin !== false, round: PRICE_ROUND_STEPS.includes(Number(v?.round)) ? Number(v.round) : 10 };
 }
 export const savePurchaseAuto = (v: { enabled: boolean; keepMargin: boolean; round: number }) => setStoreSetting('purchase_auto', JSON.stringify(v));
 
@@ -251,6 +256,18 @@ export default function ScanInvoiceSheet({ open, onClose, onDone }: { open: bool
               Si los renglones suman el total y no hay nada dudoso: suma el stock, actualiza los precios manteniendo tu margen y crea los productos nuevos. Si algo no cierra, queda para revisar.
             </span>
           </label>
+          <div className="rounded-2xl border border-slate-200 px-3.5 py-3">
+            <span className="block text-[13px] font-bold text-slate-900">Redondear los precios de venta</span>
+            <span className="block text-[12px] text-slate-500">Los precios nuevos suben al múltiplo que elijas: $1.832 → $1.840, $1.850, $1.900 o $2.000.</span>
+            <div className="mt-2 grid grid-cols-5 gap-1.5">
+              {PRICE_ROUND_STEPS.map((n) => (
+                <button key={n} type="button" onClick={() => { const v = { ...auto, round: n }; setAuto(v); savePurchaseAuto(v); }}
+                  className={`h-9 rounded-xl text-[13px] font-semibold border transition-colors ${auto.round === n ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
+                  {n ? `$${n.toLocaleString('es-AR')}` : 'No'}
+                </button>
+              ))}
+            </div>
+          </div>
           {busy && (
             <div className="space-y-1.5">
               <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-rose-600 transition-[width] duration-300" style={{ width: `${job.uploadPct}%` }} /></div>

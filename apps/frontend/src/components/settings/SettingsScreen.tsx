@@ -116,7 +116,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   });
   const [hourlyRate, setHourlyRate] = useState(() => {
     const saved = localStorage.getItem('hourly_rate');
-    return saved ? Number(saved) : 1500;
+    return saved ? String(Number(saved) || 0) : '1500';
   });
   const [performanceMode, setPerformanceMode] = useState(() => {
     const saved = localStorage.getItem('performance_mode');
@@ -661,7 +661,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setStoreSetting('allow_negative_stock', String(allowNegativeStock));
     setStoreSetting('low_stock_alerts', String(lowStockAlerts));
     setStoreSetting('employee_consumption', employeeConsumption ? '1' : '0');
-    setStoreSetting('hourly_rate', String(hourlyRate));
+    setStoreSetting('hourly_rate', String(Number(hourlyRate) || 0));
     localStorage.setItem('performance_mode', String(performanceMode));
     setStoreSetting('pos_disable_change_calculator', String(disableChangeCalculator));
     if (openingFloat.trim() !== '') saveOpeningFloat(Number(openingFloat));
@@ -1150,9 +1150,10 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                     <div className="space-y-1.5">
                       <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Valor de la Hora Trabajada ($)</label>
                       <input 
-                        type="number" 
-                        value={hourlyRate} 
-                        onChange={(e) => setHourlyRate(Number(e.target.value))} 
+                        type="text"
+                        inputMode="numeric"
+                        value={hourlyRate}
+                        onChange={(e) => setHourlyRate(e.target.value.replace(/[^0-9]/g, ''))}
                         className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner" 
                         placeholder="1500"
                       />

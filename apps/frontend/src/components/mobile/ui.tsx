@@ -183,12 +183,16 @@ export function MoneyInput({ value, onChange, autoFocus, placeholder = '0' }: { 
   );
 }
 
-/** "1.500" → 1500, "1.500,50" → 1500.5, "10,5" → 10.5 y también "10.50" → 10.5 (teclados que solo tienen punto). */
+/**
+ * "1.500" → 1500, "1.500,50" → 1500.5, "10,5" → 10.5 y también "10.50" → 10.5 (teclados que solo tienen punto).
+ * Un solo punto que no arma miles ("1802.6701", el costo que viene de una boleta) es la coma decimal.
+ */
 export const parseAmount = (v: string) => {
   const s = v.trim();
   const normalized = s.includes(',')
     ? s.replace(/\./g, '').replace(',', '.')
-    : /^\d+\.\d{1,2}$/.test(s) ? s : s.replace(/\./g, '');
+    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '')
+    : /^\d*\.\d+$/.test(s) ? s : s.replace(/\./g, '');
   const n = parseFloat(normalized);
   return isNaN(n) ? 0 : n;
 };

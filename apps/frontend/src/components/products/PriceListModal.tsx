@@ -274,7 +274,7 @@ export default function PriceListModal({ onClose, onSuccess, onPrintLabels }: { 
                 {keepMargin && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11.5px] font-semibold text-slate-600">Redondear</span>
-                    {[0, 10, 100].map((n) => <button key={n} className={chip(round === n)} onClick={() => setRound(n)}>{n ? `a $ ${n}` : 'no'}</button>)}
+                    {[0, 10, 50, 100, 1000].map((n) => <button key={n} className={chip(round === n)} onClick={() => setRound(n)}>{n ? `a $ ${n.toLocaleString('es-AR')}` : 'no'}</button>)}
                   </div>
                 )}
               </div>

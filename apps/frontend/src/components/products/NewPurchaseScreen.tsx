@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
-import { readPurchaseAuto } from '../mobile/ScanInvoiceSheet';
+import { readPurchaseAuto, savePurchaseAuto, roundPriceUp, PRICE_ROUND_STEPS } from '../mobile/ScanInvoiceSheet';
 import { 
   ArrowLeft, 
   Search, 
@@ -103,6 +103,8 @@ interface PurchaseItem {
   setBarcode?: string;
   /** Costo y precio de venta que tenía el producto: si cambia el costo, la venta mantiene ese margen */
   base?: { costPrice: number; salePrice: number };
+  /** El precio de venta lo escribieron a mano: cambiar el redondeo no lo toca */
+  priceManual?: boolean;
   /** El renglón de la boleta (código y nombre del proveedor): el sistema lo aprende al confirmar */
   source?: { code?: string; name?: string };
   newProductData?: {
@@ -124,10 +126,10 @@ const netCostOf = (item: { cost: any; discount1?: any; discount2?: any; discount
   return parseFloat((c * d(item.discount1) * d(item.discount2) * d(item.discount3)).toFixed(4));
 };
 
-const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean = true) => {
+/** Precio de venta desde el costo y el margen, redondeado como se eligió en Compras (10, 50, 100, 1000 o sin) */
+const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean = true, step: number = readPurchaseAuto().round) => {
   const baseCost = useIva ? cost * 1.21 : cost;
-  const price = baseCost * (1 + margin / 100);
-  return Math.round(price / 10) * 10;
+  return roundPriceUp(baseCost * (1 + margin / 100), step);
 };
 
 const isExcelOrCsv = (file: File) => {
@@ -711,6 +713,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
           }
         } else if (field === 'margin') {
           const m = parseFloat(value) || 0;
+          updated.priceManual = false;
           updated.salePrice = calculateSuggestedPrice(c, m, useIvaGlobal);
           if (updated.isNew) {
             updated.newProductData = {
@@ -720,6 +723,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
           }
         } else if (field === 'salePrice') {
           const s = parseFloat(value) || 0;
+          updated.priceManual = true;
           const baseCost = useIvaGlobal ? c * 1.21 : c;
           updated.margin = baseCost > 0 ? Math.round(((s - baseCost) / baseCost) * 100) : 0;
           if (updated.isNew) {
@@ -768,12 +772,31 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   }, [insightKey, useIvaGlobal]);
 
   /** El precio de venta que mantiene el margen del producto con el costo nuevo (redondeado según Compras) */
-  const keepMarginPrice = (product: any, netCost: number) => {
+  const keepMarginPrice = (product: any, netCost: number, step: number = readPurchaseAuto().round) => {
     const auto = readPurchaseAuto();
     const base = useIvaGlobal ? netCost * 1.21 : netCost;
     if (!auto.keepMargin || !(product.costPrice > 0) || !(base > 0) || Math.abs(base - product.costPrice) < 0.01) return product.salePrice;
-    const v = product.salePrice * (base / product.costPrice);
-    return auto.round ? Math.ceil(v / auto.round - 1e-9) * auto.round : Math.round(v * 100) / 100;
+    return roundPriceUp(product.salePrice * (base / product.costPrice), step);
+  };
+
+  /** Redondeo de los precios de venta (el mismo ajuste que usan las boletas del celular y la carga sola) */
+  const [priceRound, setPriceRound] = useState(() => readPurchaseAuto().round);
+  const changePriceRound = (step: number) => {
+    setPriceRound(step);
+    savePurchaseAuto({ ...readPurchaseAuto(), round: step });
+    // Los precios calculados de esta boleta se vuelven a calcular; los escritos a mano quedan
+    setItems((prev) => prev.map((it) => {
+      if (it.priceManual) return it;
+      const c = netCostOf(it);
+      const baseCost = useIvaGlobal ? c * 1.21 : c;
+      if (it.isNew) {
+        const sale = calculateSuggestedPrice(c, it.margin !== undefined ? it.margin : defaultMargin, useIvaGlobal, step);
+        return { ...it, salePrice: sale, newProductData: it.newProductData ? { ...it.newProductData, salePrice: sale } : it.newProductData };
+      }
+      if (!it.base || !(it.base.costPrice > 0)) return it;
+      const sale = keepMarginPrice(it.base, c, step);
+      return { ...it, salePrice: sale, margin: baseCost > 0 ? Math.round(((sale - baseCost) / baseCost) * 100) : it.margin };
+    }));
   };
 
   /** Un renglón de la boleta que no está en el catálogo → producto nuevo en la lista (se edita, se borra o se asocia ahí) */
@@ -1673,13 +1696,23 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                     </label>
                  </div>
                  <div className="col-span-2">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Margen Ganancia (%)</span>
-                    <input 
-                      type="number" 
-                      value={defaultMargin} 
-                      onChange={e => setDefaultMargin(parseInt(e.target.value) || 0)} 
-                      className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-5 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all text-center" 
-                    />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Margen % · Redondeo</span>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="number"
+                        value={defaultMargin}
+                        onChange={e => setDefaultMargin(parseInt(e.target.value) || 0)}
+                        className="w-full min-w-0 bg-slate-50 border-2 border-slate-300 rounded-2xl px-2 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all text-center"
+                      />
+                      <select
+                        value={priceRound}
+                        onChange={e => changePriceRound(Number(e.target.value))}
+                        title="A cuánto se redondean para arriba los precios de venta de la boleta"
+                        className="shrink-0 bg-slate-50 border-2 border-slate-300 rounded-2xl px-2 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 cursor-pointer"
+                      >
+                        {PRICE_ROUND_STEPS.map((n) => <option key={n} value={n}>{n ? `$${n.toLocaleString('es-AR')}` : 'Sin'}</option>)}
+                      </select>
+                    </div>
                  </div>
                </>
              )}

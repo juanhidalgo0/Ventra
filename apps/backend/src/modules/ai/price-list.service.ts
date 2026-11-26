@@ -194,7 +194,7 @@ export class PriceListService {
     } else {
       cost = r2(unit * (o.ivaMode === 'sumar' ? 1 + iva / 100 : 1));
     }
-    const step = [10, 100].includes(Number(o.round)) ? Number(o.round) : 0;
+    const step = [10, 50, 100, 1000].includes(Number(o.round)) ? Number(o.round) : 0;
     const roundUp = (n: number) => (step ? Math.ceil(n / step - 1e-9) * step : r2(n));
     const factor = o.keepMargin && p.costPrice > 0 ? cost / p.costPrice : 1;
     const scale = (v: number | null) => (v && factor !== 1 ? roundUp(v * factor) : v);
