@@ -14,6 +14,9 @@ import { SyncImageService } from '../src/modules/products/sync-image.service';
 import { ProductMatcherService } from '../src/modules/ai/product-matcher.service';
 import { mergeMissingPages } from '../src/modules/purchases/purchases.service';
 import { parseArcaQrText, readArcaQr, qrKind, qrTotalPesos } from '../src/modules/purchases/invoice-reader/arca-qr';
+import { applyBonuses, bonusInName, handQtyOf, olderThanLast, daysOld, supplierByProducts, raiseSummary } from '../src/modules/purchases/invoice-reader/bonus';
+import { restockUnitCost, cleanDate, keepMarginSale } from '../src/modules/purchases/purchases.service';
+import { explainLine, cleanBox } from '../src/modules/purchases/invoice-reader/explain';
 
 let fallas = 0;
 let ok = 0;
@@ -694,6 +697,112 @@ async function main() {
     assert.strictEqual(q!.nroCmp, 4521);
     assert.strictEqual(qrTotalPesos(q!), 182400.5);
     assert.strictEqual(await readArcaQr(Buffer.from('no es una foto')), null, 'sin foto: null, sin error');
+  });
+
+
+  // ─── Bonificaciones, correcciones a mano y boletas viejas (2026-11-26, boletas reales de Paulos) ───
+
+  await t('regalo en el nombre: "TULIPAN EXHIBIDOR 24+2u" x1 = 24 pagas + 2 de regalo', async () => {
+    assert.deepStrictEqual(bonusInName('TULIPAN EXHIBIDOR 24+2u'), { paid: 24, free: 2 });
+    assert.deepStrictEqual(bonusInName('COCA 2,25 12+1'), { paid: 12, free: 1 });
+    assert.strictEqual(bonusInName('QUENTO PAPAS X100G SALAME'), null);
+    assert.strictEqual(bonusInName('PROMO 1+1'), null, '1+1 no es un regalo menor que lo pagado');
+    assert.strictEqual(bonusInName('JUGO 2,25+1'), null, 'un decimal no es la cantidad pagada');
+    const r = applyBonuses([{ name: 'TULIPAN EXHIBIDOR 24+2u', packageQuantity: 1, unitsPerPack: 1, total: '35300,40', unitPrice: '35300,40' }]);
+    assert.strictEqual(r.paid[0].unitsPerPack, 24);
+    assert.strictEqual(r.paid[0].bonusUnits, 2);
+    // Ya vino en unidades (48 = 2 exhibidores): no se multiplica de nuevo
+    const u = applyBonuses([{ name: 'TULIPAN EXHIBIDOR 24+2u', packageQuantity: 48, unitsPerPack: 1, total: '70600,80' }]);
+    assert.strictEqual(u.paid[0].unitsPerPack, 1);
+    assert.strictEqual(u.paid[0].bonusUnits, 4);
+    // La IA ya lo marcó: manda lo de la IA
+    const ia = applyBonuses([{ name: 'TULIPAN EXHIBIDOR 24+2u', packageQuantity: 1, unitsPerPack: 24, bonusUnits: 2, total: '35300,40' }]);
+    assert.strictEqual(ia.paid[0].bonusUnits, 2);
+  });
+
+  await t('renglón de bonificación en $ 0 del mismo producto: se suma como regalo', async () => {
+    const r = applyBonuses([
+      { name: 'COCA COLA 2,25 X6', sku: '123', packageQuantity: 10, unitsPerPack: 1, total: '50000' },
+      { name: 'BONIF COCA COLA 2,25 X6', sku: '', packageQuantity: 1, unitsPerPack: 1, total: '0', isBonus: 'si', bonusOf: 'COCA COLA 2,25 X6' },
+      { name: 'FANTA 2,25 REGALO', packageQuantity: 2, unitsPerPack: 1, total: '0', isBonus: 'si', bonusOf: '' },
+      { name: 'PEDIDO AC DIGITAL', packageQuantity: 1, total: '0', isBonus: 'no' },
+    ]);
+    assert.strictEqual(r.paid.length, 1);
+    assert.strictEqual(r.paid[0].bonusUnits, 1);
+    assert.deepStrictEqual(r.merged.map((m) => m.into), ['COCA COLA 2,25 X6']);
+    assert.strictEqual(r.gifts.length, 1, 'otro producto: regalo aparte');
+    assert.strictEqual(r.gifts[0].gift, true);
+    assert.deepStrictEqual(r.skipped, ['PEDIDO AC DIGITAL'], 'lo que no es mercadería sigue afuera');
+    // Por el código, aunque la IA no diga de cuál es
+    const bySku = applyBonuses([
+      { name: 'ALFAJOR X', sku: '777', packageQuantity: 12, total: '12000' },
+      { name: 'S/C ALFAJOR', sku: '777', packageQuantity: 1, total: '0' },
+    ]);
+    assert.strictEqual(bySku.paid[0].bonusUnits, 1);
+  });
+
+  await t('costo con regalo: la compra baja, el producto queda con el costo de reposición', async () => {
+    // 26 unidades por $ 35.300,40: la compra a $ 1.357,71, el producto a $ 1.470,85 (lo que cuesta sin regalo)
+    const real = 35300.40 / 26;
+    assert.ok(Math.abs(restockUnitCost(real, 26, 2) - 35300.40 / 24) < 0.01);
+    assert.strictEqual(restockUnitCost(100, 10, 0), 100);
+    assert.strictEqual(restockUnitCost(100, 2, 2), 100, 'todo de regalo: no se divide por cero');
+    // Mantener margen con el costo de reposición: el precio de venta no baja por el regalo
+    assert.strictEqual(keepMarginSale({ costPrice: 1470.85, salePrice: 2000 }, restockUnitCost(real, 26, 2), undefined, 10), 2000);
+  });
+
+  await t('corrección a mano: "-28860" en un renglón de 20 a 2.888,60 = llegaron 10', async () => {
+    assert.strictEqual(handQtyOf({ packageQuantity: 20, unitPrice: '2888,60', total: '57772,00', handNote: '-28860', handQty: 0 }), 10);
+    assert.strictEqual(handQtyOf({ packageQuantity: 20, unitPrice: '2888,60', total: '57772,00', handNote: '20 tachado, dice 10', handQty: 10 }), 10);
+    assert.strictEqual(handQtyOf({ packageQuantity: 20, unitPrice: '2888,60', total: '57772', handNote: '', handQty: 0 }), null);
+    assert.strictEqual(handQtyOf({ packageQuantity: 20, unitPrice: '2888,60', total: '57772', handNote: '-1000', handQty: 0 }), null, 'un importe que no es justo N unidades no se adivina');
+    assert.strictEqual(handQtyOf({ packageQuantity: 20, unitPrice: '2888,60', total: '57772', handQty: 20 }), null, 'misma cantidad: no hay corrección');
+    assert.strictEqual(handQtyOf({ packageQuantity: 3, unitPrice: '1430', total: '4290', handQty: 0, handNote: 'faltó' }), 0, '"Faltó": no vino nada');
+    assert.strictEqual(handQtyOf({ packageQuantity: 3, unitPrice: '1430', total: '4290', handQty: 0, handNote: '' }), null);
+  });
+
+  await t('boleta vieja: no pisa costos si ya hay una compra más nueva', async () => {
+    assert.strictEqual(olderThanLast('2025-05-31', '2026-01-24'), true);
+    assert.strictEqual(olderThanLast('2026-01-24', '2026-01-24'), false, 'mismo día: no');
+    assert.strictEqual(olderThanLast('2026-01-23', '2026-01-24'), false, 'un día de margen');
+    assert.strictEqual(olderThanLast('2026-02-21', '2026-01-24'), false);
+    assert.strictEqual(olderThanLast('', '2026-01-24'), false, 'sin fecha: se actualiza como siempre');
+    assert.strictEqual(daysOld('2025-05-31', new Date(2026, 10, 26)), 544);
+    assert.strictEqual(cleanDate('2026-02-21T00:00'), '2026-02-21');
+    assert.strictEqual(cleanDate('21/02/2026'), null);
+  });
+
+  await t('proveedor deducido por los productos (boleta sin nombre del emisor)', async () => {
+    assert.strictEqual(supplierByProducts(['cig', 'cig', 'cig', null, 'mb']), 'cig');
+    assert.strictEqual(supplierByProducts(['cig', 'mb', 'bavio']), null, 'sin mayoría');
+    assert.strictEqual(supplierByProducts(['cig', 'cig']), null, 'pocos productos');
+  });
+
+  await t('revisión visual: la cuenta de cada renglón en palabras y su lugar en la foto', async () => {
+    const master = explainLine({ packageQuantity: 38, unitPrice: '11343,51', total: '431053,38', lineOk: true }, { quantity: 380, unitsPerPack: 10, freeUnits: 0, unitCostWithIva: 1134.35, listCostWithIva: 1134.35 });
+    assert.ok(master.includes('38 bultos de 10 = 380 unidades'), master);
+    assert.ok(master.includes('38 × $ 11.343,51 = $ 431.053,38'), master);
+    const tulipan = explainLine({ packageQuantity: 1, unitPrice: '35300,40', total: '35300,40', lineOk: true }, { quantity: 26, unitsPerPack: 24, freeUnits: 2, unitCostWithIva: 1357.71, listCostWithIva: 1470.85 });
+    assert.ok(tulipan.includes('+2 de regalo = 26 al stock'), tulipan);
+    assert.ok(tulipan.includes('sin regalo $ 1.470,85'), tulipan);
+    const dto = explainLine({ packageQuantity: 6, unitPrice: '1923,686', discountPct: '12,00', total: '10157,06', lineOk: true }, { quantity: 6, unitsPerPack: 1, freeUnits: 0, unitCostWithIva: 2048.34, listCostWithIva: 2048.34 });
+    assert.ok(dto.includes('− 12%'), dto);
+    const mal = explainLine({ packageQuantity: 5, unitPrice: '100', total: '600', lineOk: false }, { quantity: 5, unitsPerPack: 1, freeUnits: 0, unitCostWithIva: 145, listCostWithIva: 145 });
+    assert.ok(mal.includes('no da'), mal);
+    assert.ok(explainLine({ name: 'BONIF FANTA', packageQuantity: 2, total: '0' }, { quantity: 2, unitsPerPack: 1, freeUnits: 0, unitCostWithIva: 0, listCostWithIva: 0, gift: true }).includes('2 de regalo'));
+    assert.deepStrictEqual(cleanBox([100, 200, 900, 230]), [100, 200, 900, 230]);
+    assert.strictEqual(cleanBox([]), null, 'sin ubicar: foto entera');
+    assert.strictEqual(cleanBox([100, 200, 101, 230]), null, 'rectángulo sin ancho');
+    assert.deepStrictEqual(cleanBox([-5, 200, 1200, 230]), [0, 200, 1000, 230], 'se recorta al borde');
+  });
+
+  await t('resumen de aumentos de la boleta', async () => {
+    const r = raiseSummary([{ name: 'Quento salame', changePct: 21.4 }, { name: 'Quento limón', changePct: 21.4 }, { name: 'Alfajor', changePct: -5 }, { name: 'Nuevo', changePct: null }, { name: 'Raro', changePct: 300 }]);
+    assert.ok(r);
+    assert.strictEqual(r!.up, 2);
+    assert.strictEqual(r!.down, 1);
+    assert.strictEqual(r!.avgUp, 21.4);
+    assert.strictEqual(raiseSummary([{ name: 'x', changePct: 0.5 }]), null, 'menos de 2%: no es un aumento');
   });
 
   console.log(`\n${ok} bien, ${fallas} con falla`);

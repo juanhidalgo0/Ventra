@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Trash2, Plus, ChevronDown } from 'lucide-react';
+import { IVA_RATES, rateOf } from '../../utils/purchaseFiscal';
 
 /**
  * La lista de productos de una compra (2026-11-12, pedido del dueño: "que siempre quede bien, fácil de
@@ -36,6 +37,7 @@ export interface TableItem {
   discount1?: number;
   discount2?: number;
   discount3?: number;
+  ivaRate?: number;
   categoryName?: string;
   brandName?: string;
   trackExpiry?: boolean;
@@ -47,7 +49,12 @@ export interface TableItem {
 
 interface Props<T extends TableItem> {
   items: T[];
-  useIva: boolean;
+  /** Por cuánto se multiplica el costo para llegar al costo final (IVA del renglón o el 21% de antes) */
+  ivaMulOf: (item: T) => number;
+  /** Comprobante elegido (A, B, C, X): muestra la bonificación en la fila y, en la Factura A, el IVA de cada producto */
+  docKind?: string;
+  /** El margen se puede ocultar (pedido de Limpissimo: menos campos para los chicos) */
+  showMargin?: boolean;
   expiryEnabled: boolean;
   netCostOf: (item: T) => number;
   update: (id: string, field: keyof T, value: any) => void;
@@ -69,7 +76,11 @@ const money = (n: number) => `$ ${(Number(n) || 0).toLocaleString('es-AR', { min
 const numVal = (v: any) => (v === '' || v === null || v === undefined ? '' : v);
 
 export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
-  const { items, useIva } = p;
+  const { items } = p;
+  const showBonif = !!p.docKind;
+  const showIva = p.docKind === 'A';
+  const showMargin = p.showMargin !== false;
+  const colCount = 7 + (showBonif ? 1 : 0) + (showIva ? 1 : 0) + (showMargin ? 1 : 0);
   const wrap = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -105,23 +116,26 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
 
   return (
     <div ref={wrap} className="overflow-x-auto">
-      <table className="w-full min-w-[820px] border-collapse">
+      <table className={`w-full ${showIva ? 'min-w-[960px]' : 'min-w-[820px]'} border-collapse`}>
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50/80 text-left">
             <th className={`${th} w-10 text-center`}>#</th>
             <th className={th}>Producto</th>
             <th className={`${th} w-[96px] text-center`}>Cantidad</th>
-            <th className={`${th} w-[136px] text-right`}>Costo unit.</th>
-            <th className={`${th} w-[88px] text-right`}>Margen</th>
+            <th className={`${th} w-[136px] text-right`}>{showIva ? 'Costo sin IVA' : 'Costo unit.'}</th>
+            {showBonif && <th className={`${th} w-[84px] text-right`} title="Bonificación del renglón (negativo = recargo)">% Bonif.</th>}
+            {showIva && <th className={`${th} w-[92px] text-right`}>% IVA</th>}
+            {showMargin && <th className={`${th} w-[88px] text-right`}>Margen</th>}
             <th className={`${th} w-[140px] text-right text-emerald-800`}>Precio de venta</th>
-            <th className={`${th} w-[130px] text-right`}>Subtotal</th>
+            <th className={`${th} w-[130px] text-right`}>{showIva ? 'Subtotal neto' : 'Subtotal'}</th>
             <th className="w-[84px]" />
           </tr>
         </thead>
         <tbody>
           {items.map((item, idx) => {
             const net = p.netCostOf(item);
-            const finalCost = net * (useIva ? 1.21 : 1);
+            const mul = p.ivaMulOf(item);
+            const finalCost = net * mul;
             const oldPrice = !item.isNew && item.base?.salePrice ? item.base.salePrice : 0;
             const priceChanged = oldPrice > 0 && Math.abs((Number(item.salePrice) || 0) - oldPrice) >= 0.01;
             const disc = [item.discount1, item.discount2, item.discount3].map((d) => Number(d) || 0);
@@ -132,8 +146,8 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
               item.sku ? `Cód. ${item.sku}` : '',
               item.barcode ? `EAN ${item.barcode}` : '',
               item.buyFormat === 'PACK' ? `${(Number(item.quantity) || 0) * item.unitsPerPack} u. (bultos de ${item.unitsPerPack})` : '',
-              disc.some(Boolean) ? `desc. ${disc.filter(Boolean).join(' + ')}%` : '',
-              useIva ? `costo con IVA ${money(finalCost)}` : '',
+              disc.some(Boolean) && !(showBonif && !disc[1] && !disc[2]) ? `desc. ${disc.filter(Boolean).join(' + ')}%` : '',
+              Math.abs(mul - 1) > 1e-9 ? `costo con IVA ${money(finalCost)}` : '',
             ].filter(Boolean).join(' · ');
             return [
               <tr key={rowId(item)} className={`border-b border-slate-100 ${isOpen ? 'bg-slate-50/70' : 'hover:bg-slate-50/50'} focus-within:bg-emerald-50/40`}>
@@ -156,6 +170,25 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
                     onChange={(e) => { const v = parseFloat(e.target.value); p.update(rowId(item), 'cost' as keyof T, isNaN(v) ? '' : v); }}
                     className={`${field} text-right`} />
                 </td>
+                {showBonif && (
+                  <td className="px-2 py-3 align-top">
+                    <div className="relative">
+                      <input type="number" step="any" max={100} placeholder="0" value={(item as any).discount1 || ''} {...nav(idx, 'bonif')}
+                        onChange={(e) => { const v = parseFloat(e.target.value); p.update(rowId(item), 'discount1' as keyof T, isNaN(v) ? 0 : Math.min(100, v)); }}
+                        className={`${field} pr-6 text-right`} />
+                      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-slate-400">%</span>
+                    </div>
+                  </td>
+                )}
+                {showIva && (
+                  <td className="px-2 py-3 align-top">
+                    <select value={rateOf(item)} onChange={(e) => p.update(rowId(item), 'ivaRate' as keyof T, Number(e.target.value))}
+                      className={`${field} text-right cursor-pointer`}>
+                      {IVA_RATES.map((r) => <option key={r} value={r}>{String(r).replace('.', ',')}%</option>)}
+                    </select>
+                  </td>
+                )}
+                {showMargin && (
                 <td className="px-2 py-3 align-top">
                   <div className="relative">
                     <input type="number" step="any" value={numVal(item.margin)} {...nav(idx, 'margin')}
@@ -164,6 +197,7 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
                     <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-slate-400">%</span>
                   </div>
                 </td>
+                )}
                 <td className="px-2 py-3 align-top">
                   <input type="number" min={0} step="any" value={numVal(item.salePrice)} {...nav(idx, 'price')}
                     onChange={(e) => { const v = parseFloat(e.target.value); p.update(rowId(item), 'salePrice' as keyof T, isNaN(v) ? '' : v); }}
@@ -186,7 +220,7 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
               isOpen && (
                 <tr key={`${rowId(item)}-more`} className="border-b border-slate-100 bg-slate-50/70">
                   <td />
-                  <td colSpan={7} className="px-3 pb-4 pt-1">
+                  <td colSpan={colCount - 1} className="px-3 pb-4 pt-1">
                     <div className="flex flex-wrap gap-x-5 gap-y-3 items-end">
                       <div>
                         <span className={label}>Código de barras</span>
@@ -253,7 +287,7 @@ export default function PurchaseItemsTable<T extends TableItem>(p: Props<T>) {
           })}
           <tr>
             <td />
-            <td colSpan={7} className="px-3 py-3">{p.addRow}</td>
+            <td colSpan={colCount - 1} className="px-3 py-3">{p.addRow}</td>
           </tr>
         </tbody>
       </table>

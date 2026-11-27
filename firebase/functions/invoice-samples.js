@@ -47,13 +47,15 @@ function readSummary(read) {
     supplierName: str(r.supplierName, 120), supplierCuit: str(r.supplierCuit, 20), invoiceNumber: str(r.invoiceNumber, 40), date: str(r.date, 20),
     docType: str(r.docType, 20), pageNumber: Number(r.pageNumber) || 0, pageCount: Number(r.pageCount) || 0,
     totalFacturaAPagar: str(r.totalFacturaAPagar, 30), subtotalNeto: str(r.subtotalNeto, 30), ivaTotal: str(r.ivaTotal, 30), otrosImpuestos: str(r.otrosImpuestos, 30), impuestosInternos: str(r.impuestosInternos, 30),
-    condicionVenta: str(r.condicionVenta, 30), precios: str(r.precios, 20), fotoLegible: str(r.fotoLegible, 20), photoIssue: str(r.photoIssue, 200),
+    condicionVenta: str(r.condicionVenta, 30), precios: str(r.precios, 20), handTotal: str(r.handTotal, 30), descuentoPago: str(r.descuentoPago, 80), fotoLegible: str(r.fotoLegible, 20), photoIssue: str(r.photoIssue, 200),
     verified: r.verified || null, reread: !!r.reread,
     rawTableTranscription: str(r.rawTableTranscription, 20000),
     items: (Array.isArray(r.items) ? r.items : []).slice(0, 300).map((it) => ({
       sku: str(it.sku, 40), barcode: str(it.barcode, 20), name: str(it.name, 200), packageQuantity: Number(it.packageQuantity) || 0,
       unitsPerPack: Number(it.unitsPerPack) || 0, unitPrice: str(it.unitPrice, 30), total: str(it.total, 30), handPrice: str(it.handPrice, 20),
       lineOk: it.lineOk === undefined ? null : it.lineOk, unsure: !!it.unsure,
+      bonusUnits: Number(it.bonusUnits) || 0, isBonus: str(it.isBonus, 4), bonusOf: str(it.bonusOf, 200),
+      discountPct: str(it.discountPct, 12), finalUnitPrice: str(it.finalUnitPrice, 30), handQty: Number(it.handQty) || 0, handNote: str(it.handNote, 80),
     })),
   };
 }

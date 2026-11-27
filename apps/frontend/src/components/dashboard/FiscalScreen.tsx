@@ -481,7 +481,7 @@ export default function FiscalScreen() {
 
         {modoActual === 'DELEGATED' && (
           <ol className="space-y-2 text-[13.5px] text-slate-700 dark:text-slate-300 leading-snug list-decimal list-inside">
-            {!config?.linked && <li className="text-amber-800">Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Suscripción y nube.</li>}
+            {!config?.linked && <li className="text-amber-800">Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Plan y nube.</li>}
             <li>Entrá a <strong>arca.gob.ar</strong> con tu CUIT y clave fiscal (nivel 3).</li>
             <li>Abrí <strong>Administrador de Relaciones de Clave Fiscal</strong> y tocá <strong>Nueva relación</strong>.</li>
             <li>En <em>Servicio</em> tocá Buscar → <strong>ARCA</strong> → <strong>WebServices</strong> → <strong>Facturación Electrónica</strong>.</li>

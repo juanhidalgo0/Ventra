@@ -6,6 +6,7 @@ import { AiService } from '../ai/ai.service';
 import { PurchasesService } from './purchases.service';
 import { demoContext } from '../system/demo-visitors';
 import { readArcaQr, qrTotalPesos } from './invoice-reader/arca-qr';
+import { savePhotos, photoCount, cleanupPhotos } from './invoice-reader/invoice-photos';
 
 /**
  * Lectura de boletas en segundo plano, sin límite de fotos (2026-11-12).
@@ -58,6 +59,8 @@ export interface Job {
   reads?: any[];
   /** Fotos ya achicadas que esperan conexión, por número de foto */
   waiting?: Record<number, { image: any; qr: any }>;
+  /** Fotos achicadas por número de foto: se guardan con cada compra al terminar (no van a disco con el trabajo) */
+  shrunk?: Record<number, any>;
   userId?: string;
   manualTotal?: number;
   supplierCuits?: string[];
@@ -80,6 +83,8 @@ export class ScanJobsService implements OnModuleInit {
 
   /** Al arrancar: las lecturas que quedaron esperando internet siguen solas */
   onModuleInit() {
+    // Fotos de boletas de más de 60 días
+    cleanupPhotos();
     try {
       if (!fs.existsSync(QUEUE_DIR)) return;
       for (const f of fs.readdirSync(QUEUE_DIR).filter((x) => x.endsWith('.json'))) {
@@ -234,6 +239,8 @@ export class ScanJobsService implements OnModuleInit {
    */
   private async readPhoto(job: Job, i: number, image: any, qr: any) {
     const photo = job.photos[i];
+    // La foto achicada queda hasta guardar los comprobantes: va con la compra para la revisión visual
+    (job.shrunk ||= {})[i] = image;
     const anchor = job.manualTotal ?? (qr && qrTotalPesos(qr) > 0 ? qrTotalPesos(qr) : null);
     // Una hoja larga con relecturas puede pasar los 2 minutos; si la conexión se corta, se reintenta una vez
     const pageBody = { stage: 'page', image, index: i, manualTotal: anchor, supplierCuits: job.supplierCuits || [], qr };
@@ -288,6 +295,7 @@ export class ScanJobsService implements OnModuleInit {
     if (!usable.length) {
       job.status = 'error';
       job.error = job.limitMessage || job.photos.find((p) => p.error)?.error || 'No se pudo leer ninguna foto.';
+      job.shrunk = undefined;
       job.finishedAt = Date.now();
       return;
     }
@@ -299,6 +307,11 @@ export class ScanJobsService implements OnModuleInit {
     for (const d of docs) {
       try {
         const saved = await this.purchases.saveScannedDocument(d, job.userId);
+        // Las fotos de este comprobante quedan con la compra (en el orden de d.images): así se puede revisar
+        // con el pedacito de foto de cada renglón desde el celular o desde otra PC
+        if (saved.purchaseId && !photoCount(saved.purchaseId) && Array.isArray(d.images)) {
+          savePhotos(saved.purchaseId, d.images.map((i: number) => job.shrunk?.[i]).filter(Boolean));
+        }
         job.documents.push({
           purchaseId: saved.purchaseId || null,
           status: saved.status,
@@ -321,6 +334,7 @@ export class ScanJobsService implements OnModuleInit {
     job.status = 'done';
     job.finishedAt = Date.now();
     job.reads = undefined;
+    job.shrunk = undefined;
     const saved = job.documents.filter((d) => d.status === 'PENDING').length;
     if (saved) {
       await this.purchases.notify('Boletas leídas',

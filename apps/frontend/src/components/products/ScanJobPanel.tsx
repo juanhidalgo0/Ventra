@@ -54,10 +54,16 @@ export const useScanJob = create<ScanJobState>((set) => ({
   setOpen: (open) => set({ open }),
 }));
 
-/** Las fotos de la última lectura que le tocan a un comprobante (por número de foto) */
-export function photosFor(images: number[] | null | undefined): string[] {
-  const { urls } = useScanJob.getState();
+/**
+ * Las fotos de la última lectura que le tocan a un comprobante (por número de foto). Solo si ESA compra
+ * salió de esta lectura: antes se usaban para cualquier boleta y una de otro día (o del celular) mostraba
+ * las fotos de la última lectura (2026-11-26). Si no es de esta lectura, [] y la pantalla usa las
+ * fotos guardadas con la compra.
+ */
+export function photosFor(images: number[] | null | undefined, purchaseId?: string | null): string[] {
+  const { urls, job } = useScanJob.getState();
   if (!urls.length || !Array.isArray(images)) return [];
+  if (!purchaseId || !job?.documents?.some((d) => d.purchaseId === purchaseId)) return [];
   return images.map((i) => urls[i]).filter(Boolean);
 }
 

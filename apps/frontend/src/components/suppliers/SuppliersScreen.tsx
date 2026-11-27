@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FiscalBadge } from '../products/FiscalBadge';
 import CashSourcePicker, { CashSource, isCashMethod } from '../common/CashSourcePicker';
 import { 
   Truck, 
@@ -24,6 +25,9 @@ import ContactImportModal from '../clients/ContactImportModal';
 import { useOwnerAccess } from '../../utils/managerAccess';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { undoable } from '../../utils/undo';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 /** Vencimiento de lo que se le debe (según el plazo de pago del proveedor) */
 function DueNote({ s }: { s: any }) {
@@ -186,13 +190,14 @@ export default function SuppliersScreen() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Seguro que deseas eliminar este proveedor? Se borrarán sus datos asociados.')) return;
-    try {
-      await api.delete(`/suppliers/${id}`);
-      if (selectedSupplier?.id === id) setSelectedSupplier(null);
-      loadData();
-    } catch {
-      toast.error('No se pudo eliminar el proveedor');
-    }
+    if (selectedSupplier?.id === id) setSelectedSupplier(null);
+    undoable({
+      message: 'Proveedor borrado',
+      hide: () => setSuppliers((list: any[]) => list.filter((s) => s.id !== id)),
+      run: async () => { await api.delete(`/suppliers/${id}`); loadData(); },
+      onUndo: () => loadData(),
+      onError: () => { loadData(); toast.error('No se pudo eliminar el proveedor'); },
+    });
   };
 
   // Lo que se le debe: compras a cuenta menos los pagos (lo calcula el servidor, ver SuppliersService.debts)
@@ -207,11 +212,43 @@ export default function SuppliersScreen() {
   const totalDebt = suppliers.reduce((sum, s) => sum + calculateDebt(s.id), 0);
   const upToDateCount = suppliers.filter(s => calculateDebt(s.id) === 0).length;
 
+  const overdueTotal = suppliers.reduce((sum, s) => sum + (Number(s.overdue) || 0), 0);
+  const overdueCount = suppliers.filter((s) => Number(s.overdue) > 0).length;
+  const dueSoonTotal = suppliers.reduce((sum, s) => sum + (Number(s.dueSoon) || 0), 0);
+
+  // Mayor deuda primero (lo que dice el orden de la lista)
   const filteredSuppliers = suppliers.filter(s => 
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.email?.toLowerCase().includes(search.toLowerCase()) ||
     s.phone?.includes(search)
-  );
+  ).sort((a, b) => calculateDebt(b.id) - calculateDebt(a.id) || a.name.localeCompare(b.name));
+
+  /** Proveedores con su deuda, vencimientos y lo vendido de su mercadería en el período, en Excel o PDF */
+  const buildReport = (): Report => {
+    const PERIOD: Record<string, string> = { day: 'Hoy', week: 'Últimos 7 días', month: 'Últimos 30 días', custom: startDate || endDate ? `${startDate ? new Date(`${startDate}T12:00:00`).toLocaleDateString('es-AR') : '…'} al ${endDate ? new Date(`${endDate}T12:00:00`).toLocaleDateString('es-AR') : 'hoy'}` : 'Todo' };
+    const list = filteredSuppliers;
+    return {
+      title: 'Proveedores',
+      subtitle: [`Saldos al ${new Date().toLocaleDateString('es-AR')}`, `Ventas de su mercadería: ${PERIOD[filterType]}`, search && `Búsqueda: "${search}"`].filter(Boolean).join(' · '),
+      fileName: `Proveedores ${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}`,
+      orientation: 'landscape',
+      summary: [
+        { label: 'Deuda total', value: totalDebt, type: 'money', tone: totalDebt > 0 ? 'bad' : 'good' },
+        { label: 'Vencido', value: overdueTotal, type: 'money', tone: overdueTotal > 0 ? 'bad' : undefined },
+        { label: 'Vence en estos días', value: dueSoonTotal, type: 'money', tone: dueSoonTotal > 0 ? 'warn' : undefined },
+        { label: 'Proveedores con deuda', value: suppliers.length - upToDateCount, type: 'int' },
+        { label: 'Al día', value: upToDateCount, type: 'int', tone: 'good' },
+      ],
+      tables: [{
+        title: 'Proveedores',
+        columns: [{ header: 'Proveedor' }, { header: 'CUIT' }, { header: 'Contacto' }, { header: 'Teléfono' }, { header: 'Plazo (días)', type: 'int' }, { header: 'Deuda', type: 'money' }, { header: 'Vencido', type: 'money' }, { header: 'Próximo vencimiento', type: 'date' }, { header: 'Unidades vendidas', type: 'number' }, { header: 'Vendido', type: 'money' }, { header: 'Ganancia', type: 'money' }],
+        rows: list.map((x) => [x.name, x.cuit || '', x.contact || '', x.phone || '', x.paymentDays ?? null, calculateDebt(x.id), Number(x.overdue) || null, x.nextDueAt || null, x.stats?.productsSold || 0, x.stats?.totalSales || 0, x.stats?.netProfit || 0]),
+        totals: ['Total', '', '', '', null, list.reduce((t, x) => t + calculateDebt(x.id), 0), list.reduce((t, x) => t + (Number(x.overdue) || 0), 0), null, list.reduce((t, x) => t + (x.stats?.productsSold || 0), 0), list.reduce((t, x) => t + (x.stats?.totalSales || 0), 0), list.reduce((t, x) => t + (x.stats?.netProfit || 0), 0)],
+        emptyText: 'No hay proveedores cargados',
+      }],
+      notes: ['La deuda son las compras a cuenta menos los pagos. La ganancia usa el costo actual de cada producto.'],
+    };
+  };
 
   return (
     <div className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 md:p-6 overflow-y-auto custom-scrollbar">
@@ -223,7 +260,8 @@ export default function SuppliersScreen() {
           </h2>
           <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">Gestión integral de abastecimiento</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+           <ExportButtons build={buildReport} disabled={isLoading} />
            {isOwner && (
              <button onClick={() => setShowImport(true)} title="Importar proveedores desde una planilla de Excel" className="flex-1 sm:flex-none justify-center border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer">
                <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Importar
@@ -256,10 +294,10 @@ export default function SuppliersScreen() {
           </div>
         </div>
 
-        <div className="bg-emerald-50 p-4 md:p-5 rounded-xl border border-emerald-200 relative overflow-hidden">
-          <p className="text-[9px] md:text-[10px] font-bold text-emerald-600 uppercase tracking-[0.2em] mb-2">A Favor</p>
-          <p className="text-xl md:text-3xl font-bold text-emerald-700">$ 0</p>
-          <p className="text-[9px] md:text-[10px] font-bold text-emerald-500/60 mt-4 uppercase tracking-widest">0 proveedores</p>
+        <div className="bg-amber-50 p-4 md:p-5 rounded-xl border border-amber-200 relative overflow-hidden">
+          <p className="text-[9px] md:text-[10px] font-bold text-amber-700 uppercase tracking-[0.2em] mb-2">Vencido</p>
+          <p className="text-xl md:text-3xl font-bold text-amber-800">$ {overdueTotal.toLocaleString('es-AR')}</p>
+          <p className="text-[9px] md:text-[10px] font-bold text-amber-700/70 mt-4 uppercase tracking-widest">{overdueTotal > 0 ? `${overdueCount} ${overdueCount === 1 ? 'proveedor' : 'proveedores'}` : dueSoonTotal > 0 ? `Vence pronto: $ ${dueSoonTotal.toLocaleString('es-AR')}` : 'Nada vencido'}</p>
         </div>
 
         <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-400 relative overflow-hidden">
@@ -474,7 +512,9 @@ export default function SuppliersScreen() {
                                {purchases.filter(p => p.supplierId === selectedSupplier.id).map(p => (
                                  <tr key={p.id}>
                                     <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{new Date(p.createdAt).toLocaleDateString('es-AR')}</td>
-                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-700">Compra #{p.invoiceNumber || p.id.slice(0,8)}</td>
+                                    <td className="px-6 py-4 text-[11px] font-bold text-slate-700">
+                                       <span className="inline-flex items-center gap-1.5">Compra #{p.invoiceNumber || p.id.slice(0,8)}<FiscalBadge fiscal={p.fiscal} /></span>
+                                    </td>
                                     <td className="px-6 py-4 text-right text-[11px] font-bold text-rose-500">$ {p.total.toLocaleString('es-AR')}</td>
                                  </tr>
                                ))}

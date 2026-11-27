@@ -12,7 +12,8 @@ const num = (s) => {
   let t = String(s == null ? "" : s).replace(/[^\d.,-]/g, "");
   if (!t) return 0;
   if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
-  else if (t.includes(",")) t = /,\d{1,2}$/.test(t) ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  // Solo coma: decimal ("1349,484" de Lamadrid), igual que ai.js y la caja
+  else if (t.includes(",")) { const g = t.split(","); t = g.length === 2 ? t.replace(",", ".") : g[g.length - 1].length === 3 ? g.join("") : `${g.slice(0, -1).join("")}.${g[g.length - 1]}`; }
   else if ((t.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(t)) t = t.replace(/\./g, "");
   const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
@@ -37,9 +38,24 @@ const near = (a, b, rel = 0.03, abs = 0.01) => Math.abs(a - b) <= Math.max(abs, 
 /** Un renglón leído → unidades y costo neto por unidad (precios finales: sin el 21%). Pura. */
 function readLine(it, preciosFinales) {
   const upp = Number(it.unitsPerPack) > 0 ? Number(it.unitsPerPack) : 1;
-  const units = (Number(it.packageQuantity) || 0) * upp;
+  // Unidades de regalo (2026-11-26): suman stock y bajan el costo por unidad, como en la caja
+  const bonus = Math.max(0, Number(it.bonusUnits) || 0);
+  const units = (Number(it.packageQuantity) || 0) * upp + bonus;
   const total = num(it.total) / (preciosFinales ? 1.21 : 1);
-  return { code: digits(it.sku) || "", barcode: digits(it.barcode) || "", name: String(it.name || ""), units, unitsPerPack: upp, cost: units > 0 ? total / units : 0, total: num(it.total) };
+  return { code: digits(it.sku) || "", barcode: digits(it.barcode) || "", name: String(it.name || ""), units, unitsPerPack: upp, bonus, cost: units > 0 ? total / units : 0, total: num(it.total), handQty: Number(it.handQty) || 0, handNote: String(it.handNote || "") };
+}
+
+/** Renglones de bonificación en $ 0 de un producto que también se cobra: se suman a ese renglón (como applyBonuses de la caja). Pura. */
+function mergeBonusLines(items) {
+  const key = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const out = items.map((it) => ({ ...it }));
+  return out.filter((it) => {
+    if (num(it.total) !== 0 || it.isBonus !== "si" || !String(it.bonusOf || "").trim()) return true;
+    const target = out.find((o) => num(o.total) > 0 && key(o.name) === key(it.bonusOf));
+    if (!target) return true;
+    target.bonusUnits = (Number(target.bonusUnits) || 0) + (Number(it.packageQuantity) || 0) * (Number(it.unitsPerPack) || 1);
+    return false;
+  });
 }
 
 /**
@@ -73,7 +89,7 @@ function comparePage(expected, read, info = {}) {
   const items0 = (read && !read.error ? read.items || [] : []).filter((it) => num(it.total) > 0);
   const sum0 = items0.reduce((t, it) => t + num(it.total), 0), tot0 = num(read && read.totalFacturaAPagar);
   const finales = !!read && (read.precios === "finales" || (read.precios !== "sin iva" && !(num(read.ivaTotal) > 0) && tot0 > 0 && Math.abs(sum0 - tot0) <= Math.max(50, tot0 * 0.02)));
-  const lines = (read && !read.error ? read.items || [] : [])// Descuentos (negativos) no son productos; un remito trae los renglones en $0 pero con cantidad
+  const lines = mergeBonusLines(read && !read.error ? read.items || [] : [])// Descuentos (negativos) no son productos; un remito trae los renglones en $0 pero con cantidad
     .filter((it) => num(it.total) > 0 || (num(it.total) === 0 && Number(it.packageQuantity) > 0)).map((it) => readLine(it, finales));
   // Como la caja (scanOne): los descuentos en negativo se reparten entre los renglones según su importe
   const gross = lines.reduce((t, l) => t + l.total, 0);
@@ -81,7 +97,7 @@ function comparePage(expected, read, info = {}) {
   if (gross > 0 && disc > 0 && disc < gross) { const f = (gross - disc) / gross; for (const l of lines) l.cost *= f; }
   const exp = (expected.items || []).map((e) => ({ ...e, quantity: Number(e.quantity) || 0, unitsPerPack: Number(e.unitsPerPack) || 1, cost: Number(e.cost) || 0 }));
   const { pairs, extra } = pairLines(exp, lines);
-  const fields = { quantity: [0, 0], unitsPerPack: [0, 0], cost: [0, 0], code: [0, 0] };
+  const fields = { quantity: [0, 0], unitsPerPack: [0, 0], cost: [0, 0], code: [0, 0], bonus: [0, 0], hand: [0, 0] };
   const wrong = [];
   exp.forEach((e, i) => {
     const k = pairs[i];
@@ -100,6 +116,12 @@ function comparePage(expected, read, info = {}) {
     fields.unitsPerPack[0] += u; fields.unitsPerPack[1]++;
     fields.cost[0] += c; fields.cost[1]++;
     if (hasCode) { fields.code[0] += !!cd; fields.code[1]++; }
+    // Regalo y corrección a mano esperados (boletas reales): que la IA los haya visto
+    const bz = e.free === undefined || near(r.bonus, Number(e.free) || 0, 0, 0.01);
+    if (e.free !== undefined) { fields.bonus[0] += bz; fields.bonus[1]++; }
+    const hz = e.handQty === undefined || near(r.handQty, Number(e.handQty) || 0, 0, 0.01) || (Number(e.handQty) === 0 && /falt|no vino/i.test(r.handNote));
+    if (e.handQty !== undefined) { fields.hand[0] += hz; fields.hand[1]++; }
+    if (!bz || !hz) wrong.push({ name: e.name, expected: { free: e.free, handQty: e.handQty }, read: { free: r.bonus, handQty: r.handQty, handNote: r.handNote } });
     if (!q || !u || !c || !cd) wrong.push({ name: e.name, expected: { quantity: e.quantity, unitsPerPack: e.unitsPerPack, cost: round(e.cost), code: codes[0] || "" }, read: { quantity: v.units, unitsPerPack: v.unitsPerPack, cost: round(v.cost), code: r.code || r.barcode } });
   });
   const missing = exp.filter((_, i) => pairs[i] === undefined).map((e) => e.name);
@@ -108,12 +130,16 @@ function comparePage(expected, read, info = {}) {
     number: expected.invoiceNumber ? invoiceKey(read && read.invoiceNumber) === invoiceKey(expected.invoiceNumber) : null,
     date: expected.date ? String((read && read.date) || "") === expected.date : null,
     total: Number(expected.total) > 0 ? near(num(read && read.totalFacturaAPagar), Number(expected.total), 0.005, 1) : null,
+    // Total escrito a mano (solo en las boletas reales que lo tienen)
+    ...(Number(expected.handTotal) > 0 ? { handTotal: near(num(read && read.handTotal), Number(expected.handTotal), 0.001, 1) } : {}),
   };
   const failed = !read || !!read.error || !lines.length;
-  const perfect = !failed && Object.values(header).every((v) => v !== false) && !missing.length && !extra.length && !wrong.length;
+  // partial: solo algunos renglones verificados a mano (boletas reales difíciles): los demás leídos no cuentan como sobrantes
+  const extraCount = expected.partial ? 0 : extra.length;
+  const perfect = !failed && Object.values(header).every((v) => v !== false) && !missing.length && !extraCount && !wrong.length;
   return {
     id: info.id || "", supplier: info.supplier || expected.supplierName || digits(expected.supplierCuit) || "sin proveedor",
-    failed, perfect, header, lines: { expected: exp.length, read: lines.length, missing, extra: extra.map((k) => lines[k].name), wrong }, fields,
+    failed, perfect, header, lines: { expected: exp.length, read: lines.length, missing, extra: expected.partial ? [] : extra.map((k) => lines[k].name), wrong }, fields,
     costUsd: Number(info.costUsd) || 0, models: info.models || [],
     escalated: { sonnet: (info.models || []).filter((m) => /sonnet/.test(m)).length, opus: (info.models || []).filter((m) => /opus/.test(m)).length },
     verified: (read && read.verified) || null,
@@ -126,7 +152,7 @@ function compareDocument(expected, reads, info = {}) {
   const ok = reads.filter((r) => r && !r.error);
   const footer = ok.slice().reverse().find((r) => num(r.totalFacturaAPagar) > 0) || ok[ok.length - 1] || {};
   const pick = (k) => (ok.find((r) => String(r[k] || "").trim()) || {})[k] || "";
-  const merged = { supplierCuit: pick("supplierCuit"), invoiceNumber: pick("invoiceNumber"), date: pick("date"), totalFacturaAPagar: footer.totalFacturaAPagar || "", precios: pick("precios"), verified: ok.every((r) => r.verified && r.verified !== "no") ? "si" : "no", items: ok.flatMap((r) => r.items || []), error: ok.length ? undefined : "sin lectura" };
+  const merged = { supplierCuit: pick("supplierCuit"), invoiceNumber: pick("invoiceNumber"), date: pick("date"), totalFacturaAPagar: footer.totalFacturaAPagar || "", handTotal: pick("handTotal"), precios: pick("precios"), verified: ok.every((r) => r.verified && r.verified !== "no") ? "si" : "no", items: ok.flatMap((r) => r.items || []), error: ok.length ? undefined : "sin lectura" };
   return comparePage(expected, merged, info);
 }
 
@@ -145,11 +171,11 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
 /** Resultados por hoja → resumen general y por proveedor. Pura. */
 function summarize(results) {
   const sum = (list) => {
-    const f = { quantity: [0, 0], unitsPerPack: [0, 0], cost: [0, 0], code: [0, 0] };
-    const h = { cuit: [0, 0], number: [0, 0], date: [0, 0], total: [0, 0] };
+    const f = { quantity: [0, 0], unitsPerPack: [0, 0], cost: [0, 0], code: [0, 0], bonus: [0, 0], hand: [0, 0] };
+    const h = { cuit: [0, 0], number: [0, 0], date: [0, 0], total: [0, 0], handTotal: [0, 0] };
     for (const r of list) {
-      for (const k of Object.keys(f)) { f[k][0] += r.fields[k][0]; f[k][1] += r.fields[k][1]; }
-      for (const k of Object.keys(h)) if (r.header[k] !== null) { h[k][0] += r.header[k] ? 1 : 0; h[k][1]++; }
+      for (const k of Object.keys(f)) if (r.fields[k]) { f[k][0] += r.fields[k][0]; f[k][1] += r.fields[k][1]; }
+      for (const k of Object.keys(h)) if (r.header[k] !== null && r.header[k] !== undefined) { h[k][0] += r.header[k] ? 1 : 0; h[k][1]++; }
     }
     const lines = list.reduce((s, r) => s + r.lines.expected, 0);
     return {

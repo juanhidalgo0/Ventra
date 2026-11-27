@@ -13,6 +13,12 @@ import { PRODUCT_WITHOUT_IMAGE } from '../../database/product-select';
 import { createPurchaseLot } from '../products/lots.util';
 import { InvoiceReadError, isPdfFile, isSheetFile, readInvoiceFile, type ParsedInvoice } from './invoice-reader';
 import { readArcaQr, qrKind, qrTotalPesos, type ArcaQr } from './invoice-reader/arca-qr';
+import { applyBonuses, handQtyOf, olderThanLast, daysOld, raiseSummary, supplierByProducts } from './invoice-reader/bonus';
+import { explainLine, cleanBox } from './invoice-reader/explain';
+import { movePhotos, savePhotos, photoCount } from './invoice-reader/invoice-photos';
+
+/** "2026-02-21" → "21/02/2026" */
+const fmtDate = (d: any) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d || ''); };
 
 /**
  * Precio de venta de un producto que ya existe cuando cambia su costo: el que se eligió en la
@@ -24,6 +30,27 @@ export function keepMarginSale(product: { costPrice: number; salePrice: number }
   if (!(product.costPrice > 0) || !(newCost > 0) || Math.abs(newCost - product.costPrice) < 0.01) return product.salePrice;
   const v = product.salePrice * (newCost / product.costPrice);
   return round ? Math.ceil(v / round - 1e-9) * round : Math.round(v * 100) / 100;
+}
+
+/**
+ * Costo de reposición por unidad (con IVA) de un renglón que trae mercadería de regalo: lo que se paga
+ * dividido solo las unidades que se pagan. 24 + 2 de regalo a $ 35.300: la compra cuesta $ 1.357 c/u
+ * (lo que de verdad se pagó), pero el producto queda en $ 1.470, el precio de la próxima compra. Así
+ * "mantener margen" no baja el precio de venta por un regalo y la compra siguiente no lo hace saltar.
+ * quantity y freeUnits en la misma unidad (la del renglón).
+ */
+/** "2026-02-21" o null: la fecha de la boleta tal cual se guarda (texto, para compararla sin zonas horarias) */
+export function cleanDate(d: any): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  if (!m) return null;
+  const y = Number(m[1]);
+  return y >= 2000 && y <= 2100 && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? m[0] : null;
+}
+
+export function restockUnitCost(unitCostWithIva: number, quantity: number, freeUnits?: number | null): number {
+  const free = Number(freeUnits) || 0;
+  if (!(free > 0) || !(quantity > free)) return unitCostWithIva;
+  return (unitCostWithIva * quantity) / (quantity - free);
 }
 
 /** El precio del bulto, mayorista y de gremio acompañan al precio de venta (mismo margen) */
@@ -402,7 +429,51 @@ export class PurchasesService {
     });
     const drafts = await this.drafts(rows.filter((p: any) => p.status === 'PENDING').map((p: any) => p.id));
     const undo = await this.undoable(rows.filter((p: any) => p.status === 'COMPLETED').slice(0, 900).map((p: any) => p.id));
-    return rows.map((p: any) => ({ ...(drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p), canUndo: undo.has(p.id) }));
+    const fiscal = await this.fiscalOf();
+    return rows.map((p: any) => ({ ...(drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p), canUndo: undo.has(p.id), fiscal: fiscal.get(p.id) || null }));
+  }
+
+  /**
+   * Comprobante fiscal de la compra (Factura A/B/C o presupuesto en negro, IVA por alícuota,
+   * percepciones): lo arma la pantalla de compras y se guarda tal cual, revisado.
+   */
+  async saveFiscal(purchaseId: string, raw: any) {
+    if (!purchaseId || !raw || typeof raw !== 'object') return;
+    const kind = ['A', 'B', 'C', 'X'].includes(raw.kind) ? raw.kind : null;
+    if (!kind) return;
+    const num = (v: any) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : 0);
+    const rec = {
+      v: 1,
+      kind,
+      blanco: kind !== 'X',
+      subtotal: num(raw.subtotal),
+      discountPct: num(raw.discountPct),
+      discount: num(raw.discount),
+      net: num(raw.net),
+      ivaDetail: (Array.isArray(raw.ivaDetail) ? raw.ivaDetail : []).slice(0, 10)
+        .map((d: any) => ({ rate: num(d.rate), base: num(d.base), amount: num(d.amount) })),
+      iva: num(raw.iva),
+      percIva: kind === 'X' ? 0 : num(raw.percIva),
+      percGanancias: kind === 'X' ? 0 : num(raw.percGanancias),
+      iibb: kind === 'X' ? [] : (Array.isArray(raw.iibb) ? raw.iibb : []).slice(0, 24)
+        .map((p: any) => ({ province: String(p.province || '').slice(0, 40), amount: num(p.amount) })).filter((p: any) => p.amount !== 0),
+      rounding: num(raw.rounding),
+      total: num(raw.total),
+    };
+    await this.prisma.$executeRawUnsafe(`UPDATE purchases SET fiscal = ? WHERE id = ?`, JSON.stringify(rec), purchaseId);
+  }
+
+  /** Comprobante fiscal de cada compra que lo tiene */
+  async fiscalOf(ids?: string[]): Promise<Map<string, any>> {
+    const list = ids ? ids.filter(Boolean) : null;
+    if (list && !list.length) return new Map();
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string; fiscal: string | null }[]>(
+      list ? `SELECT id, fiscal FROM purchases WHERE fiscal IS NOT NULL AND id IN (${list.map(() => '?').join(',')})` : `SELECT id, fiscal FROM purchases WHERE fiscal IS NOT NULL`,
+      ...(list || []),
+    ).catch(() => [] as { id: string; fiscal: string | null }[]);
+    const out = new Map<string, any>();
+    for (const r of rows) { try { out.set(r.id, JSON.parse(r.fiscal as string)); } catch { /* fila rota: sin comprobante */ } }
+    return out;
   }
 
   /** Algunas compras con sus renglones leídos (las pestañas de "Revisar boletas"), en el orden pedido */
@@ -414,7 +485,8 @@ export class PurchasesService {
       include: { supplier: true, user: { select: { fullName: true } }, items: true },
     });
     const drafts = await this.drafts(rows.filter((p: any) => p.status === 'PENDING').map((p: any) => p.id));
-    const byId = new Map(rows.map((p: any) => [p.id, drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p]));
+    const fiscal = await this.fiscalOf(rows.map((p: any) => p.id));
+    const byId = new Map(rows.map((p: any) => [p.id, { ...(drafts.has(p.id) ? { ...p, draft: drafts.get(p.id) } : p), fiscal: fiscal.get(p.id) || null }]));
     return list.map((id) => byId.get(id)).filter(Boolean);
   }
 
@@ -433,6 +505,10 @@ export class PurchasesService {
       source?: { code?: string; name?: string };
       /** EAN de la boleta para un producto que no tenía código de barras (se guarda al confirmar) */
       setBarcode?: string;
+      /** Unidades de regalo incluidas en quantity: el producto queda con el costo sin el regalo */
+      freeUnits?: number;
+      /** Boleta más vieja que la última compra: suma stock, no toca costo ni precio de venta */
+      stockOnly?: boolean;
       newProductData?: {
         name: string;
         barcode?: string;
@@ -455,6 +531,8 @@ export class PurchasesService {
     manualTotal?: number;
     /** factura, remito, nota de credito: para reconocer después la factura de un remito (tanda 5) */
     docType?: string | null;
+    /** Fecha de la boleta (AAAA-MM-DD): para no pisar costos con una boleta más vieja que la última compra */
+    invoiceDate?: string | null;
   }) {
     const total = data.manualTotal !== undefined 
       ? Number(data.manualTotal) 
@@ -570,15 +648,18 @@ export class PurchasesService {
         const stockBefore = stockAfter - totalUnitsAdded;
 
         // Update Product Stock, Cost Price and Sale Price
-        // Sin precio (un remito en $ 0): solo suma stock. Antes dejaba el costo del producto en $ 0 (tanda 5)
-        const noPrice = !(unitCostWithIva > 0) && !createdIds.has(product.id);
+        // Sin precio (un remito en $ 0, un regalo) o boleta más vieja que la última compra: solo suma stock.
+        // Antes dejaba el costo del producto en $ 0 (tanda 5)
+        const noPrice = (!(unitCostWithIva > 0) || !!item.stockOnly) && !createdIds.has(product.id);
+        // Con regalo, el producto queda con el costo de reposición (sin el regalo)
+        const restockCost = restockUnitCost(unitCostWithIva, item.quantity, asPiece ? 0 : item.freeUnits);
         // Sin un precio de venta elegido, se mantiene el margen que ya tenía el producto
-        const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
+        const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, restockCost, item.salePrice, priceRound);
         const updateData: any = noPrice ? {
           ...(product.supplierId ? {} : { supplierId: data.supplierId }),
           isActive: true,
         } : {
-          costPrice: unitCostWithIva, // Store unit cost with IVA
+          costPrice: restockCost, // Store unit cost with IVA
           salePrice: updatedSalePrice,
           ...scaledPrices(product, updatedSalePrice, priceRound),
           // Sin proveedor asignado: queda el de esta compra (agrupa el pedido sugerido)
@@ -643,6 +724,8 @@ export class PurchasesService {
 
       if (undo.size) await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = ? WHERE id = ?`, JSON.stringify({ v: 1, at: Date.now(), rows: [...undo.values()] }), newPurchase.id);
       if (data.docType) await tx.$executeRawUnsafe(`UPDATE purchases SET doc_type = ? WHERE id = ?`, String(data.docType).slice(0, 30), newPurchase.id);
+      const invDate = cleanDate(data.invoiceDate);
+      if (invDate) await tx.$executeRawUnsafe(`UPDATE purchases SET invoice_date = ? WHERE id = ?`, invDate, newPurchase.id);
       return newPurchase;
     });
 
@@ -731,9 +814,11 @@ export class PurchasesService {
       if (manualTotal === undefined && files.length === 1 && qrs[0] && qrTotalPesos(qrs[0]) > 0) manualTotal = qrTotalPesos(qrs[0]);
       const supplierCuits = await this.supplierCuits();
       // Hasta 6 fotos van juntas; más, de a una (stage "page") y después se juntan: sin tope de fotos
+      // Achicadas una vez: van a la IA y, si la boleta queda guardada, con la compra (revisión visual)
+      const shrunk = files.length > 6 ? [] : await this.ai.shrink(files, 2000);
       const result = files.length > 6
         ? await this.readPhotosByPage(files, qrs, supplierCuits)
-        : (await this.ai.call('invoice', { images: await this.ai.shrink(files, 2000), manualTotal: manualTotal ?? null, multi: true, supplierCuits, qrs })).result;
+        : (await this.ai.call('invoice', { images: shrunk, manualTotal: manualTotal ?? null, multi: true, supplierCuits, qrs })).result;
       // Nube con la versión anterior: devuelve un solo comprobante
       const docs: any[] = Array.isArray(result?.documents) ? result.documents : [result];
       const usable = docs.filter((d) => d?.items?.length);
@@ -747,6 +832,11 @@ export class PurchasesService {
       const results: any[] = [];
       for (const d of usable) {
         const r = await this.scanOne(d, { readCheck: null, readInfo: null, sourceLabel, isExcel: false, userId, opts });
+        // Del celular: las fotos de este comprobante quedan con la compra (para revisarla con la foto en cualquier aparato)
+        if (r?.purchaseId && shrunk.length && !photoCount(r.purchaseId)) {
+          const order: number[] = Array.isArray(d.images) ? d.images : shrunk.map((_, k) => k);
+          savePhotos(r.purchaseId, order.map((i) => shrunk[i]).filter(Boolean));
+        }
         results.push({ ...r, docType: d.docType || 'factura', images: Array.isArray(d.images) ? d.images : null, reread: !!d.reread });
       }
       const [first, ...others] = results;
@@ -934,24 +1024,29 @@ export class PurchasesService {
   private async scanOne(parsedData: any, ctx: { readCheck: ParsedInvoice['check'] | null; readInfo: Pick<ParsedInvoice, 'docType' | 'letter' | 'supplierCuit' | 'pricesIncludeIva' | 'totals'> | null; sourceLabel: string; isExcel: boolean; userId?: string; opts: { inline?: boolean } }) {
     const { readCheck, readInfo, sourceLabel, isExcel, userId, opts } = ctx;
     // Proveedor: el que ya está cargado (nombre parecido) o, si no está, se crea con el nombre de la boleta
-    const supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
+    let supplier = await this.matcher.findSupplier(parsedData.supplierName, true, parsedData.supplierCuit || readInfo?.supplierCuit);
     const settings = await this.scanSettings();
     // ¿Esta boleta ya se cargó? (mismo proveedor y número): escanearla de nuevo duplicaría el stock y la deuda
     // Nota de crédito (por lo que leyó la IA o por el QR de ARCA): numeración propia, se confirma aparte (tanda 5.2)
     const isCredit = parsedData.docType === 'nota de credito' || parsedData.qr?.kind === 'nota de crédito';
-    const duplicate = await this.findSameInvoice(supplier?.id, parsedData.invoiceNumber, isCredit);
+    let duplicate = await this.findSameInvoice(supplier?.id, parsedData.invoiceNumber, isCredit);
 
     // Control de la boleta: con IVA (factura A) la suma de renglones x 1,21 da el total; con el IVA
     // adentro (factura B/C, ticket), la suma da el total. Así se sabe también si los precios lo traen.
     // Renglones en $0 (un cambio de mercadería, "PEDIDO AC DIGITAL", una promo sin precio): no se compran,
     // y antes se ofrecían como productos nuevos para crear. Quedan anotados para avisarlos.
-    const allItems: any[] = parsedData.items || [];
-    const isFree = (it: any) => parseArgentineNumber(it.total) === 0;
-    const skippedLines = allItems.filter(isFree).map((it) => String(it.name || '').trim()).filter(Boolean);
+    // Bonificaciones en mercadería (2026-11-26): "24+2u", o un renglón en $ 0 "BONIF" del mismo producto, se
+    // suman como regalo a su renglón (más stock, menos costo por unidad). Un $ 0 de otro producto entra de
+    // regalo (stock sin tocar el costo). Antes todo renglón en $ 0 se descartaba y el regalo se perdía.
+    // Cada renglón recuerda su lugar en la boleta: la revisión los muestra siempre en el orden del papel
+    // (antes los regalos y los productos nuevos quedaban al final)
+    const allItems: any[] = (parsedData.items || []).map((it: any, k: number) => ({ ...it, lineNo: Number.isInteger(it?.lineNo) ? it.lineNo : k }));
+    const bonus = applyBonuses(allItems);
+    const skippedLines = bonus.skipped;
     // Descuentos en negativo ("LIMPIEZA DEL HOGAR 15%", bonificaciones): se reparten entre los productos
     // en proporción a su importe, así la boleta cierra y el costo de cada uno es lo que se pagó de verdad
-    const discounts = allItems.filter((it) => parseArgentineNumber(it.total) < 0);
-    const rawItems: any[] = allItems.filter((it) => parseArgentineNumber(it.total) > 0);
+    const discounts = bonus.paid.filter((it) => parseArgentineNumber(it.total) < 0);
+    const rawItems: any[] = [...bonus.paid.filter((it) => parseArgentineNumber(it.total) > 0), ...bonus.gifts].sort((a, b) => a.lineNo - b.lineNo);
     // Un descuento que dice su % y da justo ese % de un solo producto (mejor si con la misma cantidad) es de
     // ese producto: Vital "LIMPIEZA DEL HOGAR 15%" 4 un = 15% del SKIP x4 (2026-11-12). El resto se reparte.
     const own = rawItems.map((it) => parseArgentineNumber(it.total));
@@ -1017,6 +1112,21 @@ export class PurchasesService {
     const rows = rawItems.map((it, i) => ({ ...codes[i], code: codes[i].sku, name: String(it.name || '').trim() }));
     // Con el CUIT, el buscador consulta el mapa compartido entre comercios (tanda 3)
     const { matches, candidates, sharedHints } = await this.matcher.match(rows.map((r) => ({ code: r.sku, barcode: r.barcode, name: r.name })), { supplierId: supplier?.id, useAi: true, supplierCuit: parsedData.supplierCuit || readInfo?.supplierCuit || null });
+    const matchedIds = [...new Set(matches.map((m: any) => m?.product?.id).filter(Boolean))] as string[];
+    // La boleta no dice quién la emite (las de cigarrillos: solo "Comprobante N°" y el cliente): es el
+    // proveedor de la mayoría de los productos que se reconocieron
+    let supplierGuessed: { id: string; name: string } | null = null;
+    if (!supplier && matchedIds.length >= 3) {
+      const guess = await this.supplierOfProducts(matchedIds);
+      if (guess) {
+        supplier = guess;
+        supplierGuessed = guess;
+        duplicate = await this.findSameInvoice(supplier.id, parsedData.invoiceNumber, isCredit);
+      }
+    }
+    // Boleta más vieja que la última compra de un producto: suma stock pero no pisa su costo ni su precio
+    const invoiceDate = cleanDate(parsedData.date);
+    const lastDates = invoiceDate ? await this.lastBuyDates(matchedIds) : new Map<string, string>();
 
     const roundUp = (n: number) => (settings.round ? Math.ceil(n / settings.round - 1e-9) * settings.round : Math.round(n * 100) / 100);
     const items = rawItems.map((it, i) => {
@@ -1047,18 +1157,44 @@ export class PurchasesService {
         const fits = !p || !(p.costPrice > 0) || Math.abs(Math.log(asUnit / nameUpp / p.costPrice)) < Math.abs(Math.log(asUnit / p.costPrice));
         if (fits) { unitsPerPackVal = nameUpp; quantityVal *= nameUpp; packFromName = nameUpp; }
       }
+      // Regalo (en unidades de este renglón, con el mismo cambio de bulto que la cantidad): suma stock y baja el
+      // costo de la compra; el costo del producto (reposición) y el precio de venta salen de lo que se paga
+      const gift = !!it.gift;
+      const scale = unitsPerPackVal / (Number(it.unitsPerPack) || 1);
+      const paidQty = gift ? 0 : quantityVal;
+      const freeUnits = gift ? 0 : Math.max(0, Number(it.bonusUnits) || 0) * scale;
+      if (freeUnits > 0) quantityVal += freeUnits;
       const netCost = quantityVal > 0 ? netTotal / quantityVal : 0;
-      const costWithIva = netCost * 1.21;
-      const changePct = p && p.costPrice > 0 ? Math.round((costWithIva / p.costPrice - 1) * 1000) / 10 : null;
+      const listNetCost = paidQty > 0 ? netTotal / paidQty : 0;
+      const costWithIva = listNetCost * 1.21;
+      // Boleta más vieja que la última compra de este producto (por fecha de boleta)
+      const last = p ? lastDates.get(p.id) : undefined;
+      const stockOnly = !!p && !gift && olderThanLast(invoiceDate, last);
+      const changePct = p && p.costPrice > 0 && !gift ? Math.round((costWithIva / p.costPrice - 1) * 1000) / 10 : null;
       // Precio de venta sugerido: mantiene el margen del producto, o el margen de siempre si es nuevo
       // Si el dueño anotó a mano el precio de venta al lado del renglón, manda ese
       const handPrice = parseArgentineNumber(it.handPrice);
       const handOk = handPrice > 0 && handPrice > costWithIva * 0.8 && handPrice < costWithIva * 20;
-      const suggestedSalePrice = handOk ? handPrice : p
+      const suggestedSalePrice = p && (stockOnly || gift) ? p.salePrice : handOk ? handPrice : p
         ? (p.costPrice > 0 && settings.keepMargin ? roundUp(p.salePrice * (costWithIva / p.costPrice)) : p.salePrice)
-        : roundUp(costWithIva * (1 + settings.margin / 100));
+        : gift ? 0 : roundUp(costWithIva * (1 + settings.margin / 100));
       const reasons: string[] = [];
-      if (!(quantityVal > 0) || !(netCost > 0)) reasons.push('no se leyó la cantidad o el precio');
+      // Lo que conviene saber de este renglón pero no frena nada (regalo, boleta vieja)
+      const info: string[] = [];
+      const money = (n: number) => `$ ${(Math.round(n * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+      const qtyTxt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('es-AR');
+      if (gift) {
+        if (!(quantityVal > 0)) reasons.push('no se leyó la cantidad');
+        if (!p) reasons.push('vino de regalo ($ 0) y es nuevo: poné el precio de venta');
+        info.push(`de regalo ($ 0): suma ${qtyTxt(quantityVal)} al stock sin cambiar el costo`);
+      } else if (!(quantityVal > 0) || !(netCost > 0)) reasons.push('no se leyó la cantidad o el precio');
+      if (freeUnits > 0 && netCost > 0) info.push(`+${qtyTxt(freeUnits)} de regalo: te sale ${money(netCost * 1.21)} c/u (sin regalo ${money(costWithIva)}). El precio de venta sigue el costo sin regalo`);
+      if (stockOnly) info.push(`boleta del ${fmtDate(invoiceDate)}, más vieja que tu última compra (${fmtDate(last)}): suma stock, no cambia costo ni precio`);
+      // Corrección a mano (faltó mercadería): se pregunta, nunca se cambia sola
+      const hq = gift ? null : handQtyOf(it);
+      const handQuantity = hq === null ? null : hq === 0 ? 0 : hq * unitsPerPackVal + freeUnits;
+      if (handQuantity === 0) reasons.push(`a mano anotaron "${String(it.handNote || '').trim() || 'faltó'}": ¿no vino nada de este renglón?`);
+      else if (handQuantity !== null) reasons.push(`a mano anotaron ${String(it.handNote || '').trim() || 'una corrección'}: ¿llegaron ${qtyTxt(handQuantity)} en vez de ${qtyTxt(quantityVal)}?`);
       if (m?.confidence === 'baja') reasons.push('no es seguro que sea ese producto');
       // La IA controla cada renglón: cantidad × precio unitario tiene que dar el total de la línea
       if (it.lineOk === false) reasons.push('la cantidad por el precio no da el total del renglón: comparalo con la foto');
@@ -1070,7 +1206,8 @@ export class PurchasesService {
       // viene completo (código de barras, nombre, unidades por bulto); con uno solo o si no coinciden, a confirmar
       const sh = !p ? sharedHints?.[i] || null : null;
       if (sh && sh.confidence !== 'alta') reasons.push(sh.confidence === 'contradice' ? 'otros comercios no coinciden en qué producto es: confirmalo' : `otro comercio lo cargó como ${sh.name || sh.barcode}: confirmalo`);
-      if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
+      if (stockOnly || gift) { /* no cambia el costo: el salto no importa */ }
+      else if (changePct !== null && (changePct > 60 || changePct < -40)) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}%`);
       else if (m?.confidence === 'media' && changePct !== null && Math.abs(changePct) > 25) reasons.push(`el costo cambia ${changePct > 0 ? '+' : ''}${changePct}% y el producto no es seguro`);
       return {
         barcode: r.barcode || (sh?.confidence === 'alta' ? sh.barcode : ''),
@@ -1083,6 +1220,22 @@ export class PurchasesService {
         presentationType: 'UNIT',
         cost: parseFloat(netCost.toFixed(2)),
         total: parseFloat(netTotal.toFixed(2)),
+        // Regalo: unidades de regalo dentro de quantity y el costo sin regalo (el del producto)
+        freeUnits: freeUnits > 0 ? Math.round(freeUnits * 1000) / 1000 : 0,
+        listCost: freeUnits > 0 ? parseFloat(listNetCost.toFixed(2)) : null,
+        gift,
+        stockOnly,
+        lastBuyDate: last || null,
+        // Corrección a mano: la cantidad que quedaría (en unidades, como quantity)
+        handQuantity,
+        handNote: handQuantity !== null ? String(it.handNote || '').trim().slice(0, 80) : '',
+        discountPct: parseArgentineNumber(it.discountPct) || null,
+        info,
+        // Lugar del renglón en la boleta (0 = el primero): la revisión respeta el orden del papel
+        lineNo: it.lineNo,
+        // Revisión visual: la cuenta del renglón en palabras y dónde está en la foto (foto n° image, rectángulo en milésimos)
+        explain: explainLine({ ...it, lineOk: it.lineOk }, { quantity: quantityVal, unitsPerPack: unitsPerPackVal, freeUnits, unitCostWithIva: netCost * 1.21, listCostWithIva: costWithIva, gift }),
+        photo: Number.isInteger(it.image) || cleanBox(it.rowBox) ? { image: Number.isInteger(it.image) ? it.image : null, box: cleanBox(it.rowBox) } : null,
         match: m ? { by: m.by, confidence: m.confidence } : null,
         changePct,
         suggestedSalePrice,
@@ -1106,9 +1259,17 @@ export class PurchasesService {
       noCode.forEach((i, n) => { if (sugg[n]?.length) (items[i] as any).barcodeSuggestions = sugg[n]; });
     }
 
+    // Avisos de la boleta entera (2026-11-26): regalos, boleta vieja, aumentos, total a mano, proveedor deducido
+    const scanNotes = await this.scanNotesFor({ items, bonus, parsedData, supplier, supplierGuessed, invoiceDate });
+
     const base = {
       supplierName: parsedData.supplierName || '',
       matchedSupplier: supplier ? { id: supplier.id, name: supplier.name } : null,
+      scanNotes,
+      // Fecha de la boleta: se guarda con la compra (para no pisar costos con una boleta vieja después)
+      invoiceDate,
+      // Cuánto girar cada foto para leerla derecha (mismo orden que images): para los recortes de la revisión
+      photoTurns: Array.isArray(parsedData.turns) ? parsedData.turns.map((t: any) => ([90, 180, 270].includes(Number(t)) ? Number(t) : 0)) : [],
       // Para aprender del proveedor al confirmar (supplier-lessons.js)
       supplierCuit: parsedData.supplierCuit || readInfo?.supplierCuit || null,
       invoiceNumber: parsedData.invoiceNumber || '',
@@ -1194,14 +1355,17 @@ export class PurchasesService {
         invoiceNumber: parsedData.invoiceNumber || undefined,
         manualTotal: printedTotal,
         docType: base.docType || 'factura',
+        invoiceDate,
         paymentStatus: 'OWED',
         notes: 'Cargada sola desde la foto de la boleta (Ventra IA).',
         items: items.map((it) => ({
           productId: it.product?.id,
           quantity: it.quantity,
           cost: it.cost,
+          freeUnits: it.freeUnits || 0,
+          stockOnly: it.stockOnly || undefined,
           buyFormat: 'UNIT',
-          salePrice: it.suggestedSalePrice,
+          salePrice: it.stockOnly || it.gift ? undefined : it.suggestedSalePrice,
           source: { code: it.sku, name: it.name },
           newProductData: it.product ? undefined : {
             name: niceName(it.name),
@@ -1285,6 +1449,138 @@ export class PurchasesService {
     await this.prisma.$executeRawUnsafe(`UPDATE purchases SET draft = ? WHERE id = ?`,
       JSON.stringify({ ...base, matchedSupplier: base.matchedSupplier || { id: supplierId, name: base.supplierName || '' }, why }), pending.id);
     return { status: 'PENDING', purchaseId: pending.id, items: items.length };
+  }
+
+  /**
+   * Proveedor de la mayoría de estos productos (el asignado al producto o, si no tiene, el de su última
+   * compra): para una boleta que no dice quién la emite. null si no hay una mayoría clara.
+   */
+  private async supplierOfProducts(productIds: string[]): Promise<{ id: string; name: string } | null> {
+    if (!productIds.length) return null;
+    const ids = productIds.slice(0, 400);
+    const rows = await this.prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, supplierId: true } }).catch(() => [] as any[]);
+    const own = new Map<string, string | null>(rows.map((r: any) => [String(r.id), (r.supplierId as string) || null] as [string, string | null]));
+    const missing = ids.filter((id) => !own.get(id));
+    if (missing.length) {
+      const last = await this.prisma.purchaseItem.findMany({
+        where: { productId: { in: missing }, purchase: { status: 'COMPLETED' } },
+        select: { productId: true, purchase: { select: { supplierId: true, createdAt: true } } },
+        orderBy: { purchase: { createdAt: 'desc' } }, take: 2000,
+      }).catch(() => [] as any[]);
+      for (const l of last) if (!own.get(l.productId)) own.set(l.productId, l.purchase.supplierId);
+    }
+    const best = supplierByProducts(ids.map((id) => own.get(id) || null));
+    if (!best) return null;
+    return (this.prisma as any).supplier.findUnique({ where: { id: best }, select: { id: true, name: true } }).catch(() => null);
+  }
+
+  /**
+   * Fecha de la última compra confirmada de cada producto (la de la boleta si se guardó; si no, la del día
+   * que se cargó). Sin notas de crédito. AAAA-MM-DD por producto.
+   */
+  private async lastBuyDates(productIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const ids = productIds.slice(0, 900);
+    if (!ids.length) return out;
+    const rows = await this.prisma.$queryRawUnsafe<{ pid: string; d: string | null; c: any }[]>(
+      `SELECT pi.product_id AS pid, p.invoice_date AS d, p.created_at AS c FROM purchase_items pi JOIN purchases p ON p.id = pi.purchase_id
+       WHERE p.status = 'COMPLETED' AND (p.doc_type IS NULL OR p.doc_type <> 'nota de credito') AND pi.product_id IN (${ids.map(() => '?').join(',')})`,
+      ...ids,
+    ).catch(() => [] as { pid: string; d: string | null; c: any }[]);
+    for (const r of rows) {
+      let day = cleanDate(r.d);
+      if (!day && r.c !== null && r.c !== undefined) {
+        const t = typeof r.c === 'number' || /^\d+$/.test(String(r.c)) ? Number(r.c) : Date.parse(String(r.c));
+        if (Number.isFinite(t)) { const dt = new Date(t); day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`; }
+      }
+      if (day && (!out.has(r.pid) || day > out.get(r.pid)!)) out.set(r.pid, day);
+    }
+    return out;
+  }
+
+  /**
+   * Avisos de la boleta entera para la revisión (PC, celular y WhatsApp). Cada uno: kind, text y, si se
+   * puede resolver con un toque, action (la pantalla lo muestra como botón).
+   */
+  private async scanNotesFor(ctx: { items: any[]; bonus: ReturnType<typeof applyBonuses>; parsedData: any; supplier: { id: string; name: string } | null; supplierGuessed: { id: string; name: string } | null; invoiceDate: string | null }) {
+    const { items, bonus, parsedData, supplier, supplierGuessed, invoiceDate } = ctx;
+    const notes: { kind: string; text: string; action?: any }[] = [];
+    const money = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
+    const qty = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('es-AR');
+    if (supplierGuessed) notes.push({ kind: 'supplier', text: `La boleta no dice quién la emite: por los productos, es de ${supplierGuessed.name}. Si no, cambialo arriba.` });
+    // Regalos: cuánto stock de regalo vino y cuánto vale (al costo sin regalo)
+    const withFree = items.filter((it) => it.freeUnits > 0);
+    if (withFree.length) {
+      const saved = withFree.reduce((s, it) => s + it.freeUnits * (Number(it.listCost) || 0) * 1.21, 0);
+      const list = withFree.slice(0, 4).map((it) => `${it.product?.name || it.name} +${qty(it.freeUnits)}`).join(', ');
+      notes.push({ kind: 'bonus', text: `Bonificación: ${list}${withFree.length > 4 ? ` y ${withFree.length - 4} más` : ''}. Vale ${money(saved)} que no pagaste: entra al stock y baja el costo de esta compra; el precio de venta no baja.` });
+    }
+    if (bonus.merged.length) notes.push({ kind: 'bonus', text: `Renglones de bonificación sumados a su producto: ${bonus.merged.slice(0, 4).map((m) => `"${m.name}" (${qty(m.units)}) → ${m.into}`).join('; ')}.` });
+    const gifts = items.filter((it) => it.gift);
+    if (gifts.length) notes.push({ kind: 'gift', text: `De regalo: ${gifts.slice(0, 5).map((it) => `${it.product?.name || it.name} x${qty(it.quantity)}`).join(', ')}. Suman stock sin cambiar el costo.` });
+    // Boleta vieja
+    const old = daysOld(invoiceDate);
+    const frozen = items.filter((it) => it.stockOnly);
+    if (frozen.length) {
+      notes.push({ kind: 'old', text: `Boleta del ${fmtDate(invoiceDate)}: ${frozen.length === items.length ? 'todos los productos' : `${frozen.length} productos`} ya tienen una compra más nueva. Suman stock, pero no cambian costo ni precio de venta.`, action: { type: 'updateCosts', label: 'Actualizar costos igual' } });
+    } else if (old !== null && old > 60) {
+      notes.push({ kind: 'old', text: `Ojo: la boleta es del ${fmtDate(invoiceDate)} (hace ${old >= 60 ? `${Math.round(old / 30)} meses` : `${old} días`}). Si ya la cargaste o los precios cambiaron, no la confirmes así.` });
+    } else if (old !== null && old < -2) {
+      notes.push({ kind: 'old', text: `La fecha de la boleta (${fmtDate(invoiceDate)}) es posterior a hoy: revisá que esté bien leída.` });
+    }
+    // Total escrito a mano (faltó algo y lo descontaron)
+    const handTotal = parseArgentineNumber(parsedData.handTotal);
+    const printed = parseArgentineNumber(parsedData.totalFacturaAPagar);
+    if (handTotal > 0 && (!(printed > 0) || Math.abs(handTotal - printed) > 1)) {
+      notes.push({ kind: 'hand', text: `Anotaron a mano un total de ${money(handTotal)}${printed > 0 ? ` (impreso ${money(printed)}, ${money(printed - handTotal)} menos)` : ''}. Revisá los renglones corregidos a mano.`, action: { type: 'handTotal', amount: handTotal, label: `Pagar ${money(handTotal)}` } });
+    }
+    const handLines = items.filter((it) => it.handQuantity !== null && it.handQuantity !== undefined);
+    if (handLines.length) notes.push({ kind: 'hand', text: `${handLines.length === 1 ? 'Un renglón tiene' : `${handLines.length} renglones tienen`} una corrección a mano (faltó mercadería): ${handLines.slice(0, 3).map((it) => `${it.product?.name || it.name}: ${it.handQuantity === 0 ? 'no vino' : `${qty(it.handQuantity)} en vez de ${qty(it.quantity)}`}`).join('; ')}.`, action: { type: 'applyHand', label: 'Usar lo anotado a mano' } });
+    // Descuento o recargo por forma de pago
+    const pago = String(parsedData.descuentoPago || '').trim().slice(0, 80);
+    if (pago) notes.push({ kind: 'payment', text: `La boleta dice "${pago}": fijate si el precio cambia según cómo la pagues (contado o cuenta corriente).` });
+    // Aumentos de esta boleta y los productos del mismo grupo que no vinieron
+    const sum = raiseSummary(items.filter((it) => it.product && !it.stockOnly && !it.gift).map((it) => ({ name: it.product.name, changePct: it.changePct })));
+    if (sum && sum.up) {
+      const group = await this.raiseGroupFor(items, supplier?.id || null).catch(() => [] as any[]);
+      notes.push({
+        kind: 'raise',
+        text: `Aumentos: subieron ${sum.up} producto${sum.up === 1 ? '' : 's'}${sum.up > 1 ? `, en promedio ${String(sum.avgUp).replace('.', ',')}%` : ''} (${sum.top.map((t) => `${t.name} +${String(t.pct).replace('.', ',')}%`).join(', ')}).${sum.down ? ` Bajaron ${sum.down}.` : ''}${group.length ? ` Tenés ${group.length} producto${group.length === 1 ? '' : 's'} más de la misma línea y con el mismo costo que no vinieron en esta boleta.` : ''}`,
+        ...(group.length ? { action: { type: 'raiseGroup', label: `Subir también ${group.length === 1 ? 'ese' : `esos ${group.length}`}`, products: group } } : {}),
+      });
+    }
+    return notes;
+  }
+
+  /**
+   * Productos que no vinieron en la boleta pero son "de la misma línea" que uno que subió: mismo proveedor,
+   * el mismo costo que tenía el que subió y una palabra de marca o línea en común (las 12 Quento a $ 1.700:
+   * llegaron 9, las otras 3 suben igual). Cada uno con el % de su pariente. Máximo 40.
+   */
+  private async raiseGroupFor(items: any[], supplierId: string | null) {
+    const ups = items.filter((it) => it.product && !it.stockOnly && !it.gift && it.changePct !== null && it.changePct >= 2 && it.changePct <= 60 && it.product.costPrice > 0);
+    if (!ups.length) return [];
+    const inInvoice = new Set(items.map((it) => it.product?.id).filter(Boolean));
+    const where: any = { isActive: true, costPrice: { gt: 0 } };
+    if (supplierId) where.supplierId = supplierId;
+    const pool = await this.prisma.product.findMany({ where, select: { id: true, name: true, costPrice: true, salePrice: true }, take: 4000 }).catch(() => [] as any[]);
+    const GENERIC = new Set(['x100', 'x100g', 'sabor', 'clasico', 'clasica', 'pack', 'unidad', 'grande', 'chico', 'mini', 'caja', 'bolsa', 'gramos', 'litro', 'botella', 'lata', 'blister']);
+    const words = (n: string) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !/^\d/.test(w) && !GENERIC.has(w));
+    const out: { id: string; name: string; costPrice: number; salePrice: number; pct: number; from: string }[] = [];
+    const seen = new Set<string>();
+    for (const up of ups) {
+      const oldCost = up.product.costPrice;
+      const w = new Set(words(up.product.name));
+      for (const p of pool) {
+        if (inInvoice.has(p.id) || seen.has(p.id)) continue;
+        if (Math.abs(p.costPrice - oldCost) > Math.max(0.5, oldCost * 0.005)) continue;
+        if (!words(p.name).some((x) => w.has(x))) continue;
+        seen.add(p.id);
+        out.push({ id: p.id, name: p.name, costPrice: p.costPrice, salePrice: p.salePrice, pct: up.changePct, from: up.product.name });
+        if (out.length >= 40) return out;
+      }
+    }
+    return out;
   }
 
   /** Una compra del mismo proveedor con el mismo número de boleta (sin contar las anuladas) */
@@ -1642,11 +1938,14 @@ export class PurchasesService {
       expiresAt?: string; // Vencimiento del lote (productos con control de vencimiento)
       source?: { code?: string; name?: string };
       newProductData?: any;
+      freeUnits?: number;
+      stockOnly?: boolean;
     }[];
     paymentStatus: 'PAID' | 'OWED';
     paymentMethod?: string;
     notes?: string;
     manualTotal?: number;
+    invoiceDate?: string | null;
   }) {
     // Escaneada con la versión nueva (renglones en draft, productos nuevos sin crear): se registra
     // como una compra normal, que crea los productos nuevos, y la pendiente se borra
@@ -1655,6 +1954,8 @@ export class PurchasesService {
     if (draftRow[0].status !== 'PENDING') throw new BadRequestException('Esta compra ya fue confirmada: su stock ya está cargado');
     if (draftRow[0].draft || (data.items || []).some((it: any) => !it.productId)) {
       const purchase = await this.create(data as any);
+      // Las fotos de la boleta siguen con la compra confirmada (que tiene otro id)
+      movePhotos(id, purchase.id);
       await (this.prisma as any).purchaseItem.deleteMany({ where: { purchaseId: id } });
       await (this.prisma as any).purchase.delete({ where: { id } });
       return purchase;
@@ -1725,11 +2026,12 @@ export class PurchasesService {
           const stockAfter = (await tx.product.update({ where: { id: productId }, data: { stock: { increment: totalUnitsAdded } }, select: { stock: true } })).stock;
           const stockBefore = stockAfter - totalUnitsAdded;
 
-          // Update Product Stock, Cost Price and Sale Price (sin precio, como un remito en $ 0: solo stock)
-          const noPrice = !(unitCostWithIva > 0);
-          const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, unitCostWithIva, item.salePrice, priceRound);
+          // Update Product Stock, Cost Price and Sale Price (sin precio, como un remito en $ 0, o boleta vieja: solo stock)
+          const noPrice = !(unitCostWithIva > 0) || !!item.stockOnly;
+          const restockCost = restockUnitCost(unitCostWithIva, item.quantity, asPiece ? 0 : item.freeUnits);
+          const updatedSalePrice = noPrice ? product.salePrice : keepMarginSale(product, restockCost, item.salePrice, priceRound);
           const updateData: any = noPrice ? { ...(product.supplierId ? {} : { supplierId: data.supplierId }), isActive: true } : {
-            costPrice: unitCostWithIva,
+            costPrice: restockCost,
             salePrice: updatedSalePrice,
             ...scaledPrices(product, updatedSalePrice, priceRound),
             ...(product.supplierId ? {} : { supplierId: data.supplierId }),
@@ -1773,6 +2075,8 @@ export class PurchasesService {
       }
 
       if (undo.size) await tx.$executeRawUnsafe(`UPDATE purchases SET undo_info = ? WHERE id = ?`, JSON.stringify({ v: 1, at: Date.now(), rows: [...undo.values()] }), id);
+      const invDate = cleanDate(data.invoiceDate);
+      if (invDate) await tx.$executeRawUnsafe(`UPDATE purchases SET invoice_date = ? WHERE id = ?`, invDate, id);
       return updatedPurchase;
     });
 

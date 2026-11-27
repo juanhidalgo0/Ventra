@@ -103,6 +103,8 @@ function build(p, dupOf, { uid, from, now, status }) {
     return {
       name: it.name, sku: it.sku || null, barcode: it.barcode || null, quantity: it.quantity, unitsPerPack: it.unitsPerPack || 1, cost: it.cost,
       changePct: it.changePct, suggested: it.suggestedSalePrice, product: prod, candidates, reasons,
+      // Regalo (costo del producto sin regalo), regalo de otro producto y boleta vieja (solo stock)
+      freeUnits: Number(it.freeUnits) || 0, listCost: Number(it.listCost) || null, gift: !!it.gift, stockOnly: !!it.stockOnly,
       decision: doubtful ? null : "ok", chosen: doubtful ? null : prod,
     };
   });
@@ -110,6 +112,9 @@ function build(p, dupOf, { uid, from, now, status }) {
   return {
     uid, from, status, at: now,
     supplier: p.matchedSupplier || null, supplierName: p.supplierName || "", invoiceNumber: p.invoiceNumber || "", date: p.date || null, docType: p.docType || null,
+    invoiceDate: p.invoiceDate || null,
+    // Avisos de la boleta (regalos, boleta vieja, correcciones a mano, aumentos): solo el texto
+    notes: (Array.isArray(p.scanNotes) ? p.scanNotes : []).map((n) => String(n.text || "")).filter(Boolean).slice(0, 6),
     duplicate: !!p.duplicate,
     total: (p.invoice && p.invoice.totals && p.invoice.totals.total) || null, check: p.check ? { ok: p.check.ok, message: p.check.message } : null, items,
     // Lo leído tal cual: si elige revisarla en la PC, queda pendiente con esto (sin volver a leerla con IA)
@@ -134,7 +139,7 @@ async function present(deps, id) {
   const items = inv.items;
   const ok = items.filter((it) => it.decision === "ok").length;
   const ask = pending(inv).length;
-  await send(from, `🧾 ${tag}*${inv.supplier ? inv.supplier.name : inv.supplierName || "Proveedor"}*${inv.invoiceNumber ? ` · N° ${inv.invoiceNumber}` : ""}${inv.docType && inv.docType !== "factura" ? ` (${inv.docType})` : ""}: leí *${items.length} renglones*.\n✅ ${ok} los reconocí seguro${ask ? `\n❓ ${ask} te los pregunto de a uno` : ""}${inv.check && inv.check.ok === false ? `\n⚠️ ${inv.check.message}` : ""}${inv.docType === "remito" ? "\nℹ️ Es un remito: los precios suelen venir en la factura. Si ya cargás la factura, salteá este." : ""}`);
+  await send(from, `🧾 ${tag}*${inv.supplier ? inv.supplier.name : inv.supplierName || "Proveedor"}*${inv.invoiceNumber ? ` · N° ${inv.invoiceNumber}` : ""}${inv.docType && inv.docType !== "factura" ? ` (${inv.docType})` : ""}: leí *${items.length} renglones*.\n✅ ${ok} los reconocí seguro${ask ? `\n❓ ${ask} te los pregunto de a uno` : ""}${inv.check && inv.check.ok === false ? `\n⚠️ ${inv.check.message}` : ""}${inv.docType === "remito" ? "\nℹ️ Es un remito: los precios suelen venir en la factura. Si ya cargás la factura, salteá este." : ""}${(inv.notes || []).length ? `\n\n${inv.notes.map((t) => `• ${t}`).join("\n")}` : ""}`);
   // Elige dónde revisarla: acá (preguntas con botones) o en la PC (queda en Compras y la PC avisa)
   return deps.sendButtons(from, `¿Dónde la querés revisar?\n\n*Seguir por acá*: ${ask ? `te pregunto ${ask === 1 ? "el dudoso" : `los ${ask} dudosos`} y` : "te muestro el resumen y"} la confirmás desde el chat.\n*Revisar en la PC*: te queda en Compras, lista para confirmar con la pantalla grande.`, [
     { id: `wv|here|${id}`, title: "Seguir por acá" }, { id: `wv|pc|${id}`, title: "Revisar en la PC" }, { id: `wv|no|${id}`, title: n > 1 ? "Saltear" : "Cancelar" },
@@ -285,16 +290,21 @@ async function act(deps, { action, id, k, productId }) {
       supplierId = s.body.id;
     }
     const items = inv.items.filter((it) => it.decision === "ok" || it.decision === "new").map((it) => {
-      const base = { quantity: it.quantity, cost: it.cost, buyFormat: "UNIT", source: { code: it.sku || undefined, name: it.name } };
+      const free = Number(it.freeUnits) > 0 && it.quantity > Number(it.freeUnits) ? Number(it.freeUnits) : undefined;
+      const base = { quantity: it.quantity, cost: it.cost, buyFormat: "UNIT", source: { code: it.sku || undefined, name: it.name }, ...(free ? { freeUnits: free } : {}) };
       if (it.decision === "ok") {
-        const sale = updatePrices ? (it.chosen.id === (it.product && it.product.id) && it.suggested ? it.suggested : keepMargin(it.chosen, it.cost)) : undefined;
+        // Boleta vieja: solo stock (no cambia costo ni precio)
+        if (it.stockOnly && it.chosen.id === (it.product && it.product.id)) return { ...base, productId: it.chosen.id, stockOnly: true };
+        // Con regalo, el precio sigue el costo sin regalo; un regalo de otro producto no cambia el precio
+        const priceCost = it.listCost || it.cost;
+        const sale = updatePrices && !it.gift ? (it.chosen.id === (it.product && it.product.id) && it.suggested ? it.suggested : keepMargin(it.chosen, priceCost)) : undefined;
         return { ...base, productId: it.chosen.id, ...(sale ? { salePrice: sale } : {}) };
       }
       const sale = it.suggested || roundTo10(it.cost * 1.4);
       return { ...base, newProductData: { name: it.name, barcode: /^\d{8}$|^\d{12,14}$/.test(String(it.barcode || "")) ? it.barcode : undefined, sku: it.sku || undefined, salePrice: sale, taxRate: 21 } };
     });
     const [r] = await api.call(uid, [{ method: "POST", path: "/api/purchases", body: {
-      supplierId, invoiceNumber: inv.invoiceNumber || undefined, paymentStatus: "OWED", ...(inv.total ? { manualTotal: inv.total } : {}),
+      supplierId, invoiceNumber: inv.invoiceNumber || undefined, invoiceDate: inv.invoiceDate || undefined, paymentStatus: "OWED", ...(inv.total ? { manualTotal: inv.total } : {}),
       notes: `Cargada por WhatsApp desde la foto de la boleta${updatePrices ? "" : " (sin cambiar precios de venta)"}.`, items,
     } }]);
     if (r.status >= 300) throw new Error(errorOf(r));

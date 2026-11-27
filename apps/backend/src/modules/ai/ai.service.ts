@@ -38,7 +38,7 @@ export class AiService {
 
   async call(kind: 'order' | 'invoice' | 'pricelist' | 'match' | 'ask' | 'agent' | 'help' | 'gocats' | 'lesson' | 'organize', body: Record<string, unknown>, opts: { timeoutMs?: number } = {}): Promise<{ result: any; left: number; leftToday?: number; limits?: { daily: number; monthly: number } }> {
     const creds = this.subscription.getDeviceCredentials();
-    if (!creds) throw new BadRequestException('La IA necesita esta PC vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
+    if (!creds) throw new BadRequestException('La IA necesita esta PC vinculada a tu cuenta de Ventra (Configuración → Plan y nube).');
     try {
       const { data } = await axios.post(`${FUNCTIONS_URL}/ventraAi`, { ...creds, kind, ...body }, { timeout: opts.timeoutMs ?? 150_000, maxBodyLength: 40_000_000 });
       return { result: data.result, left: data.left, leftToday: data.leftToday, limits: data.limits };
@@ -119,7 +119,7 @@ export class AiService {
    */
   async whatsapp(action: 'status' | 'code' | 'unlink' | 'summary' | 'supervisors', user: { sub?: string; role?: string }, extra: Record<string, unknown> = {}) {
     const creds = this.subscription.getDeviceCredentials();
-    if (!creds) throw new BadRequestException('Para preguntar por WhatsApp, esta PC tiene que estar vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
+    if (!creds) throw new BadRequestException('Para preguntar por WhatsApp, esta PC tiene que estar vinculada a tu cuenta de Ventra (Configuración → Plan y nube).');
     // Quién pide: el dueño o un encargado (cada uno vincula su propio teléfono)
     const u = user?.sub ? await this.prisma.user.findUnique({ where: { id: user.sub }, select: { fullName: true, username: true } }) : null;
     try {

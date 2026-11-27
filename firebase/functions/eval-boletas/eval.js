@@ -8,6 +8,9 @@
 //   node eval-boletas/eval.js --fabricadas            boletas fabricadas (se generan si faltan)
 //   node eval-boletas/eval.js --muestras --bajar      baja las muestras confirmadas (solo lectura) y las evalúa
 //   node eval-boletas/eval.js --muestras --leyo-mal   solo las marcadas "Leyó mal" (primero que nada)
+//   node eval-boletas/eval.js --reales                fotos reales de comercios con su respuesta escrita a mano
+//                                                    (.boletas-eval/reales/<caso>.json + sus fotos; fuera de git:
+//                                                    son boletas de clientes). Bonificaciones, Dto., ######, a mano.
 //   opciones: --tope 20 (máximo de hojas), --solo factura-a (filtro), --si (no pregunta el costo),
 //             --base (guarda esta corrida como línea de base)
 //
@@ -24,7 +27,7 @@ const cmp = require("./compare");
 const fab = require("./fabricadas");
 
 const ROOT = path.resolve(__dirname, "../../../.boletas-eval");
-const DIRS = { fabricadas: path.join(ROOT, "fabricadas"), muestras: path.join(ROOT, "muestras"), corridas: path.join(ROOT, "corridas") };
+const DIRS = { fabricadas: path.join(ROOT, "fabricadas"), muestras: path.join(ROOT, "muestras"), corridas: path.join(ROOT, "corridas"), reales: path.join(ROOT, "reales") };
 /** Costo estimado por hoja (dólares): Haiku casi siempre; las que no cierran escalan a Sonnet u Opus */
 const EST = { usual: 0.01, worst: 0.12 };
 
@@ -37,6 +40,15 @@ async function ask(q) {
   const a = await new Promise((r) => rl.question(q, r));
   rl.close();
   return /^s/i.test(String(a).trim());
+}
+
+/** Boletas reales: { files: ["foto.jpg"], supplier, expected } por caso, con las fotos en la misma carpeta */
+function reales() {
+  if (!fs.existsSync(DIRS.reales)) return [];
+  return fs.readdirSync(DIRS.reales).filter((f) => f.endsWith(".json")).sort().map((f) => {
+    const c = JSON.parse(fs.readFileSync(path.join(DIRS.reales, f), "utf8"));
+    return { id: f.replace(/\.json$/, ""), files: (c.files || []).map((x) => path.join(DIRS.reales, x)), expected: c.expected, supplier: c.supplier || (c.expected && c.expected.supplierName) || "sin proveedor" };
+  }).filter((c) => c.files.length && c.files.every((x) => fs.existsSync(x)));
 }
 
 /** Boletas fabricadas: cada foto (limpia o arruinada) con su respuesta correcta */
@@ -122,10 +134,10 @@ async function readCase(client, c) {
 }
 
 async function main() {
-  const set = (flag("--muestras") ? "muestras" : "fabricadas") + (flag("--simulada") ? "-simulada" : "");
+  const set = (flag("--muestras") ? "muestras" : flag("--reales") ? "reales" : "fabricadas") + (flag("--simulada") ? "-simulada" : "");
   const real = set.replace("-simulada", "");
   if (real === "muestras" && flag("--bajar")) await bajarMuestras();
-  let cases = real === "muestras" ? muestras(flag("--leyo-mal")) : await fabricadas();
+  let cases = real === "muestras" ? muestras(flag("--leyo-mal")) : real === "reales" ? reales() : await fabricadas();
   const solo = opt("--solo");
   if (solo) cases = cases.filter((c) => c.id.startsWith(solo));
   const tope = Number(opt("--tope")) || 0;
@@ -151,7 +163,7 @@ async function main() {
     });
     return report(set, real, results, `recalculada de ${last}`);
   }
-  if (!pages) return console.log(real === "muestras" ? "No hay muestras confirmadas bajadas (usá --bajar; ¿está prendido ventra_config/invoiceSamples?)." : "No hay boletas fabricadas.");
+  if (!pages) return console.log(real === "muestras" ? "No hay muestras confirmadas bajadas (usá --bajar; ¿está prendido ventra_config/invoiceSamples?)." : real === "reales" ? `No hay boletas reales en ${DIRS.reales}.` : "No hay boletas fabricadas.");
   const simulated = flag("--simulada");
   const key = String(process.env.VENTRA_ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY || "").trim();
   if (!key && !simulated) {
@@ -204,6 +216,8 @@ function report(set, real, results, note) {
   console.log(`\nBoletas perfectas: ${o.perfect} de ${o.pages} (${o.perfectPct}%). Sin leer: ${o.failed}.`);
   console.log(`Encabezado: CUIT ${o.header.cuit}% · número ${o.header.number}% · fecha ${o.header.date}% · total ${o.header.total}%`);
   console.log(`Renglones: cantidad ${o.fields.quantity}% · unid. por bulto ${o.fields.unitsPerPack}% · costo ${o.fields.cost}% · código ${o.fields.code}% · faltan ${o.missingLines}% · de más ${o.extraLines}`);
+  // Bonificaciones y correcciones a mano (solo cuentan en las boletas que las tienen)
+  if (o.fields.bonus !== null || o.fields.hand !== null || o.header.handTotal !== null) console.log(`Regalos detectados ${o.fields.bonus ?? "-"}% · correcciones a mano ${o.fields.hand ?? "-"}% · total escrito a mano ${o.header.handTotal ?? "-"}%`);
   console.log(`Costo US$ ${o.costUsd} · escaló a Sonnet ${o.sonnet} veces, a Opus ${o.opus}`);
   if (summary.byKind) console.log(`Por foto: ${Object.entries(summary.byKind).map(([k, v]) => `${k} ${v.perfectPct}%`).join(" · ")}`);
   console.log("\nPor proveedor (peor primero):");

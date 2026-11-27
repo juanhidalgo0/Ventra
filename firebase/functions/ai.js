@@ -220,7 +220,19 @@ const INVOICE_ONE_PROMPT = `${INVOICE_PROMPT}
 22. "condicionVenta": "contado" si dice contado, efectivo o "retirada por cliente" pagada; "cuenta corriente" si dice cuenta corriente, a plazo o con vencimiento de pago; vacío si no lo dice.
 23. Leyendas impresas debajo de un producto que no son parte del nombre ("Venta por cuenta y orden de Terceros", "Oferta", "Precio sugerido") no van en "name".
 24. "fotoLegible": "si" si podés leer todos los renglones con seguridad; "en partes" si alguna zona no se lee bien (oscura, movida, borrosa, con reflejo, doblada o cortada) pero el resto sí; "no" si no se puede leer el detalle de productos. "problemaFoto": si no es "si", qué pasa y dónde, en pocas palabras para el comerciante ("la parte de abajo está cortada: falta el total", "está movida a la derecha: no se leen los precios"); si no, vacío. No inventes lo que no se ve: si un número no se lee, mejor marcá la foto "en partes".
-25. "precios": "sin iva" si los precios de los renglones NO incluyen IVA y el IVA se suma aparte (factura A, columna "Precio sin IVA" o renglón "IVA 21%" al pie con importe); "finales" si los precios ya son lo que se paga (factura B o C, ticket, lista o presupuesto sin IVA aparte, "IVA contenido", "Exento", IVA 0,00); vacío si no se puede saber.`;
+25. "precios": "sin iva" si los precios de los renglones NO incluyen IVA y el IVA se suma aparte (factura A, columna "Precio sin IVA" o renglón "IVA 21%" al pie con importe); "finales" si los precios ya son lo que se paga (factura B o C, ticket, lista o presupuesto sin IVA aparte, "IVA contenido", "Exento", IVA 0,00); vacío si no se puede saber.
+27. BONIFICACIÓN EN UNIDADES (mercadería de regalo). "packageQuantity" es SIEMPRE lo que se cobra; las unidades de regalo van aparte en "bonusUnits" (en unidades sueltas, ya multiplicadas por la cantidad del renglón):
+   - En el mismo renglón: "TULIPAN EXHIBIDOR 24+2u" x 1 → packageQuantity 1, unitsPerPack 24, bonusUnits 2. "COCA 2,25 12+1" x 3 → packageQuantity 3, unitsPerPack 12, bonusUnits 3. Una columna "Bonif." o "Sin cargo" con unidades (no %) también va en bonusUnits.
+   - En un renglón aparte en $ 0, con 100% de descuento, o que dice BONIF, BONIFICADO, SIN CARGO, S/C, REGALO u OBSEQUIO: va como renglón propio con total "0", "isBonus" "si" y su cantidad en packageQuantity. Si es el mismo producto que otro renglón que se cobra, en "bonusOf" poné el nombre de ESE renglón tal cual lo escribiste; si es otro producto (te regalan algo distinto), "bonusOf" vacío.
+   - Un renglón en $ 0 que no es mercadería de regalo ("PEDIDO AC DIGITAL", un cambio, un envase devuelto): "isBonus" "no".
+   - En cualquier otro renglón: bonusUnits 0, isBonus "no", bonusOf vacío.
+28. DESCUENTO POR RENGLÓN: si hay una columna "Dto.", "Desc.", "Bonif. %" o "%", poné ese porcentaje en "discountPct" ("12,00"); si no hay, vacío. El control de la línea pasa a ser cantidad × precio × (1 − descuento/100) = importe. Si además hay una columna de precio final por unidad ("Uni. Final", "P. Final", "Neto unit."), ponelo en "finalUnitPrice" tal cual; si no, vacío.
+29. Si hay DOS columnas de precio (por ejemplo "Unitario" y "Precio") y no dicen lo mismo, "unitPrice" es la que multiplicada por la cantidad da el importe de la línea: la otra puede tener un error de tipeo (277,75 en vez de 2.777,50).
+30. Importe tapado: si el importe de la línea no entra en la celda y sale "######" (o "***"), calculalo vos: cantidad × precio (con el descuento de la regla 28 si hay). Lo mismo para el total del pie si sale "######": dejalo vacío.
+31. CORRECCIONES A MANO de un renglón (faltó mercadería o la cobraron mal): si tacharon la cantidad impresa y escribieron otra, o anotaron al lado un importe a restar ("-28860") o "faltan 10", NO cambies lo impreso. Poné la cantidad que quedaría en "handQty" (si tacharon 20 y escribieron 10, 10; si restaron 28.860 a un renglón de 20 a 2.888,60, 10) y en "handNote" lo que escribieron, corto ("-28.860", "20 tachado, dice 10"). Si anotaron que el renglón entero no vino ("faltó", "falta", "no vino", "no llegó"), handQty 0 y handNote "faltó". Si no hay corrección, handQty 0 y handNote vacío. Un tilde, una raya o un resaltado NO son correcciones.
+32. "handTotal": si escribieron a mano un total final distinto del impreso ("TOTAL = 1400246", el total menos lo que faltó), ese número; si no, vacío.
+33. "descuentoPago": si la boleta dice un descuento o recargo por forma de pago ("Salón 5% contado", "10% pago efectivo", "Recargo 3% tarjeta"), copiá esa leyenda corta tal cual; si no, vacío.
+34. UBICACIÓN EN LA FOTO (para mostrarle al comerciante el pedacito de foto de cada renglón): "giro" son los grados que hay que girar la foto, en el sentido de las agujas del reloj, para que el texto quede derecho (0 si ya se lee derecha; 90 si está acostada con el texto subiendo; 270 si está acostada con el texto bajando; 180 si está cabeza abajo). En cada renglón, "rowBox" es el rectángulo que ocupa ese renglón EN LA FOTO TAL CUAL LLEGA (sin girarla): [izquierda, arriba, derecha, abajo] en milésimos del ancho y del alto de la foto (de 0 a 1000). Que abarque de la cantidad al importe de ese renglón y nada de los de al lado. Si no podés ubicarlo, [].`;
 const INVOICE_ONE_SCHEMA = {
   ...INVOICE_SCHEMA,
   properties: {
@@ -235,16 +247,28 @@ const INVOICE_ONE_SCHEMA = {
     problemaFoto: { type: "string" },
     precios: { type: "string", enum: ["sin iva", "finales", ""] },
     impuestosInternos: { type: "string" },
+    handTotal: { type: "string" },
+    descuentoPago: { type: "string" },
+    giro: { type: "integer", enum: [0, 90, 180, 270] },
     items: {
       type: "array",
       items: {
         ...INVOICE_SCHEMA.properties.items.items,
-        properties: { ...INVOICE_SCHEMA.properties.items.items.properties, unitPrice: { type: "string" }, handPrice: { type: "string" } },
-        required: [...INVOICE_SCHEMA.properties.items.items.required, "unitPrice", "handPrice"],
+        properties: {
+          ...INVOICE_SCHEMA.properties.items.items.properties,
+          unitPrice: { type: "string" }, handPrice: { type: "string" },
+          // Bonificaciones, descuento por renglón y correcciones a mano (reglas 27 a 31)
+          bonusUnits: { type: "number" }, isBonus: { type: "string", enum: ["si", "no"] }, bonusOf: { type: "string" },
+          discountPct: { type: "string" }, finalUnitPrice: { type: "string" },
+          handQty: { type: "number" }, handNote: { type: "string" },
+          // Dónde está el renglón en la foto (regla 34), para mostrar el recorte al revisar
+          rowBox: { type: "array", items: { type: "number" } },
+        },
+        required: [...INVOICE_SCHEMA.properties.items.items.required, "unitPrice", "handPrice", "bonusUnits", "isBonus", "bonusOf", "discountPct", "finalUnitPrice", "handQty", "handNote", "rowBox"],
       },
     },
   },
-  required: [...INVOICE_SCHEMA.required, "docType", "pageNumber", "pageCount", "ivaTotal", "otrosImpuestos", "condicionVenta", "fotoLegible", "problemaFoto", "precios", "impuestosInternos"],
+  required: [...INVOICE_SCHEMA.required, "docType", "pageNumber", "pageCount", "ivaTotal", "otrosImpuestos", "condicionVenta", "fotoLegible", "problemaFoto", "precios", "impuestosInternos", "handTotal", "descuentoPago", "giro"],
 };
 
 /**
@@ -257,7 +281,14 @@ function lineOk(it) {
   const tol = Math.max(1, Math.abs(t) * 0.01);
   // A veces el precio impreso es por unidad y la cantidad en bultos (o al revés): también vale
   const upp = Number(it.unitsPerPack) || 1;
-  return Math.abs(q * u - t) <= tol || (upp > 1 && Math.abs(q * upp * u - t) <= tol);
+  // Descuento del renglón (columna Dto. de Lamadrid: 5%, 12%…): el importe ya viene con el descuento
+  const d = num(it.discountPct);
+  const f = d > 0 && d < 100 ? 1 - d / 100 : 1;
+  const fits = (price) => Math.abs(q * price - t) <= tol || (upp > 1 && Math.abs(q * upp * price - t) <= tol);
+  if (fits(u) || (f !== 1 && fits(u * f))) return true;
+  // Precio final por unidad impreso (Uni. Final, con descuento y a veces con IVA): otra forma de cerrar
+  const fin = num(it.finalUnitPrice);
+  return fin > 0 && (fits(fin) || fits(fin / 1.21));
 }
 
 /**
@@ -336,7 +367,12 @@ const num = (s) => {
   let t = String(s == null ? "" : s).replace(/[^\d.,-]/g, "");
   if (!t) return 0;
   if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
-  else if (t.includes(",")) t = /,\d{1,2}$/.test(t) ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  // Solo coma: decimal ("1349,484" de Lamadrid trae 3 decimales; antes daba 1.349.484). Varias comas =
+  // miles, salvo que el último grupo no tenga 3 cifras. Igual que parseArNumber de la caja.
+  else if (t.includes(",")) {
+    const g = t.split(",");
+    t = g.length === 2 ? t.replace(",", ".") : g[g.length - 1].length === 3 ? g.join("") : `${g.slice(0, -1).join("")}.${g[g.length - 1]}`;
+  }
   else if ((t.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(t)) t = t.replace(/\./g, "");
   const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
@@ -395,7 +431,8 @@ const lineKey = (it) => `${String(it.name || "").toLowerCase().replace(/[^a-z0-9
 function joinTramos(pages) {
   const out = [];
   for (const p of pages) {
-    const cur = p.items || [];
+    // Cada renglón sabe de qué foto salió (para mostrar su recorte al revisar)
+    const cur = (p.items || []).map((it) => (it && it.image === undefined && Number.isInteger(p.image) ? { ...it, image: p.image } : it));
     let k = 0;
     if (p.tramo) {
       for (let n = Math.min(4, out.length, cur.length); n > 0; n--) {
@@ -478,6 +515,8 @@ function groupInvoicePages(reads) {
       condicionVenta: pick("condicionVenta"), precios: pick("precios"),
       totalFacturaAPagar: footer.totalFacturaAPagar || "", subtotalNeto: withSub && footer === withTotal ? withSub.subtotalNeto : "",
       ivaTotal: footer.ivaTotal || "", otrosImpuestos: footer.otrosImpuestos || "", impuestosInternos: footer.impuestosInternos || "",
+      // Total escrito a mano (lo impreso menos lo que faltó) y leyenda de descuento por forma de pago
+      handTotal: footer.handTotal || pick("handTotal"), descuentoPago: pick("descuentoPago"),
       missingPageNumbers,
       rawTableTranscription: pages.map((p) => p.rawTableTranscription || "").join("\n\n"),
       items: joinTramos(pages),
@@ -491,6 +530,8 @@ function groupInvoicePages(reads) {
       unsureLines: pages.flatMap((p) => p.unsureLines || []),
       // Muestras guardadas de estas hojas (invoice-samples.js): la caja las confirma con lo que quedó
       sampleIds: pages.map((p) => p.sampleId).filter(Boolean),
+      // Cuánto girar cada foto para leerla derecha (mismo orden que images)
+      turns: pages.map((p) => ([90, 180, 270].includes(Number(p.giro)) ? Number(p.giro) : 0)),
       // QR de ARCA leído en alguna hoja: CUIT, número, fecha, importe y tipo exactos
       qr: (pages.find((p) => p.qr) || {}).qr || null,
     };
@@ -595,7 +636,7 @@ async function lessonHints(ctx, cuits) {
  * Una foto que no se puede leer vuelve con error y el motivo para el comerciante ("está muy oscura…").
  */
 async function readInvoicePage(client, img, i, anchor, addUsage, more = null) {
-  const r = await readInvoicePageCore(client, img, i, anchor, addUsage, more);
+  const r = await readUpright(client, img, i, anchor, addUsage, more);
   if (r.error) return r;
   const legible = r.fotoLegible || "si";
   const issue = String(r.problemaFoto || "").trim().slice(0, 200);
@@ -604,7 +645,71 @@ async function readInvoicePage(client, img, i, anchor, addUsage, more = null) {
   return legible === "si" ? r : { ...r, photoIssue: issue || "Hay partes de la foto que no se leen bien" };
 }
 
-async function readInvoicePageCore(client, img, i, baseAnchor, addUsage, more = null) {
+/**
+ * Foto acostada o cabeza abajo (2026-11-26, boleta real de Lamadrid): leída así, Haiku no cargó ningún
+ * renglón; enderezada, leyó los 37 y cerró con el total. Primero una lectura rápida (sin relecturas): si
+ * dice que hay que girarla, se gira y se lee derecha. La IA puede errar el sentido (dijo 90° y eran 270°):
+ * la lectura de la foto girada vuelve a decir cuánto falta y se corrige una vez. Los rectángulos de cada
+ * renglón vuelven a la foto original y "giro" queda como el giro de la foto original (para los recortes).
+ */
+async function readUpright(client, img, i, anchor, addUsage, more = null) {
+  const turned = (r) => r && !r.error && [90, 180, 270].includes(Number(r.giro));
+  const first = await readInvoicePageCore(client, img, i, anchor, addUsage, more, { quick: true });
+  if (!turned(first) || !first.needsTurn) {
+    if (first && first.needsTurn !== undefined) delete first.needsTurn;
+    return first;
+  }
+  let g = Number(first.giro);
+  let upright = null;
+  try {
+    let rot = await rotateBlock(img, g);
+    upright = await readInvoicePageCore(client, rot, i, anchor, addUsage, more, { quick: true });
+    if (turned(upright) && upright.needsTurn) {
+      // Todavía no está derecha (la IA erró el sentido): se corrige con lo que dice ahora, una sola vez
+      g = (g + Number(upright.giro)) % 360;
+      if (g === 0) return readInvoicePageCore(client, img, i, anchor, addUsage, more);
+      rot = await rotateBlock(img, g);
+      upright = await readInvoicePageCore(client, rot, i, anchor, addUsage, more);
+    }
+    // Derecha al primer intento: la lectura rápida ya siguió con las relecturas de siempre (no se repite)
+  } catch {
+    upright = null;
+  }
+  // Si derecha salió peor (sin renglones), la original con las relecturas de siempre
+  if (!upright || upright.error || !(upright.items || []).length) return readInvoicePageCore(client, img, i, anchor, addUsage, more);
+  const { needsTurn: _n, ...clean } = upright;
+  return {
+    ...clean,
+    giro: g,
+    rotated: g,
+    items: (upright.items || []).map((it) => ({ ...it, rowBox: unrotateBox(it.rowBox, g) })),
+  };
+}
+
+/** Gira la foto (bloque de imagen de Claude) g grados en el sentido del reloj. */
+async function rotateBlock(img, g) {
+  const sharp = require("sharp");
+  const src = img && img.source;
+  if (!src || src.type !== "base64") throw new Error("foto sin datos");
+  const buf = await sharp(Buffer.from(src.data, "base64")).rotate(g).jpeg({ quality: 88 }).toBuffer();
+  return { ...img, source: { ...src, media_type: "image/jpeg", data: buf.toString("base64") } };
+}
+
+/**
+ * Rectángulo de un renglón leído en la foto girada g° → el mismo rectángulo en la foto original (en
+ * milésimos). Pura. Si no viene bien, [].
+ */
+function unrotateBox(box, g) {
+  if (!Array.isArray(box) || box.length !== 4) return [];
+  const [a, b, c, d] = box.map(Number);
+  if (![a, b, c, d].every(Number.isFinite)) return [];
+  if (g === 90) return [b, 1000 - c, d, 1000 - a];
+  if (g === 270) return [1000 - d, a, 1000 - b, c];
+  if (g === 180) return [1000 - c, 1000 - d, 1000 - a, 1000 - b];
+  return [a, b, c, d];
+}
+
+async function readInvoicePageCore(client, img, i, baseAnchor, addUsage, more = null, opts = {}) {
     let first;
     let anchor = baseAnchor;
     try {
@@ -615,8 +720,26 @@ async function readInvoicePageCore(client, img, i, baseAnchor, addUsage, more = 
       // Una foto que no se pudo leer no tira abajo las demás
       return { image: i, error: err.message || "No se pudo leer", items: [] };
     }
+    // Lectura rápida para saber si está derecha: si hay que girarla, no se gastan relecturas en la foto torcida
+    if (opts.quick) {
+      if ([90, 180, 270].includes(Number(first.giro))) return { ...first, needsTurn: true };
+      first.needsTurn = false;
+    }
     const f1 = readFlaws(first);
-    if (!(first.items || []).length) return first;
+    if (!(first.items || []).length) {
+      // Haiku no se animó con ningún renglón pero la foto se puede leer "en partes": prueba el modelo fuerte
+      // (antes se rendía ahí y la boleta quedaba vacía)
+      if (first.fotoLegible !== "en partes") return first;
+      try {
+        const { read, usage: u } = await readInvoiceImages(client, [img], { model: INVOICE_STRONG_MODEL, effort: "high", hint: `${anchor}\n\nOjo: una lectura anterior no cargó ningún renglón porque la letra es chica. Leé con cuidado fila por fila y cargá todos los que se puedan leer; marcá "en partes" solo lo que de verdad no se ve.` });
+        addUsage(u);
+        const strong = { image: i, ...read };
+        readFlaws(strong);
+        return (strong.items || []).length ? { ...strong, reread: true, verified: invoiceCloses(strong) === true ? "total" : "no" } : first;
+      } catch {
+        return first;
+      }
+    }
     // Proveedor que este comercio no tenía: sus lecciones (de otros comercios) entran en la relectura
     if (more) anchor += await more(first.supplierCuit).catch(() => "");
     if (f1.score === 0 && f1.closes === true) return { ...first, verified: "total" };
@@ -719,7 +842,7 @@ function finishInvoices(reads, usage = {}) {
 }
 
 // Hojas leídas que manda la caja para juntarlas (stage "group"): solo lo que hace falta, con topes
-const READ_KEYS = ["image", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "subtotalNeto", "ivaTotal", "otrosImpuestos", "impuestosInternos", "condicionVenta", "precios",
+const READ_KEYS = ["image", "supplierName", "supplierCuit", "invoiceNumber", "date", "totalFacturaAPagar", "subtotalNeto", "ivaTotal", "otrosImpuestos", "impuestosInternos", "condicionVenta", "precios", "handTotal", "descuentoPago", "giro",
   "docType", "pageNumber", "pageCount", "verified", "reread", "unsureLines", "photoIssue", "error", "unreadable", "rawTableTranscription", "items", "sampleId", "qr"];
 function cleanReads(reads) {
   return (Array.isArray(reads) ? reads : []).slice(0, 200).map((r, k) => {
@@ -1368,4 +1491,4 @@ async function handle({ db, logger, apiKey, client: injected, sql, edits, images
   return { result: out.result, left: LIMITS[kind] - used - need, leftToday: DAILY[kind] - usedToday - need, limits: { daily: DAILY[kind], monthly: LIMITS[kind] } };
 }
 
-module.exports = { handle, AiError, applyQr, cleanQr, fixCuit, validCuitDigits, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES, photosCount };
+module.exports = { handle, AiError, unrotateBox, applyQr, cleanQr, fixCuit, validCuitDigits, joinTramos, isTramo, readInvoicePage, anthropicClient, MODEL, groupInvoicePages, invoiceCloses, parseInvoices, finishInvoices, cleanReads, invoicePage, PAGE_LIMITS, lineOk, INVOICE_ONE_PROMPT, LIMITS, DAILY, catalogText, imageBlocks, ASK_QUERIES, ASK_QUERIES_WA, GO_CATEGORIES, photosCount };

@@ -62,7 +62,7 @@ export class GatewayTransport implements ArcaTransport {
   private creds() {
     const creds = this.device();
     if (!creds) {
-      throw new ArcaError('CONFIG', 'Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Suscripción y nube para facturar.', 'NOT_LINKED');
+      throw new ArcaError('CONFIG', 'Esta PC no está vinculada a tu cuenta de Ventra: vinculala en Configuración → Plan y nube para facturar.', 'NOT_LINKED');
     }
     return creds;
   }

@@ -252,6 +252,76 @@ const t = async (name, fn) => { try { await fn(); ok++; console.log(`ok    ${nam
     assert.strictEqual(ai.lineOk({ packageQuantity: 3, unitPrice: "17.813,42", total: "35.626,84" }), false, "3 piezas pero se cobra por 2 kg");
     assert.strictEqual(ai.lineOk({ packageQuantity: 2, unitPrice: "", total: "100" }), null);
   });
+  await t("control de cada renglón con descuento por renglón y precio final (Lamadrid, 2026-11-26)", async () => {
+    // 3 GALL. SMAMS a 1.349,484 con 5% = 3.846,03; Uni.Final 1.551,232 (con descuento e IVA)
+    assert.strictEqual(ai.lineOk({ packageQuantity: 3, unitPrice: "1349,484", discountPct: "5,00", total: "3846,03" }), true);
+    assert.strictEqual(ai.lineOk({ packageQuantity: 3, unitPrice: "1349,484", discountPct: "", finalUnitPrice: "1551,232", total: "3846,03" }), true, "por el precio final con IVA");
+    // 6 VODKA a 1.923,686 con 12% = 10.157,06
+    assert.strictEqual(ai.lineOk({ packageQuantity: 6, unitPrice: "1923,686", discountPct: "12,00", total: "10157,06" }), true);
+    assert.strictEqual(ai.lineOk({ packageQuantity: 5, unitPrice: "1923,686", discountPct: "12,00", total: "10157,06" }), false, "cantidad mal leída");
+    // Regalo aparte: la cantidad que se paga cierra con el precio (24+2u x 1)
+    assert.strictEqual(ai.lineOk({ packageQuantity: 1, unitsPerPack: 24, bonusUnits: 2, unitPrice: "35300,40", total: "35300,40" }), true);
+  });
+  await t("foto acostada: se endereza antes de leer, aunque la IA erre el sentido (Lamadrid real, 2026-11-26)", async () => {
+    const sharp = require("../functions/node_modules/sharp");
+    // Una "foto" apaisada de 40x20: derecha sería de 20x40
+    const data = (await sharp({ create: { width: 40, height: 20, channels: 3, background: "#ffffff" } }).jpeg().toBuffer()).toString("base64");
+    const [img] = ai.imageBlocks([{ mediaType: "image/jpeg", data }]);
+    const sizes = [];
+    const answers = [
+      read({ giro: 90, fotoLegible: "en partes", items: [] }),                    // acostada: dice 90 (y eran 270)
+      read({ giro: 180, fotoLegible: "si", items: [] }),                          // girada 90 quedó cabeza abajo
+      read({ giro: 0, fotoLegible: "si", totalFacturaAPagar: "300", subtotalNeto: "300", items: [{ ...it("GALLETITAS", 3, "300"), unitPrice: "100", rowBox: [100, 200, 900, 230] }] }),
+    ];
+    let n = 0;
+    const client = { messages: { stream: (req) => {
+      const b = req.messages[0].content.find((x) => x.type === "image");
+      const ans = answers[Math.min(n++, answers.length - 1)];
+      return { finalMessage: async () => {
+        const m = await sharp(Buffer.from(b.source.data, "base64")).metadata();
+        sizes.push(`${m.width}x${m.height}`);
+        return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(ans) }], usage: { input_tokens: 10, output_tokens: 10 } };
+      } };
+    } } };
+    const r = await ai.readInvoicePage(client, img, 0, "", () => {}, null);
+    assert.strictEqual(r.items.length, 1, "leyó los renglones de la foto derecha");
+    assert.strictEqual(r.giro, 270, "90 que dijo + 180 que faltaba = 270");
+    assert.deepStrictEqual(sizes, ["40x20", "20x40", "20x40"], "la segunda y la tercera lectura van con la foto girada");
+    assert.strictEqual(n, 3, "sin relecturas de más");
+    // El renglón vuelve a la foto original (girada 270: x = 1000 - y, y = x)
+    assert.deepStrictEqual(r.items[0].rowBox, [770, 100, 800, 900]);
+    assert.strictEqual(r.needsTurn, undefined);
+  });
+  await t("rectángulos de renglón: de la foto girada a la original, ida y vuelta", async () => {
+    // Girar 90 y volver con 270 (o 180 dos veces) deja el mismo rectángulo
+    const box = [100, 200, 900, 230];
+    const rot90 = (b) => [1000 - b[3], b[0], 1000 - b[1], b[2]]; // dónde queda en la foto girada 90°
+    assert.deepStrictEqual(ai.unrotateBox(rot90(box), 90), box);
+    assert.deepStrictEqual(ai.unrotateBox(ai.unrotateBox(box, 180), 180), box);
+    assert.deepStrictEqual(ai.unrotateBox(box, 0), box);
+    assert.deepStrictEqual(ai.unrotateBox([], 90), []);
+  });
+  await t("foto derecha: una sola pasada, sin lecturas de más por el giro", async () => {
+    const client = fakeClient(read({ giro: 0, totalFacturaAPagar: "300", subtotalNeto: "300", items: [{ ...it("GALLETITAS", 3, "300"), unitPrice: "100", rowBox: [100, 200, 900, 230] }] }));
+    const [img] = ai.imageBlocks([{ mediaType: "image/jpeg", data: Buffer.from("x").toString("base64") }]);
+    const r = await ai.readInvoicePage(client, img, 0, "", () => {}, null);
+    assert.strictEqual(client.calls.length, 1);
+    assert.strictEqual(r.items.length, 1);
+    assert.strictEqual(r.needsTurn, undefined);
+  });
+  await t("Haiku no carga ningún renglón de una foto difícil: la lee Sonnet en vez de rendirse", async () => {
+    const calls = [];
+    const client = { messages: { stream: (req) => { calls.push(req.model); const strong = req.model.includes("sonnet");
+      const ans = strong ? read({ giro: 0, fotoLegible: "en partes", totalFacturaAPagar: "300", subtotalNeto: "300", items: [{ ...it("GALLETITAS", 3, "300"), unitPrice: "100" }] }) : read({ giro: 0, fotoLegible: "en partes", items: [] });
+      return { finalMessage: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(ans) }], usage: { input_tokens: 10, output_tokens: 10 } }) }; } } };
+    const [img] = ai.imageBlocks([{ mediaType: "image/jpeg", data: Buffer.from("x").toString("base64") }]);
+    const r = await ai.readInvoicePage(client, img, 0, "", () => {}, null);
+    assert.strictEqual(r.items.length, 1);
+    assert.ok(calls.some((m) => m.includes("sonnet")), "pidió el modelo fuerte");
+  });
+  await t("el prompt pide bonificaciones, descuento por renglón, ###### y correcciones a mano", async () => {
+    for (const k of ["bonusUnits", "isBonus", "bonusOf", "discountPct", "finalUnitPrice", "handQty", "handNote", "handTotal", "descuentoPago", "######"]) assert.ok(ai.INVOICE_ONE_PROMPT.includes(k), k);
+  });
 
   await t("hoja sin total y dos lecturas distintas (fila corrida): decide el modelo fuerte; si no coincide con ninguna, queda marcada", async () => {
     const L = (name, q, p) => ({ ...it(name, q, `${q * p}`), unitPrice: `${p}` });

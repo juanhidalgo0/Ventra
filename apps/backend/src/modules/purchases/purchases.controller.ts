@@ -1,4 +1,6 @@
-import { ForbiddenException, Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException } from '@nestjs/common';
+import { ForbiddenException, Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, UseInterceptors, UploadedFiles, BadRequestException, HttpException, NotFoundException, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { photoCount, readPhoto, removePhotos } from './invoice-reader/invoice-photos';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -42,6 +44,8 @@ export class PurchasesController {
     // Antes de cargar nada: si la caja elegida no sirve, que avise sin dejar la compra a medias
     if (rest.paymentStatus === 'PAID' && cashSource?.source === 'FUND' && req.user.role !== 'ADMIN') throw new ForbiddenException('De la caja del mes solo paga el dueño');
     const p = await this.purchasesService.create({ ...rest, userId: req.user.sub });
+    // Factura A/B/C o presupuesto, IVA y percepciones: no frena la compra si algo falla
+    await this.purchasesService.saveFiscal(p.id, data?.fiscal).catch(() => {});
     try { await this.payPurchase(p.id, data, req); }
     catch (err: any) { (p as any).cashWarning = `La compra quedó cargada, pero la plata no se descontó: ${err?.message || 'error'}`; }
     // Aviso si un producto subió fuerte de costo con esta compra (tanda 8 de boletas)
@@ -57,8 +61,26 @@ export class PurchasesController {
   }
 
   @Delete(':id')
-  deleteOne(@Param('id') id: string) {
-    return this.purchasesService.deleteOne(id);
+  async deleteOne(@Param('id') id: string) {
+    const out = await this.purchasesService.deleteOne(id);
+    removePhotos(id);
+    return out;
+  }
+
+  /** Fotos de la boleta guardadas con la compra (revisión visual): cuántas hay */
+  @Get(':id/photos')
+  photos(@Param('id') id: string) {
+    return { count: photoCount(id) };
+  }
+
+  /** La foto n de la boleta (JPG) */
+  @Get(':id/photos/:n')
+  photo(@Param('id') id: string, @Param('n') n: string, @Res() res: Response) {
+    const buf = readPhoto(id, Number(n));
+    if (!buf) throw new NotFoundException('Esa foto ya no está');
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.end(buf);
   }
 
   /** "Leyó mal": avisa a Ventra que la IA leyó mal esta boleta escaneada (no cambia la compra) */
@@ -210,6 +232,8 @@ export class PurchasesController {
   ) {
     const { cashSource, ...rest } = data || {};
     const out: any = await this.purchasesService.confirmPending(id, { ...rest, userId: req.user.sub });
+    // Con borrador, la pendiente se vuelve una compra nueva (otro id)
+    await this.purchasesService.saveFiscal(out?.id || id, data?.fiscal).catch(() => {});
     try { await this.payPurchase(id, data, req); }
     catch (err: any) { if (out && typeof out === 'object') out.cashWarning = `La compra quedó confirmada, pero la plata no se descontó: ${err?.message || 'error'}`; }
     return out;

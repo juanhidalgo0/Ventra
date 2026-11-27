@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FiscalBadge, FiscalSummary } from './FiscalBadge';
 import { PURCHASES_CHANGED_EVENT } from './ScannedPurchasesWatcher';
 import { ShoppingCart, Search, Plus, Box, ChevronDown, History, Scan, RefreshCw, X, Receipt, Edit, Sparkles, Barcode } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,6 +12,8 @@ import { REVIEW_KEY, OPEN_REVIEW_EVENT } from './ScanJobPanel';
 import api from '../../services/api';
 import { useManagerAccess } from '../../utils/managerAccess';
 import { toast } from 'react-hot-toast';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 export default function PurchasesScreen() {
   // Siempre abre en la lista de compras. Solo entra directo a cargar cuando se tocó "Cargar boleta"
@@ -30,6 +33,10 @@ export default function PurchasesScreen() {
   const [labelsPurchase, setLabelsPurchase] = useState<any | null>(null);
   // Todas / Por revisar / Pagadas / Con deuda (antes los botones no hacían nada)
   const [filter, setFilter] = useState<'all' | 'review' | 'paid' | 'owed'>('all');
+  // Mes de la lista ('all' = todas) y búsqueda por proveedor o número de factura
+  const [periodMonth, setPeriodMonth] = useState<number | 'all'>('all');
+  const [periodYear, setPeriodYear] = useState<number>(new Date().getFullYear());
+  const [search, setSearch] = useState('');
   // Boletas abiertas en pestañas para revisarlas de a una (vienen de la lectura en segundo plano)
   const [reviewIds, setReviewIds] = useState<string[]>(() => {
     try { const v = JSON.parse(sessionStorage.getItem(REVIEW_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -144,14 +151,79 @@ export default function PurchasesScreen() {
     return <NewPurchaseScreen onBack={() => { handleSetView('list'); setEditingPurchase(null); }} initialPurchase={editingPurchase} />;
   }
 
+  const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const years = Array.from(new Set([new Date().getFullYear(), ...purchases.map((p) => new Date(p.createdAt).getFullYear())])).sort((a, b) => b - a);
+  const q = search.trim().toLowerCase();
+  const inPeriod = purchases.filter((p) => {
+    const d = new Date(p.createdAt);
+    if (periodMonth !== 'all' && (d.getMonth() !== periodMonth || d.getFullYear() !== periodYear)) return false;
+    if (q && !(p.supplier?.name || '').toLowerCase().includes(q) && !String(p.invoiceNumber || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
   // Lo gastado: solo compras confirmadas (las boletas por revisar todavía no son una compra)
-  const totalSpent = purchases.filter((p) => p.status !== 'PENDING' && p.status !== 'CANCELLED').reduce((sum, p) => sum + p.total, 0);
+  const totalSpent = inPeriod.filter((p) => p.status !== 'PENDING' && p.status !== 'CANCELLED').reduce((sum, p) => sum + p.total, 0);
   const pesos = (n: number) => (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const toReview = purchases.filter((p) => p.status === 'PENDING');
-  const shown = purchases.filter((p) => filter === 'all' ? true
+  const shown = inPeriod.filter((p) => filter === 'all' ? true
     : filter === 'review' ? p.status === 'PENDING'
     : filter === 'paid' ? p.status !== 'PENDING' && p.paymentStatus === 'PAID'
     : p.status !== 'PENDING' && p.paymentStatus !== 'PAID');
+
+  const periodName = periodMonth === 'all' ? 'Todas las fechas' : `${MONTHS[periodMonth]} ${periodYear}`;
+  const buildReport = (): Report => {
+    const ok = inPeriod.filter((p) => p.status !== 'PENDING' && p.status !== 'CANCELLED');
+    const owed = ok.filter((p) => p.paymentStatus !== 'PAID').reduce((t, p) => t + p.total, 0);
+    const bySupplier = new Map<string, { n: number; total: number; owed: number }>();
+    for (const p of ok) {
+      const k = p.supplier?.name || 'Sin proveedor';
+      const c = bySupplier.get(k) || { n: 0, total: 0, owed: 0 };
+      c.n++; c.total += p.total; if (p.paymentStatus !== 'PAID') c.owed += p.total;
+      bySupplier.set(k, c);
+    }
+    const byProduct = new Map<string, { name: string; qty: number; total: number }>();
+    for (const p of ok) for (const it of p.items || []) {
+      const c = byProduct.get(it.productId || it.productName) || { name: it.productName, qty: 0, total: 0 };
+      c.qty += Number(it.quantity) || 0; c.total += Number(it.total) || 0;
+      byProduct.set(it.productId || it.productName, c);
+    }
+    const filterName = { all: '', review: 'Por revisar', paid: 'Pagadas', owed: 'Con deuda' }[filter];
+    const status = (p: any) => p.status === 'PENDING' ? 'Por revisar' : p.status === 'CANCELLED' ? 'Anulada' : p.paymentStatus === 'PAID' ? 'Pagada' : 'A deber';
+    const list = [...shown].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+    return {
+      title: 'Compras a proveedores',
+      subtitle: [periodName, filterName, q && `Búsqueda: "${search.trim()}"`].filter(Boolean).join(' · '),
+      fileName: `Compras ${periodName}`,
+      summary: [
+        { label: 'Gastado en compras', value: totalSpent, type: 'money' },
+        { label: 'Compras confirmadas', value: ok.length, type: 'int' },
+        { label: 'Pagado', value: totalSpent - owed, type: 'money', tone: 'good' },
+        { label: 'A deber', value: owed, type: 'money', tone: owed > 0 ? 'bad' : undefined },
+        ...(toReview.length ? [{ label: 'Boletas por revisar', value: toReview.length, type: 'int' as const, tone: 'warn' as const }] : []),
+      ],
+      tables: [
+        {
+          title: 'Compras',
+          columns: [{ header: 'Fecha', type: 'date' }, { header: 'Proveedor' }, { header: 'Factura' }, { header: 'Estado' }, { header: 'Productos', type: 'int' }, { header: 'Total', type: 'money' }],
+          rows: list.map((p) => [p.createdAt, p.supplier?.name || '', p.invoiceNumber || '', status(p), p.items?.length ?? null, p.total]),
+          totals: ['Total', '', '', '', null, list.filter((p) => p.status !== 'PENDING' && p.status !== 'CANCELLED').reduce((t, p) => t + p.total, 0)],
+          emptyText: 'No hay compras para mostrar',
+        },
+        {
+          title: 'Por proveedor',
+          columns: [{ header: 'Proveedor' }, { header: 'Compras', type: 'int' }, { header: 'Total', type: 'money' }, { header: 'A deber', type: 'money' }, { header: '% del gasto', type: 'percent' }],
+          rows: [...bySupplier.entries()].sort((a, b) => b[1].total - a[1].total).map(([k, v]) => [k, v.n, v.total, v.owed, totalSpent > 0 ? (v.total / totalSpent) * 100 : 0]),
+          totals: ['Total', ok.length, totalSpent, owed, 100],
+          emptyText: 'Sin compras confirmadas',
+        },
+        ...(byProduct.size ? [{
+          title: 'Productos comprados',
+          columns: [{ header: 'Producto' }, { header: 'Cantidad', type: 'number' as const }, { header: 'Total', type: 'money' as const }, { header: 'Costo promedio', type: 'money' as const }],
+          rows: [...byProduct.values()].sort((a, b) => b.total - a.total).map((x) => [x.name, x.qty, x.total, x.qty ? x.total / x.qty : null]),
+        }] : []),
+      ],
+      notes: ['Las boletas por revisar y las anuladas no suman en lo gastado.'],
+    };
+  };
 
   return (
     <div className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-y-auto custom-scrollbar">
@@ -163,9 +235,12 @@ export default function PurchasesScreen() {
             </h2>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Registro de compras a proveedores</p>
          </div>
+         <div className="flex items-center gap-2">
+         <ExportButtons build={buildReport} disabled={isLoading} />
          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input type="text" placeholder="Buscar..." className="bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-[10px] font-bold outline-none focus:border-rose-200 transition-all w-32" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." aria-label="Buscar compras" className="bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-[10px] font-bold outline-none focus:border-rose-200 transition-all w-32" />
+         </div>
          </div>
       </div>
 
@@ -186,14 +261,15 @@ export default function PurchasesScreen() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-300 w-full sm:w-auto justify-between sm:justify-start">
             <div className="relative">
-               <select className="bg-white shadow-sm rounded-lg text-[10px] font-bold text-gray-800 uppercase tracking-tighter px-4 py-2 outline-none appearance-none cursor-pointer">
-                  <option>Mayo</option>
+               <select value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Mes" className="bg-white shadow-sm rounded-lg text-[10px] font-bold text-gray-800 uppercase tracking-tighter pl-4 pr-7 py-2 outline-none appearance-none cursor-pointer">
+                  <option value="all">Todos los meses</option>
+                  {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
                </select>
                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
             </div>
             <div className="relative">
-               <select className="bg-transparent text-[10px] font-bold text-gray-400 uppercase tracking-tighter px-4 py-2 outline-none appearance-none cursor-pointer hover:text-gray-600 transition-colors">
-                  <option>2026</option>
+               <select value={periodYear} onChange={(e) => setPeriodYear(Number(e.target.value))} disabled={periodMonth === 'all'} aria-label="Año" className="bg-transparent text-[10px] font-bold text-gray-500 uppercase tracking-tighter pl-4 pr-7 py-2 outline-none appearance-none cursor-pointer hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-default">
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
                </select>
                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" />
             </div>
@@ -209,6 +285,8 @@ export default function PurchasesScreen() {
              <Search className="absolute left-4 w-4 h-4 text-gray-400 pointer-events-none" />
              <input 
                 type="text" 
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar proveedor..." 
                 className="w-full bg-slate-50 border border-transparent rounded-2xl pl-11 pr-4 py-2.5 text-[11px] focus:bg-white focus:border-emerald-500/50 transition-all outline-none font-bold placeholder:text-gray-300"
              />
@@ -290,7 +368,9 @@ export default function PurchasesScreen() {
                   <tr key={p.id} onClick={() => setSelectedPurchase(p)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
                      <td className="py-4 text-[11px] font-bold text-slate-600 group-hover:text-rose-600 transition-colors">{new Date(p.createdAt).toLocaleDateString('es-AR')}</td>
                      <td className="py-4 text-[11px] font-bold text-slate-700 uppercase">{p.supplier.name}</td>
-                     <td className="py-4 text-[11px] font-bold text-slate-600">{p.invoiceNumber || '---'}</td>
+                     <td className="py-4 text-[11px] font-bold text-slate-600">
+                        <span className="inline-flex items-center gap-1.5">{p.invoiceNumber || '---'}<FiscalBadge fiscal={p.fiscal} /></span>
+                     </td>
                      <td className="py-4 text-center">
                         {/* Por revisar todavía no es una compra: no está pagada ni se debe */}
                         {p.status === 'PENDING' ? (
@@ -425,6 +505,8 @@ export default function PurchasesScreen() {
                     </div>
                   </div>
                 </div>
+
+                <FiscalSummary fiscal={selectedPurchase.fiscal} />
 
                 {/* Items Table */}
                 <div className="space-y-3">

@@ -4,6 +4,9 @@ import toast from 'react-hot-toast';
 import { AlertTriangle, CheckCircle2, ChevronRight, Search, Trash2, Plus, PackagePlus, Link2 } from 'lucide-react';
 import api from '../../services/api';
 import { Sheet, PrimaryButton, money, qty, parseAmount } from './ui';
+import ScanNotesPanel, { applyRaiseGroup, type ScanNote } from '../products/ScanNotesPanel';
+import { useStoredPhotos } from '../products/InvoiceBoletaView';
+import InvoiceCards from './InvoiceCards';
 
 /**
  * Revisar y corregir una boleta escaneada desde el celular (2026-11-14).
@@ -46,6 +49,12 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
   const [editing, setEditing] = useState<number | null>(null);
   const [pickSupplier, setPickSupplier] = useState(false);
   const [confirmAnyway, setConfirmAnyway] = useState(false);
+  // Avisos de la boleta resueltos con su botón (regalos, boleta vieja, correcciones a mano, aumentos)
+  const [notesDone, setNotesDone] = useState<Set<number>>(new Set());
+  // De a un renglón (tarjetas con el pedacito de foto) o la lista de siempre
+  const [view, setView] = useState<'tarjetas' | 'lista'>('tarjetas');
+  // Las fotos de la boleta que quedaron guardadas con la compra
+  const storedPhotos = useStoredPhotos(purchase?.id, open);
 
   useEffect(() => {
     if (!purchase || !open) return;
@@ -56,8 +65,28 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
     setInvoiceNumber(dd.invoiceNumber || purchase.invoiceNumber || '');
     setPrinted(Number(dd.printedTotal) > 0 ? numStr(Number(dd.printedTotal)) : '');
     setPayment(dd.paymentSuggested === 'PAID' ? 'PAID' : 'OWED');
-    setDirty(false); setConfirmAnyway(false); setEditing(null);
+    setDirty(false); setConfirmAnyway(false); setEditing(null); setNotesDone(new Set());
   }, [purchase?.id, open]);
+
+  const runNote = async (note: ScanNote, index: number) => {
+    const a = note.action;
+    if (!a) return;
+    const mark = () => setNotesDone((prev) => new Set(prev).add(index));
+    if (a.type === 'applyHand') {
+      // Lo anotado a mano: la cantidad corregida
+      change((ls) => ls.map((l) => (l.handQuantity !== null && l.handQuantity !== undefined && Number(l.handQuantity) >= 0 ? { ...l, quantity: Number(l.handQuantity), handQuantity: null, edited: true } : l)));
+      mark();
+    } else if (a.type === 'handTotal' && Number(a.amount) > 0) {
+      setPrinted(String(Math.round(Number(a.amount) * 100) / 100).replace('.', ','));
+      setDirty(true); setConfirmAnyway(false);
+      mark();
+    } else if (a.type === 'updateCosts') {
+      change((ls) => ls.map((l) => (l.stockOnly ? { ...l, stockOnly: false } : l)));
+      mark();
+    } else if (a.type === 'raiseGroup') {
+      if (await applyRaiseGroup(a, `Aumento de ${supplier?.name || 'proveedor'} (boleta ${invoiceNumber || ''})`.trim())) mark();
+    }
+  };
 
   const sum = withIva(lines);
   const printedN = parseAmount(printed);
@@ -100,12 +129,16 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
       await api.put(`/purchases/${purchase.id}/confirm`, {
         supplierId: supplier.id,
         invoiceNumber: invoiceNumber || undefined,
+        invoiceDate: d.invoiceDate || undefined,
         manualTotal: printedN > 0 ? printedN : undefined,
         paymentStatus: payment,
         cashSource: payment === 'PAID' ? cashSource : null,
         items: lines.filter((l) => l.quantity > 0).map((it) => ({
           productId: it.product?.id || undefined, quantity: it.quantity, cost: it.cost, buyFormat: 'UNIT',
-          salePrice: it.suggestedSalePrice || undefined, source: { code: it.sku || undefined, name: it.name },
+          // Regalo: el producto queda con el costo sin regalo; boleta vieja: solo suma stock
+          freeUnits: Number(it.freeUnits) > 0 && it.quantity > Number(it.freeUnits) ? Number(it.freeUnits) : undefined,
+          stockOnly: it.product && it.stockOnly ? true : undefined,
+          salePrice: it.product && (it.stockOnly || it.gift) ? undefined : it.suggestedSalePrice || undefined, source: { code: it.sku || undefined, name: it.name },
           newProductData: it.product ? undefined : { name: String(it.shared?.confidence === 'alta' && it.shared?.name ? it.shared.name : it.name).toUpperCase(), barcode: it.barcode || undefined, sku: it.sku || undefined, salePrice: it.suggestedSalePrice, taxRate: 21 },
         })),
       });
@@ -153,6 +186,7 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
                 <b>Para mirar:</b> {(d.why || []).join('; ')}.
               </div>
             )}
+            {Array.isArray(d.scanNotes) && d.scanNotes.length > 0 && <ScanNotesPanel notes={d.scanNotes} done={notesDone} onAction={runNote} compact />}
             {blockedReason && <p className="rounded-2xl bg-red-50 border border-red-100 px-3.5 py-2.5 text-[12.5px] font-semibold text-red-800">{blockedReason}</p>}
 
             {/* Proveedor y número */}
@@ -183,8 +217,21 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
               </span>
             </div>
 
-            {/* Renglones */}
-            <div>
+            {/* Renglones: de a uno en tarjetas (con el pedacito de foto) o la lista de siempre */}
+            <div className="flex justify-end">
+              <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden text-[12.5px] font-semibold">
+                {(['tarjetas', 'lista'] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setView(v)} className={`h-8 px-3 ${view === v ? 'bg-slate-900 text-white' : 'text-slate-700'}`}>{v === 'tarjetas' ? 'De a uno' : 'Lista'}</button>
+                ))}
+              </div>
+            </div>
+            {view === 'tarjetas' && lines.length > 0 && (
+              <InvoiceCards lines={lines} photos={storedPhotos} photoImages={Array.isArray(d.images) ? d.images.map(Number) : null} turns={Array.isArray(d.photoTurns) ? d.photoTurns.map(Number) : []}
+                onOk={(i) => change((ls) => ls.map((l, j) => (j === i ? { ...l, edited: true } : l)))}
+                onHand={(i) => change((ls) => ls.map((l, j) => (j === i && l.handQuantity !== null && l.handQuantity !== undefined ? { ...l, quantity: Number(l.handQuantity), handQuantity: null, edited: true } : l)))}
+                onEdit={(i) => setEditing(i)} />
+            )}
+            <div className={view === 'tarjetas' ? 'hidden' : ''}>
               <p className="px-1 pb-1.5 text-[12px] font-semibold text-slate-500">{lines.length} {lines.length === 1 ? 'renglón' : 'renglones'} · tocá uno para corregirlo</p>
               <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
                 {lines.map((l, i) => {
@@ -201,6 +248,7 @@ export default function ReviewInvoiceSheet({ purchase, open, onClose, onDone, ca
                       </div>
                       <p className="text-[12px] text-slate-500 tabular-nums">{qty(l.quantity)} × {money(l.cost)} sin IVA{l.suggestedSalePrice ? ` · venta ${money(l.suggestedSalePrice)}` : ''}</p>
                       {look && <p className="text-[11.5px] font-semibold text-amber-800">Mirar: {(l.reasons || []).join(', ') || 'puede que ya lo tengas cargado'}</p>}
+                      {Array.isArray(l.info) && l.info.length > 0 && <p className="text-[11.5px] text-emerald-700">{(l.stockOnly ? l.info : l.info.filter((t: string) => !t.startsWith('boleta del'))).join(' · ')}</p>}
                     </button>
                   );
                 })}

@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import ScanNotesPanel, { restockCost, applyRaiseGroup, type ScanNote } from './ScanNotesPanel';
+import InvoiceBoletaView, { useStoredPhotos } from './InvoiceBoletaView';
 import { useFeature } from '../../stores/businessStore';
 import { toast } from 'react-hot-toast';
 import { setStoreSetting } from '../../services/storeSettings';
@@ -36,6 +38,8 @@ import { OPEN_SCAN_KEY } from './InvoiceScanCard';
 import { startScanJob } from './ScanJobPanel';
 import PurchaseItemsTable, { rowId } from './PurchaseItemsTable';
 import FirstInvoicePanel from './FirstInvoicePanel';
+import PurchaseFiscalPanel from './PurchaseFiscalPanel';
+import { DOC_KINDS, EMPTY_EXTRAS, docKindInfo, fiscalRecord, fiscalTotals, ivaMulFor, rateOf, type DocKind, type FiscalExtras } from '../../utils/purchaseFiscal';
 import DuplicatesModal from './DuplicatesModal';
 import { checkPhotos, warningText, PHOTO_TIP, type PhotoWarning } from '../../utils/photoQuality';
 
@@ -84,6 +88,16 @@ interface PurchaseItem {
   /** Renglón de una boleta escaneada que hay que mirar, y por qué (tanda 6.1: se revisa solo lo dudoso) */
   doubtful?: boolean;
   reasons?: string[];
+  /** Boletas (2026-11-26): unidades de regalo dentro de quantity (el precio sigue el costo sin regalo) */
+  freeUnits?: number;
+  /** Vino de regalo en $ 0 (otro producto): suma stock sin tocar el costo */
+  gift?: boolean;
+  /** Boleta más vieja que la última compra: suma stock, no cambia costo ni precio */
+  stockOnly?: boolean;
+  /** Corrección a mano en la boleta (faltó mercadería): la cantidad que quedaría */
+  handQuantity?: number | null;
+  /** Lo que conviene saber del renglón y no frena nada (regalo, boleta vieja) */
+  info?: string[];
   /** Producto nuevo de una boleta: los parecidos que ya tenés, para asociarlo en vez de crearlo */
   candidates?: { id: string; name: string }[];
   /** El renglón leído de la boleta (para asociarlo a un producto existente) */
@@ -97,6 +111,8 @@ interface PurchaseItem {
   discount1?: number;
   discount2?: number;
   discount3?: number;
+  /** IVA del renglón en una Factura A (21, 10,5, 27…) */
+  ivaRate?: number;
   categoryName?: string;
   brandName?: string;
   /** EAN de la boleta para el producto que no tenía código de barras: se guarda al confirmar la compra */
@@ -127,8 +143,9 @@ const netCostOf = (item: { cost: any; discount1?: any; discount2?: any; discount
 };
 
 /** Precio de venta desde el costo y el margen, redondeado como se eligió en Compras (10, 50, 100, 1000 o sin) */
-const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean = true, step: number = readPurchaseAuto().round) => {
-  const baseCost = useIva ? cost * 1.21 : cost;
+const calculateSuggestedPrice = (cost: number, margin: number, useIva: boolean | number = true, step: number = readPurchaseAuto().round) => {
+  // useIva: true/false (21% o nada) o el multiplicador del renglón (1,105 en una Factura A al 10,5%)
+  const baseCost = cost * (typeof useIva === 'number' ? useIva : useIva ? 1.21 : 1);
   return roundPriceUp(baseCost * (1 + margin / 100), step);
 };
 
@@ -280,6 +297,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const [showScanModal, setShowScanModal] = useState(false);
   // Primera boleta de un proveedor (tanda 3): asociar de corrido; y la pantalla de productos repetidos
   const [firstSupplier, setFirstSupplier] = useState(false);
+  // Avisos de la boleta escaneada (regalos, boleta vieja, correcciones a mano, aumentos…) y los ya resueltos
+  const [scanNotes, setScanNotes] = useState<ScanNote[]>([]);
+  const [notesDone, setNotesDone] = useState<Set<number>>(new Set());
+  // Revisión visual (la boleta pintada con el recorte de foto de cada renglón) o la tabla de siempre
+  const [reviewView, setReviewView] = useState<'boleta' | 'tabla'>('boleta');
+  // De qué foto es cada posición y cuánto girarla (para los recortes)
+  const [photoMeta, setPhotoMeta] = useState<{ images: number[] | null; turns: number[] }>({ images: null, turns: [] });
   // La factura de un remito que ya sumó el stock (tanda 5.1): se confirma sin volver a sumarlo
   const remitoMatch = initialPurchase?.draft?.remitoMatch || null;
   const [asRemitoInvoice, setAsRemitoInvoice] = useState(true);
@@ -291,6 +315,31 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     try { if (sessionStorage.getItem(OPEN_SCAN_KEY) === '1') { sessionStorage.removeItem(OPEN_SCAN_KEY); if (!initialPurchase) setShowScanModal(true); } } catch { /* nada */ }
   }, []);
   const [useIvaGlobal, setUseIvaGlobal] = useState<boolean>(() => localStorage.getItem('purchase_use_iva') === 'true');
+  // Comprobante (Factura A/B/C o presupuesto en negro), descuento general, percepciones y redondeo.
+  // Sin comprobante elegido, todo sigue como antes (el "Calcular IVA 21%")
+  const [docKind, setDocKindState] = useState<DocKind>(draft?.docKind || '');
+  const [extras, setExtras] = useState<FiscalExtras>(draft?.extras || EMPTY_EXTRAS);
+  const kindTouched = useRef(!!draft?.docKind);
+  const [hideMargin, setHideMargin] = useState(() => localStorage.getItem('purchase_hide_margin') === 'true');
+  /** Multiplicador del costo cargado al costo final del producto (IVA del renglón, del comprobante o el 21% de antes) */
+  const ivaMul = (i?: { ivaRate?: any } | null) => ivaMulFor(docKind, useIvaGlobal, i);
+  const kindsBySupplier = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem('purchase_doc_kinds') || '{}') || {}; } catch { return {}; } };
+  const setDocKind = (k: DocKind) => {
+    kindTouched.current = true;
+    setDocKindState(k);
+    // El próximo comprobante de este proveedor arranca igual
+    if (selectedSupplier?.id) setStoreSetting('purchase_doc_kinds', JSON.stringify({ ...kindsBySupplier(), [selectedSupplier.id]: k }));
+  };
+  useEffect(() => {
+    if (!selectedSupplier?.id || kindTouched.current) return;
+    const k = kindsBySupplier()[selectedSupplier.id];
+    if (k !== undefined && ['', 'A', 'B', 'C', 'X'].includes(k)) setDocKindState(k as DocKind);
+  }, [selectedSupplier?.id]);
+  const toggleMargin = () => {
+    const v = !hideMargin;
+    setHideMargin(v);
+    setStoreSetting('purchase_hide_margin', String(v));
+  };
 
   useEffect(() => {
     // Ya se estaba revisando esta boleta: queda como la dejaron
@@ -347,18 +396,24 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   // Se guardan cuando el usuario los cambia, no al abrir: si no, el valor de esta PC pisaba
   // el que llegó de otra caja (son ajustes del comercio, ver services/storeSettings)
   const lastIva = useRef(useIvaGlobal);
+  const lastKind = useRef(docKind);
   const lastMargin = useRef(defaultMargin);
   const marginTouched = useRef(true);
   useEffect(() => {
     // Al abrir no se recalcula nada: pisaba el precio anotado a mano en la boleta y el que mantiene
     // el margen del producto. Solo cuando el dueño cambia "Calcular IVA".
-    if (lastIva.current === useIvaGlobal) return;
+    // Lo mismo al cambiar el comprobante (Factura A suma el IVA de cada renglón; B, C y presupuesto no)
+    if (lastIva.current === useIvaGlobal && lastKind.current === docKind) return;
+    if (lastIva.current !== useIvaGlobal) setStoreSetting('purchase_use_iva', useIvaGlobal.toString());
     lastIva.current = useIvaGlobal;
-    setStoreSetting('purchase_use_iva', useIvaGlobal.toString());
+    lastKind.current = docKind;
     setItems(prev => prev.map(item => {
-      const c = parseFloat(item.cost as any) || 0;
+      // Boleta vieja o regalo de otro producto: el precio de venta no cambia
+      if (!item.isNew && (item.stockOnly || item.gift)) return item;
+      // Con regalo, el precio sale del costo sin regalo (el de reposición)
+      const c = restockCost(parseFloat(item.cost as any) || 0, Number(item.quantity) || 0, item.freeUnits);
       const m = item.margin !== undefined ? item.margin : defaultMargin;
-      const suggested = calculateSuggestedPrice(c, m, useIvaGlobal);
+      const suggested = calculateSuggestedPrice(c, m, ivaMul(item));
       return {
         ...item,
         salePrice: suggested,
@@ -368,7 +423,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         } : item.newProductData
       };
     }));
-  }, [useIvaGlobal]);
+  }, [useIvaGlobal, docKind]);
 
   useEffect(() => {
     // Solo cuando el dueño cambia el margen general (al abrir pisaba el precio anotado a mano en la boleta)
@@ -378,8 +433,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     marginTouched.current = true;
     setItems(prev => prev.map(item => {
       if (item.isNew && !(Number(item.scanned?.handPrice) > 0)) {
-        const costVal = parseFloat(item.cost as any) || 0;
-        const suggested = calculateSuggestedPrice(costVal, defaultMargin, useIvaGlobal);
+        const costVal = restockCost(parseFloat(item.cost as any) || 0, Number(item.quantity) || 0, item.freeUnits);
+        const suggested = calculateSuggestedPrice(costVal, defaultMargin, ivaMul(item));
         return {
           ...item,
           margin: defaultMargin,
@@ -392,7 +447,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       }
       return item;
     }));
-  }, [defaultMargin, useIvaGlobal]);
+  }, [defaultMargin, useIvaGlobal, docKind]);
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<any[]>([]);
@@ -466,7 +521,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const [showPhotos, setShowPhotos] = useState(false);
   useEffect(() => () => { scanPhotos.forEach((u) => URL.revokeObjectURL(u)); }, [scanPhotos]);
   // Las de la lectura en segundo plano (no son de esta pantalla: no se liberan acá)
-  const shownPhotos = scanPhotos.length ? scanPhotos : (photos || []);
+  // Escaneada en otro aparato (el celular, otra PC): las fotos que quedaron guardadas con la compra
+  const storedPhotos = useStoredPhotos(initialPurchase?.id, !scanPhotos.length && !(photos || []).length);
+  const shownPhotos = scanPhotos.length ? scanPhotos : (photos || []).length ? (photos || []) : storedPhotos;
   // Las fotos traían varios comprobantes: este se revisa acá y los demás quedan en Compras → Por revisar
   const [otherDocs, setOtherDocs] = useState<{ total: number; current: string; saved: string[]; skipped: string[]; failed: string[] } | null>(null);
   const [scanStep, setScanStep] = useState('');
@@ -532,6 +589,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     setActiveUnmatchedIndex(null);
     setShowNewProductsModal(false);
     setPendingNewProducts([]);
+    setDocKindState('');
+    setExtras(EMPTY_EXTRAS);
+    kindTouched.current = false;
     localStorage.removeItem(DRAFT_KEY);
   };
 
@@ -548,7 +608,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       unmatchedItems,
       activeUnmatchedIndex,
       showNewProductsModal,
-      pendingNewProducts
+      pendingNewProducts,
+      docKind,
+      extras
     };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData)); } catch { /* sin espacio */ }
   }, [
@@ -563,7 +625,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     unmatchedItems,
     activeUnmatchedIndex,
     showNewProductsModal,
-    pendingNewProducts
+    pendingNewProducts,
+    docKind,
+    extras
   ]);
 
 
@@ -652,9 +716,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       updateItem(product.id, 'quantity', existing.quantity + 1);
     } else {
       const initCostWithIva = product.costPrice || 0;
-      const initCost = useIvaGlobal ? initCostWithIva / 1.21 : initCostWithIva;
+      // Factura A: el IVA que tiene cargado el producto (si no, 21)
+      const row = { ivaRate: Number(product.taxRate) > 0 ? Number(product.taxRate) : 21 };
+      const initCost = initCostWithIva / ivaMul(row);
       const initSale = product.salePrice || 0;
-      const baseCost = useIvaGlobal ? initCost * 1.21 : initCost;
+      const baseCost = initCost * ivaMul(row);
       const initMargin = baseCost > 0 ? Math.round(((initSale - baseCost) / baseCost) * 100) : 0;
       setItems([...items, {
         productId: product.id,
@@ -673,6 +739,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         presentationType: product.presentationType || 'UNIT',
         margin: initMargin,
         salePrice: initSale,
+        ivaRate: row.ivaRate,
         trackExpiry: Boolean(product.trackExpiry),
         base: { costPrice: product.costPrice || 0, salePrice: product.salePrice || 0 },
       }]);
@@ -697,24 +764,26 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         const c = netCostOf(updated);
         updated.total = q * c;
 
-        if (field === 'cost' || field === 'discount1' || field === 'discount2' || field === 'discount3') {
+        if (field === 'cost' || field === 'discount1' || field === 'discount2' || field === 'discount3' || field === 'ivaRate') {
           if (updated.isNew) {
             const currentMargin = updated.margin !== undefined ? updated.margin : defaultMargin;
-            updated.salePrice = calculateSuggestedPrice(c, currentMargin, useIvaGlobal);
+            updated.salePrice = calculateSuggestedPrice(c, currentMargin, ivaMul(updated));
             updated.newProductData = {
               ...updated.newProductData!,
               salePrice: updated.salePrice
             };
           } else {
-            const baseCost = useIvaGlobal ? c * 1.21 : c;
+            // Con regalo, el precio sigue el costo sin regalo (el de reposición)
+            const pc = restockCost(c, q, updated.freeUnits);
+            const baseCost = pc * ivaMul(updated);
             // El precio de venta acompaña al costo: se mantiene el margen que ya tenía el producto
-            if (updated.base && updated.base.costPrice > 0) updated.salePrice = keepMarginPrice(updated.base, c);
+            if (updated.base && updated.base.costPrice > 0 && !updated.stockOnly) updated.salePrice = keepMarginPrice(updated.base, pc, undefined, ivaMul(updated));
             updated.margin = baseCost > 0 ? Math.round(((updated.salePrice! - baseCost) / baseCost) * 100) : 0;
           }
         } else if (field === 'margin') {
           const m = parseFloat(value) || 0;
           updated.priceManual = false;
-          updated.salePrice = calculateSuggestedPrice(c, m, useIvaGlobal);
+          updated.salePrice = calculateSuggestedPrice(c, m, ivaMul(updated));
           if (updated.isNew) {
             updated.newProductData = {
               ...updated.newProductData!,
@@ -724,7 +793,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         } else if (field === 'salePrice') {
           const s = parseFloat(value) || 0;
           updated.priceManual = true;
-          const baseCost = useIvaGlobal ? c * 1.21 : c;
+          const baseCost = c * ivaMul(updated);
           updated.margin = baseCost > 0 ? Math.round(((s - baseCost) / baseCost) * 100) : 0;
           if (updated.isNew) {
             updated.newProductData = {
@@ -765,16 +834,16 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       api.post('/purchases/cost-insights', {
         supplierId: selectedSupplier?.id,
         // El backend compara con IVA: si la compra se carga sin IVA, el costo ya es el final
-        items: list.map((i) => ({ productId: i.productId, cost: useIvaGlobal ? netCostOf(i) : netCostOf(i) / 1.21 })),
+        items: list.map((i) => ({ productId: i.productId, cost: netCostOf(i) * ivaMul(i) / 1.21 })),
       }, { silent: true } as any).then(({ data }) => setCostInsights(data || {})).catch(() => {});
     }, 600);
     return () => clearTimeout(t);
-  }, [insightKey, useIvaGlobal]);
+  }, [insightKey, useIvaGlobal, docKind, items.map((i) => rateOf(i)).join(',')]);
 
   /** El precio de venta que mantiene el margen del producto con el costo nuevo (redondeado según Compras) */
-  const keepMarginPrice = (product: any, netCost: number, step: number = readPurchaseAuto().round) => {
+  const keepMarginPrice = (product: any, netCost: number, step: number = readPurchaseAuto().round, mul: number = ivaMul()) => {
     const auto = readPurchaseAuto();
-    const base = useIvaGlobal ? netCost * 1.21 : netCost;
+    const base = netCost * mul;
     if (!auto.keepMargin || !(product.costPrice > 0) || !(base > 0) || Math.abs(base - product.costPrice) < 0.01) return product.salePrice;
     return roundPriceUp(product.salePrice * (base / product.costPrice), step);
   };
@@ -788,13 +857,13 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     setItems((prev) => prev.map((it) => {
       if (it.priceManual) return it;
       const c = netCostOf(it);
-      const baseCost = useIvaGlobal ? c * 1.21 : c;
+      const baseCost = c * ivaMul(it);
       if (it.isNew) {
-        const sale = calculateSuggestedPrice(c, it.margin !== undefined ? it.margin : defaultMargin, useIvaGlobal, step);
+        const sale = calculateSuggestedPrice(c, it.margin !== undefined ? it.margin : defaultMargin, ivaMul(it), step);
         return { ...it, salePrice: sale, newProductData: it.newProductData ? { ...it.newProductData, salePrice: sale } : it.newProductData };
       }
-      if (!it.base || !(it.base.costPrice > 0)) return it;
-      const sale = keepMarginPrice(it.base, c, step);
+      if (!it.base || !(it.base.costPrice > 0) || it.stockOnly || it.gift) return it;
+      const sale = keepMarginPrice(it.base, restockCost(c, Number(it.quantity) || 0, it.freeUnits), step, ivaMul(it));
       return { ...it, salePrice: sale, margin: baseCost > 0 ? Math.round(((sale - baseCost) / baseCost) * 100) : it.margin };
     }));
   };
@@ -803,8 +872,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const newItemFromScan = (item: any, idx: number): PurchaseItem => {
     // Precio de venta: el anotado a mano en la boleta o el del margen de siempre
     const margin = item.margin !== undefined ? item.margin : defaultMargin;
-    const sale = Number(item.handPrice) || calculateSuggestedPrice(item.cost, margin, useIvaGlobal);
-    const base = useIvaGlobal ? item.cost * 1.21 : item.cost;
+    const sale = Number(item.handPrice) || calculateSuggestedPrice(item.cost, margin, ivaMul());
+    const base = item.cost * ivaMul();
     // Dos o más comercios ya cargaron este código del proveedor: el producto nuevo viene con su nombre y bulto
     const shared = item.shared?.confidence === 'alta' ? item.shared : null;
     const productName = String(shared?.name || item.name || '').toUpperCase();
@@ -876,12 +945,89 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     }
   };
 
+  /** Los renglones de la boleta en el orden del papel; lo agregado a mano queda después */
+  const orderLikeInvoice = (list: PurchaseItem[]): PurchaseItem[] => {
+    const lineOf = (r: PurchaseItem) => (Number.isInteger(r.scanned?.lineNo) ? Number(r.scanned.lineNo) : null);
+    return [
+      ...list.filter((r) => lineOf(r) !== null).sort((a, b) => (lineOf(a) as number) - (lineOf(b) as number)),
+      ...list.filter((r) => lineOf(r) === null),
+    ];
+  };
+
+  /** Lo que trae un renglón escaneado sobre regalos, boleta vieja y correcciones a mano (2026-11-26) */
+  const withScanExtras = (row: PurchaseItem, item: any): PurchaseItem => {
+    // Lo leído (explicación, lugar en la foto, producto encontrado) para la revisión visual
+    if (!row.scanned) row.scanned = item;
+    row.freeUnits = Number(item.freeUnits) > 0 ? Number(item.freeUnits) : undefined;
+    row.gift = !!item.gift || undefined;
+    row.stockOnly = !!item.stockOnly || undefined;
+    row.handQuantity = item.handQuantity === null || item.handQuantity === undefined || !(Number(item.handQuantity) >= 0) ? null : Number(item.handQuantity);
+    row.info = Array.isArray(item.info) && item.info.length ? item.info : undefined;
+    // Producto nuevo con regalo: el precio sugerido sale del costo sin regalo
+    if (row.isNew && row.freeUnits && !(Number(item.handPrice) > 0)) {
+      const sale = calculateSuggestedPrice(restockCost(item.cost, item.quantity, row.freeUnits), row.margin !== undefined ? row.margin : defaultMargin, ivaMul());
+      row.salePrice = sale;
+      if (row.newProductData) row.newProductData = { ...row.newProductData, salePrice: sale };
+    }
+    return row;
+  };
+
+  /** Un aviso de la boleta resuelto con su botón */
+  const runScanNote = async (note: ScanNote, index: number) => {
+    const a = note.action;
+    if (!a) return;
+    const mark = () => setNotesDone((prev) => new Set(prev).add(index));
+    if (a.type === 'updateCosts') {
+      // "Actualizar costos igual": la boleta vieja cambia costo y precio como cualquier otra
+      setItems((prev) => prev.map((it) => {
+        if (!it.stockOnly) return it;
+        const c = restockCost(netCostOf(it), Number(it.quantity) || 0, it.freeUnits);
+        const sale = it.base && it.base.costPrice > 0 ? keepMarginPrice(it.base, c, undefined, ivaMul(it)) : it.salePrice;
+        return { ...it, stockOnly: undefined, salePrice: sale, info: (it.info || []).filter((t) => !t.startsWith('boleta del')) };
+      }));
+      mark();
+    } else if (a.type === 'applyHand') {
+      // Lo que anotaron a mano: la cantidad corregida (el importe baja en proporción); "faltó" saca el renglón
+      setItems((prev) => prev.filter((it) => it.handQuantity !== 0).map((it) => {
+        if (it.handQuantity === null || it.handQuantity === undefined) return it;
+        const q = Number(it.handQuantity);
+        const reasons = (it.reasons || []).filter((r) => !r.startsWith('a mano anotaron'));
+        return { ...it, quantity: q, total: q * netCostOf(it), handQuantity: null, reasons, doubtful: reasons.length > 0 && !(it.isNew && reasons.length === 1 && reasons[0] === 'producto nuevo') ? it.doubtful : it.isNew };
+      }));
+      mark();
+    } else if (a.type === 'raiseGroup') {
+      // Los de la misma línea que no vinieron suben igual (con deshacer, en el editor de precios)
+      if (await applyRaiseGroup(a, `Aumento de ${selectedSupplier?.name || 'proveedor'} (boleta ${invoiceNumber || ''})`.trim())) mark();
+    }
+  };
+
+  /** Un renglón con corrección a mano: usar la cantidad anotada */
+  const updateHandRow = (row: PurchaseItem) => setItems((prev) => prev.filter((it) => !(rowId(it) === rowId(row) && it.handQuantity === 0)).map((it) => {
+    if (rowId(it) !== rowId(row) || it.handQuantity === null || it.handQuantity === undefined) return it;
+    const q = Number(it.handQuantity);
+    const reasons = (it.reasons || []).filter((r) => !r.startsWith('a mano anotaron'));
+    return { ...it, quantity: q, total: q * netCostOf(it), handQuantity: null, reasons, doubtful: it.isNew || reasons.length > 0 };
+  }));
+
+  /** Boleta vieja: el dueño elige si este producto solo suma stock o también cambia costo y precio */
+  const toggleStockOnly = (row: PurchaseItem, on: boolean) => setItems((prev) => prev.map((it) => {
+    if (rowId(it) !== rowId(row)) return it;
+    const c = restockCost(netCostOf(it), Number(it.quantity) || 0, it.freeUnits);
+    const sale = on ? (it.base?.salePrice ?? it.salePrice) : it.base && it.base.costPrice > 0 ? keepMarginPrice(it.base, c, undefined, ivaMul(it)) : it.salePrice;
+    return { ...it, stockOnly: on || undefined, salePrice: sale };
+  }));
+
   /** Lo leído de una boleta (recién escaneada o pendiente del celular) → renglones de la compra */
   const applyScanResult = (data: any, opts: { quiet?: boolean } = {}) => {
     if (data.duplicate) {
       toast.error(`Ojo: esta boleta ya se cargó el ${new Date(data.duplicate.createdAt).toLocaleDateString('es-AR')}${data.duplicate.status === 'PENDING' ? ' (está en "Por revisar")' : ''}. Si la confirmás de nuevo, se suma dos veces el stock.`, { duration: 15000 });
     }
     setFirstSupplier(!!data.firstFromSupplier);
+    // Boletas leídas antes de que cada renglón supiera su lugar: el orden en que vinieron
+    if (Array.isArray(data.items)) data.items.forEach((it: any, k: number) => { if (it && !Number.isInteger(it.lineNo)) it.lineNo = k; });
+    setScanNotes(Array.isArray(data.scanNotes) ? data.scanNotes : []);
+    setPhotoMeta({ images: Array.isArray(data.images) ? data.images.map(Number) : null, turns: Array.isArray(data.photoTurns) ? data.photoTurns.map(Number) : [] });
+    setNotesDone(new Set());
     setScanCheck(data.check ? { ok: data.check.ok, message: data.check.message || '', printed: Number(data.printedTotal) > 0 ? Number(data.printedTotal) : null } : null);
     setShowAllRows(false);
     if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
@@ -901,7 +1047,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       if (item.product) {
         // Precio de venta anotado a mano en la boleta: manda ese; si no, el que mantiene el margen
         const sale = Number(item.handPrice) > 0 ? Number(item.handPrice) : keepMarginPrice(item.product, item.cost);
-        const base = useIvaGlobal ? item.cost * 1.21 : item.cost;
+        const base = item.cost * ivaMul();
         // El mismo producto en otro renglón (la boleta lo trae dos veces, por código): renglón aparte
         const repeats = newItems.filter((n) => n.productId === item.product.id).length;
         newItems.push({
@@ -935,6 +1081,20 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       }
     }
 
+    // Regalos, boleta vieja y correcciones a mano (2026-11-26): el precio de venta sigue el costo SIN regalo
+    // (si no, el regalo bajaría el precio), y una boleta vieja o un regalo no cambian el precio
+    let k = 0;
+    for (const item of data.items) {
+      if (!item.product) continue;
+      const row = newItems[k++];
+      if (!row) break;
+      withScanExtras(row, item);
+      if (row.stockOnly || row.gift) row.salePrice = item.product.salePrice;
+      else if (row.freeUnits && !(Number(item.handPrice) > 0)) row.salePrice = keepMarginPrice(item.product, restockCost(item.cost, item.quantity, row.freeUnits));
+      const priceBase = restockCost(item.cost, item.quantity, row.freeUnits) * ivaMul();
+      if (row.salePrice !== undefined) row.margin = priceBase > 0 ? Math.round(((row.salePrice - priceBase) / priceBase) * 100) : 0;
+    }
+
     if (newItems.length > 0) {
       setItems(prev => {
         const filtered = prev.filter(p => !newItems.some(n => n.productId === p.productId));
@@ -956,7 +1116,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     if (unmatched.length > 0) {
       // Los que no están en tu catálogo entran a la lista como productos nuevos (antes iban a una ventana
       // aparte y, si se cerraba, se perdían). Ahí se editan, se borran o se asocian a uno que ya tenés.
-      const fresh = unmatched.map((u, k) => newItemFromScan(u, k));
+      const fresh = unmatched.map((u, k) => withScanExtras(newItemFromScan(u, k), u));
       // Si la misma boleta se aplica dos veces, no se duplican los renglones nuevos
       const keyOf = (i: PurchaseItem) => `${i.source?.name || i.name}|${Number(i.quantity)}|${Number(i.cost)}`;
       const freshKeys = new Set(fresh.map(keyOf));
@@ -967,6 +1127,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     } else if (!opts.quiet) {
       toast.success(`Boleta leída: ${newItems.length} productos encontrados. Revisá y confirmá.`);
     }
+
+    // Siempre en el orden de la boleta (2026-11-26): los productos nuevos y los regalos ya no se van al final
+    setItems((prev) => orderLikeInvoice(prev));
   };
 
   // Ventana del total: Volver (a elegir las fotos, sin perderlas) o cancelar todo (X, Esc o tocar afuera)
@@ -1105,7 +1268,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       }
     }
     const sale = keepMarginPrice(product, cost);
-    const base = useIvaGlobal ? cost * 1.21 : cost;
+    const base = cost * ivaMul();
     const newPurchaseItem: PurchaseItem = {
       productId: product.id,
       barcode: product.barcode || '',
@@ -1128,7 +1291,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
       source: { code: unmatched.sku || undefined, name: unmatched.name },
       setBarcode: !product.barcode && unmatched.barcode ? unmatched.barcode : undefined,
     };
-    setItems(prev => [...prev.filter(p => p.productId !== product.id), newPurchaseItem]);
+    // Sigue siendo el mismo renglón de la boleta: conserva lo leído (foto, explicación, lugar en el papel)
+    if (unmatched && (unmatched.lineNo !== undefined || unmatched.photo || unmatched.explain)) withScanExtras(newPurchaseItem, unmatched);
+    setItems(prev => orderLikeInvoice([...prev.filter(p => p.productId !== product.id), newPurchaseItem]));
     return product;
   };
 
@@ -1258,6 +1423,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
     }
   };
 
+  // Las cuentas de la factura: subtotal, descuento, IVA por alícuota, percepciones y total
+  const fTotals = fiscalTotals(docKind, items.map((i) => ({ amount: Number(i.total) || 0, rate: docKind === 'A' ? rateOf(i) : 0 })), extras);
+
   const handleSubmit = async () => {
     if (!selectedSupplier) return toast.error('Selecciona un proveedor');
     
@@ -1275,6 +1443,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
           invoiceNumber,
           manualTotal: parsedTotal,
           items: [],
+          // En blanco o en negro también vale para un monto fijo
+          ...(docKind ? { fiscal: fiscalRecord(docKind, fiscalTotals(docKind === 'A' ? 'C' : docKind, [{ amount: parsedTotal, rate: 0 }], EMPTY_EXTRAS), EMPTY_EXTRAS) } : {}),
           paymentStatus,
           paymentMethod: paymentStatus === 'PAID' ? paymentMethod : null,
           cashSource: paidFrom(),
@@ -1301,29 +1471,37 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         supplierId: selectedSupplier.id,
         invoiceNumber,
         ...(remitoMatch && asRemitoInvoice ? { fromRemitoId: remitoMatch.id } : {}),
+        // Fecha de la boleta: una boleta más vieja que la última compra no pisa costos después
+        invoiceDate: date || undefined,
+        // Con comprobante: el total es el de la factura (IVA por alícuota, percepciones, redondeo)
+        ...(docKind ? { manualTotal: fTotals.total, fiscal: fiscalRecord(docKind, fTotals, extras) } : {}),
         items: items.map(i => {
           const costVal = netCostOf(i);
-          // Scale cost down if useIvaGlobal is false since the backend will automatically multiply it by 1.21
-          const backendCost = useIvaGlobal ? costVal : costVal / 1.21;
+          // El backend multiplica por 1,21: se manda el costo final (con el IVA del renglón y el descuento
+          // general de la factura) dividido 1,21
+          const backendCost = costVal * ivaMul(i) * (docKind ? fTotals.factor : 1) / 1.21;
           return { 
             productId: i.isNew ? undefined : i.productId, 
             quantity: parseFloat(i.quantity as any) || 0, 
             cost: backendCost, 
+            // Regalo (el producto queda con el costo sin regalo) y boleta vieja (solo stock)
+            freeUnits: Number(i.freeUnits) > 0 && (parseFloat(i.quantity as any) || 0) > Number(i.freeUnits) ? Number(i.freeUnits) : undefined,
+            stockOnly: i.isNew ? undefined : (i.stockOnly || undefined),
             buyFormat: i.buyFormat,
             expiresAt: (i.trackExpiry || (i.isNew && expiryEnabled)) && i.expiresAt ? i.expiresAt : undefined,
-            salePrice: i.isNew ? undefined : (Number(i.salePrice) || undefined),
+            salePrice: i.isNew || i.stockOnly ? undefined : (Number(i.salePrice) || undefined),
             source: i.source,
             setBarcode: i.isNew ? undefined : i.setBarcode,
             newProductData: i.isNew ? {
               name: i.name,
               barcode: i.barcode || null,
               sku: i.sku || null,
-              salePrice: i.newProductData?.salePrice || calculateSuggestedPrice(netCostOf(i), defaultMargin, useIvaGlobal),
+              salePrice: i.newProductData?.salePrice || calculateSuggestedPrice(netCostOf(i), defaultMargin, ivaMul(i)),
               listPrice: parseFloat(i.cost as any) || 0,
               discount1: parseFloat(i.discount1 as any) || 0,
               discount2: parseFloat(i.discount2 as any) || 0,
               discount3: parseFloat(i.discount3 as any) || 0,
-              taxRate: useIvaGlobal ? 21 : 0,
+              taxRate: docKind === 'A' ? rateOf(i) : docKind ? 0 : (useIvaGlobal ? 21 : 0),
               categoryId: i.newProductData?.categoryId || null,
               brandId: i.newProductData?.brandId || null,
               unitsPerPack: i.unitsPerPack || 1,
@@ -1337,6 +1515,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
         notes
       });
       warnCash(saved);
+      if (docKind && selectedSupplier?.id) setStoreSetting('purchase_doc_kinds', JSON.stringify({ ...kindsBySupplier(), [selectedSupplier.id]: docKind }));
       toast.success('Compra registrada con éxito');
       clearDraft();
       // Las últimas 5 boletas de este proveedor salieron sin tocar nada: ofrecer que se carguen solas (tanda 6.2)
@@ -1358,7 +1537,7 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
   const lookRows = items.filter((i) => i.isNew || i.doubtful);
   const okCount = items.length - lookRows.length;
   const foldOk = scanReview && !showAllRows && okCount > 0 && lookRows.length > 0;
-  const rowsTotalWithIva = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0) * (useIvaGlobal ? 1.21 : 1);
+  const rowsTotalWithIva = docKind ? fTotals.total : items.reduce((sum, i) => sum + (Number(i.total) || 0) * ivaMul(i), 0);
   const pesosFmt = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
 
   return (
@@ -1680,35 +1859,57 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                   )}
                </div>
             </div>
+                 <div className="col-span-2">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1.5">
+                      Comprobante
+                      {docKind && (
+                        <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold ${docKindInfo(docKind)?.blanco ? 'bg-sky-100 text-sky-800' : 'bg-slate-800 text-white'}`}>
+                          {docKindInfo(docKind)?.blanco ? 'En blanco' : 'En negro'}
+                        </span>
+                      )}
+                    </span>
+                    <select
+                      value={docKind}
+                      onChange={(e) => setDocKind(e.target.value as DocKind)}
+                      title={docKindInfo(docKind)?.hint || 'Elegí el tipo de comprobante para cargar el IVA y las percepciones'}
+                      className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-3 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 cursor-pointer"
+                    >
+                      <option value="">Sin elegir</option>
+                      {DOC_KINDS.map((d) => <option key={d.id} value={d.id}>{d.id === 'X' ? 'Presupuesto' : d.label}</option>)}
+                    </select>
+                    {!docKind ? (
+                      <label className="mt-1.5 ml-1 inline-flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-semibold text-slate-600">
+                        <input type="checkbox" checked={useIvaGlobal} onChange={e => setUseIvaGlobal(e.target.checked)} className="rounded" />
+                        Sumar IVA 21%
+                      </label>
+                    ) : (
+                      <p className="mt-1.5 ml-1 text-[11px] font-semibold text-slate-500 leading-tight">{docKindInfo(docKind)?.hint}</p>
+                    )}
+                 </div>
              {!isFixedAmount && (
                <>
-                 <div className="col-span-2 flex flex-col justify-end pb-1 h-full">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3.5 block ml-1 select-none">Calcular IVA (21%)</span>
-                    <label className="relative inline-flex items-center cursor-pointer select-none ml-1">
-                      <input 
-                        type="checkbox" 
-                        checked={useIvaGlobal} 
-                        onChange={e => setUseIvaGlobal(e.target.checked)} 
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-                      <span className="ml-2.5 text-xs font-extrabold text-slate-700 uppercase tracking-wider">{useIvaGlobal ? 'Sí' : 'No'}</span>
-                    </label>
-                 </div>
                  <div className="col-span-2">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Margen % · Redondeo</span>
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 ml-1 flex items-center justify-between gap-1">
+                      {hideMargin ? 'Redondeo' : 'Margen % · Redondeo'}
+                      <button type="button" onClick={toggleMargin} className="normal-case tracking-normal text-[10.5px] font-semibold text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
+                        title={hideMargin ? 'Volver a mostrar el margen de ganancia' : 'Ocultar el margen de ganancia (los precios de venta se siguen calculando igual)'}>
+                        {hideMargin ? 'Mostrar margen' : 'Ocultar'}
+                      </button>
+                    </span>
                     <div className="flex gap-1.5">
+                      {!hideMargin && (
                       <input
                         type="number"
                         value={defaultMargin}
                         onChange={e => setDefaultMargin(parseInt(e.target.value) || 0)}
                         className="w-full min-w-0 bg-slate-50 border-2 border-slate-300 rounded-2xl px-2 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 transition-all text-center"
                       />
+                      )}
                       <select
                         value={priceRound}
                         onChange={e => changePriceRound(Number(e.target.value))}
                         title="A cuánto se redondean para arriba los precios de venta de la boleta"
-                        className="shrink-0 bg-slate-50 border-2 border-slate-300 rounded-2xl px-2 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 cursor-pointer"
+                        className={`${hideMargin ? 'w-full' : 'shrink-0'} bg-slate-50 border-2 border-slate-300 rounded-2xl px-2 py-3 text-sm font-bold outline-none focus:bg-white focus:border-rose-500/50 cursor-pointer`}
                       >
                         {PRICE_ROUND_STEPS.map((n) => <option key={n} value={n}>{n ? `$${n.toLocaleString('es-AR')}` : 'Sin'}</option>)}
                       </select>
@@ -1716,11 +1917,11 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                  </div>
                </>
              )}
-             <div className={isFixedAmount ? "col-span-4" : "col-span-2"}>
+             <div className={isFixedAmount ? "col-span-3" : "col-span-2"}>
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">Fecha</span>
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-300 rounded-2xl px-5 py-3 text-sm font-bold outline-none" />
              </div>
-             <div className={isFixedAmount ? "col-span-4" : "col-span-2"}>
+             <div className={isFixedAmount ? "col-span-3" : "col-span-2"}>
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block ml-1">N° Comprobante (opc.)</span>
                 <div className="relative">
                    <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
@@ -2259,6 +2460,9 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
               onSetBarcode={(row, bc) => setItems((prev) => prev.map((it) => rowId(it) === rowId(row) ? { ...it, barcode: bc, newProductData: it.newProductData ? { ...it.newProductData, barcode: bc } : it.newProductData } : it))} />
           )}
           {showDuplicates && <DuplicatesModal onClose={() => setShowDuplicates(false)} />}
+          {scanNotes.length > 0 && items.length > 0 && (
+            <div className="mb-3"><ScanNotesPanel notes={scanNotes.map((n) => (n.action?.type === 'handTotal' ? { ...n, action: undefined } : n))} done={notesDone} onAction={runScanNote} /></div>
+          )}
           {scanReview && (
             <div className="mb-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-[14px] font-bold text-slate-800">
@@ -2269,18 +2473,34 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                   {scanCheck.ok ? `✓ Suma ${pesosFmt(rowsTotalWithIva)} = total impreso${scanCheck.printed ? ` ${pesosFmt(scanCheck.printed)}` : ''}` : scanCheck.message}
                 </span>
               )}
-              {okCount > 0 && lookRows.length > 0 && (
-                <button type="button" onClick={() => setShowAllRows((v) => !v)} className="ml-auto h-8 px-3 rounded-lg border border-slate-300 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+              <div className="ml-auto inline-flex rounded-lg border border-slate-300 overflow-hidden text-[12px] font-semibold">
+                {(['boleta', 'tabla'] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setReviewView(v)} className={`h-8 px-3 cursor-pointer ${reviewView === v ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>{v === 'boleta' ? 'Boleta' : 'Tabla'}</button>
+                ))}
+              </div>
+              {reviewView === 'tabla' && okCount > 0 && lookRows.length > 0 && (
+                <button type="button" onClick={() => setShowAllRows((v) => !v)} className="h-8 px-3 rounded-lg border border-slate-300 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
                   {showAllRows ? 'Ocultar los que están bien' : `Ver los ${okCount} que están bien`}
                 </button>
               )}
             </div>
           )}
+          {scanReview && reviewView === 'boleta' && (
+            <div className="mb-3">
+              <InvoiceBoletaView items={items} photos={shownPhotos} photoImages={photoMeta.images} turns={photoMeta.turns}
+                ivaMul={(r) => ivaMul(r as any)} check={scanCheck} totalWithIva={rowsTotalWithIva}
+                onUpdate={(id, field, value) => updateItem(id, field as keyof PurchaseItem, value)} onRemove={removeItem}
+                onAssociate={(row, id) => associateNewRow(row as PurchaseItem, id)} onHand={(row) => updateHandRow(row as PurchaseItem)}
+                onStockOnly={(row, on) => toggleStockOnly(row as PurchaseItem, on)} onOpenPhotos={() => setShowPhotos(true)} />
+            </div>
+          )}
           {/* Products Table */}
-          <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+          <div className={`bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[400px] ${scanReview && reviewView === 'boleta' ? 'hidden' : ''}`}>
              <PurchaseItemsTable<PurchaseItem>
                items={foldOk ? lookRows : items}
-               useIva={useIvaGlobal}
+               ivaMulOf={ivaMul}
+               docKind={docKind}
+               showMargin={!hideMargin}
                expiryEnabled={expiryEnabled}
                netCostOf={netCostOf}
                update={(id, field, value) => updateItem(id, field as keyof PurchaseItem, value)}
@@ -2293,6 +2513,18 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                renderNameExtras={(item) => (
                  <>
                    {item.doubtful && item.reasons?.length && !(item.isNew && item.reasons.length === 1 && item.reasons[0] === 'producto nuevo') ? <p className="text-[11.5px] text-amber-700 mt-0.5">Mirar: {item.reasons.join(', ')}</p> : null}
+                   {item.handQuantity !== null && item.handQuantity !== undefined && (
+                     <button type="button" onClick={() => updateHandRow(item)} className="mt-1 h-6 px-2 rounded-full border border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer">
+                       {item.handQuantity === 0 ? 'Sacar: no vino (anotado a mano)' : `Usar ${String(item.handQuantity).replace('.', ',')} (lo anotado a mano)`}
+                     </button>
+                   )}
+                   {item.info?.length ? <p className="text-[11.5px] text-emerald-700 mt-0.5">{item.info.join(' · ')}</p> : null}
+                   {!item.isNew && (item.stockOnly || item.info?.some((t) => t.startsWith('boleta del'))) && (
+                     <label className="mt-1 inline-flex items-center gap-1.5 text-[11.5px] text-slate-600 cursor-pointer">
+                       <input type="checkbox" checked={!!item.stockOnly} onChange={(e) => toggleStockOnly(item, e.target.checked)} className="w-3.5 h-3.5 accent-amber-600" />
+                       Solo sumar stock (no cambiar costo ni precio)
+                     </label>
+                   )}
                    {item.isNew && item.candidates?.length ? <CandidateChips candidates={item.candidates} onPick={(id) => associateNewRow(item, id)} /> : null}
                    {item.isNew && !item.barcode && (item as any).scanned?.barcodeSuggestions?.length ? (
                      <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -2349,6 +2581,8 @@ export default function NewPurchaseScreen({ onBack, initialPurchase, onConfirmed
                      <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-widest">Total Fijo</span>
                      <div className="text-3xl font-extrabold text-slate-800 whitespace-nowrap">$ {(parseFloat(fixedAmountTotal) || 0).toFixed(2)}</div>
                   </div>
+                ) : docKind ? (
+                  <PurchaseFiscalPanel kind={docKind} totals={fTotals} extras={extras} setExtras={setExtras} />
                 ) : (
                   <>
                     <div className="flex items-center gap-4 text-xs font-bold text-slate-700">

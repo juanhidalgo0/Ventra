@@ -162,7 +162,7 @@ export default function ReviewTabs({ ids, onClose }: { ids: string[]; onClose: (
           current.draft?.creditNote
             // Nota de crédito: no es una compra, se confirma aparte (resta deuda; stock solo si se devolvió)
             ? <CreditNotePanel key={current.id} purchase={current} onDone={next} onDiscard={discard} />
-            : <NewPurchaseScreen key={current.id} initialPurchase={current} photos={photosFor(current.draft?.images)} onBack={onClose} onConfirmed={next} />
+            : <NewPurchaseScreen key={current.id} initialPurchase={current} photos={photosFor(current.draft?.images, current.id)} onBack={onClose} onConfirmed={next} />
         )}
       </div>
     </div>

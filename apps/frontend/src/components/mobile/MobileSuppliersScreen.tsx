@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { Search, X, Plus, Truck, Phone, MessageCircle, Mail, HandCoins, ShoppingBag } from 'lucide-react';
 import api from '../../services/api';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, parseAmount } from './ui';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 type Filter = 'ALL' | 'DEBT';
 
@@ -50,15 +52,42 @@ export default function MobileSuppliersScreen() {
       .sort((a, b) => (filter === 'DEBT' ? debtOf(b.id) - debtOf(a.id) : a.name.localeCompare(b.name, 'es')));
   }, [suppliers, search, filter, debtOf]);
 
+  /** Lo que se le debe a cada proveedor (con el filtro y la búsqueda) en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!suppliers) return null;
+    const today = new Date().toLocaleDateString('es-AR');
+    const overdue = list.reduce((t, x) => t + (Number(x.overdue) || 0), 0);
+    return {
+      title: 'Proveedores',
+      subtitle: [`Saldos al ${today}`, filter === 'DEBT' ? 'Solo con deuda' : '', search.trim() && `Búsqueda: "${search.trim()}"`].filter(Boolean).join(' · '),
+      fileName: `Proveedores ${today.replace(/[/]/g, '-')}`,
+      summary: [
+        { label: 'Les debés en total', value: totalDebt, type: 'money', tone: totalDebt > 0 ? 'bad' : 'good' },
+        { label: 'Vencido', value: overdue, type: 'money', tone: overdue > 0 ? 'bad' : undefined },
+        { label: 'Proveedores con deuda', value: withDebt, type: 'int' },
+      ],
+      tables: [{
+        title: 'Proveedores',
+        columns: [{ header: 'Proveedor' }, { header: 'CUIT' }, { header: 'Contacto' }, { header: 'Teléfono' }, { header: 'Plazo (días)', type: 'int' }, { header: 'Deuda', type: 'money' }, { header: 'Vencido', type: 'money' }, { header: 'Próximo vencimiento', type: 'date' }],
+        rows: list.map((x) => [x.name, x.cuit || '', x.contact || '', x.phone || '', x.paymentDays ?? null, debtOf(x.id), Number(x.overdue) || null, x.nextDueAt || null]),
+        totals: ['Total', '', '', '', null, list.reduce((t, x) => t + debtOf(x.id), 0), overdue, null],
+        emptyText: 'No hay proveedores con estos filtros',
+      }],
+    };
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <ScreenHeader
         back
         title="Proveedores"
         action={
+          <div className="flex items-center gap-1.5">
+          <ExportButtons variant="header" build={buildReport} disabled={!suppliers} />
           <button onClick={() => setCreating(true)} className="h-10 px-3.5 rounded-full bg-orange-200 text-orange-900 flex items-center gap-1.5 shrink-0 active:scale-95 transition-transform">
             <Plus className="w-[18px] h-[18px]" /><span className="text-[13px] font-bold">Nuevo</span>
           </button>
+          </div>
         }
       >
         <div className="rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 px-4 py-3 mb-3">
