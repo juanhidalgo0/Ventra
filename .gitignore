@@ -48,3 +48,30 @@ release-token.txt
 
 # Boletas que esperan internet en la PC (fotos de clientes): nunca al repo
 ventra-scan-queue/
+
+# Voz y tomas reales del dueño para el reel de origen (el repo es público)
+ventra-video-10s/public/origen/tomas/
+
+# Locales que no van a un repo público: claves, copias de bases, archivos de clientes y pruebas sueltas
+resend.txt
+out-deploy-ig.log
+apps/backend/_backups-dev/
+apps/backend/uploads/
+apps/backend/ventra-notify.json
+apps/backend/ventra-sync-status.json
+apps/backend/scratch/
+apps/backend/scratch_*.js
+apps/backend/test_db.js
+apps/backend/compress_existing_dev_db_images.js
+test_search_solufix.js
+apps/frontend/vite.tmp*.config.ts
+firebase/functions/scripts/_diag-*.js
+errores/
+scratch/
+WhatsApp Image *.jpeg
+# Videos: renders, grabaciones y voces pesan cientos de MB
+ventra-video-10s/Renders/
+ventra-video-10s/grabaciones/
+ventra-video-10s/voz/
+ventra-video-10s/gancho-higgsfield/
+ventra-video-10s/public/
