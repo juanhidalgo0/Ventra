@@ -1,0 +1,430 @@
+{
+ "_nota": "Ventri, episodio 1 (las boletas). Única fuente de tiempos para la imagen (VentriEp01.tsx) y el sonido (scripts/ventri-mezcla.py). Cuadros a 30 fps. Las escenas con boca (indignada, pila, pc, cierre) son tomas de Wan 2.7 con la voz: no cambiar su 'desde' sin mover también la frase.",
+ "fps": 30,
+ "total": 540,
+ "escenas": [
+  {
+   "id": "impresion",
+   "desde": 0,
+   "dura": 36,
+   "fuente": {
+    "video": "ventri/t1-impresion.mp4",
+    "desde": 0.9,
+    "vel": 1.5
+   },
+   "zoom": [
+    1.0,
+    1.03
+   ]
+  },
+  {
+   "id": "indignada",
+   "desde": 36,
+   "dura": 90,
+   "fuente": {
+    "video": "ventri/s1-indignada.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.06,
+    1.12
+   ]
+  },
+  {
+   "id": "pila",
+   "desde": 126,
+   "dura": 120,
+   "fuente": {
+    "video": "ventri/s2-pila.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.05
+   ]
+  },
+  {
+   "id": "foto",
+   "desde": 246,
+   "dura": 36,
+   "fuente": {
+    "video": "ventri/t3-celular-app.mp4",
+    "desde": 0,
+    "vel": 0.6
+   },
+   "zoom": [
+    1.0,
+    1.08
+   ]
+  },
+  {
+   "id": "app",
+   "desde": 282,
+   "dura": 108,
+   "celular": [
+    {
+     "desde": 1.95,
+     "hasta": 3.57,
+     "vel": 1.6
+    },
+    {
+     "desde": 3.57,
+     "hasta": 9.7,
+     "vel": 5
+    },
+    {
+     "desde": 9.76,
+     "hasta": 11.3,
+     "vel": 0.9
+    }
+   ]
+  },
+  {
+   "id": "pc",
+   "desde": 390,
+   "dura": 60,
+   "fuente": {
+    "video": "ventri/s4-pc-app.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.04
+   ]
+  },
+  {
+   "id": "cierre",
+   "desde": 450,
+   "dura": 90,
+   "fuente": {
+    "video": "ventri/s5-cierre.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.02,
+    1.0
+   ]
+  }
+ ],
+ "flash": 270,
+ "voz": {
+  "archivo": "public/ventri/voz-p2.wav",
+  "_nota": "Voz p2 (Praat: +3 st, formantes +13 %, melodía x1,45). Cada toma con boca de Wan 2.7 se generó con su frase empezando a 0,3 s del clip; por eso cada frase entra 9 cuadros después del comienzo de su escena.",
+  "frases": [
+   {
+    "texto": "¿Seguís cargando las boletas a mano?",
+    "en": 45,
+    "dura": 64,
+    "resaltar": [
+     "mano?"
+    ],
+    "fija": {
+     "desde": 0,
+     "renglones": [
+      "¿Seguís cargando",
+      "las boletas a mano?"
+     ]
+    },
+    "desde": 0.0,
+    "hasta": 2.15,
+    "palabras": [
+     {
+      "w": "¿Seguís",
+      "en": 45,
+      "dura": 16
+     },
+     {
+      "w": "cargando",
+      "en": 62,
+      "dura": 15
+     },
+     {
+      "w": "las",
+      "en": 76,
+      "dura": 6
+     },
+     {
+      "w": "boletas",
+      "en": 82,
+      "dura": 13
+     },
+     {
+      "w": "a",
+      "en": 95,
+      "dura": 2
+     },
+     {
+      "w": "mano?",
+      "en": 97,
+      "dura": 12
+     }
+    ]
+   },
+   {
+    "texto": "Mirá esta pila… veinte renglones, uno por uno.",
+    "en": 135,
+    "dura": 106,
+    "resaltar": [
+     "pila…"
+    ],
+    "desde": 2.28,
+    "hasta": 5.8,
+    "palabras": [
+     {
+      "w": "Mirá",
+      "en": 135,
+      "dura": 14
+     },
+     {
+      "w": "esta",
+      "en": 149,
+      "dura": 9
+     },
+     {
+      "w": "pila…",
+      "en": 159,
+      "dura": 17
+     },
+     {
+      "w": "veinte",
+      "en": 176,
+      "dura": 18
+     },
+     {
+      "w": "renglones,",
+      "en": 194,
+      "dura": 25
+     },
+     {
+      "w": "uno",
+      "en": 218,
+      "dura": 7
+     },
+     {
+      "w": "por",
+      "en": 225,
+      "dura": 7
+     },
+     {
+      "w": "uno.",
+      "en": 232,
+      "dura": 9
+     }
+    ]
+   },
+   {
+    "texto": "Sacale una foto y la leo yo: stock, costo y precio nuevo, cuidando tu margen.",
+    "en": 248,
+    "dura": 143,
+    "resaltar": [
+     "foto",
+     "yo:",
+     "margen."
+    ],
+    "desde": 6.02,
+    "hasta": 10.8,
+    "palabras": [
+     {
+      "w": "Sacale",
+      "en": 248,
+      "dura": 13
+     },
+     {
+      "w": "una",
+      "en": 261,
+      "dura": 7
+     },
+     {
+      "w": "foto",
+      "en": 268,
+      "dura": 9
+     },
+     {
+      "w": "y",
+      "en": 277,
+      "dura": 2
+     },
+     {
+      "w": "la",
+      "en": 280,
+      "dura": 4
+     },
+     {
+      "w": "leo",
+      "en": 284,
+      "dura": 7
+     },
+     {
+      "w": "yo:",
+      "en": 291,
+      "dura": 7
+     },
+     {
+      "w": "stock,",
+      "en": 298,
+      "dura": 21
+     },
+     {
+      "w": "costo",
+      "en": 319,
+      "dura": 9
+     },
+     {
+      "w": "y",
+      "en": 328,
+      "dura": 2
+     },
+     {
+      "w": "precio",
+      "en": 330,
+      "dura": 14
+     },
+     {
+      "w": "nuevo,",
+      "en": 344,
+      "dura": 17
+     },
+     {
+      "w": "cuidando",
+      "en": 361,
+      "dura": 13
+     },
+     {
+      "w": "tu",
+      "en": 374,
+      "dura": 2
+     },
+     {
+      "w": "margen.",
+      "en": 376,
+      "dura": 15
+     }
+    ]
+   },
+   {
+    "texto": "Vos andá a cebar unos mates.",
+    "en": 399,
+    "dura": 43,
+    "resaltar": [
+     "mates."
+    ],
+    "desde": 10.98,
+    "hasta": 12.42,
+    "palabras": [
+     {
+      "w": "Vos",
+      "en": 399,
+      "dura": 4
+     },
+     {
+      "w": "andá",
+      "en": 403,
+      "dura": 9
+     },
+     {
+      "w": "a",
+      "en": 412,
+      "dura": 2
+     },
+     {
+      "w": "cebar",
+      "en": 414,
+      "dura": 9
+     },
+     {
+      "w": "unos",
+      "en": 423,
+      "dura": 8
+     },
+     {
+      "w": "mates.",
+      "en": 430,
+      "dura": 12
+     }
+    ]
+   },
+   {
+    "texto": "Comentá boleta y te escribo yo.",
+    "en": 459,
+    "dura": 54,
+    "cierre": true,
+    "desde": 12.66,
+    "hasta": 14.46,
+    "palabras": [
+     {
+      "w": "Comentá",
+      "en": 459,
+      "dura": 13
+     },
+     {
+      "w": "boleta",
+      "en": 472,
+      "dura": 13
+     },
+     {
+      "w": "y",
+      "en": 484,
+      "dura": 3
+     },
+     {
+      "w": "te",
+      "en": 488,
+      "dura": 5
+     },
+     {
+      "w": "escribo",
+      "en": 492,
+      "dura": 13
+     },
+     {
+      "w": "yo.",
+      "en": 505,
+      "dura": 8
+     }
+    ]
+   }
+  ]
+ },
+ "efectos": [
+  {
+   "en": 0,
+   "sonido": "impresora",
+   "gan": 0.8
+  },
+  {
+   "en": 126,
+   "sonido": "papeles",
+   "gan": 0.7
+  },
+  {
+   "en": 270,
+   "sonido": "obturador",
+   "gan": 0.8
+  },
+  {
+   "en": 280,
+   "sonido": "whoosh",
+   "gan": 0.35
+  },
+  {
+   "en": 386,
+   "sonido": "listo",
+   "gan": 0.45
+  },
+  {
+   "en": 443,
+   "sonido": "sorbo",
+   "gan": 0.6
+  }
+ ],
+ "cierre": {
+  "desde": 459,
+  "palabra": "BOLETA",
+  "web": "ventra.store",
+  "oferta": "7 días gratis"
+ }
+}

@@ -1,0 +1,347 @@
+{
+ "_nota": "Short barato de Ventri (títere): VentriCorto.tsx. Voz recortada del ep. 2 (ya aprobada). Boca: scripts/ventri-titere-boca.py. Sonido: scripts/ventri-mezcla.py.",
+ "fps": 30,
+ "total": 366,
+ "salida": "ventri/cortos/01/mezcla.wav",
+ "fondo": "ventri/titere/fondo-kiosco.png",
+ "titere": {
+  "x": 470,
+  "pie": 1690,
+  "alto": 1000
+ },
+ "entrada": {
+  "desde": [
+   905,
+   1440
+  ],
+  "dura": 16
+ },
+ "voz": {
+  "archivo": "public/ventri/ep02/voz.mp3",
+  "frases": [
+   {
+    "texto": "¿Cuánto aguinaldo te toca?",
+    "en": 14,
+    "dura": 49,
+    "resaltar": [
+     "aguinaldo"
+    ],
+    "desde": 0.0,
+    "hasta": 1.62,
+    "palabras": [
+     {
+      "w": "¿Cuánto",
+      "en": 15,
+      "dura": 14
+     },
+     {
+      "w": "aguinaldo",
+      "en": 29,
+      "dura": 16
+     },
+     {
+      "w": "te",
+      "en": 45,
+      "dura": 3
+     },
+     {
+      "w": "toca?",
+      "en": 49,
+      "dura": 14
+     }
+    ],
+    "fija": {
+     "desde": 0,
+     "renglones": [
+      "¿Cuánto aguinaldo",
+      "te toca?"
+     ]
+    }
+   },
+   {
+    "texto": "Agarrá tu sueldo más alto desde julio, en bruto… y partilo al medio.",
+    "en": 66,
+    "dura": 129,
+    "resaltar": [
+     "alto",
+     "medio."
+    ],
+    "desde": 1.62,
+    "hasta": 5.92,
+    "palabras": [
+     {
+      "w": "Agarrá",
+      "en": 66,
+      "dura": 13
+     },
+     {
+      "w": "tu",
+      "en": 79,
+      "dura": 4
+     },
+     {
+      "w": "sueldo",
+      "en": 83,
+      "dura": 12
+     },
+     {
+      "w": "más",
+      "en": 95,
+      "dura": 8
+     },
+     {
+      "w": "alto",
+      "en": 102,
+      "dura": 8
+     },
+     {
+      "w": "desde",
+      "en": 110,
+      "dura": 10
+     },
+     {
+      "w": "julio,",
+      "en": 120,
+      "dura": 16
+     },
+     {
+      "w": "en",
+      "en": 136,
+      "dura": 5
+     },
+     {
+      "w": "bruto…",
+      "en": 141,
+      "dura": 17
+     },
+     {
+      "w": "y",
+      "en": 158,
+      "dura": 3
+     },
+     {
+      "w": "partilo",
+      "en": 161,
+      "dura": 12
+     },
+     {
+      "w": "al",
+      "en": 173,
+      "dura": 4
+     },
+     {
+      "w": "medio.",
+      "en": 177,
+      "dura": 17
+     }
+    ],
+    "grupos": [
+     "Agarrá tu sueldo / más alto",
+     "desde julio, / en bruto…",
+     "y partilo / al medio."
+    ]
+   },
+   {
+    "texto": "Te lo tienen que pagar hasta el 18.",
+    "en": 204,
+    "dura": 62,
+    "resaltar": [
+     "18."
+    ],
+    "desde": 15.0,
+    "hasta": 17.06,
+    "palabras": [
+     {
+      "w": "Te",
+      "en": 206,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 209,
+      "dura": 4
+     },
+     {
+      "w": "tienen",
+      "en": 213,
+      "dura": 11
+     },
+     {
+      "w": "que",
+      "en": 224,
+      "dura": 4
+     },
+     {
+      "w": "pagar",
+      "en": 228,
+      "dura": 9
+     },
+     {
+      "w": "hasta",
+      "en": 237,
+      "dura": 9
+     },
+     {
+      "w": "el",
+      "en": 245,
+      "dura": 3
+     },
+     {
+      "w": "18.",
+      "en": 249,
+      "dura": 17
+     }
+    ],
+    "grupos": [
+     "Te lo tienen / que pagar",
+     "hasta el 18."
+    ]
+   },
+   {
+    "texto": "Guardalo y mandáselo al que siempre pregunta.",
+    "en": 270,
+    "dura": 78,
+    "cierre": true,
+    "desde": 20.39,
+    "hasta": 22.98,
+    "palabras": [
+     {
+      "w": "Guardalo",
+      "en": 270,
+      "dura": 16
+     },
+     {
+      "w": "y",
+      "en": 287,
+      "dura": 2
+     },
+     {
+      "w": "mandáselo",
+      "en": 289,
+      "dura": 17
+     },
+     {
+      "w": "al",
+      "en": 306,
+      "dura": 4
+     },
+     {
+      "w": "que",
+      "en": 310,
+      "dura": 8
+     },
+     {
+      "w": "siempre",
+      "en": 318,
+      "dura": 10
+     },
+     {
+      "w": "pregunta.",
+      "en": 328,
+      "dura": 20
+     }
+    ]
+   }
+  ]
+ },
+ "planos": [
+  {
+   "en": 0,
+   "zoom": 1.0,
+   "foco": [
+    540,
+    1150
+   ]
+  },
+  {
+   "en": 66,
+   "zoom": 1.28,
+   "foco": [
+    470,
+    1050
+   ]
+  },
+  {
+   "en": 168,
+   "zoom": 1.0,
+   "foco": [
+    540,
+    1150
+   ]
+  },
+  {
+   "en": 214,
+   "zoom": 1.32,
+   "foco": [
+    470,
+    1050
+   ]
+  },
+  {
+   "en": 270,
+   "zoom": 1.0,
+   "foco": [
+    540,
+    1150
+   ]
+  }
+ ],
+ "impresa": {
+  "desde": 168,
+  "hasta": 214,
+  "renglones": [
+   {
+    "t": "÷ 2",
+    "tam": 52
+   },
+   {
+    "t": "AGUINALDO",
+    "tam": 40
+   },
+   {
+    "t": "$450.000",
+    "tam": 60
+   }
+  ]
+ },
+ "cartel": {
+  "desde": 247,
+  "hasta": 266,
+  "arriba": "VENCE EL",
+  "grande": "18",
+  "abajo": "DE DICIEMBRE"
+ },
+ "sello": {
+  "desde": 0,
+  "hasta": 270
+ },
+ "cierre": {
+  "desde": 270,
+  "grande": "Guardalo",
+  "abajo": "y mandáselo al que\nsiempre pregunta",
+  "web": "ventra.store"
+ },
+ "efectos": [
+  {
+   "en": 0,
+   "sonido": "impresora",
+   "gan": 0.7
+  },
+  {
+   "en": 14,
+   "sonido": "whoosh",
+   "gan": 0.3
+  },
+  {
+   "en": 168,
+   "sonido": "tira",
+   "gan": 0.45
+  },
+  {
+   "en": 249,
+   "sonido": "tic",
+   "gan": 0.6
+  }
+ ],
+ "boca": "---------------cccccccceeeeeeeeeeeeeccccccccccccccccccc------------cceeecccccccccccccaaaaaaaaaaaccccccceeccaaeecccccccccccccccccc---ccccccccccccccccc------ccaacccccccceeeeeeecccccccccccc---------------------cceecceeaaaaaaacccaaeeccccccccceecccccccccccccccc-----------------aacccceeeeaaaaccccceeaaaaaaaaccccccceecccccccccccoooccccccoooooocccccc-----------------------"
+}

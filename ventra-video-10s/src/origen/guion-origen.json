@@ -1,0 +1,59 @@
+{
+ "_nota": "Reel 'Me hice mi propio sistema' (marketing/origen/GUION.md). 30 fps. Tres bloques seguidos: gancho (a, b o c), cuerpo y cierre; cada uno es una toma del dueño (en el cuerpo, la app a pantalla completa y su cara en un círculo; si la toma 2 es solo audio, sin círculo). Todos los tiempos en cuadros desde el comienzo de su bloque. Las frases tienen tiempos estimados hasta que lleguen las tomas: después se pasan las palabras de whisper (palabras: [{w, en, dura}]). archivo null = cartel provisorio en lugar de la toma.",
+ "fps": 30,
+ "cartel": "Soy empleado de kiosco / y me hice mi propio sistema",
+ "ganchos": {
+  "a": {
+   "toma": { "archivo": null, "desde": 0, "encuadre": "50% 30%" },
+   "dura": 96,
+   "frases": [{ "texto": "Soy empleado de kiosco y me hice mi propio sistema.", "en": 4, "dura": 86, "oculta": true }]
+  },
+  "b": {
+   "toma": { "archivo": null, "desde": 0, "encuadre": "50% 30%" },
+   "dura": 165,
+   "frases": [
+    { "texto": "Trabajo en un kiosco hace cinco años.", "en": 4, "dura": 58 },
+    { "texto": "El sistema que usábamos era tan malo…", "en": 66, "dura": 54 },
+    { "texto": "que me hice uno.", "en": 128, "dura": 32, "resaltar": ["uno."] }
+   ]
+  },
+  "c": {
+   "toma": { "archivo": null, "desde": 0, "encuadre": "50% 30%" },
+   "dura": 84,
+   "frases": [{ "texto": "Esto lo programé yo, entre cliente y cliente.", "en": 4, "dura": 76, "resaltar": ["yo,"] }]
+  }
+ },
+ "cuerpo": {
+  "toma": { "archivo": null, "desde": 0, "encuadre": "50% 26%", "zoom": 1.9 },
+  "dura": 476,
+  "frases": [
+   { "texto": "Antes, cargar la boleta del proveedor era una hora.", "en": 2, "dura": 84 },
+   { "texto": "Ahora le saco una foto.", "en": 90, "dura": 42, "resaltar": ["foto."] },
+   { "texto": "Aumentaba todo y había que remarcar uno por uno.", "en": 166, "dura": 80 },
+   { "texto": "Ahora pongo el porcentaje y listo.", "en": 252, "dura": 52, "resaltar": ["porcentaje"] },
+   { "texto": "Y el dueño me escribía a cada rato: ¿cuánto vendimos?", "en": 314, "dura": 84 },
+   { "texto": "Ahora le pregunta a Ventra por WhatsApp.", "en": 404, "dura": 54, "resaltar": ["WhatsApp."] }
+  ],
+  "pantallas": [
+   { "_que": "antes: la boleta de papel larga (baja despacio por los 20 renglones)", "en": 0, "dura": 84, "imagen": "origen/boleta-papel.png", "css": [900, 1600], "k": 1.45, "cx": 450, "cy": 565, "cy2": 841 },
+   { "_que": "ahora: la hoja con la foto", "en": 84, "dura": 16, "src": "app/b20-celu.mp4", "css": [390, 844], "desde": 2.6, "k": 2.77, "cx": 195, "cy": 447 },
+   { "_que": "la IA leyendo (en el clip 'Boleta leída' aparece entera a los 9,8 s, no en la marca 'leida')", "en": 100, "dura": 12, "src": "app/b20-celu.mp4", "css": [390, 844], "desde": 8.6, "vel": 2.5, "k": 2.77, "cx": 195, "cy": 447 },
+   { "_que": "Boleta leída: se cargó sola, precio de venta nuevo", "en": 112, "dura": 34, "src": "app/b20-celu.mp4", "css": [390, 844], "desde": 9.8, "k": 2.77, "cx": 195, "cy": 330, "cy2": 340 },
+   { "_que": "la misma pantalla quieta (el clip termina a los 11,31 s): captura control-b20-3", "en": 146, "dura": 20, "imagen": "app/control-b20-3.png", "css": [390, 844], "k": 2.77, "cx": 195, "cy": 340, "cy2": 342 },
+   { "_que": "aumentar precios: escribe 15 %", "en": 166, "dura": 42, "src": "origen/app/precios-pc.mp4", "toques": "precios-pc", "css": [1280, 800], "desde": 3.05, "k": 2.5, "cx": 276, "cy": 340 , "burbuja": 900 },
+   { "_que": "aplica: la columna de venta con los precios nuevos", "en": 208, "dura": 48, "src": "origen/app/precios-pc.mp4", "toques": "precios-pc", "css": [1280, 800], "desde": 4.4, "k": 2.5, "cx": 1010, "cy": 330, "cy2": 358 },
+   { "_que": "Se guardaron 28 precios", "en": 256, "dura": 54, "src": "origen/app/precios-pc.mp4", "css": [1280, 800], "desde": 7.5, "k": 2.4, "cx": 640, "cy": 342 },
+   { "_que": "el WhatsApp del jefe preguntando todo el día", "en": 310, "dura": 94, "tipo": "wa-jefe", "mensajes": [8, 28, 48, 68] },
+   { "_que": "el dueño le pregunta a Ventra y le contesta", "en": 404, "dura": 72, "tipo": "wa-ventra", "pregunta": 2, "responde": 24 }
+  ]
+ },
+ "cierre": {
+  "toma": { "archivo": null, "desde": 0, "encuadre": "50% 30%" },
+  "dura": 200,
+  "frases": [
+   { "texto": "Lo usamos todos los días acá.", "en": 4, "dura": 50 },
+   { "texto": "Si tenés un comercio, comentá CAJA y te lo dejo probar siete días gratis.", "en": 60, "dura": 120, "resaltar": ["CAJA", "gratis."] }
+  ],
+  "placa": { "en": 150, "grande": "CAJA", "arriba": "Comentá", "pastilla": "7 días gratis · ventra.store" }
+ }
+}

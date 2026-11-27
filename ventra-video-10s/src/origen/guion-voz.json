@@ -1,0 +1,928 @@
+{
+ "a": {
+  "audio": "origen/tomas/g2.m4a",
+  "fin": 120,
+  "frases": [
+   {
+    "texto": "Trabajo en un kiosco hace cinco años y hice mi propio sistema.",
+    "en": 3,
+    "dura": 117,
+    "palabras": [
+     {
+      "w": "Trabajo",
+      "en": 3,
+      "dura": 16
+     },
+     {
+      "w": "en",
+      "en": 19,
+      "dura": 5
+     },
+     {
+      "w": "un",
+      "en": 24,
+      "dura": 6
+     },
+     {
+      "w": "kiosco",
+      "en": 30,
+      "dura": 16
+     },
+     {
+      "w": "hace",
+      "en": 46,
+      "dura": 11
+     },
+     {
+      "w": "cinco",
+      "en": 57,
+      "dura": 14
+     },
+     {
+      "w": "años",
+      "en": 71,
+      "dura": 15
+     },
+     {
+      "w": "y",
+      "en": 86,
+      "dura": 3
+     },
+     {
+      "w": "hice",
+      "en": 88,
+      "dura": 7
+     },
+     {
+      "w": "mi",
+      "en": 95,
+      "dura": 3
+     },
+     {
+      "w": "propio",
+      "en": 98,
+      "dura": 10
+     },
+     {
+      "w": "sistema.",
+      "en": 108,
+      "dura": 12
+     }
+    ],
+    "resaltar": [
+     "sistema."
+    ]
+   }
+  ]
+ },
+ "b": {
+  "audio": "origen/tomas/g3.m4a",
+  "fin": 225,
+  "frases": [
+   {
+    "texto": "Mi jefe me preguntaba cuánto vendimos como 50 veces por día,",
+    "en": 1,
+    "dura": 154,
+    "palabras": [
+     {
+      "w": "Mi",
+      "en": 1,
+      "dura": 6
+     },
+     {
+      "w": "jefe",
+      "en": 7,
+      "dura": 13
+     },
+     {
+      "w": "me",
+      "en": 20,
+      "dura": 13
+     },
+     {
+      "w": "preguntaba",
+      "en": 33,
+      "dura": 27
+     },
+     {
+      "w": "cuánto",
+      "en": 60,
+      "dura": 20
+     },
+     {
+      "w": "vendimos",
+      "en": 80,
+      "dura": 24
+     },
+     {
+      "w": "como",
+      "en": 104,
+      "dura": 8
+     },
+     {
+      "w": "50",
+      "en": 112,
+      "dura": 12
+     },
+     {
+      "w": "veces",
+      "en": 124,
+      "dura": 11
+     },
+     {
+      "w": "por",
+      "en": 135,
+      "dura": 5
+     },
+     {
+      "w": "día,",
+      "en": 140,
+      "dura": 15
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "así que hice que le conteste el WhatsApp.",
+    "en": 155,
+    "dura": 70,
+    "palabras": [
+     {
+      "w": "así",
+      "en": 155,
+      "dura": 9
+     },
+     {
+      "w": "que",
+      "en": 164,
+      "dura": 8
+     },
+     {
+      "w": "hice",
+      "en": 172,
+      "dura": 13
+     },
+     {
+      "w": "que",
+      "en": 185,
+      "dura": 3
+     },
+     {
+      "w": "le",
+      "en": 188,
+      "dura": 3
+     },
+     {
+      "w": "conteste",
+      "en": 191,
+      "dura": 15
+     },
+     {
+      "w": "el",
+      "en": 206,
+      "dura": 3
+     },
+     {
+      "w": "WhatsApp.",
+      "en": 208,
+      "dura": 17
+     }
+    ],
+    "resaltar": [
+     "WhatsApp."
+    ]
+   }
+  ]
+ },
+ "c": {
+  "audio": "origen/tomas/g5.m4a",
+  "fin": 144,
+  "frases": [
+   {
+    "texto": "Soy empleado de kiosco, me programé un sistema",
+    "en": 2,
+    "dura": 90,
+    "palabras": [
+     {
+      "w": "Soy",
+      "en": 2,
+      "dura": 7
+     },
+     {
+      "w": "empleado",
+      "en": 9,
+      "dura": 25
+     },
+     {
+      "w": "de",
+      "en": 34,
+      "dura": 7
+     },
+     {
+      "w": "kiosco,",
+      "en": 41,
+      "dura": 22
+     },
+     {
+      "w": "me",
+      "en": 63,
+      "dura": 3
+     },
+     {
+      "w": "programé",
+      "en": 65,
+      "dura": 12
+     },
+     {
+      "w": "un",
+      "en": 77,
+      "dura": 3
+     },
+     {
+      "w": "sistema",
+      "en": 80,
+      "dura": 12
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "y lo más loco es lo que hace por WhatsApp.",
+    "en": 92,
+    "dura": 52,
+    "palabras": [
+     {
+      "w": "y",
+      "en": 92,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 92,
+      "dura": 3
+     },
+     {
+      "w": "más",
+      "en": 95,
+      "dura": 6
+     },
+     {
+      "w": "loco",
+      "en": 101,
+      "dura": 6
+     },
+     {
+      "w": "es",
+      "en": 107,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 110,
+      "dura": 3
+     },
+     {
+      "w": "que",
+      "en": 113,
+      "dura": 5
+     },
+     {
+      "w": "hace",
+      "en": 118,
+      "dura": 6
+     },
+     {
+      "w": "por",
+      "en": 124,
+      "dura": 4
+     },
+     {
+      "w": "WhatsApp.",
+      "en": 128,
+      "dura": 16
+     }
+    ],
+    "resaltar": [
+     "WhatsApp."
+    ]
+   }
+  ]
+ },
+ "cuerpo": {
+  "audio": "origen/tomas/g6.m4a",
+  "fin": 660,
+  "frases": [
+   {
+    "texto": "Mi jefe me escribía todo el día",
+    "en": 0,
+    "dura": 75,
+    "palabras": [
+     {
+      "w": "Mi",
+      "en": 0,
+      "dura": 6
+     },
+     {
+      "w": "jefe",
+      "en": 6,
+      "dura": 11
+     },
+     {
+      "w": "me",
+      "en": 17,
+      "dura": 6
+     },
+     {
+      "w": "escribía",
+      "en": 23,
+      "dura": 25
+     },
+     {
+      "w": "todo",
+      "en": 48,
+      "dura": 11
+     },
+     {
+      "w": "el",
+      "en": 59,
+      "dura": 5
+     },
+     {
+      "w": "día",
+      "en": 64,
+      "dura": 11
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "\"¿Cuánto vendimos? ¿Queda Coca?\".",
+    "en": 75,
+    "dura": 77,
+    "palabras": [
+     {
+      "w": "\"¿Cuánto",
+      "en": 75,
+      "dura": 21
+     },
+     {
+      "w": "vendimos?",
+      "en": 96,
+      "dura": 20
+     },
+     {
+      "w": "¿Queda",
+      "en": 116,
+      "dura": 10
+     },
+     {
+      "w": "Coca?\".",
+      "en": 126,
+      "dura": 26
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "Ahora se lo pregunta directamente al sistema por WhatsApp",
+    "en": 152,
+    "dura": 88,
+    "palabras": [
+     {
+      "w": "Ahora",
+      "en": 152,
+      "dura": 5
+     },
+     {
+      "w": "se",
+      "en": 157,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 160,
+      "dura": 3
+     },
+     {
+      "w": "pregunta",
+      "en": 163,
+      "dura": 8
+     },
+     {
+      "w": "directamente",
+      "en": 171,
+      "dura": 9
+     },
+     {
+      "w": "al",
+      "en": 180,
+      "dura": 16
+     },
+     {
+      "w": "sistema",
+      "en": 196,
+      "dura": 14
+     },
+     {
+      "w": "por",
+      "en": 210,
+      "dura": 8
+     },
+     {
+      "w": "WhatsApp",
+      "en": 218,
+      "dura": 22
+     }
+    ],
+    "resaltar": [
+     "WhatsApp"
+    ]
+   },
+   {
+    "texto": "y le contesta al toque con lo que hay en la caja.",
+    "en": 240,
+    "dura": 60,
+    "palabras": [
+     {
+      "w": "y",
+      "en": 240,
+      "dura": 3
+     },
+     {
+      "w": "le",
+      "en": 243,
+      "dura": 5
+     },
+     {
+      "w": "contesta",
+      "en": 248,
+      "dura": 22
+     },
+     {
+      "w": "al",
+      "en": 270,
+      "dura": 3
+     },
+     {
+      "w": "toque",
+      "en": 272,
+      "dura": 6
+     },
+     {
+      "w": "con",
+      "en": 278,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 281,
+      "dura": 3
+     },
+     {
+      "w": "que",
+      "en": 283,
+      "dura": 3
+     },
+     {
+      "w": "hay",
+      "en": 286,
+      "dura": 4
+     },
+     {
+      "w": "en",
+      "en": 290,
+      "dura": 3
+     },
+     {
+      "w": "la",
+      "en": 292,
+      "dura": 3
+     },
+     {
+      "w": "caja.",
+      "en": 294,
+      "dura": 6
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "Le pregunta qué hay que reponer, quién nos debe plata, cómo viene el día",
+    "en": 300,
+    "dura": 117,
+    "palabras": [
+     {
+      "w": "Le",
+      "en": 300,
+      "dura": 3
+     },
+     {
+      "w": "pregunta",
+      "en": 303,
+      "dura": 15
+     },
+     {
+      "w": "qué",
+      "en": 318,
+      "dura": 6
+     },
+     {
+      "w": "hay",
+      "en": 324,
+      "dura": 5
+     },
+     {
+      "w": "que",
+      "en": 329,
+      "dura": 6
+     },
+     {
+      "w": "reponer,",
+      "en": 335,
+      "dura": 17
+     },
+     {
+      "w": "quién",
+      "en": 352,
+      "dura": 10
+     },
+     {
+      "w": "nos",
+      "en": 362,
+      "dura": 10
+     },
+     {
+      "w": "debe",
+      "en": 372,
+      "dura": 3
+     },
+     {
+      "w": "plata,",
+      "en": 375,
+      "dura": 14
+     },
+     {
+      "w": "cómo",
+      "en": 389,
+      "dura": 8
+     },
+     {
+      "w": "viene",
+      "en": 397,
+      "dura": 9
+     },
+     {
+      "w": "el",
+      "en": 406,
+      "dura": 4
+     },
+     {
+      "w": "día",
+      "en": 410,
+      "dura": 7
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "y le responde como si fuera una persona.",
+    "en": 417,
+    "dura": 63,
+    "palabras": [
+     {
+      "w": "y",
+      "en": 417,
+      "dura": 3
+     },
+     {
+      "w": "le",
+      "en": 419,
+      "dura": 4
+     },
+     {
+      "w": "responde",
+      "en": 423,
+      "dura": 16
+     },
+     {
+      "w": "como",
+      "en": 439,
+      "dura": 6
+     },
+     {
+      "w": "si",
+      "en": 445,
+      "dura": 4
+     },
+     {
+      "w": "fuera",
+      "en": 449,
+      "dura": 9
+     },
+     {
+      "w": "una",
+      "en": 458,
+      "dura": 5
+     },
+     {
+      "w": "persona.",
+      "en": 463,
+      "dura": 17
+     }
+    ],
+    "resaltar": [
+     "persona."
+    ]
+   },
+   {
+    "texto": "Y cuando viene el proveedor le saca una foto a la boleta,",
+    "en": 480,
+    "dura": 80,
+    "palabras": [
+     {
+      "w": "Y",
+      "en": 480,
+      "dura": 3
+     },
+     {
+      "w": "cuando",
+      "en": 482,
+      "dura": 10
+     },
+     {
+      "w": "viene",
+      "en": 492,
+      "dura": 11
+     },
+     {
+      "w": "el",
+      "en": 503,
+      "dura": 3
+     },
+     {
+      "w": "proveedor",
+      "en": 504,
+      "dura": 15
+     },
+     {
+      "w": "le",
+      "en": 519,
+      "dura": 4
+     },
+     {
+      "w": "saca",
+      "en": 523,
+      "dura": 6
+     },
+     {
+      "w": "una",
+      "en": 529,
+      "dura": 5
+     },
+     {
+      "w": "foto",
+      "en": 534,
+      "dura": 7
+     },
+     {
+      "w": "a",
+      "en": 541,
+      "dura": 3
+     },
+     {
+      "w": "la",
+      "en": 543,
+      "dura": 3
+     },
+     {
+      "w": "boleta,",
+      "en": 546,
+      "dura": 14
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "le manda la boleta por el mismo WhatsApp",
+    "en": 560,
+    "dura": 55,
+    "palabras": [
+     {
+      "w": "le",
+      "en": 560,
+      "dura": 3
+     },
+     {
+      "w": "manda",
+      "en": 563,
+      "dura": 8
+     },
+     {
+      "w": "la",
+      "en": 571,
+      "dura": 4
+     },
+     {
+      "w": "boleta",
+      "en": 575,
+      "dura": 10
+     },
+     {
+      "w": "por",
+      "en": 585,
+      "dura": 5
+     },
+     {
+      "w": "el",
+      "en": 590,
+      "dura": 3
+     },
+     {
+      "w": "mismo",
+      "en": 593,
+      "dura": 9
+     },
+     {
+      "w": "WhatsApp",
+      "en": 602,
+      "dura": 13
+     }
+    ],
+    "resaltar": [
+     "WhatsApp"
+    ]
+   },
+   {
+    "texto": "y se carga sola en el sistema.",
+    "en": 615,
+    "dura": 45,
+    "palabras": [
+     {
+      "w": "y",
+      "en": 615,
+      "dura": 3
+     },
+     {
+      "w": "se",
+      "en": 617,
+      "dura": 3
+     },
+     {
+      "w": "carga",
+      "en": 620,
+      "dura": 12
+     },
+     {
+      "w": "sola",
+      "en": 632,
+      "dura": 4
+     },
+     {
+      "w": "en",
+      "en": 636,
+      "dura": 3
+     },
+     {
+      "w": "el",
+      "en": 639,
+      "dura": 3
+     },
+     {
+      "w": "sistema.",
+      "en": 642,
+      "dura": 18
+     }
+    ],
+    "resaltar": [
+     "sistema.",
+     "sola"
+    ]
+   }
+  ]
+ },
+ "cierre": {
+  "audio": "origen/tomas/g7.m4a",
+  "fin": 181,
+  "frases": [
+   {
+    "texto": "Lo usamos todos los días acá,",
+    "en": 1,
+    "dura": 64,
+    "palabras": [
+     {
+      "w": "Lo",
+      "en": 1,
+      "dura": 4
+     },
+     {
+      "w": "usamos",
+      "en": 5,
+      "dura": 14
+     },
+     {
+      "w": "todos",
+      "en": 19,
+      "dura": 12
+     },
+     {
+      "w": "los",
+      "en": 31,
+      "dura": 9
+     },
+     {
+      "w": "días",
+      "en": 40,
+      "dura": 10
+     },
+     {
+      "w": "acá,",
+      "en": 50,
+      "dura": 15
+     }
+    ],
+    "resaltar": []
+   },
+   {
+    "texto": "si tenés un comercio comentá CAJA y te lo dejo probar siete días gratis.",
+    "en": 65,
+    "dura": 116,
+    "palabras": [
+     {
+      "w": "si",
+      "en": 65,
+      "dura": 6
+     },
+     {
+      "w": "tenés",
+      "en": 71,
+      "dura": 13
+     },
+     {
+      "w": "un",
+      "en": 84,
+      "dura": 6
+     },
+     {
+      "w": "comercio",
+      "en": 90,
+      "dura": 24
+     },
+     {
+      "w": "comentá",
+      "en": 114,
+      "dura": 15
+     },
+     {
+      "w": "CAJA",
+      "en": 129,
+      "dura": 11
+     },
+     {
+      "w": "y",
+      "en": 140,
+      "dura": 3
+     },
+     {
+      "w": "te",
+      "en": 140,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 143,
+      "dura": 3
+     },
+     {
+      "w": "dejo",
+      "en": 145,
+      "dura": 6
+     },
+     {
+      "w": "probar",
+      "en": 151,
+      "dura": 9
+     },
+     {
+      "w": "siete",
+      "en": 160,
+      "dura": 3
+     },
+     {
+      "w": "días",
+      "en": 163,
+      "dura": 7
+     },
+     {
+      "w": "gratis.",
+      "en": 170,
+      "dura": 11
+     }
+    ],
+    "resaltar": [
+     "CAJA",
+     "gratis."
+    ]
+   }
+  ]
+ }
+}

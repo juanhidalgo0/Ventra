@@ -1,0 +1,116 @@
+{
+ "base": "http://localhost:5181/reel-preview.html",
+ "ancho": 1280,
+ "alto": 800,
+ "escala": 1.5,
+ "movil": false,
+ "zona": "Atlantic/South_Georgia",
+ "storage": {
+  "getting_started_hidden": "1",
+  "onboarding_done": "1",
+  "gd_store_name": "Kiosco Los Primos",
+  "business_profile": "KIOSKO",
+  "business_features": "{\"bulk\":false,\"delivery\":false,\"preorders\":false}",
+  "business_intents": "[\"mostrador\"]",
+  "purchase_auto": "{\"enabled\":true,\"keepMargin\":true,\"round\":100}"
+ },
+ "tomas": [
+  {
+   "nombre": "b20-pc",
+   "pasos": [
+    {
+     "ir": "#/products",
+     "carga": 5000
+    },
+    {
+     "js": "window.__boleta20 = {\n \"proveedor\": \"Distribuidora Norte\",\n \"factura\": \"0003-00018427\",\n \"fecha\": \"14/11/2026\",\n \"cliente\": \"KIOSCO LOS PRIMOS\",\n \"total\": 990900,\n \"renglones\": [\n  {\n   \"cant\": 12,\n   \"desc\": \"BON O BON BLANCO X 18 UN\",\n   \"productId\": \"demo1\",\n   \"unit\": 8230,\n   \"imp\": 98760,\n   \"venta\": 10500,\n   \"ventaNueva\": 11800,\n   \"cambio\": 12\n  },\n  {\n   \"cant\": 24,\n   \"desc\": \"MOGUL MORAS X 150 GR\",\n   \"productId\": \"demo16\",\n   \"unit\": 1645,\n   \"imp\": 39480,\n   \"venta\": 2350,\n   \"ventaNueva\": 2350,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 36,\n   \"desc\": \"TODDY GALLETITAS X 126 GR\",\n   \"productId\": \"demo8\",\n   \"unit\": 690,\n   \"imp\": 24840,\n   \"venta\": 890,\n   \"ventaNueva\": 1000,\n   \"cambio\": 11\n  },\n  {\n   \"cant\": 48,\n   \"desc\": \"SPRING POP\",\n   \"productId\": \"demo9\",\n   \"unit\": 210,\n   \"imp\": 10080,\n   \"venta\": 300,\n   \"ventaNueva\": 300,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 20,\n   \"desc\": \"TERRABUSI MOSTACHOL RAYADO X 500 GR\",\n   \"productId\": \"demo4\",\n   \"unit\": 980,\n   \"imp\": 19600,\n   \"venta\": 1400,\n   \"ventaNueva\": 1400,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 12,\n   \"desc\": \"DOÑA MAGDALENA DULCE DE LECHE X 450 GR\",\n   \"productId\": \"demo21\",\n   \"unit\": 5180,\n   \"imp\": 62160,\n   \"venta\": 7400,\n   \"ventaNueva\": 7400,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 12,\n   \"desc\": \"VACALIN DULCE DE LECHE REPOSTERO X 400\",\n   \"productId\": \"demo26\",\n   \"unit\": 3010,\n   \"imp\": 36120,\n   \"venta\": 4300,\n   \"ventaNueva\": 4300,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 24,\n   \"desc\": \"MAGGI PURE DE PAPAS X 125\",\n   \"productId\": \"demo24\",\n   \"unit\": 1820,\n   \"imp\": 43680,\n   \"venta\": 2600,\n   \"ventaNueva\": 2600,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 10,\n   \"desc\": \"FINLANDIA CHEDDAR EN FETAS X 150 GR\",\n   \"productId\": \"demo0\",\n   \"unit\": 3990,\n   \"imp\": 39900,\n   \"venta\": 5700,\n   \"ventaNueva\": 5700,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 48,\n   \"desc\": \"AMSTEL LATA X 473\",\n   \"productId\": \"demo20\",\n   \"unit\": 1450,\n   \"imp\": 69600,\n   \"venta\": 1900,\n   \"ventaNueva\": 2100,\n   \"cambio\": 9\n  },\n  {\n   \"cant\": 6,\n   \"desc\": \"CAMPARI BITTER X 750\",\n   \"productId\": \"demo17\",\n   \"unit\": 8120,\n   \"imp\": 48720,\n   \"venta\": 11600,\n   \"ventaNueva\": 11600,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 24,\n   \"desc\": \"ALA JABON EN PAN ECOLAV X 2 X 200\",\n   \"productId\": \"demo2\",\n   \"unit\": 2730,\n   \"imp\": 65520,\n   \"venta\": 3900,\n   \"ventaNueva\": 3900,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 20,\n   \"desc\": \"LADY SOFT TOA. SOFT. NORMAL X 8\",\n   \"productId\": \"demo6\",\n   \"unit\": 1050,\n   \"imp\": 21000,\n   \"venta\": 1500,\n   \"ventaNueva\": 1500,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 24,\n   \"desc\": \"FELPITA  PAPEL X 4 UN BCO\",\n   \"productId\": \"demo7\",\n   \"unit\": 1260,\n   \"imp\": 30240,\n   \"venta\": 1800,\n   \"ventaNueva\": 1800,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 20,\n   \"desc\": \"BANDERITA PAÑO BLANCO\",\n   \"productId\": \"demo11\",\n   \"unit\": 3395,\n   \"imp\": 67900,\n   \"venta\": 4850,\n   \"ventaNueva\": 4850,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 12,\n   \"desc\": \"RAID ESPIRALES X 12 UN\",\n   \"productId\": \"demo18\",\n   \"unit\": 2205,\n   \"imp\": 26460,\n   \"venta\": 3150,\n   \"ventaNueva\": 3150,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 12,\n   \"desc\": \"COLGATE CR. TOT. 12. BLANQ X 90\",\n   \"productId\": \"demo22\",\n   \"unit\": 4200,\n   \"imp\": 50400,\n   \"venta\": 6000,\n   \"ventaNueva\": 6000,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 16,\n   \"desc\": \"S.LIBRE ADAP PLUS N Y D X 8\",\n   \"productId\": \"demo23\",\n   \"unit\": 3640,\n   \"imp\": 58240,\n   \"venta\": 5200,\n   \"ventaNueva\": 5200,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 20,\n   \"desc\": \"MILKA AVELLANA ENTERA X 100\",\n   \"productId\": null,\n   \"unit\": 5790,\n   \"imp\": 115800,\n   \"venta\": 8900,\n   \"ventaNueva\": 8900,\n   \"cambio\": null\n  },\n  {\n   \"cant\": 30,\n   \"desc\": \"TAKIS EXPLOSION X 85 GR\",\n   \"productId\": null,\n   \"unit\": 2080,\n   \"imp\": 62400,\n   \"venta\": 3200,\n   \"ventaNueva\": 3200,\n   \"cambio\": null\n  }\n ]\n};\n// Se ejecuta DENTRO de la vista de prueba de la app (reel-preview.html, servidor reel-tienda) durante la\r\n// grabación. No modifica la app: envuelve las respuestas simuladas que ya tiene (api.defaults.adapter)\r\n// para sumar lo que este video necesita: la lectura de la boleta, sin avisos de la vista de prueba, y los\r\n// dos productos que crea la boleta (Milka y Takis) que recién aparecen después de escanearla.\r\n// Si antes se define window.__boleta20 (datos de src/boletas/boleta20.json), la lectura devuelve esa boleta\r\n// larga y, una vez leída, el stock de cada producto aparece sumado.\r\n(async () => {\r\n  if (window.__mock10s) return true;\r\n  window.__mock10s = true;\r\n  const api = (await import('/src/services/api.ts')).default;\r\n  const previo = api.defaults.adapter;\r\n  const NUEVOS = /MILKA|TAKIS/;\r\n  window.__boletaLeida = false;\r\n  const ok = (config, data) => ({ data, status: 200, statusText: 'OK', headers: {}, config });\r\n  const RESULTADO = {\r\n    status: 'OK', auto: true, supplierName: 'Distribuidora Norte', matchedSupplier: { name: 'Distribuidora Norte' },\r\n    invoiceNumber: '0003-00018427', updatedPrices: 2, newProducts: 2,\r\n    items: [\r\n      { quantity: 12, name: 'BON O BON BLANCO X 18 UN', total: 81900, product: { name: 'BON O BON BLANCO X 18 UN', salePrice: 10500 }, suggestedSalePrice: 11400, changePct: 12 },\r\n      { quantity: 24, name: 'MOGUL MORAS X 150 GR', total: 36720, product: { name: 'MOGUL MORAS X 150 GR', salePrice: 2350 }, suggestedSalePrice: 2350, changePct: 0 },\r\n      { quantity: 20, name: 'MILKA AVELLANA ENTERA X 100', total: 115800, product: null },\r\n      { quantity: 30, name: 'TAKIS EXPLOSION X 85 GR', total: 62400, product: null },\r\n      { quantity: 36, name: 'TODDY GALLETITAS X 126 GR', total: 20880, product: { name: 'TODDY GALLETITAS X 126 GR', salePrice: 890 }, suggestedSalePrice: 990, changePct: 11 },\r\n    ],\r\n  };\r\n  const B20 = window.__boleta20;\r\n  if (B20) {\r\n    RESULTADO.items = B20.renglones.map((r) => ({\r\n      quantity: r.cant, name: r.desc, total: r.imp,\r\n      product: r.productId ? { name: r.desc, salePrice: r.venta } : null,\r\n      suggestedSalePrice: r.productId ? r.ventaNueva : undefined, changePct: r.cambio ?? 0,\r\n    }));\r\n    RESULTADO.updatedPrices = B20.renglones.filter((r) => r.cambio).length;\r\n  }\r\n  // Después de leer la boleta larga, el stock de cada producto aparece sumado (lo que cargó la compra)\r\n  const sumar = (p) => {\r\n    const r = B20 && window.__boletaLeida && B20.renglones.find((x) => x.productId === p.id);\r\n    return r ? { ...p, stock: (Number(p.stock) || 0) + r.cant, costPrice: r.unit, salePrice: r.ventaNueva, price: r.ventaNueva } : p;\r\n  };\r\n  const filtrar = (lista) => (window.__boletaLeida ? lista : lista.filter((p) => !NUEVOS.test(p.name || ''))).map(sumar);\r\n  // Los dos productos que creó la boleta, con el nombre y la foto que les puso Ventra solo\r\n  const catalogo = (await previo({ url: '/products', method: 'get', headers: {} })).data || [];\r\n  const foto = (re) => (catalogo.find((p) => re.test(p.name)) || {}).imageUrl || null;\r\n  const hace = (min) => new Date(Date.now() - min * 60e3).toISOString();\r\n  const PARA_REVISAR = [\r\n    { id: 'demo25', name: 'MILKA AVELLANA ENTERA X 100', barcode: '3045140118502', salePrice: 8900, costPrice: 5790, imageUrl: foto(/MILKA/), createdAt: hace(1) },\r\n    { id: 'demo27', name: 'TAKIS EXPLOSION X 85 GR', barcode: '7500810034460', salePrice: 3200, costPrice: 2080, imageUrl: foto(/TAKIS/), createdAt: hace(1) },\r\n  ];\r\n  let revisiones = null;\r\n  try { revisiones = (await import('/src/components/products/ProductReviews.tsx')).useProductReviews; } catch {}\r\n  api.defaults.adapter = async (config) => {\r\n    const url = String(config.url || '').split('?')[0];\r\n    const m = (config.method || 'get').toLowerCase();\r\n    if (url === '/products/reviews/pending') return ok(config, window.__boletaLeida ? PARA_REVISAR : []);\r\n    // La pantalla Productos de la PC cuenta los productos aparte (la vista de prueba no lo simula)\r\n    if (url === '/products/count') return ok(config, filtrar(catalogo).length);\r\n    if (url.startsWith('/products/reviews')) return ok(config, { ok: true });\r\n    if (url === '/purchases/scan-invoice-bg' && m === 'post') return ok(config, { id: 'lectura-1' });\r\n    if (url.startsWith('/purchases/scan-invoice-bg/')) {\r\n      window.__boletaLeida = true;\r\n      revisiones?.setState({ count: PARA_REVISAR.length });\r\n      return ok(config, { status: 'done', result: RESULTADO });\r\n    }\r\n    const r = await previo(config);\r\n    if (m === 'get' && url.startsWith('/products')) {\r\n      if (Array.isArray(r.data)) r.data = filtrar(r.data);\r\n      else if (r.data && Array.isArray(r.data.products)) r.data = { ...r.data, products: filtrar(r.data.products) };\r\n    }\r\n    return r;\r\n  };\r\n  // El aviso \"N productos nuevos para revisar\" de la vista de prueba\r\n  revisiones?.setState({ count: 0 });\r\n  return true;\r\n})()\r\n",
+     "espera": 600
+    },
+    {
+     "ir": "#/pos",
+     "carga": 1500
+    },
+    {
+     "ir": "#/products",
+     "carga": 2500
+    },
+    {
+     "js": "document.querySelectorAll('[aria-label=\"Cerrar\"], button').forEach((b) => { const t = b.closest('div')?.innerText || ''; if (/productos nuevos para revisar/.test(t) && /^(×|✕|)$/.test(b.innerText.trim())) b.click(); }); true",
+     "espera": 300
+    },
+    {
+     "foto": "control-b20pc-1"
+    },
+    {
+     "medir": [
+      "BON O BON BLANCO X 18 UN",
+      "TODDY GALLETITAS",
+      "AMSTEL LATA"
+     ],
+     "nombre": "antes"
+    },
+    {
+     "grabar": true
+    },
+    {
+     "espera": 800
+    },
+    {
+     "marca": "antes"
+    },
+    {
+     "js": "(async () => { window.__boletaLeida = true; return true; })()",
+     "espera": 300
+    },
+    {
+     "ir": "#/pos",
+     "carga": 900
+    },
+    {
+     "ir": "#/products",
+     "carga": 1800
+    },
+    {
+     "marca": "despues"
+    },
+    {
+     "medir": [
+      "BON O BON BLANCO X 18 UN",
+      "TODDY GALLETITAS",
+      "AMSTEL LATA",
+      "MILKA",
+      "TAKIS"
+     ],
+     "nombre": "despues"
+    },
+    {
+     "foto": "control-b20pc-2"
+    },
+    {
+     "hasta": "document.body.innerText.includes('para revisar')",
+     "max": 40000,
+     "cada": 200
+    },
+    {
+     "marca": "aviso"
+    },
+    {
+     "espera": 1400
+    },
+    {
+     "foto": "control-b20pc-3"
+    },
+    {
+     "marca": "revisar"
+    },
+    {
+     "toque": "Revisar",
+     "espera": 1800
+    },
+    {
+     "foto": "control-b20pc-4"
+    }
+   ]
+  }
+ ]
+}

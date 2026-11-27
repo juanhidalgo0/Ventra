@@ -1,0 +1,209 @@
+{
+ "proveedor": "Distribuidora Norte",
+ "factura": "0003-00018427",
+ "fecha": "14/11/2026",
+ "cliente": "KIOSCO LOS PRIMOS",
+ "total": 990900,
+ "renglones": [
+  {
+   "cant": 12,
+   "desc": "BON O BON BLANCO X 18 UN",
+   "productId": "demo1",
+   "unit": 8230,
+   "imp": 98760,
+   "venta": 10500,
+   "ventaNueva": 11800,
+   "cambio": 12
+  },
+  {
+   "cant": 24,
+   "desc": "MOGUL MORAS X 150 GR",
+   "productId": "demo16",
+   "unit": 1645,
+   "imp": 39480,
+   "venta": 2350,
+   "ventaNueva": 2350,
+   "cambio": null
+  },
+  {
+   "cant": 36,
+   "desc": "TODDY GALLETITAS X 126 GR",
+   "productId": "demo8",
+   "unit": 690,
+   "imp": 24840,
+   "venta": 890,
+   "ventaNueva": 1000,
+   "cambio": 11
+  },
+  {
+   "cant": 48,
+   "desc": "SPRING POP",
+   "productId": "demo9",
+   "unit": 210,
+   "imp": 10080,
+   "venta": 300,
+   "ventaNueva": 300,
+   "cambio": null
+  },
+  {
+   "cant": 20,
+   "desc": "TERRABUSI MOSTACHOL RAYADO X 500 GR",
+   "productId": "demo4",
+   "unit": 980,
+   "imp": 19600,
+   "venta": 1400,
+   "ventaNueva": 1400,
+   "cambio": null
+  },
+  {
+   "cant": 12,
+   "desc": "DOÑA MAGDALENA DULCE DE LECHE X 450 GR",
+   "productId": "demo21",
+   "unit": 5180,
+   "imp": 62160,
+   "venta": 7400,
+   "ventaNueva": 7400,
+   "cambio": null
+  },
+  {
+   "cant": 12,
+   "desc": "VACALIN DULCE DE LECHE REPOSTERO X 400",
+   "productId": "demo26",
+   "unit": 3010,
+   "imp": 36120,
+   "venta": 4300,
+   "ventaNueva": 4300,
+   "cambio": null
+  },
+  {
+   "cant": 24,
+   "desc": "MAGGI PURE DE PAPAS X 125",
+   "productId": "demo24",
+   "unit": 1820,
+   "imp": 43680,
+   "venta": 2600,
+   "ventaNueva": 2600,
+   "cambio": null
+  },
+  {
+   "cant": 10,
+   "desc": "FINLANDIA CHEDDAR EN FETAS X 150 GR",
+   "productId": "demo0",
+   "unit": 3990,
+   "imp": 39900,
+   "venta": 5700,
+   "ventaNueva": 5700,
+   "cambio": null
+  },
+  {
+   "cant": 48,
+   "desc": "AMSTEL LATA X 473",
+   "productId": "demo20",
+   "unit": 1450,
+   "imp": 69600,
+   "venta": 1900,
+   "ventaNueva": 2100,
+   "cambio": 9
+  },
+  {
+   "cant": 6,
+   "desc": "CAMPARI BITTER X 750",
+   "productId": "demo17",
+   "unit": 8120,
+   "imp": 48720,
+   "venta": 11600,
+   "ventaNueva": 11600,
+   "cambio": null
+  },
+  {
+   "cant": 24,
+   "desc": "ALA JABON EN PAN ECOLAV X 2 X 200",
+   "productId": "demo2",
+   "unit": 2730,
+   "imp": 65520,
+   "venta": 3900,
+   "ventaNueva": 3900,
+   "cambio": null
+  },
+  {
+   "cant": 20,
+   "desc": "LADY SOFT TOA. SOFT. NORMAL X 8",
+   "productId": "demo6",
+   "unit": 1050,
+   "imp": 21000,
+   "venta": 1500,
+   "ventaNueva": 1500,
+   "cambio": null
+  },
+  {
+   "cant": 24,
+   "desc": "FELPITA  PAPEL X 4 UN BCO",
+   "productId": "demo7",
+   "unit": 1260,
+   "imp": 30240,
+   "venta": 1800,
+   "ventaNueva": 1800,
+   "cambio": null
+  },
+  {
+   "cant": 20,
+   "desc": "BANDERITA PAÑO BLANCO",
+   "productId": "demo11",
+   "unit": 3395,
+   "imp": 67900,
+   "venta": 4850,
+   "ventaNueva": 4850,
+   "cambio": null
+  },
+  {
+   "cant": 12,
+   "desc": "RAID ESPIRALES X 12 UN",
+   "productId": "demo18",
+   "unit": 2205,
+   "imp": 26460,
+   "venta": 3150,
+   "ventaNueva": 3150,
+   "cambio": null
+  },
+  {
+   "cant": 12,
+   "desc": "COLGATE CR. TOT. 12. BLANQ X 90",
+   "productId": "demo22",
+   "unit": 4200,
+   "imp": 50400,
+   "venta": 6000,
+   "ventaNueva": 6000,
+   "cambio": null
+  },
+  {
+   "cant": 16,
+   "desc": "S.LIBRE ADAP PLUS N Y D X 8",
+   "productId": "demo23",
+   "unit": 3640,
+   "imp": 58240,
+   "venta": 5200,
+   "ventaNueva": 5200,
+   "cambio": null
+  },
+  {
+   "cant": 20,
+   "desc": "MILKA AVELLANA ENTERA X 100",
+   "productId": null,
+   "unit": 5790,
+   "imp": 115800,
+   "venta": 8900,
+   "ventaNueva": 8900,
+   "cambio": null
+  },
+  {
+   "cant": 30,
+   "desc": "TAKIS EXPLOSION X 85 GR",
+   "productId": null,
+   "unit": 2080,
+   "imp": 62400,
+   "venta": 3200,
+   "ventaNueva": 3200,
+   "cambio": null
+  }
+ ]
+}

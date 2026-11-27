@@ -1,0 +1,787 @@
+{
+ "_nota": "Ventri explica, ep. 2 (el aguinaldo). Única fuente de tiempos para la imagen (VentriEp02.tsx) y el sonido (scripts/ventri-mezcla.py). Cuadros a 30 fps. Las escenas con boca son tomas de Wan 2.7 con su frase empezando a 0,3 s: cada frase entra 9 cuadros después del comienzo de su escena. Las tiras siguen el papel con scripts/ventri-tira.py (src/ventri/ep02/tira-*.json).",
+ "fps": 30,
+ "total": 786,
+ "salida": "ventri/ep02/mezcla.wav",
+ "escenas": [
+  {
+   "id": "entrada",
+   "desde": 0,
+   "dura": 60,
+   "fuente": {
+    "video": "ventri/ep02/s0-entrada.mp4",
+    "desde": 0.4,
+    "vel": 1.35
+   },
+   "zoom": [
+    1.0,
+    1.02
+   ]
+  },
+  {
+   "id": "rompe",
+   "desde": 60,
+   "dura": 186,
+   "fuente": {
+    "video": "ventri/ep02/s1-rompe.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.04
+   ]
+  },
+  {
+   "id": "ojo",
+   "desde": 246,
+   "dura": 81,
+   "fuente": {
+    "video": "ventri/ep02/s2-ojo.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.02,
+    1.06
+   ]
+  },
+  {
+   "id": "mide",
+   "desde": 327,
+   "dura": 87,
+   "fuente": {
+    "video": "ventri/ep02/s3-mide.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.04
+   ]
+  },
+  {
+   "id": "tapada",
+   "desde": 414,
+   "dura": 104,
+   "fuente": {
+    "video": "ventri/ep02/s4-tapada.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.03,
+    1.0
+   ]
+  },
+  {
+   "id": "almanaque",
+   "desde": 518,
+   "dura": 162,
+   "fuente": {
+    "video": "ventri/ep02/s5-almanaque.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.04
+   ]
+  },
+  {
+   "id": "mate",
+   "desde": 680,
+   "dura": 90,
+   "fuente": {
+    "video": "ventri/ep02/s6-mate.mp4",
+    "desde": 0,
+    "vel": 1
+   },
+   "zoom": [
+    1.0,
+    1.03
+   ]
+  },
+  {
+   "id": "guino",
+   "desde": 770,
+   "dura": 16,
+   "fuente": {
+    "imagen": "ventri/ep02/k6-mate.png"
+   },
+   "zoom": [
+    1.03,
+    1.035
+   ]
+  }
+ ],
+ "voz": {
+  "archivo": "public/ventri/ep02/voz.mp3",
+  "_nota": "toma-1 de ElevenLabs pasada por scripts/ventri-voz.py (p2), elegida por el dueño el 2026-11-16.",
+  "frases": [
+   {
+    "texto": "¿Cuánto aguinaldo te toca?",
+    "en": 69,
+    "dura": 49,
+    "resaltar": [
+     "aguinaldo"
+    ],
+    "fija": {
+     "desde": 0,
+     "renglones": [
+      "¿Cuánto aguinaldo",
+      "te toca?"
+     ]
+    },
+    "desde": 0.0,
+    "hasta": 1.62,
+    "palabras": [
+     {
+      "w": "¿Cuánto",
+      "en": 70,
+      "dura": 14
+     },
+     {
+      "w": "aguinaldo",
+      "en": 84,
+      "dura": 16
+     },
+     {
+      "w": "te",
+      "en": 100,
+      "dura": 3
+     },
+     {
+      "w": "toca?",
+      "en": 104,
+      "dura": 14
+     }
+    ]
+   },
+   {
+    "texto": "Agarrá tu sueldo más alto desde julio, en bruto… y partilo al medio.",
+    "en": 118,
+    "dura": 129,
+    "resaltar": [
+     "alto",
+     "medio."
+    ],
+    "desde": 1.62,
+    "hasta": 5.92,
+    "palabras": [
+     {
+      "w": "Agarrá",
+      "en": 118,
+      "dura": 13
+     },
+     {
+      "w": "tu",
+      "en": 131,
+      "dura": 4
+     },
+     {
+      "w": "sueldo",
+      "en": 135,
+      "dura": 12
+     },
+     {
+      "w": "más",
+      "en": 147,
+      "dura": 8
+     },
+     {
+      "w": "alto",
+      "en": 154,
+      "dura": 8
+     },
+     {
+      "w": "desde",
+      "en": 162,
+      "dura": 10
+     },
+     {
+      "w": "julio,",
+      "en": 172,
+      "dura": 16
+     },
+     {
+      "w": "en",
+      "en": 188,
+      "dura": 5
+     },
+     {
+      "w": "bruto…",
+      "en": 193,
+      "dura": 17
+     },
+     {
+      "w": "y",
+      "en": 210,
+      "dura": 3
+     },
+     {
+      "w": "partilo",
+      "en": 213,
+      "dura": 12
+     },
+     {
+      "w": "al",
+      "en": 225,
+      "dura": 4
+     },
+     {
+      "w": "medio.",
+      "en": 229,
+      "dura": 17
+     }
+    ],
+    "grupos": [
+     "Agarrá tu sueldo / más alto",
+     "desde julio, / en bruto…",
+     "y partilo / al medio."
+    ]
+   },
+   {
+    "texto": "¿Metiste horas extra? Ese mes cuenta.",
+    "en": 255,
+    "dura": 81,
+    "resaltar": [
+     "extra?"
+    ],
+    "desde": 5.92,
+    "hasta": 8.62,
+    "palabras": [
+     {
+      "w": "¿Metiste",
+      "en": 255,
+      "dura": 16
+     },
+     {
+      "w": "horas",
+      "en": 271,
+      "dura": 11
+     },
+     {
+      "w": "extra?",
+      "en": 282,
+      "dura": 15
+     },
+     {
+      "w": "Ese",
+      "en": 298,
+      "dura": 6
+     },
+     {
+      "w": "mes",
+      "en": 303,
+      "dura": 11
+     },
+     {
+      "w": "cuenta.",
+      "en": 314,
+      "dura": 21
+     }
+    ],
+    "grupos": [
+     "¿Metiste / horas extra?",
+     "Ese mes / cuenta."
+    ]
+   },
+   {
+    "texto": "¿Arrancaste en octubre? Te toca la parte que laburaste.",
+    "en": 336,
+    "dura": 87,
+    "resaltar": [
+     "octubre?",
+     "parte"
+    ],
+    "desde": 8.62,
+    "hasta": 11.52,
+    "palabras": [
+     {
+      "w": "¿Arrancaste",
+      "en": 336,
+      "dura": 18
+     },
+     {
+      "w": "en",
+      "en": 353,
+      "dura": 3
+     },
+     {
+      "w": "octubre?",
+      "en": 356,
+      "dura": 19
+     },
+     {
+      "w": "Te",
+      "en": 376,
+      "dura": 2
+     },
+     {
+      "w": "toca",
+      "en": 376,
+      "dura": 7
+     },
+     {
+      "w": "la",
+      "en": 383,
+      "dura": 5
+     },
+     {
+      "w": "parte",
+      "en": 388,
+      "dura": 8
+     },
+     {
+      "w": "que",
+      "en": 396,
+      "dura": 5
+     },
+     {
+      "w": "laburaste.",
+      "en": 401,
+      "dura": 23
+     }
+    ],
+    "grupos": [
+     "¿Arrancaste / en octubre?",
+     "Te toca / la parte",
+     "que laburaste."
+    ]
+   },
+   {
+    "texto": "Y sí… los descuentos, igual que en el sueldo.",
+    "en": 423,
+    "dura": 104,
+    "resaltar": [
+     "descuentos,"
+    ],
+    "desde": 11.52,
+    "hasta": 15.0,
+    "palabras": [
+     {
+      "w": "Y",
+      "en": 424,
+      "dura": 2
+     },
+     {
+      "w": "sí…",
+      "en": 427,
+      "dura": 12
+     },
+     {
+      "w": "los",
+      "en": 439,
+      "dura": 8
+     },
+     {
+      "w": "descuentos,",
+      "en": 446,
+      "dura": 29
+     },
+     {
+      "w": "igual",
+      "en": 476,
+      "dura": 12
+     },
+     {
+      "w": "que",
+      "en": 488,
+      "dura": 8
+     },
+     {
+      "w": "en",
+      "en": 496,
+      "dura": 5
+     },
+     {
+      "w": "el",
+      "en": 500,
+      "dura": 5
+     },
+     {
+      "w": "sueldo.",
+      "en": 505,
+      "dura": 24
+     }
+    ],
+    "grupos": [
+     "Y sí… / los descuentos,",
+     "igual que / en el sueldo."
+    ]
+   },
+   {
+    "texto": "Te lo tienen que pagar hasta el 18.",
+    "en": 527,
+    "dura": 62,
+    "resaltar": [
+     "18."
+    ],
+    "desde": 15.0,
+    "hasta": 17.06,
+    "palabras": [
+     {
+      "w": "Te",
+      "en": 529,
+      "dura": 3
+     },
+     {
+      "w": "lo",
+      "en": 532,
+      "dura": 4
+     },
+     {
+      "w": "tienen",
+      "en": 536,
+      "dura": 11
+     },
+     {
+      "w": "que",
+      "en": 547,
+      "dura": 4
+     },
+     {
+      "w": "pagar",
+      "en": 551,
+      "dura": 9
+     },
+     {
+      "w": "hasta",
+      "en": 560,
+      "dura": 9
+     },
+     {
+      "w": "el",
+      "en": 568,
+      "dura": 3
+     },
+     {
+      "w": "18.",
+      "en": 572,
+      "dura": 17
+     }
+    ],
+    "grupos": [
+     "Te lo tienen / que pagar",
+     "hasta el 18."
+    ]
+   },
+   {
+    "texto": "¿Monotributista? Sin patrón, no hay aguinaldo.",
+    "en": 589,
+    "dura": 100,
+    "resaltar": [
+     "patrón,"
+    ],
+    "desde": 17.06,
+    "hasta": 20.39,
+    "palabras": [
+     {
+      "w": "¿Monotributista?",
+      "en": 589,
+      "dura": 40
+     },
+     {
+      "w": "Sin",
+      "en": 628,
+      "dura": 3
+     },
+     {
+      "w": "patrón,",
+      "en": 631,
+      "dura": 15
+     },
+     {
+      "w": "no",
+      "en": 647,
+      "dura": 5
+     },
+     {
+      "w": "hay",
+      "en": 651,
+      "dura": 7
+     },
+     {
+      "w": "aguinaldo.",
+      "en": 658,
+      "dura": 31
+     }
+    ],
+    "grupos": [
+     "¿Monotributista?",
+     "Sin patrón,",
+     "no hay / aguinaldo."
+    ]
+   },
+   {
+    "texto": "Guardalo y mandáselo al que siempre pregunta.",
+    "en": 689,
+    "dura": 78,
+    "cierre": true,
+    "desde": 20.39,
+    "hasta": 22.98,
+    "palabras": [
+     {
+      "w": "Guardalo",
+      "en": 689,
+      "dura": 16
+     },
+     {
+      "w": "y",
+      "en": 706,
+      "dura": 2
+     },
+     {
+      "w": "mandáselo",
+      "en": 708,
+      "dura": 17
+     },
+     {
+      "w": "al",
+      "en": 725,
+      "dura": 4
+     },
+     {
+      "w": "que",
+      "en": 729,
+      "dura": 8
+     },
+     {
+      "w": "siempre",
+      "en": 737,
+      "dura": 10
+     },
+     {
+      "w": "pregunta.",
+      "en": 747,
+      "dura": 20
+     }
+    ]
+   }
+  ]
+ },
+ "sello": {
+  "desde": 0,
+  "hasta": 680
+ },
+ "tiras": [
+  {
+   "escena": "rompe",
+   "seguimiento": "s1",
+   "caja": [
+    78,
+    492,
+    494,
+    566
+   ],
+   "desde": 58,
+   "hasta": 166,
+   "escribe": 10,
+   "renglones": [
+    {
+     "t": "MEJOR SUELDO",
+     "tam": 24
+    },
+    {
+     "t": "$900.000",
+     "tam": 46
+    }
+   ]
+  },
+  {
+   "escena": "ojo",
+   "seguimiento": "s2",
+   "caja": [
+    492,
+    625,
+    628,
+    930
+   ],
+   "desde": 9,
+   "escribe": 12,
+   "renglones": [
+    {
+     "t": "+ HORAS",
+     "tam": 27
+    },
+    {
+     "t": "EXTRA",
+     "tam": 27
+    },
+    {
+     "t": "=",
+     "tam": 30
+    },
+    {
+     "t": "MEJOR",
+     "tam": 27
+    },
+    {
+     "t": "MES",
+     "tam": 27
+    }
+   ]
+  },
+  {
+   "escena": "mide",
+   "seguimiento": "s3",
+   "caja": [
+    160,
+    782,
+    428,
+    848
+   ],
+   "desde": 9,
+   "escribe": 10,
+   "renglones": [
+    {
+     "t": "DESDE OCTUBRE",
+     "tam": 24
+    },
+    {
+     "t": "$225.000",
+     "tam": 44
+    }
+   ]
+  },
+  {
+   "escena": "tapada",
+   "seguimiento": "s4",
+   "caja": [
+    110,
+    572,
+    590,
+    690
+   ],
+   "desde": 32,
+   "escribe": 10,
+   "renglones": [
+    {
+     "t": "− APORTES 17%",
+     "tam": 38
+    },
+    {
+     "t": "EN MANO $373.500",
+     "tam": 42,
+     "luego": 40
+    }
+   ]
+  },
+  {
+   "escena": "almanaque",
+   "seguimiento": "s5",
+   "caja": [
+    360,
+    300,
+    610,
+    520
+   ],
+   "desde": 50,
+   "escribe": 1,
+   "fuente": "almanaque",
+   "renglones": [
+    {
+     "t": "18",
+     "tam": 150,
+     "verde": true
+    }
+   ]
+  },
+  {
+   "escena": "almanaque",
+   "seguimiento": "s5",
+   "caja": [
+    330,
+    540,
+    645,
+    660
+   ],
+   "desde": 50,
+   "escribe": 1,
+   "fuente": "almanaque",
+   "renglones": [
+    {
+     "t": "DICIEMBRE",
+     "tam": 40
+    }
+   ]
+  }
+ ],
+ "impresa": {
+  "desde": 210,
+  "hasta": 258,
+  "renglones": [
+   {
+    "t": "÷ 2",
+    "tam": 52
+   },
+   {
+    "t": "AGUINALDO",
+    "tam": 40
+   },
+   {
+    "t": "$450.000",
+    "tam": 60
+   }
+  ]
+ },
+ "efectos": [
+  {
+   "en": 0,
+   "sonido": "impresora",
+   "gan": 0.8
+  },
+  {
+   "en": 50,
+   "sonido": "tira",
+   "gan": 0.4
+  },
+  {
+   "en": 118,
+   "sonido": "tira",
+   "gan": 0.4
+  },
+  {
+   "en": 210,
+   "sonido": "tira",
+   "gan": 0.45
+  },
+  {
+   "en": 224,
+   "sonido": "rompe",
+   "gan": 0.8
+  },
+  {
+   "en": 255,
+   "sonido": "tira",
+   "gan": 0.35
+  },
+  {
+   "en": 336,
+   "sonido": "tira",
+   "gan": 0.35
+  },
+  {
+   "en": 446,
+   "sonido": "tira",
+   "gan": 0.35
+  },
+  {
+   "en": 486,
+   "sonido": "tira",
+   "gan": 0.3
+  },
+  {
+   "en": 568,
+   "sonido": "tic",
+   "gan": 0.6
+  }
+ ],
+ "cierre": {
+  "desde": 689,
+  "grande": "Guardalo",
+  "abajo": "y mandáselo al que\nsiempre pregunta",
+  "web": "ventra.store"
+ }
+}

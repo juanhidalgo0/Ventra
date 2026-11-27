@@ -1,0 +1,109 @@
+{
+ "base": "http://localhost:5307/",
+ "ancho": 390,
+ "alto": 844,
+ "escala": 2,
+ "movil": true,
+ "zona": "Australia/Brisbane",
+ "storage": {
+  "ventra_customer": "{\"name\":\"Lucas Ferreyra\",\"phone\":\"2214567890\",\"address\":\"Calle 12 N° 845\"}"
+ },
+ "tomas": [
+  {
+   "nombre": "tienda",
+   "pasos": [
+    {
+     "ir": "",
+     "carga": 3500
+    },
+    {
+     "log": "[...document.querySelectorAll('[data-act=add]')].slice(0,40).map((b) => b.dataset.id).join(',')"
+    },
+    {
+     "grabar": true
+    },
+    {
+     "espera": 400
+    },
+    {
+     "js": "document.querySelector('[data-act=add][data-id=\"demo20\"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); true",
+     "espera": 900
+    },
+    {
+     "marca": "agrega2"
+    },
+    {
+     "toque": {
+      "sel": "[data-act=add][data-id=\"demo20\"]"
+     },
+     "espera": 400
+    },
+    {
+     "toque": {
+      "sel": "[data-act=inc][data-id=\"demo20\"]"
+     },
+     "espera": 300
+    },
+    {
+     "toque": {
+      "sel": "[data-act=inc][data-id=\"demo20\"]"
+     },
+     "espera": 300
+    },
+    {
+     "toque": {
+      "sel": "[data-act=inc][data-id=\"demo20\"]"
+     },
+     "espera": 500
+    },
+    {
+     "marca": "agrega3"
+    },
+    {
+     "toque": {
+      "sel": "[data-act=add][data-id=\"demo1\"]"
+     },
+     "espera": 700
+    },
+    {
+     "foto": "control-tienda-1"
+    },
+    {
+     "marca": "carrito"
+    },
+    {
+     "toque": {
+      "sel": "[data-act=open-cart]"
+     },
+     "espera": 1200
+    },
+    {
+     "toque": "Continuar",
+     "espera": 1200
+    },
+    {
+     "foto": "control-tienda-2"
+    },
+    {
+     "js": "document.querySelector('[data-act=send]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); true",
+     "espera": 900
+    },
+    {
+     "marca": "enviar"
+    },
+    {
+     "toque": {
+      "sel": "[data-act=send]"
+     },
+     "espera": 1800
+    },
+    {
+     "foto": "control-tienda-3"
+    },
+    {
+     "log": "(window.__pedidoEnviado || {}).orderCode"
+    }
+   ]
+  }
+ ]
+}

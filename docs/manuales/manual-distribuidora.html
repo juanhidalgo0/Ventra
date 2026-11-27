@@ -1,0 +1,350 @@
+<title>Manual de la distribuidora</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: una sola columna de lectura (~68ch) con índice pegado arriba; cada sección es un rol del equipo. */
+:root {
+  --bg: #f6f8f7;
+  --paper: #ffffff;
+  --ink: #15211c;
+  --muted: #5b6b64;
+  --line: #dde5e1;
+  --accent: #0d8a5f;
+  --accent-soft: #e3f3ec;
+  --warn: #9a5b00;
+  --warn-soft: #fdf3e2;
+  --key: #eef2f0;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1613; --paper: #16201c; --ink: #e6efea; --muted: #9db0a7; --line: #2a3832;
+    --accent: #3cc48f; --accent-soft: #17352a; --warn: #f0b75a; --warn-soft: #33270f; --key: #22302a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1613; --paper: #16201c; --ink: #e6efea; --muted: #9db0a7; --line: #2a3832;
+  --accent: #3cc48f; --accent-soft: #17352a; --warn: #f0b75a; --warn-soft: #33270f; --key: #22302a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { padding-block: 40px 28px; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(32px, 6vw, 46px); line-height: 1.05; letter-spacing: -.02em; margin: 6px 0 12px; text-wrap: balance; }
+.lede { color: var(--muted); font-size: 17px; max-width: 60ch; margin: 0; }
+
+nav.idx { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper); border-block: 1px solid var(--line); }
+nav.idx .wrap { display: flex; gap: 6px; overflow-x: auto; padding-block: 10px; scrollbar-width: none; }
+nav.idx a { flex: none; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 14px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); }
+nav.idx a:hover, nav.idx a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+
+section { padding-block: 44px 12px; scroll-margin-top: 64px; }
+section + section { border-top: 1px solid var(--line); }
+.who { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 4.5vw, 32px); line-height: 1.15; letter-spacing: -.01em; margin: 0 0 10px; text-wrap: balance; }
+h3 { font-family: var(--display); font-weight: 700; font-size: 20px; line-height: 1.25; margin: 34px 0 10px; text-wrap: balance; }
+p { margin: 0 0 14px; }
+.intro { color: var(--muted); max-width: 64ch; }
+
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; }
+ol.steps > li { counter-increment: s; position: relative; padding: 12px 14px 12px 52px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+ol.steps > li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+ol.steps > li p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
+
+ul.plain { padding-left: 20px; margin: 0 0 16px; }
+ul.plain li { margin-bottom: 6px; }
+
+.ui { display: inline; font-weight: 700; color: var(--ink); background: var(--key); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; white-space: nowrap; font-size: .94em; }
+.path { font-weight: 600; color: var(--accent); }
+kbd { font-family: var(--mono); font-size: 13px; font-weight: 700; background: var(--paper); border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px; padding: 1px 6px; color: var(--ink); white-space: nowrap; }
+
+.note { border-radius: 12px; padding: 12px 16px; margin: 0 0 18px; background: var(--accent-soft); }
+.note.warn { background: var(--warn-soft); }
+.note b.t { display: block; font-family: var(--display); font-size: 15px; margin-bottom: 2px; }
+.note.warn b.t { color: var(--warn); }
+.note p:last-child { margin-bottom: 0; }
+
+/* Recorrido de un pedido */
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 8px; margin: 22px 0 8px; }
+.flow .box { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+.flow .box b { display: block; font-family: var(--display); font-size: 15px; }
+.flow .box span { display: block; color: var(--muted); font-size: 13.5px; line-height: 1.4; margin-top: 2px; }
+.flow .box + .box { margin-top: 8px; }
+.flow .arrow { align-self: center; color: var(--accent); font-weight: 800; font-size: 20px; }
+.flow .mid { border-color: var(--accent); }
+@media (max-width: 620px) {
+  .flow { grid-template-columns: 1fr; }
+  .flow .arrow { transform: rotate(90deg); justify-self: center; }
+}
+
+dl.terms { display: grid; grid-template-columns: max-content 1fr; gap: 10px 18px; margin: 18px 0 8px; }
+dl.terms dt { font-weight: 700; }
+dl.terms dd { margin: 0; color: var(--muted); min-width: 0; }
+@media (max-width: 520px) { dl.terms { grid-template-columns: 1fr; gap: 2px; } dl.terms dd { margin-bottom: 10px; } }
+
+.keys { overflow-x: auto; margin: 0 0 18px; }
+.keys table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.keys td { padding: 9px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+.keys tr:first-child td { border-top: 0; }
+.keys td:first-child { width: 1%; white-space: nowrap; }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.split > div { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.split h4 { font-family: var(--display); font-size: 16px; margin: 0 0 6px; }
+.split p { font-size: 15px; color: var(--muted); margin: 0; }
+@media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
+
+footer { padding-block: 36px 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 32px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow">Ventra · Manual del equipo</div>
+    <h1>Pedidos, reparto y caja, paso a paso</h1>
+    <p class="lede">Para tener a mano en el depósito y en el mostrador. Cada parte dice quién la usa. Los nombres en gris son los botones tal cual aparecen en la pantalla.</p>
+  </div>
+</header>
+
+<nav class="idx" aria-label="Partes del manual">
+  <div class="wrap">
+    <a href="#recorrido">Cómo se mueve un pedido</a>
+    <a href="#vendedores">Vendedores con el celular</a>
+    <a href="#web">Pedidos de la web</a>
+    <a href="#venta">De pedido a venta</a>
+    <a href="#caja">Caja del mostrador</a>
+    <a href="#cierre">Cierre de caja</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<section id="recorrido">
+  <span class="who">Para todos</span>
+  <h2>Cómo se mueve un pedido</h2>
+  <p class="intro">Todos los pedidos terminan en el mismo lugar, vengan del vendedor o de la página web. Desde ahí salen en el camión o se cobran en el mostrador.</p>
+
+  <div class="flow" role="img" aria-label="El pedido entra por el vendedor o la web, queda en Pedidos como pendiente, y se vende en el reparto o en la caja.">
+    <div>
+      <div class="box"><b>Vendedor</b><span>Lo toma en el celular, en la calle o por teléfono</span></div>
+      <div class="box"><b>Página web</b><span>El cliente lo hace solo. Primero queda en <em>Por revisar</em></span></div>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="box mid"><b>Pedidos · Pendiente</b><span>La mercadería queda reservada. Todavía no es una venta y no descuenta stock.</span></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div>
+      <div class="box"><b>Sale en el camión</b><span><em>Reparto</em> → <em>Salió a reparto</em></span></div>
+      <div class="box"><b>Lo cobran en el mostrador</b><span><em>Pasar a la caja</em> → <em>Cobrar</em></span></div>
+    </div>
+  </div>
+
+  <h3>Cómo se llama cada cosa</h3>
+  <dl class="terms">
+    <dt>Pedido</dt><dd>Lo que pidió el cliente. Reserva la mercadería pero no es venta todavía. En Fidel también se llamaba pedido.</dd>
+    <dt>Por revisar</dt><dd>Un pedido de la web que nadie aceptó todavía. No reserva nada hasta que se acepta.</dd>
+    <dt>Venta</dt><dd>Se hace sola cuando se cobra en la caja o cuando el pedido sale en el camión. Ahí se descuenta el stock.</dd>
+    <dt>Nota de venta y remito</dt><dd>Los papeles A4 que salen de cada venta: la nota con precios y el remito para firmar la entrega.</dd>
+    <dt>Factura</dt><dd>La factura electrónica de ARCA. Sale de la venta, nunca del pedido.</dd>
+    <dt>Presupuesto</dt><dd>Una cotización que le pasás a alguien sin compromiso. No es un pedido y no reserva mercadería.</dd>
+  </dl>
+</section>
+
+<section id="vendedores">
+  <span class="who">Vendedores · y el dueño para darlos de alta</span>
+  <h2>Vendedores con el celular</h2>
+  <p class="intro">Cada vendedor entra con su propio usuario. No necesita la cuenta de Google del negocio y en su celular ve solamente sus pedidos.</p>
+
+  <h3>Dar de alta a un vendedor (una sola vez, en la PC)</h3>
+  <ol class="steps">
+    <li>Entrá a <span class="path">Configuración → Personal y cajeros</span> y tocá <span class="ui">Crear Cajero</span>.
+      <p>Poné un usuario y una contraseña. En <em>¿Qué hace en la distribuidora?</em> elegí <span class="ui">Vendedor</span>.</p></li>
+    <li>Más abajo, en <span class="path">Celulares de empleados</span>, generá el código.
+      <p>Aparece un QR. Sirve una sola vez y vence a los 15 minutos. El vendedor lo escanea con la cámara, o le mandás el link con <span class="ui">Mandar por WhatsApp</span>.</p></li>
+    <li>En el celular, el vendedor entra con el usuario y la contraseña que le creaste.
+      <p>Le aparecen dos pestañas abajo: <span class="ui">Pedidos</span> y <span class="ui">Más</span>. Conviene que lo agregue a la pantalla de inicio desde el menú del navegador, así se abre como una app.</p></li>
+  </ol>
+  <div class="note"><b class="t">No hay límite de vendedores</b><p>Podés crear todos los usuarios que necesites. Si un vendedor deja de trabajar, tocá <span class="ui">Dar de baja</span> al lado de su celular en <em>Celulares de empleados</em> y borrá su usuario de la lista de cajeros.</p></div>
+
+  <h3>Tomar un pedido</h3>
+  <ol class="steps">
+    <li>En <span class="ui">Pedidos</span>, tocá <span class="ui">Nuevo</span> (arriba a la derecha).</li>
+    <li>Buscá el cliente por nombre o dirección y tocalo.
+      <p>Si tiene cargado un límite de crédito y lo pasó, aparece <em>Pasó su límite</em>. Es un aviso: el pedido se puede tomar igual.</p></li>
+    <li>Si el cliente repite siempre lo mismo, tocá <span class="ui">Repetir</span> en <em>Su último pedido</em> y después cambiá lo que haga falta.</li>
+    <li>Buscá cada producto por nombre o código y sumalo con <span class="ui">+</span>, por bulto o por unidad.
+      <p>El precio sale solo según la lista del cliente: si es mayorista, ya ve el precio mayorista. Las ofertas por cantidad y los combos también se aplican solos.</p></li>
+    <li>Si hace falta, escribí una <em>Aclaración para el reparto</em>. Por ejemplo: «entregar a la tarde» o «paga con transferencia».</li>
+    <li>Tocá <span class="ui">Guardar pedido</span>. Listo: ya aparece en la PC del depósito.</li>
+  </ol>
+
+  <h3>Otras cosas que pasan en la calle</h3>
+  <ul class="plain">
+    <li><b>Cliente nuevo:</b> en la búsqueda del cliente, tocá <span class="ui">Cliente nuevo</span>. Hacen falta el nombre del comercio y la localidad. Si pide factura A, cargá también el CUIT. Para dar de alta un cliente hace falta señal.</li>
+    <li><b>Sin señal:</b> el pedido se guarda en el celular y se manda solo cuando vuelve la conexión. Arriba se ve <em>Un pedido espera señal</em> con el botón <span class="ui">Reintentar</span>. No cierres la sesión mientras quede uno esperando.</li>
+    <li><b>Pedido a medio hacer:</b> si se cerró la app, al volver aparece <em>Pedido sin terminar</em> con <span class="ui">Seguir</span> o <span class="ui">Descartar</span>.</li>
+    <li><b>Corregir o anular:</b> mientras el pedido está <em>Pendiente</em>, abrilo y usá <span class="ui">Editar</span> o <span class="ui">Cancelar</span>. Cuando ya salió en el camión o se cobró, no se puede cambiar desde el celular.</li>
+    <li><b>Recorrido del día:</b> si el dueño cargó qué días se visita cada localidad (<span class="path">Pedidos → Días</span>), arriba aparece <em>Hoy te toca</em> con los clientes que todavía no pidieron. Tocás uno y arranca el pedido.</li>
+  </ul>
+</section>
+
+<section id="web">
+  <span class="who">Dueño y depósito</span>
+  <h2>Pedidos de la página web</h2>
+  <p class="intro">Los clientes piden solos desde la tienda online. Sirve tanto para los clientes de siempre como para la gente que compra una sola vez.</p>
+
+  <h3>Prepararlo (una sola vez)</h3>
+  <ol class="steps">
+    <li>Entrá a <span class="path">Tienda online → Venta a comercios</span> y prendé <span class="ui">Activar venta a comercios</span>.</li>
+    <li>Prendé también <span class="ui">Aceptar pedidos de quien no tiene link</span>.
+      <p>Así puede pedir cualquiera, aunque no sea cliente. Si lo dejás apagado, el que entra sin link ve el catálogo pero tiene que pedirte el link por WhatsApp.</p></li>
+    <li>Si querés, escribí un aviso para los que entran sin link. Por ejemplo: «Repartimos en San Jorge y la zona».</li>
+  </ol>
+
+  <div class="split">
+    <div>
+      <h4>Clientes de siempre</h4>
+      <p>A cada uno le mandás su link desde <b>Clientes</b>, con el botón verde del link al lado del nombre. En el celular el botón dice <em>Mandarle su link de pedidos</em>. Con ese link entra con sus datos y su lista de precios (mayorista o minorista) ya puestos, y puede repetir su último pedido.</p>
+    </div>
+    <div>
+      <h4>Gente que compra una vez</h4>
+      <p>Entra a la tienda sin link, elige los productos y deja su nombre y teléfono. Ve los precios minoristas. Al aceptar el pedido se crea el cliente con esos datos, y la próxima vez el sistema lo reconoce por el teléfono.</p>
+    </div>
+  </div>
+
+  <h3>Cuando llega un pedido de la web</h3>
+  <ol class="steps">
+    <li>Entrá a <span class="path">Preventa</span>, en el menú de la izquierda. Arriba de todo aparece <em>Por revisar: 1 pedido de la tienda</em>.</li>
+    <li>Fijate de quién es. Abajo de los productos dice una de estas tres cosas:
+      <p><em>Para Fulano · con su link</em> (es un cliente tuyo), <em>Para Fulano · mismo teléfono</em> (lo reconoció por el número) o <em>Se crea el cliente Fulano</em> (es nuevo). Si no es el que corresponde, tocá <span class="ui">Cambiar</span> y elegí otro.</p></li>
+    <li>Si tiene WhatsApp, dejá tildado <span class="ui">Avisarle por WhatsApp que lo recibimos</span>.</li>
+    <li>Tocá <span class="ui">Aceptar</span>. Pasa a la lista de pedidos pendientes y desde ahí sigue igual que un pedido del vendedor.
+      <p>Si no lo vas a hacer, tocá <span class="ui">Rechazar</span> y se cancela en la tienda.</p></li>
+  </ol>
+  <div class="note warn"><b class="t">Dos avisos que pueden aparecer</b>
+    <p><em>No alcanza lo libre</em>: pidió más de lo que queda sin reservar. Podés aceptarlo igual y corregir las cantidades en el pedido.</p>
+    <p><em>Algún precio no coincidía con el publicado</em>: al aceptarlo entra con los precios que tenés cargados ahora.</p>
+  </div>
+</section>
+
+<section id="venta">
+  <span class="who">Depósito y administración</span>
+  <h2>De pedido a venta: dónde queda y cómo se factura</h2>
+  <p class="intro">Todos los pedidos están en <span class="path">Preventa</span>. Arriba se filtran por <em>Pendientes</em>, <em>Vendidos</em>, <em>Cancelados</em> o <em>Todos</em>, y también por localidad y por fecha. Un pedido termina de una de estas dos formas.</p>
+
+  <h3>A. Lo retiran o lo cobran en el mostrador</h3>
+  <ol class="steps">
+    <li>Abrí el pedido y tocá <span class="ui">Pasar a la caja</span>.
+      <p>Se carga en el ticket de la caja con el cliente y los precios del pedido. Revisalo: podés sacar o agregar productos antes de cobrar.</p></li>
+    <li>Cobralo como cualquier venta (<a href="#caja">ver Caja del mostrador</a>). Si el cliente paga después, elegí <span class="ui">Cuenta Corriente (Cliente)</span>.</li>
+    <li>El pedido queda en <em>Vendidos</em> y el stock se descuenta en ese momento.</li>
+  </ol>
+
+  <h3>B. Sale en el camión</h3>
+  <ol class="steps">
+    <li>Entrá a <span class="path">Reparto</span> y tocá <span class="ui">Armar reparto</span>. Elegí el chofer y los pedidos. Si tocás una localidad, se eligen todos sus pedidos juntos.</li>
+    <li>Imprimí la <span class="ui">Hoja de carga</span> para el depósito y la <span class="ui">Hoja de ruta</span> para el chofer.</li>
+    <li>Cuando el camión sale, tocá <span class="ui">Salió a reparto</span>.
+      <p>En ese momento cada pedido pasa a ser una venta a cuenta corriente del cliente y se descuenta el stock. Si tenés la facturación activa, se arman las facturas: están en el botón <span class="ui">Facturas</span>, en el orden de las paradas, para imprimirlas antes de salir.</p></li>
+    <li>En la calle, el chofer marca cada parada con <span class="ui">Registrar entrega</span>: qué entregó, qué volvió y cómo le pagaron. Al final toca <span class="ui">Terminé el reparto</span>.</li>
+    <li>Cuando vuelve, en <span class="ui">Volvió: rendir</span> se cuenta la plata y se tildan las transferencias. Lo cobrado descuenta la deuda del cliente, y lo que volvió sin entregar regresa al stock.</li>
+  </ol>
+
+  <h3>Los papeles: nota, remito y factura</h3>
+  <ul class="plain">
+    <li>Apenas se cobra una venta, en la pantalla <em>¡Venta Registrada!</em> están <span class="ui">Nota y remito</span> (<kbd>F8</kbd>) e <span class="ui">Imprimir Ticket</span> (<kbd>F9</kbd>). Desde ahí también se puede mandar por WhatsApp.</li>
+    <li>Con la facturación activa aparece <span class="ui">Facturar</span> (tecla <kbd>F</kbd>). Si está configurada la factura automática, sale sola cuando ARCA responde.</li>
+    <li>Para una venta de otro día: en <span class="path">Historial de ventas</span>, abrí la venta y tocá <span class="ui">Nota y remito</span>.</li>
+  </ul>
+  <div class="note"><b class="t">Para que salgan facturas</b><p>La factura electrónica se activa una sola vez en <span class="path">Facturación</span>, en el menú de la izquierda, con el certificado de ARCA del negocio. No hay límite de facturas por mes.</p></div>
+</section>
+
+<section id="caja">
+  <span class="who">Chicos del mostrador</span>
+  <h2>Caja del mostrador</h2>
+  <p class="intro">Todo se hace desde la pantalla de la caja. Las teclas <kbd>F</kbd> de arriba del teclado son atajos. Cada uno entra con su usuario, así queda registrado quién hizo cada cosa.</p>
+
+  <h3>Abrir la caja</h3>
+  <ol class="steps">
+    <li>Apretá <kbd>F8</kbd>. Con la caja cerrada se abre <em>Abrir Caja Registradora</em>.</li>
+    <li>En <em>Fondo inicial del cajón</em> poné el cambio con el que arrancás y confirmá.</li>
+    <li>Si aparece <em>¡Ojo! Quedó un turno sin Cierre Z</em>, hacé ese Cierre Z primero, desde el botón de esa misma ventana.</li>
+  </ol>
+
+  <h3>Cobrar</h3>
+  <ol class="steps">
+    <li>Escaneá el producto o escribí el nombre o el código y apretá <kbd>Enter</kbd>.
+      <p>Con <kbd>+</kbd> y <kbd>-</kbd> cambiás la cantidad del último producto. Si algo no tiene código, usá <span class="ui">Venta rápida</span> (<kbd>F1</kbd>).</p></li>
+    <li>Con el ticket listo, apretá <kbd>Enter</kbd> con el buscador vacío, o tocá el botón de cobrar.</li>
+    <li>Arriba de la ventana de cobro dice para quién es la venta. Por defecto es <em>Consumidor final</em>.
+      <p>Para un comercio que compra al por mayor sin estar registrado, tocá <span class="ui">Precio mayorista</span>. Para un cliente registrado, tocá <span class="ui">Elegir cliente</span>: el total pasa solo a su lista de precios.</p></li>
+    <li>Elegí cómo paga:
+      <p><b>Efectivo:</b> poné cuánto te dio y la pantalla muestra el vuelto. <b>Mercado Pago o tarjeta:</b> su botón. <b>Mixto:</b> dos partes con dos medios distintos, por ejemplo una parte en efectivo y otra por Mercado Pago. <b>Cuenta Corriente (Cliente):</b> queda como deuda del cliente. Hay que elegir el cliente y se ve su límite de crédito.</p></li>
+    <li>Confirmá con <kbd>Enter</kbd>. Después tocá <span class="ui">Nueva Venta</span> o apretá <kbd>Enter</kbd> otra vez.</li>
+  </ol>
+  <div class="note"><b class="t">Si paga una parte y el resto queda a cuenta</b><p>Cobrá todo con <span class="ui">Cuenta Corriente (Cliente)</span>. Enseguida apretá <kbd>F5</kbd> y cargale como pago lo que te dio. La deuda queda solo por la diferencia.</p></div>
+
+  <h3>Cuando un cliente viene a pagar su cuenta</h3>
+  <ol class="steps">
+    <li>Apretá <kbd>F5</kbd> y buscá al cliente por nombre, DNI o teléfono. Se ve lo que debe y sus movimientos.</li>
+    <li>Poné el monto y el medio de pago. Si paga con dos medios, usá <em>Dividir el cobro en dos medios de pago</em>.</li>
+    <li>Tocá <span class="ui">Abonar</span>.</li>
+  </ol>
+
+  <h3>Devoluciones y cambios</h3>
+  <ol class="steps">
+    <li>Tocá <span class="ui">Devolución</span>, en la barra de arriba de la caja.</li>
+    <li>Escaneá o buscá el producto que trae, poné la cantidad y tocá <span class="ui">Agregar Devolución</span>. Queda en el ticket restando.</li>
+    <li>Si se lleva otra cosa a cambio, agregala al mismo ticket y cobrá la diferencia como siempre.</li>
+    <li>Si solo devuelve, el total queda negativo. Ese saldo va a favor del cliente en su cuenta corriente, así que hay que elegir el cliente. La caja no entrega efectivo en una devolución.</li>
+  </ol>
+  <div class="note warn"><b class="t">Si hay que devolverle la plata o anular una venta entera</b><p>Avisale al encargado o al dueño. Se hace desde <span class="path">Historial de ventas</span>: abrir la venta y tocar <span class="ui">Cancelar / Devolver Venta</span>. Los productos vuelven al stock.</p></div>
+
+  <h3>Atajos de la caja</h3>
+  <div class="keys">
+    <table>
+      <tr><td><kbd>F1</kbd></td><td>Venta rápida: productos sin código</td></tr>
+      <tr><td><kbd>F2</kbd></td><td>Pausar el ticket para atender a otro. Para retomarlo: <kbd>Shift</kbd> + <kbd>F2</kbd></td></tr>
+      <tr><td><kbd>F3</kbd></td><td>Calculadora</td></tr>
+      <tr><td><kbd>F4</kbd></td><td>Reimprimir el último ticket</td></tr>
+      <tr><td><kbd>F5</kbd></td><td>Cobrar cuenta corriente</td></tr>
+      <tr><td><kbd>F6</kbd></td><td>Historial de las ventas del turno</td></tr>
+      <tr><td><kbd>F7</kbd></td><td>Gastos y pagos que salen del cajón (el motivo es obligatorio)</td></tr>
+      <tr><td><kbd>F8</kbd></td><td>Abrir la caja, o ver el estado y cerrarla</td></tr>
+      <tr><td><kbd>F9</kbd></td><td>Proveedores</td></tr>
+      <tr><td><kbd>Shift</kbd> + <kbd>Supr</kbd></td><td>Vaciar el ticket antes de cobrar</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="cierre">
+  <span class="who">Chicos del mostrador · encargado</span>
+  <h2>Cierre de caja</h2>
+  <p class="intro">Hay dos cierres. El <b>Cierre X</b> termina tu turno cuando entra otro cajero el mismo día. El <b>Cierre Z</b> cierra el día cuando el local cierra.</p>
+
+  <ol class="steps">
+    <li>Apretá <kbd>F8</kbd>. Se abre <em>Estado de la caja</em>, con las ventas del turno por medio de pago y el efectivo que debería haber.</li>
+    <li>Tocá <span class="ui">Cierre X</span> o <span class="ui">Cierre Z</span>, según corresponda.</li>
+    <li>Revisá los gastos y retiros del turno. Si pagaste a un proveedor o sacaste plata del cajón y no lo cargaste, agregalo ahora.</li>
+    <li>Contá el efectivo y escribí cuánto hay.
+      <p>Lo que espera el sistema se muestra recién después, así nadie acomoda el conteo al número.</p></li>
+    <li>En <em>Tarjetas y QR</em>, poné el total del cierre de lote de cada terminal. Si Mercado Pago está conectado a la caja, ese total se trae solo.</li>
+    <li>Si algo no cerró, explicalo en <em>Notas</em>. Por ejemplo: «un ticket se cobró dos veces». Las notas las ve el dueño.</li>
+    <li>Mirá la tabla de diferencias y confirmá en <em>¿Cerrar el turno?</em>. Una vez cerrado, el turno no se puede modificar.</li>
+  </ol>
+  <div class="note"><b class="t">Después del Cierre Z</b><p>Al terminar el Z, la pantalla ofrece pasar la plata a la <b>caja del mes</b>. Ahí se junta lo del mostrador con lo que trae el chofer, y el dueño ve el balance en <span class="path">Tesorería</span>.</p></div>
+  <div class="note warn"><b class="t">Para no perder el conteo</b><p>La ventana del cierre no se cierra con un clic afuera ni con <kbd>Esc</kbd>. Si tenés que dejarla, lo que contaste queda guardado como borrador y sigue ahí cuando volvés.</p></div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">Manual de Ventra para distribuidoras · actualizado el 26 de noviembre de 2026. Si algo en tu pantalla no coincide con lo que dice acá, avisanos y lo corregimos.</div>
+</footer>

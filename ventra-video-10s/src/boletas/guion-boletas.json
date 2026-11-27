@@ -1,0 +1,38 @@
+{
+  "_nota": "Video de boletas con IA con la voz de ElevenLabs (Valeria, Eleven v4): 552 cuadros (18,4 s) a 30 fps. La voz se corta en sus 5 frases (en los silencios) y cada una entra donde pasa lo que dice. Escenas en tiempos de la música (100 BPM = 18 cuadros). Lo usan src/boletas/Boletas20.tsx y scripts/audio.mjs.",
+  "fps": 30,
+  "total": 552,
+  "bpm": 100,
+  "finalMusica": 486,
+  "placas": [
+    { "id": "llega", "desde": 0, "dura": 90, "acorde": "Dmaj9" },
+    { "id": "lee", "desde": 90, "dura": 144, "acorde": "Bm7" },
+    { "id": "stock", "desde": 234, "dura": 144, "acorde": "Gmaj7" },
+    { "id": "nuevos", "desde": 378, "dura": 108, "acorde": "A" },
+    { "id": "cierre", "desde": 486, "dura": 66, "acorde": "D" }
+  ],
+  "voz": {
+    "archivo": "voz/valeria-v4.mp3",
+    "_tramos": "desde/hasta en segundos del archivo (cortes en los silencios), en = cuadro del video donde entra",
+    "tramos": [
+      { "desde": 0.0, "hasta": 3.0, "en": 8, "texto": "Llega el proveedor, le sacás una foto a la boleta" },
+      { "desde": 3.0, "hasta": 6.23, "en": 100, "texto": "y Ventra la lee solita, renglón por renglón." },
+      { "desde": 6.23, "hasta": 10.11, "en": 236, "texto": "Te suma el stock y te actualiza los precios, cuidando tu margen." },
+      { "desde": 10.11, "hasta": 13.51, "en": 380, "texto": "Y si trae productos nuevos, te los crea con nombre y foto." },
+      { "desde": 13.51, "hasta": 15.65, "en": 486, "texto": "Ventra, probalo gratis." }
+    ]
+  },
+  "efectos": [
+    { "t": 70, "tipo": "obturador", "nota": "foto a la boleta (la voz dice 'foto' en el cuadro 70)" },
+    { "t": 98, "tipo": "toque", "nota": "toca Leer la boleta" },
+    { "t": 104, "tipo": "renglones", "nota": "la línea de lectura pasa los 20 renglones (hasta el cuadro 186)" },
+    { "t": 188, "tipo": "listo", "nota": "suma = total" },
+    { "t": 201, "tipo": "aviso", "nota": "Boleta leída en el celular" },
+    { "t": 236, "tipo": "envio", "nota": "el pulso viaja a la PC" },
+    { "t": 252, "tipo": "sincronizado", "nota": "la PC se actualiza: stock 27 → 39 (la voz dice 'stock' en el cuadro 257)" },
+    { "t": 386, "tipo": "aviso", "nota": "la PC: 2 productos nuevos para revisar" },
+    { "t": 411, "tipo": "toque", "nota": "toca Revisar" },
+    { "t": 418, "tipo": "listo", "nota": "Milka y Takis con foto y nombre" },
+    { "t": 480, "tipo": "pase", "nota": "cambio al cierre (cuadro 486, la voz dice 'Ventra' en el 492)" }
+  ]
+}

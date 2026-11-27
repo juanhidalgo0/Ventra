@@ -1,0 +1,47 @@
+{
+ "base": "http://localhost:5181/reel-preview.html",
+ "ancho": 1280,
+ "alto": 800,
+ "escala": 1.5,
+ "movil": false,
+ "zona": "America/Argentina/Buenos_Aires",
+ "storage": {
+  "getting_started_hidden": "1",
+  "onboarding_done": "1",
+  "gd_store_name": "Kiosco Los Primos",
+  "business_profile": "KIOSKO",
+  "business_features": "{\"bulk\":false,\"delivery\":false,\"preorders\":false}",
+  "business_intents": "[\"mostrador\"]"
+ },
+ "tomas": [
+  {
+   "nombre": "precios-pc",
+   "pasos": [
+    { "ir": "#/products", "carga": 6000 },
+    { "hasta": "document.body.innerText.includes('Total: 28')", "max": 20000 },
+    { "grabar": true },
+    { "espera": 500 },
+    { "marca": "menu" },
+    { "toque": "Precios", "espera": 700 },
+    { "toque": "Aumentar precios", "espera": 1300 },
+    { "marca": "modal" },
+    { "medir": ["BON O BON BLANCO X 18 UN", "Aplicar a tildados"], "nombre": "modal" },
+    { "foto": "control-precios-1" },
+    { "toque": { "sel": "input[placeholder='12']" }, "espera": 250 },
+    { "marca": "escribe" },
+    { "escribir": "15", "ms": 220, "espera": 400 },
+    { "marca": "aplica" },
+    { "toque": "Aplicar a tildados", "espera": 1400 },
+    { "foto": "control-precios-2" },
+    { "medir": ["BON O BON BLANCO X 18 UN", "Guardar 28 precios"], "nombre": "aplicado" },
+    { "marca": "guarda" },
+    { "toque": "Guardar 28 precios", "espera": 900 },
+    { "marca": "confirma" },
+    { "toque": "Guardar", "espera": 1600 },
+    { "marca": "listo" },
+    { "foto": "control-precios-3" },
+    { "espera": 800 }
+   ]
+  }
+ ]
+}

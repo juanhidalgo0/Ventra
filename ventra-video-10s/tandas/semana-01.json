@@ -1,0 +1,65 @@
+{
+ "tanda": "semana-01",
+ "_nota": "Primera tanda de la fábrica. Datos que no dependen de leyes ni de fechas (cuentas y cosas comprobables). Cada short: frase 1 fija (la pregunta), 2 o 3 frases de explicación con una tira o un cartel, y cierre.",
+ "cortos": [
+  {
+   "id": "ticket-se-borra",
+   "serie": "explica",
+   "frases": [
+    {"texto": "¿Por qué los tickets se borran?", "fija": true, "resaltar": ["borran?"]},
+    {"texto": "No tienen tinta: son de papel térmico, y el calor los pone negros.", "resaltar": ["calor"], "impresa": {"renglones": ["PAPEL TÉRMICO", "SIN TINTA"], "con": "papel"}},
+    {"texto": "Rayalo con la uña y vas a ver la raya negra.", "resaltar": ["uña"]},
+    {"texto": "Si es de una garantía, sacale una foto el mismo día.", "resaltar": ["foto"], "cartel": {"arriba": "GARANTÍA", "grande": "FOTO", "abajo": "EL MISMO DÍA", "con": "foto"}},
+    {"texto": "Guardalo y mandáselo al que guarda todo en la billetera.", "cierre": {"grande": "Guardalo", "abajo": "y mandáselo al que guarda\ntodo en la billetera"}}
+   ],
+   "texto_ig": "¿Por qué se borran los tickets? 🧾\n\nNo tienen tinta: son de papel térmico y el calor los pone negros (rayalo con la uña y vas a ver). Si es el ticket de una garantía, sacale una foto el mismo día.\n\nGuardalo y mandáselo al que guarda todo en la billetera.\n\n¿Tenés comercio? Comentá CAJA y te escribo yo 👇\n\n#ticket #garantia #datoscuriosos #argentina #consumo"
+  },
+  {
+   "id": "segunda-al-70",
+   "serie": "explica",
+   "frases": [
+    {"texto": "¿La segunda al 70 es un 70 % de descuento?", "fija": true, "resaltar": ["70"]},
+    {"texto": "No: pagás una entera y la otra al 30 %. Es un 35 % en cada una.", "resaltar": ["35"], "impresa": {"renglones": ["1 + 0,30", "= 1,30 x 2", "−35 %"], "con": "35"}},
+    {"texto": "¿Y el 3x2? Es un 33 %, no un 50.", "resaltar": ["33"], "cartel": {"arriba": "3x2 =", "grande": "33%", "abajo": "DE DESCUENTO", "con": "33"}},
+    {"texto": "Hacé la cuenta antes de llenar el changuito.", "resaltar": ["cuenta"]},
+    {"texto": "Mandáselo al que compra de a tres.", "cierre": {"grande": "Mandáselo", "abajo": "al que compra de a tres"}}
+   ],
+   "texto_ig": "¿La segunda al 70 % es un 70 % de descuento? 🛒\n\nNo: pagás una entera y la otra al 30 %, o sea un 35 % de descuento en cada una. Y el 3x2 es un 33 %, no un 50.\n\nHacé la cuenta antes de llenar el changuito. Mandáselo al que compra de a tres.\n\n¿Tenés comercio? Comentá CAJA y te escribo yo 👇\n\n#descuentos #ofertas #ahorro #supermercado #argentina"
+  },
+  {
+   "id": "codigo-779",
+   "serie": "explica",
+   "frases": [
+    {"texto": "¿El 779 del código de barras quiere decir hecho en Argentina?", "fija": true, "resaltar": ["779"]},
+    {"texto": "No: dice dónde se registró la empresa, no dónde se fabricó.", "resaltar": ["registró"], "cartel": {"arriba": "779 =", "grande": "AR", "abajo": "DÓNDE SE REGISTRÓ", "con": "registró"}},
+    {"texto": "Y el último número es un control: si la caja lee mal, la cuenta no da y no lo toma.", "resaltar": ["control:"], "impresa": {"renglones": ["779 1234 5678 ?", "EL ÚLTIMO", "= CONTROL"], "con": "último"}},
+    {"texto": "Guardalo y mandáselo al que lee todas las etiquetas.", "cierre": {"grande": "Guardalo", "abajo": "y mandáselo al que lee\ntodas las etiquetas"}}
+   ],
+   "texto_ig": "¿El 779 del código de barras quiere decir \"hecho en Argentina\"? 🔎\n\nNo: indica dónde se registró la empresa, no dónde se fabricó el producto. Y el último número es un dígito de control: si la caja lo lee mal, la cuenta no da y no lo toma.\n\nGuardalo y mandáselo al que lee todas las etiquetas.\n\n¿Tenés comercio? Comentá CAJA y te escribo yo 👇\n\n#codigodebarras #datoscuriosos #argentina #kiosco"
+  },
+  {
+   "id": "precios-99",
+   "serie": "explica",
+   "frases": [
+    {"texto": "¿Por qué los precios terminan en 99?", "fija": true, "resaltar": ["99?"]},
+    {"texto": "Porque tu cabeza lee el primer número y redondea para abajo.", "resaltar": ["primer"]},
+    {"texto": "$1.999 se siente como mil, pero son dos mil.", "resaltar": ["mil."], "impresa": {"renglones": ["$1.999", "CASI", "$2.000"], "con": "dos"}},
+    {"texto": "En el kiosco, para el vuelto, conviene el número redondo.", "resaltar": ["redondo."]},
+    {"texto": "Guardalo y mandáselo al que dice que está barato.", "cierre": {"grande": "Guardalo", "abajo": "y mandáselo al que\ndice que está barato"}}
+   ],
+   "texto_ig": "¿Por qué los precios terminan en 99? 🤔\n\nPorque la cabeza lee el primer número y redondea para abajo: $1.999 se siente como mil, pero son dos mil. En el kiosco, para el vuelto, conviene el número redondo.\n\nGuardalo y mandáselo al que dice que está barato.\n\n¿Tenés comercio? Comentá CAJA y te escribo yo 👇\n\n#precios #marketing #datoscuriosos #kiosco #argentina"
+  },
+  {
+   "id": "chicles-caja",
+   "serie": "explica",
+   "frases": [
+    {"texto": "¿Por qué los chicles están al lado de la caja?", "fija": true, "resaltar": ["chicles"]},
+    {"texto": "Porque mientras esperás, agarrás algo que no ibas a comprar.", "resaltar": ["esperás,"]},
+    {"texto": "Es compra por impulso: chico, barato y a mano.", "resaltar": ["impulso:"], "impresa": {"renglones": ["CHICO", "BARATO", "A MANO"], "con": "chico"}},
+    {"texto": "Si tenés kiosco, poné ahí lo que más ganancia te deja.", "resaltar": ["ganancia"]},
+    {"texto": "Guardalo y mandáselo al que siempre vuelve con un chicle.", "cierre": {"grande": "Guardalo", "abajo": "y mandáselo al que siempre\nvuelve con un chicle"}}
+   ],
+   "texto_ig": "¿Por qué los chicles están al lado de la caja? 🍬\n\nPorque mientras esperás, agarrás algo que no ibas a comprar: es compra por impulso (chico, barato y a mano). Si tenés kiosco, poné ahí lo que más ganancia te deja.\n\nGuardalo y mandáselo al que siempre vuelve con un chicle.\n\n¿Tenés comercio? Comentá CAJA y te escribo yo 👇\n\n#kiosco #ventas #compraporimpulso #comercio #argentina"
+  }
+ ]
+}

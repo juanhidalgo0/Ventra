@@ -1,0 +1,380 @@
+{
+  "_": "Reel 'Mi kiosco me contesta': la voz en off (public/reel-bot/voz.wav, toma única de ElevenLabs 'Valeria' cortada por scripts/reel-bot-voz-unica.sh) manda los tiempos. Cuadros a 30 fps. scripts/reel-bot-audio.py lee los mismos eventos.",
+  "fps": 30,
+  "total": 840,
+  "escenas": {
+    "hook": [
+      0,
+      138
+    ],
+    "preguntas": [
+      138,
+      330
+    ],
+    "precios": [
+      330,
+      585
+    ],
+    "promo": [
+      585,
+      738
+    ],
+    "cierre": [
+      738,
+      840
+    ]
+  },
+  "titulos": [
+    {
+      "a": 4,
+      "hasta": 68,
+      "lineas": [
+        [
+          "Le mando audios"
+        ],
+        [
+          [
+            "a mi kiosco…",
+            "verde"
+          ]
+        ]
+      ]
+    },
+    {
+      "a": 72,
+      "hasta": 138,
+      "lineas": [
+        [
+          [
+            "…y me contesta.",
+            "verde"
+          ]
+        ]
+      ]
+    },
+    {
+      "a": 142,
+      "hasta": 174,
+      "lineas": [
+        [
+          "Cuánto vendí."
+        ]
+      ]
+    },
+    {
+      "a": 178,
+      "hasta": 204,
+      "lineas": [
+        [
+          "Qué me falta."
+        ]
+      ]
+    },
+    {
+      "a": 208,
+      "hasta": 246,
+      "lineas": [
+        [
+          "Quién me debe."
+        ]
+      ]
+    },
+    {
+      "a": 252,
+      "hasta": 330,
+      "lineas": [
+        [
+          "Con la persiana"
+        ],
+        [
+          [
+            "baja.",
+            "verde"
+          ]
+        ]
+      ]
+    },
+    {
+      "a": 340,
+      "hasta": 380,
+      "lineas": [
+        [
+          "¿Aumentó"
+        ],
+        [
+          "el proveedor?"
+        ]
+      ]
+    },
+    {
+      "a": 384,
+      "hasta": 460,
+      "lineas": [
+        [
+          "Se lo digo"
+        ],
+        [
+          [
+            "en un audio.",
+            "verde"
+          ]
+        ]
+      ]
+    },
+    {
+      "a": 520,
+      "hasta": 580,
+      "lineas": [
+        [
+          "Cambia en"
+        ],
+        [
+          [
+            "todas las cajas.",
+            "verde"
+          ]
+        ]
+      ]
+    },
+    {
+      "a": 588,
+      "hasta": 676,
+      "lineas": [
+        [
+          "¿Una promo?"
+        ]
+      ]
+    },
+    {
+      "a": 681,
+      "hasta": 734,
+      "lineas": [
+        [
+          "Lista para"
+        ],
+        [
+          [
+            "subir.",
+            "verde"
+          ]
+        ]
+      ]
+    }
+  ],
+  "chat": [
+    {
+      "id": "a1",
+      "de": "yo",
+      "tipo": "audio",
+      "a": 44,
+      "dura": "0:03",
+      "hora": "21:42",
+      "graba": 6
+    },
+    {
+      "id": "e1",
+      "de": "bot",
+      "tipo": "escribiendo",
+      "a": 48,
+      "hasta": 74
+    },
+    {
+      "id": "r1",
+      "de": "bot",
+      "tipo": "texto",
+      "a": 74,
+      "hora": "21:42",
+      "texto": "🎤 _¿Cuánto vendimos hoy?_\n\nHoy llevás *$486.300* en 212 tickets. Es un 14% más que el sábado pasado."
+    },
+    {
+      "id": "a2",
+      "de": "yo",
+      "tipo": "audio",
+      "a": 172,
+      "dura": "0:02",
+      "hora": "21:43",
+      "graba": 140
+    },
+    {
+      "id": "r2",
+      "de": "bot",
+      "tipo": "texto",
+      "a": 194,
+      "hora": "21:43",
+      "texto": "🎤 _¿Qué me falta reponer?_\n\nTe quedan pocas de:\n• Coca-Cola 2,25 L: *3* (vendés 9 por día)\n• Alfajor triple: *5*\n• Yerba 1 kg: *2*"
+    },
+    {
+      "id": "a3",
+      "de": "yo",
+      "tipo": "audio",
+      "a": 220,
+      "dura": "0:02",
+      "hora": "21:43",
+      "graba": 199
+    },
+    {
+      "id": "r3",
+      "de": "bot",
+      "tipo": "texto",
+      "a": 240,
+      "hora": "21:43",
+      "texto": "🎤 _¿Quién me debe más?_\n\n1. Marta G.: *$38.400* (hace 12 días)\n2. Taller del Flaco: *$21.900*\n3. Ramiro: *$9.300*"
+    },
+    {
+      "id": "a4",
+      "de": "yo",
+      "tipo": "audio",
+      "a": 384,
+      "dura": "0:03",
+      "hora": "21:45",
+      "graba": 352
+    },
+    {
+      "id": "e2",
+      "de": "bot",
+      "tipo": "escribiendo",
+      "a": 398,
+      "hasta": 428
+    },
+    {
+      "id": "r4",
+      "de": "bot",
+      "tipo": "texto",
+      "a": 428,
+      "hora": "21:45",
+      "texto": "🎤 _subí 8% las gaseosas_\n\nRevisá antes de confirmar (Gaseosas, +8%):\n- Coca-Cola 2,25 L: $4.100 → *$4.430*\n- Sprite 2,25 L: $3.900 → *$4.210*\n- Tónica 1,5 L: $2.600 → *$2.810*\n- …y 11 más\n\nSe cambia en todas las cajas (14 productos). La propuesta vale 30 minutos.",
+      "botones": [
+        "Confirmar",
+        "Cancelar"
+      ],
+      "toque": 469
+    },
+    {
+      "id": "r5",
+      "de": "bot",
+      "tipo": "texto",
+      "a": 488,
+      "hora": "21:45",
+      "texto": "Listo, cambié 14 productos. Las cajas lo toman en unos segundos (las que están apagadas, cuando se prendan).",
+      "resalta": "(las que están apagadas, cuando se prendan)",
+      "resaltaDesde": 524
+    },
+    {
+      "id": "t1",
+      "de": "yo",
+      "tipo": "texto",
+      "a": 596,
+      "hora": "21:47",
+      "texto": "armame una promo de fernet con coca a 22900"
+    },
+    {
+      "id": "e3",
+      "de": "bot",
+      "tipo": "escribiendo",
+      "a": 610,
+      "hasta": 645
+    },
+    {
+      "id": "p1",
+      "de": "bot",
+      "tipo": "album",
+      "a": 645,
+      "hora": "21:47",
+      "fotos": [
+        "reel-bot/promo-precio.jpg",
+        "reel-bot/promo-nocturno.jpg",
+        "reel-bot/promo-invitacion.jpg"
+      ]
+    }
+  ],
+  "promoGrande": {
+    "a": 676,
+    "foto": "reel-bot/promo-precio.jpg"
+  },
+  "sonidos": {
+    "envia": [
+      44,
+      172,
+      220,
+      384,
+      596
+    ],
+    "llega": [
+      74,
+      194,
+      240,
+      428,
+      488,
+      645
+    ],
+    "toque": [
+      469
+    ],
+    "whoosh": [
+      676,
+      738
+    ]
+  },
+  "grabaciones": [
+    [
+      6,
+      44
+    ],
+    [
+      140,
+      172
+    ],
+    [
+      199,
+      220
+    ],
+    [
+      352,
+      384
+    ]
+  ],
+  "toques": [
+    469
+  ],
+  "monitor": {
+    "matrix3d": [
+      0.307675549574669,
+      -0.03452609947221074,
+      0.0,
+      -3.594012263271994e-05,
+      -0.01858911422760691,
+      0.3078170134206291,
+      0.0,
+      -2.2261223735154653e-05,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      104.0,
+      1010.0,
+      0.0,
+      1.0
+    ],
+    "ancho": 2560,
+    "alto": 1600,
+    "captura": "reel-go/app/caja-pos.png",
+    "precio": {
+      "x": 95,
+      "y": 838,
+      "w": 215,
+      "h": 58,
+      "antes": "$ 4.100",
+      "despues": "$ 4.430"
+    },
+    "tarjeta": {
+      "x": 76,
+      "y": 408,
+      "w": 330,
+      "h": 494
+    }
+  },
+  "foco": {
+    "a": 500,
+    "b": 578
+  }
+}

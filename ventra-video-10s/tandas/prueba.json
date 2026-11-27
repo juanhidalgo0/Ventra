@@ -1,0 +1,80 @@
+{
+ "tanda": "prueba",
+ "_nota": "Prueba de la fábrica con la voz ya aprobada del ep. 2 (--voz-de public/ventri/ep02/voz.mp3).",
+ "cortos": [
+  {
+   "id": "aguinaldo",
+   "serie": "explica",
+   "fondo": "kiosco",
+   "frases": [
+    {
+     "texto": "¿Cuánto aguinaldo te toca?",
+     "fija": true,
+     "resaltar": [
+      "aguinaldo"
+     ]
+    },
+    {
+     "texto": "Agarrá tu sueldo más alto desde julio, en bruto… y partilo al medio.",
+     "resaltar": [
+      "alto",
+      "medio."
+     ],
+     "impresa": {
+      "renglones": [
+       "÷ 2",
+       "AGUINALDO",
+       "$450.000"
+      ],
+      "con": "partilo"
+     }
+    },
+    {
+     "texto": "¿Metiste horas extra? Ese mes cuenta.",
+     "resaltar": [
+      "extra?"
+     ]
+    },
+    {
+     "texto": "¿Arrancaste en octubre? Te toca la parte que laburaste.",
+     "resaltar": [
+      "octubre?",
+      "parte"
+     ]
+    },
+    {
+     "texto": "Y sí… los descuentos, igual que en el sueldo.",
+     "resaltar": [
+      "descuentos,"
+     ]
+    },
+    {
+     "texto": "Te lo tienen que pagar hasta el 18.",
+     "resaltar": [
+      "18."
+     ],
+     "cartel": {
+      "arriba": "VENCE EL",
+      "grande": "18",
+      "abajo": "DE DICIEMBRE",
+      "con": "18"
+     }
+    },
+    {
+     "texto": "¿Monotributista? Sin patrón, no hay aguinaldo.",
+     "resaltar": [
+      "patrón,"
+     ]
+    },
+    {
+     "texto": "Guardalo y mandáselo al que siempre pregunta.",
+     "cierre": {
+      "grande": "Guardalo",
+      "abajo": "y mandáselo al que\nsiempre pregunta"
+     }
+    }
+   ],
+   "texto_ig": "Prueba de la fábrica (no publicar)."
+  }
+ ]
+}
