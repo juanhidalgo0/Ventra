@@ -518,7 +518,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
     setAdding(null);
   };
   const openDoc = (d: 'carga' | 'ruta' | 'remitos' | 'facturas') => {
-    if (missingName) { toast.error('Falta el nombre del comercio. Lo carga el administrador en Configuración → General y POS.', { duration: 6000 }); return; }
+    if (missingName) { toast.error('Falta el nombre del comercio. Lo carga el administrador en Configuración → Comercio.', { duration: 6000 }); return; }
     if (!orders.length) { toast.error('El reparto no tiene pedidos'); return; }
     setDoc(d);
   };

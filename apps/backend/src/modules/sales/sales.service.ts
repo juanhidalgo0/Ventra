@@ -825,6 +825,131 @@ export class SalesService {
     throw new BadRequestException('Reporte desconocido');
   }
 
+  /**
+   * Logros del negocio: ventas totales, desde cuándo vende con Ventra, cómo le fue ayer contra su
+   * mejor día y el mes pasado contra su mejor mes. El navegador manda los límites en su hora local.
+   */
+  async getMilestones(q: { today: string; yesterday: string; thisMonth: string; lastMonth: string; tzOffset?: number }) {
+    const num = (v: any) => Number(v || 0);
+    const d = (s: string) => { const x = new Date(s); if (Number.isNaN(x.getTime())) throw new BadRequestException('Fechas inválidas'); return x; };
+    const today = d(q.today), yesterday = d(q.yesterday), thisMonth = d(q.thisMonth), lastMonth = d(q.lastMonth);
+    const shift = Math.trunc(Number(q.tzOffset) || 0) * 60;
+    const local = (fmt: string) => `strftime('${fmt}', s.created_at / 1000 - ${shift}, 'unixepoch')`;
+    const done = `s.status = 'COMPLETED'`;
+    const [totals, yest, bestDayBefore, lastMonthRow, bestMonthBefore] = await Promise.all([
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT COUNT(*) AS n, MIN(s.created_at) AS first, COUNT(DISTINCT ${local('%Y-%m-%d')}) AS days FROM sales s WHERE ${done}`),
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(s.total), 0) AS total, COUNT(*) AS n FROM sales s WHERE ${done} AND s.created_at >= ? AND s.created_at < ?`, yesterday, today),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT ${local('%Y-%m-%d')} AS day, SUM(s.total) AS total FROM sales s WHERE ${done} AND s.created_at < ?
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 1`, yesterday),
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(s.total), 0) AS total FROM sales s WHERE ${done} AND s.created_at >= ? AND s.created_at < ?`, lastMonth, thisMonth),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT ${local('%Y-%m')} AS month, SUM(s.total) AS total FROM sales s WHERE ${done} AND s.created_at < ?
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 1`, lastMonth),
+    ]);
+    const firstRaw = totals[0]?.first;
+    return {
+      salesCount: num(totals[0]?.n),
+      daysWithSales: num(totals[0]?.days),
+      firstSaleAt: firstRaw == null ? null : new Date(typeof firstRaw === 'number' || typeof firstRaw === 'bigint' ? Number(firstRaw) : firstRaw).toISOString(),
+      yesterday: { total: num(yest[0]?.total), tickets: num(yest[0]?.n) },
+      bestDayBefore: bestDayBefore[0] ? { day: String(bestDayBefore[0].day), total: num(bestDayBefore[0].total) } : null,
+      lastMonth: { total: num(lastMonthRow[0]?.total) },
+      bestMonthBefore: bestMonthBefore[0] ? { month: String(bestMonthBefore[0].month), total: num(bestMonthBefore[0].total) } : null,
+    };
+  }
+
+  /**
+   * "Tu año en Ventra": el resumen del año para mostrar en historias y compartir.
+   * `from`/`to`: el año en hora local del navegador (o hasta hoy, si el año no terminó);
+   * `tzOffset`: minutos de getTimezoneOffset(), para contar días y horas en hora local.
+   * Todo se calcula en la base (un kiosco hace cientos de miles de renglones por año).
+   */
+  async getYearReview(from: string, to: string, tzOffset = 0) {
+    const num = (v: any) => Number(v || 0);
+    const start = new Date(from), end = new Date(to);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new BadRequestException('Fechas inválidas');
+    const range = [start, end];
+    const shift = Math.trunc(Number(tzOffset) || 0) * 60;
+    const local = (fmt: string) => `strftime('${fmt}', s.created_at / 1000 - ${shift}, 'unixepoch')`;
+    const done = `s.status = 'COMPLETED' AND s.created_at >= ? AND s.created_at <= ?`;
+    const notGeneric = `si.product_id NOT IN ('VENTA_RAPIDA', 'SERVICIO')`;
+
+    // El mismo tramo del año anterior, para comparar parejo (si el año todavía no terminó)
+    const prevStart = new Date(start); prevStart.setFullYear(prevStart.getFullYear() - 1);
+    const prevEnd = new Date(end); prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+
+    const [totals, days, months, hours, weekdays, products, units, distinct, payments, client, biggest, prev, first] = await Promise.all([
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(s.total), 0) AS total, COUNT(*) AS tickets, COUNT(DISTINCT ${local('%Y-%m-%d')}) AS days
+        FROM sales s WHERE ${done}`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT ${local('%Y-%m-%d')} AS day, SUM(s.total) AS total, COUNT(*) AS tickets
+        FROM sales s WHERE ${done} GROUP BY 1 ORDER BY SUM(s.total) DESC LIMIT 1`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT CAST(${local('%m')} AS INTEGER) AS month, SUM(s.total) AS total, COUNT(*) AS tickets
+        FROM sales s WHERE ${done} GROUP BY 1 ORDER BY 1`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT CAST(${local('%H')} AS INTEGER) AS hour, COUNT(*) AS tickets
+        FROM sales s WHERE ${done} GROUP BY 1 ORDER BY 1`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT CAST(${local('%w')} AS INTEGER) AS weekday, SUM(s.total) AS total, COUNT(*) AS tickets
+        FROM sales s WHERE ${done} GROUP BY 1 ORDER BY 1`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT si.product_id AS id, MAX(si.product_name) AS name, SUM(si.quantity) AS qty, SUM(si.total) AS revenue,
+               MAX(p.unit) AS unit, MAX(p.image_url) AS image
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE ${done} AND ${notGeneric} GROUP BY si.product_id ORDER BY SUM(si.quantity) DESC LIMIT 5`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(si.quantity), 0) AS units
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id LEFT JOIN products p ON p.id = si.product_id
+        WHERE ${done} AND si.quantity > 0 AND COALESCE(p.unit, 'UNIT') IN ('UNIT', 'PACK')`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COUNT(DISTINCT si.product_id) AS products
+        FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE ${done} AND ${notGeneric}`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT pm.method AS method, SUM(pm.amount) AS amount
+        FROM payments pm JOIN sales s ON s.id = pm.sale_id WHERE ${done} GROUP BY pm.method`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT c.name AS name, COUNT(*) AS tickets, SUM(s.total) AS total
+        FROM sales s JOIN clients c ON c.id = s.client_id WHERE ${done} GROUP BY s.client_id ORDER BY COUNT(*) DESC LIMIT 1`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT MAX(s.total) AS total FROM sales s WHERE ${done}`, ...range),
+      this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT COALESCE(SUM(s.total), 0) AS total, COUNT(*) AS tickets FROM sales s WHERE ${done}`, prevStart, prevEnd),
+      this.prisma.$queryRawUnsafe<any[]>(`SELECT MIN(s.created_at) AS first FROM sales s WHERE s.status = 'COMPLETED'`),
+    ]);
+
+    const tickets = num(totals[0]?.tickets);
+    const total = num(totals[0]?.total);
+    const firstRaw = first[0]?.first;
+    const firstSaleAt = firstRaw == null ? null : new Date(typeof firstRaw === 'number' || typeof firstRaw === 'bigint' ? Number(firstRaw) : firstRaw).toISOString();
+    const prevTotal = num(prev[0]?.total);
+    // Comparar solo si el año anterior ya se usaba Ventra desde el principio del tramo
+    const comparable = !!firstSaleAt && new Date(firstSaleAt) <= new Date(prevStart.getTime() + 31 * 86400000) && prevTotal > 0;
+    const best = days[0];
+
+    return {
+      from: start.toISOString(),
+      to: end.toISOString(),
+      total,
+      tickets,
+      daysOpen: num(totals[0]?.days),
+      avgTicket: tickets ? total / tickets : 0,
+      bestDay: best ? { day: String(best.day), total: num(best.total), tickets: num(best.tickets) } : null,
+      months: months.map((m) => ({ month: num(m.month), total: num(m.total), tickets: num(m.tickets) })),
+      hours: hours.map((h) => ({ hour: num(h.hour), tickets: num(h.tickets) })),
+      weekdays: weekdays.map((w) => ({ weekday: num(w.weekday), total: num(w.total), tickets: num(w.tickets) })),
+      topProducts: products.map((p) => ({ id: p.id, name: p.name, qty: num(p.qty), revenue: num(p.revenue), unit: p.unit || 'UNIT', image: typeof p.image === 'string' && p.image.startsWith('http') ? p.image : null })),
+      unitsSold: num(units[0]?.units),
+      distinctProducts: num(distinct[0]?.products),
+      payments: Object.fromEntries(payments.map((p) => [String(p.method), num(p.amount)])),
+      topClient: client[0] ? { name: String(client[0].name), tickets: num(client[0].tickets), total: num(client[0].total) } : null,
+      biggestTicket: num(biggest[0]?.total),
+      previous: comparable ? { total: prevTotal, tickets: num(prev[0]?.tickets) } : null,
+      firstSaleAt,
+    };
+  }
+
   async getTodaySummary(from?: string, to?: string) {
     let today = new Date();
     today.setHours(0, 0, 0, 0);

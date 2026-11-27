@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import api from '../services/api';
 
-export type SetupTab = 'posnets' | 'personal' | 'backups';
+export type SetupTab = 'pagos' | 'personal' | 'backups';
 
 export interface SetupStep {
   label: string;
@@ -26,7 +26,7 @@ interface SetupInput {
  */
 export function buildSetupSteps(i: SetupInput): SetupStep[] {
   return [
-    { label: 'Revisar medios de pago', done: i.posnetsSaved, tab: 'posnets' },
+    { label: 'Revisar medios de pago', done: i.posnetsSaved, tab: 'pagos' },
     ...(i.isAdmin
       ? [
           { label: 'Sumar a tu equipo', done: i.userCount > 1, tab: 'personal' as const },

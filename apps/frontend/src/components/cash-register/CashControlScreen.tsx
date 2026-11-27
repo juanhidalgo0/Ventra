@@ -12,7 +12,8 @@ import XReportPrint, { parseXSession } from './XReportPrint';
 import { cashClosingResult } from '../../utils/cashDifference';
 import { useAuthStore } from '../../stores/authStore';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
-import { escapeHtml } from '../../utils/escapeHtml';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 import { MpSessionControl } from './MpReconcilePanel';
 import { printReport } from '../../utils/ticketPrinter';
 
@@ -109,66 +110,6 @@ export default function CashControlScreen() {
   }, []);
   const [hideTotals, setHideTotals] = useState<boolean>(false);
 
-  const downloadCSV = (filename: string, headers: string[], rows: any[][]) => {
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadPDF = (title: string, htmlContent: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document || iframe.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(`
-        <html>
-          <head>
-            <title>${escapeHtml(title)}</title>
-            <style>
-              body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
-              h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
-              h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-top: 0; margin-bottom: 25px; }
-              .header { border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 10px; }
-              th { background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700; text-align: left; padding: 8px; text-transform: uppercase; font-size: 8px; letter-spacing: 0.05em; }
-              td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-              .text-right { text-align: right; }
-              .font-bold { font-weight: bold; }
-              .grid { display: grid; grid-template-cols: repeat(5, 1fr); gap: 15px; margin-bottom: 25px; }
-              .card { background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 12px; border-radius: 10px; }
-              .card-title { font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
-              .card-value { font-size: 15px; font-weight: bold; color: #0f172a; }
-              .footer { margin-top: 40px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 15px; }
-            </style>
-          </head>
-          <body>
-            ${htmlContent}
-            <div class="footer">Generado por Kiosco Cash Control - ${new Date().toLocaleDateString('es-AR')}</div>
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.frameElement.remove(); }, 100);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      doc.close();
-    }
-  };
-
   const getSessionSalesTotal = (s: any) => {
     if (s?.closingSummary) {
       try {
@@ -180,54 +121,6 @@ export default function CashControlScreen() {
       return s.sales.reduce((sum: number, v: any) => sum + (v.total || 0), 0);
     }
     return s?.closingAmountExpected || 0;
-  };
-
-  const handleExportExcel = () => {
-    const headers = [
-      'Terminal', 'Responsable', 'Apertura', 'Cierre', 
-      'Ventas Totales', 'Gastos', 'Monto Cierre', 'Diferencia'
-    ];
-    const rows = closedSessions.map((s: any) => {
-      const salesTotal = getSessionSalesTotal(s);
-      const expensesTotal = s.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((sum: number, m: any) => sum + m.amount, 0) || 0;
-      return [
-        s.terminalName,
-        s.user?.fullName,
-        new Date(s.openedAt).toLocaleString('es-AR'),
-        s.closedAt ? new Date(s.closedAt).toLocaleString('es-AR') : '',
-        salesTotal,
-        expensesTotal,
-        s.closingAmountCounted || 0,
-        cashClosingResult(s).totalDiff
-      ];
-    });
-    
-    downloadCSV(`Historial_Cajas.csv`, headers, rows);
-    toast.success('Excel exportado correctamente');
-  };
-
-  const handleExportZReportExcel = () => {
-    if (filteredZReports.length === 0) {
-      toast.error('No hay reportes Z para exportar con los filtros seleccionados');
-      return;
-    }
-    const headers = [
-      'ID Reporte', 'Cajero / Responsable', 'Fecha y Hora', 
-      'Esperado Sistema', 'Declarado Total', 'Diferencia', 'Turnos Incluidos'
-    ];
-    const rows = filteredZReports.map((z: any) => {
-      const turnsCount = z.summaryParsed?.sessions?.length || z.sessions?.length || 1;
-      return [
-        z.id?.substring(0, 8) || '',
-        z.generatedBy?.fullName || 'Sistema',
-        new Date(z.generatedAt).toLocaleString('es-AR'),
-        z.totalExpected || 0,
-        z.totalDeclared || 0,
-        z.differenceTotal || 0,
-        turnsCount
-      ];
-    });
-    downloadCSV(`Reportes_Z_Historial.csv`, headers, rows);
   };
 
   const handleGenerateZReport = async () => {
@@ -246,61 +139,6 @@ export default function CashControlScreen() {
       setIsGeneratingZ(false);
       setTimeout(release, 3000);
     }
-  };
-
-  const handleExportPDF = () => {
-    const rowsHtml = closedSessions.map((s: any) => {
-      const salesTotal = getSessionSalesTotal(s);
-      const expensesTotal = s.cashMovements?.filter((m: any) => m.type === 'EXPENSE').reduce((sum: number, m: any) => sum + m.amount, 0) || 0;
-      const totalDiff = cashClosingResult(s).totalDiff;
-      return `
-        <tr>
-          <td class="font-bold">${escapeHtml(s.terminalName)}</td>
-          <td>${escapeHtml(s.user?.fullName)}</td>
-          <td>${new Date(s.openedAt).toLocaleDateString('es-AR')}</td>
-          <td>${s.closedAt ? new Date(s.closedAt).toLocaleDateString('es-AR') : 'Abierta'}</td>
-          <td class="text-right">${fmt(salesTotal)}</td>
-          <td class="text-right">${fmt(expensesTotal)}</td>
-          <td class="text-right">${fmt(s.closingAmountCounted || 0)}</td>
-          <td class="text-right font-bold" style="color: ${totalDiff < 0 ? '#ef4444' : '#10b981'};">${fmt(totalDiff)}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const htmlContent = `
-      <div class="header">
-        <h1>Historial de Turnos y Cierres de Caja</h1>
-        <h2>Resumen Operativo</h2>
-      </div>
-
-      <div class="grid">
-        <div class="card"><div class="card-title">Ventas Totales</div><div class="card-value">${fmt(totalSales)}</div></div>
-        <div class="card"><div class="card-title">Gastos Operativos</div><div class="card-value" style="color: #ef4444;">${fmt(totalExpenses)}</div></div>
-        <div class="card"><div class="card-title">Cobros Deuda</div><div class="card-value" style="color: #6366f1;">${fmt(totalDebtCollection)}</div></div>
-        <div class="card"><div class="card-title">Balance Neto</div><div class="card-value">${fmt(balance)}</div></div>
-        <div class="card"><div class="card-title">Diferencias</div><div class="card-value" style="color: ${totalDifferences < 0 ? '#ef4444' : '#10b981'};">${fmt(totalDifferences)}</div></div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Terminal</th>
-            <th>Responsable</th>
-            <th>Apertura</th>
-            <th>Cierre</th>
-            <th class="text-right">Ventas</th>
-            <th class="text-right">Gastos</th>
-            <th class="text-right">M. Cierre</th>
-            <th class="text-right">Diferencia</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml || '<tr><td colspan="9" style="text-align: center;">Sin registros de caja cerrados</td></tr>'}
-        </tbody>
-      </table>
-    `;
-
-    downloadPDF(`Historial_Cajas`, htmlContent);
   };
 
   const denominations = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
@@ -576,6 +414,57 @@ export default function CashControlScreen() {
     }).filter(u => u && u.id);
   }, [allUsers, sessions, zReports]);
 
+  /** Turnos cerrados (X), cierres Z y cajas abiertas según los filtros, para Excel o PDF */
+  const buildReport = (): Report => {
+    const sumBy = (arr: any[], f: (x: any) => number) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
+    const expensesOf = (s: any) => sumBy((s.cashMovements || []).filter((m: any) => m.type === 'EXPENSE'), (m) => m.amount);
+    const debtOf = (s: any) => sumBy((s.cashMovements || []).filter((m: any) => m.type === 'INCOME' && m.description?.toLowerCase().includes('cuenta corriente')), (m) => m.amount);
+    const period = filterMode === 'all' ? 'Todo el historial'
+      : filterMode === 'month' ? `${months[selectedMonth]} ${selectedYear}`
+      : filterMode === 'day' ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString('es-AR')
+      : `${new Date(`${startDate}T12:00:00`).toLocaleDateString('es-AR')} al ${new Date(`${endDate}T12:00:00`).toLocaleDateString('es-AR')}`;
+    const seller = sellerFilter !== 'all' ? users.find((u: any) => u.id === sellerFilter)?.fullName : '';
+    const closed = [...closedSessions].sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+    const zs = [...filteredZReports].sort((a, b) => new Date(a.generatedAt).getTime() - new Date(b.generatedAt).getTime());
+    return {
+      title: 'Control de caja',
+      subtitle: [period, seller && `Cajero: ${seller}`, searchQuery && `Búsqueda: "${searchQuery}"`].filter(Boolean).join(' · '),
+      fileName: `Control de caja ${period}`,
+      summary: [
+        { label: 'Ventas de los turnos', value: totalSales, type: 'money' },
+        { label: 'Gastos', value: totalExpenses, type: 'money', tone: totalExpenses > 0 ? 'bad' : undefined },
+        { label: 'Cobros de cuenta corriente', value: totalDebtCollection, type: 'money' },
+        { label: 'Balance (ventas - gastos)', value: balance, type: 'money', tone: balance >= 0 ? 'good' : 'bad' },
+        { label: 'Diferencias de caja', value: totalDifferences, type: 'money', tone: totalDifferences < -0.5 ? 'bad' : 'good' },
+        { label: 'Turnos cerrados', value: closed.length, type: 'int' },
+        { label: 'Cierres Z', value: zs.length, type: 'int' },
+        { label: 'Cajas abiertas ahora', value: activeSessions.length, type: 'int' },
+      ],
+      tables: [
+        {
+          title: 'Turnos cerrados (cierres X)',
+          columns: [{ header: 'Caja' }, { header: 'Responsable' }, { header: 'Apertura', type: 'datetime' }, { header: 'Cierre', type: 'datetime' }, { header: 'Fondo inicial', type: 'money' }, { header: 'Ventas', type: 'money' }, { header: 'Gastos', type: 'money' }, { header: 'Cobros cta. cte.', type: 'money' }, { header: 'Efectivo esperado', type: 'money' }, { header: 'Efectivo contado', type: 'money' }, { header: 'Diferencia', type: 'money' }],
+          rows: closed.map((s) => [s.terminalName || '', s.user?.fullName || '', s.openedAt, s.closedAt, s.openingAmount ?? null, getSessionSalesTotal(s), expensesOf(s), debtOf(s), s.closingAmountExpected ?? null, s.closingAmountCounted ?? null, cashClosingResult(s).totalDiff]),
+          totals: ['Total', '', null, null, null, totalSales, totalExpenses, totalDebtCollection, null, null, totalDifferences],
+          emptyText: 'No hay turnos cerrados con estos filtros',
+        },
+        {
+          title: 'Cierres Z (cierre del día)',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Hecho por' }, { header: 'Turnos', type: 'int' }, { header: 'Esperado', type: 'money' }, { header: 'Declarado', type: 'money' }, { header: 'Diferencia', type: 'money' }],
+          rows: zs.map((z) => [z.generatedAt, z.generatedBy?.fullName || 'Sistema', z.summaryParsed?.sessions?.length || z.sessions?.length || 1, z.totalExpected || 0, z.totalDeclared || 0, z.differenceTotal || 0]),
+          totals: zs.length ? ['Total', '', sumBy(zs, (z) => z.summaryParsed?.sessions?.length || z.sessions?.length || 1), sumBy(zs, (z) => z.totalExpected), sumBy(zs, (z) => z.totalDeclared), sumBy(zs, (z) => z.differenceTotal)] : undefined,
+          emptyText: 'No hay cierres Z con estos filtros',
+        },
+        ...(activeSessions.length ? [{
+          title: 'Cajas abiertas ahora',
+          columns: [{ header: 'Caja' }, { header: 'Responsable' }, { header: 'Abierta desde', type: 'datetime' as const }, { header: 'Fondo inicial', type: 'money' as const }],
+          rows: sortedActiveSessions.map((s: any) => [s.terminalName || '', s.user?.fullName || '', s.openedAt, s.openingAmount ?? null]),
+        }] : []),
+      ],
+      notes: ['La diferencia de cada turno suma el efectivo contado y lo declarado en los posnet contra lo esperado por el sistema.'],
+    };
+  };
+
   const th = 'py-2.5 px-3 text-[12px] font-medium text-slate-500 dark:text-slate-400';
   const sortButton = (label: string) => (
     <button
@@ -599,12 +488,7 @@ export default function CashControlScreen() {
             <button onClick={loadSessions} className={`${ui.btn} ${ui.btnSecondary}`} title="Actualizar">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Actualizar
             </button>
-            <button onClick={handleExportExcel} className={`${ui.btn} ${ui.btnSecondary}`}>
-              <Download className="w-4 h-4 text-emerald-600" /> Excel
-            </button>
-            <button onClick={handleExportPDF} className={`${ui.btn} ${ui.btnSecondary}`}>
-              <FileText className="w-4 h-4" /> PDF
-            </button>
+            <ExportButtons build={buildReport} />
             <button disabled={isGeneratingZ} onClick={handleGenerateZReport} className={`${ui.btn} ${ui.btnPrimary}`}>
               <FileOutput className="w-4 h-4" /> {isGeneratingZ ? 'Generando…' : 'Generar cierre Z'}
             </button>

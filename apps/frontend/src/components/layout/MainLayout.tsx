@@ -26,6 +26,7 @@ import UpdateBadge from '../updater/UpdateBadge';
 import NotificationBell from '../notifications/NotificationBell';
 import SubscriptionBanner from '../subscription/SubscriptionBanner';
 import HelpMenu from '../common/tour/HelpMenu';
+import { SystemStatusPill } from '../common/SystemStatus';
 import { shortcutsLocked } from '../../utils/shortcutLock';
 import MobileShell, { StaffMobileShell } from '../mobile/MobileShell';
 import ClientPreview from '../common/ClientPreview';
@@ -410,38 +411,41 @@ export default function MainLayout({ children }: Props) {
             </button>
           </div>
 
-          <div className="flex-1 max-w-lg px-2 sm:px-6">
+          {/* min-w-0: con la barra llena, el buscador se achica en vez de empujar el nombre fuera de la pantalla */}
+          <div className="flex-1 min-w-0 max-w-lg px-2 sm:px-6">
             {/* Abre la paleta Ctrl+K: busca pantallas y acciones de todo el sistema */}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
-              className="w-full h-9 flex items-center gap-2.5 pl-3 pr-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-400 text-[13px] transition-colors cursor-pointer"
+              title="Buscar pantallas y acciones (Ctrl K)"
+              className="w-full min-w-[2.25rem] h-9 flex items-center gap-2.5 pl-2.5 pr-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-400 text-[13px] transition-colors cursor-pointer"
             >
               <Search className="w-4 h-4 shrink-0" />
               <span className="flex-1 text-left truncate">Buscar pantallas y acciones…</span>
-              <kbd className="hidden sm:inline-flex items-center h-5 px-1.5 rounded-md border border-slate-200 bg-white text-[10.5px] font-mono font-semibold text-slate-500">Ctrl K</kbd>
+              <kbd className="hidden xl:inline-flex shrink-0 whitespace-nowrap items-center h-5 px-1.5 rounded-md border border-slate-200 bg-white text-[10.5px] font-mono font-semibold text-slate-500">Ctrl K</kbd>
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 xl:gap-3 shrink-0">
             <AskBusinessButton />
             <GettingStartedPill />
             {pwa.mode === 'prompt' && (
               <button
                 onClick={() => pwa.install()}
                 title="Instalá Ventra como app: se abre en su propia ventana, sin el navegador"
-                className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-full bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[12px] font-semibold transition-colors"
+                className="hidden sm:flex items-center gap-1.5 h-8 px-2.5 xl:px-3 rounded-full whitespace-nowrap shrink-0 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[12px] font-semibold transition-colors"
               >
-                <Download className="w-3.5 h-3.5" /> Instalar app
+                <Download className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Instalar app</span>
               </button>
             )}
+            <SystemStatusPill />
             <HelpMenu pathname={location.pathname} placement="header" />
             <NotificationBell />
             <UpdateBadge />
-            <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
+            <div className="h-6 w-px bg-slate-200 mx-1 hidden xl:block" />
 
-            <div className="flex items-center gap-3 pl-2">
-              <div className="text-right hidden sm:block">
+            <div className="flex items-center gap-3 xl:pl-2" title={user?.fullName || undefined}>
+              <div className="text-right hidden xl:block">
                 <p className="text-[13px] font-semibold text-slate-800 leading-none">{user?.fullName}</p>
                 <p className="text-[11.5px] font-medium text-slate-400 mt-1">{({ ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', CASHIER: 'Cajero' } as Record<string, string>)[user?.role || ''] || user?.role}</p>
               </div>

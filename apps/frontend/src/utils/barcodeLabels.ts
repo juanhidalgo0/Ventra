@@ -4,7 +4,18 @@ export interface LabelProduct {
   id: string;
   name: string;
   barcode?: string | null;
+  /** Código interno: se imprime cuando no hay código de barras (la caja también lo encuentra al escanear) */
+  sku?: string | null;
   salePrice?: number;
+}
+
+/**
+ * Código que lleva la etiqueta: el de barras y, si no tiene, el SKU. Los comercios que vienen de
+ * otro sistema suelen tener sus productos propios etiquetados con el código interno (Limpissimo:
+ * "00728" en el SKU), y la caja ya los encuentra por SKU al escanear.
+ */
+export function labelCodeOf(p: { barcode?: string | null; sku?: string | null }): string {
+  return String(p.barcode || '').trim() || String(p.sku || '').trim();
 }
 
 export interface LabelFormat {
@@ -120,7 +131,7 @@ function codeSize(code: string, format: LabelFormat): number {
 }
 
 function labelHtml(p: LabelProduct, format: LabelFormat, opts: LabelOptions, svgCache: Map<string, string | null>): string {
-  const code = (p.barcode || '').trim();
+  const code = labelCodeOf(p);
   if (!svgCache.has(code)) svgCache.set(code, code ? renderBarcodeSvg(code) : null);
   const svg = svgCache.get(code);
 

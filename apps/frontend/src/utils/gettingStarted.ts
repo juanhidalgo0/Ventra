@@ -45,7 +45,7 @@ export function buildStartSteps(intents: BusinessIntent[], f: Facts, mobile: boo
     steps.push(
       { id: 'products', title: 'Cargá tus productos', hint: 'A mano, con el lector o importando una planilla', done: f.products > 0, to: '/products' },
       { id: 'sale', title: 'Hacé tu primera venta', hint: 'Abrí la caja y cobrá', done: f.hasSales, to: '/pos' },
-      { id: 'payments', title: 'Revisá tus medios de cobro', hint: 'Posnets, Mercado Pago, transferencias', done: posnetsSaved(), to: settings('posnets') },
+      { id: 'payments', title: 'Revisá tus medios de cobro', hint: 'Posnets, Mercado Pago, transferencias', done: posnetsSaved(), to: settings('pagos') },
     );
     // El backup automático es de la PC (en la nube ya está resguardado)
     if (isDesktopApp) steps.push({ id: 'backup', title: 'Activá el backup automático', hint: 'Una copia diaria de tus datos', done: f.autoBackup, to: settings('backups') });

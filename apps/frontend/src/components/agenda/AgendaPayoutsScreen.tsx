@@ -8,6 +8,8 @@ import { subscribeBookings, subscribeStaffPrivate, fullAgenda, localNow, payoutF
 import { useOwnerMobile } from '../../utils/ownerMobile';
 import { ScreenHeader, money } from '../mobile/ui';
 import { rangeOf, shift, periodLabel } from './AgendaPaymentsScreen';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 type P = 'week' | 'month';
 
@@ -62,6 +64,30 @@ export default function AgendaPayoutsScreen() {
   })].join('\n');
   const copy = async () => { try { await navigator.clipboard.writeText(summary()); toast.success('Liquidación copiada'); } catch { toast.error('No se pudo copiar'); } };
 
+  /** La liquidación en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (loading) return null;
+    const how = (pay: any) => pay?.mode === 'commission' ? `Comisión ${pay.pct}%` : pay?.mode === 'chair' ? `Alquiler ${money(pay.amount)} por ${pay.every === 'week' ? 'semana' : 'mes'}` : 'Sin cargar';
+    return {
+      title: 'Liquidación por profesional',
+      subtitle: label.charAt(0).toUpperCase() + label.slice(1),
+      fileName: `Liquidación ${label}`,
+      summary: [
+        { label: 'Facturado', value: total.revenue, type: 'money' },
+        { label: 'Comisiones a pagar', value: total.commissions, type: 'money', tone: 'bad' },
+        { label: 'Alquileres a cobrar', value: total.rents, type: 'money', tone: 'good' },
+      ],
+      tables: [{
+        title: 'Profesionales',
+        columns: [{ header: 'Profesional' }, { header: 'Cómo cobra' }, { header: 'Turnos atendidos', type: 'int' }, { header: 'Facturado', type: 'money' }, { header: 'Le toca (comisión)', type: 'money' }, { header: 'Paga de alquiler', type: 'money' }],
+        rows: rows.map(({ s, pay, p }) => [s.name, how(pay), p.count, p.revenue, pay?.mode === 'commission' ? p.toStaff : null, pay?.mode === 'chair' ? p.rent : null]),
+        totals: ['Total', '', rows.reduce((t, r) => t + r.p.count, 0), total.revenue, total.commissions, total.rents],
+        emptyText: 'No hay profesionales cargados',
+      }],
+      notes: ['Cuentan los turnos marcados como atendidos o cobrados. Lo facturado es lo cobrado (o el precio del servicio si no se registró el cobro).'],
+    };
+  };
+
   const body = !storeId ? (
     <p className="p-10 text-center text-[14px] text-slate-500">Primero armá tu página de turnos en Agenda.</p>
   ) : (
@@ -112,7 +138,7 @@ export default function AgendaPayoutsScreen() {
   if (mobile) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <ScreenHeader back title="Liquidación" subtitle={label} />
+        <ScreenHeader back title="Liquidación" subtitle={label} action={<ExportButtons variant="header" build={buildReport} disabled={loading} />} />
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
       </div>
     );
@@ -121,8 +147,13 @@ export default function AgendaPayoutsScreen() {
     <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
       <div className="max-w-5xl w-full mx-auto px-6 pt-6">
         <p className="text-[12px] font-semibold tracking-[0.14em] text-rose-600">AGENDA</p>
-        <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Liquidación por profesional</h1>
-        <p className="text-[13px] text-slate-500">Comisiones y alquiler del sillón</p>
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Liquidación por profesional</h1>
+            <p className="text-[13px] text-slate-500">Comisiones y alquiler del sillón</p>
+          </div>
+          <ExportButtons build={buildReport} disabled={loading} />
+        </div>
       </div>
       {body}
     </div>

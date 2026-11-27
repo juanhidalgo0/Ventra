@@ -13,6 +13,19 @@ import api, { resolveServerUrl } from './services/api';
 import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
 import AdminBroadcast from './components/common/AdminBroadcast';
+import WhatsNew from './components/common/WhatsNew';
+import YearReview from './components/yearReview/YearReview';
+import YearReviewInvite from './components/yearReview/YearReviewInvite';
+import InviteStore from './components/referral/InviteStore';
+import SuggestIdea from './components/common/SuggestIdea';
+import Achievements from './components/achievements/Achievements';
+import { installUndoKeys } from './utils/undo';
+import { installUiZoom } from './utils/uiZoom';
+
+// Ctrl+Z deshace lo último que se borró (utils/undo.tsx)
+installUndoKeys();
+// Tamaño de la letra guardado en esta PC (app de escritorio)
+installUiZoom();
 import GlobalLoadingBar from './components/common/GlobalLoadingBar';
 import SyncDownloadBanner from './components/common/SyncDownloadBanner';
 import { startOnlineOrdersSync, stopOnlineOrdersSync } from './services/onlineStoreOrders';
@@ -811,6 +824,12 @@ export default function App() {
     </Routes>
     <Updater />
     <AdminBroadcast />
+    <WhatsNew />
+    <YearReview />
+    <YearReviewInvite />
+    <InviteStore />
+    <SuggestIdea />
+    <Achievements />
     <SyncDownloadBanner />
     <GlobalLoadingBar />
 

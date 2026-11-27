@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import AskBusiness, { useCanAskBusiness } from '../common/AskBusiness';
+import { YearReviewBanner } from '../yearReview/YearReview';
 import toast from 'react-hot-toast';
 import { 
   BarChart3, 
@@ -16,7 +17,6 @@ import {
   CornerUpLeft,
   X,
   Search,
-  Download,
   Calendar,
   Info,
   DollarSign,
@@ -24,10 +24,10 @@ import {
   Percent,
   CheckCircle2,
   Box,
-  FileText,
   Smartphone
 } from 'lucide-react';
-import { escapeHtml } from '../../utils/escapeHtml';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 interface ReportCard {
   id: string;
@@ -347,328 +347,211 @@ export default function ReportsScreen() {
     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
   ];
   const years = [2025, 2026, 2027, 2028];
-
-  const downloadCSV = (filename: string, headers: string[], rows: any[][]) => {
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadPDF = (title: string, htmlContent: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document || iframe.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(`
-        <html>
-          <head>
-            <title>${escapeHtml(title)}</title>
-            <style>
-              body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
-              h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
-              h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-top: 0; margin-bottom: 25px; }
-              .header { border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
-              th { background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700; text-align: left; padding: 10px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.05em; }
-              td { padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-              .text-right { text-align: right; }
-              .font-bold { font-weight: bold; }
-              .grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-              .card { background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 12px; border-radius: 10px; }
-              .card-title { font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
-              .card-value { font-size: 16px; font-weight: bold; color: #0f172a; }
-              .footer { margin-top: 40px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 15px; }
-            </style>
-          </head>
-          <body>
-            ${htmlContent}
-            <div class="footer">Generado por Kiosco Reports - ${new Date().toLocaleDateString('es-AR')}</div>
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.frameElement.remove(); }, 100);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      doc.close();
-    }
-  };
-
-  const handleExportExcel = () => {
-    if (!reportData) return;
-    const periodStr = `${months[selectedMonth]}_${selectedYear}`;
-    
-    if (activeReport === 'stock_actual') {
-      const headers = ['Producto', 'SKU', 'Stock', 'Precio Costo', 'Precio Venta', 'Total Costo'];
-      const rows = reportData.map((p: any) => [p.name, p.sku || '', p.stock, p.costPrice, p.salePrice, p.costPrice * p.stock]);
-      downloadCSV(`Stock_Actual_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'stock_bajo') {
-      const headers = ['Producto', 'SKU', 'Stock Actual', 'Mínimo'];
-      const rows = reportData.map((p: any) => [p.name, p.sku || '', p.stock, p.minStock]);
-      downloadCSV(`Stock_Bajo_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'rentabilidad') {
-      const headers = ['Producto', 'Cant. Vendida', 'Ingresos', 'Costos', 'Ganancia'];
-      const rows = reportData.topProfitable.map((p: any) => [p.name, p.qty, p.revenue, p.cost, p.profit]);
-      downloadCSV(`Rentabilidad_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'rentabilidad_categoria') {
-      const headers = ['Categoría', 'Ventas Totales', 'Costo Total', 'Ganancia', 'Margen %'];
-      const rows = reportData.map((c: any) => [c.name, c.sales, c.cost, c.profit, c.sales > 0 ? ((c.profit / c.sales) * 100).toFixed(2) : '0']);
-      downloadCSV(`Rentabilidad_Por_Categoria_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'rotacion_inventario') {
-      const headers = ['Producto', 'U. Vendidas', 'Facturación', 'Clasificación ABC'];
-      const rows = reportData.map((p: any) => [p.name, p.qty, p.revenue, `Clase ${p.classification}`]);
-      downloadCSV(`Rotacion_Inventario_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'valorizacion') {
-      const headers = ['Indicador', 'Valor'];
-      const rows = [
-        ['Existencias Totales', reportData.itemCount],
-        ['Valor a Costo', fmt(reportData.totalCost)],
-        ['Valor a Venta', fmt(reportData.totalSale)],
-        ['Margen / Markup Promedio', `${reportData.margin.toFixed(2)}%`],
-        ['Ganancia Potencial en Estanterías', fmt(reportData.potentialProfit)]
-      ];
-      downloadCSV(`Valorizacion_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'perdidas') {
-      const headers = ['Producto', 'Fecha', 'Cantidad Mermada', 'Motivo'];
-      const rows = reportData.map((m: any) => [m.product?.name, fmtDate(m.createdAt), m.quantity, m.reason || '']);
-      downloadCSV(`Perdidas_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'movimientos') {
-      const headers = ['Producto', 'Tipo', 'Cantidad', 'Fecha', 'Referencia/Motivo'];
-      const rows = reportData.map((m: any) => [m.product?.name, m.type, m.quantity, fmtDate(m.createdAt), m.reference || m.reason || '']);
-      downloadCSV(`Movimientos_${periodStr}.csv`, headers, rows);
-    } else if (activeReport === 'devoluciones') {
-      const headers = ['Ticket', 'Fecha', 'Cajero', 'Total Devuelto'];
-      const rows = reportData.list.map((sale: any) => [`#${sale.saleNumber}`, fmtDate(sale.createdAt), sale.user?.fullName, sale.total]);
-      downloadCSV(`Devoluciones_${periodStr}.csv`, headers, rows);
-    }
-    toast.success('Excel exportado correctamente');
-  };
-
-  const handleExportPDF = () => {
-    if (!reportData) return;
-    const periodStr = `${months[selectedMonth]} ${selectedYear}`;
-    let htmlContent = '';
+  /** Arma el informe que se ve en pantalla para bajarlo en Excel o PDF (ver utils/report) */
+  const buildReport = (): Report | null => {
+    if (!reportData || !activeReport) return null;
+    const card = reportCards.find((r) => r.id === activeReport);
+    const monthly = ['rentabilidad', 'rentabilidad_categoria', 'rotacion_inventario', 'movimientos', 'perdidas', 'devoluciones', 'cargas_virtuales'].includes(activeReport);
+    const period = `${months[selectedMonth]} ${selectedYear}`;
+    const subtitle = monthly ? `Período: ${period}` : `Al ${new Date().toLocaleDateString('es-AR')}`;
+    const fileName = `${card?.title || 'Informe'} ${monthly ? period : new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}`;
+    const base = { title: card?.title || 'Informe', subtitle, fileName };
+    const sum = (arr: any[], f: (x: any) => number) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
+    const MOV: Record<string, string> = { ENTRY: 'Entrada', EXIT: 'Salida', ADJUSTMENT: 'Ajuste', SALE: 'Venta', RETURN: 'Devolución', PURCHASE: 'Compra', TRANSFER: 'Transferencia' };
 
     if (activeReport === 'stock_actual') {
-      const rowsHtml = reportData.map((p: any) => `
-        <tr>
-          <td>${escapeHtml(p.name)}</td>
-          <td>${escapeHtml(p.sku || 'N/A')}</td>
-          <td class="text-right">${p.stock}</td>
-          <td class="text-right">${fmt(p.costPrice)}</td>
-          <td class="text-right">${fmt(p.salePrice)}</td>
-          <td class="text-right">${fmt(p.costPrice * p.stock)}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Reporte de Stock Actual</h1>
-          <h2>Estado del Inventario</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Producto</th><th>SKU</th><th class="text-right">Stock</th><th class="text-right">P. Costo</th><th class="text-right">P. Venta</th><th class="text-right">Costo Total</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'stock_bajo') {
-      const rowsHtml = reportData.map((p: any) => `
-        <tr>
-          <td>${escapeHtml(p.name)}</td>
-          <td>${escapeHtml(p.sku || 'N/A')}</td>
-          <td class="text-right font-bold" style="color: #ef4444;">${p.stock}</td>
-          <td class="text-right">${p.minStock}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Reporte de Stock Bajo / Alertas</h1>
-          <h2>Productos que requieren reposición urgente</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Producto</th><th>SKU</th><th class="text-right">Stock Actual</th><th class="text-right">Mínimo</th></tr>
-          </thead>
-          <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align: center;">No hay alertas de stock bajo</td></tr>'}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'rentabilidad') {
-      const rowsHtml = reportData.topProfitable.map((p: any, i: number) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td class="font-bold">${escapeHtml(p.name)}</td>
-          <td class="text-right">${p.qty}</td>
-          <td class="text-right">${fmt(p.revenue)}</td>
-          <td class="text-right">${fmt(p.cost)}</td>
-          <td class="text-right font-bold" style="color: #10b981;">${fmt(p.profit)}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Reporte de Rentabilidad</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <div class="grid">
-          <div class="card"><div class="card-title">Facturación</div><div class="card-value">${fmt(reportData.totalSales)}</div></div>
-          <div class="card"><div class="card-title">Costo de Ventas</div><div class="card-value">${fmt(reportData.totalCost)}</div></div>
-          <div class="card"><div class="card-title">Ganancia Neta</div><div class="card-value" style="color: #10b981;">${fmt(reportData.netProfit)}</div></div>
-          <div class="card"><div class="card-title">Margen Promedio</div><div class="card-value">${reportData.margin.toFixed(1)}%</div></div>
-        </div>
-        <h3>Top 10 Productos Más Rentables</h3>
-        <table>
-          <thead>
-            <tr><th>#</th><th>Producto</th><th class="text-right">Cant.</th><th class="text-right">Ingresos</th><th class="text-right">Costo</th><th class="text-right">Ganancia</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'rentabilidad_categoria') {
-      const rowsHtml = reportData.map((c: any) => `
-        <tr>
-          <td class="font-bold">${escapeHtml(c.name)}</td>
-          <td class="text-right">${fmt(c.sales)}</td>
-          <td class="text-right">${fmt(c.cost)}</td>
-          <td class="text-right font-bold">${fmt(c.profit)}</td>
-          <td class="text-right" style="color: #10b981;">${c.sales > 0 ? ((c.profit / c.sales) * 100).toFixed(1) : 0}%</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Rentabilidad por Categoría</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Categoría</th><th class="text-right">Ventas Totales</th><th class="text-right">Costos</th><th class="text-right">Ganancia</th><th class="text-right">Margen %</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'rotacion_inventario') {
-      const rowsHtml = reportData.map((p: any) => `
-        <tr>
-          <td>${escapeHtml(p.name)}</td>
-          <td class="text-right">${p.qty}</td>
-          <td class="text-right">${fmt(p.revenue)}</td>
-          <td class="text-right font-bold">Clase ${p.classification}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Clasificación ABC y Rotación</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Producto</th><th class="text-right">U. Vendidas</th><th class="text-right">Facturación</th><th class="text-right">Clasificación ABC</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'valorizacion') {
-      htmlContent = `
-        <div class="header">
-          <h1>Valorización de Inventario</h1>
-          <h2>Análisis y Costos de Estantería</h2>
-        </div>
-        <div class="grid">
-          <div class="card"><div class="card-title">Existencias Totales</div><div class="card-value">${reportData.itemCount} u.</div></div>
-          <div class="card"><div class="card-title">Valor a Costo</div><div class="card-value">${fmt(reportData.totalCost)}</div></div>
-          <div class="card"><div class="card-title">Valor a Venta</div><div class="card-value">${fmt(reportData.totalSale)}</div></div>
-          <div class="card"><div class="card-title">Markup Promedio</div><div class="card-value">${reportData.margin.toFixed(1)}%</div></div>
-        </div>
-        <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin-top: 30px;">
-          <span style="font-size: 10px; font-weight: bold; color: #047857; text-transform: uppercase;">GANANCIA POTENCIAL EN ESTANTERÍAS</span>
-          <h2 style="font-size: 24px; font-weight: bold; color: #065f46; margin: 5px 0 0 0;">${fmt(reportData.potentialProfit)}</h2>
-          <p style="font-size: 11px; color: #047857; margin-top: 5px; margin-bottom: 0;">Representa el retorno de capital estimado al vender todo el inventario disponible al público.</p>
-        </div>
-      `;
-    } else if (activeReport === 'perdidas') {
-      const rowsHtml = reportData.map((m: any) => `
-        <tr>
-          <td>${escapeHtml(m.product?.name)}</td>
-          <td>${fmtDate(m.createdAt)}</td>
-          <td class="text-right font-bold" style="color: #ef4444;">${m.quantity}</td>
-          <td>${escapeHtml(m.reason || 'N/A')}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Reporte de Pérdidas y Merma</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Producto</th><th>Fecha/Hora</th><th class="text-right">Cant. Mermada</th><th>Motivo</th></tr>
-          </thead>
-          <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align: center;">Sin pérdidas registradas</td></tr>'}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'movimientos') {
-      const rowsHtml = reportData.map((m: any) => `
-        <tr>
-          <td>${escapeHtml(m.product?.name)}</td>
-          <td>${m.type === 'ENTRY' ? 'Entrada' : m.type === 'EXIT' ? 'Salida' : m.type}</td>
-          <td class="text-right font-bold">${m.quantity}</td>
-          <td>${fmtDate(m.createdAt)}</td>
-          <td>${escapeHtml(m.reference || m.reason || 'N/A')}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Historial de Movimientos de Inventario</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Producto</th><th>Tipo</th><th class="text-right">Cantidad</th><th>Fecha/Hora</th><th>Referencia/Detalle</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      `;
-    } else if (activeReport === 'devoluciones') {
-      const rowsHtml = reportData.list.map((sale: any) => `
-        <tr>
-          <td>#${sale.saleNumber}</td>
-          <td>${fmtDate(sale.createdAt)}</td>
-          <td>${escapeHtml(sale.user?.fullName)}</td>
-          <td class="text-right font-bold" style="color: #ef4444;">-${fmt(sale.total)}</td>
-        </tr>
-      `).join('');
-      htmlContent = `
-        <div class="header">
-          <h1>Reporte de Devoluciones y Cancelaciones</h1>
-          <h2>Período: ${periodStr}</h2>
-        </div>
-        <div style="background-color: #fef2f2; border: 1px solid #fca5a5; padding: 15px; border-radius: 10px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight: bold; color: #991b1b; font-size: 12px;">Total reembolsado en efectivo a clientes:</span>
-          <span style="font-size: 16px; font-weight: bold; color: #b91c1c;">${fmt(reportData.totalRefunded)}</span>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Ticket</th><th>Fecha</th><th>Cajero</th><th class="text-right">Total Devuelto</th></tr>
-          </thead>
-          <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align: center;">No hay devoluciones registradas</td></tr>'}</tbody>
-        </table>
-      `;
+      const list: any[] = reportData;
+      const cost = sum(list, (p) => p.costPrice * p.stock);
+      const sale = sum(list, (p) => p.salePrice * p.stock);
+      return {
+        ...base, title: 'Stock actual',
+        summary: [
+          { label: 'Productos activos', value: list.length, type: 'int' },
+          { label: 'Unidades en stock', value: sum(list, (p) => p.stock), type: 'number' },
+          { label: 'Valor a costo', value: cost, type: 'money' },
+          { label: 'Valor a venta', value: sale, type: 'money', tone: 'good' },
+        ],
+        tables: [{
+          title: 'Productos',
+          columns: [{ header: 'Producto' }, { header: 'Código' }, { header: 'Categoría' }, { header: 'Stock', type: 'number' }, { header: 'Mínimo', type: 'number' }, { header: 'Costo', type: 'money' }, { header: 'Precio de venta', type: 'money' }, { header: 'Valor a costo', type: 'money' }, { header: 'Valor a venta', type: 'money' }],
+          rows: list.map((p) => [p.name, p.sku || p.barcode || '', p.category?.name || '', p.stock, p.minStock ?? null, p.costPrice, p.salePrice, p.costPrice * p.stock, p.salePrice * p.stock]),
+          totals: ['Total', '', '', sum(list, (p) => p.stock), null, null, null, cost, sale],
+        }],
+      };
     }
-
-    downloadPDF(`${activeReport}_${periodStr.replace(/ /g, '_')}`, htmlContent);
+    if (activeReport === 'stock_bajo') {
+      const list: any[] = reportData;
+      return {
+        ...base, title: 'Stock bajo',
+        summary: [
+          { label: 'Productos para reponer', value: list.length, type: 'int', tone: list.length ? 'bad' : 'good' },
+          { label: 'Sin stock', value: list.filter((p) => p.stock <= 0).length, type: 'int', tone: 'bad' },
+          { label: 'Costo de reponer al mínimo', value: sum(list, (p) => Math.max(0, (p.minStock || 0) - p.stock) * (p.costPrice || 0)), type: 'money' },
+        ],
+        tables: [{
+          title: 'Productos con stock igual o menor al mínimo',
+          columns: [{ header: 'Producto' }, { header: 'Código' }, { header: 'Stock actual', type: 'number' }, { header: 'Mínimo', type: 'number' }, { header: 'Faltan', type: 'number' }, { header: 'Costo', type: 'money' }, { header: 'Costo de reponer', type: 'money' }],
+          rows: list.map((p) => { const falta = Math.max(0, (p.minStock || 0) - p.stock); return [p.name, p.sku || p.barcode || '', p.stock, p.minStock, falta, p.costPrice, falta * (p.costPrice || 0)]; }),
+          emptyText: 'No hay productos con stock bajo',
+        }],
+      };
+    }
+    if (activeReport === 'rentabilidad') {
+      const d = reportData;
+      const days = (d.dailyData || []).filter((x: any) => x.revenue || x.cost);
+      return {
+        ...base,
+        summary: [
+          { label: 'Facturación', value: d.totalSales, type: 'money' },
+          { label: 'Costo de ventas', value: d.totalCost, type: 'money' },
+          { label: 'Ganancia', value: d.netProfit, type: 'money', tone: d.netProfit >= 0 ? 'good' : 'bad' },
+          { label: 'Margen promedio', value: d.margin, type: 'percent' },
+        ],
+        tables: [
+          {
+            title: 'Productos más rentables',
+            columns: [{ header: '#', type: 'int' }, { header: 'Producto' }, { header: 'Cantidad vendida', type: 'number' }, { header: 'Ingresos', type: 'money' }, { header: 'Costo', type: 'money' }, { header: 'Ganancia', type: 'money' }, { header: 'Margen', type: 'percent' }],
+            rows: (d.topProfitable || []).map((p: any, i: number) => [i + 1, p.name, p.qty, p.revenue, p.cost, p.profit, p.revenue > 0 ? (p.profit / p.revenue) * 100 : null]),
+          },
+          {
+            title: 'Día por día',
+            columns: [{ header: 'Fecha', type: 'date' }, { header: 'Facturación', type: 'money' }, { header: 'Costo', type: 'money' }, { header: 'Ganancia', type: 'money' }, { header: 'Margen', type: 'percent' }],
+            rows: days.map((x: any) => [new Date(selectedYear, selectedMonth, x.day), x.revenue, x.cost, x.profit ?? x.revenue - x.cost, x.revenue > 0 ? ((x.revenue - x.cost) / x.revenue) * 100 : null]),
+            totals: ['Total', d.totalSales, d.totalCost, d.netProfit, d.margin],
+            emptyText: 'No hubo ventas en el mes',
+          },
+        ],
+      };
+    }
+    if (activeReport === 'rentabilidad_categoria') {
+      const list: any[] = reportData;
+      const sales = sum(list, (c) => c.sales), cost = sum(list, (c) => c.cost), profit = sum(list, (c) => c.profit);
+      return {
+        ...base,
+        summary: [
+          { label: 'Ventas', value: sales, type: 'money' },
+          { label: 'Costo', value: cost, type: 'money' },
+          { label: 'Ganancia', value: profit, type: 'money', tone: profit >= 0 ? 'good' : 'bad' },
+          { label: 'Margen', value: sales > 0 ? (profit / sales) * 100 : 0, type: 'percent' },
+        ],
+        tables: [{
+          title: 'Por categoría',
+          columns: [{ header: 'Categoría' }, { header: 'Ventas', type: 'money' }, { header: '% de las ventas', type: 'percent' }, { header: 'Costo', type: 'money' }, { header: 'Ganancia', type: 'money' }, { header: 'Margen', type: 'percent' }],
+          rows: list.map((c) => [c.name, c.sales, sales > 0 ? (c.sales / sales) * 100 : 0, c.cost, c.profit, c.sales > 0 ? (c.profit / c.sales) * 100 : 0]),
+          totals: ['Total', sales, 100, cost, profit, sales > 0 ? (profit / sales) * 100 : 0],
+        }],
+      };
+    }
+    if (activeReport === 'rotacion_inventario') {
+      const list: any[] = reportData;
+      const total = sum(list, (p) => p.revenue);
+      const cls = (k: string) => list.filter((p) => p.classification === k);
+      const shown = list.filter((p) => abcFilter === 'ALL' || p.classification === abcFilter);
+      return {
+        ...base, subtitle: `${subtitle}${abcFilter !== 'ALL' ? ` · Solo clase ${abcFilter}` : ''}`,
+        summary: (['A', 'B', 'C'] as const).map((k) => ({ label: `Clase ${k} · ${cls(k).length} productos`, value: total > 0 ? (sum(cls(k), (p) => p.revenue) / total) * 100 : 0, type: 'percent' as const, tone: k === 'C' ? 'warn' as const : 'good' as const })),
+        tables: [{
+          title: 'Clasificación ABC',
+          columns: [{ header: '#', type: 'int' }, { header: 'Producto' }, { header: 'Unidades vendidas', type: 'number' }, { header: 'Facturación', type: 'money' }, { header: '% de la facturación', type: 'percent' }, { header: 'Clase' }],
+          rows: shown.map((p, i) => [i + 1, p.name, p.qty, p.revenue, total > 0 ? (p.revenue / total) * 100 : 0, p.classification]),
+          totals: ['Total', '', sum(shown, (p) => p.qty), sum(shown, (p) => p.revenue), total > 0 ? (sum(shown, (p) => p.revenue) / total) * 100 : 0, ''],
+          emptyText: 'No hubo ventas en el período',
+        }],
+        notes: ['A: los productos que suman el 80% de la facturación. B: el 15% siguiente. C: el 5% restante (baja rotación).'],
+      };
+    }
+    if (activeReport === 'valorizacion') {
+      const d = reportData;
+      return {
+        ...base,
+        summary: [
+          { label: 'Unidades en stock', value: d.itemCount, type: 'number' },
+          { label: 'Valor a costo', value: d.totalCost, type: 'money' },
+          { label: 'Valor a venta', value: d.totalSale, type: 'money' },
+          { label: 'Markup promedio', value: d.margin, type: 'percent' },
+          { label: 'Ganancia potencial', value: d.potentialProfit, type: 'money', tone: 'good' },
+        ],
+        tables: [],
+        notes: ['La ganancia potencial es lo que quedaría si se vende todo el stock actual a los precios de hoy.'],
+      };
+    }
+    if (activeReport === 'perdidas') {
+      const list: any[] = reportData;
+      const cost = sum(list, (m) => Math.abs(m.quantity) * (m.product?.costPrice || 0));
+      return {
+        ...base,
+        summary: [
+          { label: 'Registros de pérdida', value: list.length, type: 'int' },
+          { label: 'Unidades perdidas', value: sum(list, (m) => Math.abs(m.quantity)), type: 'number', tone: 'bad' },
+          { label: 'Costo aproximado', value: cost, type: 'money', tone: 'bad' },
+        ],
+        tables: [{
+          title: 'Pérdidas y mermas',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Producto' }, { header: 'Cantidad', type: 'number' }, { header: 'Costo unitario', type: 'money' }, { header: 'Costo perdido', type: 'money' }, { header: 'Motivo' }],
+          rows: list.map((m) => [m.createdAt, m.product?.name || '', Math.abs(m.quantity), m.product?.costPrice ?? null, Math.abs(m.quantity) * (m.product?.costPrice || 0), m.reason || '']),
+          totals: ['Total', '', sum(list, (m) => Math.abs(m.quantity)), null, cost, ''],
+          emptyText: 'Sin pérdidas registradas en el período',
+        }],
+      };
+    }
+    if (activeReport === 'movimientos') {
+      const list: any[] = reportData;
+      return {
+        ...base,
+        summary: [
+          { label: 'Movimientos', value: list.length, type: 'int' },
+          { label: 'Unidades que entraron', value: sum(list.filter((m) => m.type === 'ENTRY'), (m) => Math.abs(m.quantity)), type: 'number', tone: 'good' },
+          { label: 'Unidades que salieron', value: sum(list.filter((m) => m.type === 'EXIT'), (m) => Math.abs(m.quantity)), type: 'number', tone: 'bad' },
+        ],
+        tables: [{
+          title: 'Movimientos de inventario',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Producto' }, { header: 'Tipo' }, { header: 'Cantidad', type: 'number' }, { header: 'Referencia / motivo' }],
+          rows: list.map((m) => [m.createdAt, m.product?.name || '', MOV[m.type] || m.type, m.quantity, m.reference || m.reason || '']),
+          emptyText: 'Sin movimientos en el período',
+        }],
+      };
+    }
+    if (activeReport === 'devoluciones') {
+      const list: any[] = reportData.list || [];
+      const amount = (s: any) => s.status === 'CANCELLED' ? (s.total || 0) : sum((s.items || []).filter((i: any) => i.quantity < 0), (i) => Math.abs(i.total));
+      const detail = (s: any) => s.status === 'CANCELLED' ? 'Venta cancelada completa' : (s.items || []).filter((i: any) => i.quantity < 0).map((i: any) => `${Math.abs(i.quantity)}x ${i.productName}`).join(', ');
+      return {
+        ...base,
+        summary: [
+          { label: 'Devoluciones y cancelaciones', value: list.length, type: 'int' },
+          { label: 'Cancelaciones', value: list.filter((s) => s.status === 'CANCELLED').length, type: 'int' },
+          { label: 'Total devuelto', value: reportData.totalRefunded, type: 'money', tone: 'bad' },
+        ],
+        tables: [{
+          title: 'Detalle',
+          columns: [{ header: 'Ticket' }, { header: 'Fecha', type: 'datetime' }, { header: 'Tipo' }, { header: 'Cajero' }, { header: 'Detalle' }, { header: 'Monto devuelto', type: 'money' }],
+          rows: list.map((s) => [`N° ${s.saleNumber}`, s.createdAt, s.status === 'CANCELLED' ? 'Cancelación' : 'Cambio', s.user?.fullName || '', detail(s), amount(s)]),
+          totals: ['Total', null, '', '', '', sum(list, amount)],
+          emptyText: 'No hubo devoluciones en el período',
+        }],
+      };
+    }
+    if (activeReport === 'cargas_virtuales') {
+      const d = reportData;
+      const items: any[] = d.items || [];
+      return {
+        ...base,
+        summary: [
+          { label: 'Carga virtual 1', value: d.totalVirtual1, type: 'money' },
+          { label: 'Carga virtual 2', value: d.totalVirtual2, type: 'money' },
+          { label: 'Total', value: d.totalVirtualAmount, type: 'money', tone: 'good' },
+          { label: 'Operaciones', value: items.length, type: 'int' },
+        ],
+        tables: [{
+          title: 'Cargas',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Tipo de carga' }, { header: 'Monto', type: 'money' }],
+          rows: items.map((it) => [it.createdAt, it.type, it.amount]),
+          totals: ['Total', '', d.totalVirtualAmount],
+          emptyText: 'No hubo cargas virtuales en el período',
+        }],
+      };
+    }
+    return null;
   };
 
 
@@ -904,6 +787,7 @@ export default function ReportsScreen() {
 
       {/* Grid of Report Cards */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <YearReviewBanner className="mb-5" />
         {isManager && <div className="mb-5"><AskBusiness /></div>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-6">
           {filteredReports.map((report) => (
@@ -987,23 +871,8 @@ export default function ReportsScreen() {
                   )}
 
                   {reportData && (
-                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-300 pl-3">
-                      <button
-                        onClick={handleExportExcel}
-                        className="px-3 py-1.5 rounded-xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-[10px] shadow-sm flex items-center gap-1 cursor-pointer active:scale-95"
-                        title="Descargar Excel"
-                      >
-                        <Download className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="hidden sm:inline">Excel</span>
-                      </button>
-                      <button
-                        onClick={handleExportPDF}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all font-bold text-[10px] shadow-sm flex items-center gap-1 cursor-pointer active:scale-95"
-                        title="Exportar PDF"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">PDF</span>
-                      </button>
+                    <div className="ml-2 border-l border-slate-300 pl-3">
+                      <ExportButtons variant="compact" build={buildReport} />
                     </div>
                   )}
 

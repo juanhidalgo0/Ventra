@@ -54,6 +54,7 @@ import { downloadFromApi } from '../../utils/download';
 import { toast } from 'react-hot-toast';
 import { wsService } from '../../services/websocket';
 import { useFeature, useTradeList, tradeListName } from '../../stores/businessStore';
+import { undoable } from '../../utils/undo';
 
 export default function ProductsScreen() {
   const navigate = useNavigate();
@@ -504,13 +505,14 @@ export default function ProductsScreen() {
   }, [hasMore, isLoadingMore, products]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este producto?')) return;
-    try {
-      await api.delete(`/products/${id}`);
-      loadProducts();
-    } catch (err) {
-      toast.error('Error al eliminar producto');
-    }
+    const name = products.find((p: any) => p.id === id)?.name;
+    undoable({
+      message: name ? `"${name}" borrado` : 'Producto borrado',
+      hide: () => setProducts((list: any[]) => list.filter((p) => p.id !== id)),
+      run: async () => { await api.delete(`/products/${id}`); },
+      onUndo: () => loadProducts(),
+      onError: () => { loadProducts(); toast.error('Error al eliminar producto'); },
+    });
   };
 
   const handleImportClick = () => {
@@ -732,16 +734,15 @@ export default function ProductsScreen() {
     if (selectedIds.length === 0) return;
     if (!confirm(`¿Estás seguro de eliminar los ${selectedIds.length} productos seleccionados?`)) return;
 
-    const loadingToast = toast.loading('Eliminando productos seleccionados...');
-    try {
-      await api.post('/products/bulk-delete-subset', { ids: selectedIds });
-      toast.success('Productos eliminados correctamente', { id: loadingToast });
-      setSelectedIds([]);
-      loadProducts(true);
-    } catch (err: any) {
-      const errMsg = err.response?.data?.message || 'Error al eliminar productos.';
-      toast.error(errMsg, { id: loadingToast });
-    }
+    const ids = [...selectedIds];
+    setSelectedIds([]);
+    undoable({
+      message: `${ids.length} ${ids.length === 1 ? 'producto borrado' : 'productos borrados'}`,
+      hide: () => setProducts((list: any[]) => list.filter((p) => !ids.includes(p.id))),
+      run: async () => { await api.post('/products/bulk-delete-subset', { ids }); loadProducts(true); },
+      onUndo: () => { setSelectedIds(ids); loadProducts(true); },
+      onError: (err) => { loadProducts(true); toast.error(err?.response?.data?.message || 'Error al eliminar productos.'); },
+    });
   };
 
   const handleBulkUpdateCategory = async () => {

@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { Plus, Receipt, ShoppingBag, ArrowDownRight, ArrowUpRight, Ban, ChevronLeft, ChevronRight, Search, X, Wallet } from 'lucide-react';
 import api from '../../services/api';
 import ExpenseSheet, { parseExpense } from './ExpenseSheet';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 import { ScreenHeader, headerInput, Chips, Sheet, PrimaryButton, MoneyInput, EmptyState, ListSkeleton, money, qty, parseAmount, METHOD_LABELS } from './ui';
 
 type Filter = 'ALL' | 'SALES' | 'EXPENSES';
@@ -107,6 +109,29 @@ export default function MobileMovementsScreen() {
     return { sales, out, count };
   }, [entries]);
 
+  /** Los movimientos del día (con el filtro y la búsqueda) en Excel o PDF */
+  const buildReport = (): Report => {
+    const KIND: Record<string, string> = { SALE: 'Venta', EXPENSE: 'Gasto', INCOME: 'Ingreso', WITHDRAWAL: 'Retiro' };
+    const label = day.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const rows = [...visible].sort((a, b) => a.at.getTime() - b.at.getTime());
+    return {
+      title: 'Movimientos del día',
+      subtitle: [label.charAt(0).toUpperCase() + label.slice(1), filter === 'SALES' ? 'Solo ventas' : filter === 'EXPENSES' ? 'Solo gastos y movimientos' : '', search.trim() && `Búsqueda: "${search.trim()}"`].filter(Boolean).join(' · '),
+      fileName: `Movimientos ${day.toLocaleDateString('es-AR').replace(/\//g, '-')}`,
+      summary: [
+        { label: 'Vendido', value: totals.sales, type: 'money', tone: 'good' },
+        { label: 'Ventas', value: totals.count, type: 'int' },
+        { label: 'Gastos y retiros', value: totals.out, type: 'money', tone: totals.out > 0 ? 'bad' : undefined },
+      ],
+      tables: [{
+        title: 'Movimientos',
+        columns: [{ header: 'Hora', type: 'datetime' }, { header: 'Tipo' }, { header: 'Detalle' }, { header: 'Medio / categoría' }, { header: 'Estado' }, { header: 'Importe', type: 'money' }],
+        rows: rows.map((e) => [e.at, KIND[e.kind] || e.kind, e.title, e.detail, e.cancelled ? 'Anulada' : '', (e.kind === 'SALE' || e.kind === 'INCOME' ? 1 : -1) * e.amount]),
+        emptyText: 'Sin movimientos ese día',
+      }],
+    };
+  };
+
   const shiftDay = (delta: number) => {
     const d = new Date(day); d.setDate(d.getDate() + delta);
     if (d > new Date()) return;
@@ -118,10 +143,13 @@ export default function MobileMovementsScreen() {
       <ScreenHeader
         title="Movimientos"
         action={
+          <div className="flex items-center gap-1.5">
+          <ExportButtons variant="header" build={buildReport} disabled={loading} />
           <button onClick={() => setExpenseOpen(true)} className="h-10 px-3.5 rounded-full bg-orange-200 text-orange-900 flex items-center gap-1.5 shrink-0 active:scale-95 transition-transform">
             <Plus className="w-[18px] h-[18px]" />
             <span className="text-[13px] font-semibold">Gasto</span>
           </button>
+          </div>
         }
       >
         <div className="flex items-center justify-between rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 h-11 px-1">

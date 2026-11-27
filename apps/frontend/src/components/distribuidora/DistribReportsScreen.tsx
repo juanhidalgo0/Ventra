@@ -7,6 +7,8 @@ import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { ScreenHeader, Chips } from '../mobile/ui';
 import { useSmallScreen } from '../../utils/ownerMobile';
+import ExportButtons from '../common/ExportButtons';
+import { periodLabel, type Report } from '../../utils/report';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const qty = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -69,6 +71,83 @@ export default function DistribReportsScreen() {
   const saveCommission = (v: string) => {
     setCommission(v);
     setStoreSetting('seller_commission_pct', v);
+  };
+
+  /** Todos los informes del período en un solo archivo (una hoja por informe en Excel) */
+  const buildReport = (): Report | null => {
+    if (!data) return null;
+    const label = PERIODS.find((p) => p[0] === period)?.[1] || '';
+    const { from, to } = PERIODS.find((p) => p[0] === period)![2]();
+    const sumBy = (arr: any[], f: (x: any) => number) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
+    const sellers: any[] = data.sellers || [];
+    const zones: any[] = data.zones || [];
+    const products: any[] = data.products || [];
+    const reasons: any[] = data.reasons || [];
+    const debt: any[] = data.debtByZone || [];
+    return {
+      title: 'Informes de la distribuidora',
+      subtitle: `${label} (${periodLabel(from, to)})`,
+      fileName: `Informes distribuidora ${label}`,
+      summary: [
+        { label: 'Pedidos', value: data.totals.orders, type: 'int' },
+        { label: 'Pedido', value: data.totals.ordered, type: 'money' },
+        { label: 'Entregado', value: data.totals.delivered, type: 'money', tone: 'good' },
+        { label: 'Rechazado', value: data.totals.rejected, type: 'money', tone: data.totals.rejected > 0 ? 'bad' : undefined },
+        { label: '% rechazado', value: data.totals.ordered > 0 ? (data.totals.rejected / data.totals.ordered) * 100 : 0, type: 'percent' },
+        { label: 'Deuda total de clientes', value: sumBy(debt, (z) => z.total), type: 'money' },
+      ],
+      tables: [
+        {
+          title: 'Vendedores',
+          columns: [{ header: 'Vendedor' }, { header: 'Pedidos', type: 'int' }, { header: 'Clientes', type: 'int' }, { header: 'Pedido', type: 'money' }, { header: 'Entregado', type: 'money' }, { header: 'Rechazado', type: 'money' }, { header: '% rechazo', type: 'percent' }, { header: 'Sin entregar', type: 'money' }, ...(pctNum ? [{ header: `Comisión ${pctNum}%`, type: 'money' as const }] : [])],
+          rows: sellers.map((s) => [s.name, s.orders, s.clients, s.ordered, s.delivered, s.rejected, s.ordered - s.pending > 0 ? (s.rejected / (s.ordered - s.pending)) * 100 : null, s.pending, ...(pctNum ? [s.delivered * pctNum / 100] : [])]),
+          totals: ['Total', sumBy(sellers, (s) => s.orders), null, sumBy(sellers, (s) => s.ordered), sumBy(sellers, (s) => s.delivered), sumBy(sellers, (s) => s.rejected), null, sumBy(sellers, (s) => s.pending), ...(pctNum ? [sumBy(sellers, (s) => s.delivered) * pctNum / 100] : [])],
+          emptyText: 'Sin pedidos en el período',
+        },
+        {
+          title: 'Zonas',
+          columns: [{ header: 'Localidad' }, { header: 'Pedidos', type: 'int' }, { header: 'Clientes', type: 'int' }, { header: 'Pedido', type: 'money' }, { header: 'Entregado', type: 'money' }, { header: 'Rechazado', type: 'money' }],
+          rows: zones.map((z) => [z.zone, z.orders, z.clients, z.ordered, z.delivered, z.rejected]),
+          totals: ['Total', sumBy(zones, (z) => z.orders), sumBy(zones, (z) => z.clients), sumBy(zones, (z) => z.ordered), sumBy(zones, (z) => z.delivered), sumBy(zones, (z) => z.rejected)],
+          emptyText: 'Sin pedidos en el período',
+        },
+        {
+          title: 'Productos',
+          columns: [{ header: 'Producto' }, { header: 'Bultos', type: 'number' }, { header: 'Unidades', type: 'number' }, { header: 'Plata', type: 'money' }],
+          rows: products.map((p) => [p.name, p.bultos || null, p.units, p.amount]),
+          totals: ['Total', sumBy(products, (p) => p.bultos), sumBy(products, (p) => p.units), sumBy(products, (p) => p.amount)],
+          emptyText: 'Sin productos entregados en el período',
+        },
+        {
+          title: 'Rechazos',
+          columns: [{ header: 'Motivo' }, { header: 'Veces', type: 'int' }, { header: 'Plata que volvió', type: 'money' }],
+          rows: reasons.map((r) => [r.reason, r.count, r.amount]),
+          totals: reasons.length ? ['Total', sumBy(reasons, (r) => r.count), sumBy(reasons, (r) => r.amount)] : undefined,
+          emptyText: 'No hubo rechazos en el período',
+        },
+        {
+          title: 'Dejaron de comprar',
+          columns: [{ header: 'Cliente' }, { header: 'Localidad' }, { header: 'Teléfono' }, { header: 'Días sin pedir', type: 'int' }, { header: 'Suele pedir', type: 'money' }],
+          rows: (data.lostClients || []).map((c: any) => [c.name, c.locality || '', c.phone || '', c.days, c.average]),
+          emptyText: 'Todos los clientes habituales pidieron en las últimas 3 semanas',
+        },
+        {
+          title: 'Deuda por zona',
+          columns: [{ header: 'Zona' }, { header: 'Cliente' }, { header: 'Saldo', type: 'money' }, { header: 'Pasó su límite' }],
+          rows: debt.flatMap((z) => z.clients.map((c: any) => [z.zone, c.name, c.balance, c.overLimit ? 'Sí' : ''])),
+          totals: debt.length ? ['Total', '', sumBy(debt, (z) => z.total), ''] : undefined,
+          emptyText: 'Nadie debe nada',
+        },
+        {
+          title: 'Qué comprar',
+          columns: [{ header: 'Proveedor' }, { header: 'Producto' }, { header: 'Stock', type: 'number' }, { header: 'En pedidos', type: 'number' }, { header: 'Mínimo', type: 'number' }, { header: 'Comprar bultos', type: 'number' }, { header: 'Comprar unidades', type: 'number' }, { header: 'Costo aprox. proveedor', type: 'money' }],
+          rows: (buy || []).flatMap((s: any) => s.items.map((it: any, i: number) => [s.supplier, it.name, it.stock, it.committed, it.minStock || null, it.bultos || null, it.units ?? null, i === 0 && s.cost > 0 ? s.cost : null])),
+          totals: buy?.length ? ['Total', '', null, null, null, null, null, sumBy(buy, (s) => s.cost)] : undefined,
+          emptyText: 'Con el stock que hay alcanza para los pedidos pendientes',
+        },
+      ],
+      notes: ['"Entregado" es lo que el cliente recibió. La comisión se calcula sobre lo entregado.'],
+    };
   };
 
   const card = 'rounded-2xl bg-white border border-slate-200';
@@ -248,7 +327,7 @@ export default function DistribReportsScreen() {
         // En el celular, el encabezado verde fijo con los períodos
         <div className="sticky top-0 z-20">
           <ScreenHeader back title="Informes" subtitle={PERIODS.find((p) => p[0] === period)?.[1]}
-            action={<button onClick={load} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:scale-95" aria-label="Actualizar"><RefreshCw className={`w-[18px] h-[18px] ${loading ? 'animate-spin' : ''}`} /></button>}>
+            action={<div className="flex items-center gap-1.5"><ExportButtons variant="header" build={buildReport} disabled={!data} /><button onClick={load} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:scale-95" aria-label="Actualizar"><RefreshCw className={`w-[18px] h-[18px] ${loading ? 'animate-spin' : ''}`} /></button></div>}>
             <Chips options={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />
           </ScreenHeader>
         </div>
@@ -257,6 +336,7 @@ export default function DistribReportsScreen() {
         {!phone && <div className="flex items-center gap-2">
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center cursor-pointer shrink-0" aria-label="Volver"><ArrowLeft className="w-5 h-5 text-slate-700" /></button>
           <h1 className="flex-1 text-[22px] font-bold text-slate-900">Informes</h1>
+          <ExportButtons build={buildReport} disabled={!data} />
           <button onClick={load} className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center cursor-pointer" aria-label="Actualizar"><RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} /></button>
         </div>}
 

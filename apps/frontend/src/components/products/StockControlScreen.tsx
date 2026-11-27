@@ -21,6 +21,8 @@ import {
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { hasFeature } from '../../stores/businessStore';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 export default function StockControlScreen() {
   const [activeTab, setActiveTab] = useState<'register' | 'history'>('register');
@@ -35,6 +37,11 @@ export default function StockControlScreen() {
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [movements, setMovements] = useState<any[]>([]);
+  // Filtros del historial ('all' = todos)
+  const [histMonth, setHistMonth] = useState<number | 'all'>('all');
+  const [histYear, setHistYear] = useState<number>(new Date().getFullYear());
+  const [histType, setHistType] = useState<'all' | 'ENTRY' | 'EXIT'>('all');
+  const [histSearch, setHistSearch] = useState('');
 
   useEffect(() => {
     if (activeTab === 'history') {
@@ -91,6 +98,37 @@ export default function StockControlScreen() {
   const motives = movementType === 'ENTRY' 
     ? ['Compra de mercadería', 'Devolución de cliente', 'Ajuste de inventario', 'Carga inicial']
     : ['Vencimiento', 'Rotura / Merma', 'Consumo interno', 'Ajuste de inventario', 'Error de carga'];
+
+  const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const histYears = Array.from(new Set([new Date().getFullYear(), ...movements.map((m) => new Date(m.createdAt).getFullYear())])).sort((a, b) => b - a);
+  const hq = histSearch.trim().toLowerCase();
+  const shownMovements = movements.filter((m) => {
+    const d = new Date(m.createdAt);
+    if (histMonth !== 'all' && (d.getMonth() !== histMonth || d.getFullYear() !== histYear)) return false;
+    if (histType !== 'all' && m.type !== histType) return false;
+    if (hq && !(m.product?.name || '').toLowerCase().includes(hq) && !String(m.product?.barcode || '').toLowerCase().includes(hq)) return false;
+    return true;
+  });
+  const buildReport = (): Report => {
+    const period = histMonth === 'all' ? 'Todas las fechas' : `${MONTHS[histMonth]} ${histYear}`;
+    const units = (t: string) => shownMovements.filter((m) => m.type === t).reduce((a, m) => a + Math.abs(Number(m.quantity) || 0), 0);
+    return {
+      title: 'Auditoría de movimientos de stock',
+      subtitle: [period, histType !== 'all' && (histType === 'ENTRY' ? 'Solo ingresos' : 'Solo egresos'), hq && `Búsqueda: "${histSearch.trim()}"`].filter(Boolean).join(' · '),
+      fileName: `Movimientos de stock ${period}`,
+      summary: [
+        { label: 'Movimientos', value: shownMovements.length, type: 'int' },
+        { label: 'Unidades que entraron', value: units('ENTRY'), type: 'number', tone: 'good' },
+        { label: 'Unidades que salieron', value: units('EXIT'), type: 'number', tone: 'bad' },
+      ],
+      tables: [{
+        title: 'Movimientos',
+        columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Producto' }, { header: 'Código' }, { header: 'Tipo' }, { header: 'Cantidad', type: 'number' }, { header: 'Stock después', type: 'number' }, { header: 'Usuario' }, { header: 'Motivo / nota' }],
+        rows: shownMovements.map((m) => [m.createdAt, m.product?.name || '', m.product?.barcode || '', m.type === 'ENTRY' ? 'Ingreso' : m.type === 'EXIT' ? 'Egreso' : m.type, m.type === 'EXIT' ? -Math.abs(Number(m.quantity) || 0) : Number(m.quantity) || 0, m.stockAfter ?? null, m.user?.fullName || '', [m.reason, m.reference].filter(Boolean).join(' · ')]),
+        emptyText: 'No hay movimientos con estos filtros',
+      }],
+    };
+  };
 
   return (
     <div className="h-full flex flex-col gap-4 bg-slate-50/30 p-2 overflow-y-auto custom-scrollbar">
@@ -324,17 +362,16 @@ export default function StockControlScreen() {
             <div className="card p-5 space-y-5">
                <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-gray-800 tracking-tight">Auditoría de Movimientos</h3>
-                  <button className="btn-success text-xs">
-                     <FileSpreadsheet className="w-4 h-4" /> Exportar a Excel
-                  </button>
+                  <ExportButtons build={buildReport} />
                </div>
                
                <div className="grid grid-cols-4 gap-4">
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Mes</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
-                           <option>Mayo</option>
+                        <select value={histMonth} onChange={(e) => setHistMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Mes" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
+                           <option value="all">Todos</option>
+                           {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
                      </div>
@@ -342,8 +379,8 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Año</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
-                           <option>2026</option>
+                        <select value={histYear} onChange={(e) => setHistYear(Number(e.target.value))} disabled={histMonth === 'all'} aria-label="Año" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer disabled:opacity-50">
+                           {histYears.map((y) => <option key={y} value={y}>{y}</option>)}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
                      </div>
@@ -351,8 +388,10 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Tipo de Movimiento</label>
                      <div className="relative">
-                        <select className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
-                           <option>Todos</option>
+                        <select value={histType} onChange={(e) => setHistType(e.target.value as any)} aria-label="Tipo de movimiento" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold uppercase outline-none appearance-none cursor-pointer">
+                           <option value="all">Todos</option>
+                           <option value="ENTRY">Ingresos</option>
+                           <option value="EXIT">Egresos</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
                      </div>
@@ -360,7 +399,7 @@ export default function StockControlScreen() {
                   <div className="space-y-2">
                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-1">Buscar Producto</label>
                      <div className="relative">
-                        <input type="text" placeholder="Nombre o código..." className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none placeholder:text-slate-300" />
+                        <input type="text" value={histSearch} onChange={(e) => setHistSearch(e.target.value)} placeholder="Nombre o código..." className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none placeholder:text-slate-300" />
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
                      </div>
                   </div>
@@ -383,12 +422,12 @@ export default function StockControlScreen() {
                      </tr>
                   </thead>
                   <tbody>
-                     {movements.length > 0 ? (
-                        movements.map(m => (
+                     {shownMovements.length > 0 ? (
+                        shownMovements.map(m => (
                            <tr key={m.id} className="hover:bg-slate-50/30 transition-colors border-b border-gray-50 last:border-0">
                               <td className="px-6 py-4 text-[10px] font-bold text-gray-400">{new Date(m.createdAt).toLocaleString('es-AR')}</td>
                               <td className="px-6 py-4">
-                                 <p className="text-[11px] font-bold text-gray-800">{m.product.name}</p>
+                                 <p className="text-[11px] font-bold text-gray-800">{m.product?.name}</p>
                                  <p className="text-[9px] text-gray-400 font-bold">{m.product.barcode}</p>
                               </td>
                               <td className="px-6 py-4">

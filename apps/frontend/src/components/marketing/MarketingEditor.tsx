@@ -325,7 +325,7 @@ export default function MarketingEditor({ groupId, onBack, initialView = 'social
                   <input type="checkbox" checked={prefs.showImages} onChange={(e) => setPrefs({ ...prefs, showImages: e.target.checked })} className="rounded" /> Fotos de los productos
                 </label>
                 <p className="text-[11px] text-slate-400 leading-snug">
-                  Lleva {store.logo ? 'el logo y ' : ''}{store.name ? `el nombre de ${store.name}` : 'el nombre del comercio'}{store.phone ? ' y tu WhatsApp' : ''}. Se cambian en Configuración → Tu comercio. Los que bajaron de precio salen como oferta.
+                  Lleva {store.logo ? 'el logo y ' : ''}{store.name ? `el nombre de ${store.name}` : 'el nombre del comercio'}{store.phone ? ' y tu WhatsApp' : ''}. Se cambian en Configuración → Comercio. Los que bajaron de precio salen como oferta.
                 </p>
                 <div className="space-y-1.5 pt-1">
                   <button onClick={() => download(false)} disabled={!items.length} className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"><Download className="w-4 h-4" /> Descargar imagen</button>

@@ -5,7 +5,7 @@ import { useFeature } from '../../stores/businessStore';
 import { variantsOfGroup } from '../../utils/variants';
 import { toast } from 'react-hot-toast';
 import api from '../../services/api';
-import { LABEL_FORMATS, buildLabelsDocument, type LabelOptions } from '../../utils/barcodeLabels';
+import { LABEL_FORMATS, buildLabelsDocument, labelCodeOf, type LabelOptions } from '../../utils/barcodeLabels';
 
 export interface LabelSeedItem {
   productId: string;
@@ -168,7 +168,7 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
     setItems((prev) => prev.map((i) => ({ ...i, quantity: Math.max(1, Math.min(999, Math.ceil(i.product.stock || 1))) })));
   };
 
-  const missingBarcodeItems = items.filter((i) => !i.product.barcode);
+  const missingBarcodeItems = items.filter((i) => !labelCodeOf(i.product));
 
   const assignInternalBarcodes = async () => {
     if (missingBarcodeItems.length === 0) return;
@@ -193,7 +193,7 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
   const labels = useMemo(() => {
     const list: any[] = [];
     for (const i of items) {
-      if (!i.product.barcode) continue;
+      if (!labelCodeOf(i.product)) continue;
       for (let n = 0; n < i.quantity; n++) list.push(i.product);
     }
     return list;
@@ -297,8 +297,8 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-slate-800 truncate">{p.name}</p>
-                    <p className={`text-[10px] font-mono ${p.barcode ? 'text-slate-500' : 'text-amber-600 font-sans font-semibold'}`}>
-                      {p.barcode || 'Sin código'}
+                    <p className={`text-[10px] font-mono ${labelCodeOf(p) ? 'text-slate-500' : 'text-amber-600 font-sans font-semibold'}`}>
+                      {p.barcode || (p.sku ? `SKU ${p.sku}` : 'Sin código')}
                     </p>
                   </div>
                   {useVariants && p.variantGroupId && (
@@ -408,8 +408,8 @@ export default function BarcodeLabelModal({ onClose, initialItems, title, onBarc
                 <div key={product.id} className="p-2 rounded-lg border border-slate-200 bg-white flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-slate-800 truncate">{product.name}</p>
-                    <p className={`text-[10px] ${product.barcode ? 'font-mono text-slate-500' : 'font-semibold text-amber-600'}`}>
-                      {product.barcode || 'Sin código'}
+                    <p className={`text-[10px] ${labelCodeOf(product) ? 'font-mono text-slate-500' : 'font-semibold text-amber-600'}`}>
+                      {product.barcode || (product.sku ? `SKU ${product.sku}` : 'Sin código')}
                     </p>
                   </div>
                   <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden shrink-0">

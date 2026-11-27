@@ -157,6 +157,10 @@ html.dark {
   @keyframes v-rise { from { opacity: 0; transform: translateY(-4px); } }
   @keyframes v-bump { from { opacity: 0.35; transform: translateY(3px); } }
 
+  /* Deshacer (utils/undo.tsx): el anillo se vacía mientras corre el tiempo */
+  .undo-ring { animation-name: undo-ring; animation-timing-function: linear; animation-fill-mode: forwards; }
+  @keyframes undo-ring { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 56.5; } }
+
   /* Loading halo for the Ventra mark: a thin rotating gradient ring (like a
      circular progress arc) instead of expanding "sonar" pulse rings, paired
      with a slow breathing scale on the logo itself. Reads as "still working"

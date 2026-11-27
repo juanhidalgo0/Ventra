@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { ShieldAlert, Loader2, ChevronDown, Settings2, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import api from '../../services/api';
 import { money } from '../mobile/ui';
+import ExportButtons from '../common/ExportButtons';
+import { periodLabel, type Report as ExportReport } from '../../utils/report';
 
 /**
  * Control de anulaciones: lo que los cajeros sacan del ticket (y lo que se borra del catálogo),
@@ -115,6 +117,40 @@ export default function VoidControlScreen() {
   const cashiers = report?.cashiers || [];
   const flagged = useMemo(() => cashiers.filter((c) => c.flagged), [cashiers]);
 
+  /** Las anulaciones del período (con los filtros de la pantalla) en Excel o PDF */
+  const buildReport = (): ExportReport | null => {
+    if (!report) return null;
+    const r = RANGES.find((x) => x.id === range)!;
+    const who = userId ? cashiers.find((c) => c.userId === userId)?.userName : '';
+    return {
+      title: 'Control de anulaciones',
+      subtitle: [`${r.label} (${periodLabel(`${r.from()}T12:00:00`, new Date())})`, LEVELS.find((l) => l.id === level)?.label, who && `Cajero: ${who}`].filter(Boolean).join(' · '),
+      fileName: `Anulaciones ${r.label}`,
+      orientation: 'landscape',
+      summary: [
+        { label: 'Sospechosas', value: report.totals.suspicious, type: 'int', tone: report.totals.suspicious ? 'bad' : 'good' },
+        { label: 'Para revisar', value: report.totals.review, type: 'int', tone: report.totals.review ? 'warn' : undefined },
+        { label: 'Anulaciones', value: report.totals.count, type: 'int' },
+        { label: 'Monto quitado', value: report.totals.amount, type: 'money' },
+      ],
+      tables: [
+        {
+          title: 'Por cajero',
+          columns: [{ header: 'Cajero' }, { header: 'Ventas', type: 'int' }, { header: 'Anulaciones', type: 'int' }, { header: 'Cada 100 ventas', type: 'number' }, { header: 'Monto quitado', type: 'money' }, { header: 'Sospechosas', type: 'int' }, { header: 'Para revisar', type: 'int' }, { header: 'Llama la atención' }],
+          rows: cashiers.map((c) => [c.userName, c.sales, c.voids, c.per100, c.amount, c.suspicious, c.review, c.flagged ? 'Sí' : '']),
+          emptyText: 'Sin anulaciones en el período',
+        },
+        {
+          title: 'Anulaciones',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Caja' }, { header: 'Cajero' }, { header: 'Qué hizo' }, { header: 'Productos' }, { header: 'Monto', type: 'money' }, { header: 'Ticket antes', type: 'money' }, { header: 'Ticket después', type: 'money' }, { header: 'Nivel' }, { header: 'Puntaje', type: 'int' }, { header: 'Motivos' }],
+          rows: (report.events || []).map((e) => [e.at, e.terminal || '', e.userName, ACTION_LABEL[e.action] || e.action, e.items.map((i) => `${qty(i.quantity)} ${i.name}`).join(', '), e.amount, e.totalBefore, e.totalAfter, LEVEL_STYLE[e.level]?.label || e.level, e.score, e.reasons.join('; ')]),
+          emptyText: 'Sin anulaciones con estos filtros',
+        },
+      ],
+      notes: [`Monto que se considera grande: ${money(report.bigAmount)}.`],
+    };
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl w-full mx-auto space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -128,6 +164,7 @@ export default function VoidControlScreen() {
               <button key={r.id} onClick={() => setRange(r.id)} className={`px-3 h-8 rounded-lg text-[13px] font-semibold ${range === r.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{r.label}</button>
             ))}
           </div>
+          <ExportButtons build={buildReport} disabled={!report} />
           <button onClick={() => setShowSettings((v) => !v)} className="w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center" title="Ajustes" aria-label="Ajustes"><Settings2 className="w-4 h-4 text-slate-600" /></button>
         </div>
       </div>

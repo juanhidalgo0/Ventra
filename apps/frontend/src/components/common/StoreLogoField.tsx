@@ -73,7 +73,7 @@ export default function StoreLogoField({ onChange, compact }: { onChange?: (logo
   return (
     <div className={`flex items-center gap-3 ${compact ? '' : 'p-3 rounded-xl border border-slate-200 bg-slate-50/60'}`}>
       <div className="w-24 h-12 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden shrink-0">
-        {logo ? <img src={logo} alt="Logo del comercio" className="max-w-full max-h-full object-contain" /> : <span className="text-[10.5px] text-slate-400">Sin logo</span>}
+        {logo ? <img src={logo} alt="Logo del comercio" className="max-w-full max-h-full object-contain" /> : <span className="text-[11px] text-slate-400">Sin logo</span>}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[12.5px] font-semibold text-slate-800">Logo para las impresiones</p>

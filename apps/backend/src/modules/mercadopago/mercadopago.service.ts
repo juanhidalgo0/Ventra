@@ -57,7 +57,7 @@ export class MercadoPagoService {
   private async call<T>(action: Action, body: Record<string, any> = {}): Promise<T> {
     const creds = this.subscription.getDeviceCredentials();
     if (!creds) {
-      throw new BadRequestException('Primero vinculá esta PC a tu cuenta de Ventra (Configuración → Suscripción y nube).');
+      throw new BadRequestException('Primero vinculá esta PC a tu cuenta de Ventra (Configuración → Plan y nube).');
     }
     try {
       const { data } = await axios.post(`${FUNCTIONS_URL}/ventraMpConnect`, { ...body, ...creds, action }, { timeout: 20000 });

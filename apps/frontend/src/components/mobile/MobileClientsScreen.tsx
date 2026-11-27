@@ -10,6 +10,8 @@ import MonthlyInvoiceModal from '../clients/MonthlyInvoiceModal';
 import { StatementPreview } from '../clients/AccountStatement';
 import { useCashSession } from './useCashSession';
 import { getPaymentMethods } from './checkout';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 type Filter = 'DEBT' | 'ALL';
 
@@ -50,6 +52,31 @@ export default function MobileClientsScreen() {
       .sort((a, b) => (filter === 'DEBT' ? b.balance - a.balance : a.name.localeCompare(b.name, 'es')));
   }, [clients, search, filter, zone]);
 
+  /** Saldos de los clientes (con el filtro y la búsqueda) en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!clients) return null;
+    const today = new Date().toLocaleDateString('es-AR');
+    const debt = list.reduce((t, c) => t + (c.balance > 0 ? c.balance : 0), 0);
+    return {
+      title: 'Cuentas corrientes (fiado)',
+      subtitle: [`Saldos al ${today}`, filter === 'DEBT' ? 'Solo los que deben' : '', zone && `Localidad: ${zone}`, search.trim() && `Búsqueda: "${search.trim()}"`].filter(Boolean).join(' · '),
+      fileName: `Cuentas corrientes ${today.replace(/[/]/g, '-')}`,
+      summary: [
+        { label: 'Te deben en total', value: totalDebt, type: 'money', tone: totalDebt > 0 ? 'bad' : 'good' },
+        { label: 'Clientes con deuda', value: debtors.length, type: 'int' },
+        { label: 'Clientes en la lista', value: list.length, type: 'int' },
+      ],
+      tables: [{
+        title: 'Clientes',
+        columns: [{ header: 'Cliente' }, { header: 'DNI / CUIT' }, { header: 'Teléfono' }, { header: 'Localidad' }, { header: 'Límite', type: 'money' }, { header: 'Saldo', type: 'money' }],
+        rows: list.map((c) => [c.name, c.cuit || c.dni || '', c.phone || '', c.locality || '', Number(c.creditLimit) > 0 ? Number(c.creditLimit) : null, c.balance || 0]),
+        totals: ['Total que deben', '', '', '', null, debt],
+        emptyText: 'No hay clientes con estos filtros',
+      }],
+      notes: ['Saldo positivo: el cliente debe. Negativo: tiene saldo a favor.'],
+    };
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <ScreenHeader
@@ -57,10 +84,13 @@ export default function MobileClientsScreen() {
         title="Fiado"
         subtitle="Cuentas corrientes"
         action={
+          <div className="flex items-center gap-1.5">
+          <ExportButtons variant="header" build={buildReport} disabled={!clients} />
           <button onClick={() => setCreating(true)} className="h-10 px-3.5 rounded-full bg-orange-200 text-orange-900 flex items-center gap-1.5 shrink-0 active:scale-95 transition-transform">
             <UserPlus className="w-[18px] h-[18px]" />
             <span className="text-[13px] font-bold">Cliente</span>
           </button>
+          </div>
         }
       >
         <div className="rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 px-4 py-3 mb-3">

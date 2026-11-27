@@ -1146,6 +1146,20 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                     </button>
                   )}
                 </div>
+                {/* Sin código de barras pero con SKU: la caja lo encuentra igual al escanear y la etiqueta
+                    imprime el SKU. Para quien trae el código interno de otro sistema (Limpissimo), un toque lo pasa. */}
+                {!formData.barcode && !!formData.sku?.trim() && !scaleLabels && (
+                  <p className="mt-1.5 text-[12px] text-slate-500 leading-snug">
+                    Se escanea y se imprime con el SKU <b className="font-mono text-slate-700">{formData.sku.trim()}</b>.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, barcode: prev.sku.trim() }))}
+                      className="font-bold text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      Usarlo como código de barras
+                    </button>
+                  </p>
+                )}
               </div>
             </div>
 

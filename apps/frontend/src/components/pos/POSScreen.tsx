@@ -7,7 +7,7 @@ import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/on
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { useWorkRole } from '../../services/workRole';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { usePOSStore, packOf, type CartItem , WALK_IN_TRADE } from '../../stores/posStore';
+import { usePOSStore, packOf, tradeUnitOf, type CartItem , WALK_IN_TRADE } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -362,6 +362,15 @@ export default function POSScreen() {
   const [showClientSelector, setShowClientSelector] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const selectedClient = usePOSStore(state => state.selectedClient);
+  /**
+   * Precio que muestran las tarjetas: el del cliente elegido. Con lista Mayorista (cliente o
+   * "Consumidor final" a precio mayorista) es el mismo que va a cobrar el ticket, no el minorista.
+   */
+  const cardPrice = (product: any): number => (tradeUnitOf(product, selectedClient) ?? Number(product.salePrice)) || 0;
+  const cardTitle = (product: any): string | undefined => {
+    const t = tradeUnitOf(product, selectedClient);
+    return t != null && t !== Number(product.salePrice) ? `Precio mayorista (minorista ${formatPrice(product.salePrice)})` : undefined;
+  };
   const setSelectedClient = usePOSStore(state => state.setSelectedClient);
   const [terminalName, setTerminalName] = useState('Terminal 1');
   const terminalNameRef = useRef('Terminal 1');
@@ -2165,7 +2174,7 @@ export default function POSScreen() {
             </button>
           )}
 
-          {/* Encargos en la caja: se prende o se apaga en Configuración → Funciones activas */}
+          {/* Encargos en la caja: se prende o se apaga en Configuración → Rubros y funciones */}
           {usesClientOrders && (
             <button onClick={() => setShowClientOrders(true)} className={`${hdrBtn} bg-orange-600 hover:bg-orange-700`}>
               <ClipboardList strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
@@ -2696,8 +2705,8 @@ export default function POSScreen() {
 
                             {/* Bottom: Price & Add Button */}
                             <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
-                              <span className="text-lg font-bold text-slate-900 dark:text-white tracking-[-0.02em]">
-                                {formatPrice(product.salePrice)}
+                              <span className="text-lg font-bold text-slate-900 dark:text-white tracking-[-0.02em]" title={cardTitle(product)}>
+                                {formatPrice(cardPrice(product))}
                               </span>
 
                               <div className="flex items-center gap-1.5">
@@ -2816,8 +2825,8 @@ export default function POSScreen() {
                                   <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
                                 </span>
                               )}
-                              <span className="text-[15px] font-bold text-slate-900 dark:text-white tracking-[-0.02em]">
-                                {formatPrice(product.salePrice)}
+                              <span className="text-[15px] font-bold text-slate-900 dark:text-white tracking-[-0.02em]" title={cardTitle(product)}>
+                                {formatPrice(cardPrice(product))}
                               </span>
                               <div className="w-7 h-7 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-2xs">
                                 <Plus className="w-3.5 h-3.5 stroke-[2.8]" />

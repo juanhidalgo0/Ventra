@@ -32,6 +32,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '../pos/PaymentModal';
 import { hasFeature, hasTradeList, tradeListName } from '../../stores/businessStore';
+import { undoable } from '../../utils/undo';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 const IVA_OPTIONS: [string, string][] = [
   ['CONSUMIDOR_FINAL', 'Consumidor final'],
@@ -74,7 +77,6 @@ function DeliveryFields({ value, onChange, localities, delivery = true, invoicin
     </>
   );
 }
-
 export default function CuentasCorrientesScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -253,14 +255,15 @@ export default function CuentasCorrientesScreen() {
     if (!window.confirm(`¿Está seguro de que desea eliminar al cliente "${name}"? Esta acción borrará permanentemente sus movimientos de cuenta corriente.`)) {
       return;
     }
-    try {
-      await api.delete(`/clients/${id}`);
-      setShowEditModal(false);
-      setEditingClient(null);
-      loadClients();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al eliminar el cliente.');
-    }
+    setShowEditModal(false);
+    setEditingClient(null);
+    undoable({
+      message: `Cliente "${name}" borrado`,
+      hide: () => setClients((list: any[]) => list.filter((c) => c.id !== id)),
+      run: async () => { await api.delete(`/clients/${id}`); loadClients(); },
+      onUndo: () => loadClients(),
+      onError: (err) => { loadClients(); toast.error(err?.response?.data?.message || 'Error al eliminar el cliente.'); },
+    });
   };
 
   const filteredClients = clients.filter(c => {
@@ -279,8 +282,57 @@ export default function CuentasCorrientesScreen() {
 
   const totalDebt = clients.reduce((acc, c) => acc + (c.balance > 0 ? c.balance : 0), 0);
   const activeCount = clients.length;
-  const overdueCount = 0; // Logic for overdue
+  // Los que deben más que su límite de crédito (si tienen uno cargado)
+  const overLimit = (c: any) => Number(c.creditLimit) > 0 && c.balance > Number(c.creditLimit);
+  const overdueCount = clients.filter(overLimit).length;
   const withDebtCount = clients.filter(c => c.balance > 0).length;
+  const totalCredit = clients.reduce((acc, c) => acc + (c.balance < 0 ? -c.balance : 0), 0);
+
+  /** Saldos de los clientes (con el filtro y la búsqueda de la pantalla) en Excel o PDF */
+  const buildReport = (): Report => {
+    const FILTER: Record<string, string> = { all: '', debt: 'Solo los que deben', credit: 'Solo con saldo a favor', none: 'Solo al día' };
+    const LIST: Record<string, string> = { RETAIL: 'Minorista', TRADE: tradeListName(), WHOLESALE: 'Mayorista' };
+    const list = [...filteredClients].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    const debt = list.reduce((t, c) => t + (c.balance > 0 ? c.balance : 0), 0);
+    const credit = list.reduce((t, c) => t + (c.balance < 0 ? -c.balance : 0), 0);
+    const zones = new Map<string, { n: number; debt: number }>();
+    for (const c of list) {
+      if (!(c.balance > 0)) continue;
+      const k = (c.locality || '').trim() || 'Sin localidad';
+      const z = zones.get(k) || { n: 0, debt: 0 };
+      z.n++; z.debt += c.balance;
+      zones.set(k, z);
+    }
+    const state = (c: any) => overLimit(c) ? 'Pasó el límite' : c.balance > 0 ? 'Debe' : c.balance < 0 ? 'A favor' : 'Al día';
+    return {
+      title: 'Cuentas corrientes',
+      subtitle: [`Saldos al ${new Date().toLocaleDateString('es-AR')}`, FILTER[activeFilter], zone && `Localidad: ${zone}`, searchQuery && `Búsqueda: "${searchQuery}"`].filter(Boolean).join(' · '),
+      fileName: `Cuentas corrientes ${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}`,
+      summary: [
+        { label: 'Deuda total', value: debt, type: 'money', tone: debt > 0 ? 'bad' : 'good' },
+        { label: 'Clientes que deben', value: list.filter((c) => c.balance > 0).length, type: 'int' },
+        { label: 'Saldo a favor de clientes', value: credit, type: 'money' },
+        { label: 'Pasaron su límite', value: list.filter(overLimit).length, type: 'int', tone: list.some(overLimit) ? 'warn' : undefined },
+        { label: 'Clientes en la lista', value: list.length, type: 'int' },
+      ],
+      tables: [
+        {
+          title: 'Clientes',
+          columns: [{ header: 'Cliente' }, { header: 'DNI / CUIT' }, { header: 'Teléfono' }, { header: 'Localidad' }, { header: 'Lista' }, { header: 'Límite', type: 'money' }, { header: 'Saldo', type: 'money' }, { header: 'Estado' }],
+          rows: list.map((c) => [c.name, c.cuit || c.dni || '', c.phone || '', c.locality || '', LIST[c.priceList] || '', Number(c.creditLimit) > 0 ? Number(c.creditLimit) : null, c.balance || 0, state(c)]),
+          totals: ['Saldo neto', '', '', '', '', null, list.reduce((t, c) => t + (c.balance || 0), 0), ''],
+          emptyText: 'No hay clientes con estos filtros',
+        },
+        ...(zones.size > 1 ? [{
+          title: 'Deuda por localidad',
+          columns: [{ header: 'Localidad' }, { header: 'Clientes que deben', type: 'int' as const }, { header: 'Deuda', type: 'money' as const }],
+          rows: [...zones.entries()].sort((a, b) => b[1].debt - a[1].debt).map(([k, v]) => [k, v.n, v.debt]),
+          totals: ['Total', [...zones.values()].reduce((t, v) => t + v.n, 0), debt],
+        }] : []),
+      ],
+      notes: ['Saldo positivo: el cliente debe. Negativo: tiene saldo a favor.'],
+    };
+  };
 
   return (
     <div className="flex-1 min-h-0 w-full flex flex-col gap-4 md:gap-6 bg-[#f8fafc] p-4 md:p-6 overflow-y-auto custom-scrollbar">
@@ -290,20 +342,15 @@ export default function CuentasCorrientesScreen() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Cuentas Corrientes</h1>
           <p className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.3em] mt-1">Control de deudas y pagos de clientes</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-400 rounded-xl">
-             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Buenos días</span>
-             <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-[10px]">A</div>
-          </div>
-        </div>
+        <ExportButtons build={buildReport} disabled={isLoading} />
       </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
         {[
-          { label: 'DEUDA TOTAL', value: fmt(totalDebt), sub: '0 clientes', color: 'bg-amber-600', textColor: 'text-white', icon: TrendingDown },
+          { label: 'DEUDA TOTAL', value: fmt(totalDebt), sub: `${withDebtCount} ${withDebtCount === 1 ? 'cliente' : 'clientes'}`, color: 'bg-amber-600', textColor: 'text-white', icon: TrendingDown },
           { label: 'ACTIVOS', value: activeCount.toString(), sub: 'cuentas habilitadas', color: 'bg-[#f0fdf4]', textColor: 'text-emerald-600', icon: UserCheck, border: 'border-emerald-100' },
-          { label: 'VENCIDOS', value: overdueCount.toString(), sub: 'con facturas vencidas', color: 'bg-[#fff7ed]', textColor: 'text-orange-600', icon: AlertCircle, border: 'border-orange-100' },
+          { label: 'PASARON EL LÍMITE', value: overdueCount.toString(), sub: totalCredit > 0 ? `A favor de clientes: ${fmt(totalCredit)}` : 'deben más que su límite', color: 'bg-[#fff7ed]', textColor: 'text-orange-600', icon: AlertCircle, border: 'border-orange-100' },
           { label: 'CON DEUDA', value: withDebtCount.toString(), sub: 'deben algo', color: 'bg-[#f5f3ff]', textColor: 'text-purple-600', icon: Clock, border: 'border-purple-100' }
         ].map((card) => (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={card.label} className={`${card.color} ${card.border ? `border ${card.border}` : ''} p-5 md:p-7 rounded-2xl shadow-sm relative overflow-hidden group`}>

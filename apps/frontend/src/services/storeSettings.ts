@@ -50,6 +50,9 @@ const SHARED: Record<string, string> = {
   virtual2_surcharge: 'virtual2_surcharge',
   purchase_default_margin: 'purchase_default_margin',
   purchase_use_iva: 'purchase_use_iva',
+  // Compras: ocultar el margen y el comprobante de siempre de cada proveedor (Factura A, presupuesto…)
+  purchase_hide_margin: 'purchase_hide_margin',
+  purchase_doc_kinds: 'purchase_doc_kinds',
   /** Boletas escaneadas desde el celular: JSON { enabled, keepMargin, round } (ver PurchasesService.scanSettings) */
   purchase_auto: 'purchase_auto',
   earnings_division_partners: 'earnings_division_partners',
@@ -57,6 +60,10 @@ const SHARED: Record<string, string> = {
   employee_consumption: 'employee_consumption',
   /** Fondo inicial de la caja en pesos: queda siempre en el cajón (lo carga el dueño) */
     cash_opening_float: 'cash_opening_float',
+  /** Cierre de caja a ciegas para los empleados: no ven lo esperado ni la diferencia ('1' / '0', ver utils/blindClose) */
+  cash_blind_close: 'cash_blind_close',
+  /** Con el cierre a ciegas: los empleados tampoco ven ni imprimen el reporte Z ('1' / '0') */
+  cash_blind_close_z: 'cash_blind_close_z',
   /** Distribuidora: qué días se visita cada localidad (JSON, ver services/routeDays) */
   route_days: 'ventra_route_days',
   /** Distribuidora: comisión de los vendedores, en % de lo entregado (Informes) */

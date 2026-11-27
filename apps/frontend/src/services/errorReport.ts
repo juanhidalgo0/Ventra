@@ -23,8 +23,9 @@ const IGNORE = /ResizeObserver loop|Script error\.?$|Load failed$|Failed to fetc
 
 export function reportError(error: unknown, extra?: string) {
   try {
-    // En la PC de desarrollo (vite en localhost:5173) no se manda nada
-    if (/^(localhost|127.0.0.1)$/.test(location.hostname) && location.port === '5173') return;
+    // En desarrollo y en las vistas previas (vite en cualquier puerto de localhost) no se manda nada:
+    // ahí los "X is not defined" son archivos a mitad de edición, no fallas de un comercio
+    if ((/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !(window as any).__TAURI_INTERNALS__)) return;
     const e = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error)?.slice(0, 300) || 'Error');
     const message = (extra ? `${extra}: ` : '') + String(e.message || e.name || 'Error');
     if (IGNORE.test(message) || sent >= MAX || seen.has(message)) return;

@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight, Loader2, X, Check, Landmark, Wallet, Smartph
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { useFeature } from '../../stores/businessStore';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 const money = (n: number) => `$ ${(Math.round((n || 0) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -51,6 +53,39 @@ export default function CommissionsPanel() {
 
   const now = new Date();
   const isCurrent = key === keyOf(now);
+
+  /** Comisiones del mes y sus pagos en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!data) return null;
+    const label = `${MONTHS[month.getMonth()]} ${month.getFullYear()}`;
+    const sellers: any[] = data.sellers || [];
+    return {
+      title: 'Comisiones de vendedores',
+      subtitle: `${label.charAt(0).toUpperCase() + label.slice(1)} · comisión general ${data.generalPct ?? general ?? 0}%`,
+      fileName: `Comisiones ${label}`,
+      summary: [
+        { label: 'Corresponde', value: data.totals.commission, type: 'money' },
+        { label: 'Pagado', value: data.totals.paid, type: 'money', tone: 'good' },
+        { label: 'Falta pagar', value: data.totals.owed, type: 'money', tone: data.totals.owed > 0 ? 'bad' : undefined },
+      ],
+      tables: [
+        {
+          title: 'Vendedores',
+          columns: [{ header: 'Vendedor' }, { header: 'Pedidos entregados', type: 'int' }, { header: 'Entregado', type: 'money' }, { header: 'Comisión %', type: 'percent' }, { header: 'Corresponde', type: 'money' }, { header: 'Pagado', type: 'money' }, { header: 'Falta', type: 'money' }],
+          rows: sellers.map((x) => [x.name, x.orders, x.delivered, x.ownPct ?? data.generalPct ?? null, x.commission, x.commission - x.owed, x.owed]),
+          totals: ['Total', sellers.reduce((t, x) => t + (x.orders || 0), 0), sellers.reduce((t, x) => t + (x.delivered || 0), 0), null, data.totals.commission, data.totals.paid, data.totals.owed],
+          emptyText: 'No hay vendedores',
+        },
+        {
+          title: 'Pagos',
+          columns: [{ header: 'Fecha', type: 'date' }, { header: 'Vendedor' }, { header: 'De dónde salió' }, { header: 'Hecho por' }, { header: 'Nota' }, { header: 'Importe', type: 'money' }],
+          rows: sellers.flatMap((x) => (x.payments || []).map((p: any) => [p.at, x.name, SOURCE_LABEL[p.source] || p.source, p.by || '', p.notes || '', p.amount])),
+          emptyText: 'Sin pagos en el mes',
+        },
+      ],
+      notes: ['Cuenta lo que el cliente recibió en los repartos rendidos en el mes: lo rechazado no suma.'],
+    };
+  };
   const card = 'rounded-2xl bg-white border border-slate-200';
 
   return (
@@ -58,6 +93,7 @@ export default function CommissionsPanel() {
       <div className={`${card} p-3 flex items-center gap-2`}>
         <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center cursor-pointer" aria-label="Mes anterior"><ChevronLeft className="w-5 h-5 text-slate-600" /></button>
         <p className="flex-1 text-center text-[15px] font-bold text-slate-900 capitalize">{MONTHS[month.getMonth()]} {month.getFullYear()}</p>
+        <ExportButtons variant="compact" build={buildReport} disabled={!data} />
         <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} disabled={isCurrent} className="w-10 h-10 rounded-xl hover:bg-slate-100 disabled:opacity-30 flex items-center justify-center cursor-pointer" aria-label="Mes siguiente"><ChevronRight className="w-5 h-5 text-slate-600" /></button>
       </div>
 

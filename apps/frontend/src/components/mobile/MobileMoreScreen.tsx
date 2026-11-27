@@ -4,6 +4,7 @@ import {
   Wallet, Receipt, Users, BarChart3, Truck, ShoppingBag, Tag, ClipboardCheck,
   Landmark, FileText, Settings, LogOut, ChevronRight, Store, Bell, CalendarDays, Banknote, ClipboardList,
   Printer, ShieldAlert, Beef,
+  Gift,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -14,6 +15,7 @@ import PushCard from './PushCard';
 import AskWhatsApp from '../common/AskWhatsApp';
 import { useOnlineOrders, useOrdersVisible, isNewOrder } from '../../services/onlineStoreOrders';
 import { usePlanStore, isAgendaOnly } from '../../stores/planStore';
+import { openInviteStore } from '../referral/InviteStore';
 import { useBusinessStore, menuAllows, hasFeature, isConsultorio } from '../../stores/businessStore';
 
 /** noCaja: solo sin sistema de ventas (con caja, los turnos se cobran en el POS). */
@@ -122,6 +124,17 @@ export default function MobileMoreScreen() {
         <PushCard />
         {/* Preguntarle a Ventra por WhatsApp (dueño y encargados) */}
         {(user?.role === 'ADMIN' || user?.role === 'SUPERVISOR') && <div className="rounded-2xl bg-white border border-slate-200/80 px-4 pb-4 [&>div]:mt-0 [&>div]:border-t-0"><AskWhatsApp /></div>}
+        {user?.role === 'ADMIN' && (
+          <button onClick={openInviteStore} className="w-full flex items-center gap-3 rounded-2xl p-4 text-left text-white active:scale-[0.99] transition-transform"
+            style={{ background: 'linear-gradient(120deg,#062e23 0%,#0b5a43 60%,#17925f 100%)' }}>
+            <span className="w-11 h-11 rounded-2xl bg-yellow-300 text-emerald-950 flex items-center justify-center shrink-0"><Gift className="w-5 h-5" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] font-bold">Invitá un comercio</span>
+              <span className="block text-[12px] text-white/80">Ganá un mes gratis por cada uno que se sume</span>
+            </span>
+            <ChevronRight className="w-4 h-4 text-white/60" />
+          </button>
+        )}
         {ordersVisible && (
           <button onClick={() => navigate('/pedidos')} className="w-full flex items-center gap-3 rounded-2xl bg-white border border-slate-200/80 p-4 text-left active:scale-[0.99] transition-transform">
             <span className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5" /></span>

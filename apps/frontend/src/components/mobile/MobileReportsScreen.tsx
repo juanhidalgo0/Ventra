@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import AskBusiness, { useCanAskBusiness } from '../common/AskBusiness';
+import { YearReviewBanner } from '../yearReview/YearReview';
 import { TrendingUp, Package, Users } from 'lucide-react';
 import api from '../../services/api';
 import { ScreenHeader, Chips, ListSkeleton, money, qty, METHOD_LABELS } from './ui';
+import ExportButtons from '../common/ExportButtons';
+import { periodLabel, type Report } from '../../utils/report';
 
 type Range = 'WEEK' | 'MONTH' | 'LAST_MONTH' | 'YEAR';
 
@@ -59,9 +62,62 @@ export default function MobileReportsScreen() {
   const paysTotal = pays.reduce((s, [, v]) => s + v, 0);
   const best = chart.reduce((b, x, i) => (x.sales > (chart[b]?.sales ?? 0) ? i : b), 0);
 
+  /** El reporte del período para bajar en Excel o PDF desde el celular */
+  const buildReport = (): Report | null => {
+    if (!summary || !dash) return null;
+    const LABEL: Record<Range, string> = { WEEK: 'Últimos 7 días', MONTH: 'Este mes', LAST_MONTH: 'Mes pasado', YEAR: 'Este año' };
+    const { from, to } = rangeDates(range);
+    const hist: any[] = dash.history || [];
+    return {
+      title: 'Reporte de ventas',
+      subtitle: `${LABEL[range]} (${periodLabel(from, to)})`,
+      fileName: `Reporte de ventas ${LABEL[range]}`,
+      summary: [
+        { label: 'Ventas', value: revenue, type: 'money' },
+        { label: 'Costo de la mercadería', value: summary.totalCost || 0, type: 'money' },
+        { label: 'Ganancia bruta', value: profit, type: 'money', tone: profit >= 0 ? 'good' : 'bad' },
+        { label: 'Margen', value: revenue > 0 ? (profit / revenue) * 100 : 0, type: 'percent' },
+        { label: 'Tickets', value: summary.totalSales || 0, type: 'int' },
+        { label: 'Ticket promedio', value: summary.averageTicket || 0, type: 'money' },
+        ...(summary.expenses > 0 ? [{ label: 'Gastos, compras y pagos a proveedores', value: summary.expenses, type: 'money' as const, tone: 'bad' as const }] : []),
+      ],
+      tables: [
+        {
+          title: range === 'YEAR' ? 'Ventas por mes' : 'Ventas por día',
+          columns: range === 'YEAR'
+            ? [{ header: 'Mes' }, { header: 'Ventas', type: 'money' }, { header: 'Ganancia', type: 'money' }]
+            : [{ header: 'Fecha', type: 'date' }, { header: 'Ventas', type: 'money' }, { header: 'Ganancia', type: 'money' }],
+          rows: range === 'YEAR' ? chart.map((c) => [c.label, c.sales, c.profit]) : hist.map((h) => [`${h.date}T12:00:00`, h.sales || 0, h.profit || 0]),
+          totals: ['Total', hist.reduce((t, h) => t + (h.sales || 0), 0), hist.reduce((t, h) => t + (h.profit || 0), 0)],
+          emptyText: 'Sin ventas en el período',
+        },
+        {
+          title: 'Cómo te pagaron',
+          columns: [{ header: 'Medio de pago' }, { header: 'Cobrado', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: pays.map(([k, v]) => [METHOD_LABELS[k] || k, v, paysTotal ? (v / paysTotal) * 100 : 0]),
+          totals: pays.length ? ['Total', paysTotal, 100] : undefined,
+          emptyText: 'Sin cobros en el período',
+        },
+        {
+          title: 'Lo más vendido',
+          columns: [{ header: '#', type: 'int' }, { header: 'Producto' }, { header: 'Unidades', type: 'number' }, { header: 'Ventas', type: 'money' }, { header: 'Stock', type: 'number' }],
+          rows: (dash.topProducts || []).map((p: any, i: number) => [i + 1, p.name, p.quantity, p.revenue, p.stock]),
+          emptyText: 'Sin ventas en el período',
+        },
+        {
+          title: 'Mejores clientes',
+          columns: [{ header: '#', type: 'int' }, { header: 'Cliente' }, { header: 'Compras', type: 'int' }, { header: 'Total', type: 'money' }],
+          rows: (dash.topClients || []).map((c: any, i: number) => [i + 1, c.name, c.salesCount, c.totalSpent]),
+          emptyText: 'Sin ventas a clientes en el período',
+        },
+      ],
+      notes: ['La ganancia bruta no descuenta gastos.'],
+    };
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <ScreenHeader back title="Reportes">
+      <ScreenHeader back title="Reportes" action={<ExportButtons variant="header" build={buildReport} disabled={!summary || !dash} />}>
         <Chips<Range>
           options={[{ id: 'WEEK', label: '7 días' }, { id: 'MONTH', label: 'Este mes' }, { id: 'LAST_MONTH', label: 'Mes pasado' }, { id: 'YEAR', label: 'Este año' }]}
           value={range}
@@ -80,6 +136,7 @@ export default function MobileReportsScreen() {
       </ScreenHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
+        <YearReviewBanner />
         {isManager && <AskBusiness compact />}
         {!summary || !dash ? <ListSkeleton rows={4} /> : (
           <>

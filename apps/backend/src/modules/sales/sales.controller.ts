@@ -48,6 +48,25 @@ export class SalesController {
     return this.salesService.getReport(type, from, to, Number(tzOffset) || 0);
   }
 
+  /** Logros del negocio (venta 10.000, día récord, aniversario…) para festejar con el dueño */
+  @Get('milestones')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getMilestones(
+    @Query('today') today: string, @Query('yesterday') yesterday: string,
+    @Query('thisMonth') thisMonth: string, @Query('lastMonth') lastMonth: string, @Query('tzOffset') tzOffset?: string,
+  ) {
+    return this.salesService.getMilestones({ today, yesterday, thisMonth, lastMonth, tzOffset: Number(tzOffset) || 0 });
+  }
+
+  /** "Tu año en Ventra": resumen del año para el dueño */
+  @Get('year-review')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  getYearReview(@Query('from') from: string, @Query('to') to: string, @Query('tzOffset') tzOffset?: string) {
+    return this.salesService.getYearReview(from, to, Number(tzOffset) || 0);
+  }
+
   @Get('today-summary')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

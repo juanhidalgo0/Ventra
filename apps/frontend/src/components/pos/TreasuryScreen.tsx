@@ -6,7 +6,10 @@ import api from '../../services/api';
 import { useConfirm } from '../common/ConfirmDialog';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
 import { useFeature } from '../../stores/businessStore';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 import MonthFundPanel, { MONTH_FUND_ID, fundText, isFundTransfer } from './MonthFundPanel';
+import { undoable } from '../../utils/undo';
 
 const money = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0);
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -61,15 +64,48 @@ export default function TreasuryScreen() {
   const remove = async (m: any) => {
     const ok = await confirm({ title: '¿Eliminar este movimiento?', message: `${KIND_LABEL[m.type] || m.type} de ${money(m.amount)}. La caja vuelve a calcular su efectivo.`, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
-    try {
-      await api.delete(`/cash/movement/${m.id}`);
-      toast.success('Movimiento eliminado');
-      loadMovements();
-      loadSessions();
-      setFundTick((n) => n + 1);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'No se pudo eliminar');
-    }
+    undoable({
+      message: 'Movimiento borrado',
+      hide: () => setMovements((list: any[]) => list.filter((x) => x.id !== m.id)),
+      run: async () => { await api.delete(`/cash/movement/${m.id}`); loadMovements(); loadSessions(); setFundTick((n) => n + 1); },
+      onUndo: () => loadMovements(),
+      onError: (err) => { loadMovements(); toast.error(err?.response?.data?.message || 'No se pudo eliminar'); },
+    });
+  };
+
+  /** Movimientos del mes y cajas abiertas en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!movements) return null;
+    const label = `${MONTHS[month.getMonth()]} ${month.getFullYear()}`;
+    const sign = (m: any) => (m.type === 'INCOME' || (m.type === 'BALANCE' && m.amount >= 0) ? 1 : -1);
+    const rows = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return {
+      title: 'Tesorería',
+      subtitle: label,
+      fileName: `Tesorería ${label}`,
+      summary: [
+        { label: 'Efectivo en cajas abiertas', value: cash, type: 'money' },
+        { label: `Ingresos de ${MONTHS[month.getMonth()]}`, value: totals.income, type: 'money', tone: 'good' },
+        { label: `Egresos de ${MONTHS[month.getMonth()]}`, value: totals.out, type: 'money', tone: 'bad' },
+        { label: 'Neto del mes', value: totals.income - totals.out, type: 'money', tone: totals.income - totals.out >= 0 ? 'good' : 'bad' },
+      ],
+      tables: [
+        {
+          title: 'Movimientos del mes',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Tipo' }, { header: 'Detalle' }, { header: 'Caja' }, { header: 'Registró' }, { header: 'Importe', type: 'money' }],
+          rows: rows.map((m) => [m.createdAt, KIND_LABEL[m.type] || m.type, cleanText(m), m.sessionId === MONTH_FUND_ID ? 'Caja del mes' : m.session?.terminalName || '', m.user?.fullName || m.user?.username || '', sign(m) * Math.abs(m.amount)]),
+          emptyText: 'Sin movimientos este mes',
+        },
+        {
+          title: 'Cajas abiertas',
+          columns: [{ header: 'Caja' }, { header: 'Responsable' }, { header: 'Abierta desde', type: 'datetime' }, { header: 'Efectivo esperado', type: 'money' }],
+          rows: (sessions || []).map((x) => [x.terminalName, x.user?.fullName || x.user?.username || '', x.openedAt, x.expectedAmount || 0]),
+          totals: sessions?.length ? ['Total', '', null, cash] : undefined,
+          emptyText: 'No hay cajas abiertas',
+        },
+      ],
+      notes: ['Los pases a la caja del mes y los ajustes de balance no cuentan como ingresos ni egresos del negocio.'],
+    };
   };
 
   return (
@@ -80,6 +116,7 @@ export default function TreasuryScreen() {
           description={usesFund ? 'La caja del mes, el efectivo de las cajas abiertas y los ingresos y egresos que se cargan a mano.' : 'El efectivo de las cajas y los ingresos y egresos que se cargan a mano.'}
           actions={(
             <>
+              <ExportButtons build={buildReport} disabled={!movements} />
               <button onClick={() => setMoving('INCOME')} className={`${ui.btn} ${ui.btnPrimary}`}><ArrowDownLeft className="w-4 h-4" /> Registrar ingreso</button>
               <button onClick={() => setMoving('OUT')} className={`${ui.btn} ${ui.btnDark}`}><ArrowUpRight className="w-4 h-4" /> Registrar egreso</button>
             </>

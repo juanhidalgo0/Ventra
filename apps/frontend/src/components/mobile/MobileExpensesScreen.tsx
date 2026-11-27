@@ -4,6 +4,9 @@ import { Plus, Receipt, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import { ScreenHeader, Chips, Sheet, PrimaryButton, EmptyState, ListSkeleton, money } from './ui';
 import ExpenseSheet, { parseExpense } from './ExpenseSheet';
+import { undoable } from '../../utils/undo';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 type Tab = 'ALL' | 'FIXED' | 'VARIABLE';
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -45,15 +48,52 @@ export default function MobileExpensesScreen() {
   }, [rows]);
   const visible = all.filter((r) => tab === 'ALL' || (tab === 'FIXED' ? r.parsed.fixed : !r.parsed.fixed));
 
+  /** Los gastos del mes en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!rows) return null;
+    const label = `${MONTHS[month.m]} ${month.y}`;
+    const list = [...visible].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return {
+      title: 'Gastos',
+      subtitle: [label, tab === 'FIXED' ? 'Solo fijos' : tab === 'VARIABLE' ? 'Solo variables' : ''].filter(Boolean).join(' · '),
+      fileName: `Gastos ${label}`,
+      summary: [
+        { label: 'Total del mes', value: total, type: 'money', tone: 'bad' },
+        { label: 'Fijos', value: fixed, type: 'money' },
+        { label: 'Variables', value: total - fixed, type: 'money' },
+        { label: 'Cantidad', value: all.length, type: 'int' },
+      ],
+      tables: [
+        {
+          title: 'En qué se va la plata',
+          columns: [{ header: 'Categoría' }, { header: 'Total', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: byCategory.map(([k, v]) => [k, v, total ? (v / total) * 100 : 0]),
+          totals: byCategory.length ? ['Total', total, 100] : undefined,
+          emptyText: 'Sin gastos en el mes',
+        },
+        {
+          title: 'Detalle',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Categoría' }, { header: 'Tipo' }, { header: 'Detalle' }, { header: 'Registró' }, { header: 'Monto', type: 'money' }],
+          rows: list.map((r) => [r.createdAt, r.parsed.label, r.parsed.fixed ? 'Fijo' : 'Variable', r.parsed.text, r.user?.fullName || '', r.amount]),
+          totals: list.length ? ['Total', '', '', '', '', list.reduce((t, r) => t + r.amount, 0)] : undefined,
+          emptyText: 'Sin gastos en el mes',
+        },
+      ],
+    };
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <ScreenHeader
         back
         title="Gastos"
         action={
+          <div className="flex items-center gap-1.5">
+          <ExportButtons variant="header" build={buildReport} disabled={!rows} />
           <button onClick={() => setAdding(true)} className="h-10 px-3.5 rounded-full bg-orange-200 text-orange-900 flex items-center gap-1.5 shrink-0 active:scale-95 transition-transform">
             <Plus className="w-[18px] h-[18px]" /><span className="text-[13px] font-bold">Gasto</span>
           </button>
+          </div>
         }
       >
         <div className="flex items-center justify-between rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 h-11 px-1">
@@ -112,27 +152,26 @@ export default function MobileExpensesScreen() {
       </div>
 
       <ExpenseSheet open={adding} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); }} />
-      <ExpenseDetail row={selected} onClose={() => setSelected(null)} onDeleted={() => { setSelected(null); load(); }} />
+      <ExpenseDetail row={selected} onClose={() => setSelected(null)} onDeleted={(hideId) => { setSelected(null); if (hideId) setRows((r) => (r || []).filter((x) => x.id !== hideId)); else load(); }} />
     </div>
   );
 }
 
-function ExpenseDetail({ row, onClose, onDeleted }: { row: any | null; onClose: () => void; onDeleted: () => void }) {
+function ExpenseDetail({ row, onClose, onDeleted }: { row: any | null; onClose: () => void; onDeleted: (hideId?: string) => void }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => setConfirming(false), [row]);
 
   const remove = async () => {
-    setBusy(true);
-    try {
-      await api.delete(`/cash/movement/${row.id}`);
-      toast.success('Gasto eliminado');
-      onDeleted();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'No se pudo eliminar');
-    } finally {
-      setBusy(false);
-    }
+    const id = row.id;
+    onClose();
+    undoable({
+      message: 'Gasto borrado',
+      hide: () => onDeleted(id),
+      run: async () => { await api.delete(`/cash/movement/${id}`); onDeleted(); },
+      onUndo: () => onDeleted(),
+      onError: (err) => { onDeleted(); toast.error(err?.response?.data?.message || 'No se pudo eliminar'); },
+    });
   };
 
   return (

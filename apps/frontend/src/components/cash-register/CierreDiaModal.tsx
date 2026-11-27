@@ -8,6 +8,7 @@ import { holdLogout } from '../../utils/logoutHold';
 import { printReport } from '../../utils/ticketPrinter';
 import { useFeature } from '../../stores/businessStore';
 import ZToMonthFund from './ZToMonthFund';
+import { useBlindZ } from '../../utils/blindClose';
 
 /**
  * headless: solo arma la hoja para imprimir (oculta), sin la ventana de pantalla. La usa el
@@ -18,6 +19,8 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
   const [printMode, setPrintMode] = useState<'z-only' | 'z-and-x'>('z-only');
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const usesFund = useFeature('monthfund');
+  // Cierre a ciegas con el Z oculto: el empleado cierra el día pero no ve ni imprime el Z
+  const blindZ = useBlindZ() && !headless;
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
   const summary = JSON.parse(zReport.summary || '{}');
   // Turnos que cerró el Z: todos los que entraron, también los que no tuvieron movimiento
@@ -1005,7 +1008,13 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
       {!headless && createPortal(
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 no-print-screen">
           {/* Screen Area */}
-          {isHistory ? (
+          {isHistory && blindZ ? (
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-center no-print-screen">
+          <h3 className="text-lg font-bold text-slate-900">Reporte Z</h3>
+          <p className="text-sm text-slate-600 mt-2">Es un cierre a ciegas: el reporte Z lo ve e imprime el dueño desde Control de caja.</p>
+          <button onClick={onClose} className="btn-secondary mt-5">Cerrar</button>
+        </div>
+      ) : isHistory ? (
         <motion.div
           initial={{ scale: 0.98, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -1245,16 +1254,20 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">¡Día Cerrado con Éxito!</h3>
             <p className="text-slate-600 mb-8 max-w-sm">
-              Se ha generado el Reporte Z maestro consolidando <b>{turnCount}</b> {turnCount === 1 ? 'turno' : 'turnos'}. Puedes imprimir el comprobante consolidado y los cierres a continuación.
+              {blindZ
+                ? <>Se cerraron <b>{turnCount}</b> {turnCount === 1 ? 'turno' : 'turnos'}. El reporte Z lo ve e imprime el dueño desde Control de caja.</>
+                : <>Se ha generado el Reporte Z maestro consolidando <b>{turnCount}</b> {turnCount === 1 ? 'turno' : 'turnos'}. Puedes imprimir el comprobante consolidado y los cierres a continuación.</>}
             </p>
             {usesFund && !isHistory && <ZToMonthFund zReport={zReport} />}
             <div className="flex flex-col gap-4 w-full">
+              {!blindZ && <>
               <button disabled={!printReady} onClick={() => handlePrint('z-only')} className="w-full py-3.5 rounded-xl border border-rose-600 text-rose-600 font-bold transition-all hover:bg-rose-50 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
                 <Printer className="w-5 h-5" /> Imprimir Solo Reporte Z
               </button>
               <button disabled={!printReady} onClick={() => handlePrint('z-and-x')} className="w-full py-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
                 <Printer className="w-5 h-5" /> Imprimir Z + Cierres X
               </button>
+              </>}
               <button onClick={handleCloseWithConfirmation} className="w-full btn-secondary">
                 Cerrar y Volver
               </button>
@@ -1274,7 +1287,9 @@ export default function CierreDiaModal({ zReport, isHistory = false, headless = 
             </div>
             <h4 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">¿Confirmar Salida?</h4>
             <p className="text-slate-600 dark:text-slate-400 text-xs font-semibold mb-6 leading-relaxed">
-              Asegúrate de haber impreso o guardado los reportes necesarios (Reporte Z y Cierres X) antes de salir. No podrás volver a esta pantalla.
+              {blindZ
+                ? 'Se cierra la sesión de esta caja. El reporte Z queda guardado para el dueño.'
+                : 'Asegúrate de haber impreso o guardado los reportes necesarios (Reporte Z y Cierres X) antes de salir. No podrás volver a esta pantalla.'}
             </p>
             <div className="flex gap-3">
               <button

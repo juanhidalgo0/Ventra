@@ -5,6 +5,7 @@ import { Calendar, Monitor, User, Clock, Banknote, Smartphone, CreditCard, X, Ch
 import toast from 'react-hot-toast';
 import CierreDiaModal from '../cash-register/CierreDiaModal';
 import { useOpeningFloat } from '../../utils/openingFloat';
+import { useBlindClose, useBlindZ } from '../../utils/blindClose';
 
 interface CajaInfoModalProps {
   sessionId?: string;
@@ -92,6 +93,9 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
     return () => clearInterval(interval);
   }, [session]);
 
+  // Cierre a ciegas: el empleado no ve ventas ni lo que tendría que haber en la caja
+  const blind = useBlindClose();
+  const blindZ = useBlindZ();
   const fmt = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p);
   const fmtDateTime = (d: string) => {
     const date = new Date(d);
@@ -199,6 +203,17 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
             <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
               {/* Izquierda: totales y medios de pago */}
               <div className="md:flex-1 min-w-0 px-4 sm:px-6 pt-4 pb-3 space-y-4 md:overflow-y-auto custom-scrollbar">
+                {blind && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-4 py-3.5 flex items-start gap-3">
+                    <ShieldCheck className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-semibold text-slate-900 dark:text-slate-100">Cierre a ciegas</p>
+                      <p className="text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">Los montos de la caja los ve solo el dueño. Al cerrar el turno contá todo lo que hay y declaralo tal cual.</p>
+                      <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1.5">{salesCount} {salesCount === 1 ? 'venta' : 'ventas'} en el turno</p>
+                    </div>
+                  </div>
+                )}
+                {!blind && (<>
                 {/* Totales */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="rounded-xl bg-rose-700 text-white px-4 py-3">
@@ -259,6 +274,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
                       : 'Sin contar el fondo inicial, que siempre queda en el cajón. Las diferencias se controlan en el arqueo.'}
                   </p>
                 </section>
+                </>)}
               </div>
 
               {/* Derecha: gastos y retiros */}
@@ -308,7 +324,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
 
             {/* Acciones */}
             <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-3 shrink-0 bg-white dark:bg-slate-900">
-              <button
+              {blindZ ? <span /> : <button
                 type="button"
                 onClick={handlePrintLatestZ}
                 disabled={loadingLatestZ}
@@ -317,7 +333,7 @@ export default function CajaInfoModal({ sessionId, onClose, onTriggerClose, onTr
               >
                 <Printer className="w-4 h-4" />
                 <span>{loadingLatestZ ? 'Buscando…' : 'Reimprimir último Z'}</span>
-              </button>
+              </button>}
 
               <div className="grid grid-cols-2 sm:flex items-stretch sm:items-center gap-2.5 w-full md:w-auto">
                 <button

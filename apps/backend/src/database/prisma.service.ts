@@ -406,10 +406,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (!supplierCols.some((c) => c.name === 'scan_auto_declined')) await this.$executeRawUnsafe(`ALTER TABLE suppliers ADD COLUMN scan_auto_declined INTEGER DEFAULT 0;`);
             const purchaseCols: any[] = await this.$queryRawUnsafe(`PRAGMA table_info(purchases)`);
             if (!purchaseCols.some((c) => c.name === 'draft')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN draft TEXT DEFAULT NULL;`);
+            // Fecha de la boleta (AAAA-MM-DD): una boleta más vieja que la última compra no pisa costos ni precios
+            if (!purchaseCols.some((c) => c.name === 'invoice_date')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN invoice_date TEXT DEFAULT NULL;`);
             // "Deshacer boleta": cómo estaba cada producto antes de confirmar la compra (costo, precios, si era nuevo)
             if (!purchaseCols.some((c) => c.name === 'undo_info')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN undo_info TEXT DEFAULT NULL;`);
             // Tipo de comprobante (factura, remito, nota de credito): la factura que llega después de su remito no vuelve a sumar stock
             if (!purchaseCols.some((c) => c.name === 'doc_type')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN doc_type TEXT DEFAULT NULL;`);
+            // Comprobante fiscal (Factura A/B/C o presupuesto en negro), IVA por alícuota y percepciones, en JSON
+            if (!purchaseCols.some((c) => c.name === 'fiscal')) await this.$executeRawUnsafe(`ALTER TABLE purchases ADD COLUMN fiscal TEXT DEFAULT NULL;`);
             await this.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "product_lots" (
               "id" TEXT NOT NULL PRIMARY KEY,
               "product_id" TEXT NOT NULL,

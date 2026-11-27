@@ -21,7 +21,7 @@ export class StaffDevicesService {
 
   private async call(action: 'pair' | 'list' | 'revoke', body: Record<string, unknown> = {}) {
     const creds = this.subscription.getDeviceCredentials();
-    if (!creds) throw new BadRequestException('Para habilitar celulares, esta caja tiene que estar vinculada a tu cuenta de Ventra (Configuración → Suscripción y nube).');
+    if (!creds) throw new BadRequestException('Para habilitar celulares, esta caja tiene que estar vinculada a tu cuenta de Ventra (Configuración → Plan y nube).');
     try {
       const { data } = await axios.post(`${FUNCTIONS_URL}/ventraStaffDevices`, { ...creds, action, ...body }, { timeout: 20_000 });
       return data;

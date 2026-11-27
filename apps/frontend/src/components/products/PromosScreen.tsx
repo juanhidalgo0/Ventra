@@ -20,6 +20,7 @@ import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import PromotionModal from './PromotionModal';
 import { tradeListName } from '../../stores/businessStore';
+import { undoable } from '../../utils/undo';
 
 export default function PromosScreen() {
   const [promos, setPromos] = useState<any[]>([]);
@@ -47,14 +48,16 @@ export default function PromosScreen() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta promoción?')) return;
-    try {
-      await api.delete(`/promotions/${id}`);
-      import('../../services/onlineStore').then((m) => m.refreshOnlinePromos()).catch(() => {});
-      loadPromos();
-    } catch {
-      toast.error('Error al eliminar');
-    }
+    undoable({
+      message: 'Promoción borrada',
+      hide: () => setPromos((list: any[]) => list.filter((p) => p.id !== id)),
+      run: async () => {
+        await api.delete(`/promotions/${id}`);
+        import('../../services/onlineStore').then((m) => m.refreshOnlinePromos()).catch(() => {});
+      },
+      onUndo: () => loadPromos(),
+      onError: () => { loadPromos(); toast.error('Error al eliminar'); },
+    });
   };
 
   const filteredPromos = promos.filter(p => {

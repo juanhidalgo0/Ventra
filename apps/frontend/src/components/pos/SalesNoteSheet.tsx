@@ -64,7 +64,7 @@ const numero = (n: number) => printedNumber(n);
 /** Nombre del comercio (Configuración → Tu comercio). Es obligatorio: sin él no se imprime. */
 export const storeNameOf = () => (localStorage.getItem('gd_store_name') || '').trim();
 export class MissingStoreNameError extends Error {
-  constructor() { super('Falta el nombre del comercio. Lo carga el administrador en Configuración → General y POS.'); }
+  constructor() { super('Falta el nombre del comercio. Lo carga el administrador en Configuración → Comercio.'); }
 }
 
 /** Pie chiquito de cada hoja */

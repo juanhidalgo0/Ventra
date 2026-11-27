@@ -82,11 +82,11 @@ export function GettingStartedPill() {
   if (!steps || complete || hidden || !total) return null;
   return (
     <div ref={ref} className="relative hidden md:block">
-      <button onClick={() => setOpen((v) => !v)} title="Lo que te falta para arrancar"
-        className="flex items-center gap-2.5 h-8 pl-3 pr-3 rounded-full bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 transition-colors">
+      <button onClick={() => setOpen((v) => !v)} title="Primeros pasos: lo que te falta para arrancar"
+        className="flex items-center gap-2 xl:gap-2.5 h-8 pl-3 pr-3 rounded-full whitespace-nowrap shrink-0 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 transition-colors">
         <Rocket className="w-3.5 h-3.5 text-orange-600" />
-        <span className="text-[12px] font-semibold whitespace-nowrap">Primeros pasos {done}/{total}</span>
-        <span className="w-14 h-1.5 rounded-full bg-orange-200/70 overflow-hidden">
+        <span className="text-[12px] font-semibold whitespace-nowrap"><span className="hidden xl:inline">Primeros pasos </span>{done}/{total}</span>
+        <span className="hidden xl:block w-14 h-1.5 rounded-full bg-orange-200/70 overflow-hidden">
           <span className="block h-full rounded-full bg-orange-600 transition-all" style={{ width: `${percent}%` }} />
         </span>
       </button>

@@ -4,7 +4,7 @@ import {
   Search, Zap, PauseCircle, History, Calculator, Printer, HandCoins, ReceiptText,
   TrendingDown, Vault, Truck, User, Maximize2, Settings, ShoppingBag, LayoutDashboard,
   Package, Tag, ShoppingCart, ClipboardCheck, Wallet, Users, Receipt, BarChart3,
-  FileText, Globe, CornerDownLeft, Sparkles, MessageCircleQuestion, type LucideIcon,
+  FileText, Globe, CornerDownLeft, Sparkles, MessageCircleQuestion, Gift, Activity, Lightbulb, type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { usePlanStore } from '../../stores/planStore';
@@ -13,6 +13,12 @@ import { lockShortcuts, shortcutsLocked } from '../../utils/shortcutLock';
 import Kbd from './Kbd';
 import { openAskBusiness } from '../common/AskBusiness';
 import { openHelpChat } from '../common/tour/HelpMenu';
+import { openWhatsNew } from '../common/WhatsNew';
+import { openYearReview } from '../yearReview/YearReview';
+import { openInviteStore } from '../referral/InviteStore';
+import { openSystemStatus } from '../common/SystemStatus';
+import { openSuggestIdea } from '../common/SuggestIdea';
+import { reviewYear } from '../yearReview/yearReviewData';
 
 // Paleta de comandos (Ctrl+K): buscar cualquier acción o pantalla escribiendo.
 // Las acciones del POS no se duplican: la paleta dispara el mismo atajo de
@@ -101,9 +107,14 @@ export default function CommandPalette() {
     }
 
     list.push({ id: 'help-chat', label: 'Ayuda: preguntar cómo se hace algo', group: 'Ir a', icon: MessageCircleQuestion, keywords: 'ayuda como hago tutorial soporte', run: openHelpChat });
+    list.push({ id: 'system-status', label: 'Estado del sistema: internet, nube, impresora', group: 'Ir a', icon: Activity, keywords: 'estado sistema funciona problema internet nube impresora respaldo diagnostico soporte', run: openSystemStatus });
+    list.push({ id: 'suggest-idea', label: 'Sugerí una idea: qué le falta a Ventra', group: 'Ir a', icon: Lightbulb, keywords: 'idea sugerencia opinion falta pedido mejora queja', run: openSuggestIdea });
+    list.push({ id: 'novedades', label: 'Novedades: qué cambió en Ventra', group: 'Ir a', icon: Sparkles, keywords: 'novedades cambios version actualizacion nuevo arreglos', run: openWhatsNew });
 
     // Las pantallas del panel solo se ofrecen a un usuario administrador.
     if (isAdmin) {
+      list.push({ id: 'invite-store', label: 'Invitá un comercio y ganá un mes gratis', group: 'Ir a', icon: Gift, keywords: 'invitar referido recomendar amigo comercio mes gratis link', run: openInviteStore });
+      list.push({ id: 'year-review', label: `Tu ${reviewYear()} en Ventra: el resumen del año`, group: 'Ir a', icon: Sparkles, keywords: 'resumen anual año wrapped balance compartir instagram historia', run: () => openYearReview() });
       const go: [string, string, LucideIcon, string?][] = [
         ['Punto de venta', '/pos', ShoppingBag, 'vender caja pos'],
         ['Dashboard', '/dashboard', LayoutDashboard, 'inicio resumen metricas'],

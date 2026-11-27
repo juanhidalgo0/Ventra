@@ -15,6 +15,7 @@ import { useConfirm } from '../common/ConfirmDialog';
 import { lockShortcuts } from '../../utils/shortcutLock';
 import { readArqueoDraft, saveArqueoDraft, clearArqueoDraft } from '../../utils/arqueoDraft';
 import { VentriImg, useVentri } from '../common/Ventri';
+import { useBlindClose } from '../../utils/blindClose';
 
 interface CierreCajaModalProps {
   session: any;
@@ -55,6 +56,8 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
 
   const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
   const ventri = useVentri();
+  // Cierre a ciegas (lo activa el dueño): el empleado no ve lo esperado ni la diferencia
+  const blind = useBlindClose();
 
   // Mientras dura el cierre no se cierra la sesión de esta terminal: se cierra recién
   // cuando el cajero sale del cartel (así puede imprimir el comprobante)
@@ -417,6 +420,34 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
     </div>
   );
 
+  /** A ciegas: solo lo que declaró el empleado, por medio, sin lo esperado ni la diferencia */
+  const blindSummary = (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 text-left text-[13.5px] overflow-hidden tabular-nums">
+      {reviewRows.map((r) => (
+        <div key={r.key} className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between gap-3">
+            <span className="font-medium text-slate-800 dark:text-slate-200">{r.label}</span>
+            <span className="font-semibold text-slate-900 dark:text-slate-100">{fmt(r.declared)}</span>
+          </div>
+          {r.terminals.length > 1 && (
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{r.terminals.map((t, i) => `Terminal ${i + 1}: ${fmt(t)}`).join(' · ')}</p>
+          )}
+        </div>
+      ))}
+      <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 flex justify-between font-semibold">
+        <span className="text-slate-900 dark:text-slate-100">Total declarado</span>
+        <span className="text-slate-900 dark:text-slate-100">{fmt(totalDeclared)}</span>
+      </div>
+    </div>
+  );
+  const summary = blind ? blindSummary : diffSummary;
+
+  // Cargas virtuales: su efectivo se separa del cajón antes de contar (no es plata del negocio)
+  const virtualLoads = [
+    { key: 'v1', label: 'Carga virtual 1', total: virtual1SalesTotal, cash: virtual1SalesBreakdown.CASH || 0 },
+    { key: 'v2', label: 'Carga virtual 2', total: virtual2SalesTotal, cash: virtual2SalesBreakdown.CASH || 0 },
+  ].filter((v) => v.total >= 0.5);
+
   const perfMode = typeof window !== 'undefined' && localStorage.getItem('performance_mode') === 'true';
   const MotionDiv = (perfMode ? 'div' : motion.div) as any;
 
@@ -497,8 +528,17 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5">
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 sm:px-4 py-2.5 sm:py-3 min-w-0">
                   <p className="text-[12px] sm:text-[12.5px] text-slate-500 dark:text-slate-400 truncate">Ventas del turno</p>
-                  <p className="text-[17px] sm:text-[22px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight truncate">{fmt(shiftSalesTotal)}</p>
-                  <p className="text-[12px] text-slate-500 dark:text-slate-400">{shiftSalesCount} {shiftSalesCount === 1 ? 'venta' : 'ventas'}</p>
+                  {blind ? (
+                    <>
+                      <p className="text-[17px] sm:text-[22px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight truncate">{shiftSalesCount}</p>
+                      <p className="text-[12px] text-slate-500 dark:text-slate-400">{shiftSalesCount === 1 ? 'venta' : 'ventas'}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[17px] sm:text-[22px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight truncate">{fmt(shiftSalesTotal)}</p>
+                      <p className="text-[12px] text-slate-500 dark:text-slate-400">{shiftSalesCount} {shiftSalesCount === 1 ? 'venta' : 'ventas'}</p>
+                    </>
+                  )}
                 </div>
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 sm:px-4 py-2.5 sm:py-3 min-w-0">
                   <p className="text-[12px] sm:text-[12.5px] text-slate-500 dark:text-slate-400 truncate">Gastos</p>
@@ -511,6 +551,27 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <p className="text-[12px] text-slate-500 dark:text-slate-400">{movements.filter((m: any) => m.type === 'WITHDRAWAL').length} cargados</p>
                 </div>
               </div>
+              {virtualLoads.length > 0 && (
+                <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 mb-5">
+                  <p className="text-[13.5px] font-semibold text-amber-900 dark:text-amber-200">Separá las cargas virtuales antes de contar</p>
+                  <p className="text-[12.5px] text-amber-800/90 dark:text-amber-300/80 mt-0.5">Esa plata no entra en el arqueo: sacala del cajón y contá el resto.</p>
+                  <div className="mt-2 space-y-1.5">
+                    {virtualLoads.map((v) => (
+                      <div key={v.key} className="flex items-baseline justify-between gap-3 text-[13.5px]">
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{v.label}</span>
+                        <span className="text-right">
+                          <span className="text-[17px] font-extrabold text-slate-900 dark:text-slate-100">{fmt(v.cash)}</span>
+                          <span className="text-[12px] text-slate-600 dark:text-slate-300"> en efectivo</span>
+                          {Math.abs(v.total - v.cash) >= 0.5 && (
+                            <span className="block text-[12px] text-slate-600 dark:text-slate-300">de {fmt(v.total)} cobrado (el resto, con tarjeta o QR)</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-3">
                 <div>
                   <h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Gastos y retiros del turno</h3>
@@ -584,7 +645,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                     <p className="text-[12px] text-emerald-700/90 dark:text-emerald-300/80 mt-0.5 leading-snug">No lo cuentes: queda en el cajón.</p>
                   </div>
                 )}
-                <p className="hidden md:block text-[12px] text-slate-500 dark:text-slate-400 leading-snug mt-auto">Lo que el sistema espera se muestra recién en la revisión, así el conteo no se acomoda al número.</p>
+                <p className="hidden md:block text-[12px] text-slate-500 dark:text-slate-400 leading-snug mt-auto">{blind ? 'Cierre a ciegas: contá todo lo que hay. Lo que el sistema espera lo ve solo el dueño.' : 'Lo que el sistema espera se muestra recién en la revisión, así el conteo no se acomoda al número.'}</p>
               </aside>
 
               <div className="px-4 sm:px-6 py-4 sm:py-5">
@@ -717,7 +778,28 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
             </div>
           )}
 
-          {step === 4 && (
+          {step === 4 && blind && (
+            <div className="px-4 sm:px-7 py-4 sm:py-5 space-y-4 max-w-2xl mx-auto">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-4 py-3.5 flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-slate-700 text-white dark:bg-slate-600">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Revisá lo que declaraste</p>
+                  <p className="text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">Es un cierre a ciegas: el dueño compara lo declarado con el sistema. Si algo no está bien, volvé y corregilo.</p>
+                </div>
+              </div>
+              {blindSummary}
+              {notes.trim() && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-[13.5px]">
+                  <p className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-200 mb-1">Notas</p>
+                  <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{notes.trim()}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 4 && !blind && (
             <div className="px-4 sm:px-7 py-4 sm:py-5 space-y-4">
               {/* Resultado */}
               <div className={`rounded-xl border px-4 py-3.5 flex items-center gap-3.5 ${balance.box}`}>
@@ -832,7 +914,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               <h3 className="text-[22px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">¿Cerrar el turno?</h3>
               <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">Se guarda el arqueo y el turno queda cerrado. Después no se puede modificar.</p>
               <div className="mt-6 w-full max-w-md">
-                {diffSummary}
+                {summary}
               </div>
             </div>
           )}
@@ -841,14 +923,14 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
             <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10">
               {ventri ? (
                 // Si falta plata, no festeja: pone cara de sorpresa y lo dice
-                <VentriImg cara={differenceTotal < 0 && !isZero(differenceTotal) ? 'sorprendida' : 'guino'} size={110} entra className="mb-3" />
+                <VentriImg cara={!blind && differenceTotal < 0 && !isZero(differenceTotal) ? 'sorprendida' : 'guino'} size={110} entra className="mb-3" />
               ) : (
                 <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
               )}
               <h3 className="text-[22px] font-bold text-slate-900 dark:text-slate-100 tracking-tight">Turno cerrado</h3>
-              {ventri && (differenceTotal < 0 && !isZero(differenceTotal) ? (
+              {ventri && !blind && (differenceTotal < 0 && !isZero(differenceTotal) ? (
                 <p className="text-[15px] font-semibold text-red-700 dark:text-red-300 mt-1.5">
                   ¡Ojo! Faltan {fmt(-differenceTotal)} en el arqueo. Revisalo antes de irte.
                 </p>
@@ -859,7 +941,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
               ))}
               <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">El arqueo quedó guardado. Si lo necesitás, imprimí el comprobante del cierre X.</p>
               <div className="mt-6 w-full max-w-md">
-                {diffSummary}
+                {summary}
               </div>
               <div className="mt-6 flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
                 <button onClick={handlePrintZReport} className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-[14px] font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer">
@@ -938,9 +1020,9 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <span style={{ fontSize: '9.5px', fontWeight: 'bold', color: '#000000' }}>{new Date().toLocaleString('es-AR')}</span>
                 </div>
                 <div style={{ background: '#ffffff', padding: '1mm 2mm', borderRadius: '1.5mm', border: '2px solid #000000', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', boxSizing: 'border-box' }}>
-                  <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', display: 'block', marginBottom: '0.5mm' }}>Venta Sistema</span>
+                  <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#000000', textTransform: 'uppercase', display: 'block', marginBottom: '0.5mm' }}>{blind ? 'Cierre' : 'Venta Sistema'}</span>
                   <span style={{ fontSize: '10.5px', fontWeight: '900', color: '#000000' }}>
-                    {fmt(cashSales + debtSales + posnets.reduce((sum, p) => sum + getPosnetSales(p.id), 0))}
+                    {blind ? 'A CIEGAS' : fmt(cashSales + debtSales + posnets.reduce((sum, p) => sum + getPosnetSales(p.id), 0))}
                   </span>
                 </div>
               </div>
@@ -971,7 +1053,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                     </tbody>
                   </table>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1mm', marginTop: '2mm', fontSize: '8.5px', color: '#000000' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ventas Efectivo:</span> <span style={{ fontWeight: 'bold' }}>{fmt(cashSales)}</span></div>
+                    {!blind && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ventas Efectivo:</span> <span style={{ fontWeight: 'bold' }}>{fmt(cashSales)}</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Egresos/Gastos:</span> <span style={{ fontWeight: 'bold' }}>-{fmt(expenses)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Retiros a Caja Fuerte:</span> <span style={{ fontWeight: 'bold' }}>-{fmt(withdrawals)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm', marginTop: '0.5mm' }}>
@@ -996,9 +1078,9 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                         )}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm' }}><span style={{ fontWeight: 'bold' }}>Total Esperado:</span> <span style={{ fontWeight: 'bold' }}>{fmt(expectedCashProfits)}</span></div>
+                    {!blind && <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm' }}><span style={{ fontWeight: 'bold' }}>Total Esperado:</span> <span style={{ fontWeight: 'bold' }}>{fmt(expectedCashProfits)}</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm' }}><span style={{ fontWeight: 'bold' }}>Total Contado:</span> <span style={{ fontWeight: 'bold' }}>{fmt(cashToWithdraw)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm' }}><span style={{ fontWeight: 'bold' }}>Diferencia:</span> <span style={{ fontWeight: 'bold' }}>{(cashToWithdraw - expectedCashProfits) > 0 ? '+' : ''}{fmt(cashToWithdraw - expectedCashProfits)}</span></div>
+                    {!blind && <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000000', paddingTop: '0.8mm' }}><span style={{ fontWeight: 'bold' }}>Diferencia:</span> <span style={{ fontWeight: 'bold' }}>{(cashToWithdraw - expectedCashProfits) > 0 ? '+' : ''}{fmt(cashToWithdraw - expectedCashProfits)}</span></div>}
                   </div>
                 </div>
 
@@ -1060,9 +1142,9 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid #000000', color: '#000000', fontWeight: 'bold' }}>
                       <th style={{ textAlign: 'left', padding: '2px 3px' }}>Medio de Pago</th>
-                      <th style={{ textAlign: 'right', padding: '2px 3px' }}>Esperado</th>
+                      {!blind && <th style={{ textAlign: 'right', padding: '2px 3px' }}>Esperado</th>}
                       <th style={{ textAlign: 'right', padding: '2px 3px' }}>Declarado</th>
-                      <th style={{ textAlign: 'right', padding: '2px 3px' }}>Diferencia</th>
+                      {!blind && <th style={{ textAlign: 'right', padding: '2px 3px' }}>Diferencia</th>}
                     </tr>
                   </thead>
                   <tbody style={{ borderBottom: '1px solid #000000' }}>
@@ -1072,19 +1154,19 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                       return (
                         <tr key={p.id} style={{ borderBottom: '1px solid #000000' }}>
                           <td style={{ padding: '2px 3px', fontWeight: 'bold' }}>{p.name} (Posnet)</td>
-                          <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(expected)}</td>
+                          {!blind && <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(expected)}</td>}
                           <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(declared)}</td>
-                          <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold', color: '#000000' }}>{fmt(declared - expected)}</td>
+                          {!blind && <td style={{ padding: '2px 3px', textAlign: 'right', fontWeight: 'bold', color: '#000000' }}>{fmt(declared - expected)}</td>}
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot style={{ borderTop: '1.5px solid #000000' }}>
                     <tr style={{ fontWeight: 'bold' }}>
-                      <td colSpan={3} style={{ padding: '2px 3px', textTransform: 'uppercase' }}>TOTAL TARJETAS Y QR DECLARADO:</td>
+                      <td colSpan={blind ? 1 : 3} style={{ padding: '2px 3px', textTransform: 'uppercase' }}>TOTAL TARJETAS Y QR DECLARADO:</td>
                       <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(posnetDeclaredSum)}</td>
                     </tr>
-                    <tr style={{ fontWeight: 'bold' }}>
+                    {!blind && <><tr style={{ fontWeight: 'bold' }}>
                       <td colSpan={3} style={{ padding: '2px 3px', textTransform: 'uppercase' }}>TOTAL TARJETAS Y QR ESPERADO:</td>
                       <td style={{ padding: '2px 3px', textAlign: 'right' }}>{fmt(posnetSalesSum)}</td>
                     </tr>
@@ -1094,7 +1176,7 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                         {(posnetDeclaredSum - posnetSalesSum) > 0 ? '+' : ''}
                         {fmt(posnetDeclaredSum - posnetSalesSum)}
                       </td>
-                    </tr>
+                    </tr></>}
                   </tfoot>
                 </table>
               </div>
@@ -1131,13 +1213,13 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                   <p style={{ margin: '1mm 0 0 0', fontSize: '8.5px', color: '#000000', fontStyle: 'italic', background: '#ffffff', padding: '1.5mm', borderRadius: '1.5mm', minHeight: '8mm', border: '1.5px solid #000000' }}>{notes || 'Sin observaciones registradas para este turno.'}</p>
                 </div>
                 <div style={{ background: '#ffffff', padding: '2mm 3mm', borderRadius: '3mm', border: '2px solid #000000', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '9px' }}>
+                  {!blind && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '9px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       <span style={{ fontWeight: 'bold', color: '#000000' }}>TOTAL ESPERADO:</span>
                       <span style={{ fontSize: '7px', color: '#000000' }}>(Efectivo + Tarjetas/QR)</span>
                     </div>
                     <span style={{ fontWeight: 'bold', color: '#000000' }}>{fmt(totalExpected)}</span>
-                  </div>
+                  </div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5mm', fontSize: '9px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       <span style={{ fontWeight: 'bold', color: '#000000' }}>TOTAL DECLARADO:</span>
@@ -1145,10 +1227,10 @@ export default function CierreCajaModal({ session, isFollowedByZ = false, onClos
                     </div>
                     <span style={{ fontWeight: 'bold', color: '#000000' }}>{fmt(totalDeclared)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #000000', paddingTop: '1.5mm', fontSize: '11.5px', fontWeight: 'bold' }}>
+                  {!blind && <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #000000', paddingTop: '1.5mm', fontSize: '11.5px', fontWeight: 'bold' }}>
                     <span style={{ color: '#000000' }}>DESVIACIÓN NETO:</span>
                     <span style={{ color: '#000000' }}>{differenceTotal > 0 ? '+' : ''}{fmt(differenceTotal)}</span>
-                </div>
+                </div>}
               </div>
             </div>
           </div>

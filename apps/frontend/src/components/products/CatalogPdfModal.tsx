@@ -235,7 +235,7 @@ export default function CatalogPdfModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
             <p className="text-[11.5px] text-slate-500">
-              Lleva {store.logo ? 'el logo, ' : ''}{store.name ? `el nombre (${store.name})` : 'el nombre del comercio'}{store.phone ? ' y tu WhatsApp' : ''}: se cambian en Configuración → Tu comercio.
+              Lleva {store.logo ? 'el logo, ' : ''}{store.name ? `el nombre (${store.name})` : 'el nombre del comercio'}{store.phone ? ' y tu WhatsApp' : ''}: se cambian en Configuración → Comercio.
             </p>
           </div>
           <div className="flex-1 min-w-0 flex flex-col bg-slate-100">

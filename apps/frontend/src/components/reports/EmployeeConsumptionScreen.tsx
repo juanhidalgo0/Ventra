@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { ChevronLeft, ChevronRight, ChevronDown, Coffee, Loader2, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import { money } from '../mobile/ui';
+import ExportButtons from '../common/ExportButtons';
+import type { Report as ExportReport } from '../../utils/report';
 
 /**
  * Consumo de empleados (sin cargo): lo que cada empleado registró con su usuario en la caja,
@@ -60,6 +62,42 @@ export default function EmployeeConsumptionScreen() {
     }
   };
 
+  /** El mes en Excel o PDF: total por empleado, productos y cada consumo */
+  const buildReport = (): ExportReport | null => {
+    if (!report) return null;
+    const emps = report.employees || [];
+    return {
+      title: 'Consumo de empleados',
+      subtitle: `${monthLabel(month)} · sin cargo, valuado al costo`,
+      fileName: `Consumo de empleados ${monthLabel(month)}`,
+      summary: [
+        { label: 'Costo de lo consumido', value: report.totalCost || 0, type: 'money' },
+        { label: 'Consumos registrados', value: report.count || 0, type: 'int' },
+        { label: 'Empleados', value: emps.length, type: 'int' },
+      ],
+      tables: [
+        {
+          title: 'Por empleado',
+          columns: [{ header: 'Empleado' }, { header: 'Usuario' }, { header: 'Consumos', type: 'int' }, { header: 'Unidades', type: 'number' }, { header: 'Costo', type: 'money' }],
+          rows: emps.map((e) => [e.name, e.username || '', e.count, e.units, e.cost]),
+          totals: ['Total', '', report.count || 0, emps.reduce((t, e) => t + (e.units || 0), 0), report.totalCost || 0],
+          emptyText: 'No hubo consumos en el mes',
+        },
+        {
+          title: 'Productos por empleado',
+          columns: [{ header: 'Empleado' }, { header: 'Producto' }, { header: 'Cantidad', type: 'number' }, { header: 'Costo', type: 'money' }],
+          rows: emps.flatMap((e) => e.products.map((p) => [e.name, p.name, p.quantity, p.cost])),
+        },
+        {
+          title: 'Detalle de consumos',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'N°' }, { header: 'Empleado' }, { header: 'Productos' }, { header: 'Costo', type: 'money' }],
+          rows: emps.flatMap((e) => e.sales.map((s) => [s.createdAt, `N° ${s.saleNumber}`, e.name, s.items.map((i) => `${qty(i.quantity)} ${i.name}`).join(', '), s.cost]))
+            .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+        },
+      ],
+    };
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-4xl w-full mx-auto space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -67,16 +105,19 @@ export default function EmployeeConsumptionScreen() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2"><Coffee className="w-5 h-5 text-emerald-600" /> Consumo propio</h1>
           <p className="text-[13px] text-slate-500">Sin cargo: descontó el stock y no tocó la caja. Valuado a lo que te costó la mercadería.</p>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+        <ExportButtons build={buildReport} disabled={!report} />
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
           <button onClick={() => shift(-1)} className="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center" aria-label="Mes anterior"><ChevronLeft className="w-4 h-4" /></button>
           <span className="px-2 text-[14px] font-semibold text-slate-800 min-w-[150px] text-center">{monthLabel(month)}</span>
           <button onClick={() => shift(1)} disabled={month >= monthKey(new Date())} className="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center disabled:opacity-30" aria-label="Mes siguiente"><ChevronRight className="w-4 h-4" /></button>
         </div>
+        </div>
       </div>
 
       {!enabled && (
         <p className="text-[13px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          El consumo de empleados está apagado. Activalo en <a href="#/settings" className="underline font-bold">Configuración → Parámetros del sistema</a> para que aparezca el botón en la caja.
+          El consumo de empleados está apagado. Activalo en <a href="#/settings?tab=caja" className="underline font-bold">Configuración → Caja y cobro</a> para que aparezca el botón en la caja.
         </p>
       )}
 

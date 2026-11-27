@@ -125,6 +125,22 @@ api.defaults.adapter = async (config: any) => {
   }
   else if (url.startsWith('/products/images/search')) data = products.filter((p) => p.imageUrl).slice(0, 8).map((p) => ({ url: p.imageUrl, thumb: p.imageUrl, title: p.name, source: 'Catálogo de ejemplo' }));
   else if (url.startsWith('/products/search-external-image/')) data = { imageUrl: products.find((p) => p.imageUrl)?.imageUrl || null };
+  else if (url === '/products/count') data = products.length;
+  // Aumentar precios (PriceEditorModal): busca por nombre/código y categoría; guardar cambia los precios del catálogo
+  else if (url === '/products/price-editor/last') data = null;
+  else if (url === '/products/price-editor/apply' && m === 'post') {
+    const items: { id: string; prices: Record<string, number> }[] = JSON.parse(config.data || '{}').items || [];
+    for (const it of items) { const p: any = products.find((x) => x.id === it.id); if (p) { Object.assign(p, it.prices); if (it.prices.salePrice) p.price = it.prices.salePrice; } }
+    data = { updated: items.length };
+  }
+  else if (url === '/products/price-editor') {
+    const q = String(config.params?.search || '').toLowerCase(), cat = config.params?.categoryId || '';
+    data = { truncated: false, products: products
+      .filter((p) => (!q || p.name.toLowerCase().includes(q) || String(p.barcode || '').includes(q)) && (!cat || p.categoryId === cat))
+      .map((p) => ({ id: p.id, name: p.name, barcode: p.barcode, sku: null, brand: null, category: p.category?.name || null, supplier: null,
+        costPrice: p.costPrice, salePrice: p.salePrice, wholesalePrice: null, tradePrice: null, packPrice: null, unitsPerPack: 1, priceChangedAt: now - 40 * 86400e3 })) };
+  }
+  else if (url.startsWith('/products/reviews')) data = [];
   else if (/^\/products\/[^/]+$/.test(url) && !url.startsWith('/products/low-stock')) {
     const id = decodeURIComponent(url.split('/').pop() || '');
     const p: any = products.find((x) => x.id === id);

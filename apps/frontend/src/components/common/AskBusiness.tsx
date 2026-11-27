@@ -162,8 +162,8 @@ export function AskBusinessButton() {
   return (
     <>
       <button onClick={() => setOpen({})} title="Preguntale a tu negocio: con tus palabras, responde con tus números"
-        className="flex items-center gap-1.5 h-8 px-2.5 lg:px-3 rounded-full whitespace-nowrap bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 text-[12px] font-semibold transition-colors">
-        <Sparkles className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Preguntale a tu negocio</span>
+        className="flex items-center gap-1.5 h-8 px-2.5 xl:px-3 rounded-full whitespace-nowrap shrink-0 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 text-[12px] font-semibold transition-colors">
+        <Sparkles className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Preguntale a tu negocio</span>
       </button>
       {open && createPortal(
         <div className="fixed inset-0 z-[80] bg-slate-900/30 flex justify-end" onClick={() => setOpen(false)}>

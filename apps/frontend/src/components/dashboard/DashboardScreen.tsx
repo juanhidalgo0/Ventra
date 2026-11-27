@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
-import toast from 'react-hot-toast';
 import { 
   DollarSign, 
   ShoppingCart, 
@@ -19,8 +18,7 @@ import {
   Clock,
   ArrowRight,
   FileText,
-  Calculator,
-  Download
+  Calculator
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -34,7 +32,8 @@ import {
 } from 'recharts';
 import LowStockAlertsModal from './LowStockAlertsModal';
 import { PageHeader, Panel, StatCard, EmptyState, Segmented, ui } from '../ui/Page';
-import { escapeHtml } from '../../utils/escapeHtml';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 export default function DashboardScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -108,179 +107,65 @@ export default function DashboardScreen() {
 
   const fmt = (p: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(p || 0);
 
-  const downloadCSV = (filename: string, headers: string[], rows: any[][]) => {
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadPDF = (title: string, htmlContent: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document || iframe.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(`
-        <html>
-          <head>
-            <title>${escapeHtml(title)}</title>
-            <style>
-              body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
-              h1 { font-size: 24px; color: #0f172a; margin-bottom: 5px; }
-              h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-top: 0; margin-bottom: 30px; }
-              .header { border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 30px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-              th { background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700; text-align: left; padding: 12px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
-              td { padding: 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-              .text-right { text-align: right; }
-              .font-bold { font-weight: bold; }
-              .grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
-              .card { background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 15px; border-radius: 12px; }
-              .card-title { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
-              .card-value { font-size: 18px; font-weight: bold; color: #0f172a; }
-              .footer { margin-top: 50px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 20px; }
-            </style>
-          </head>
-          <body>
-            ${htmlContent}
-            <div class="footer">Generado por Sistema de Gestión de Kiosco - ${new Date().toLocaleDateString('es-AR')}</div>
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.frameElement.remove(); }, 100);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      doc.close();
-    }
-  };
-
-  const exportConsolidatedExcel = () => {
-    if (!summary || !dashboardData) return;
-    const { from, to } = getDateRange();
-    const periodStr = from ? `${from.split('T')[0]}_a_${to.split('T')[0]}` : 'General';
-    
-    const rows = [
-      ['Reporte Consolidado de Dashboard - Kiosco'],
-      ['Período', periodStr],
-      ['Fecha de Generación', new Date().toLocaleDateString('es-AR')],
-      [],
-      ['MÉTRICAS FINANCIERAS'],
-      ['Métrica', 'Valor'],
-      ['Ventas Totales', fmt(summary.totalRevenue)],
-      ['Costo de Mercadería', fmt(summary.totalCost)],
-      ['Egresos Operativos', fmt(summary.expenses)],
-      ['Ganancia Neta', fmt(summary.totalRevenue - summary.totalCost - summary.expenses)],
-      ['Rendimiento Neto', summary.totalRevenue > 0 ? `${Math.round(((summary.totalRevenue - summary.totalCost - summary.expenses) / summary.totalRevenue) * 100)}%` : '0%'],
-      [],
-      ['TOP 10 PRODUCTOS VENDIDOS'],
-      ['Producto', 'Unidades Vendidas', 'Ingresos', 'Stock Actual'],
-      ...(dashboardData.topProducts || []).map((p: any) => [p.name, p.quantity, fmt(p.revenue), p.stock]),
-      [],
-      ['TOP CLIENTES'],
-      ['Cliente', 'Compras', 'Total Gastado'],
-      ...(dashboardData.topClients || []).map((c: any) => [c.name, c.salesCount, fmt(c.totalSpent)])
-    ];
-    
-    downloadCSV(`Consolidado_Dashboard_${periodStr}.csv`, [], rows);
-    toast.success('Excel exportado correctamente');
-  };
-
-  const exportConsolidatedPDF = () => {
-    if (!summary || !dashboardData) return;
-    const { from, to } = getDateRange();
-    const periodStr = from ? `${from.split('T')[0]} hasta ${to.split('T')[0]}` : 'General';
-
-    const productsHtml = (dashboardData.topProducts || []).map((p: any, i: number) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td class="font-bold">${escapeHtml(p.name)}</td>
-        <td class="text-right">${p.quantity} u.</td>
-        <td class="text-right">${fmt(p.revenue)}</td>
-        <td class="text-right">${p.stock}</td>
-      </tr>
-    `).join('');
-
-    const clientsHtml = (dashboardData.topClients || []).map((c: any, i: number) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td class="font-bold">${escapeHtml(c.name)}</td>
-        <td class="text-right">${c.salesCount}</td>
-        <td class="text-right">${fmt(c.totalSpent)}</td>
-      </tr>
-    `).join('');
-
-    const htmlContent = `
-      <div class="header">
-        <h1>REPORTE FINANCIERO CONSOLIDADO</h1>
-        <h2>Período: ${periodStr}</h2>
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <div class="card-title">Ganancia Bruta</div>
-          <div class="card-value">${fmt(summary.totalRevenue)}</div>
-        </div>
-        <div class="card">
-          <div class="card-title">Egresos Operativos</div>
-          <div class="card-value" style="color: #ef4444;">${fmt(summary.expenses)}</div>
-        </div>
-        <div class="card">
-          <div class="card-title">Ganancia Neta</div>
-          <div class="card-value" style="color: #10b981;">${fmt(summary.totalRevenue - summary.totalCost - summary.expenses)}</div>
-        </div>
-        <div class="card">
-          <div class="card-title">Rendimiento Neto</div>
-          <div class="card-value">${summary.totalRevenue > 0 ? Math.round(((summary.totalRevenue - summary.totalCost - summary.expenses) / summary.totalRevenue) * 100) : 0}%</div>
-        </div>
-      </div>
-
-      <h3 style="font-size: 14px; text-transform: uppercase; color: #475569; margin-top: 30px;">Top Productos Vendidos</h3>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 5%">#</th>
-            <th>Producto</th>
-            <th class="text-right">Cant. Vendida</th>
-            <th class="text-right">Ingresos</th>
-            <th class="text-right">Stock</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${productsHtml || '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">Sin movimientos en el período</td></tr>'}
-        </tbody>
-      </table>
-
-      <h3 style="font-size: 14px; text-transform: uppercase; color: #475569; margin-top: 30px;">Top Clientes</h3>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 5%">#</th>
-            <th>Cliente</th>
-            <th class="text-right">Compras</th>
-            <th class="text-right">Total Gastado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${clientsHtml || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Sin movimientos en el período</td></tr>'}
-        </tbody>
-      </table>
-    `;
-
-    downloadPDF(`Consolidado_${periodStr.replace(/ /g, '')}`, htmlContent);
+  /** El tablero del período en Excel o PDF: indicadores, resumen del mes, día por día y rankings */
+  const buildReport = (): Report | null => {
+    if (!summary || !dashboardData) return null;
+    const rev = summary.totalRevenue || 0;
+    const net = rev - (summary.totalCost || 0) - (summary.expenses || 0);
+    const ms = summary.monthlyStats || {};
+    const history: any[] = dashboardData.history || [];
+    return {
+      title: 'Dashboard del negocio',
+      subtitle: periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1),
+      fileName: `Dashboard ${periodLabel}`,
+      summary: [
+        { label: 'Ventas', value: rev, type: 'money' },
+        { label: 'Costo de mercadería', value: summary.totalCost || 0, type: 'money' },
+        { label: 'Egresos operativos', value: summary.expenses || 0, type: 'money', tone: summary.expenses > 0 ? 'bad' : undefined },
+        { label: 'Ganancia neta', value: net, type: 'money', tone: net >= 0 ? 'good' : 'bad' },
+        { label: 'Rendimiento neto', value: rev > 0 ? (net / rev) * 100 : 0, type: 'percent' },
+        { label: 'Transacciones', value: summary.totalSales || 0, type: 'int' },
+        { label: 'Ticket promedio', value: summary.totalSales > 0 ? rev / summary.totalSales : 0, type: 'money' },
+        { label: 'Productos activos', value: summary.totalProducts || 0, type: 'int' },
+        { label: 'Alertas de stock', value: summary.lowStockCount || 0, type: 'int', tone: summary.lowStockCount > 0 ? 'warn' : undefined },
+        { label: 'Saldo de cuentas corrientes', value: summary.totalClientBalance || 0, type: 'money' },
+        { label: 'Efectivo en cajas abiertas', value: summary.activeSessionsCash || 0, type: 'money' },
+        { label: 'Deuda con proveedores', value: summary.totalSupplierDebt || 0, type: 'money', tone: summary.totalSupplierDebt > 0 ? 'bad' : undefined },
+      ],
+      tables: [
+        {
+          title: 'Resumen del mes',
+          columns: [{ header: 'Concepto' }, { header: 'Importe', type: 'money' }],
+          rows: [
+            ['Efectivo del mes', ms.cash || 0],
+            ['Facturación', ms.revenue || 0],
+            ['Compras del mes', ms.purchases || 0],
+            ['Pagos a proveedores', ms.supplierPayments || 0],
+            ['Ventas por cajas', ms.boxSales || 0],
+            ['Consumo interno', ms.internalConsumption || 0],
+          ],
+        },
+        {
+          title: 'Ingresos y ganancia por día',
+          columns: [{ header: 'Fecha', type: 'date' }, { header: 'Ingresos', type: 'money' }, { header: 'Ganancia neta', type: 'money' }],
+          rows: history.map((h) => [/^\d{4}-\d{2}-\d{2}$/.test(h.date) ? `${h.date}T12:00:00` : h.date, h.sales || 0, h.profit || 0]),
+          totals: history.length ? ['Total', history.reduce((s, h) => s + (h.sales || 0), 0), history.reduce((s, h) => s + (h.profit || 0), 0)] : undefined,
+          emptyText: 'Sin ventas en el período',
+        },
+        {
+          title: 'Productos más vendidos',
+          columns: [{ header: '#', type: 'int' }, { header: 'Producto' }, { header: 'Unidades vendidas', type: 'number' }, { header: 'Ingresos', type: 'money' }, { header: 'Stock actual', type: 'number' }],
+          rows: (dashboardData.topProducts || []).map((p: any, i: number) => [i + 1, p.name, p.quantity, p.revenue, p.stock]),
+          emptyText: 'Sin ventas en el período',
+        },
+        {
+          title: 'Mejores clientes',
+          columns: [{ header: '#', type: 'int' }, { header: 'Cliente' }, { header: 'Compras', type: 'int' }, { header: 'Total comprado', type: 'money' }],
+          rows: (dashboardData.topClients || []).map((c: any, i: number) => [i + 1, c.name, c.salesCount, c.totalSpent]),
+          emptyText: 'Sin ventas a cuenta corriente en el período',
+        },
+      ],
+    };
   };
 
   const periodLabel = filterMode === 'month'
@@ -351,20 +236,7 @@ export default function DashboardScreen() {
                 </>
               )}
               <span className="hidden sm:block w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
-              <button
-                onClick={exportConsolidatedExcel}
-                className={`${ui.btn} ${ui.btnSecondary}`}
-                title="Descargar Excel con todos los datos consolidados del período"
-              >
-                <Download className="w-4 h-4 text-emerald-600" /> Excel
-              </button>
-              <button
-                onClick={exportConsolidatedPDF}
-                className={`${ui.btn} ${ui.btnDark}`}
-                title="Exportar reporte financiero PDF del período"
-              >
-                <FileText className="w-4 h-4" /> PDF consolidado
-              </button>
+              <ExportButtons build={buildReport} />
             </>
           }
         />
@@ -449,7 +321,7 @@ export default function DashboardScreen() {
           <Panel title="Resumen financiero">
             <dl className="divide-y divide-slate-100 dark:divide-slate-800">
               {[
-                { label: 'Ganancia bruta', val: fmt(summary?.totalRevenue || 0), cls: 'text-slate-900 dark:text-white', icon: ArrowUpRight, iconCls: 'text-emerald-500' },
+                { label: 'Ventas', val: fmt(summary?.totalRevenue || 0), cls: 'text-slate-900 dark:text-white', icon: ArrowUpRight, iconCls: 'text-emerald-500' },
                 { label: 'Egresos operativos', val: fmt(summary?.expenses || 0), cls: summary?.expenses > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white', icon: ArrowDownRight, iconCls: 'text-red-500' },
                 { label: 'Ganancia neta', val: fmt(netProfit), cls: netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600', icon: DollarSign, iconCls: 'text-emerald-500' },
                 { label: 'Rendimiento neto', val: `${netYield}%`, cls: 'text-slate-900 dark:text-white', icon: PieChart, iconCls: 'text-slate-400' },

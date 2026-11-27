@@ -9,6 +9,8 @@ import { ScreenHeader, money } from '../mobile/ui';
 import { depositPaid, paidInFull } from '../../services/agendaCore';
 import { subscribeNutriPayments, type NutriPayment } from '../../services/nutri';
 import { useBusinessStore, isConsultorio } from '../../stores/businessStore';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 const DEPOSIT_METHOD = 'Mercado Pago (online)';
 const msOf = (t: any) => (t?.toMillis ? t.toMillis() : 0);
@@ -116,6 +118,63 @@ export default function AgendaPaymentsScreen() {
 
   const subtitle = loading ? 'Cargando…' : `${money(data.total)} cobrado · ${data.paid.length} turno${data.paid.length === 1 ? '' : 's'}`;
   const isCurrent = from <= today && today <= to;
+
+  /** Los cobros del período en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (loading) return null;
+    const label = periodLabel(period, from, to, today);
+    const at = (b: Booking) => new Date(new Date(`${b.dateKey}T00:00:00`).getTime() + (b.startMin || 0) * 60000);
+    return {
+      title: 'Cobros de turnos',
+      subtitle: label.charAt(0).toUpperCase() + label.slice(1),
+      fileName: `Cobros de turnos ${label}`,
+      summary: [
+        { label: 'Cobrado', value: data.total, type: 'money', tone: 'good' },
+        { label: 'Turnos cobrados', value: data.paid.length, type: 'int' },
+        { label: 'Promedio por turno', value: data.paid.length ? data.total / data.paid.length : 0, type: 'money' },
+        { label: 'Sin cobrar', value: data.unpaid.length, type: 'int', tone: data.unpaid.length ? 'warn' : undefined },
+        ...(data.refunds.length ? [{ label: 'Para devolver', value: data.refunds.reduce((t, r) => t + r.refund, 0), type: 'money' as const, tone: 'bad' as const }] : []),
+      ],
+      tables: [
+        {
+          title: 'Por medio de pago',
+          columns: [{ header: 'Medio de pago' }, { header: 'Cobrado', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: data.methods.map(([m, v]) => [m, v, data.total ? (v / data.total) * 100 : 0]),
+          totals: ['Total', data.total, 100],
+          emptyText: 'Sin cobros en el período',
+        },
+        {
+          title: 'Por profesional',
+          columns: [{ header: 'Profesional' }, { header: 'Cobrado', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: data.staff.map(([w, v]) => [w, v, data.total ? (v / data.total) * 100 : 0]),
+          emptyText: 'Sin cobros en el período',
+        },
+        {
+          title: 'Cobros',
+          columns: [{ header: 'Turno', type: 'datetime' }, { header: 'Cliente' }, { header: 'Servicio' }, { header: 'Profesional' }, { header: 'Medio de pago' }, { header: 'Cobrado en el local', type: 'money' }, { header: 'Pagado online', type: 'money' }, { header: 'Total', type: 'money' }],
+          rows: data.paid.map(({ b, pay, online, amount }) => [at(b), b.customerName || '', b.serviceName || '', b.staffName || '', pay !== null ? b.payment?.method || '' : '', pay, online || null, amount]),
+          totals: ['Total', '', '', '', '', data.paid.reduce((t, r) => t + (r.pay || 0), 0), data.paid.reduce((t, r) => t + (r.online || 0), 0), data.paid.reduce((t, r) => t + r.amount, 0)],
+          emptyText: 'Sin cobros en el período',
+        },
+        ...(data.packs.length ? [{
+          title: 'Packs de consultas',
+          columns: [{ header: 'Fecha', type: 'date' as const }, { header: 'Paciente' }, { header: 'Concepto' }, { header: 'Medio de pago' }, { header: 'Importe', type: 'money' as const }],
+          rows: data.packs.map((k) => [`${k.dateKey}T12:00:00`, k.patientName, k.concept, k.method, k.amount]),
+        }] : []),
+        ...(data.unpaid.length ? [{
+          title: 'Sin cobrar',
+          columns: [{ header: 'Turno', type: 'datetime' as const }, { header: 'Cliente' }, { header: 'Servicio' }, { header: 'Profesional' }, { header: 'Falta cobrar', type: 'money' as const }],
+          rows: data.unpaid.map((b) => [at(b), b.customerName || '', b.serviceName || '', b.staffName || '', b.price ? Math.max(0, b.price - depositPaid(b)) : null]),
+        }] : []),
+        ...(data.refunds.length ? [{
+          title: 'Para devolver',
+          columns: [{ header: 'Turno', type: 'datetime' as const }, { header: 'Cliente' }, { header: 'Servicio' }, { header: 'Importe', type: 'money' as const }],
+          rows: data.refunds.map(({ b, refund }) => [at(b), b.customerName || '', b.serviceName || '', refund]),
+        }] : []),
+      ],
+      notes: ['La plata cuenta el día que entró (cobro o pago online), no el día del turno.'],
+    };
+  };
 
   const body = !storeId ? (
     <p className="p-10 text-center text-[14px] text-slate-500">Primero armá tu página de turnos en Agenda.</p>
@@ -253,7 +312,7 @@ export default function AgendaPaymentsScreen() {
   if (mobile) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <ScreenHeader back={!agendaOnly} title="Cobros" subtitle={subtitle} />
+        <ScreenHeader back={!agendaOnly} title="Cobros" subtitle={subtitle} action={<ExportButtons variant="header" build={buildReport} disabled={loading} />} />
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{body}</div>
       </div>
     );
@@ -262,8 +321,13 @@ export default function AgendaPaymentsScreen() {
     <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
       <div className="max-w-5xl w-full mx-auto px-6 pt-6">
         <p className="text-[12px] font-semibold tracking-[0.14em] text-rose-600">AGENDA</p>
-        <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Cobros</h1>
-        <p className="text-[13px] text-slate-500">{subtitle}</p>
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-[26px] font-bold text-slate-900 tracking-tight">Cobros</h1>
+            <p className="text-[13px] text-slate-500">{subtitle}</p>
+          </div>
+          <ExportButtons build={buildReport} disabled={loading} />
+        </div>
       </div>
       {body}
     </div>

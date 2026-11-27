@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { GraduationCap, PlayCircle, Keyboard, X, ChevronRight, ChevronUp, MessageCircleQuestion } from 'lucide-react';
+import { GraduationCap, PlayCircle, Keyboard, X, ChevronRight, ChevronUp, MessageCircleQuestion, Sparkles, Lightbulb } from 'lucide-react';
+import { openWhatsNew, publishedNovedades } from '../WhatsNew';
+import { openSuggestIdea } from '../SuggestIdea';
 import { tourSteps, ROUTE_HELP, ROUTE_SHORTCUTS, type HelpEntry } from './tours';
 import { getTourCtx } from './tourContext';
 import { useTourStore } from './tourStore';
@@ -108,8 +110,7 @@ export default function HelpMenu({ pathname, placement, iconOnly }: { pathname: 
 
   const onButton = () => {
     const list = entries.filter(isAvailable);
-    // Sin recorridos ni atajos en esta pantalla: directo a preguntarle a la ayuda
-    if (!list.length && !shortcuts) { setShowChat(true); return; }
+    // Sin recorridos, atajos ni novedades: directo a preguntarle a la ayuda
     setAvailable(list);
     setOpen((o) => !o);
   };
@@ -167,6 +168,30 @@ export default function HelpMenu({ pathname, placement, iconOnly }: { pathname: 
                   >
                     <Keyboard className="w-5 h-5 text-slate-500 shrink-0" />
                     <span className="flex-1 text-[13px] font-semibold text-slate-800 dark:text-slate-100">Atajos de teclado</span>
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+                  </button>
+                </>
+              )}
+              <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5 mx-2" />
+              <button
+                onClick={() => { setOpen(false); openSuggestIdea(); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+              >
+                <Lightbulb className="w-5 h-5 text-amber-500 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100">Sugerí una idea</span>
+                  <span className="block text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug">Contanos qué le falta a Ventra</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+              </button>
+              {publishedNovedades().length > 0 && (
+                <>
+                  <button
+                    onClick={() => { setOpen(false); openWhatsNew(); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+                  >
+                    <Sparkles className="w-5 h-5 text-slate-500 shrink-0" />
+                    <span className="flex-1 text-[13px] font-semibold text-slate-800 dark:text-slate-100">Novedades</span>
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
                   </button>
                 </>

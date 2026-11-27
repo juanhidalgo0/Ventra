@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import GastosModal from '../pos/GastosModal';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
+import { undoable } from '../../utils/undo';
 
 export default function GastosScreen() {
   const { user } = useAuthStore();
@@ -102,14 +105,13 @@ export default function GastosScreen() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('¿Seguro que querés eliminar este gasto? Esto anulará el egreso del efectivo de caja.')) return;
-    try {
-      await api.delete(`/cash/movement/${id}`);
-      loadMovements();
-      loadCurrentSession();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al eliminar el gasto. ¿La caja ya está cerrada?');
-    }
+    undoable({
+      message: 'Gasto borrado',
+      hide: () => setMovements((list: any[]) => list.filter((m) => m.id !== id)),
+      run: async () => { await api.delete(`/cash/movement/${id}`); loadMovements(); loadCurrentSession(); },
+      onUndo: () => loadMovements(),
+      onError: (err) => { loadMovements(); toast.error(err?.response?.data?.message || 'Error al eliminar el gasto. ¿La caja ya está cerrada?'); },
+    });
   };
 
   const parseMovement = (mov: any) => {
@@ -191,6 +193,53 @@ export default function GastosScreen() {
   const formatPrice = (price: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(price);
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+  /** Los gastos del mes (con los filtros de la pantalla) en Excel o PDF */
+  const buildReport = (): Report => {
+    const period = `${months[selectedMonth]} ${selectedYear}`;
+    const emp = selectedEmployeeFilter !== 'all' ? allUsers.find((u) => u.id === selectedEmployeeFilter) : null;
+    const filters = [
+      selectedTab !== 'ALL' && (selectedTab === 'FIXED' ? 'Solo fijos' : 'Solo variables'),
+      selectedCategoryFilter !== 'all' && `Categoría: ${selectedCategoryFilter}`,
+      emp && `Empleado: ${emp.fullName || emp.username}`,
+      searchQuery && `Búsqueda: "${searchQuery}"`,
+    ].filter(Boolean);
+    const byCat = new Map<string, { n: number; total: number }>();
+    for (const m of filteredMovements) {
+      const c = byCat.get(m.category) || { n: 0, total: 0 };
+      c.n++; c.total += m.amount;
+      byCat.set(m.category, c);
+    }
+    const cats = [...byCat.entries()].sort((a, b) => b[1].total - a[1].total);
+    const rows = [...filteredMovements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return {
+      title: 'Gastos',
+      subtitle: [period, ...filters].join(' · '),
+      fileName: `Gastos ${period}`,
+      summary: [
+        { label: isFiltered ? 'Total filtrado' : 'Total del mes', value: filteredTotalAmount, type: 'money', tone: 'bad' },
+        { label: 'Gastos fijos', value: fixedAmount, type: 'money' },
+        { label: 'Gastos variables', value: variableAmount, type: 'money' },
+        { label: 'Cantidad de gastos', value: filteredMovements.length, type: 'int' },
+      ],
+      tables: [
+        {
+          title: 'Por categoría',
+          columns: [{ header: 'Categoría' }, { header: 'Tipo' }, { header: 'Gastos', type: 'int' }, { header: 'Total', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: cats.map(([c, v]) => [c, ['Servicios (Luz, Agua, etc)', 'Sueldos / Adelantos', 'Impuestos'].includes(c) ? 'Fijo' : 'Variable', v.n, v.total, filteredTotalAmount > 0 ? (v.total / filteredTotalAmount) * 100 : 0]),
+          totals: ['Total', '', filteredMovements.length, filteredTotalAmount, 100],
+          emptyText: 'Sin gastos en el mes',
+        },
+        {
+          title: 'Detalle de gastos',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Categoría' }, { header: 'Tipo' }, { header: 'Descripción' }, { header: 'Registró' }, { header: 'Caja' }, { header: 'Monto', type: 'money' }],
+          rows: rows.map((m) => [m.createdAt, m.category, m.isFixed ? 'Fijo' : 'Variable', m.description, m.user?.fullName || '', m.session?.terminalName || '', m.amount]),
+          totals: ['Total', '', '', '', '', '', filteredTotalAmount],
+          emptyText: 'Sin gastos en el mes',
+        },
+      ],
+    };
+  };
+
   const getCategoryStyles = (cat: string) => {
     const map: any = {
       'Otro': 'bg-slate-50 text-slate-600 border-slate-300',
@@ -213,6 +262,7 @@ export default function GastosScreen() {
           </h1>
           <p className="text-[11px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">Control de gastos operativos</p>
         </div>
+        <ExportButtons build={buildReport} disabled={isLoading} />
       </div>
 
       {/* Grid Cards (Total, Fijos, Variables) */}

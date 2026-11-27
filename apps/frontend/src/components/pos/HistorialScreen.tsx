@@ -24,7 +24,8 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { hasFeature } from '../../stores/businessStore';
 import SalesNotePreview from './SalesNotePreview';
-import { escapeHtml } from '../../utils/escapeHtml';
+import ExportButtons from '../common/ExportButtons';
+import type { Report } from '../../utils/report';
 
 const SALES_LIST_LIMIT = 1000;
 
@@ -63,199 +64,6 @@ export default function HistorialScreen() {
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
   const years = [2025, 2026, 2027, 2028];
-
-  const downloadCSV = (filename: string, headers: string[], rows: any[][]) => {
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadPDF = (title: string, htmlContent: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document || iframe.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(`
-        <html>
-          <head>
-            <title>${escapeHtml(title)}</title>
-            <style>
-              body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 40px; }
-              h1 { font-size: 22px; color: #0f172a; margin-bottom: 5px; }
-              h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-top: 0; margin-bottom: 25px; }
-              .header { border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
-              th { background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700; text-align: left; padding: 10px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.05em; }
-              td { padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-              .text-right { text-align: right; }
-              .font-bold { font-weight: bold; }
-              .grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-              .card { background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 12px; border-radius: 10px; }
-              .card-title { font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
-              .card-value { font-size: 16px; font-weight: bold; color: #0f172a; }
-              .footer { margin-top: 40px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 15px; }
-            </style>
-          </head>
-          <body>
-            ${htmlContent}
-            <div class="footer">Generado por Kiosco Historial de Caja - ${new Date().toLocaleDateString('es-AR')}</div>
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.frameElement.remove(); }, 100);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      doc.close();
-    }
-  };
-
-  const handleExportExcel = () => {
-    const { from, to } = getDateRange();
-    let periodName = 'General';
-    if (filterMode === 'month') {
-      periodName = `Mes_${months[selectedMonth]}_${selectedYear}`;
-    } else if (filterMode === 'day') {
-      periodName = `Dia_${selectedDay}`;
-    } else if (filterMode === 'range') {
-      periodName = `Rango_${startDate}_a_${endDate}`;
-    }
-
-    const cashSalesCount = methodStat('CASH').count;
-    const cardSalesCount = methodStat('CLOVER').count;
-    const mpSalesCount = methodStat('MERCADOPAGO').count;
-    const debtSalesCount = methodStat('DEBT').count;
-    const mixedSalesCount = methodStat('MIXED').count;
-
-    const rows = [
-      ['REPORTE PROFESIONAL - HISTORIAL DE VENTAS Y CAJA'],
-      ['Período seleccionado', periodName.replace(/_/g, ' ')],
-      ['Fecha de generación', new Date().toLocaleDateString('es-AR')],
-      [],
-      ['RESUMEN GENERAL'],
-      ['Indicador', 'Valor'],
-      ['Total Facturado', fmt(totalSold)],
-      ['Ganancia Bruta', fmt(grossProfit)],
-      ['Total Transacciones', salesCount],
-      ['Ticket Promedio', fmt(averageTicket)],
-      [],
-      ['VENTAS SEGÚN MÉTODO DE PAGO'],
-      ['Método de Pago', 'Cantidad de Ventas', 'Monto Cobrado'],
-      ['Efectivo', cashSalesCount, fmt(cashTotal)],
-      ['Clover/Tarjeta', cardSalesCount, fmt(cardTotal)],
-      ['Mercado Pago', mpSalesCount, fmt(mpTotal)],
-      ['Cuenta Corriente / Deuda', debtSalesCount, fmt(methodStat('DEBT').total)],
-      ['Cobro Mixto', mixedSalesCount, fmt(methodStat('MIXED').total)],
-      [],
-      ['DETALLE DE TRANSACCIONES'],
-      ['Nro Ticket', 'Fecha', 'Cajero', 'Método de Pago', 'Total', 'Estado'],
-      ...sales.map((s: any) => [
-        `#${s.saleNumber}`,
-        fmtDate(s.createdAt),
-        s.user?.username || '',
-        s.paymentMethodSummary || '',
-        s.total,
-        s.status === 'CANCELLED' ? 'Cancelada' : 'Completada'
-      ])
-    ];
-    
-    downloadCSV(`Reporte_Historial_Caja_${periodName}.csv`, [], rows);
-    toast.success('Excel exportado correctamente');
-  };
-
-  const handleExportPDF = () => {
-    const { from, to } = getDateRange();
-    let periodName = 'General';
-    if (filterMode === 'month') {
-      periodName = `Mes_${months[selectedMonth]} ${selectedYear}`;
-    } else if (filterMode === 'day') {
-      periodName = `Día ${selectedDay}`;
-    } else if (filterMode === 'range') {
-      periodName = `Rango ${startDate} al ${endDate}`;
-    }
-
-    const cashSalesCount = methodStat('CASH').count;
-    const cardSalesCount = methodStat('CLOVER').count;
-    const mpSalesCount = methodStat('MERCADOPAGO').count;
-    const debtSalesCount = methodStat('DEBT').count;
-    const mixedSalesCount = methodStat('MIXED').count;
-
-    const rowsHtml = sales.map((s: any) => `
-      <tr>
-        <td class="font-bold">#${s.saleNumber}</td>
-        <td>${fmtDate(s.createdAt)}</td>
-        <td>${escapeHtml(s.user?.username || '')}</td>
-        <td>${escapeHtml(s.paymentMethodSummary || '')}</td>
-        <td class="text-right font-bold">${fmt(s.total)}</td>
-        <td class="${s.status === 'CANCELLED' ? 'text-rose-500' : 'text-emerald-500'} font-bold">${s.status === 'CANCELLED' ? 'Cancelada' : 'Completada'}</td>
-      </tr>
-    `).join('');
-
-    const htmlContent = `
-      <div class="header">
-        <h1>REPORTE DE VENTAS Y CAJA</h1>
-        <h2>Período: ${periodName}</h2>
-      </div>
-
-      <div class="grid">
-        <div class="card"><div class="card-title">Total Facturado</div><div class="card-value">${fmt(totalSold)}</div></div>
-        <div class="card"><div class="card-title">Ganancia Bruta</div><div class="card-value" style="color: #10b981;">${fmt(grossProfit)}</div></div>
-        <div class="card"><div class="card-title">Total Transacciones</div><div class="card-value">${salesCount}</div></div>
-        <div class="card"><div class="card-title">Ticket Promedio</div><div class="card-value">${fmt(averageTicket)}</div></div>
-      </div>
-
-      <h3 style="font-size: 13px; text-transform: uppercase; color: #475569; margin-top: 25px;">Ventas por Método de Pago</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Método de Pago</th>
-            <th class="text-right">Cantidad de Ventas</th>
-            <th class="text-right">Monto Cobrado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td>Efectivo</td><td class="text-right font-bold">${cashSalesCount}</td><td class="text-right font-bold">${fmt(cashTotal)}</td></tr>
-          <tr><td>Clover / Tarjeta</td><td class="text-right font-bold">${cardSalesCount}</td><td class="text-right font-bold">${fmt(cardTotal)}</td></tr>
-          <tr><td>Mercado Pago</td><td class="text-right font-bold">${mpSalesCount}</td><td class="text-right font-bold">${fmt(mpTotal)}</td></tr>
-          <tr><td>Cuenta Corriente / Deuda</td><td class="text-right font-bold">${debtSalesCount}</td><td class="text-right font-bold">${fmt(methodStat('DEBT').total)}</td></tr>
-          <tr><td>Cobro Mixto</td><td class="text-right font-bold">${mixedSalesCount}</td><td class="text-right font-bold">${fmt(methodStat('MIXED').total)}</td></tr>
-        </tbody>
-      </table>
-
-      <h3 style="font-size: 13px; text-transform: uppercase; color: #475569; margin-top: 25px;">Detalle de Transacciones</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Ticket</th>
-            <th>Fecha/Hora</th>
-            <th>Cajero</th>
-            <th>Método Pago</th>
-            <th class="text-right">Monto</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml || '<tr><td colspan="6" style="text-align: center;">Sin registros de ventas en el período</td></tr>'}
-        </tbody>
-      </table>
-    `;
-
-    downloadPDF(`Reporte_Historial_Caja_${periodName.replace(/ /g, '_')}`, htmlContent);
-  };
 
   const getDateRange = () => {
     let from: string = '';
@@ -401,6 +209,74 @@ export default function HistorialScreen() {
     .map((p: any) => (p.method === 'CASH' ? 'Efectivo' : p.method === 'DEBT' ? 'Cuenta corriente' : p.method === 'CLOVER' ? 'Tarjeta' : p.method === 'MERCADOPAGO' ? 'Mercado Pago' : p.method))
     .join(' + ');
 
+  /** Ventas del período (con los filtros y la búsqueda de la pantalla) para Excel o PDF */
+  const buildReport = (): Report => {
+    const period = filterMode === 'month' ? `${months[selectedMonth]} ${selectedYear}`
+      : filterMode === 'day' ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString('es-AR')
+      : `${new Date(`${startDate}T12:00:00`).toLocaleDateString('es-AR')} al ${new Date(`${endDate}T12:00:00`).toLocaleDateString('es-AR')}`;
+    const filters = [
+      clientFilter && `Cliente: ${clients.find((c: any) => c.id === clientFilter)?.name || clientFilter}`,
+      localityFilter && `Localidad: ${localityFilter}`,
+      searchQuery && `Búsqueda: "${searchQuery}"`,
+    ].filter(Boolean);
+    const METHOD: Record<string, string> = { CASH: 'Efectivo', CLOVER: 'Tarjeta (Clover)', MERCADOPAGO: 'Mercado Pago', DEBT: 'Cuenta corriente', MIXED: 'Mixto', TRANSFER: 'Transferencia' };
+    const methods = ['CASH', 'CLOVER', 'MERCADOPAGO', 'DEBT', 'MIXED'];
+    const methodRows = methods.map((m) => [METHOD[m], methodStat(m).count, methodStat(m).total]).filter((r) => Number(r[1]) > 0 || Number(r[2]) > 0);
+    const methodTotal = methodRows.reduce((t, r) => t + (Number(r[2]) || 0), 0);
+    // Productos vendidos (de las ventas que trajo la pantalla)
+    const byProduct = new Map<string, { name: string; qty: number; total: number }>();
+    for (const s of filteredSales) {
+      if (s.status !== 'COMPLETED') continue;
+      for (const it of s.items || []) {
+        const key = it.productId || it.productName || it.product?.name;
+        if (!key) continue;
+        const row = byProduct.get(key) || { name: it.productName || it.product?.name || 'Producto', qty: 0, total: 0 };
+        row.qty += Number(it.quantity) || 0;
+        row.total += Number(it.total ?? (it.unitPrice || 0) * (it.quantity || 0)) || 0;
+        byProduct.set(key, row);
+      }
+    }
+    const products = [...byProduct.values()].sort((a, b) => b.total - a.total);
+    const shown = filteredSales;
+    return {
+      title: 'Historial de ventas',
+      subtitle: [period, ...filters].join(' · '),
+      fileName: `Ventas ${period}`,
+      summary: [
+        { label: 'Total facturado', value: totalSold, type: 'money' },
+        { label: 'Costo de lo vendido', value: totalCost, type: 'money' },
+        { label: 'Ganancia bruta', value: grossProfit, type: 'money', tone: grossProfit >= 0 ? 'good' : 'bad' },
+        { label: 'Margen', value: grossMargin, type: 'percent' },
+        { label: 'Ventas', value: salesCount, type: 'int' },
+        { label: 'Canceladas', value: cancelledCount, type: 'int', tone: cancelledCount ? 'warn' : undefined },
+        { label: 'Ticket promedio', value: averageTicket, type: 'money' },
+      ],
+      tables: [
+        {
+          title: 'Por medio de pago',
+          columns: [{ header: 'Medio de pago' }, { header: 'Ventas', type: 'int' }, { header: 'Cobrado', type: 'money' }, { header: '% del total', type: 'percent' }],
+          rows: methodRows.map((r) => [...r, methodTotal > 0 ? (Number(r[2]) / methodTotal) * 100 : 0]),
+          totals: ['Total', methodRows.reduce((t, r) => t + Number(r[1]), 0), methodTotal, 100],
+          emptyText: 'Sin cobros en el período',
+        },
+        {
+          title: 'Ventas',
+          columns: [{ header: 'Ticket' }, { header: 'Fecha', type: 'datetime' }, { header: 'Cajero' }, { header: 'Cliente' }, { header: 'Medio de pago' }, { header: 'Total', type: 'money' }, { header: 'Estado' }],
+          rows: shown.map((s: any) => [`N° ${s.saleNumber}`, s.createdAt, s.user?.fullName || s.user?.username || '', s.client?.name || '', paymentLabelOf(s) || METHOD[s.paymentMethodSummary] || s.paymentMethodSummary || '', s.total, s.status === 'CANCELLED' ? 'Cancelada' : 'Completada']),
+          totals: ['Total completadas', null, '', '', '', shown.filter((s: any) => s.status === 'COMPLETED').reduce((t: number, s: any) => t + (Number(s.total) || 0), 0), ''],
+          emptyText: 'Sin ventas en el período',
+        },
+        ...(products.length ? [{
+          title: 'Productos vendidos',
+          columns: [{ header: 'Producto' }, { header: 'Cantidad', type: 'number' as const }, { header: 'Total', type: 'money' as const }],
+          rows: products.map((p) => [p.name, p.qty, p.total]),
+          totals: ['Total', products.reduce((t, p) => t + p.qty, 0), products.reduce((t, p) => t + p.total, 0)],
+        }] : []),
+      ],
+      notes: isListTruncated ? [`El detalle muestra las últimas ${sales.length} ventas del período; los totales de arriba son de todo el período.`] : undefined,
+    };
+  };
+
   const methodBadge = (m: string, clientName?: string) => {
     const styles: any = { 
       CASH: 'bg-emerald-50 text-emerald-600 border border-emerald-100', 
@@ -513,22 +389,7 @@ export default function HistorialScreen() {
 
           {/* Botones de descarga */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleExportExcel}
-              className="px-4 py-2 rounded-2xl border border-slate-400 bg-white text-slate-700 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm flex items-center gap-1.5 active:scale-95 cursor-pointer"
-              title="Descargar Excel"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Excel</span>
-            </button>
-            <button
-              onClick={handleExportPDF}
-              className="px-4 py-2 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 transition-all font-bold text-xs shadow-sm flex items-center gap-1.5 active:scale-95 cursor-pointer"
-              title="Exportar PDF"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>PDF</span>
-            </button>
+            <ExportButtons build={buildReport} />
           </div>
         </div>
       </div>
