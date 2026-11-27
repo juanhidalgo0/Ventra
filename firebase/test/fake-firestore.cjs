@@ -40,6 +40,7 @@ function fakeDb(data = {}) {
   function collection(name) {
     return {
       doc: (id) => ref(name, id === undefined ? `auto${++auto}` : id), where: (...w) => query(name, [w]), orderBy: (...o) => query(name, []).orderBy(...o),
+      limit: (n) => query(name, []).limit(n), get: () => query(name, []).get(),
       add: async (v) => { const id = `auto${++auto}`; col(name)[id] = merge({}, v); return ref(name, id); },
     };
   }

@@ -57,6 +57,20 @@ export class SubscriptionController {
     }
   }
 
+  /** "Invitá un comercio": link y meses ganados. { linked: false } si la PC no está vinculada. */
+  @Get('referral')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  async referral() {
+    if (process.env.DEMO_MODE === 'true') return { linked: false };
+    try {
+      const data = await this.subscription.referral();
+      return data ? { linked: true, ...data } : { linked: false };
+    } catch {
+      throw new ServiceUnavailableException('No hay conexión con ventra.store. Revisá internet y probá de nuevo.');
+    }
+  }
+
   @Post('refresh')
   refresh() {
     return this.subscription.refresh();

@@ -49,26 +49,29 @@ function trialEligible(account, usedEmails) {
   return !usedEmails;
 }
 
-/** Fechas que se le mandan a Mercado Pago: primer cobro en TRIAL_DAYS días. Pura. */
-function trialDates(nowMs) {
-  const start = new Date(nowMs + TRIAL_DAYS * DAY_MS);
+/** Quien llega invitado por otro comercio (referrals.js) prueba un mes entero */
+const REFERRAL_TRIAL_DAYS = 30;
+
+/** Fechas que se le mandan a Mercado Pago: primer cobro en `days` días. Pura. */
+function trialDates(nowMs, days = TRIAL_DAYS) {
+  const start = new Date(nowMs + days * DAY_MS);
   // start_date solo lo toma junto con end_date: se pone lejos (hay que renovar la suscripción en 10 años)
   return { start_date: start.toISOString(), end_date: addMonths(new Date(nowMs), 120).toISOString() };
 }
 
 /**
  * Fin de la prueba al autorizar la tarjeta: el primer cobro que informa Mercado Pago, acotado
- * entre 1 y TRIAL_DAYS + 1 días desde ahora (si no lo informa o es raro, TRIAL_DAYS días). Pura.
+ * entre 1 y `days` + 1 días desde ahora (si no lo informa o es raro, `days` días). Pura.
  */
-function trialEnd(sub, nowMs) {
+function trialEnd(sub, nowMs, days = TRIAL_DAYS) {
   const s = sub || {};
   const ar = s.auto_recurring || {};
   const t = Date.parse(s.next_payment_date || ar.start_date || "");
-  if (Number.isFinite(t) && t >= nowMs + DAY_MS && t <= nowMs + (TRIAL_DAYS + 1) * DAY_MS) return new Date(t);
-  return new Date(nowMs + TRIAL_DAYS * DAY_MS);
+  if (Number.isFinite(t) && t >= nowMs + DAY_MS && t <= nowMs + (days + 1) * DAY_MS) return new Date(t);
+  return new Date(nowMs + days * DAY_MS);
 }
 
 /** Clave de ventra_trials para un correo (sin guardar el correo a la vista). */
 const trialKey = (email) => require("crypto").createHash("sha256").update(String(email || "").trim().toLowerCase()).digest("hex").slice(0, 40);
 
-module.exports = { GRACE_DAYS, DAY_MS, TRIAL_DAYS, addMonths, nextPaidUntil, trialEligible, trialDates, trialEnd, trialKey };
+module.exports = { GRACE_DAYS, DAY_MS, TRIAL_DAYS, REFERRAL_TRIAL_DAYS, addMonths, nextPaidUntil, trialEligible, trialDates, trialEnd, trialKey };

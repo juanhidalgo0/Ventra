@@ -48,7 +48,7 @@ export class LicenseGuard implements CanActivate {
         statusCode: HttpStatus.FORBIDDEN,
         code: 'SUBSCRIPTION_READ_ONLY',
         message: needsLink
-          ? 'Esta PC todavía no está vinculada a tu cuenta de Ventra. Entrá a Configuración → Suscripción y nube y tocá "Vincular esta PC" para empezar a vender.'
+          ? 'Esta PC todavía no está vinculada a tu cuenta de Ventra. Entrá a Configuración → Plan y nube y tocá "Vincular esta PC" para empezar a vender.'
           : 'Tu suscripción de Ventra venció y terminaron los días de gracia: la app está en modo solo lectura. Renová en ventra.store para seguir vendiendo.',
       }, HttpStatus.FORBIDDEN);
     }

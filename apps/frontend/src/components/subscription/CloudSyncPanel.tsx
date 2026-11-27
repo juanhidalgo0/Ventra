@@ -92,7 +92,7 @@ export default function CloudSyncPanel() {
   const pct = status.progress && status.progress.total > 0 ? Math.min(100, Math.round((status.progress.done / status.progress.total) * 100)) : null;
 
   return (
-    <div className="card p-6 space-y-4 max-w-2xl">
+    <div className="card p-6 space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">Datos en la nube</h3>

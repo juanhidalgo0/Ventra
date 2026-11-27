@@ -107,7 +107,7 @@ export default function SubscriptionPanel() {
   }[status.state];
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-5">
       <div className="card p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>

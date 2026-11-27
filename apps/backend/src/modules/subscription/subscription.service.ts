@@ -274,6 +274,17 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * "Invitá un comercio": link propio y cómo le va (ver referrals.js en la nube).
+   * null si esta instalación no está vinculada a una cuenta (no tiene a quién darle el mes).
+   */
+  async referral(): Promise<Record<string, unknown> | null> {
+    const creds = this.getDeviceCredentials();
+    if (!creds) return null;
+    const { data } = await axios.post(`${FUNCTIONS_URL}/ventraSync`, { ...creds, action: 'referral' }, { timeout: 15000 });
+    return data && data.ok ? data : null;
+  }
+
   /** Credenciales de la PC vinculada, para servicios que hablan con la nube (sincronización). */
   getDeviceCredentials(): { deviceId: string; deviceSecret: string } | null {
     if (this.exempt || !this.stored.deviceId || !this.stored.deviceSecret) return null;
