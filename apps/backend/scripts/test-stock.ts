@@ -306,7 +306,7 @@ async function main() {
   await t('caja: un código no registrado se asocia a un producto recién comprado sin código', async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { ProductsController } = require('../src/modules/products/products.controller');
-    const ctrl = new ProductsController(null, { findByBarcode: (c: string) => prisma.product.findFirst({ where: { barcode: c } }) }, null, null, null, null, null, prisma);
+    const ctrl = new ProductsController(null, { findByBarcode: (c: string) => prisma.product.findFirst({ where: { barcode: c } }) }, null, null, null, null, null, null, prisma);
     const sinCodigo = await nuevo('PAN DE CAMPO SIN CODIGO', 0);
     const conCodigo = await nuevo('GALLETITA CON CODIGO', 0, { barcode: '7790001234561' });
     await purchases.create({ supplierId: supplier.id, userId: admin.id, paymentStatus: 'OWED', items: [{ productId: sinCodigo.id, quantity: 3, cost: 100 }, { productId: conCodigo.id, quantity: 3, cost: 100 }] });
