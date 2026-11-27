@@ -23,9 +23,13 @@ export default function TicketPrinterCard() {
 
   return (
     <div className="card p-6 space-y-4">
-      <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-        <Printer className="w-4.5 h-4.5 text-rose-500" /> Impresoras de esta PC
-      </h3>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-rose-50 text-rose-600"><Printer className="w-[18px] h-[18px]" /></span>
+          <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Impresoras</h3>
+        </div>
+        <span className="inline-flex items-center h-6 px-2 rounded-md bg-slate-100 text-[11.5px] font-medium text-slate-600 whitespace-nowrap">Solo esta PC</span>
+      </div>
       <div>
         <label className="block text-[12.5px] font-semibold text-slate-600 mb-1.5">Tickets y facturas</label>
         <select

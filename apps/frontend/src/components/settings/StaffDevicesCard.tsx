@@ -74,15 +74,18 @@ export default function StaffDevicesCard() {
 
   return (
     <div className="card p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-300">
-        <div>
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-            <Smartphone className="w-4.5 h-4.5 text-rose-500" /> Celulares de empleados
-          </h3>
-          <p className="text-[12px] text-slate-500 mt-1">Para que entren a la caja web desde su teléfono <b>sin tu cuenta de Google</b>. Después entran con su usuario y contraseña de acá arriba.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-rose-50 text-rose-600">
+            <Smartphone className="w-[18px] h-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-bold tracking-tight text-slate-900">Celulares de empleados</h3>
+            <p className="text-[13px] text-slate-500 mt-0.5 leading-snug">Para que entren a la caja web desde su teléfono <b>sin tu cuenta de Google</b>. Después entran con su usuario y contraseña de acá arriba.</p>
+          </div>
         </div>
         {!link && (
-          <button onClick={pair} disabled={pairing} className="btn-primary text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer shrink-0 disabled:opacity-60">
+          <button onClick={pair} disabled={pairing} className="btn-primary h-9 px-4 text-[13px] font-semibold flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-60">
             {pairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />} Sumar un celular
           </button>
         )}

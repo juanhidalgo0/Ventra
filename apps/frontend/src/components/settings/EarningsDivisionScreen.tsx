@@ -3,6 +3,8 @@ import { AlertTriangle, Minus, Plus, RefreshCw, Trash2, Users2 } from 'lucide-re
 import api from '../../services/api';
 import { setStoreSetting } from '../../services/storeSettings';
 import { PageHeader, Panel, Segmented, ui } from '../ui/Page';
+import ExportButtons from '../common/ExportButtons';
+import { periodLabel, type Report } from '../../utils/report';
 
 interface ProfitSplit {
   revenue: number;
@@ -95,13 +97,42 @@ export default function EarningsDivisionScreen() {
   // A pérdida no se reparte nada: cada socio queda en cero y se avisa arriba
   const toShare = Math.max(0, data?.profit || 0);
 
+  /** El cálculo y lo que le toca a cada socio, en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!data || !range) return null;
+    const label = periodLabel(range.from, range.to);
+    const notes = ['Incluye lo vendido fiado y usa el costo actual de cada producto.'];
+    if (data.goodsPayments > 0) notes.push(`Los ${money(data.goodsPayments)} pagados en mercadería no se restan como gasto porque ya están en el costo.`);
+    if (data.noCostProducts > 0) notes.push(`Atención: ${money(data.noCostRevenue)} en ventas de ${data.noCostProducts} productos sin costo cargado; la ganancia real es menor.`);
+    if (!valid) notes.push(`Los porcentajes suman ${sum}% (no 100%).`);
+    if (data.profit < 0) notes.push('El período dio pérdida: no hay nada para repartir.');
+    return {
+      title: 'División de ganancias',
+      subtitle: label,
+      fileName: `División de ganancias ${label}`,
+      summary: [
+        { label: `Ventas (${data.salesCount})`, value: data.revenue, type: 'money' },
+        { label: 'Costo de lo vendido', value: data.cost, type: 'money' },
+        { label: 'Gastos del negocio', value: data.expenses, type: 'money' },
+        { label: data.profit < 0 ? 'Pérdida' : 'Ganancia a repartir', value: data.profit, type: 'money', tone: data.profit < 0 ? 'bad' : 'good' },
+      ],
+      tables: [{
+        title: 'Socios',
+        columns: [{ header: 'Socio' }, { header: 'Porcentaje', type: 'percent' }, { header: 'Le corresponde', type: 'money' }],
+        rows: partners.map((p, i) => [p.name || `Socio ${i + 1}`, p.percentage || 0, toShare * ((p.percentage || 0) / 100)]),
+        totals: ['Total', sum, toShare * (sum / 100)],
+      }],
+      notes,
+    };
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         <PageHeader
           title="División de ganancias"
           description="Cuánto le corresponde a cada socio de lo que ganó el negocio."
-          actions={<button onClick={load} disabled={loading} className={`${ui.btn} ${ui.btnSecondary}`}><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualizar</button>}
+          actions={<><ExportButtons build={buildReport} disabled={!data} /><button onClick={load} disabled={loading} className={`${ui.btn} ${ui.btnSecondary}`}><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualizar</button></>}
         />
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">

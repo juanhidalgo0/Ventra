@@ -1,44 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TicketPrinterCard from './TicketPrinterCard';
+import FontSizeCard from './FontSizeCard';
 import TicketLookCard from './TicketLookCard';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
 import api from '../../services/api';
-import { WORK_ROLES, IMPRENTA_ROLES, workRoleLabel } from '../../services/workRole';
-import { hasFeature } from '../../stores/businessStore';
+import { workRoleLabel } from '../../services/workRole';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-   Settings, 
-   Laptop, 
-   Save, 
-   RotateCcw, 
-   AlertTriangle, 
-   ShieldAlert, 
-   Info, 
-   CheckCircle2, 
-   Trash2, 
-   Database, 
-   Lock,
-   Sliders,
-   Users,
-   UserPlus,
-   Plus,
-   X,
-   Key,
-   Edit,
-   Download,
-   Calendar,
-   Clock,
-   Check,
-   Upload,
-   Calculator,
-   AlertCircle,
-   Link2,
-   ChevronRight,
-   Circle,
-  BadgeCheck,
-  Store,
+import {
+  Store, Laptop, RotateCcw, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Database, Lock,
+  Users, UserPlus, Plus, X, KeyRound, Pencil, Download, Clock, Check, Upload, Percent, Smartphone,
+  Circle, ChevronRight, Sparkles, LayoutGrid, SlidersHorizontal, Wallet, CreditCard, Loader2,
 } from 'lucide-react';
 import SubscriptionPanel from '../subscription/SubscriptionPanel';
 import CloudSyncPanel from '../subscription/CloudSyncPanel';
@@ -47,21 +20,27 @@ import GoDeliveryCard from '../go/GoDeliveryCard';
 import { useAuthStore } from '../../stores/authStore';
 import { getOpeningFloat, saveOpeningFloat } from '../../utils/openingFloat';
 import { setStoreSetting } from '../../services/storeSettings';
-import { usePOSStore } from '../../stores/posStore';
 import StoreLogoField from '../common/StoreLogoField';
 import ScaleSettingsCard from './ScaleSettingsCard';
 import StaffDevicesCard from './StaffDevicesCard';
-import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfiles, rubrosTitle, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
+import UserFormModal, { type UserFormValues } from './UserFormModal';
+import { useBusinessStore, ALL_FEATURES, FEATURE_LABELS, PROFILE_LABELS, featuresOfProfiles, ALL_INTENTS, INTENT_AREA, INTENT_LABELS, type BusinessProfile, type BusinessIntent } from '../../stores/businessStore';
 import { usePlanStore } from '../../stores/planStore';
 import { effectiveIntents } from '../../utils/gettingStarted';
 import { VentriImg, getVentriCaja, saveVentriCaja, type VentriCaja } from '../common/Ventri';
+import { SETTINGS_SECTIONS, FEATURE_GROUPS, normalizeSettingsTab, type SettingsTab } from './settingsSections';
+import { SectionHeader, SettingsCard, GroupLabel, SettingRow, ToggleRow, Field, DangerAction, inputCls, toastSaved } from './SettingsUI';
+import { undoable } from '../../utils/undo';
 
 const RESTORE_TIMEOUT_MS = 15 * 60 * 1000;
 
-/**
- * embedded + initialTab: en la app del celular, cada sección se abre sola (sin la
- * columna de secciones), porque el índice lo muestra MobileSettingsScreen.
- */
+const PAYMENT_METHODS: { id: string; label: string }[] = [
+  { id: 'CLOVER', label: 'Clover' },
+  { id: 'MERCADOPAGO', label: 'Mercado Pago' },
+  { id: 'DEBT', label: 'Cuenta corriente' },
+];
+const methodLabel = (m: string) => PAYMENT_METHODS.find((p) => p.id === m)?.label || m;
+
 /** El administrador del comercio (hay uno solo): el usuario activo con rol ADMIN, el más antiguo si quedaran varios. */
 function findStoreAdmin(list: any[]): any | null {
   const admins = list.filter((u) => u.role === 'ADMIN' && u.isActive !== false);
@@ -69,26 +48,35 @@ function findStoreAdmin(list: any[]): any | null {
   return admins[0] || null;
 }
 
+/** Llama a la app de escritorio (Tauri) si está; en el navegador no hace nada. */
+function tauriInvoke(cmd: string, args: Record<string, unknown>): Promise<unknown> | null {
+  const t = (window as any).__TAURI__;
+  const invokeFn = t?.core?.invoke || t?.invoke;
+  return invokeFn ? invokeFn(cmd, args) : null;
+}
+
+/**
+ * Configuración. embedded + initialTab: en la app del celular, cada sección se abre sola
+ * (sin la columna de secciones), porque el índice lo muestra MobileSettingsScreen.
+ */
 export default function SettingsScreen({ initialTab, embedded = false }: { initialTab?: string; embedded?: boolean } = {}) {
   const { user, resetAdminUnlock, logout } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN' || localStorage.getItem('admin_unlocked') === 'true' || sessionStorage.getItem('admin_unlocked') === 'true';
 
-  // State
+  // Este equipo: el nombre lo asigna el servidor según el orden en que se conectó cada PC
   const [terminalUuid, setTerminalUuid] = useState('');
   const [terminalName, setTerminalName] = useState('Terminal 1');
-  const [isSavingName, setIsSavingName] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   useAutoTour('settings', !isLoading);
 
-  // Backup states
+  // Copias de seguridad
   const [backups, setBackups] = useState<any[]>([]);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [backupTime, setBackupTime] = useState('22:00');
-  const [isSavingBackupSettings, setIsSavingBackupSettings] = useState(false);
   const [savedAutoBackup, setSavedAutoBackup] = useState(false);
 
-  // Restoration states
+  // Restauración
   const [isRestoring, setIsRestoring] = useState(false);
   const [pendingRestartMessage, setPendingRestartMessage] = useState<string | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
@@ -96,38 +84,40 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const [restoreConfirmWord, setRestoreConfirmWord] = useState('');
   const [uploadedFileToRestore, setUploadedFileToRestore] = useState<File | null>(null);
 
-  // System parameters
-  // Nombre del comercio: sale en tickets, cierres y en la app del celular, en todos los equipos
+  // Datos del comercio: salen en tickets, cierres, notas de venta y remitos, en todos los equipos
   const [storeName, setStoreName] = useState(() => localStorage.getItem('gd_store_name') || '');
-  // Resto de los datos del comercio: salen en la nota de venta y el remito
   const [storeAddress, setStoreAddress] = useState(() => localStorage.getItem('gd_store_address') || '');
   const [storePhone, setStorePhone] = useState(() => localStorage.getItem('gd_store_phone') || '');
   const [storeCuit, setStoreCuit] = useState(() => localStorage.getItem('gd_store_cuit') || '');
   const [storeIva, setStoreIva] = useState(() => localStorage.getItem('gd_store_iva') || '');
+
+  // Caja y cobro: cada interruptor se guarda al tocarlo (ajustes del comercio, viajan a todas las cajas)
   const [allowNegativeStock, setAllowNegativeStock] = useState(() => {
     const saved = localStorage.getItem('allow_negative_stock');
     return saved ? saved === 'true' : true;
   });
   // Consumo de empleados: sin cargo, solo descuenta stock (ver sales.service createEmployeeConsumption)
   const [employeeConsumption, setEmployeeConsumption] = useState(() => localStorage.getItem('employee_consumption') === '1');
+  // Cierre a ciegas: los empleados cuentan sin ver lo esperado ni la diferencia (ver utils/blindClose)
+  const [blindClose, setBlindClose] = useState(() => localStorage.getItem('cash_blind_close') === '1');
+  const [blindCloseZ, setBlindCloseZ] = useState(() => localStorage.getItem('cash_blind_close_z') === '1');
   const [lowStockAlerts, setLowStockAlerts] = useState(() => {
     const saved = localStorage.getItem('low_stock_alerts');
     return saved ? saved === 'true' : true;
   });
+  const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => localStorage.getItem('pos_disable_change_calculator') === 'true');
+  const [openingFloat, setOpeningFloatInput] = useState(() => { const v = getOpeningFloat(); return v == null ? '' : String(v); });
+  const [ventriCaja, setVentriCaja] = useState<VentriCaja>(getVentriCaja);
   const [hourlyRate, setHourlyRate] = useState(() => {
     const saved = localStorage.getItem('hourly_rate');
     return saved ? String(Number(saved) || 0) : '1500';
   });
+  // Modo rendimiento: es de esta PC (no viaja a las otras)
   const [performanceMode, setPerformanceMode] = useState(() => {
     const saved = localStorage.getItem('performance_mode');
     return saved ? saved === 'true' : true;
   });
-  const [openingFloat, setOpeningFloatInput] = useState(() => { const v = getOpeningFloat(); return v == null ? '' : String(v); });
-  const [ventriCaja, setVentriCaja] = useState<VentriCaja>(getVentriCaja);
-  const [disableChangeCalculator, setDisableChangeCalculator] = useState(() => {
-    const saved = localStorage.getItem('pos_disable_change_calculator');
-    return saved ? saved === 'true' : false;
-  });
+
   const businessProfiles = useBusinessStore((st) => st.profiles);
   const businessFeatures = useBusinessStore((st) => st.features);
   const toggleBusinessProfile = useBusinessStore((st) => st.toggleProfile);
@@ -135,191 +125,101 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   const setBusinessFeature = useBusinessStore((st) => st.setFeature);
   // Si las funciones ya no coinciden con las de los rubros, el comercio armó su propia combinación
   const isCustomProfile = ALL_FEATURES.some((ft) => businessFeatures[ft] !== featuresOfProfiles(businessProfiles)[ft]);
+  const groupedFeatures = new Set(FEATURE_GROUPS.flatMap((g) => g.features));
+  const featureGroups = [
+    ...FEATURE_GROUPS,
+    ...(ALL_FEATURES.some((f) => !groupedFeatures.has(f)) ? [{ title: 'Otras', features: ALL_FEATURES.filter((f) => !groupedFeatures.has(f)) }] : []),
+  ];
 
-  // Integraciones: vínculo de cuenta de Google con GoDelivery
-  const [localGoogleUser, setLocalGoogleUser] = useState<any>(() => {
-    const saved = localStorage.getItem('google_authenticated_user');
-    return saved ? JSON.parse(saved) : null;
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    // ?tab=... abre una sección directo (desde "Primeros pasos", la suscripción, etc.)
+    const fromHash = window.location.hash.match(/[?&]tab=([a-z]+)/)?.[1];
+    return normalizeSettingsTab(initialTab) || normalizeSettingsTab(fromHash) || 'comercio';
   });
 
-  const handleDisconnectGoogle = () => {
-    if (confirm('¿Estás seguro de desvincular la cuenta de Google? Los productos ya no se sincronizarán con GoDelivery.')) {
-      localStorage.removeItem('google_authenticated_user');
-      setLocalGoogleUser(null);
-      toast.success('Cuenta de Google desvinculada');
-    }
-  };
-
-  const handleConnectGoogle = () => {
-    const activePort = sessionStorage.getItem('active_backend_port') || '3001';
-    const authUrl = `http://localhost:${activePort}/api/auth/google/login-page`;
-
-    // Open external browser using Rust command to ensure compatibility
-    if ((window as any).__TAURI__) {
-      const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
-      if (invokeFn) {
-        invokeFn('open_browser', { url: authUrl }).catch(() => window.open(authUrl, '_blank'));
-      } else {
-        window.open(authUrl, '_blank');
-      }
-    } else {
-      window.open(authUrl, '_blank');
-    }
-    toast('Iniciando sesión segura en tu navegador...');
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const { data } = await api.get('/auth/google-link-status');
-        if (data.linked && data.user) {
-          clearInterval(pollInterval);
-          localStorage.setItem('google_authenticated_user', JSON.stringify(data.user));
-          setLocalGoogleUser(data.user);
-          toast.success('¡Cuenta de Google vinculada con éxito!');
-        }
-      } catch (e) {
-        // Ignore transient polling errors
-      }
-    }, 1000);
-
-    setTimeout(() => clearInterval(pollInterval), 300000);
-  };
-
-  const [activeTab, setActiveTab] = useState<'general' | 'posnets' | 'recargos' | 'personal' | 'backups' | 'suscripcion' | 'integraciones' | 'mantenimiento'>(() =>
-    (initialTab as any) || (() => {
-      // ?tab=... abre una sección directo (desde "Primeros pasos", la suscripción, etc.)
-      const tab = window.location.hash.match(/[?&]tab=([a-z]+)/)?.[1];
-      return tab && ['general', 'posnets', 'recargos', 'personal', 'backups', 'suscripcion', 'integraciones', 'mantenimiento'].includes(tab) ? tab : 'general';
-    })());
-
-  // Posnet Config States
+  // Posnets (de esta PC)
   const [posnets, setPosnets] = useState<{ id: string; name: string }[]>(() => {
     const stored = localStorage.getItem('posnet_configs');
     if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {}
+      try { return JSON.parse(stored); } catch { /* lista rota: se usan las de fábrica */ }
     }
     return [
       { id: 'CLOVER', name: 'Clover' },
-      { id: 'MERCADOPAGO', name: 'MercadoPago' }
+      { id: 'MERCADOPAGO', name: 'MercadoPago' },
     ];
   });
   const [newPosnetName, setNewPosnetName] = useState('');
 
-  const handleAddPosnet = () => {
-    if (!newPosnetName.trim()) {
-      toast.error('El nombre del posnet no puede estar vacío');
-      return;
-    }
-    const id = newPosnetName.trim().toUpperCase().replace(/\s+/g, '_');
-    if (posnets.some(p => p.id === id)) {
-      toast.error('Ya existe un posnet con un identificador similar');
-      return;
-    }
-    const updated = [...posnets, { id, name: newPosnetName.trim() }];
-    setPosnets(updated);
-    localStorage.setItem('posnet_configs', JSON.stringify(updated));
-    setNewPosnetName('');
-  };
-
-  const handleRemovePosnet = (id: string) => {
-    if (posnets.length <= 1) {
-      toast.error('Debes tener al menos un método de pago posnet configurado');
-      return;
-    }
-    const updated = posnets.filter(p => p.id !== id);
-    setPosnets(updated);
-    localStorage.setItem('posnet_configs', JSON.stringify(updated));
-  };
-
-  // Reset states
-  const [showResetCajas, setShowResetCajas] = useState(false);
-  const [cajasConfirmWord, setCajasConfirmWord] = useState('');
-  const [isResettingCajas, setIsResettingCajas] = useState(false);
-
-  const [showResetStock, setShowResetStock] = useState(false);
-  const [stockConfirmWord, setStockConfirmWord] = useState('');
-  const [isResettingStock, setIsResettingStock] = useState(false);
-
-  const [showResetCatalog, setShowResetCatalog] = useState(false);
-  const [catalogConfirmWord, setCatalogConfirmWord] = useState('');
-  const [isResettingCatalog, setIsResettingCatalog] = useState(false);
-
-  const [showHardReset, setShowHardReset] = useState(false);
-  const [hardResetConfirmWord, setHardResetConfirmWord] = useState('');
-  const [isHardResetting, setIsHardResetting] = useState(false);
-
-  // User Management States
+  // Usuarios
   const [users, setUsers] = useState<any[]>([]);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newFullName, setNewFullName] = useState('');
-  const [newRole, setNewRole] = useState('CASHIER');
-  const [newWorkRole, setNewWorkRole] = useState('');
+  const [userModal, setUserModal] = useState<{ mode: 'create' } | { mode: 'edit'; user: any } | null>(null);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
-  // User Edit States
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingUserId, setEditingUserId] = useState('');
-  const [editUsername, setEditUsername] = useState('');
-  const [editPassword, setEditPassword] = useState('');
-  const [editRole, setEditRole] = useState('CASHIER');
-  const [editWorkRole, setEditWorkRole] = useState('');
-  const [editIsActive, setEditIsActive] = useState(true);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-
-  // Surcharge states
+  // Recargos
   const [surcharges, setSurcharges] = useState<any[]>([]);
   const [surchargeCategories, setSurchargeCategories] = useState<any[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [surchargePercentage, setSurchargePercentage] = useState(10);
-  const [selectedMethods, setSelectedMethods] = useState<string[]>(['CLOVER', 'MERCADOPAGO', 'DEBT']); // default non-cash
+  const [selectedMethods, setSelectedMethods] = useState<string[]>(['CLOVER', 'MERCADOPAGO', 'DEBT']);
   const [isSavingSurcharge, setIsSavingSurcharge] = useState(false);
   const [isLoadingSurcharges, setIsLoadingSurcharges] = useState(false);
 
-  // Virtual Load Surcharges and Codes
+  // Cargas virtuales
   const [virtual1Code, setVirtual1Code] = useState(() => localStorage.getItem('virtual1_code') || 'VIRTUAL1');
   const [virtual2Code, setVirtual2Code] = useState(() => localStorage.getItem('virtual2_code') || 'VIRTUAL2');
   const [virtual1Surcharge, setVirtual1Surcharge] = useState(() => Number(localStorage.getItem('virtual1_surcharge') || '0'));
   const [virtual2Surcharge, setVirtual2Surcharge] = useState(() => Number(localStorage.getItem('virtual2_surcharge') || '0'));
 
+  // ── Posnets ──
+  const savePosnets = (list: { id: string; name: string }[]) => {
+    setPosnets(list);
+    localStorage.setItem('posnet_configs', JSON.stringify(list));
+  };
+
+  const handleAddPosnet = () => {
+    const name = newPosnetName.trim();
+    if (!name) { toast.error('Escribí el nombre del posnet'); return; }
+    const id = name.toUpperCase().replace(/\s+/g, '_');
+    if (posnets.some((p) => p.id === id)) { toast.error('Ya hay un posnet con ese nombre'); return; }
+    savePosnets([...posnets, { id, name }]);
+    setNewPosnetName('');
+    toastSaved('Posnet agregado');
+  };
+
+  const handleRemovePosnet = (id: string) => {
+    if (posnets.length <= 1) { toast.error('Tiene que quedar al menos un posnet'); return; }
+    savePosnets(posnets.filter((p) => p.id !== id));
+  };
+
+  // ── Recargos ──
   const handleSaveVirtualConfigs = () => {
     setStoreSetting('virtual1_code', virtual1Code.trim().toUpperCase());
     setStoreSetting('virtual2_code', virtual2Code.trim().toUpperCase());
     setStoreSetting('virtual1_surcharge', virtual1Surcharge.toString());
     setStoreSetting('virtual2_surcharge', virtual2Surcharge.toString());
-    toast.success('✅ Configuración de Cargas Virtuales guardada con éxito');
+    toastSaved('Cargas virtuales guardadas');
   };
 
+  // Cada sección arranca desde arriba (si no, queda el scroll de la anterior)
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (activeTab === 'recargos') {
-      loadSurchargesData();
-    }
+    contentRef.current?.scrollTo({ top: 0 });
+    if (activeTab === 'pagos') loadSurchargesData();
   }, [activeTab]);
 
   const loadSurchargesData = async () => {
     setIsLoadingSurcharges(true);
     try {
-      const [surchargesRes, categoriesRes] = await Promise.all([
-        api.get('/surcharges'),
-        api.get('/categories')
-      ]);
+      const [surchargesRes, categoriesRes] = await Promise.all([api.get('/surcharges'), api.get('/categories')]);
       setSurcharges(surchargesRes.data);
       setSurchargeCategories(categoriesRes.data);
-      
-      // Auto select first category not already surcharged
+      // Elige de entrada la primera categoría que todavía no tiene recargo
       const usedIds = surchargesRes.data.map((s: any) => s.categoryId);
       const available = categoriesRes.data.filter((c: any) => !usedIds.includes(c.id));
-      if (available.length > 0) {
-        setSelectedCategoryId(available[0].id);
-      } else {
-        setSelectedCategoryId('');
-      }
+      setSelectedCategoryId(available.length > 0 ? available[0].id : '');
     } catch {
-      toast.error('Error al cargar datos de recargos');
+      toast.error('No se pudieron cargar los recargos');
     } finally {
       setIsLoadingSurcharges(false);
     }
@@ -327,131 +227,95 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
 
   const handleSaveSurcharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCategoryId) {
-      toast.error('Selecciona una categoría');
-      return;
-    }
-    if (selectedMethods.length === 0) {
-      toast.error('Selecciona al menos un método de pago para aplicar el recargo');
-      return;
-    }
+    if (!selectedCategoryId) { toast.error('Elegí una categoría'); return; }
+    if (selectedMethods.length === 0) { toast.error('Elegí al menos un medio de pago'); return; }
     setIsSavingSurcharge(true);
     try {
-      await api.post('/surcharges', {
-        categoryId: selectedCategoryId,
-        percentage: surchargePercentage,
-        paymentMethods: selectedMethods
-      });
-      toast.success('✅ Recargo configurado correctamente');
+      await api.post('/surcharges', { categoryId: selectedCategoryId, percentage: surchargePercentage, paymentMethods: selectedMethods });
+      toastSaved('Recargo agregado');
       loadSurchargesData();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al guardar recargo');
+      toast.error(err.response?.data?.message || 'No se pudo guardar el recargo');
     } finally {
       setIsSavingSurcharge(false);
     }
   };
 
   const handleDeleteSurcharge = async (id: string) => {
-    if (!window.confirm('¿Estás seguro de eliminar este recargo?')) return;
-    try {
-      await api.delete(`/surcharges/${id}`);
-      loadSurchargesData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al eliminar recargo');
-    }
+    undoable({
+      message: 'Recargo sacado',
+      hide: () => setSurcharges((list: any[]) => list.filter((s) => s.id !== id)),
+      run: async () => { await api.delete(`/surcharges/${id}`); },
+      onUndo: () => loadSurchargesData(),
+      onError: (err) => { loadSurchargesData(); toast.error(err?.response?.data?.message || 'No se pudo sacar el recargo'); },
+    });
   };
 
   const toggleMethod = (method: string) => {
-    setSelectedMethods(prev => 
-      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
-    );
+    setSelectedMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
   };
 
-  const handleOpenEditModal = (u: any) => {
-    setEditingUserId(u.id);
-    setEditUsername(u.username);
-    setEditPassword('');
-    setEditRole(u.role);
-    setEditWorkRole(u.workRole || '');
-    setEditIsActive(u.isActive !== false);
-    setShowEditModal(true);
-  };
-
-  const handleEditUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editUsername) {
-      toast.error('Nombre de usuario obligatorio');
-      return;
-    }
-    setIsSavingEdit(true);
-    try {
-      const payload: any = {
-        username: editUsername.toUpperCase().replace(/\s+/g, ''),
-        role: editRole,
-        workRole: editRole === 'ADMIN' ? '' : editWorkRole,
-        isActive: editIsActive
-      };
-      if (editPassword) {
-        payload.password = editPassword;
-      }
-      await api.patch(`/users/${editingUserId}`, payload);
-      toast.success('✅ Cajero / Usuario actualizado con éxito');
-      setShowEditModal(false);
-      loadUsers();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al actualizar usuario');
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
+  // ── Usuarios ──
   const loadUsers = async () => {
     try {
       const { data } = await api.get('/users');
       setUsers(data || []);
-    } catch {}
+    } catch { /* sin permisos o sin conexión: queda la lista vacía */ }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUsername || !newPassword) {
-      toast.error('Completá todos los campos');
-      return;
-    }
-    setIsCreatingUser(true);
+  const handleSubmitUser = async (v: UserFormValues) => {
+    if (!userModal) return;
+    const username = v.username.toUpperCase().replace(/\s+/g, '');
+    if (!username) { toast.error('Poné el nombre de usuario'); return; }
     try {
-      await api.post('/users', { username: newUsername, password: newPassword, fullName: newUsername, role: newRole, workRole: newRole === 'ADMIN' ? '' : newWorkRole });
-      toast.success('✅ Cajero/Usuario creado correctamente');
-      setNewUsername('');
-      setNewPassword('');
-      setNewFullName('');
-      setNewRole('CASHIER');
-      setNewWorkRole('');
-      setShowCreateModal(false);
+      if (userModal.mode === 'create') {
+        if (!v.password) { toast.error('Poné una contraseña'); return; }
+        await api.post('/users', { username, password: v.password, fullName: username, role: v.role, workRole: v.role === 'ADMIN' ? '' : v.workRole });
+        toast.success('Usuario creado');
+      } else {
+        const payload: any = { username, role: v.role, workRole: v.role === 'ADMIN' ? '' : v.workRole, isActive: v.isActive };
+        if (v.password) payload.password = v.password;
+        await api.patch(`/users/${userModal.user.id}`, payload);
+        toast.success('Usuario actualizado');
+      }
+      setUserModal(null);
       loadUsers();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al crear usuario');
-    } finally {
-      setIsCreatingUser(false);
+      toast.error(err.response?.data?.message || 'No se pudo guardar el usuario');
     }
   };
 
   const handleDeleteUser = async (id: string) => {
-    if (id === user?.id) {
-      toast.error('No podés eliminar tu propio usuario activo');
-      return;
-    }
-    if (!confirm('¿Estás seguro de que deseas eliminar este usuario/cajero?')) return;
+    if (id === user?.id) { toast.error('No podés borrar el usuario con el que entraste'); return; }
+    undoable({
+      message: 'Usuario borrado',
+      hide: () => setUsers((list: any[]) => list.filter((u) => u.id !== id)),
+      run: async () => { await api.delete(`/users/${id}`); },
+      onUndo: () => loadUsers(),
+      onError: () => { loadUsers(); toast.error('No se pudo borrar el usuario'); },
+    });
+  };
+
+  const handleChangeAdminPassword = async () => {
+    if (!newAdminPassword) return;
+    setIsChangingPassword(true);
     try {
-      await api.delete(`/users/${id}`);
-      loadUsers();
-    } catch {
-      toast.error('Error al eliminar usuario');
+      const { data: list } = await api.get('/users');
+      const admin = findStoreAdmin(Array.isArray(list) ? list : []);
+      if (!admin) throw { response: { data: { message: 'El comercio no tiene un administrador activo: creálo en Usuarios' } } };
+      await api.patch(`/users/${admin.id}`, { password: newAdminPassword });
+      resetAdminUnlock();
+      toast.success(`Clave de ${admin.username} cambiada (también es la del acceso de administrador)`);
+      setNewAdminPassword('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo cambiar la clave');
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
   useEffect(() => {
-    // 1. Resolve local PC terminal identity
+    // Identidad de esta PC
     let uuid = localStorage.getItem('terminal_uuid');
     if (!uuid) {
       uuid = 'term_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -460,15 +324,9 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setTerminalUuid(uuid);
 
     api.get(`/cash/terminal-name?terminalId=${uuid}`)
-      .then(({ data }) => {
-        setTerminalName(data.terminalName);
-      })
-      .catch(() => {
-        setTerminalName('Terminal 1');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then(({ data }) => setTerminalName(data.terminalName))
+      .catch(() => setTerminalName('Terminal 1'))
+      .finally(() => setIsLoading(false));
 
     if (isAdmin) {
       loadUsers();
@@ -476,11 +334,11 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     }
   }, []);
 
+  // ── Copias de seguridad ──
   const loadBackupData = async () => {
     try {
       const listRes = await api.get('/system/backup/list');
       setBackups(listRes.data || []);
-      
       const settingsRes = await api.get('/system/backup/settings');
       if (settingsRes.data) {
         setAutoBackupEnabled(settingsRes.data.autoBackupEnabled);
@@ -492,32 +350,29 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     }
   };
 
+  const saveBackupSettings = async (enabled: boolean, time: string) => {
+    setAutoBackupEnabled(enabled);
+    setBackupTime(time);
+    try {
+      await api.post('/system/backup/settings', { autoBackupEnabled: enabled, backupTime: time });
+      setSavedAutoBackup(enabled);
+      toastSaved();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'No se pudo guardar la copia automática');
+      loadBackupData();
+    }
+  };
+
   const handleCreateBackup = async () => {
     setIsCreatingBackup(true);
     try {
       await api.post('/system/backup/create');
-      toast.success('✅ ¡Copia de seguridad local generada con éxito!');
+      toast.success('Copia de seguridad hecha');
       loadBackupData();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al generar la copia de seguridad');
+      toast.error(err.response?.data?.message || 'No se pudo hacer la copia de seguridad');
     } finally {
       setIsCreatingBackup(false);
-    }
-  };
-
-  const handleSaveBackupSettings = async () => {
-    setIsSavingBackupSettings(true);
-    try {
-      await api.post('/system/backup/settings', {
-        autoBackupEnabled,
-        backupTime,
-      });
-      toast.success('💾 Programación de backups guardada');
-      loadBackupData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al guardar la configuración');
-    } finally {
-      setIsSavingBackupSettings(false);
     }
   };
 
@@ -525,20 +380,24 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     try {
       const { data } = await api.post('/system/backup/download-ticket', { filename });
       const downloadUrl = `${api.defaults.baseURL}/system/backup/download?ticket=${data.ticket}`;
-      if ((window as any).__TAURI__) {
-        const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
-        invokeFn('open_browser', { url: downloadUrl }).catch(() => window.open(downloadUrl, '_blank'));
-      } else {
-        window.open(downloadUrl, '_blank');
-      }
-    } catch (err) {
-      toast.error('Error al descargar el archivo de backup');
+      const opened = tauriInvoke('open_browser', { url: downloadUrl });
+      if (opened) opened.catch(() => window.open(downloadUrl, '_blank'));
+      else window.open(downloadUrl, '_blank');
+    } catch {
+      toast.error('No se pudo descargar la copia');
     }
+  };
+
+  const closeRestoreModal = () => {
+    setShowRestoreModal(false);
+    setSelectedBackupToRestore(null);
+    setUploadedFileToRestore(null);
+    setRestoreConfirmWord('');
   };
 
   const handleRestoreBackup = async () => {
     if (restoreConfirmWord.toUpperCase() !== 'RESTAURAR') {
-      toast.error('Palabra clave incorrecta. Escribí "RESTAURAR" en mayúsculas.');
+      toast.error('Escribí RESTAURAR para confirmar');
       return;
     }
     setIsRestoring(true);
@@ -547,36 +406,26 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
         const formData = new FormData();
         formData.append('file', uploadedFileToRestore);
         const { data } = await api.post('/system/backup/restore/upload', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          headers: { 'Content-Type': 'multipart/form-data' },
           // Un backup de cientos de MB tarda más que el límite general de 60 s en
           // subirse y restaurarse; cortar antes mostraría un error falso.
           timeout: RESTORE_TIMEOUT_MS,
         });
         if (data?.requiresRestart) return finishPendingRestore(data.message);
-        toast.success('🎉 Base de datos cargada y restaurada con éxito!');
+        toast.success('Base de datos restaurada');
       } else if (selectedBackupToRestore) {
-        const { data } = await api.post('/system/backup/restore/select', {
-          filename: selectedBackupToRestore,
-        }, { timeout: RESTORE_TIMEOUT_MS });
+        const { data } = await api.post('/system/backup/restore/select', { filename: selectedBackupToRestore }, { timeout: RESTORE_TIMEOUT_MS });
         if (data?.requiresRestart) return finishPendingRestore(data.message);
-        toast.success('🎉 Base de datos restaurada con éxito desde copia local!');
+        toast.success('Base de datos restaurada desde la copia');
       }
-      
-      setShowRestoreModal(false);
-      setSelectedBackupToRestore(null);
-      setUploadedFileToRestore(null);
-      setRestoreConfirmWord('');
-
-      toast.loading('Actualizando sesión con la base de datos importada...');
+      closeRestoreModal();
+      toast.loading('Actualizando la sesión con la base restaurada...');
       setTimeout(() => {
         logout();
         window.location.reload();
       }, 1200);
-      
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al restaurar la copia de seguridad');
+      toast.error(err.response?.data?.message || 'No se pudo restaurar la copia');
     } finally {
       setIsRestoring(false);
     }
@@ -587,10 +436,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
    * preparado y se aplica solo al volver a abrir Ventra.
    */
   const finishPendingRestore = (message?: string) => {
-    setShowRestoreModal(false);
-    setSelectedBackupToRestore(null);
-    setUploadedFileToRestore(null);
-    setRestoreConfirmWord('');
+    closeRestoreModal();
     setIsRestoring(false);
     setPendingRestartMessage(message || 'El backup quedó preparado. Cerrá y volvé a abrir Ventra para completar la restauración.');
   };
@@ -600,39 +446,17 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     // Limpiar el input: así elegir el mismo archivo otra vez vuelve a disparar el cambio
     e.target.value = '';
     if (!file) return;
-    
     const lowerName = file.name.toLowerCase();
     if (!lowerName.endsWith('.db') && !lowerName.endsWith('.sqlite')) {
-      toast.error('Por favor, selecciona un archivo .db o .sqlite');
+      toast.error('Elegí un archivo .db o .sqlite');
       return;
     }
-
     setUploadedFileToRestore(file);
     setSelectedBackupToRestore(null);
     setShowRestoreModal(true);
   };
 
-  const handleSaveTerminalName = async () => {
-    setIsSavingName(true);
-    try {
-      // Modify index in terminals.json by modifying the array
-      const filePath = 'prisma/terminals.json';
-      
-      // Call update endpoint or simulate backend save by calling the endpoint again to register/cache it
-      await api.get(`/cash/terminal-name?terminalId=${terminalUuid}`);
-      
-      // Store custom terminal name locally in localStorage for backup
-      localStorage.setItem(`terminal_custom_name_${terminalUuid}`, terminalName);
-      
-      toast.success('✅ Identidad del dispositivo actualizada');
-    } catch {
-      toast.error('Error al actualizar la terminal');
-    } finally {
-      setIsSavingName(false);
-    }
-  };
-
-  // Qué hace el comercio con Ventra: lo que no usa sale del menú (ver businessStore)
+  // ── Qué hace el comercio con Ventra: lo que no usa sale del menú (ver businessStore) ──
   const planFeatures = usePlanStore((s) => s.features);
   const intents = useBusinessStore((s) => s.intents);
   const setIntents = useBusinessStore((s) => s.setIntents);
@@ -641,10 +465,10 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     const next = activeIntents.includes(i) ? activeIntents.filter((x) => x !== i) : [...activeIntents, i];
     if (!next.length) { toast.error('Dejá al menos una'); return; }
     setIntents(next);
-    toast.success('✅ Menú actualizado');
+    toastSaved('Menú actualizado');
   };
 
-  const handleSaveStoreName = () => {
+  const handleSaveStoreData = () => {
     const name = storeName.trim();
     if (name.length < 2) { toast.error('Poné el nombre de tu comercio'); return; }
     setStoreSetting('store_name', name);
@@ -653,145 +477,52 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
     setStoreSetting('store_phone', storePhone.trim());
     setStoreSetting('store_cuit', storeCuit.replace(/\D/g, ''));
     setStoreSetting('store_iva', storeIva);
-    toast.success('✅ Datos del comercio guardados');
+    toast.success('Datos del comercio guardados');
   };
 
-  const handleSaveSystemConfig = () => {
-    // Del comercio (viajan a todos los equipos); el modo rendimiento es de esta PC
-    setStoreSetting('allow_negative_stock', String(allowNegativeStock));
-    setStoreSetting('low_stock_alerts', String(lowStockAlerts));
-    setStoreSetting('employee_consumption', employeeConsumption ? '1' : '0');
-    setStoreSetting('hourly_rate', String(Number(hourlyRate) || 0));
-    localStorage.setItem('performance_mode', String(performanceMode));
-    setStoreSetting('pos_disable_change_calculator', String(disableChangeCalculator));
-    if (openingFloat.trim() !== '') saveOpeningFloat(Number(openingFloat));
-    if ((window as any).__TAURI__) {
-      try {
-        const invokeFn = (window as any).__TAURI__.core?.invoke || (window as any).__TAURI__.invoke;
-        if (invokeFn) {
-          invokeFn('save_performance_mode', { enabled: performanceMode });
-        }
-      } catch (e) {
-        console.error("Tauri invoke failed", e);
-      }
-    }
-    if (performanceMode) {
-      document.body.setAttribute('data-performance-mode', 'true');
-    } else {
-      document.body.removeAttribute('data-performance-mode');
-    }
-    usePOSStore.getState().setIsWarmed(false); // Invalidate cache warming status to reload database
+  // ── Interruptores que se guardan solos ──
+  const saveToggle = (setter: (v: boolean) => void, key: Parameters<typeof setStoreSetting>[0], value: string) => (v: boolean) => {
+    setter(v);
+    setStoreSetting(key, value === 'bool' ? String(v) : v ? '1' : '0');
+    toastSaved();
+  };
+
+  const changePerformanceMode = (enabled: boolean) => {
+    setPerformanceMode(enabled);
+    localStorage.setItem('performance_mode', String(enabled));
+    tauriInvoke('save_performance_mode', { enabled })?.catch((e) => console.error('Tauri invoke failed', e));
     window.dispatchEvent(new Event('performance-mode-changed'));
-    toast.success('✅ Parámetros guardados. Recargando base de datos...');
-  }
+    toastSaved();
+  };
 
-  const handleChangeAdminPassword = async () => {
-    if (!newAdminPassword) return;
-    setIsChangingPassword(true);
-    try {
-      const { data: list } = await api.get('/users');
-      const admin = findStoreAdmin(Array.isArray(list) ? list : []);
-      if (!admin) throw { response: { data: { message: 'El comercio no tiene un administrador activo: creálo en Usuarios' } } };
-      await api.patch(`/users/${admin.id}`, { password: newAdminPassword });
-      resetAdminUnlock();
-      toast.success(`✅ Contraseña de ${admin.username} actualizada (también es la del acceso de administrador)`);
-      setNewAdminPassword('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al cambiar contraseña');
-    } finally {
-      setIsChangingPassword(false);
-    }
-  };;
+  const commitOpeningFloat = () => {
+    if (openingFloat.trim() === '') return;
+    const n = Number(openingFloat);
+    if (n === getOpeningFloat()) return;
+    saveOpeningFloat(n);
+    toastSaved();
+  };
 
-  // Reset Sales and Registers
-  const handleResetCajas = async () => {
-    if (cajasConfirmWord.toUpperCase() !== 'CAJAS') {
-      toast.error('Palabra clave incorrecta');
-      return;
-    }
-    setIsResettingCajas(true);
+  const commitHourlyRate = () => {
+    const value = String(Number(hourlyRate) || 0);
+    if (value === localStorage.getItem('hourly_rate')) return;
+    setStoreSetting('hourly_rate', value);
+    toastSaved();
+  };
+
+  // ── Borrar datos (cada acción ya pidió escribir su palabra) ──
+  const runDanger = async (request: () => Promise<any>, ok: string, fail: string): Promise<boolean> => {
     try {
-      await api.post('/cash/reset-all');
-      toast.success('💥 Historial de cajas y ventas eliminado correctamente');
-      setShowResetCajas(false);
-      setCajasConfirmWord('');
+      const res = await request();
+      toast.success(res?.data?.message || ok);
+      return true;
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al resetear cajas');
-    } finally {
-      setIsResettingCajas(false);
+      toast.error(err.response?.data?.message || fail);
+      return false;
     }
   };
 
-  // Reset Product Stocks to 0
-  const handleResetStock = async () => {
-    if (stockConfirmWord.toUpperCase() !== 'STOCK') {
-      toast.error('Palabra clave incorrecta');
-      return;
-    }
-    setIsResettingStock(true);
-    try {
-      await api.post('/products/bulk-reset-stock');
-      toast.success('📦 Stock de todos los productos restablecido a 0');
-      setShowResetStock(false);
-      setStockConfirmWord('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al resetear stock');
-    } finally {
-      setIsResettingStock(false);
-    }
-  };
-
-  // Clear/Empty Product Catalog
-  const handleResetCatalog = async () => {
-    if (catalogConfirmWord.toUpperCase() !== 'PRODUCTOS') {
-      toast.error('Palabra clave incorrecta');
-      return;
-    }
-    setIsResettingCatalog(true);
-    try {
-      await api.post('/products/bulk-delete');
-      toast.success('🗑️ Catálogo de productos vaciado por completo');
-      setShowResetCatalog(false);
-      setCatalogConfirmWord('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al vaciar catálogo');
-    } finally {
-      setIsResettingCatalog(false);
-    }
-  };
-
-  // Database Hard Reset
-  const handleHardReset = async () => {
-    if (hardResetConfirmWord.toUpperCase() !== 'BORRAR TODO') {
-      toast.error('Palabra clave incorrecta');
-      return;
-    }
-    setIsHardResetting(true);
-    try {
-      const { data } = await api.post('/system/hard-reset');
-      toast.success(data?.message || 'Base de datos restablecida por completo.');
-      setShowHardReset(false);
-      setHardResetConfirmWord('');
-      logout();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al restablecer base de datos');
-    } finally {
-      setIsHardResetting(false);
-    }
-  };
-
-  const settingsSections: { id: typeof activeTab; label: string; description: string; icon: any; adminOnly?: boolean; danger?: boolean }[] = [
-    { id: 'general', label: 'General y POS', description: 'Rubro, terminal, caja y comportamiento del punto de venta', icon: Laptop },
-    { id: 'posnets', label: 'Métodos de pago', description: 'Posnets y medios de cobro que aceptás', icon: Sliders },
-    { id: 'recargos', label: 'Recargos', description: 'Recargos por medio de pago y categoría', icon: Calculator },
-    { id: 'personal', label: 'Personal y cajeros', description: 'Usuarios, roles y contraseñas del equipo', icon: Users, adminOnly: true },
-    { id: 'backups', label: 'Backup y seguridad', description: 'Copias de seguridad automáticas y restauración', icon: Database, adminOnly: true },
-    { id: 'suscripcion', label: 'Suscripción y nube', description: 'Plan de Ventra, vinculación de esta PC y copia en la nube', icon: BadgeCheck, adminOnly: true },
-    { id: 'integraciones', label: 'Integraciones', description: 'Cuentas y servicios conectados', icon: Link2, adminOnly: true },
-    { id: 'mantenimiento', label: 'Mantenimiento', description: 'Reinicios y limpieza de datos', icon: ShieldAlert, danger: true },
-  ];
-
-  // Re-evaluated every render; saving posnets re-renders, so this stays current.
+  // Pasos de "Terminá de configurarlo": se recalculan en cada render
   const setupSteps = buildSetupSteps({
     posnetsSaved: posnetsSaved(),
     userCount: users.length,
@@ -800,1514 +531,738 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
   });
   const setupDone = setupSteps.filter((st) => st.done).length;
   const setupPercent = calcSetupPercent(setupSteps);
-  // Keep the top-bar pill in sync live (it only shows for role ADMIN).
+  // La píldora de la barra superior se mantiene al día (solo se ve con rol ADMIN)
   useEffect(() => {
     if (user?.role === 'ADMIN') useSetupStore.getState().setPercent(setupPercent);
   }, [setupPercent, user?.role]);
 
   if (isLoading) return <div className="h-full card flex items-center justify-center text-slate-600">Cargando configuración...</div>;
 
+  const visibleSections = SETTINGS_SECTIONS.filter((sec) => !sec.adminOnly || isAdmin);
+  const tab: SettingsTab = visibleSections.some((s) => s.id === activeTab) ? activeTab : 'comercio';
+  const section = SETTINGS_SECTIONS.find((s) => s.id === tab)!;
+  const navGroups = (['Tu negocio', 'Caja', 'Equipo', 'Sistema'] as const)
+    .map((g) => ({ title: g, items: visibleSections.filter((s) => s.group === g) }))
+    .filter((g) => g.items.length);
+  const dangerItems = visibleSections.filter((s) => s.group === null);
+
+  const navButton = (sec: typeof SETTINGS_SECTIONS[number]) => {
+    const active = tab === sec.id;
+    const Icon = sec.icon;
+    return (
+      <button
+        key={sec.id}
+        data-tour={`settings-${sec.id}`}
+        onClick={() => setActiveTab(sec.id)}
+        aria-current={active ? 'page' : undefined}
+        className={`shrink-0 lg:w-full flex items-center gap-2.5 h-9 px-3 rounded-lg text-left text-[13.5px] whitespace-nowrap transition-colors cursor-pointer border lg:border-0 ${
+          active
+            ? sec.danger ? 'bg-red-50 text-red-700 font-semibold border-red-200' : 'bg-rose-50 text-rose-800 font-semibold border-rose-200'
+            : sec.danger ? 'bg-white lg:bg-transparent text-red-600 font-medium border-slate-200 hover:bg-red-50/60' : 'bg-white lg:bg-transparent text-slate-700 font-medium border-slate-200 hover:bg-slate-100'
+        }`}
+      >
+        <Icon className={`w-4 h-4 shrink-0 ${active ? (sec.danger ? 'text-red-600' : 'text-rose-600') : sec.danger ? 'text-red-500' : 'text-slate-400'}`} />
+        {sec.label}
+      </button>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col lg:flex-row bg-slate-50 overflow-hidden">
-      {/* ── Columna izquierda: encabezado + secciones ── */}
-      <aside className={`${embedded ? 'hidden' : 'flex'} w-full lg:w-[250px] xl:w-[280px] shrink-0 flex-col gap-4 p-4 lg:p-5 lg:overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50`}>
-        <div className="px-1">
-          <p className="eyebrow">Configuración</p>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-1">Centro de ajustes</h1>
-          <p className="text-[13px] text-slate-500 mt-1 leading-snug">Adaptá el sistema a la forma de trabajar de tu negocio.</p>
-        </div>
+      {/* ── Columna izquierda: secciones agrupadas ── */}
+      <aside className={`${embedded ? 'hidden' : 'flex'} w-full lg:w-[240px] shrink-0 flex-col gap-3 p-3 lg:p-4 lg:overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50`}>
+        <h1 className="hidden lg:block px-3 pt-1 text-[18px] font-bold text-slate-900 tracking-tight">Configuración</h1>
 
-        <nav className="flex lg:flex-col gap-1.5 overflow-x-auto scrollbar-hide lg:overflow-visible lg:bg-white lg:p-1.5 rounded-2xl lg:border border-slate-200 lg:shadow-2xs">
-          {settingsSections.filter((sec) => !sec.adminOnly || isAdmin).map((sec) => {
-            const active = activeTab === sec.id;
-            const Icon = sec.icon;
-            return (
-              <button
-                key={sec.id}
-                data-tour={`settings-${sec.id}`}
-                onClick={() => setActiveTab(sec.id)}
-                className={`group relative shrink-0 lg:w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-left transition-all cursor-pointer border ${
-                  active
-                    ? sec.danger ? 'bg-red-50 border-red-200' : 'bg-rose-50 border-rose-200'
-                    : 'bg-white lg:bg-transparent border-slate-200 lg:border-transparent hover:bg-slate-50'
-                }`}
-              >
-                {active && <span className={`hidden lg:block absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${sec.danger ? 'bg-red-500' : 'bg-rose-600'}`} />}
-                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                  active
-                    ? sec.danger ? 'bg-red-100 text-red-600' : 'bg-white text-rose-600 shadow-2xs'
-                    : sec.danger ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-500 group-hover:text-slate-700'
-                }`}>
-                  <Icon className="w-4.5 h-4.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className={`block text-[13px] font-semibold whitespace-nowrap ${active ? (sec.danger ? 'text-red-700' : 'text-rose-800') : sec.danger ? 'text-red-600' : 'text-slate-800'}`}>{sec.label}</span>
-                  <span className="hidden lg:block text-[11.5px] text-slate-500 leading-snug mt-0.5">{sec.description}</span>
-                </span>
-                <ChevronRight className={`hidden lg:block w-4 h-4 shrink-0 transition-transform ${active ? 'text-rose-500 translate-x-0.5' : 'text-slate-300 group-hover:text-slate-400'}`} />
-              </button>
-            );
-          })}
+        {/* Celular y pantallas angostas: una tira que se desliza */}
+        <nav className="flex lg:hidden gap-1.5 overflow-x-auto scrollbar-hide">
+          {visibleSections.map(navButton)}
         </nav>
 
-        <p className="hidden lg:block text-[11.5px] text-slate-400 leading-relaxed px-1">
-          Los ajustes de este equipo se guardan al instante. Los que afectan a toda la red se confirman con <span className="font-semibold text-slate-500">Guardar</span>.
-        </p>
+        <nav className="hidden lg:flex flex-col gap-0.5">
+          {navGroups.map((g) => (
+            <div key={g.title} className="flex flex-col gap-0.5">
+              <p className="px-3 pt-3 pb-1 text-[11.5px] font-semibold text-slate-400">{g.title}</p>
+              {g.items.map(navButton)}
+            </div>
+          ))}
+          {dangerItems.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-0.5">{dangerItems.map(navButton)}</div>
+          )}
+        </nav>
+
+        {setupDone < setupSteps.length && (
+          <div className="hidden lg:block mt-auto bg-white rounded-xl border border-slate-200 p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[13px] font-semibold text-slate-800">Terminá de configurarlo</p>
+              <span className="text-[12px] font-semibold text-slate-500 tabular-nums">{setupPercent}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 mt-2 overflow-hidden">
+              <div className="h-full rounded-full bg-rose-600 transition-all duration-500" style={{ width: `${setupPercent}%` }} />
+            </div>
+            <ul className="mt-2.5 space-y-0.5">
+              {setupSteps.map((step) => (
+                <li key={step.label}>
+                  <button
+                    onClick={() => setActiveTab(normalizeSettingsTab(step.tab) || 'comercio')}
+                    className="w-full flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-md text-left hover:bg-slate-50 cursor-pointer"
+                  >
+                    {step.done ? <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" /> : <Circle className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                    <span className={`flex-1 text-[12.5px] ${step.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{step.label}</span>
+                    {!step.done && <ChevronRight className="w-3.5 h-3.5 text-slate-300" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </aside>
 
-      <div className="flex-1 min-w-0 flex overflow-hidden">
-        {/* Content Pane */}
-        <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4 md:p-6">
-          <AnimatePresence mode="wait">
-            {activeTab === 'general' && (
-              <motion.div
-                key="general"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-4xl"
-              >
-                {/* Comercio (compartido por todos los equipos) */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    <Store className="w-4.5 h-4.5 text-rose-500" /> Tu comercio
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nombre del comercio <span className="text-rose-600">*</span></label>
-                      <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} maxLength={60}
-                        className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: Distribuidora Don Pepe" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Dirección</label>
-                        <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} maxLength={120}
-                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: Calle 9 N° 1234, Magdalena" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Teléfono</label>
-                        <input type="text" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} maxLength={40}
-                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Ej: 221 555 1234" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">CUIT</label>
-                        <input type="text" inputMode="numeric" value={storeCuit} onChange={(e) => setStoreCuit(e.target.value)} maxLength={13}
-                          className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" placeholder="Sin guiones" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Condición frente al IVA</label>
-                        <select value={storeIva} onChange={(e) => setStoreIva(e.target.value)} className="w-full min-w-0 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner">
-                          <option value="">Sin indicar</option>
-                          <option value="RESPONSABLE_INSCRIPTO">Responsable inscripto</option>
-                          <option value="MONOTRIBUTO">Monotributo</option>
-                          <option value="EXENTO">Exento</option>
-                        </select>
-                      </div>
-                    </div>
-                    {/* Logo de las impresiones: se guarda al elegirlo (no necesita Guardar) */}
-                    <StoreLogoField />
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[9px] text-slate-405 leading-relaxed">Salen en los tickets, las notas de venta, los remitos y las facturas. Se guardan para todas las cajas del comercio. Solo el nombre es obligatorio.</p>
-                      <button
-                        onClick={handleSaveStoreName}
-                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
-                      >
-                        <Save className="w-4 h-4" /> Guardar
-                      </button>
-                    </div>
+      {/* ── Contenido de la sección ── */}
+      <div ref={contentRef} className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4 md:p-6 lg:p-8">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="max-w-4xl"
+          >
+            {!embedded && (
+              <SectionHeader title={section.label} description={section.description} />
+            )}
+
+            <div className="space-y-5">
+              {/* ══ Comercio ══ */}
+              {tab === 'comercio' && (
+                <SettingsCard icon={Store} title="Datos del comercio" description="Salen en los tickets, las notas de venta, los remitos y las facturas." scope="store">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Nombre del comercio" required className="sm:col-span-2">
+                      <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} maxLength={60} className={inputCls} placeholder="Distribuidora Don Pepe" />
+                    </Field>
+                    <Field label="Dirección">
+                      <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} maxLength={120} className={inputCls} placeholder="Calle 9 N° 1234, Magdalena" />
+                    </Field>
+                    <Field label="Teléfono">
+                      <input type="text" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} maxLength={40} className={inputCls} placeholder="221 555 1234" />
+                    </Field>
+                    <Field label="CUIT" hint="Sin guiones.">
+                      <input type="text" inputMode="numeric" value={storeCuit} onChange={(e) => setStoreCuit(e.target.value)} maxLength={13} className={inputCls} placeholder="20123456789" />
+                    </Field>
+                    <Field label="Condición frente al IVA">
+                      <select value={storeIva} onChange={(e) => setStoreIva(e.target.value)} className={`${inputCls} cursor-pointer`}>
+                        <option value="">Sin indicar</option>
+                        <option value="RESPONSABLE_INSCRIPTO">Responsable inscripto</option>
+                        <option value="MONOTRIBUTO">Monotributo</option>
+                        <option value="EXENTO">Exento</option>
+                      </select>
+                    </Field>
                   </div>
-                  <div className="space-y-1.5 pt-2">
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Qué hacés con Ventra</label>
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    {/* El logo se guarda al elegirlo (no necesita Guardar) */}
+                    <StoreLogoField />
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                    <p className="text-[12.5px] text-slate-500">Solo el nombre es obligatorio.</p>
+                    <button onClick={handleSaveStoreData} className="btn-primary h-10 px-5 text-[14px] font-semibold flex items-center gap-1.5 cursor-pointer shrink-0">
+                      <Check className="w-4 h-4" /> Guardar datos
+                    </button>
+                  </div>
+                </SettingsCard>
+              )}
+
+              {/* ══ Rubros y funciones ══ */}
+              {tab === 'rubros' && (
+                <>
+                  <SettingsCard icon={Sparkles} title="Qué hacés con Ventra" description="Lo que no usás no aparece en el menú." scope="store">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {ALL_INTENTS.map((i) => {
                         const locked = !planFeatures[INTENT_AREA[i]];
                         const on = !locked && activeIntents.includes(i);
                         return (
                           <button key={i} type="button" disabled={locked} onClick={() => toggleIntent(i)} aria-pressed={on}
-                            className={`text-left p-3 rounded-xl border-2 transition-colors ${locked ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : on ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 hover:border-slate-300 cursor-pointer'}`}>
+                            className={`text-left p-3 rounded-xl border-2 transition-colors ${locked ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : on ? 'border-rose-500 bg-rose-50/60 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'}`}>
                             <span className="flex items-center justify-between gap-2">
-                              <span className="text-[12.5px] font-bold text-slate-800">{INTENT_LABELS[i].title}</span>
+                              <span className="text-[13.5px] font-semibold text-slate-800">{INTENT_LABELS[i].title}</span>
                               {on && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
                               {locked && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
                             </span>
-                            <span className="block text-[11px] text-slate-500 mt-0.5">{locked ? 'Incluido en Ventra Full' : INTENT_LABELS[i].description}</span>
+                            <span className="block text-[12px] text-slate-500 mt-0.5 leading-snug">{locked ? 'Incluido en Ventra Full' : INTENT_LABELS[i].description}</span>
                           </button>
                         );
                       })}
                     </div>
-                    <p className="text-[9px] text-slate-405 leading-relaxed">Lo que no usás no aparece en el menú. Se guarda para todos los equipos del comercio.</p>
-                  </div>
-                </div>
-                <TicketPrinterCard />
-                <TicketLookCard />
-                {/* PC Identity */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    <Laptop className="w-4.5 h-4.5 text-rose-500" /> Identidad de este Dispositivo
-                  </h3>
-                  
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-400 text-xs font-semibold text-slate-700 flex flex-col gap-1 shadow-inner">
-                    <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">Identificador Único (PC UUID)</span>
-                    <span className="font-mono text-slate-750 select-all truncate">{terminalUuid}</span>
-                  </div>
+                  </SettingsCard>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nombre del Terminal en Red</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={terminalName} 
-                        onChange={(e) => setTerminalName(e.target.value)} 
-                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                        placeholder="Ej: Terminal 1"
-                      />
-                      <button
-                        onClick={handleSaveTerminalName}
-                        disabled={isSavingName}
-                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        {isSavingName ? '...' : <Save className="w-4 h-4" />} Guardar
-                      </button>
-                    </div>
-                    <p className="text-[9px] text-slate-405 leading-relaxed">Este nombre identifica la PC actual y previene que múltiples usuarios operen cajas independientes en el mismo equipo físico.</p>
-                  </div>
-                </div>
-
-                {/* System Parameters */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    <Sliders className="w-4.5 h-4.5 text-emerald-500" /> Parámetros del Sistema (POS & Caja)
-                  </h3>
-
-                  <div className="space-y-4">
-                    {/* Rubro del Negocio */}
-                    <div className="space-y-2 pb-2">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Rubros del comercio</label>
-                      <p className="text-[10.5px] text-slate-500 leading-snug -mt-1">Marcá todos los que tengas: un kiosco o almacén con carnicería o fiambrería suma las funciones de los dos.</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((profile) => {
-                          const info = PROFILE_LABELS[profile];
-                          const active = businessProfiles.includes(profile);
-                          const main = active && businessProfiles.length > 1 && businessProfiles[0] === profile;
-                          return (
-                            <div
-                              key={profile}
-                              role="checkbox"
-                              aria-checked={active}
-                              tabIndex={0}
-                              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}
-                              onClick={() => {
-                                if (active && businessProfiles.length === 1) { toast('Tiene que quedar al menos un rubro'); return; }
-                                toggleBusinessProfile(profile);
-                                toast.success(active ? `Sacaste ${info.title}` : `Sumaste ${info.title}`);
-                              }}
-                              className={`p-3.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                                active
-                                  ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
-                                  : 'border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
-                              }`}
-                            >
-                              <span className="text-xs font-bold flex items-center gap-1.5">
-                                <input type="checkbox" readOnly tabIndex={-1} checked={active} className="rounded border-slate-400 text-emerald-600 h-3.5 w-3.5 pointer-events-none" />
+                  <SettingsCard icon={LayoutGrid} title="Rubros del comercio" description="Marcá todos los que tengas: un almacén con fiambrería suma las funciones de los dos." scope="store">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(Object.keys(PROFILE_LABELS) as BusinessProfile[]).map((profile) => {
+                        const info = PROFILE_LABELS[profile];
+                        const active = businessProfiles.includes(profile);
+                        const main = active && businessProfiles.length > 1 && businessProfiles[0] === profile;
+                        return (
+                          <div
+                            key={profile}
+                            role="checkbox"
+                            aria-checked={active}
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}
+                            onClick={() => {
+                              if (active && businessProfiles.length === 1) { toast('Tiene que quedar al menos un rubro'); return; }
+                              toggleBusinessProfile(profile);
+                              toastSaved(active ? `Sacaste ${info.title}` : `Sumaste ${info.title}`);
+                            }}
+                            className={`p-3 rounded-xl border-2 text-left flex gap-2.5 transition-colors cursor-pointer ${active ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <span className={`mt-0.5 w-[18px] h-[18px] rounded-md border-2 flex items-center justify-center shrink-0 ${active ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-300 bg-white'}`}>
+                              {active && <Check className="w-3 h-3" strokeWidth={3} />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-semibold text-slate-800">
                                 {info.emoji} {info.title}
-                                {main && (
-                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white">PRINCIPAL</span>
-                                )}
+                                {main && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-rose-600 text-white">Principal</span>}
                                 {active && isCustomProfile && businessProfiles[0] === profile && (
-                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">A MEDIDA</span>
+                                  <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800">A medida</span>
                                 )}
                               </span>
-                              <span className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                                {info.description}
-                              </span>
+                              <span className="block text-[12px] text-slate-500 leading-snug mt-0.5">{info.description}</span>
                               {active && !main && businessProfiles.length > 1 && (
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); setMainBusinessProfile(profile); toast.success(`${info.title} es tu rubro principal`); }}
-                                  className="self-start mt-0.5 text-[10px] font-bold text-emerald-700 hover:underline"
+                                  onClick={(e) => { e.stopPropagation(); setMainBusinessProfile(profile); toastSaved(`${info.title} es tu rubro principal`); }}
+                                  className="mt-1 text-[12px] font-semibold text-rose-700 hover:underline cursor-pointer"
                                   title="El principal define los ejemplos de la práctica, los recorridos y cómo te conoce la IA"
                                 >
                                   Hacer principal
                                 </button>
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* El rubro es un punto de partida: cada comercio prende o apaga lo que usa */}
-                      <div className="mt-3 space-y-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-850/40">
-                        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Funciones activas</p>
-                        {ALL_FEATURES.map((feature) => (
-                          <label key={feature} className="flex items-center justify-between cursor-pointer group">
-                            <div className="max-w-[80%]">
-                              <span className="text-xs font-bold text-slate-700 block">{FEATURE_LABELS[feature].title}</span>
-                              <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">{FEATURE_LABELS[feature].description}</span>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={businessFeatures[feature]}
-                              onChange={(e) => setBusinessFeature(feature, e.target.checked)}
-                              className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="h-px bg-slate-100" />
-
-
-                    <div className="space-y-3.5">
-                      <label className="flex items-center justify-between cursor-pointer group">
-                        <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-slate-700 block">Ventas con Stock Negativo</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Permite facturar productos aunque no tengan stock disponible en el sistema.</span>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={allowNegativeStock} 
-                          onChange={(e) => setAllowNegativeStock(e.target.checked)} 
-                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between cursor-pointer group">
-                        <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-slate-700 block">Consumo propio (sin cargo)</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Lo que vos o tus empleados consumen del negocio. Se carga como una venta y en el cobro se toca "Consumo propio": descuenta el stock y no toca la caja. Queda a nombre de quien lo registró. <a href="#/employee-consumption" onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold underline">Ver consumos</a></span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={employeeConsumption}
-                          onChange={(e) => setEmployeeConsumption(e.target.checked)}
-                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between cursor-pointer group">
-                        <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-slate-700 block">Alertas de Bajo Stock</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Activa notificaciones flotantes en el POS al facturar productos bajo el mínimo configurado.</span>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={lowStockAlerts} 
-                          onChange={(e) => setLowStockAlerts(e.target.checked)} 
-                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between cursor-pointer group">
-                        <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-slate-700 block">Calculadora de Vuelto en Efectivo</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Habilita la opción de introducir el monto recibido del cliente para calcular el vuelto automáticamente.</span>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={!disableChangeCalculator} 
-                          onChange={(e) => setDisableChangeCalculator(!e.target.checked)}
-                          className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                        />
-                      </label>
-
-                      {/* Ventri en la caja: se guarda al elegir (ajuste del comercio, viaja a todas las cajas) */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5 max-w-[70%]">
-                          <VentriImg cara="picara" size={40} />
-                          <div>
-                            <span className="text-xs font-bold text-slate-700 block">Mostrar a Ventri en la caja</span>
-                            <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">La asistente de Ventra acompaña el modo práctica, la apertura y el cierre del turno, la ayuda y las esperas. Nunca aparece al cobrar.</span>
-                          </div>
-                        </div>
-                        <select
-                          value={ventriCaja}
-                          onChange={(e) => { const v = e.target.value as VentriCaja; setVentriCaja(v); saveVentriCaja(v); toast.success(v === 'nadie' ? 'Listo: Ventri no aparece en la caja' : 'Listo: Ventri guardada'); }}
-                          className="h-8 px-2 rounded-lg border border-slate-300 bg-white text-[11.5px] font-semibold text-slate-700 cursor-pointer"
-                        >
-                          <option value="equipo">Al dueño y encargados</option>
-                          <option value="todos">A todos (también cajeros)</option>
-                          <option value="nadie">A nadie</option>
-                        </select>
-                      </div>
-
-                      <label className="flex items-center justify-between cursor-pointer group pt-2 border-t border-slate-300/50">
-                        <div className="max-w-[80%]">
-                          <span className="text-xs font-bold text-rose-600 block flex items-center gap-1.5">⚡ Modo Rendimiento (Bajo Consumo)</span>
-                          <span className="text-[9.5px] text-slate-600 block font-medium leading-tight">Desactiva transiciones, desenfoques de modales y efectos visuales pesados. Recomendado para PCs antiguas.</span>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={performanceMode} 
-                          onChange={(e) => setPerformanceMode(e.target.checked)} 
-                          className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="h-px bg-slate-100" />
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Valor de la Hora Trabajada ($)</label>
-                      <input 
-                        type="text"
-                        inputMode="numeric"
-                        value={hourlyRate}
-                        onChange={(e) => setHourlyRate(e.target.value.replace(/[^0-9]/g, ''))}
-                        className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner" 
-                        placeholder="1500"
-                      />
-                      <p className="text-[9px] text-slate-405">Se usará para calcular el monto a liquidar en los egresos de tipo "Cobrar Sueldo".</p>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Fondo inicial de la caja ($)</label>
-                      <input 
-                        type="text" 
-                        inputMode="numeric"
-                        value={openingFloat} 
-                        onChange={(e) => setOpeningFloatInput(e.target.value.replace(/[^0-9]/g, ''))} 
-                        className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner" 
-                        placeholder="Ej: 20000"
-                      />
-                      <p className="text-[9px] text-slate-405">El cambio que tiene que haber en el cajón al abrir. Lo ven todos los cajeros y queda siempre en el cajón: no se suma a las ventas.</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleSaveSystemConfig}
-                    className="btn-success w-full text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer mt-4"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> Guardar Parámetros
-                  </button>
-                </div>
-
-                {/* Carnicería y fiambrería: cómo lee la caja las etiquetas de la balanza */}
-                {businessFeatures.scaleLabels && <div className="mt-6"><ScaleSettingsCard /></div>}
-              </motion.div>
-            )}
-
-            {activeTab === 'posnets' && (
-              <motion.div
-                key="posnets"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="max-w-4xl"
-              >
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    <Sliders className="w-4.5 h-4.5 text-rose-500" /> Posnets (Métodos de Pago POS)
-                  </h3>
-                  
-                  <p className="text-[10px] text-slate-600">
-                    Administrá los nombres y terminales de Posnet disponibles en la pantalla de cobro del Punto de Venta. Se guardarán para esta sucursal.
-                  </p>
-
-                  <div className="space-y-2 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
-                    {posnets.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-400">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-705">{p.name}</span>
-                          <span className="text-[9px] font-mono text-slate-600">ID: {p.id}</span>
-                        </div>
-                        <button 
-                          onClick={() => handleRemovePosnet(p.id)}
-                          className="p-1.5 hover:bg-red-50 text-slate-600 hover:text-red-650 rounded-lg transition-all cursor-pointer"
-                          title="Eliminar posnet"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="h-px bg-slate-100 my-2" />
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Nuevo Posnet (Nombre)</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={newPosnetName} 
-                        onChange={(e) => setNewPosnetName(e.target.value)} 
-                        className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                        placeholder="Ej: Clover Regalos"
-                      />
-                      <button
-                        onClick={handleAddPosnet}
-                        className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
-                      >
-                        <Plus className="w-4 h-4" /> Agregar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === 'recargos' && (
-              <motion.div
-                key="recargos"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-4xl"
-              >
-                {/* Form to add surcharge */}
-                <div className="card p-6 space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-300">
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Calculator className="w-4.5 h-4.5 text-rose-500" /> Configuración de Recargos
-                    </h3>
-                  </div>
-
-                  <form onSubmit={handleSaveSurcharge} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Categoria */}
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Categoría</label>
-                        <select
-                          value={selectedCategoryId}
-                          onChange={(e) => setSelectedCategoryId(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
-                        >
-                          <option value="">Seleccione una categoría</option>
-                          {surchargeCategories.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Porcentaje */}
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Porcentaje de Recargo (%)</label>
-                        <input
-                          type="number"
-                          value={surchargePercentage}
-                          onChange={(e) => setSurchargePercentage(Number(e.target.value))}
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
-                          placeholder="Ej: 10"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Metodos de pago */}
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Métodos de Pago Aplicables</label>
-                      <div className="flex flex-wrap gap-3">
-                        {['CLOVER', 'MERCADOPAGO', 'DEBT'].map((method) => {
-                          const isChecked = selectedMethods.includes(method);
-                          const label = method === 'CLOVER' ? 'Clover' : method === 'MERCADOPAGO' ? 'MercadoPago' : 'Cuenta Corriente';
-                          return (
-                            <button
-                              key={method}
-                              type="button"
-                              onClick={() => toggleMethod(method)}
-                              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer ${
-                                isChecked
-                                  ? 'bg-rose-50 border-rose-500 text-rose-600 shadow-sm'
-                                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isChecked ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-400'}`}>
-                                {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                              </div>
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isSavingSurcharge}
-                      className="btn-primary w-full md:w-auto text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      {isSavingSurcharge ? 'Guardando...' : 'Configurar Recargo'}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Surcharges List */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    Recargos Configurados
-                  </h3>
-
-                  {isLoadingSurcharges ? (
-                    <div className="text-center py-6 text-xs text-slate-500 font-bold">Cargando recargos...</div>
-                  ) : surcharges.length === 0 ? (
-                    <div className="text-center py-6 text-xs text-slate-500 font-bold">No hay recargos configurados.</div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {surcharges.map((s: any) => {
-                        const methodsText = s.paymentMethods.map((m: string) => m === 'CLOVER' ? 'Clover' : m === 'MERCADOPAGO' ? 'MercadoPago' : 'Cuenta Corriente').join(', ');
-                        return (
-                          <div key={s.id} className="py-3 flex items-center justify-between">
-                            <div>
-                              <div className="text-xs font-extrabold text-slate-850 uppercase">{s.category?.name || 'Categoría Desconocida'}</div>
-                              <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                                Recargo: <span className="text-rose-600 font-bold">+{s.percentage}%</span> en {methodsText}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteSurcharge(s.id)}
-                              className="p-2 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            </span>
                           </div>
                         );
                       })}
                     </div>
-                  )}
-                </div>
+                  </SettingsCard>
 
-                {/* Cargas Virtuales Surcharges and Codes */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    Configuración de Cargas Virtuales (1 y 2)
-                  </h3>
-                  <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
-                    Define los códigos de barra personalizados y sus porcentajes de recargo correspondientes. Al escribir estos códigos y presionar Enter en el POS, se solicitará el monto de la carga.
-                  </p>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Carga Virtual 1 */}
-                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                      <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">Carga Virtual 1</h4>
-                      <div className="space-y-1.5">
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Código de Barra</label>
-                        <input
-                          type="text"
-                          value={virtual1Code}
-                          onChange={(e) => setVirtual1Code(e.target.value)}
-                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all uppercase"
-                          placeholder="VIRTUAL1"
-                        />
+                  <SettingsCard icon={SlidersHorizontal} title="Funciones" description="Los rubros prenden las que suelen usar. Podés prender o apagar cada una." scope="store">
+                    {featureGroups.map((g, gi) => (
+                      <div key={g.title}>
+                        <GroupLabel first={gi === 0}>{g.title}</GroupLabel>
+                        {g.features.map((feature, fi) => (
+                          <ToggleRow
+                            key={feature}
+                            first={fi === 0}
+                            title={FEATURE_LABELS[feature].title}
+                            description={FEATURE_LABELS[feature].description}
+                            checked={!!businessFeatures[feature]}
+                            onChange={(v) => { setBusinessFeature(feature, v); toastSaved(); }}
+                          />
+                        ))}
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Recargo (%)</label>
-                        <input
-                          type="number"
-                          value={virtual1Surcharge}
-                          onChange={(e) => setVirtual1Surcharge(Number(e.target.value))}
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
+                    ))}
+                  </SettingsCard>
+                </>
+              )}
 
-                    {/* Carga Virtual 2 */}
-                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                      <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">Carga Virtual 2</h4>
-                      <div className="space-y-1.5">
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Código de Barra</label>
-                        <input
-                          type="text"
-                          value={virtual2Code}
-                          onChange={(e) => setVirtual2Code(e.target.value)}
-                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all uppercase"
-                          placeholder="VIRTUAL2"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Recargo (%)</label>
-                        <input
-                          type="number"
-                          value={virtual2Surcharge}
-                          onChange={(e) => setVirtual2Surcharge(Number(e.target.value))}
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          className="w-full bg-white border border-slate-350 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-rose-500 transition-all"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-                  </div>
+              {/* ══ Tickets e impresoras ══ */}
+              {tab === 'tickets' && (
+                <>
+                  <TicketPrinterCard />
+                  <TicketLookCard />
+                </>
+              )}
 
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      onClick={handleSaveVirtualConfigs}
-                      className="btn-primary text-xs font-extrabold uppercase tracking-wider shadow-md active:scale-95 transition-all cursor-pointer"
-                    >
-                      Guardar Configuración Virtual
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === 'personal' && isAdmin && (
-              <motion.div
-                key="personal"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-4xl"
-              >
-                {/* Users List */}
-                <div className="card p-6 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-300">
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Users className="w-4.5 h-4.5 text-rose-500" /> Gestión de Personal y Cajeros
-                    </h3>
-                    <button
-                      onClick={() => setShowCreateModal(true)}
-                      className="btn-primary text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
-                    >
-                      <UserPlus className="w-4 h-4" /> Crear Cajero
-                    </button>
-                  </div>
-
-                  {users.length === 0 ? (
-                    <div className="text-center py-8 text-slate-405">
-                      <Users className="w-12 h-12 text-slate-250 mx-auto mb-2" />
-                      <p className="text-xs font-bold uppercase tracking-wider">No hay cajeros cargados</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white">
-                      <table className="w-full min-w-[550px] text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50/50 border-b border-slate-300 text-[10px] uppercase text-slate-450 font-bold tracking-wider">
-                            <th className="py-3 px-4">Nombre de Usuario</th>
-                            <th className="py-3 px-4">Rol / Permisos</th>
-                            <th className="py-3 px-4">Estado</th>
-                            <th className="py-3 px-4 text-center">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {users.map((u: any) => (
-                            <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/30 transition-colors font-medium">
-                              <td className="py-3 px-4 font-mono font-bold text-rose-600">{u.username}</td>
-                              <td className="py-3 px-4">
-                                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
-                                  u.role === 'ADMIN' ? 'bg-rose-50 text-rose-600 border-rose-150' :
-                                  u.role === 'SUPERVISOR' ? 'bg-amber-50 text-amber-600 border-amber-150' :
-                                  'bg-slate-50 text-slate-650 border-slate-150'
-                                }`}>
-                                  {u.role === 'ADMIN' ? 'Administrador' : u.role === 'SUPERVISOR' ? 'Supervisor' : 'Cajero'}
-                                </span>
-                                {u.role !== 'ADMIN' && workRoleLabel(u.workRole) && (
-                                  <span className="ml-1.5 text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider bg-sky-50 text-sky-700 border-sky-200">{workRoleLabel(u.workRole)}</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className={`text-[8.5px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                  u.isActive !== false ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                                }`}>
-                                  {u.isActive !== false ? 'Activo' : 'Inactivo'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center flex items-center justify-center gap-1">
-                                <button 
-                                  onClick={() => handleOpenEditModal(u)}
-                                  className="p-2 hover:bg-rose-50 rounded-lg text-slate-600 hover:text-rose-600 active:scale-95 transition-all cursor-pointer"
-                                  title="Editar cajero"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                                <button 
-                                  onClick={() => handleDeleteUser(u.id)}
-                                  disabled={u.id === user?.id}
-                                  className="p-2 hover:bg-rose-50 rounded-lg text-slate-600 hover:text-rose-500 active:scale-95 transition-all cursor-pointer disabled:opacity-30"
-                                  title="Eliminar cajero"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* Celulares de empleados: entran a la caja web sin la cuenta de Google del dueño */}
-                <StaffDevicesCard />
-
-                {/* Password Change Card */}
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-slate-300">
-                    <Key className="w-4.5 h-4.5 text-rose-500" /> Cambiar Contraseña de Administrador{findStoreAdmin(users) ? ` (${findStoreAdmin(users)!.username})` : ''}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 -mt-2">Es la clave del administrador del comercio y la misma que pide el <b>acceso de administrador</b>. Las de los demás usuarios se cambian en <b>Usuarios</b>.</p>
-                  <div className="flex gap-3">
-                    <input
-                      type="password"
-                      value={newAdminPassword}
-                      onChange={e => setNewAdminPassword(e.target.value)}
-                      className="flex-1 bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
-                      placeholder="Nueva contraseña numérica..."
+              {/* ══ Caja y cobro ══ */}
+              {tab === 'caja' && (
+                <>
+                  <SettingsCard icon={Wallet} title="Cómo trabaja la caja" description="Cada cambio se guarda al tocarlo." scope="store">
+                    <GroupLabel first>Al cobrar</GroupLabel>
+                    <ToggleRow
+                      first
+                      title="Calculadora de vuelto"
+                      description="En efectivo, cargás con cuánto paga el cliente y te dice el vuelto."
+                      checked={!disableChangeCalculator}
+                      onChange={(on) => { setDisableChangeCalculator(!on); setStoreSetting('pos_disable_change_calculator', String(!on)); toastSaved(); }}
                     />
-                    <button
-                      onClick={handleChangeAdminPassword}
-                      disabled={isChangingPassword || !newAdminPassword}
-                      className="btn-primary text-xs uppercase tracking-wider flex items-center gap-1.5 disabled:opacity-50 shadow-md active:scale-95 cursor-pointer transition-all shrink-0"
-                    >
-                      {isChangingPassword ? '...' : <Key className="w-4 h-4" />} Cambiar
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
+                    <ToggleRow
+                      title="Vender sin stock"
+                      description="Deja vender un producto aunque el sistema diga que no queda."
+                      checked={allowNegativeStock}
+                      onChange={saveToggle(setAllowNegativeStock, 'allow_negative_stock', 'bool')}
+                    />
+                    <ToggleRow
+                      title="Aviso de poco stock"
+                      description="Al vender, avisa si un producto quedó por debajo de su mínimo."
+                      checked={lowStockAlerts}
+                      onChange={saveToggle(setLowStockAlerts, 'low_stock_alerts', 'bool')}
+                    />
 
-            {activeTab === 'backups' && isAdmin && (
-              <motion.div
-                key="backups"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="max-w-4xl"
-              >
-                <div className="card p-6 space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-300">
-                    <h3 className="text-xs font-bold text-slate-750 uppercase tracking-wider flex items-center gap-2">
-                      <Database className="w-4.5 h-4.5 text-rose-500" /> Copias de Seguridad Locales y Programadas (Backup Pro)
-                    </h3>
-                    <div className="flex flex-wrap gap-2 shrink-0">
-                      <label className="btn-success text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50">
-                        <Upload className="w-4 h-4" /> Cargar Backup (.db)
+                    <GroupLabel>Turnos y cierres</GroupLabel>
+                    <SettingRow
+                      first
+                      stack
+                      title="Fondo inicial"
+                      description="El cambio que tiene que haber en el cajón al abrir. Queda siempre en el cajón: no se suma a las ventas."
+                    >
+                      <div className="relative w-36">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-slate-400">$</span>
                         <input
-                          type="file"
-                          accept=".db,.sqlite"
-                          onChange={triggerFileRestore}
-                          className="hidden"
+                          type="text"
+                          inputMode="numeric"
+                          value={openingFloat}
+                          onChange={(e) => setOpeningFloatInput(e.target.value.replace(/[^0-9]/g, ''))}
+                          onBlur={commitOpeningFloat}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          className={`${inputCls} pl-7 text-right tabular-nums`}
+                          placeholder="20000"
+                          aria-label="Fondo inicial"
                         />
-                      </label>
-                      <button
-                        onClick={handleCreateBackup}
-                        disabled={isCreatingBackup}
-                        className="btn-primary text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      </div>
+                    </SettingRow>
+                    <ToggleRow
+                      title="Cierre a ciegas"
+                      description='Los empleados cuentan la plata y las tarjetas sin ver cuánto tendría que haber, ni las ventas del turno en "Estado de la caja". Vos ves todo en Control de caja.'
+                      checked={blindClose}
+                      onChange={saveToggle(setBlindClose, 'cash_blind_close', '01')}
+                    />
+                    {blindClose && (
+                      <ToggleRow
+                        indent
+                        title="Ocultar también el reporte Z"
+                        description="Los empleados cierran el día pero no ven ni imprimen el Z: lo ves e imprimís vos desde Control de caja."
+                        checked={blindCloseZ}
+                        onChange={saveToggle(setBlindCloseZ, 'cash_blind_close_z', '01')}
+                      />
+                    )}
+                    <ToggleRow
+                      title="Consumo propio (sin cargo)"
+                      description={<>Lo que vos o tus empleados consumen del negocio: descuenta el stock y no toca la caja. Al cobrar aparece el botón &quot;Consumo propio&quot;. <a href="#/employee-consumption" className="text-rose-700 font-semibold hover:underline">Ver consumos</a></>}
+                      checked={employeeConsumption}
+                      onChange={saveToggle(setEmployeeConsumption, 'employee_consumption', '01')}
+                    />
+
+                    <GroupLabel>Ventri</GroupLabel>
+                    <SettingRow
+                      first
+                      stack
+                      title={<span className="flex items-center gap-2"><VentriImg cara="picara" size={28} /> Ventri en la caja</span>}
+                      description="Acompaña el modo práctica, la apertura y el cierre del turno, la ayuda y las esperas. Nunca aparece al cobrar."
+                    >
+                      <select
+                        value={ventriCaja}
+                        onChange={(e) => { const v = e.target.value as VentriCaja; setVentriCaja(v); saveVentriCaja(v); toastSaved(v === 'nadie' ? 'Ventri no aparece en la caja' : 'Guardado'); }}
+                        className={`${inputCls} w-52 cursor-pointer`}
+                        aria-label="A quién le aparece Ventri"
                       >
-                        <Plus className="w-4 h-4" /> {isCreatingBackup ? 'Generando...' : 'Respaldar Ahora'}
+                        <option value="equipo">Al dueño y encargados</option>
+                        <option value="todos">A todos (también cajeros)</option>
+                        <option value="nadie">A nadie</option>
+                      </select>
+                    </SettingRow>
+                  </SettingsCard>
+
+                  {/* Carnicería y fiambrería: cómo lee la caja las etiquetas de la balanza */}
+                  {businessFeatures.scaleLabels && <ScaleSettingsCard />}
+                </>
+              )}
+
+              {/* ══ Medios de pago ══ */}
+              {tab === 'pagos' && (
+                <>
+                  <SettingsCard icon={CreditCard} title="Posnets" description="Los nombres que aparecen al cobrar con tarjeta." scope="pc">
+                    <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                      {posnets.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                          <span className="text-[14px] font-semibold text-slate-800">{p.name}</span>
+                          <button onClick={() => handleRemovePosnet(p.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" title="Sacar posnet" aria-label={`Sacar ${p.name}`}>
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <input
+                        type="text"
+                        value={newPosnetName}
+                        onChange={(e) => setNewPosnetName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddPosnet(); }}
+                        className={`${inputCls} flex-1`}
+                        placeholder="Nuevo posnet, por ejemplo Clover Regalos"
+                        aria-label="Nombre del posnet nuevo"
+                      />
+                      <button onClick={handleAddPosnet} className="btn-primary h-10 px-4 text-[14px] font-semibold flex items-center gap-1.5 cursor-pointer shrink-0">
+                        <Plus className="w-4 h-4" /> Agregar
                       </button>
                     </div>
-                  </div>
+                  </SettingsCard>
 
-                  <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6 items-start">
-                    <div className="p-5 rounded-2xl border border-rose-50 bg-rose-50/20 space-y-4 2xl:col-span-1">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-rose-500" />
-                        <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Backups Automáticos</span>
+                  <SettingsCard icon={Percent} title="Recargos por categoría" description="Un porcentaje que se suma solo cuando se paga con ciertos medios." scope="store">
+                    <form onSubmit={handleSaveSurcharge} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px] gap-4">
+                        <Field label="Categoría">
+                          <select value={selectedCategoryId} onChange={(e) => setSelectedCategoryId(e.target.value)} className={`${inputCls} cursor-pointer`}>
+                            <option value="">Elegí una categoría</option>
+                            {surchargeCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Recargo (%)">
+                          <input type="number" value={surchargePercentage} onChange={(e) => setSurchargePercentage(Number(e.target.value))} min="0" max="100" step="0.1" className={inputCls} placeholder="10" />
+                        </Field>
                       </div>
-                      
-                      <p className="text-[10px] text-slate-700 font-semibold leading-relaxed">
-                        Programa copias de seguridad automáticas diarias. El sistema realiza la rotación reteniendo los últimos 15 días en tu disco para proteger tu espacio de almacenamiento.
-                      </p>
-
-                      <div className="space-y-3 pt-2">
-                        <label className="flex items-center justify-between cursor-pointer group">
-                          <span className="text-xs font-bold text-slate-750">Activar Backup Diario</span>
-                          <input 
-                            type="checkbox" 
-                            checked={autoBackupEnabled} 
-                            onChange={(e) => setAutoBackupEnabled(e.target.checked)} 
-                            className="rounded-md border-slate-400 text-rose-600 focus:ring-rose-500 h-4.5 w-4.5 cursor-pointer"
-                          />
-                        </label>
-
-                        {autoBackupEnabled && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-1.5">
-                            <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider">Hora del Backup</label>
-                            <input 
-                              type="time" 
-                              value={backupTime} 
-                              onChange={(e) => setBackupTime(e.target.value)} 
-                              className="w-full bg-white border border-slate-400 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer" 
-                            />
-                          </motion.div>
-                        )}
-
-                        <button
-                          onClick={handleSaveBackupSettings}
-                          disabled={isSavingBackupSettings}
-                          className="btn-primary w-full text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-                        >
-                          <Check className="w-4 h-4" /> Guardar programación
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="2xl:col-span-2 space-y-3">
-                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Últimos Backups Guardados en Disco</span>
-                      
-                      {backups.length === 0 ? (
-                        <div className="text-center py-10 bg-slate-50/50 rounded-xl border border-dashed border-slate-400 text-slate-600 text-xs font-bold uppercase tracking-wider">
-                          No se han generado backups en este equipo
+                      <div>
+                        <p className="text-[12.5px] font-semibold text-slate-600 mb-1.5">Se cobra con</p>
+                        <div className="flex flex-wrap gap-2">
+                          {PAYMENT_METHODS.map((m) => {
+                            const on = selectedMethods.includes(m.id);
+                            return (
+                              <button key={m.id} type="button" onClick={() => toggleMethod(m.id)} aria-pressed={on}
+                                className={`h-9 px-3.5 rounded-xl text-[13px] font-semibold border flex items-center gap-2 cursor-pointer transition-colors ${on ? 'bg-rose-50 border-rose-500 text-rose-800' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+                                <span className={`w-4 h-4 rounded border flex items-center justify-center ${on ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-400'}`}>
+                                  {on && <Check className="w-3 h-3" strokeWidth={3} />}
+                                </span>
+                                {m.label}
+                              </button>
+                            );
+                          })}
                         </div>
+                      </div>
+                      <button type="submit" disabled={isSavingSurcharge} className="btn-primary h-10 px-5 text-[14px] font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+                        {isSavingSurcharge ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Agregar recargo
+                      </button>
+                    </form>
+
+                    <div className="mt-5 pt-4 border-t border-slate-100">
+                      <p className="text-[12px] font-semibold text-slate-500 mb-1">Recargos activos</p>
+                      {isLoadingSurcharges ? (
+                        <p className="py-4 text-[13px] text-slate-500">Cargando recargos...</p>
+                      ) : surcharges.length === 0 ? (
+                        <p className="py-4 text-[13px] text-slate-500">Todavía no hay recargos.</p>
                       ) : (
-                        <div className="overflow-y-auto overflow-x-hidden max-h-[300px] rounded-xl border border-slate-105 bg-white custom-scrollbar">
-                          <table className="w-full min-w-0 text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-300 text-[9px] uppercase text-slate-600 font-bold tracking-wider">
-                                <th className="py-2.5 px-3">Fecha y Hora</th>
-                                <th className="py-2.5 px-3">Tipo</th>
-                                <th className="py-2.5 px-3">Tamaño</th>
-                                <th className="py-2.5 px-3 text-center">Acciones</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {backups.map((b, idx) => (
-                                <tr key={idx} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/30 transition-colors">
-                                  <td className="py-2.5 px-3 font-bold text-slate-700">
-                                    {new Date(b.createdAt).toLocaleString('es-AR')}
-                                  </td>
-                                  <td className="py-2.5 px-3">
-                                    <span className={`text-[8.5px] font-extrabold px-1.5 py-0.5 rounded border uppercase tracking-wider ${
-                                      b.type === 'MANUAL' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'
-                                    }`}>
-                                      {b.type}
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-3 text-slate-700 font-mono">
-                                    {(b.size / 1024 / 1024).toFixed(2)} MB
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center flex items-center justify-center gap-1.5">
-                                    <button 
-                                      onClick={() => handleDownloadBackup(b.filename)}
-                                      className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-600 hover:text-rose-700 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center"
-                                      title="Descargar base de datos local (.db)"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                    </button>
-                                    <button 
-                                      onClick={() => {
-                                        setSelectedBackupToRestore(b.filename);
-                                        setUploadedFileToRestore(null);
-                                        setShowRestoreModal(true);
-                                      }}
-                                      className="p-1.5 hover:bg-amber-50 rounded-lg text-amber-600 hover:text-amber-700 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center"
-                                      title="Restaurar base de datos desde esta copia"
-                                    >
-                                      <RotateCcw className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div className="divide-y divide-slate-100">
+                          {surcharges.map((s: any) => (
+                            <div key={s.id} className="py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[14px] font-semibold text-slate-800">{s.category?.name || 'Categoría borrada'}</div>
+                                <div className="text-[12.5px] text-slate-500">
+                                  <span className="font-semibold text-rose-700">+{s.percentage}%</span> con {s.paymentMethods.map(methodLabel).join(', ')}
+                                </div>
+                              </div>
+                              <button onClick={() => handleDeleteSurcharge(s.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" title="Sacar recargo" aria-label="Sacar recargo">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
+                  </SettingsCard>
 
-            {activeTab === 'suscripcion' && isAdmin && (
-              <div className="space-y-4">
-                <SubscriptionPanel />
-                <CloudSyncPanel />
-              </div>
-            )}
-
-            {activeTab === 'integraciones' && (
-              <motion.div
-                key="integraciones"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-4xl"
-              >
-                {isAdmin && <MercadoPagoCard />}
-                {isAdmin && <GoDeliveryCard />}
-
-                <div className="card p-6 space-y-4">
-                  <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                    <Link2 className="w-4.5 h-4.5 text-rose-500" /> Integraciones Externas
-                  </h3>
-                  <p className="text-[10px] text-slate-500 font-semibold -mt-2">
-                    Conectá servicios externos opcionales. Esto es independiente de tu Tienda Online propia de Mangano.
-                  </p>
-
-                  {localGoogleUser ? (
-                    <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        {localGoogleUser.picture ? (
-                          <img
-                            src={localGoogleUser.picture}
-                            referrerPolicy="no-referrer"
-                            className="w-12 h-12 rounded-full border-2 border-emerald-500 shadow-md shrink-0 object-cover"
-                            alt="Google Profile"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                              const parent = (e.target as HTMLImageElement).parentElement;
-                              if (parent) {
-                                const fallback = document.createElement('div');
-                                fallback.className = "w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-md border-2 border-emerald-500";
-                                fallback.innerText = localGoogleUser.name?.[0] || 'G';
-                                parent.appendChild(fallback);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base shrink-0">
-                            {localGoogleUser.name?.[0]}
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest leading-none">Sesión Corporativa de Google Activa</p>
-                          <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">{localGoogleUser.name} <span className="text-xs font-semibold text-slate-600">({localGoogleUser.email})</span></h4>
-                          <p className="text-[10px] text-slate-455 font-semibold mt-1">Esta terminal está vinculada correctamente. Los productos se sincronizarán en tiempo real con GoDelivery.</p>
+                  <SettingsCard
+                    icon={Smartphone}
+                    title="Cargas virtuales"
+                    description="Al escribir uno de estos códigos en la caja y tocar Enter, pide el monto de la carga."
+                    scope="store"
+                    action={
+                      <button onClick={handleSaveVirtualConfigs} className="btn-primary h-9 px-4 text-[13px] font-semibold flex items-center gap-1.5 cursor-pointer">
+                        <Check className="w-4 h-4" /> Guardar
+                      </button>
+                    }
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {[
+                        { n: 1, code: virtual1Code, setCode: setVirtual1Code, pct: virtual1Surcharge, setPct: setVirtual1Surcharge },
+                        { n: 2, code: virtual2Code, setCode: setVirtual2Code, pct: virtual2Surcharge, setPct: setVirtual2Surcharge },
+                      ].map((v) => (
+                        <div key={v.n} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                          <p className="text-[13.5px] font-semibold text-slate-800">Carga virtual {v.n}</p>
+                          <Field label="Código">
+                            <input type="text" value={v.code} onChange={(e) => v.setCode(e.target.value)} className={`${inputCls} uppercase`} placeholder={`VIRTUAL${v.n}`} />
+                          </Field>
+                          <Field label="Recargo (%)">
+                            <input type="number" value={v.pct} onChange={(e) => v.setPct(Number(e.target.value))} min="0" max="100" step="0.1" className={inputCls} placeholder="0" />
+                          </Field>
                         </div>
+                      ))}
+                    </div>
+                  </SettingsCard>
+                </>
+              )}
+
+              {/* ══ Personal ══ */}
+              {tab === 'personal' && isAdmin && (
+                <>
+                  <SettingsCard
+                    icon={Users}
+                    title="Usuarios"
+                    description="Cada uno entra a la caja con el suyo, así las ventas quedan a su nombre."
+                    action={
+                      <button onClick={() => setUserModal({ mode: 'create' })} className="btn-primary h-9 px-4 text-[13px] font-semibold flex items-center gap-1.5 cursor-pointer">
+                        <UserPlus className="w-4 h-4" /> Sumar usuario
+                      </button>
+                    }
+                  >
+                    {users.length === 0 ? (
+                      <p className="py-6 text-center text-[13px] text-slate-500">Todavía no hay usuarios.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {users.map((u: any) => {
+                          const inactive = u.isActive === false;
+                          return (
+                            <div key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+                              <span className={`w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0 ${inactive ? 'bg-slate-100 text-slate-400' : 'bg-rose-50 text-rose-700'}`}>
+                                {String(u.username || '?').slice(0, 2)}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-[14px] font-semibold truncate ${inactive ? 'text-slate-400' : 'text-slate-800'}`}>
+                                  {u.username}{u.id === user?.id && <span className="ml-1.5 text-[12px] font-normal text-slate-400">(vos)</span>}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  <span className={`text-[11.5px] font-semibold px-1.5 py-0.5 rounded-md ${u.role === 'ADMIN' ? 'bg-rose-50 text-rose-700' : u.role === 'SUPERVISOR' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                    {u.role === 'ADMIN' ? 'Administrador' : u.role === 'SUPERVISOR' ? 'Supervisor' : 'Cajero'}
+                                  </span>
+                                  {u.role !== 'ADMIN' && workRoleLabel(u.workRole) && (
+                                    <span className="text-[11.5px] font-semibold px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700">{workRoleLabel(u.workRole)}</span>
+                                  )}
+                                  {inactive && <span className="text-[11.5px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">Inactivo</span>}
+                                </div>
+                              </div>
+                              <button onClick={() => setUserModal({ mode: 'edit', user: u })} className="p-2 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer" title="Editar" aria-label={`Editar ${u.username}`}>
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDeleteUser(u.id)} disabled={u.id === user?.id} className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed" title="Borrar" aria-label={`Borrar ${u.username}`}>
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <button
-                        onClick={handleDisconnectGoogle}
-                        className="w-full md:w-auto px-5 py-2.5 rounded-xl border border-rose-250 bg-rose-50 text-rose-600 hover:bg-rose-100/80 transition-all font-extrabold text-xs shadow-sm active:scale-95 cursor-pointer shrink-0 text-center"
-                      >
-                        Desconectar Google
+                    )}
+                  </SettingsCard>
+
+                  {/* Celulares de empleados: entran a la caja web sin la cuenta de Google del dueño */}
+                  <StaffDevicesCard />
+
+                  <SettingsCard
+                    icon={KeyRound}
+                    title={`Clave del administrador${findStoreAdmin(users) ? ` (${findStoreAdmin(users)!.username})` : ''}`}
+                    description="Es también la que pide el acceso de administrador. Las de los demás se cambian en Usuarios."
+                  >
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="password"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleChangeAdminPassword(); }}
+                        className={`${inputCls} sm:max-w-xs`}
+                        placeholder="Clave nueva"
+                        aria-label="Clave nueva del administrador"
+                      />
+                      <button onClick={handleChangeAdminPassword} disabled={isChangingPassword || !newAdminPassword} className="btn-primary h-10 px-4 text-[14px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0">
+                        {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />} Cambiar clave
                       </button>
                     </div>
-                  ) : (
-                    <div className="bg-gradient-to-r from-rose-500/10 to-amber-500/10 border border-amber-200/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-lg shrink-0 shadow-md border-2 border-amber-400">
-                          G
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-extrabold text-amber-600 uppercase tracking-widest leading-none">Vinculación con GoDelivery Pendiente</p>
-                          <h4 className="text-sm font-bold text-slate-800 leading-tight mt-1.5">Conectá tu cuenta de Google</h4>
-                          <p className="text-[10px] text-slate-455 font-semibold mt-1">Vinculá una cuenta de Google para habilitar la sincronización en tiempo real de tus productos con la tienda online GoDelivery (marketplace externo, opcional).</p>
-                        </div>
+                  </SettingsCard>
+
+                  <SettingsCard icon={Clock} title="Sueldos" scope="store">
+                    <SettingRow first stack title="Valor de la hora trabajada" description='Se usa para calcular lo que se paga en los gastos de tipo "Cobrar sueldo".'>
+                      <div className="relative w-36">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-slate-400">$</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={hourlyRate}
+                          onChange={(e) => setHourlyRate(e.target.value.replace(/[^0-9]/g, ''))}
+                          onBlur={commitHourlyRate}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          className={`${inputCls} pl-7 text-right tabular-nums`}
+                          placeholder="1500"
+                          aria-label="Valor de la hora trabajada"
+                        />
                       </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-3 self-start md:self-auto shrink-0">
-                        <button
-                          onClick={handleConnectGoogle}
-                          className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md active:scale-95 transition-all cursor-pointer flex items-center gap-2 border border-slate-750"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.136 4.113-3.072 0-5.565-2.493-5.565-5.565s2.493-5.565 5.565-5.565c1.378 0 2.637.5 3.613 1.328l3.06-3.06C18.822 3.912 15.69 2.25 12 2.25 6.615 2.25 2.25 6.615 2.25 12s4.365 9.75 9.75 9.75c5.07 0 9.27-3.66 9.27-9.2 0-.6-.054-1.17-.154-1.728H12.24z"/></svg>
-                          Iniciar sesión con Google
+                    </SettingRow>
+                  </SettingsCard>
+                </>
+              )}
+
+              {/* ══ Esta PC ══ */}
+              {tab === 'equipo' && (
+                <SettingsCard icon={Laptop} title="Este equipo" scope="pc">
+                  <SettingRow first title="Nombre en la red" description="Lo pone Ventra según el orden en que se conectó cada PC. Así se distinguen las cajas abiertas en cada equipo.">
+                    <span className="inline-flex items-center h-9 px-3 rounded-lg bg-slate-100 text-[14px] font-semibold text-slate-800">{terminalName}</span>
+                  </SettingRow>
+                  <SettingRow stack title="Código del equipo" description="Por si te lo pide soporte.">
+                    <span className="block max-w-[220px] truncate font-mono text-[12.5px] text-slate-600 select-all" title={terminalUuid}>{terminalUuid}</span>
+                  </SettingRow>
+                  <ToggleRow
+                    title="Modo rendimiento"
+                    description="Saca animaciones y efectos. Recomendado para PCs viejas o lentas."
+                    checked={performanceMode}
+                    onChange={changePerformanceMode}
+                  />
+                </SettingsCard>
+              )}
+              {tab === 'equipo' && <FontSizeCard />}
+
+              {/* ══ Plan y nube ══ */}
+              {tab === 'suscripcion' && isAdmin && (
+                <>
+                  <SubscriptionPanel />
+                  <CloudSyncPanel />
+                </>
+              )}
+
+              {/* ══ Conexiones ══ */}
+              {tab === 'integraciones' && isAdmin && (
+                <>
+                  <MercadoPagoCard />
+                  <GoDeliveryCard />
+                </>
+              )}
+
+              {/* ══ Copias de seguridad ══ */}
+              {tab === 'backups' && isAdmin && (
+                <>
+                  <SettingsCard icon={Clock} title="Copia automática" scope="pc">
+                    <ToggleRow
+                      first
+                      title="Hacer una copia por día"
+                      description="Se guarda en esta PC. Quedan las de los últimos 15 días; las más viejas se borran solas."
+                      checked={autoBackupEnabled}
+                      onChange={(on) => saveBackupSettings(on, backupTime)}
+                    />
+                    {autoBackupEnabled && (
+                      <SettingRow indent stack title="Hora de la copia" description="Conviene un horario en que la PC esté prendida.">
+                        <input
+                          type="time"
+                          value={backupTime}
+                          onChange={(e) => setBackupTime(e.target.value)}
+                          onBlur={(e) => { if (e.target.value) saveBackupSettings(true, e.target.value); }}
+                          className={`${inputCls} w-32 cursor-pointer`}
+                          aria-label="Hora de la copia"
+                        />
+                      </SettingRow>
+                    )}
+                  </SettingsCard>
+
+                  <SettingsCard
+                    icon={Database}
+                    title="Copias guardadas en esta PC"
+                    action={
+                      <>
+                        <label className="h-9 px-3.5 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-[13px] font-semibold flex items-center gap-1.5 cursor-pointer">
+                          <Upload className="w-4 h-4" /> Cargar copia
+                          <input type="file" accept=".db,.sqlite" onChange={triggerFileRestore} className="hidden" />
+                        </label>
+                        <button onClick={handleCreateBackup} disabled={isCreatingBackup} className="btn-primary h-9 px-3.5 text-[13px] font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+                          {isCreatingBackup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Hacer copia ahora
                         </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === 'mantenimiento' && (
-              <motion.div
-                key="mantenimiento"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="max-w-4xl"
-              >
-                <div className="card p-6 border-rose-100 space-y-4">
-                  <h3 className="text-xs font-bold text-rose-600 uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-rose-100">
-                    <ShieldAlert className="w-4.5 h-4.5 text-rose-500 animate-pulse" /> Zona de Peligro (Mantenimiento y Resets)
-                  </h3>
-
-                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex gap-3 text-xs text-amber-800 leading-relaxed font-semibold">
-                    <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <p>
-                      <b>⚠️ ADVERTENCIA:</b> Las acciones listadas a continuación son <b>IRREVERSIBLES</b> y eliminan datos de producción del sistema. Por motivos de seguridad, requieren confirmación manual escribiendo una palabra clave exacta.
-                    </p>
-                  </div>
-
-                  <div className="space-y-4 pt-2 divide-y divide-slate-100">
-                    {/* Reset Stock */}
-                    <div className="space-y-3 pb-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <span className="text-xs font-bold text-slate-800 block">Resetear Stock de Inventario a 0</span>
-                          <span className="text-[10px] text-slate-600 leading-relaxed block font-medium">
-                            Establece el stock de todos los productos activos a 0. Ideal para realizar un inventario completo desde cero.
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() => setShowResetStock(true)}
-                          className="py-2 px-4 rounded-xl border border-amber-250 bg-amber-50/50 hover:bg-amber-100 text-[10px] font-extrabold text-amber-600 uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm active:scale-95"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" /> Resetear Stock
-                        </button>
-                      </div>
-
-                      <AnimatePresence>
-                        {showResetStock && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 rounded-xl bg-slate-50 border border-slate-400 space-y-3 overflow-hidden">
-                            <p className="text-[10px] text-slate-700 font-semibold leading-normal">
-                              Para confirmar, escribí la palabra clave <b className="text-amber-600 uppercase">"STOCK"</b> a continuación:
-                            </p>
-                            <div className="flex gap-2">
-                              <input 
-                                type="text" 
-                                value={stockConfirmWord} 
-                                onChange={(e) => setStockConfirmWord(e.target.value)} 
-                                className="flex-1 bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-755 outline-none focus:border-amber-450"
-                                placeholder="Escribí STOCK..."
-                              />
-                              <button 
-                                onClick={handleResetStock}
-                                disabled={isResettingStock || stockConfirmWord.toUpperCase() !== 'STOCK'}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
-                              >
-                                {isResettingStock ? '...' : 'Confirmar'}
-                              </button>
-                              <button onClick={() => { setShowResetStock(false); setStockConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* Clean registers */}
-                    <div className="space-y-3 pt-4 pb-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <span className="text-xs font-bold text-slate-800 block">Limpia y Vaciar Cajas y Ventas (Recomendado)</span>
-                          <span className="text-[10px] text-slate-600 leading-relaxed block font-medium">
-                            Elimina el historial completo de arqueos de caja, ventas POS y cobros. Deja la caja totalmente en limpio.
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() => setShowResetCajas(true)}
-                          className="py-2 px-4 rounded-xl border border-rose-250 bg-rose-50/50 hover:bg-rose-100 text-[10px] font-extrabold text-rose-600 uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Limpiar Caja
-                        </button>
-                      </div>
-
-                      <AnimatePresence>
-                        {showResetCajas && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 rounded-xl bg-slate-50 border border-slate-400 space-y-3 overflow-hidden">
-                            <p className="text-[10px] text-slate-700 font-semibold leading-normal">
-                              Para confirmar, escribí la palabra clave <b className="text-rose-600 uppercase">"CAJAS"</b> a continuación:
-                            </p>
-                            <div className="flex gap-2">
-                              <input 
-                                type="text" 
-                                value={cajasConfirmWord} 
-                                onChange={(e) => setCajasConfirmWord(e.target.value)} 
-                                className="flex-1 bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-755 outline-none focus:border-rose-455"
-                                placeholder="Escribí CAJAS..."
-                              />
-                              <button 
-                                onClick={handleResetCajas}
-                                disabled={isResettingCajas || cajasConfirmWord.toUpperCase() !== 'CAJAS'}
-                                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
-                              >
-                                {isResettingCajas ? '...' : 'Confirmar'}
-                              </button>
-                              <button onClick={() => { setShowResetCajas(false); setCajasConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* Empty catalog */}
-                    <div className="space-y-3 pt-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <span className="text-xs font-bold text-slate-800 block">Vaciar Catálogo de Productos</span>
-                          <span className="text-[10px] text-slate-600 leading-relaxed block font-medium">
-                            Oculta todos los productos de la base de datos (soft delete). Útil si quieres importar un catálogo local limpio.
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() => setShowResetCatalog(true)}
-                          className="py-2 px-4 rounded-xl border border-red-250 bg-red-50/50 hover:bg-red-100 text-[10px] font-extrabold text-red-650 uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm active:scale-95"
-                        >
-                          <Database className="w-3.5 h-3.5" /> Vaciar Catálogo
-                        </button>
-                      </div>
-
-                      <AnimatePresence>
-                        {showResetCatalog && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 rounded-xl bg-slate-50 border border-slate-400 space-y-3 overflow-hidden">
-                            <p className="text-[10px] text-slate-700 font-semibold leading-normal">
-                              Para confirmar, escribí la palabra clave <b className="text-red-600 uppercase">"PRODUCTOS"</b> a continuación:
-                            </p>
-                            <div className="flex gap-2">
-                              <input 
-                                type="text" 
-                                value={catalogConfirmWord} 
-                                onChange={(e) => setCatalogConfirmWord(e.target.value)} 
-                                className="flex-1 bg-white border border-slate-400 rounded-lg px-3 py-2 text-xs font-bold text-slate-755 outline-none focus:border-red-450"
-                                placeholder="Escribí PRODUCTOS..."
-                              />
-                              <button 
-                                onClick={handleResetCatalog}
-                                disabled={isResettingCatalog || catalogConfirmWord.toUpperCase() !== 'PRODUCTOS'}
-                                className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
-                              >
-                                {isResettingCatalog ? '...' : 'Confirmar'}
-                              </button>
-                              <button onClick={() => { setShowResetCatalog(false); setCatalogConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* Hard Reset */}
-                    <div className="space-y-3 pt-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <span className="text-xs font-bold text-rose-700 block flex items-center gap-1.5">
-                            <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" /> Hard Reset (Limpieza Total de BD)
-                          </span>
-                          <span className="text-[10px] text-slate-600 leading-relaxed block font-medium">
-                            Borra ABSOLUTAMENTE TODO de la base de datos (ventas, cajas, clientes, proveedores, stock, productos, categorías y usuarios) dejando únicamente el usuario admin activo con contraseña "1234". Esta acción es permanente e irreversible.
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() => setShowHardReset(true)}
-                          className="py-2 px-4 rounded-xl border border-red-350 bg-red-500 hover:bg-red-600 text-[10px] font-extrabold text-white uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-md active:scale-95"
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5" /> Hard Reset
-                        </button>
-                      </div>
-
-                      <AnimatePresence>
-                        {showHardReset && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 rounded-xl bg-red-50/50 border border-red-200 space-y-3 overflow-hidden">
-                            <p className="text-[10px] text-red-700 font-bold leading-normal">
-                              ⚠️ ATENCIÓN: Se eliminará todo el historial, el catálogo y los usuarios. Si esta PC está vinculada a tu cuenta, se borra también en la nube y en TODAS tus cajas vinculadas y la web. Al volver a entrar vas a crear un administrador nuevo. Para confirmar, escribí la palabra clave <b className="text-red-600 uppercase">"BORRAR TODO"</b> a continuación:
-                            </p>
-                            <div className="flex gap-2">
-                              <input 
-                                type="text" 
-                                value={hardResetConfirmWord} 
-                                onChange={(e) => setHardResetConfirmWord(e.target.value)} 
-                                className="flex-1 bg-white border border-red-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-750 outline-none focus:border-red-500"
-                                placeholder="Escribí BORRAR TODO..."
-                              />
-                              <button 
-                                onClick={handleHardReset}
-                                disabled={isHardResetting || hardResetConfirmWord.toUpperCase() !== 'BORRAR TODO'}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
-                              >
-                                {isHardResetting ? '...' : 'Confirmar Reset'}
-                              </button>
-                              <button onClick={() => { setShowHardReset(false); setHardResetConfirmWord(''); }} className="btn-secondary text-xs font-bold cursor-pointer">Cancelar</button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* ── Columna derecha: estado de la configuración ── */}
-        <aside className="hidden 2xl:flex w-[300px] shrink-0 flex-col gap-4 py-6 pr-6 overflow-y-auto custom-scrollbar">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="eyebrow">Estado</p>
-                <h3 className="text-[15px] font-bold text-slate-900 mt-1">
-                  {setupDone === setupSteps.length ? '¡Todo configurado!' : 'Terminá de configurarlo'}
-                </h3>
-              </div>
-              <span className="text-[13px] font-bold text-slate-700 tabular-nums">{setupPercent}%</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-slate-100 mt-3 overflow-hidden">
-              <div className="h-full rounded-full bg-rose-600 transition-all duration-500" style={{ width: `${setupPercent}%` }} />
-            </div>
-            <ul className="mt-4 space-y-1">
-              {setupSteps.map((step) => (
-                <li key={step.label}>
-                  <button
-                    onClick={() => setActiveTab(step.tab)}
-                    className="w-full flex items-center gap-2.5 px-2 py-1.5 -mx-2 rounded-lg text-left hover:bg-slate-50 transition-colors group"
+                      </>
+                    }
                   >
-                    {step.done
-                      ? <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0" />
-                      : <Circle className="w-4 h-4 text-amber-400 shrink-0" />}
-                    <span className={`flex-1 text-[12.5px] ${step.done ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700 font-medium'}`}>{step.label}</span>
-                    {!step.done && <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500" />}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+                    {backups.length === 0 ? (
+                      <p className="py-8 text-center text-[13px] text-slate-500 rounded-xl border border-dashed border-slate-300">Todavía no hay copias en este equipo.</p>
+                    ) : (
+                      <div className="max-h-[360px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200 divide-y divide-slate-100">
+                        {backups.map((b, idx) => (
+                          <div key={idx} className="flex items-center gap-3 px-4 py-2.5">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[14px] font-semibold text-slate-800">{new Date(b.createdAt).toLocaleString('es-AR')}</div>
+                              <div className="text-[12.5px] text-slate-500">
+                                {b.type === 'MANUAL' ? 'Hecha a mano' : 'Automática'} · {(b.size / 1024 / 1024).toFixed(1)} MB
+                              </div>
+                            </div>
+                            <button onClick={() => handleDownloadBackup(b.filename)} className="p-2 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer" title="Descargar" aria-label="Descargar copia">
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => { setSelectedBackupToRestore(b.filename); setUploadedFileToRestore(null); setShowRestoreModal(true); }}
+                              className="h-8 px-3 rounded-lg border border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Restaurar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </SettingsCard>
+                </>
+              )}
 
-          <div className="bg-slate-900 text-white rounded-2xl p-5">
-            <p className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-lime-300">Este equipo</p>
-            <h3 className="text-[15px] font-bold mt-1 truncate">{terminalName}</h3>
-            <p className="text-[11.5px] text-slate-400 mt-1 font-mono truncate" title={terminalUuid}>{terminalUuid}</p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="chip-lime">{rubrosTitle(businessProfiles)}</span>
-              {performanceMode && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-white/10 text-slate-200">Modo rendimiento</span>}
+              {/* ══ Borrar datos ══ */}
+              {tab === 'mantenimiento' && (
+                <SettingsCard
+                  tone="danger"
+                  icon={ShieldAlert}
+                  title="Zona de peligro"
+                  description={<>Nada de esto se puede deshacer. Antes, hacé una copia en <button type="button" onClick={() => setActiveTab('backups')} className="font-semibold text-rose-700 hover:underline cursor-pointer">Copias de seguridad</button>.</>}
+                >
+                  <DangerAction
+                    first
+                    title="Poner el stock en 0"
+                    description="Deja en 0 el stock de todos los productos. Sirve para hacer un inventario desde cero."
+                    buttonLabel="Poner stock en 0"
+                    word="STOCK"
+                    onConfirm={() => runDanger(() => api.post('/products/bulk-reset-stock'), 'Stock de todos los productos en 0', 'No se pudo poner el stock en 0')}
+                  />
+                  <DangerAction
+                    title="Borrar cajas y ventas"
+                    description="Borra el historial de cajas, arqueos, ventas y cobros. La caja queda en limpio; los productos y clientes no se tocan."
+                    buttonLabel="Borrar cajas y ventas"
+                    word="CAJAS"
+                    onConfirm={() => runDanger(() => api.post('/cash/reset-all'), 'Cajas y ventas borradas', 'No se pudieron borrar las cajas')}
+                  />
+                  <DangerAction
+                    title="Vaciar el catálogo"
+                    description="Saca todos los productos de la lista. Sirve para volver a cargar el catálogo desde cero."
+                    buttonLabel="Vaciar catálogo"
+                    word="PRODUCTOS"
+                    onConfirm={() => runDanger(() => api.post('/products/bulk-delete'), 'Catálogo vaciado', 'No se pudo vaciar el catálogo')}
+                  />
+                  <DangerAction
+                    severe
+                    title="Borrar todo"
+                    description={<><AlertTriangle className="inline w-3.5 h-3.5 text-red-500 -mt-0.5 mr-1" />Borra ventas, cajas, clientes, proveedores, stock, productos, categorías y usuarios. Si esta PC está vinculada a tu cuenta, se borra también en la nube, en todas tus cajas y en la web. Al volver a entrar creás un administrador nuevo.</>}
+                    buttonLabel="Borrar todo"
+                    word="BORRAR TODO"
+                    onConfirm={async () => {
+                      const ok = await runDanger(() => api.post('/system/hard-reset'), 'Se borró todo', 'No se pudo borrar todo');
+                      if (ok) logout();
+                      return ok;
+                    }}
+                  />
+                </SettingsCard>
+              )}
             </div>
-          </div>
-        </aside>
+          </motion.div>
+        </AnimatePresence>
       </div>
-      {/* Create User Modal */}
+
+      {/* Alta y edición de usuarios */}
       <AnimatePresence>
-        {showCreateModal && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowCreateModal(false)}
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }} 
-              animate={{ scale: 1, opacity: 1 }} 
-              exit={{ scale: 0.95, opacity: 0 }} 
-              onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-rose-500" /> Crear Cajero / Usuario
-                </h3>
-                <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
-              </div>
-
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Nombre de Usuario</label>
-                  <input 
-                    type="text" 
-                    value={newUsername} 
-                    onChange={(e) => setNewUsername(e.target.value.toUpperCase().replace(/\s+/g, ''))} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                    placeholder="Ej: JUAN.PEREZ" 
-                    required 
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Contraseña</label>
-                  <div className="relative">
-                    <input 
-                      type="password" 
-                      value={newPassword} 
-                      onChange={(e) => setNewPassword(e.target.value)} 
-                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                      placeholder="Ingresá contraseña segura..." 
-                      required 
-                    />
-                    <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Rol / Permisos</label>
-                  <select 
-                    value={newRole} 
-                    onChange={(e) => setNewRole(e.target.value)} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer"
-                  >
-                    <option value="CASHIER">Cajero (Operador POS)</option>
-                    <option value="SUPERVISOR">Supervisor</option>
-                    <option value="ADMIN">Administrador (Acceso Completo)</option>
-                  </select>
-                </div>
-
-                {/* Imprenta (o cualquier comercio con encargos): quién atiende y quién solo trabaja */}
-                {!hasFeature('preorders') && hasFeature('workorders') && newRole !== 'ADMIN' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en los encargos?</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[{ key: '', label: 'De todo', text: 'Atiende y trabaja' }, ...IMPRENTA_ROLES].map((w) => (
-                        <button key={w.key || 'todo'} type="button" onClick={() => setNewWorkRole(w.key)}
-                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${newWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
-                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 mt-1">Taller y Diseño entran directo a los encargos y no ven precios. Cancelar o cambiar el precio de un encargo con seña pide la clave del administrador.</p>
-                  </div>
-                )}
-
-                {hasFeature('preorders') && newRole !== 'ADMIN' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en la distribuidora?</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[{ key: '', label: 'De todo', text: 'Elige en cada equipo' }, ...WORK_ROLES].map((w) => (
-                        <button key={w.key || 'todo'} type="button" onClick={() => setNewWorkRole(w.key)}
-                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${newWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
-                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 mt-1">Entra directo a lo suyo en cualquier celular o PC, y ve solo eso.</p>
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-2">
-                  <button 
-                    type="submit" 
-                    disabled={isCreatingUser}
-                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    <UserPlus className="w-4.5 h-4.5" /> {isCreatingUser ? 'Guardando...' : 'Crear Usuario'}
-                  </button>
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
+        {userModal && (
+          <UserFormModal
+            key={userModal.mode === 'edit' ? userModal.user.id : 'new'}
+            mode={userModal.mode}
+            initial={userModal.mode === 'edit' ? { username: userModal.user.username, role: userModal.user.role, workRole: userModal.user.workRole || '', isActive: userModal.user.isActive !== false } : undefined}
+            onClose={() => setUserModal(null)}
+            onSubmit={handleSubmitUser}
+          />
         )}
       </AnimatePresence>
 
-      {/* Edit User Modal */}
-      <AnimatePresence>
-        {showEditModal && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowEditModal(false)}
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }} 
-              animate={{ scale: 1, opacity: 1 }} 
-              exit={{ scale: 0.95, opacity: 0 }} 
-              onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Edit className="w-5 h-5 text-rose-500" /> Editar Cajero / Usuario
-                </h3>
-                <button onClick={() => setShowEditModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><X className="w-5 h-5" /></button>
-              </div>
-
-              <form onSubmit={handleEditUser} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Nombre de Usuario</label>
-                  <input 
-                    type="text" 
-                    value={editUsername} 
-                    onChange={(e) => setEditUsername(e.target.value.toUpperCase().replace(/\s+/g, ''))} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                    placeholder="Ej: JUAN.PEREZ" 
-                    required 
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Nueva Contraseña (Dejar vacío para no cambiar)</label>
-                  <div className="relative">
-                    <input 
-                      type="password" 
-                      value={editPassword} 
-                      onChange={(e) => setEditPassword(e.target.value)} 
-                      className="w-full bg-slate-50 border border-slate-400 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner" 
-                      placeholder="Nueva contraseña numérica..." 
-                    />
-                    <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Rol / Permisos</label>
-                  <select 
-                    value={editRole} 
-                    onChange={(e) => setEditRole(e.target.value)} 
-                    className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-750 outline-none focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all shadow-inner cursor-pointer"
-                  >
-                    <option value="CASHIER">Cajero (Operador POS)</option>
-                    <option value="SUPERVISOR">Supervisor</option>
-                    <option value="ADMIN">Administrador (Acceso Completo)</option>
-                  </select>
-                </div>
-
-                {/* Imprenta (o cualquier comercio con encargos): quién atiende y quién solo trabaja */}
-                {!hasFeature('preorders') && hasFeature('workorders') && editRole !== 'ADMIN' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en los encargos?</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[{ key: '', label: 'De todo', text: 'Atiende y trabaja' }, ...IMPRENTA_ROLES].map((w) => (
-                        <button key={w.key || 'todo'} type="button" onClick={() => setEditWorkRole(w.key)}
-                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${editWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
-                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 mt-1">Taller y Diseño entran directo a los encargos y no ven precios. Cancelar o cambiar el precio de un encargo con seña pide la clave del administrador.</p>
-                  </div>
-                )}
-
-                {hasFeature('preorders') && editRole !== 'ADMIN' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">¿Qué hace en la distribuidora?</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[{ key: '', label: 'De todo', text: 'Elige en cada equipo' }, ...WORK_ROLES].map((w) => (
-                        <button key={w.key || 'todo'} type="button" onClick={() => setEditWorkRole(w.key)}
-                          className={`text-left px-3 py-2 rounded-xl border-2 cursor-pointer transition-colors ${editWorkRole === w.key ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                          <span className="block text-[12px] font-bold text-slate-800">{w.label}</span>
-                          <span className="block text-[10.5px] text-slate-500 leading-tight">{w.text}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 mt-1">Entra directo a lo suyo en cualquier celular o PC, y ve solo eso.</p>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-400 rounded-xl shadow-inner">
-                  <span className="text-[10px] font-bold text-slate-700 uppercase">Usuario Activo</span>
-                  <input 
-                    type="checkbox" 
-                    checked={editIsActive} 
-                    onChange={(e) => setEditIsActive(e.target.checked)} 
-                    className="rounded-md border-slate-400 text-rose-650 focus:ring-rose-500 h-4.5 w-4.5"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button 
-                    type="submit" 
-                    disabled={isSavingEdit}
-                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    <Save className="w-4.5 h-4.5" /> {isSavingEdit ? 'Guardando...' : 'Guardar Cambios'}
-                  </button>
-                  <button type="button" onClick={() => setShowEditModal(false)} className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer">
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Backup preparado: se aplica al reiniciar */}
       {pendingRestartMessage && (
         <div className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-amber-50 flex items-center gap-2.5">
-              <span className="text-2xl">♻️</span>
-              <h2 className="text-base font-bold text-slate-800">Reiniciá Ventra para terminar</h2>
+              <RotateCcw className="w-5 h-5 text-amber-700" />
+              <h2 className="text-[16px] font-bold text-slate-800">Reiniciá Ventra para terminar</h2>
             </div>
-            <div className="p-6 space-y-3 text-sm text-slate-700">
+            <div className="p-6 space-y-3 text-[14px] text-slate-700">
               <p>{pendingRestartMessage}</p>
-              <p className="text-xs text-slate-500">
-                No se perdió nada: la base actual quedó guardada como copia de seguridad antes de reemplazarla.
-              </p>
+              <p className="text-[13px] text-slate-500">No se perdió nada: la base actual quedó guardada como copia de seguridad antes de reemplazarla.</p>
             </div>
             <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-              <button
-                onClick={() => setPendingRestartMessage(null)}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700"
-              >
+              <button onClick={() => setPendingRestartMessage(null)} className="h-10 px-4 rounded-xl bg-amber-600 text-white text-[14px] font-semibold hover:bg-amber-700 cursor-pointer">
                 Entendido
               </button>
             </div>
@@ -2315,80 +1270,56 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
         </div>
       )}
 
-      {/* Restore Backup Modal */}
+      {/* Confirmar restauración */}
       <AnimatePresence>
         {showRestoreModal && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => { if (!isRestoring) { setShowRestoreModal(false); setSelectedBackupToRestore(null); setUploadedFileToRestore(null); setRestoreConfirmWord(''); } }}
+            onClick={() => { if (!isRestoring) closeRestoreModal(); }}
           >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }} 
-              animate={{ scale: 1, opacity: 1 }} 
-              exit={{ scale: 0.95, opacity: 0 }} 
-              onClick={(e) => e.stopPropagation()} 
-              className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-400 flex flex-col p-6 space-y-4"
+            <motion.div
+              initial={{ scale: 0.97, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.97, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 flex flex-col"
             >
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" /> Confirmar Restauración de Backup
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <h3 className="text-[16px] font-bold text-slate-900 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" /> Restaurar una copia
                 </h3>
-                <button 
-                  disabled={isRestoring}
-                  onClick={() => { setShowRestoreModal(false); setSelectedBackupToRestore(null); setUploadedFileToRestore(null); setRestoreConfirmWord(''); }} 
-                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"
-                >
+                <button disabled={isRestoring} onClick={closeRestoreModal} aria-label="Cerrar" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 cursor-pointer">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-150 flex gap-3 text-xs text-amber-900 leading-relaxed font-semibold">
-                <Info className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-extrabold uppercase">⚠️ ¡ADVERTENCIA CRÍTICA!</p>
-                  <p className="mt-1">
-                    Estás a punto de reemplazar la base de datos completa por el archivo seleccionado. 
-                    Esto <b>sobrescribirá de forma definitiva</b> todas las ventas, productos, stock, configuraciones y cajas activas en este terminal.
-                  </p>
+              <div className="px-6 py-5 space-y-4">
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-[13px] text-amber-900 leading-relaxed">
+                  Vas a reemplazar <b>toda la base de datos</b> de este equipo por la copia: ventas, productos, stock, ajustes y cajas abiertas quedan como estaban en ese momento.
                 </div>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-xs text-slate-700 font-bold">
-                  Archivo a restaurar: <span className="font-mono text-slate-800 break-all">{uploadedFileToRestore ? uploadedFileToRestore.name : selectedBackupToRestore}</span>
+                <p className="text-[13px] text-slate-600">
+                  Copia: <span className="font-mono text-slate-800 break-all">{uploadedFileToRestore ? uploadedFileToRestore.name : selectedBackupToRestore}</span>
                 </p>
-
-                <p className="text-[10px] text-slate-700 font-semibold leading-normal">
-                  Para confirmar el reemplazo completo de la base de datos, escribí la palabra clave <b className="text-amber-600 uppercase">"RESTAURAR"</b> a continuación:
-                </p>
-                
-                <input 
-                  type="text" 
-                  value={restoreConfirmWord} 
-                  disabled={isRestoring}
-                  onChange={(e) => setRestoreConfirmWord(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-400 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all shadow-inner"
-                  placeholder="Escribí RESTAURAR..."
-                />
+                <Field label="Para confirmar, escribí RESTAURAR">
+                  <input
+                    type="text"
+                    value={restoreConfirmWord}
+                    disabled={isRestoring}
+                    onChange={(e) => setRestoreConfirmWord(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRestoreBackup(); }}
+                    className={inputCls}
+                    placeholder="RESTAURAR"
+                    autoFocus
+                  />
+                </Field>
               </div>
-
-              <div className="flex gap-3 pt-2">
-                <button 
+              <div className="flex gap-2 px-6 py-4 border-t border-slate-100">
+                <button
                   onClick={handleRestoreBackup}
                   disabled={isRestoring || restoreConfirmWord.toUpperCase() !== 'RESTAURAR'}
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  className="flex-1 h-11 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-[14px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <RotateCcw className="w-4.5 h-4.5" /> {isRestoring ? 'Restaurando...' : 'Reemplazar Base de Datos'}
+                  {isRestoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />} {isRestoring ? 'Restaurando…' : 'Reemplazar base de datos'}
                 </button>
-                <button 
-                  type="button" 
-                  disabled={isRestoring}
-                  onClick={() => { setShowRestoreModal(false); setSelectedBackupToRestore(null); setUploadedFileToRestore(null); setRestoreConfirmWord(''); }} 
-                  className="px-5 py-3.5 rounded-xl border border-slate-400 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
-                >
+                <button type="button" disabled={isRestoring} onClick={closeRestoreModal} className="h-11 px-5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-[14px] font-semibold cursor-pointer">
                   Cancelar
                 </button>
               </div>

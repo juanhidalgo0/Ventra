@@ -72,7 +72,7 @@ export default function ScaleSettingsCard() {
 
   const num = (k: keyof ScaleFormat, label: string, min: number, max: number) => (
     <label className="block">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+      <span className="text-[12.5px] font-semibold text-slate-600">{label}</span>
       <input type="number" min={min} max={max} value={format[k] as number}
         onChange={(e) => {
           const next = { ...format, [k]: Number(e.target.value) };
@@ -86,10 +86,11 @@ export default function ScaleSettingsCard() {
 
   return (
     <div className="card p-6 space-y-4">
-      <h3 className="text-[15px] font-bold text-slate-900 tracking-tight flex items-center gap-2.5 pb-3 border-b border-slate-100">
-        <Weight className="w-4.5 h-4.5 text-emerald-500" /> Balanza y etiquetas
-      </h3>
-      <p className="text-[12px] text-slate-600 leading-snug">
+      <div className="flex items-center gap-3">
+        <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-rose-50 text-rose-600"><Weight className="w-[18px] h-[18px]" /></span>
+        <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Balanza y etiquetas</h3>
+      </div>
+      <p className="text-[13px] text-slate-500 leading-snug">
         La caja lee el código que imprime la balanza: busca el producto por su <b>código de balanza</b> y lo suma con los kilos y el importe de la etiqueta.
         Tenés <b>{withPlu.length}</b> producto{withPlu.length === 1 ? '' : 's'} con código de balanza.
       </p>
@@ -100,7 +101,7 @@ export default function ScaleSettingsCard() {
 
       {/* Probar con una etiqueta */}
       <div className="space-y-2">
-        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">Probar con una etiqueta</label>
+        <label className="block text-[12.5px] font-semibold text-slate-600">Probar con una etiqueta</label>
         <div className="relative">
           <ScanLine className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-slate-400" />
           <input value={code} onChange={(e) => { setCode(e.target.value); setFound(undefined); }} inputMode="numeric"
@@ -124,7 +125,7 @@ export default function ScaleSettingsCard() {
         {clean.length === 13 && !(read && product) && (
           <div className="grid grid-cols-2 sm:grid-cols-[1fr,auto,1fr,auto] gap-2 items-end">
             <label className="block">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Código del producto</span>
+              <span className="text-[12.5px] font-semibold text-slate-600">Código del producto</span>
               <input value={plu} onChange={(e) => setPlu(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="PLU" className="mt-0.5 w-full h-9 px-2 rounded-lg border border-slate-300 text-[13px] tabular-nums" />
             </label>
             <div className="flex rounded-lg border border-slate-300 overflow-hidden h-9 text-[12px] font-semibold">
@@ -133,7 +134,7 @@ export default function ScaleSettingsCard() {
               ))}
             </div>
             <label className="block">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{kind === 'price' ? 'Importe impreso ($)' : 'Peso impreso (kg)'}</span>
+              <span className="text-[12.5px] font-semibold text-slate-600">{kind === 'price' ? 'Importe impreso ($)' : 'Peso impreso (kg)'}</span>
               <input value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" className="mt-0.5 w-full h-9 px-2 rounded-lg border border-slate-300 text-[13px] tabular-nums" />
             </label>
             <button type="button" onClick={detect} disabled={!plu || !value}
@@ -160,13 +161,13 @@ export default function ScaleSettingsCard() {
         {manual && (
           <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
             <label className="block">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Empieza con</span>
+              <span className="text-[12.5px] font-semibold text-slate-600">Empieza con</span>
               <input value={format.prefix} onChange={(e) => save({ ...format, prefix: e.target.value.replace(/\D/g, '').slice(0, 3) || '2' })} className="mt-0.5 w-full h-8 px-2 rounded-lg border border-slate-300 text-[13px] tabular-nums" />
             </label>
             {num('pluStart', 'El código arranca en la cifra (desde 0)', 1, 4)}
             {num('pluLen', 'Cifras del código', 1, 7)}
             <label className="block">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Trae</span>
+              <span className="text-[12.5px] font-semibold text-slate-600">Trae</span>
               <select value={format.kind} onChange={(e) => save({ ...format, kind: e.target.value as ScaleFormat['kind'] })} className="mt-0.5 w-full h-8 px-2 rounded-lg border border-slate-300 text-[13px]">
                 <option value="price">El importe</option>
                 <option value="weight">El peso (gramos)</option>

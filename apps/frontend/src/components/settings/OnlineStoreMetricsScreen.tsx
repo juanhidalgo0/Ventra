@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { AlertCircle, ChevronDown, Loader2, RefreshCw, ShoppingBag } from 'lucide-react';
 import { resolveStoreId, fetchStoreOrders, fetchProductCosts, type StoreOrder } from '../../services/onlineStore';
+import ExportButtons from '../common/ExportButtons';
+import { periodLabel, type Report } from '../../utils/report';
 
 type Period = 'today' | '7d' | '30d' | 'month' | 'custom';
 const PERIODS: { id: Period; label: string }[] = [
@@ -127,6 +129,65 @@ export default function OnlineStoreMetricsScreen() {
     };
   }, [orders, costs, start, end]);
 
+  /** Las métricas y los pedidos del período en Excel o PDF */
+  const buildReport = (): Report | null => {
+    if (!orders) return null;
+    const label = PERIODS.find((p) => p.id === period)?.label || '';
+    const valid = orders.filter((o) => o.stage !== 'CANCELLED');
+    const byProduct = new Map<string, { name: string; qty: number; total: number; cost: number | null }>();
+    for (const o of valid) for (const i of o.items || []) {
+      const key = String(i.productId);
+      const cur = byProduct.get(key) || { name: i.name, qty: 0, total: 0, cost: costs?.[key] ?? null };
+      cur.qty += Number(i.qty) || 0;
+      cur.total += (Number(i.price) || 0) * (Number(i.qty) || 0);
+      byProduct.set(key, cur);
+    }
+    const products = [...byProduct.values()].sort((a, b) => b.total - a.total);
+    const split = (title: string, rows: [string, { count: number; total: number }][], head: string) => ({
+      title,
+      columns: [{ header: head }, { header: 'Pedidos', type: 'int' as const }, { header: 'Vendido', type: 'money' as const }, { header: '% de lo vendido', type: 'percent' as const }],
+      rows: rows.map(([k, v]) => [k, v.count, v.total, stats.total > 0 ? (v.total / stats.total) * 100 : 0]),
+    });
+    const sorted = [...orders].sort((a, b) => (orderDate(a)?.getTime() || 0) - (orderDate(b)?.getTime() || 0));
+    return {
+      title: 'Tienda online: métricas y ventas',
+      subtitle: `${label} (${periodLabel(start, new Date(end.getTime() - 1))})`,
+      fileName: `Tienda online ${label}`,
+      summary: [
+        { label: 'Vendido', value: stats.total, type: 'money' },
+        { label: 'Pedidos', value: stats.count, type: 'int' },
+        { label: 'Productos vendidos', value: stats.units, type: 'number' },
+        { label: 'Ticket promedio', value: stats.avg, type: 'money' },
+        ...(stats.profitCoverage > 0 ? [{ label: 'Ganancia estimada', value: stats.profit, type: 'money' as const, tone: 'good' as const }] : []),
+        ...(stats.cancelled ? [{ label: 'Cancelados', value: stats.cancelled, type: 'int' as const, tone: 'warn' as const }] : []),
+      ],
+      tables: [
+        {
+          title: stats.oneDay ? 'Ventas por hora' : 'Ventas por día',
+          columns: [{ header: stats.oneDay ? 'Hora' : 'Día' }, { header: 'Vendido', type: 'money' }],
+          rows: stats.chart.map((c) => [c.label, c.total]),
+          totals: ['Total', stats.total],
+        },
+        {
+          title: 'Productos',
+          columns: [{ header: 'Producto' }, { header: 'Cantidad', type: 'number' }, { header: 'Vendido', type: 'money' }, { header: 'Costo actual', type: 'money' }, { header: 'Ganancia estimada', type: 'money' }],
+          rows: products.map((x) => [x.name, x.qty, x.total, x.cost, x.cost != null ? x.total - x.cost * x.qty : null]),
+          totals: ['Total', stats.units, products.reduce((t, x) => t + x.total, 0), null, stats.profitCoverage > 0 ? stats.profit : null],
+          emptyText: 'Sin productos vendidos',
+        },
+        split('Por forma de entrega', stats.byDelivery, 'Entrega'),
+        split('Por forma de pago', stats.byPayment, 'Forma de pago'),
+        {
+          title: 'Pedidos',
+          columns: [{ header: 'Fecha', type: 'datetime' }, { header: 'Código' }, { header: 'Cliente' }, { header: 'Teléfono' }, { header: 'Entrega' }, { header: 'Pago' }, { header: 'Estado' }, { header: 'Total', type: 'money' }],
+          rows: sorted.map((o) => [orderDate(o), o.orderCode || '', o.customerName || '', o.customerPhone || '', DELIVERY[o.delivery || ''] || '', o.paymentMethod || '', STAGE[o.stage || ''] || o.stage || '', Number(o.total) || 0]),
+          emptyText: 'No hubo pedidos en el período',
+        },
+      ],
+      notes: ['La ganancia estimada usa el costo actual de cada producto; los pedidos cancelados no suman.'],
+    };
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-slate-50 custom-scrollbar">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
@@ -146,6 +207,7 @@ export default function OnlineStoreMetricsScreen() {
                 </button>
               ))}
             </div>
+            <ExportButtons build={buildReport} disabled={!orders} />
             <button onClick={load} disabled={loading} title="Actualizar" aria-label="Actualizar" className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
