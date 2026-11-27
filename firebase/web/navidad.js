@@ -53,11 +53,16 @@
     apagar: function () { ls('navidad_off', '1'); location.reload(); },
     prender: function () { ls('navidad_off', null); location.reload(); }
   };
-  if (ss('navidad_forzar') === '0' || !enTemporada(ahora()) || ls('navidad_off') === '1') return;
+  if (ss('navidad_forzar') === '0' || ls('navidad_off') === '1') return;
 
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function apagadoAhora() { return cfg.apagado && root.classList.contains(cfg.apagado.replace(/^\./, '')); }
   function rutaSinEfectos() { return !!cfg.sinEfectos && new RegExp(cfg.sinEfectos, 'i').test(location.hash + ' ' + location.pathname); }
+
+  // Prende todo y devuelve la función que lo saca (se usa cuando termina la temporada o cambia el día
+  // con la página abierta: así no hace falta cerrar ni recargar nada).
+  function encender() {
+  var vivo = true, timers = [], posicionPuesta = null;
   root.classList.add('navidad');
 
   /* ---------- Estilos ---------- */
@@ -176,7 +181,7 @@
     if (!cfg.luces || apagadoAhora()) return;
     var el = document.querySelector(cfg.luces);
     if (!el || el.querySelector(':scope > .nv-luces')) return;
-    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    if (getComputedStyle(el).position === 'static') { el.style.position = 'relative'; posicionPuesta = el; }
     var tira = document.createElement('div'); tira.className = 'nv-luces' + (cfg.lucesChicas ? ' chica' : ''); tira.setAttribute('aria-hidden', 'true');
     var h = ''; // 90 lamparitas alcanzan para pantallas de hasta 4000 px (al cargar en segundo plano el ancho puede dar 0)
     for (var i = 0; i < 90; i++) {
@@ -189,6 +194,7 @@
   /* ---------- Cartelitos ---------- */
   // icono: emoji, o un número para la hojita de almanaque de diciembre
   function cartel(abajo, icono, titulo, sub, oscuro, ms) {
+    if (!vivo) return; // un cartel demorado que llega después de apagar
     ms = ms || 6000;
     var el = document.createElement('div'); el.className = 'nv-cartel' + (oscuro ? ' oscuro' : ''); el.setAttribute('role', 'status');
     el.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + ' + (Number(abajo) || 24) + 'px)';
@@ -307,7 +313,7 @@
     return null;
   }
   function brindar() {
-    if (!cfg.brindis || apagadoAhora() || rutaSinEfectos() || document.hidden) return;
+    if (!vivo || !cfg.brindis || apagadoAhora() || rutaSinEfectos() || document.hidden) return;
     var d = ahora(), b = nocheDeBrindis(d); if (!b) return;
     // Una vez antes y otra después de las 12 (si la página sigue abierta a la medianoche)
     var clave = (d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear()) + '-' + b.k + '-' + (d.getHours() >= 20 ? 'noche' : 'doce');
@@ -354,22 +360,55 @@
   };
 
   /* ---------- Arranque ---------- */
-  function iniciar() {
+  var observador = null, tm = 0;
+  try {
     colgarLuces();
     buscarLogos();
     armarArbolito();
     llenarCuentas();
     if (cfg.brindis && nocheDeBrindis(ahora())) setTimeout(brindar, 1500); else saludar();
-    if (cfg.brindis) setInterval(brindar, 60000); // por si la página queda abierta hasta la noche o las 12
-    addEventListener('scroll', pedirUbicar, { passive: true, capture: true });
-    addEventListener('resize', pedirUbicar);
-    addEventListener('hashchange', pedirUbicar);
-    if ('MutationObserver' in window) {
-      var tm = 0;
-      new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(function () { colgarLuces(); buscarLogos(); llenarCuentas(); }, 120); })
-        .observe(document.body, { childList: true, subtree: true });
-    }
-    setInterval(ubicar, 1200); // por si algo se mueve sin scroll (menús, transiciones)
+  } catch (e) { } // un detalle navideño nunca tiene que romper la página
+  if (cfg.brindis) timers.push(setInterval(brindar, 60000)); // por si la página queda abierta hasta la noche o las 12
+  addEventListener('scroll', pedirUbicar, { passive: true, capture: true });
+  addEventListener('resize', pedirUbicar);
+  addEventListener('hashchange', pedirUbicar);
+  if ('MutationObserver' in window) {
+    observador = new MutationObserver(function () {
+      clearTimeout(tm);
+      tm = setTimeout(function () { if (!vivo) return; try { colgarLuces(); buscarLogos(); llenarCuentas(); } catch (e) { } }, 120);
+    });
+    observador.observe(document.body, { childList: true, subtree: true });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+  timers.push(setInterval(function () { try { ubicar(); } catch (e) { } }, 1200)); // por si algo se mueve sin scroll (menús, transiciones)
+
+  return function apagar() {
+    vivo = false;
+    timers.forEach(clearInterval); clearTimeout(tm);
+    if (observador) observador.disconnect();
+    removeEventListener('scroll', pedirUbicar, { capture: true });
+    removeEventListener('resize', pedirUbicar);
+    removeEventListener('hashchange', pedirUbicar);
+    var restos = document.querySelectorAll('.nv-gorro,.nv-luces,.nv-arbol,.nv-arbol-tip,.nv-cartel,.nv-fuegos');
+    for (var i = 0; i < restos.length; i++) restos[i].remove();
+    var cuentas = document.querySelectorAll('[data-nv-cuenta]');
+    for (var j = 0; j < cuentas.length; j++) { cuentas[j].hidden = true; cuentas[j].textContent = ''; }
+    if (posicionPuesta) posicionPuesta.style.position = '';
+    st.remove();
+    root.classList.remove('navidad', 'nv-con-cartel');
+  };
+  } // fin de encender()
+
+  // Se fija cada minuto: a las 00:00 del 1/12 se prende solo, el 7/1 se apaga solo, y cada día nuevo
+  // se rearma (bolita nueva del arbolito, "Faltan X días") sin cerrar la caja ni recargar la página.
+  var apagar = null, diaPrendido = '';
+  function claveDia(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+  function revisar() {
+    try {
+      var d = ahora(), dentro = enTemporada(d);
+      if (apagar && (!dentro || claveDia(d) !== diaPrendido)) { var a = apagar; apagar = null; a(); }
+      if (dentro && !apagar) { diaPrendido = claveDia(d); apagar = encender(); }
+    } catch (e) { }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', revisar); else revisar();
+  setInterval(revisar, 60000);
 })();
