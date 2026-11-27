@@ -127,6 +127,8 @@
   .pill.GRACE{ background:var(--amber-bg); color:var(--amber); border-color:var(--amber-line); }
   .pill.READ_ONLY{ background:var(--red-bg); color:var(--red); border-color:var(--red-line); }
   .pill.UNPAID{ background:var(--gray-bg); color:var(--ink-2); border-color:var(--line); }
+  .pill.TRIAL{ background:#EAF1FB; color:#2C5F9E; border-color:#C9DBF2; }
+  .unpaid-note{ font-size:11px; color:#2C5F9E; font-weight:600; }
   .pill.NOPLAN{ background:#fff; color:var(--ink-3); border:1px dashed var(--line); }
   .avatar img{ width:100%; height:100%; object-fit:cover; border-radius:inherit; }
   .enable-box{ border:1px solid var(--mint-100); background:var(--mint-50); border-radius:var(--r); padding:14px; }
@@ -365,7 +367,10 @@
     .sup.chat-open .sup-chat{ display:flex; }
     .sup-back{ display:flex; }
     .sup-msg{ max-width:88%; }
+    .sup-wa span{ display:none; }
+    .sup-wa{ padding:0 9px; }
   }
+  .sup-wa{ color:#128C4B; flex-shrink:0; text-decoration:none; }
 
   /* ── Tablas que pasan a tarjetas en el celular ── */
   @media (max-width: 720px){
@@ -614,6 +619,7 @@
           <div class="sup-head">
             <button class="icon-btn sup-back" id="supBack" type="button" aria-label="Volver a la lista"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
             <div style="flex:1;min-width:0"><div id="supWho" style="font-weight:700">Elegí una conversación</div><div class="small" id="supInfo"></div></div>
+            <a class="btn sm hidden sup-wa" id="supWa" target="_blank" rel="noopener" title="Abrir este chat en WhatsApp"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg><span>Abrir en WhatsApp</span></a>
             <button class="btn sm hidden" id="supMode"></button>
           </div>
           <div class="sup-msgs" id="supMsgs"></div>
@@ -821,8 +827,11 @@
       ACTIVE: { label:'Activa', color:'#167160' },
       GRACE: { label:'En gracia', color:'#D08A1E' },
       READ_ONLY: { label:'Solo lectura', color:'#B4412B' },
-      UNPAID: { label:'Sin pago', color:'#B9B2A6' }
+      UNPAID: { label:'Sin pago', color:'#B9B2A6' },
+      TRIAL: { label:'Prueba gratis', color:'#5B8FD0' }
     };
+    // En prueba gratis se muestra aparte: la cuenta anda (ACTIVE) pero todavía no pagó nada
+    function vstate(a){ return a.trial ? 'TRIAL' : a.state; }
     // data: cuentas y cobros (llega enseguida). stats: servicios, uso, costos y registrados (llega después)
     var data = null, stats = null, filter = 'ALL', query = '', openUid = null, auth = null;
 
@@ -885,7 +894,7 @@
     function setBadge(id, n){ var b = $(id); if (!b) return; b.textContent = n > 99 ? '99+' : String(n); b.classList.toggle('hidden', !n); }
 
     function daysText(a){
-      if (a.state === 'UNPAID') return { main:'Sin fecha', sub:'Esperando el primer cobro' };
+      if (a.state === 'UNPAID') return { main:'No pagó', sub: a.trialUsed ? 'Terminó la prueba sin pagar' : 'Eligió el plan, no cargó la tarjeta' };
       if (a.state === 'ACTIVE' && a.trial) return { main:'Prueba gratis · ' + a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:(a.mpStatus === 'cancelled' ? 'Se dio de baja · gratis hasta el ' : 'Primer cobro el ') + fdate(a.paidUntil) };
       if (a.state === 'ACTIVE') return { main: a.daysLeft === 0 ? 'Vence hoy' : a.daysLeft + (a.daysLeft === 1 ? ' día' : ' días'), sub:'Paga hasta el ' + fdate(a.paidUntil) };
       if (a.state === 'GRACE') return { main: a.daysLeft === 0 ? 'Último día de gracia' : a.daysLeft + (a.daysLeft === 1 ? ' día de gracia' : ' días de gracia'), sub:'Venció el ' + fdate(a.paidUntil) };
@@ -958,9 +967,10 @@
       var m = data.metrics;
       $('updatedAt').textContent = 'Actualizado ' + new Date(data.generatedAt).toLocaleString('es-AR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 
-      var s = m.byState, total = Math.max(1, m.accounts);
-      var bar = ['ACTIVE','GRACE','READ_ONLY','UNPAID'].map(function(k){ return '<span style="width:' + (100 * (s[k] || 0) / total) + '%;background:' + STATE[k].color + '"></span>'; }).join('');
-      var legend = ['ACTIVE','GRACE','READ_ONLY','UNPAID'].filter(function(k){ return s[k]; }).map(function(k){ return '<span><i style="background:' + STATE[k].color + '"></i>' + STATE[k].label + ' ' + s[k] + '</span>'; }).join('');
+      var s = {}; data.accounts.forEach(function(a){ var k = vstate(a); s[k] = (s[k] || 0) + 1; });
+      var total = Math.max(1, m.accounts);
+      var bar = ['ACTIVE','TRIAL','GRACE','READ_ONLY','UNPAID'].map(function(k){ return '<span style="width:' + (100 * (s[k] || 0) / total) + '%;background:' + STATE[k].color + '"></span>'; }).join('');
+      var legend = ['ACTIVE','TRIAL','GRACE','READ_ONLY','UNPAID'].filter(function(k){ return s[k]; }).map(function(k){ return '<span><i style="background:' + STATE[k].color + '"></i>' + STATE[k].label + ' ' + s[k] + '</span>'; }).join('');
       $('kpis').innerHTML =
         '<div class="kpi hero"><div class="kpi-label">Ingreso mensual recurrente</div><div class="kpi-value num">' + money(m.mrr) + '</div><div class="kpi-foot">Suscripciones activas que se renuevan</div></div>' +
         '<div class="kpi"><div class="kpi-label">Cobrado este mes</div><div class="kpi-value num">' + money(m.monthRevenue) + '</div><div class="kpi-foot">Desde el 1° del mes</div></div>' +
@@ -1258,13 +1268,13 @@
     }
 
     function counts(){
-      var c = { ALL: data.accounts.length + registered().length, ACTIVE:0, GRACE:0, READ_ONLY:0, UNPAID:0, NOPLAN: registered().length, RISK:0 };
-      data.accounts.forEach(function(a){ c[a.state]++; if (a.ins && a.ins.health.level === 'risk') c.RISK++; }); return c;
+      var c = { ALL: data.accounts.length + registered().length, ACTIVE:0, TRIAL:0, GRACE:0, READ_ONLY:0, UNPAID:0, NOPLAN: registered().length, RISK:0 };
+      data.accounts.forEach(function(a){ c[vstate(a)]++; if (a.ins && a.ins.health.level === 'risk') c.RISK++; }); return c;
     }
 
     function renderChips(){
       var c = counts();
-      var items = [['ALL','Todos'],['ACTIVE','Activas'],['GRACE','En gracia'],['READ_ONLY','Solo lectura'],['UNPAID','Sin pago'],['RISK','En riesgo'],['NOPLAN','Registrados sin plan']];
+      var items = [['ALL','Todos'],['ACTIVE','Activas (pagan)'],['TRIAL','En prueba'],['GRACE','En gracia'],['READ_ONLY','Solo lectura'],['UNPAID','Sin pago'],['RISK','En riesgo'],['NOPLAN','Registrados sin plan']];
       if (!stats) items = items.filter(function(it){ return it[0] !== 'RISK'; });
       $('chips').innerHTML = items.map(function(it){
         return '<button class="chip' + (filter === it[0] ? ' on' : '') + '" data-f="' + it[0] + '">' + it[1] + ' <span class="c">' + c[it[0]] + '</span></button>';
@@ -1280,7 +1290,7 @@
       var q = query.trim().toLowerCase();
       var rows = filter === 'NOPLAN' ? [] : data.accounts.filter(function(a){
         if (filter === 'RISK') { if (!(a.ins && a.ins.health.level === 'risk')) return false; }
-        else if (filter !== 'ALL' && a.state !== filter) return false;
+        else if (filter !== 'ALL' && vstate(a) !== filter) return false;
         var st = a.store ? (a.store.name || '') + ' ' + (a.store.subdomain || '') : '';
         return !q || String(a.email).toLowerCase().indexOf(q) >= 0 || String(a.planName).toLowerCase().indexOf(q) >= 0 || st.toLowerCase().indexOf(q) >= 0;
       });
@@ -1295,10 +1305,10 @@
         var dt = daysText(a);
         return '<tr data-uid="' + esc(a.uid) + '">' +
           '<td><div class="client">' + avatarHtml(a.email) + '<div style="min-width:0"><div class="client-email">' + esc(a.email || 'Sin email') + '</div><div class="client-plan">' + esc(a.planName || 'Sin plan') + (a.planAmount ? ' · <span class="num">' + money(a.planAmount) + '</span>' : '') + (a.mpStatus === 'cancelled' ? ' · cancelada en MP' : '') + (a.store && a.store.subdomain ? ' <span class="store-tag' + (a.store.published ? '' : ' off') + '" title="' + esc(a.store.url) + '">Tienda' + (a.store.published ? '' : ' (sin publicar)') + '</span>' : '') + '</div></div></div></td>' +
-          '<td><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span> ' + hbadge(a.ins) + '</td>' +
+          '<td><span class="pill ' + vstate(a) + '">' + STATE[vstate(a)].label + '</span> ' + hbadge(a.ins) + '</td>' +
           '<td><div class="days">' + dt.main + '</div><div class="days-sub">' + dt.sub + '</div></td>' +
           '<td class="hide-sm"><span class="pcs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span class="num">' + a.devices.length + '</span></span></td>' +
-          '<td class="r hide-sm num">' + money(a.totalPaid) + '</td></tr>';
+          '<td class="r hide-sm num">' + (a.totalPaid ? money(a.totalPaid) : '<span class="unpaid-note">' + (a.trial ? 'Todavía no pagó' : 'No pagó') + '</span>') + '</td></tr>';
       }).join('') + regs.map(function(u){
         return '<tr data-reg="' + esc(u.uid) + '">' +
           '<td><div class="client">' + avatarHtml(u.email, u.photoUrl) + '<div style="min-width:0"><div class="client-email">' + esc(u.email) + '</div><div class="client-plan">' + esc(u.name || 'Sin nombre') + ' · registrado ' + fdate(u.createdAt) + '</div></div></div></td>' +
@@ -1369,10 +1379,10 @@
         '<button class="icon-btn" id="closeDrawer" aria-label="Cerrar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>' +
         '<div class="drawer-body">' +
           '<div class="section"><dl class="facts">' +
-            '<div class="fact"><dt>Estado</dt><dd><span class="pill ' + a.state + '">' + STATE[a.state].label + '</span></dd></div>' +
+            '<div class="fact"><dt>Estado</dt><dd><span class="pill ' + vstate(a) + '">' + STATE[vstate(a)].label + '</span></dd></div>' +
             '<div class="fact"><dt>Vencimiento</dt><dd>' + dt.main + '</dd></div>' +
-            '<div class="fact"><dt>Paga hasta</dt><dd class="num">' + fdate(a.paidUntil) + '</dd></div>' +
-            '<div class="fact"><dt>Total cobrado</dt><dd class="num">' + money(a.totalPaid) + '</dd></div>' +
+            '<div class="fact"><dt>' + (a.trial ? 'Gratis hasta' : 'Paga hasta') + '</dt><dd class="num">' + fdate(a.paidUntil) + '</dd></div>' +
+            '<div class="fact"><dt>Total cobrado</dt><dd class="num">' + money(a.totalPaid) + (a.totalPaid ? '' : ' <span class="unpaid-note">' + (a.trial ? '· en prueba, todavía no pagó' : '· nunca pagó') + '</span>') + '</dd></div>' +
             '<div class="fact"><dt>Cobro</dt><dd>' + esc({ active:'Mercado Pago activo', pending_payment:'MP: esperando pago', cancelled:'MP: cancelada', paused:'MP: pausada', manual:'Pago manual' }[a.mpStatus] || a.mpStatus || '—') + '</dd></div>' +
             '<div class="fact"><dt>Cliente desde</dt><dd class="num">' + fdate(a.createdAt) + '</dd></div>' +
             '<div class="fact"><dt>Datos en la nube</dt><dd>' + (!stats ? 'Calculando…' : a.cloud ? '<span class="num">' + (a.cloud.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB</span> · ' + a.cloud.rows.toLocaleString('es-AR') + ' registros' : 'Sin copia todavía') + '</dd></div>' +
@@ -2056,6 +2066,10 @@
         sup.thread = t;
         $('supWho').textContent = supName(t);
         $('supInfo').textContent = t.waiting ? 'Pidió hablar con una persona: el bot no le contesta' : 'Le contesta el bot';
+        // Abre la misma conversación en WhatsApp (app o web) para escribirle más cómodo
+        var waNum = String(t.phone || phone).replace(/\D/g, '');
+        $('supWa').href = 'https://wa.me/' + waNum;
+        $('supWa').classList.toggle('hidden', !waNum);
         $('supMode').classList.remove('hidden');
         $('supMode').textContent = t.waiting ? 'Devolver al bot' : 'Atiendo yo';
         var box = $('supMsgs'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
@@ -2200,7 +2214,8 @@
         mk('ferreteria.central@gmail.com', 'full', 21, 'ACTIVE', 21, 8, 3),
         mk('maxikiosco.sol@hotmail.com', 'caja', 9, 'ACTIVE', 9, 6, 1),
         mk('tienda.rosario@gmail.com', 'tienda', 27, 'ACTIVE', 27, 2, 1),
-        mk('peluqueria.sofi@gmail.com', 'agenda_pro', 18, 'ACTIVE', 18, 3, 0)
+        mk('peluqueria.sofi@gmail.com', 'agenda_pro', 18, 'ACTIVE', 18, 3, 0),
+        Object.assign(mk('minimercado.prueba@gmail.com', 'full', 6, 'ACTIVE', 6, 0, 1), { trial:true, trialUsed:true })
       ];
       // Costos automáticos de la noche (Neon y Firebase en dólares, con el dólar tarjeta) y fijos recurrentes.
       // ?demo&sincostos: la carga corrió pero falta la exportación a BigQuery, el secreto de Neon y los

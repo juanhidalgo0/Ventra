@@ -98,6 +98,7 @@
   .pc:has(input:checked) ul{ display:grid; }
   .pc li{ display:flex; gap:9px; font-size:14.5px; }
   .pc li::before{ content:''; flex:none; width:16px; height:16px; margin-top:3px; border-radius:50%; background:var(--mint-50) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23167160' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center no-repeat; }
+  .invited{ margin:0 0 16px; padding:10px 14px; border-radius:12px; background:#fef9c3; color:#713f12; font-size:14px; font-weight:600; }
   .promise{ display:flex; flex-wrap:wrap; gap:6px 18px; margin:18px 0 22px; font-size:13.5px; color:var(--ink-2); }
   .promise span{ display:inline-flex; align-items:center; gap:6px; }
   .promise svg{ color:var(--pine); }
@@ -148,6 +149,7 @@
   .cta{ margin-top:6px; }
   footer{ padding-bottom:28px; }
 </style>
+<script src="/medicion.js?v=3"></script>
 </head>
 <body>
 
@@ -164,6 +166,7 @@
 </header>
 
 <main class="wrap">
+  <p class="invited" id="invited" hidden></p>
   <ol class="prog" id="prog" aria-label="Pasos">
     <li data-p="1"><span>Negocio</span></li>
     <li data-p="2"><span>Plan</span></li>
@@ -206,7 +209,7 @@
     <div class="trust"><span class="faces" aria-hidden="true"><img src="/paulos-logo.jpg" alt="" width="30" height="30"><img src="/magdalena-logo.jpg" alt="" width="30" height="30"><img class="logo-dark" src="/escabiados-logo.webp" alt="" width="30" height="30"><img src="/danys-logo.jpg" alt="" width="30" height="30"><img src="/hamburguesas-lp-logo.jpg" alt="" width="30" height="30"></span><span>Ya lo usan <b>Paulos, Escabiados, Dany's, Hamburguesas La Plata, Distribuidora Magdalena</b> y muchos más</span></div>
     <div class="plist" id="plist" role="radiogroup" aria-labelledby="t2"></div>
     <div class="promise">
-      <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>7 días gratis, sin permanencia</span>
+      <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span id="promiseDays">7 días gratis</span>, sin permanencia</span>
       <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Cambiás de plan cuando quieras</span>
       <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Te ayudamos a arrancar</span>
     </div>
@@ -275,7 +278,7 @@
   </div>
 </footer>
 
-<script src="/ventra-cuenta.js?v=7"></script>
+<script src="/ventra-cuenta.js?v=10"></script>
 <script src="/en-la-app.js?v=1"></script>
 <script>
 (function(){
@@ -313,6 +316,13 @@
   else if (NEEDS[q.get('need')]) { st.need = q.get('need'); st.plan = NEEDS[st.need].plans[0]; st.step = Math.max(st.step || 0, 2); }
   if (/^[a-z]{2,20}$/.test(q.get('rubro') || '')) st.rubro = q.get('rubro');
   if (/^[a-z-]{2,30}$/.test(q.get('desde') || '')) st.from = q.get('desde');
+  // Invitado por otro comercio: el código se recuerda 30 días (por si vuelve otro día a terminar)
+  if (/^[A-Za-z0-9-]{4,14}$/.test(q.get('ref') || '')) {
+    st.ref = q.get('ref').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    try { localStorage.setItem('ventra_ref', JSON.stringify({ code: st.ref, at: Date.now() })); } catch(e){}
+  } else if (!st.ref) {
+    try { var savedRef = JSON.parse(localStorage.getItem('ventra_ref') || 'null'); if (savedRef && Date.now() - savedRef.at < 30 * 864e5) st.ref = savedRef.code; } catch(e){}
+  }
   if (st.rubro) document.documentElement.setAttribute('data-rubro', st.rubro);
   if (st.plan === 'prueba' && q.get('plan') !== 'prueba') { st.plan = null; st.step = 1; }
   var user = null;
@@ -401,15 +411,30 @@
   // Prueba gratis de 7 días para cuentas nuevas (la decide createVentraSubscription; acá solo se
   // muestra). Quien ya pagó o ya la usó ve el pago normal.
   var trialOk = true;
+  var trialDays = 7;
   function payTexts(){
     var p = PLANS[st.plan];
     $('t4').textContent = trialOk ? 'Último paso: tu prueba gratis' : 'Último paso: el pago';
     $('paySub').textContent = trialOk
-      ? 'Cargás la tarjeta en Mercado Pago y usás Ventra 7 días gratis: hoy no se cobra nada. Si te sirve, sigue solo mes a mes; si no, te das de baja desde Mi cuenta y no pagás nada.'
+      ? 'Cargás la tarjeta en Mercado Pago y usás Ventra ' + trialDays + ' días gratis: hoy no se cobra nada. Si te sirve, sigue solo mes a mes; si no, te das de baja desde Mi cuenta y no pagás nada.'
       : 'Te suscribís con Mercado Pago. Se cobra solo cada mes y lo das de baja cuando quieras.';
     $('sumPrice').innerHTML = trialOk ? '$0 hoy <small class="then">después ' + money(p.amount) + ' / mes</small>' : money(p.amount) + ' <small>/ mes</small>';
-    $('payBtn').textContent = trialOk ? 'Empezar mis 7 días gratis' : 'Ir a pagar ' + money(p.amount) + ' con Mercado Pago';
+    $('payBtn').textContent = trialOk ? 'Empezar mis ' + trialDays + ' días gratis' : 'Ir a pagar ' + money(p.amount) + ' con Mercado Pago';
     $('paySafe').textContent = trialOk ? 'La tarjeta se carga en la página de Mercado Pago. Te avisamos por mail antes del primer cobro.' : 'El pago se hace en la página de Mercado Pago. Después volvés acá solo.';
+  }
+  if (st.ref) {
+    fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/ventraReferralCheck?code=' + encodeURIComponent(st.ref))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d || !d.ok) { st.ref = null; save(); return; }
+        trialDays = d.trialDays || 30;
+        var b = $('invited');
+        b.textContent = '🎁 Te invitó un comercio que usa Ventra: probás ' + trialDays + ' días gratis en vez de 7.';
+        b.hidden = false;
+        if ($('promiseDays')) $('promiseDays').textContent = trialDays + ' días gratis';
+        if (PLANS[st.plan] && !$('payBtn').disabled) payTexts();
+        track('signup_ref');
+      }).catch(function(){});
   }
   function checkTrial(){
     if (!user || st.plan === 'prueba' || !window.firebase || !firebase.firestore) return;
@@ -437,7 +462,7 @@
     st.mpEmail = mail; save();
     var btn = $('payBtn'), label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Abriendo Mercado Pago…'; payErr('');
-    window.ventraCuenta.startCheckout(user, st.plan, mail, st.rubro).then(function(r){
+    window.ventraCuenta.startCheckout(user, st.plan, mail, st.rubro, st.ref).then(function(r){
       if (r.data && r.data.code === 'ALREADY_SUBSCRIBED') {
         btn.disabled = false; btn.textContent = label;
         $('payErr').innerHTML = ''; payErr(r.data.error);
@@ -472,6 +497,6 @@
 })();
 </script>
 <script src="/navidad.js?v=2" defer data-gorro="a.brand img" data-saludo="24"></script>
-<script src="/ventri.js?v=1" defer></script>
+<script src="/ventri.js?v=2" defer></script>
 </body>
 </html>

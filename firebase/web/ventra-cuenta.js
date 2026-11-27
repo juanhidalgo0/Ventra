@@ -21,6 +21,7 @@
   // (<html data-page>), tarjetas con data-track y botones de plan. Si falla, no pasa nada.
   var EVENT_URL = 'https://us-central1-ventra-9cba5.cloudfunctions.net/ventraSiteEvent';
   function track(e){
+    try { if (window.ventraMedir) window.ventraMedir(e); } catch(err){} // Analytics y Píxel (medicion.js)
     try {
       var body = JSON.stringify({ e: e });
       if (!(navigator.sendBeacon && navigator.sendBeacon(EVENT_URL, body))) fetch(EVENT_URL, { method:'POST', body: body, keepalive: true }).catch(function(){});
@@ -117,6 +118,10 @@
       // (arriba ya está "Mi cuenta" al lado, no hace falta repetirlo)
       document.querySelectorAll('a[data-start]').forEach(function(a){ a.href = '/cuenta.html'; a.textContent = 'Mi cuenta'; a.removeAttribute('data-start'); if (a.closest('.nav, .topbar .acts')) a.style.display = 'none'; });
       document.querySelectorAll('a[href="' + DEMO_URL + '"]').forEach(function(a){
+        // La demo dentro de una frase ("¿Querés mirarlo antes? Probá la demo gratis, sin registrarte."):
+        // cambiada a "Abrir mi Ventra" no se entiende, y el cliente ya tiene su botón arriba → se oculta la frase
+        var frase = a.closest('p.alt, p.demo-line');
+        if (frase) { frase.style.display = 'none'; return; }
         a.href = WEB_APP_URL;
         var arrow = a.querySelector('.arr');
         a.textContent = /demo gratis/i.test(a.textContent) ? 'Abrir mi Ventra' : 'Mi Ventra';
@@ -153,12 +158,31 @@
      Pago) y usa esto para entrar y crear la suscripción. Mercado Pago ata la suscripción a un
      correo y exige que quien paga entre con la cuenta de MP de ESE correo, que casi nunca es el
      de Google: por eso la página lo pide en un campo propio antes de salir del sitio. */
-  function startCheckout(user, plan, payerEmail, rubro){
+  // Cookies del Píxel de Meta (medicion.js): viajan con el alta para que, cuando Mercado Pago
+  // confirme la prueba o el pago, la nube se lo cuente a Meta sobre la misma persona (meta-capi.js)
+  function pixelCookies(){
+    try {
+      var c = {}, m;
+      if ((m = document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/))) c.fbp = decodeURIComponent(m[1]);
+      if ((m = document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/))) c.fbc = decodeURIComponent(m[1]);
+      if (!c.fbp && !c.fbc) return undefined;
+      c.url = location.origin + location.pathname;
+      return c;
+    } catch(e){ return undefined; }
+  }
+  // Código de quien lo invitó (?ref= en /empezar): se recuerda 30 días en este navegador
+  function referralCode(){
+    try {
+      var r = JSON.parse(localStorage.getItem('ventra_ref') || 'null');
+      return r && r.code && Date.now() - r.at < 30 * 864e5 ? r.code : undefined;
+    } catch(e){ return undefined; }
+  }
+  function startCheckout(user, plan, payerEmail, rubro, ref){
     return user.getIdToken().then(function(token){
       return fetch(CREATE_SUBSCRIPTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ plan: plan, payerEmail: payerEmail, rubro: rubro || currentRubro() || undefined, utm: signupUtm() || undefined })
+        body: JSON.stringify({ plan: plan, payerEmail: payerEmail, rubro: rubro || currentRubro() || undefined, utm: signupUtm() || undefined, meta: pixelCookies(), ref: ref || referralCode() })
       });
     }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); });
   }

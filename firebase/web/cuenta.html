@@ -83,6 +83,7 @@
   .btn.ghost:hover{ border-color:var(--ink-3); background:#fff; }
   .btn:disabled{ opacity:.6; cursor:default; }
   .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .invite-link{ margin-top:14px; padding:12px 14px; border-radius:14px; background:var(--bg, #f6f7f6); border:1px dashed var(--line); font-weight:650; word-break:break-all; }
 
   .steps{ margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
   .steps li{ display:flex; gap:12px; align-items:flex-start; font-size:13.5px; color:var(--ink-2); }
@@ -147,6 +148,7 @@
   .btn.ghost{ border-radius:12px; }
   .btn.ghost:hover{ border-color:var(--green); color:var(--green-dk); }
 </style>
+<script src="/medicion.js?v=3"></script>
 </head>
 <body>
   <nav class="nav">
@@ -233,6 +235,18 @@
       <p class="lead">El cambio es inmediato y el precio nuevo se cobra desde tu próximo pago, en la misma suscripción de Mercado Pago.</p>
       <div class="plans-alt" id="plansAlt"></div>
       <div class="msg" id="changeMsg"></div>
+    </section>
+
+    <!-- Invitá un comercio: link propio, 30 días para el invitado, un mes gratis para vos -->
+    <section class="card hidden" id="inviteCard">
+      <h2>🎁 Invitá un comercio y ganá un mes gratis</h2>
+      <p class="lead">Con tu link, el comercio que invitás prueba Ventra <b>30 días gratis</b> (en vez de 7). Cuando paga su primer mes, tu próximo mes sale gratis: Mercado Pago te cobra y te lo devolvemos en el acto. Hasta 12 meses por año.</p>
+      <div class="invite-link" id="inviteLink">Armando tu link…</div>
+      <div class="row">
+        <a class="btn" id="inviteWa" href="#" target="_blank" rel="noopener">Mandar por WhatsApp</a>
+        <button class="btn ghost" id="inviteCopy" type="button">Copiar mensaje</button>
+      </div>
+      <p class="dl-meta" id="inviteStats"></p>
     </section>
 
     <!-- Darse de baja: tan fácil como suscribirse -->
@@ -382,7 +396,37 @@
         cancelInfo = { inTrial:inTrial, until:paidUntil };
         extra.push('cancelCard');
       }
+      // Invitar: con una cuenta que ya está andando (prueba o paga)
+      if (paidUntil) { renderInvite(); extra.push('inviteCard'); }
       show((welcome ? ['startCard'] : []).concat(storeOnly ? ['planCard'] : ['planCard', 'downloadCard', 'linkCard']).concat(extra));
+    }
+
+    var inviteLoaded = false;
+    function renderInvite(){
+      if (inviteLoaded) return;
+      var user = firebase.auth().currentUser;
+      if (!user) return;
+      inviteLoaded = true;
+      user.getIdToken().then(function(token){
+        return fetch('https://us-central1-ventra-9cba5.cloudfunctions.net/ventraReferralStats', { headers: { Authorization: 'Bearer ' + token } });
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d || !d.ok) throw new Error((d && d.error) || 'Error');
+        var msg = '¡Hola! Uso Ventra para el negocio: la caja, el stock, las boletas con una foto y los cierres. Me re sirve. Con mi link lo probás 30 días gratis: ' + d.link;
+        $('inviteLink').textContent = d.link.replace('https://', '');
+        $('inviteWa').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+        $('inviteCopy').onclick = function(){
+          (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).then(function(){ $('inviteCopy').textContent = '¡Copiado!'; setTimeout(function(){ $('inviteCopy').textContent = 'Copiar mensaje'; }, 2000); }).catch(function(){});
+        };
+        var parts = [];
+        parts.push(d.invited === 1 ? '1 comercio se anotó con tu link' : d.invited + ' comercios se anotaron con tu link');
+        if (d.paying) parts.push(d.paying + ' ya ' + (d.paying === 1 ? 'paga' : 'pagan'));
+        if (d.earned) parts.push(d.earned + (d.earned === 1 ? ' mes ganado' : ' meses ganados'));
+        if (d.credits) parts.push(d.credits + ' para usar en tus próximos cobros');
+        $('inviteStats').textContent = parts.join(' · ');
+      }).catch(function(){
+        inviteLoaded = false;
+        $('inviteLink').textContent = 'No pudimos armar tu link ahora. Probá de nuevo en un rato.';
+      });
     }
 
     // ── Primeros pasos: al volver de pagar (y mientras dure esta pestaña) se muestra qué

@@ -17,7 +17,8 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 // El SDK de Mercado Pago pesa: se carga recién en las funciones de suscripción, no al arrancar todas
 const mpPreApproval = (accessToken) => { const { MercadoPagoConfig, PreApproval } = require("mercadopago"); return new PreApproval(new MercadoPagoConfig({ accessToken })); };
-const { GRACE_DAYS, nextPaidUntil, TRIAL_DAYS, trialEligible, trialDates, trialEnd, trialKey } = require("./subscription-rules");
+const { GRACE_DAYS, nextPaidUntil, TRIAL_DAYS, REFERRAL_TRIAL_DAYS, trialEligible, trialDates, trialEnd, trialKey } = require("./subscription-rules");
+const referrals = require("./referrals");
 const cloudSync = require("./sync");
 const syncArchive = require("./archive");
 const dashboard = require("./dashboard");
@@ -35,6 +36,9 @@ const VENTRA_MP_CLIENT_ID = defineSecret("VENTRA_MP_CLIENT_ID");
 const VENTRA_MP_CLIENT_SECRET = defineSecret("VENTRA_MP_CLIENT_SECRET");
 // Clave secreta de los webhooks de la app de Ventra (Mercado Pago → Webhooks)
 const VENTRA_MP_WEBHOOK_SECRET = defineSecret("VENTRA_MP_WEBHOOK_SECRET");
+// Token de la Conversions API de Meta (Administrador de eventos → píxel Ventra → Configuración)
+const META_CAPI_TOKEN = defineSecret("META_CAPI_TOKEN");
+const metaCapi = require("./meta-capi");
 const RELEASE_PUSH_SECRET = defineSecret("RELEASE_PUSH_SECRET");
 // Clave privada Ed25519 (PEM) con la que se firma el estado que recibe cada PC.
 // La app solo tiene la clave pública: puede verificar, nunca falsificar.
@@ -118,7 +122,7 @@ exports.createVentraSubscription = onRequest(
     const user = await verifyUser(req);
     if (!user || !user.email) return res.status(401).json({ error: "Iniciá sesión para suscribirte" });
 
-    const { plan, payerEmail, rubro, utm } = req.body || {};
+    const { plan, payerEmail, rubro, utm, meta, ref: refCode } = req.body || {};
     const planInfo = VENTRA_PLANS[plan];
     if (planInfo && planInfo.legacy) return res.status(400).json({ error: "Ventra Caja ya no está disponible: la caja viene con Ventra Full." });
     if (!planInfo || (planInfo.adminOnly && !isAdmin(user))) return res.status(400).json({ error: "Plan inválido" });
@@ -170,10 +174,24 @@ exports.createVentraSubscription = onRequest(
       logger.warn(`Ventra: no se pudo revisar la prueba gratis de ${user.uid}`, err.message);
     }
 
+    // Invitado por otro comercio (referrals.js): prueba un mes entero. Si ya había quedado anotado
+    // (volvió a intentar el pago), se respeta.
+    let referral = prev.referredBy ? { referredBy: prev.referredBy } : null;
+    if (!referral && refCode) {
+      try {
+        referral = await referrals.attachReferral(db, {
+          rawCode: refCode, invitedUid: user.uid, invitedAcc: prev, invitedEmails: [user.email, correoPagador], rubro: SIGNUP_RUBROS.has(rubro) ? rubro : null,
+        });
+      } catch (err) {
+        logger.warn(`Ventra: no se pudo anotar la invitación de ${user.uid}`, err.message);
+      }
+    }
+    const trialDays = trial && referral && plan !== "prueba" ? REFERRAL_TRIAL_DAYS : TRIAL_DAYS;
+
     try {
       const response = await preapproval.create({
         body: {
-          reason: trial ? `Suscripción ${planInfo.name} (${TRIAL_DAYS} días gratis)` : `Suscripción ${planInfo.name}`,
+          reason: trial ? `Suscripción ${planInfo.name} (${trialDays} días gratis)` : `Suscripción ${planInfo.name}`,
           external_reference: user.uid,
           payer_email: correoPagador,
           back_url: "https://ventra.store/cuenta.html",
@@ -182,7 +200,7 @@ exports.createVentraSubscription = onRequest(
             frequency_type: "months",
             transaction_amount: planInfo.amount,
             currency_id: "ARS",
-            ...(trial ? trialDates(Date.now()) : {}),
+            ...(trial ? trialDates(Date.now(), trialDays) : {}),
           },
           status: "pending",
         },
@@ -196,10 +214,13 @@ exports.createVentraSubscription = onRequest(
         status: "pending_payment",
         mpPreapprovalId: response.id,
         // La prueba arranca cuando Mercado Pago autoriza la tarjeta (ver el webhook)
-        trialOffer: trial ? { preapprovalId: String(response.id), days: TRIAL_DAYS } : admin.firestore.FieldValue.delete(),
+        trialOffer: trial ? { preapprovalId: String(response.id), days: trialDays } : admin.firestore.FieldValue.delete(),
+        ...(referral && referral.referredCode ? referral : {}),
         // Solo si vino de una landing por rubro: un cambio de plan desde la home no lo borra
         ...(SIGNUP_RUBROS.has(rubro) ? { signupRubro: rubro } : {}),
         ...(cleanUtm(utm) ? { signupUtm: cleanUtm(utm) } : {}),
+        // Cookies del Píxel y navegador: con eso Meta reconoce a quien después paga (meta-capi.js)
+        ...(metaCapi.cleanSignupMeta(meta, req) ? { signupMeta: metaCapi.cleanSignupMeta(meta, req) } : {}),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -207,13 +228,39 @@ exports.createVentraSubscription = onRequest(
       // ese parámetro el checkout abre "Esta página no existe" (bug abierto en su SDK).
       // Se quita antes de mandárselo a la persona; sin él, el link abre normal.
       const initPoint = String(response.init_point || "").replace(/([?&])activation=true&?/, "$1").replace(/[?&]$/, "");
-      res.status(200).json({ initPoint, trialDays: trial ? TRIAL_DAYS : 0 });
+      res.status(200).json({ initPoint, trialDays: trial ? trialDays : 0, referred: !!referral });
     } catch (err) {
       logger.error("Ventra: error creando la suscripción:", err);
       res.status(500).json({ error: "No se pudo iniciar la suscripción" });
     }
   },
 );
+
+// /empezar?ref=CODIGO pregunta si el código existe, para mostrar "te invitó un comercio: 30 días gratis"
+exports.ventraReferralCheck = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5 }, async (req, res) => {
+  try {
+    const ok = await referrals.codeExists(db, req.query.code || (req.body && req.body.code));
+    res.set("Cache-Control", "public, max-age=300");
+    res.status(200).json({ ok, trialDays: ok ? REFERRAL_TRIAL_DAYS : TRIAL_DAYS });
+  } catch (err) {
+    logger.warn("Ventra: error revisando un código de invitación", err.message);
+    res.status(200).json({ ok: false, trialDays: TRIAL_DAYS });
+  }
+});
+
+// "Invitá un comercio" desde Mi cuenta (web): el mismo link y estado que ve la caja
+exports.ventraReferralStats = onRequest({ cors: VENTRA_ORIGINS, maxInstances: 5 }, async (req, res) => {
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: "Iniciá sesión" });
+  const acc = await db.collection("ventra_accounts").doc(user.uid).get();
+  if (!acc.exists) return res.status(404).json({ error: "Todavía no tenés una cuenta de Ventra" });
+  try {
+    res.status(200).json({ ok: true, ...(await referrals.stats(db, user.uid)) });
+  } catch (err) {
+    logger.error("Ventra: error armando la invitación", user.uid, err);
+    res.status(500).json({ error: "No se pudo armar tu link" });
+  }
+});
 
 // Cambio de plan desde Mi cuenta (ej. Agenda → Agenda Pro): se cambia el monto de la MISMA
 // suscripción de Mercado Pago. Suscribirse de nuevo desde la landing crearía una segunda
@@ -288,7 +335,7 @@ exports.cancelVentraSubscription = onRequest({ cors: VENTRA_ORIGINS, secrets: [V
 // Siempre se consulta el dato real en la API (nunca se confía en el payload).
 // Mercado Pago permite UNA sola URL de webhooks por app: llegan acá los avisos de las
 // suscripciones de Ventra y también los cobros del Point de cada comercio (tema "order").
-exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN, VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET, VENTRA_MP_WEBHOOK_SECRET] }, async (req, res) => {
+exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN, VENTRA_MP_CLIENT_ID, VENTRA_MP_CLIENT_SECRET, VENTRA_MP_WEBHOOK_SECRET, META_CAPI_TOKEN] }, async (req, res) => {
   const { query, body } = req;
   const type = query.type || query.topic || (body && (body.type || body.topic));
   if (type === "order" || type === "payment") {
@@ -309,7 +356,9 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
       const uid = sub.external_reference;
       if (uid) {
         const ref = db.collection("ventra_accounts").doc(uid);
+        let trialStarted = null; // cuenta con la que arrancó la prueba, para avisarle a Meta
         await db.runTransaction(async (tx) => {
+          trialStarted = null;
           const acc = (await tx.get(ref)).data() || {};
           const upd = {
             status: sub.status === "authorized" ? "active" : sub.status,
@@ -319,7 +368,7 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
           // Tarjeta autorizada con prueba gratis: Ventra anda desde ya hasta el primer cobro
           const offer = acc.trialOffer;
           if (sub.status === "authorized" && offer && offer.preapprovalId === String(id) && !acc.trialStartedAt) {
-            const end = trialEnd(sub, Date.now());
+            const end = trialEnd(sub, Date.now(), Number(offer.days) || TRIAL_DAYS);
             const endTs = admin.firestore.Timestamp.fromDate(end);
             const cur = acc.paidUntil ? acc.paidUntil.toDate() : null;
             if (!cur || cur < end) upd.paidUntil = endTs;
@@ -328,6 +377,7 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
               tx.set(db.collection("ventra_trials").doc(trialKey(e)), { uid, at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
             }
             logger.info(`Ventra: cuenta ${uid} empieza la prueba gratis hasta ${end.toISOString()}`);
+            trialStarted = acc;
           }
           // Baja hecha desde Mercado Pago: queda anotada igual que la del botón de Mi cuenta
           if (sub.status === "cancelled" && acc.status !== "cancelled" && !acc.cancelledAt) {
@@ -337,6 +387,9 @@ exports.ventraMercadopagoWebhook = onRequest({ secrets: [VENTRA_MP_ACCESS_TOKEN,
           tx.set(ref, upd, { merge: true });
         });
         logger.info(`Ventra: cuenta ${uid} -> ${sub.status}`);
+        if (trialStarted) {
+          await metaCapi.send({ token: META_CAPI_TOKEN.value(), eventName: "StartTrial", eventId: `trial-${id}`, uid, acc: trialStarted });
+        }
       }
     } else if (type === "subscription_authorized_payment" && id) {
       await creditAuthorizedPayment(String(id), accessToken);
@@ -381,9 +434,12 @@ async function creditAuthorizedPayment(authorizedPaymentId, accessToken) {
   const paymentRef = accountRef.collection("payments").doc(authorizedPaymentId);
   const paidAt = new Date(ap.date_created || ap.debit_date || Date.now());
 
+  let credited = null; // datos de la cuenta si este cobro se acreditó ahora (para Meta)
   await db.runTransaction(async (tx) => {
+    credited = null;
     const [account, already] = await Promise.all([tx.get(accountRef), tx.get(paymentRef)]);
     if (already.exists) return;
+    credited = account.exists ? account.data() : {};
     const current = account.exists && account.data().paidUntil ? account.data().paidUntil.toDate() : null;
     const paidUntil = nextPaidUntil(current, paidAt, 1);
     tx.set(paymentRef, {
@@ -400,6 +456,34 @@ async function creditAuthorizedPayment(authorizedPaymentId, accessToken) {
     }, { merge: true });
     logger.info(`Ventra: cuenta ${uid} paga hasta ${paidUntil.toISOString()}`);
   });
+
+  // Invitaciones (referrals.js): si la cuenta tiene meses ganados, este cobro se le devuelve; y si
+  // vino invitada, su primer cobro le da un mes a quien la invitó
+  if (credited) {
+    try {
+      await referrals.useCredit(db, {
+        uid, authorizedPaymentId, mpPaymentId: ap.payment && ap.payment.id, amount: ap.transaction_amount, accessToken, logger,
+      });
+    } catch (err) {
+      logger.error(`Ventra: error aplicando el mes gratis de ${uid}`, err);
+    }
+    try {
+      const winner = await referrals.rewardReferrer(db, uid);
+      if (winner) logger.info(`Ventra: ${winner} ganó un mes por invitar a ${uid}`);
+    } catch (err) {
+      logger.error(`Ventra: error premiando la invitación de ${uid}`, err);
+    }
+  }
+
+  // Meta: el primer cobro de la cuenta es Subscribe, los siguientes Purchase (con el monto)
+  if (credited) {
+    const prevPays = await accountRef.collection("payments").limit(2).get().catch(() => null);
+    const first = !prevPays || prevPays.size <= 1;
+    await metaCapi.send({
+      token: META_CAPI_TOKEN.value(), eventName: first ? "Subscribe" : "Purchase", eventId: `pay-${authorizedPaymentId}`,
+      uid, acc: credited, value: ap.transaction_amount, eventTime: paidAt,
+    });
+  }
 }
 
 // ─── Vinculación de PCs (como un Smart TV) ──────────────────────────
@@ -758,6 +842,13 @@ exports.ventraSync = onRequest(
         });
         await usage.flush();
         return res.status(200).json({ ok: true, key });
+      }
+
+      // "Invitá un comercio": el link propio y cómo le va
+      if (action === "referral") {
+        const data = await referrals.stats(admin.firestore(), uid);
+        await usage.flush();
+        return res.status(200).json({ ok: true, ...data });
       }
 
       if (action === "putImage" || action === "getImage") {
@@ -2214,7 +2305,7 @@ const SITE_EVENTS = new Set([
   "plan_caja", "plan_full", "plan_tienda", "plan_agenda", "plan_agenda_pro",
   "chat_open", "chat_msg", "chat_handoff",
   // Alta en /empezar: de dónde arrancan y hasta qué paso llegan
-  "view_empezar", "start_nav", "start_hero", "start_strip", "start_final", "start_dock",
+  "view_empezar", "signup_ref", "start_nav", "start_hero", "start_strip", "start_final", "start_dock",
   "signup_negocio", "signup_plan", "signup_google", "signup_pago",
   // "Abrir mi Ventra" (clientes que ya tienen cuenta): barra, menú del celular y barra de abajo
   "open_nav", "open_menu", "open_dock",
@@ -3193,13 +3284,84 @@ exports.ventraNewAccountAlert = onDocumentCreated({ document: "ventra_accounts/{
   const plan = (VENTRA_PLANS[a.plan] && VENTRA_PLANS[a.plan].name) || a.plan || "sin plan";
   const utm = a.signupUtm || {};
   const from = utm.source || utm.utm_source || "";
-  const body = [plan, a.signupRubro ? `rubro ${String(a.signupRubro).toLowerCase()}` : "", from ? `vino de ${from}` : ""].filter(Boolean).join(" · ");
-  await adminNotify({ title: `Alta nueva: ${a.email || event.params.uid}`, body, tag: `admin-alta-${event.params.uid}`, badge: ["Alta", "ok"], url: "https://ventra.store/admin#clientes" })
+  // Eligió el plan pero todavía no cargó la tarjeta: no pagó nada (la prueba y el pago avisan aparte, abajo)
+  const body = [`${plan}, todavía sin tarjeta ni pago`, a.signupRubro ? `rubro ${String(a.signupRubro).toLowerCase()}` : "", from ? `vino de ${from}` : ""].filter(Boolean).join(" · ");
+  await adminNotify({ title: `Eligió plan (sin pagar): ${a.email || event.params.uid}`, body, tag: `admin-alta-${event.params.uid}`, badge: ["Alta", "info"], url: "https://ventra.store/admin#clientes" })
     .catch((err) => logger.warn("Admin: no se pudo avisar el alta", err.message));
+});
+
+const fechaAR = (ts) => ts && ts.toDate ? ts.toDate().toLocaleDateString("es-AR", { timeZone: notify.TZ, day: "numeric", month: "numeric" }) : "";
+
+// Cargó la tarjeta y arrancó la prueba gratis: todavía no pagó, el primer cobro es al terminar
+exports.ventraTrialStartAlert = onDocumentUpdated({ document: "ventra_accounts/{uid}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  const before = event.data.before.data() || {}, a = event.data.after.data() || {};
+  if (before.trialStartedAt || !a.trialStartedAt || ADMIN_EMAILS.includes(String(a.email || "").toLowerCase())) return;
+  const plan = (VENTRA_PLANS[a.plan] && VENTRA_PLANS[a.plan].name) || a.plan || "sin plan";
+  const body = `${plan} · cargó la tarjeta pero NO pagó todavía · primer cobro el ${fechaAR(a.trialEndsAt)}`;
+  await adminNotify({ title: `Empezó la prueba gratis: ${a.email || event.params.uid}`, body, tag: `admin-prueba-${event.params.uid}`, badge: ["Prueba", "info"], url: "https://ventra.store/admin#clientes" })
+    .catch((err) => logger.warn("Admin: no se pudo avisar la prueba", err.message));
+});
+
+// Cobro acreditado de Mercado Pago (los manuales los cargás vos desde el admin: no avisan)
+exports.ventraPaymentAlert = onDocumentCreated({ document: "ventra_accounts/{uid}/payments/{pid}", secrets: [VENTRA_RESEND_KEY] }, async (event) => {
+  if (String(event.params.pid).startsWith("manual-")) return;
+  const p = (event.data && event.data.data()) || {};
+  const accRef = db.collection("ventra_accounts").doc(event.params.uid);
+  const [acc, pays] = await Promise.all([accRef.get(), accRef.collection("payments").limit(2).get()]);
+  const a = acc.data() || {};
+  if (ADMIN_EMAILS.includes(String(a.email || "").toLowerCase())) return;
+  const first = pays.size <= 1;
+  const plan = (VENTRA_PLANS[a.plan] && VENTRA_PLANS[a.plan].name) || a.plan || "";
+  const body = [plan, first ? (a.trialUsed ? "primer pago, después de la prueba gratis" : "primer pago") : "renovó", `paga hasta el ${fechaAR(p.newPaidUntil)}`].filter(Boolean).join(" · ");
+  await adminNotify({ title: `Pagó ${notify.money(p.amount || 0)}: ${a.email || event.params.uid}`, body, tag: `admin-pago-${event.params.pid}`, badge: ["Pago", "ok"], url: "https://ventra.store/admin#clientes" })
+    .catch((err) => logger.warn("Admin: no se pudo avisar el pago", err.message));
 });
 
 // Errores de las cajas (PC, caja web y celular): se agrupan por mensaje + lugar del código.
 // Sin datos personales: mensaje, pila, versión, qué pantalla y el comercio (uid o email que ya conoce la caja).
+// "Sugerí una idea" desde la caja: queda en ventra_ideas y te llega al celular y por mail.
+// Cuando una idea se hace, va a las novedades con "Lo pidió un cliente" (apps/frontend/src/novedades.ts).
+exports.ventraIdea = onRequest({ cors: true, maxInstances: 2, memory: "256MiB", secrets: [VENTRA_RESEND_KEY] }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).end();
+  let b = req.body;
+  if (typeof b === "string") { try { b = JSON.parse(b); } catch { b = {}; } }
+  b = b || {};
+  const clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
+  const text = clip(b.text, 1000);
+  if (text.length < 5) return res.status(400).json({ error: "Contanos un poco más" });
+  const store = clip(b.store, 80) || null;
+  const tenant = /^[\w@.+-]{3,80}$/.test(String(b.tenant || "")) ? String(b.tenant) : null;
+  const version = /^\d+\.\d+\.\d+/.test(String(b.version || "")) ? clip(b.version, 20) : null;
+  const where = ["pc", "web", "celular"].includes(b.where) ? b.where : "pc";
+  const contact = b.contact ? clip(b.contact, 80) : null;
+  const screen = clip(b.screen, 80) || null;
+  // Tope simple: 10 ideas por comercio por día
+  const day = new Date().toISOString().slice(0, 10);
+  const key = crypto.createHash("sha256").update(`${tenant || req.ip}|${day}`).digest("hex").slice(0, 24);
+  const quotaRef = db.collection("ventra_idea_quota").doc(key);
+  try {
+    const over = await db.runTransaction(async (tx) => {
+      const q = await tx.get(quotaRef);
+      const n = q.exists ? Number(q.data().n || 0) : 0;
+      if (n >= 10) return true;
+      tx.set(quotaRef, { n: n + 1, day }, { merge: true });
+      return false;
+    });
+    if (over) return res.status(429).json({ error: "Ya nos mandaste muchas ideas hoy. ¡Gracias! Seguimos mañana." });
+    const ref = await db.collection("ventra_ideas").add({
+      text, store, tenant, version, where, contact, screen, status: "nueva", createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await adminNotify({
+      title: `Idea de ${store || tenant || "un cliente"}`, body: text.slice(0, 180), tag: `admin-idea-${ref.id}`, badge: ["Idea", "info"],
+      html: [require("./mail-kit").esc(text), [store, tenant, contact ? `contacto: ${contact}` : "", screen ? `pantalla: ${screen}` : "", version ? `v${version}` : ""].filter(Boolean).join(" · ")].map(String),
+    }).catch((err) => logger.warn("Ideas: no se pudo avisar", err.message));
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    logger.error("Ideas: no se pudo guardar", err);
+    res.status(500).json({ error: "No se pudo mandar. Probá de nuevo en un rato." });
+  }
+});
+
 exports.ventraClientError = onRequest({ cors: true, maxInstances: 3, memory: "256MiB" }, async (req, res) => {
   if (req.method !== "POST") return res.status(204).end();
   let b = req.body;
