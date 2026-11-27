@@ -44,6 +44,96 @@ function tradeCostBase(f: any): number {
 }
 const roundTrade = (n: number) => (n > 0 ? Math.ceil(n / 10 - 1e-9) * 10 : 0);
 
+const money = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+/**
+ * Producto por kilo que llega en bolsa o bulto (gomitas de 900 g, queso de 3,5 kg): se carga lo que pesa
+ * el bulto y lo que cuesta o lo que se cobra entero, y pasa solo a precio por kilo. Los montos del bulto se
+ * calculan siempre desde el precio por kilo, así que cambiar uno actualiza el otro sin cuentas a mano.
+ */
+function BulkWeightCalc({ costPerKg, salePerKg, onCost, onSale, inputCls, labelCls, moneyPrefix }: {
+  costPerKg: number; salePerKg: number;
+  onCost: (perKg: number) => void; onSale: (perKg: number) => void;
+  inputCls: string; labelCls: string; moneyPrefix: string;
+}) {
+  const [peso, setPeso] = useState('');
+  const [medida, setMedida] = useState<'g' | 'kg'>('g');
+  const n = parseFloat(peso.replace(',', '.'));
+  const kg = n > 0 ? (medida === 'g' ? n / 1000 : n) : 0;
+  const delBulto = (perKg: number) => (kg > 0 && perKg > 0 ? Math.round(perKg * kg * 100) / 100 : '');
+  const aKilo = (v: string) => { const x = parseFloat(v); return isNaN(x) ? NaN : Math.round((x / kg) * 100) / 100; };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <p className="text-[12.5px] font-bold text-slate-800">¿Viene en bolsa o bulto?</p>
+      <p className="text-[11.5px] text-slate-500 leading-snug mb-2.5">Poné lo que pesa y lo que vale: el precio por kilo se calcula solo.</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className={labelCls}>Peso del bulto</label>
+          <div className="flex">
+            <input
+              type="number" inputMode="decimal" min={0} step="any"
+              value={peso}
+              onChange={e => setPeso(e.target.value)}
+              onFocus={e => e.target.select()}
+              placeholder={medida === 'g' ? '900' : '1,5'}
+              className={inputCls + ' rounded-r-none min-w-0'}
+            />
+            <select
+              value={medida}
+              onChange={e => setMedida(e.target.value as 'g' | 'kg')}
+              aria-label="Gramos o kilos"
+              className="h-10 border border-l-0 border-slate-300 rounded-r-lg bg-white px-1.5 text-[12.5px] font-semibold text-slate-700 outline-none cursor-pointer"
+            >
+              <option value="g">g</option>
+              <option value="kg">kg</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Costo del bulto</label>
+          <div className="relative">
+            <span className={moneyPrefix}>$</span>
+            <input
+              type="number" step="0.01" min={0}
+              disabled={!kg}
+              value={delBulto(costPerKg)}
+              onChange={e => onCost(aKilo(e.target.value))}
+              onFocus={e => e.target.select()}
+              placeholder={kg ? '0' : '—'}
+              title={kg ? undefined : 'Primero poné el peso'}
+              className={inputCls + ' pl-7 disabled:bg-slate-100 disabled:text-slate-400'}
+            />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Lo vendés entero a</label>
+          <div className="relative">
+            <span className={moneyPrefix}>$</span>
+            <input
+              type="number" step="0.01" min={0}
+              disabled={!kg}
+              value={delBulto(salePerKg)}
+              onChange={e => onSale(aKilo(e.target.value))}
+              onFocus={e => e.target.select()}
+              placeholder={kg ? 'Opcional' : '—'}
+              title={kg ? undefined : 'Primero poné el peso'}
+              className={inputCls + ' pl-7 disabled:bg-slate-100 disabled:text-slate-400'}
+            />
+          </div>
+        </div>
+      </div>
+      {kg > 0 && (costPerKg > 0 || salePerKg > 0) && (
+        <p className="mt-2 text-[12px] text-slate-600 leading-snug">
+          {costPerKg > 0 && <>Costo <b className="text-slate-900">$ {money(costPerKg)}</b> el kilo</>}
+          {costPerKg > 0 && salePerKg > 0 && ' · '}
+          {salePerKg > 0 && <>Venta <b className="text-rose-700">$ {money(salePerKg)}</b> el kilo, <b className="text-slate-900">$ {money(Math.round(salePerKg / 10))}</b> los 100 g</>}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function buildCategoryTree(cats: any[]) {
   const parents = cats.filter(c => !c.parentCategory && !c.parentCategoryId);
   const children = cats.filter(c => c.parentCategory || c.parentCategoryId);
@@ -1524,10 +1614,22 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               </div>
             ) : null}
 
+            {formData.unit === 'KG' && formData.presentationType !== 'PACK' && !(kitCost > 0) && (
+              <BulkWeightCalc
+                costPerKg={parseFloat(formData.costPrice as any) || 0}
+                salePerKg={parseFloat(formData.salePrice as any) || 0}
+                onCost={(perKg) => handleCostChange(perKg)}
+                onSale={(perKg) => handleSaleChange(perKg)}
+                inputCls={inputCls}
+                labelCls={labelCls}
+                moneyPrefix={moneyPrefix}
+              />
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {formData.presentationType !== 'PACK' && (
                 <div>
-                  <label className={labelCls}>Precio de costo</label>
+                  <label className={labelCls}>{formData.unit === 'KG' ? 'Costo por kilo' : 'Precio de costo'}</label>
                   <div className="relative">
                     <span className={moneyPrefix}>$</span>
                     <input
@@ -1615,7 +1717,7 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
               ) : (
                 <div className="flex items-end gap-4">
                   <div className="flex-1">
-                    <label className="block text-[13px] font-bold text-rose-900 mb-1.5">Precio de venta final <span className="text-rose-600">*</span></label>
+                    <label className="block text-[13px] font-bold text-rose-900 mb-1.5">{formData.unit === 'KG' ? 'Precio por kilo' : 'Precio de venta final'} <span className="text-rose-600">*</span></label>
                     <div className="relative">
                       <span className="absolute inset-y-0 left-4 flex items-center text-rose-600 font-bold text-2xl pointer-events-none">$</span>
                       <input

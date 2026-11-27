@@ -45,6 +45,16 @@ export const NOVEDADES: VersionNovedades[] = [
       },
       {
         tipo: 'nuevo',
+        titulo: 'Llega la Navidad a tu caja',
+        detalle: 'Del 1 de diciembre al 6 de enero la caja se pone de fiesta sola: luces, gorrito y cuántos días faltan para Navidad. No hace falta cerrar ni reiniciar nada.',
+      },
+      {
+        tipo: 'mejora',
+        titulo: 'Productos por kilo que vienen en bolsa',
+        detalle: 'Al cargar algo que se vende por kilo, poné lo que pesa la bolsa o el bulto (por ejemplo, gomitas de 900 g) y lo que te costó: el precio por kilo se calcula solo.',
+      },
+      {
+        tipo: 'nuevo',
         titulo: 'Deshacer',
         detalle: 'Si borrás algo sin querer (un producto, un gasto, un cliente, una promo), tocá Deshacer o Ctrl+Z en los 8 segundos siguientes y vuelve como estaba.',
       },
