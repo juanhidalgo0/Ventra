@@ -45,90 +45,113 @@ function tradeCostBase(f: any): number {
 const roundTrade = (n: number) => (n > 0 ? Math.ceil(n / 10 - 1e-9) * 10 : 0);
 
 const money = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const numTxt = (n: number) => (n > 0 ? String(round2(n)) : '');
+
+/**
+ * Monto que se escribe libre: mientras tenés el cursor adentro se queda con lo que tipeás (no salta a
+ * 4499,99 por los redondeos del precio por kilo) y al salir muestra el valor calculado.
+ */
+function DraftMoney({ value, onValue, disabled, placeholder, title, inputCls, moneyPrefix }: {
+  value: number; onValue: (txt: string) => void; disabled?: boolean; placeholder?: string; title?: string;
+  inputCls: string; moneyPrefix: string;
+}) {
+  const [txt, setTxt] = useState<string | null>(null);
+  return (
+    <div className="relative">
+      <span className={moneyPrefix}>$</span>
+      <input
+        type="number" inputMode="decimal" step="0.01" min={0}
+        disabled={disabled}
+        value={txt ?? numTxt(value)}
+        onFocus={e => { setTxt(numTxt(value)); const el = e.target; requestAnimationFrame(() => el.select()); }}
+        onChange={e => { setTxt(e.target.value); onValue(e.target.value); }}
+        onBlur={() => setTxt(null)}
+        placeholder={placeholder}
+        title={title}
+        className={inputCls + ' pl-7 disabled:bg-slate-100 disabled:text-slate-400'}
+      />
+    </div>
+  );
+}
 
 /**
  * Producto por kilo que llega en bolsa o bulto (gomitas de 900 g, queso de 3,5 kg): se carga lo que pesa
- * el bulto y lo que cuesta o lo que se cobra entero, y pasa solo a precio por kilo. Los montos del bulto se
- * calculan siempre desde el precio por kilo, así que cambiar uno actualiza el otro sin cuentas a mano.
+ * y lo que cuesta (y, si querés, a cuánto venderías la bolsa entera) y pasa solo a precio por kilo.
+ * El peso se guarda en el producto (pieceSize, en kg), así al editarlo ya está.
  */
-function BulkWeightCalc({ costPerKg, salePerKg, onCost, onSale, inputCls, labelCls, moneyPrefix }: {
+function BulkWeightCalc({ weightKg, onWeight, costPerKg, salePerKg, onCost, onSale, inputCls, labelCls, moneyPrefix }: {
+  weightKg: number; onWeight: (kg: number | '') => void;
   costPerKg: number; salePerKg: number;
   onCost: (perKg: number) => void; onSale: (perKg: number) => void;
   inputCls: string; labelCls: string; moneyPrefix: string;
 }) {
-  const [peso, setPeso] = useState('');
-  const [medida, setMedida] = useState<'g' | 'kg'>('g');
-  const n = parseFloat(peso.replace(',', '.'));
-  const kg = n > 0 ? (medida === 'g' ? n / 1000 : n) : 0;
-  const delBulto = (perKg: number) => (kg > 0 && perKg > 0 ? Math.round(perKg * kg * 100) / 100 : '');
-  const aKilo = (v: string) => { const x = parseFloat(v); return isNaN(x) ? NaN : Math.round((x / kg) * 100) / 100; };
+  const [medida, setMedida] = useState<'g' | 'kg'>(() => (weightKg >= 1 ? 'kg' : 'g'));
+  const [peso, setPeso] = useState(() => (weightKg > 0 ? String(round2(weightKg >= 1 ? weightKg : weightKg * 1000)) : ''));
+  const aKg = (txt: string, m: 'g' | 'kg') => { const n = parseFloat(txt.replace(',', '.')); return n > 0 ? (m === 'g' ? n / 1000 : n) : 0; };
+  const kg = aKg(peso, medida);
+  const cambiarPeso = (txt: string, m: 'g' | 'kg') => { setPeso(txt); setMedida(m); const k = aKg(txt, m); onWeight(k > 0 ? Math.round(k * 10000) / 10000 : ''); };
+  const aKilo = (txt: string) => { const x = parseFloat(txt); return isNaN(x) || !kg ? NaN : round2(x / kg); };
+
+  const costoBolsa = kg > 0 && costPerKg > 0 ? round2(costPerKg * kg) : 0;
+  // Sin margen, la ficha copia el costo en el precio de venta: eso no es un precio puesto por el comerciante
+  const conVenta = salePerKg > 0 && Math.abs(salePerKg - costPerKg) > 0.005;
+  const ventaBolsa = kg > 0 && conVenta ? round2(salePerKg * kg) : 0;
+  const nombrePeso = medida === 'g' ? `${money(kg * 1000)} g` : `${money(kg)} kg`;
+  const sinPeso = !kg ? 'Primero poné el peso' : undefined;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-      <p className="text-[12.5px] font-bold text-slate-800">¿Viene en bolsa o bulto?</p>
-      <p className="text-[11.5px] text-slate-500 leading-snug mb-2.5">Poné lo que pesa y lo que vale: el precio por kilo se calcula solo.</p>
-      <div className="grid grid-cols-3 gap-2">
+      <p className="text-[12.5px] font-bold text-slate-800">¿Lo comprás en bolsa o en pieza?</p>
+      <p className="text-[11.5px] text-slate-500 leading-snug mb-2.5">Poné lo que pesa y lo que te costó: el precio por kilo se calcula solo.</p>
+      <div className="grid grid-cols-[1.15fr_1fr_1fr] gap-2">
         <div>
-          <label className={labelCls}>Peso del bulto</label>
+          <label className={labelCls}>Peso</label>
           <div className="flex">
             <input
               type="number" inputMode="decimal" min={0} step="any"
               value={peso}
-              onChange={e => setPeso(e.target.value)}
+              onChange={e => cambiarPeso(e.target.value, medida)}
               onFocus={e => e.target.select()}
-              placeholder={medida === 'g' ? '900' : '1,5'}
-              className={inputCls + ' rounded-r-none min-w-0'}
+              placeholder={medida === 'g' ? '900' : '1.5'}
+              aria-label={`Peso en ${medida === 'g' ? 'gramos' : 'kilos'}`}
+              className={inputCls + ' rounded-r-none min-w-0 px-2.5'}
             />
-            <select
-              value={medida}
-              onChange={e => setMedida(e.target.value as 'g' | 'kg')}
-              aria-label="Gramos o kilos"
-              className="h-10 border border-l-0 border-slate-300 rounded-r-lg bg-white px-1.5 text-[12.5px] font-semibold text-slate-700 outline-none cursor-pointer"
-            >
-              <option value="g">g</option>
-              <option value="kg">kg</option>
-            </select>
+            {/* g / kg: cambia cómo se lee el número que escribiste */}
+            <div className="flex shrink-0 h-9 border border-l-0 border-slate-300 rounded-r-lg overflow-hidden" role="group" aria-label="Gramos o kilos">
+              {(['g', 'kg'] as const).map(m => (
+                <button
+                  key={m} type="button"
+                  onClick={() => cambiarPeso(peso, m)}
+                  aria-pressed={medida === m}
+                  className={`px-2 text-[12px] font-bold cursor-pointer transition-colors ${medida === m ? 'bg-rose-600 text-white' : 'bg-white text-slate-500 hover:text-slate-800'}`}
+                >{m}</button>
+              ))}
+            </div>
           </div>
         </div>
         <div>
-          <label className={labelCls}>Costo del bulto</label>
-          <div className="relative">
-            <span className={moneyPrefix}>$</span>
-            <input
-              type="number" step="0.01" min={0}
-              disabled={!kg}
-              value={delBulto(costPerKg)}
-              onChange={e => onCost(aKilo(e.target.value))}
-              onFocus={e => e.target.select()}
-              placeholder={kg ? '0' : '—'}
-              title={kg ? undefined : 'Primero poné el peso'}
-              className={inputCls + ' pl-7 disabled:bg-slate-100 disabled:text-slate-400'}
-            />
-          </div>
+          <label className={labelCls}>Te costó</label>
+          <DraftMoney value={costoBolsa} onValue={t => onCost(aKilo(t))} disabled={!kg} placeholder={kg ? '0' : '—'} title={sinPeso} inputCls={inputCls} moneyPrefix={moneyPrefix} />
         </div>
         <div>
-          <label className={labelCls}>Lo vendés entero a</label>
-          <div className="relative">
-            <span className={moneyPrefix}>$</span>
-            <input
-              type="number" step="0.01" min={0}
-              disabled={!kg}
-              value={delBulto(salePerKg)}
-              onChange={e => onSale(aKilo(e.target.value))}
-              onFocus={e => e.target.select()}
-              placeholder={kg ? 'Opcional' : '—'}
-              title={kg ? undefined : 'Primero poné el peso'}
-              className={inputCls + ' pl-7 disabled:bg-slate-100 disabled:text-slate-400'}
-            />
-          </div>
+          <label className={labelCls}>Entera a <span className="font-normal text-slate-400">(opc.)</span></label>
+          <DraftMoney value={ventaBolsa} onValue={t => onSale(aKilo(t))} disabled={!kg} placeholder={kg ? '0' : '—'} title={sinPeso} inputCls={inputCls} moneyPrefix={moneyPrefix} />
         </div>
       </div>
-      {kg > 0 && (costPerKg > 0 || salePerKg > 0) && (
-        <p className="mt-2 text-[12px] text-slate-600 leading-snug">
-          {costPerKg > 0 && <>Costo <b className="text-slate-900">$ {money(costPerKg)}</b> el kilo</>}
-          {costPerKg > 0 && salePerKg > 0 && ' · '}
-          {salePerKg > 0 && <>Venta <b className="text-rose-700">$ {money(salePerKg)}</b> el kilo, <b className="text-slate-900">$ {money(Math.round(salePerKg / 10))}</b> los 100 g</>}
-        </p>
+      {kg > 0 && costoBolsa > 0 && !conVenta && (
+        <p className="mt-2 text-[11.5px] text-slate-500 leading-snug">Ahora poné el margen abajo, o a cuánto venderías la bolsa entera.</p>
+      )}
+      {kg > 0 && conVenta && (
+        <div className="mt-2.5 rounded-lg bg-white border border-slate-200 px-3 py-2 text-[12px] text-slate-600 leading-relaxed">
+          <div>
+            {nombrePeso} enteros: <b className="text-slate-900">$ {money(ventaBolsa)}</b>
+            {costoBolsa > 0 && <> · ganás <b className={ventaBolsa >= costoBolsa ? 'text-emerald-700' : 'text-red-600'}>$ {money(round2(ventaBolsa - costoBolsa))}</b></>}
+          </div>
+          <div className="text-slate-500">
+            Suelto: 100 g a <b className="text-slate-800">$ {money(round2(salePerKg / 10))}</b> · ¼ kg a <b className="text-slate-800">$ {money(round2(salePerKg / 4))}</b>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1267,18 +1290,6 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                     className={inputCls}
                   />
                 </div>
-                {!isHardwareStore && (
-                  <div>
-                    <label className={labelCls}>Se vende por</label>
-                    <div className="relative">
-                      <select value={formData.unit === 'KG' ? 'KG' : 'UNIT'} onChange={e => setFormData({ ...formData, unit: e.target.value })} className={selectCls}>
-                        <option value="KG">Kilo (por peso o por $)</option>
-                        <option value="UNIT">Unidad</option>
-                      </select>
-                      <ChevronDown className="absolute right-2.5 inset-y-0 my-auto w-4 h-4 text-slate-400 pointer-events-none" />
-                    </div>
-                  </div>
-                )}
                 <p className="col-span-2 -mt-1.5 text-[11.5px] text-slate-500 leading-snug">
                   Con el mismo código que tiene en la balanza, la caja lee sola las etiquetas: el producto entra con sus kilos y el importe impreso.
                 </p>
@@ -1510,6 +1521,38 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
           <div className="space-y-5 min-w-0">
           {/* ── Precios y rentabilidad ── */}
           <FormSection icon={Coins} title="Precios y rentabilidad">
+            {/* Primero cómo se vende: cambia qué significa cada precio de abajo (por unidad o por kilo) */}
+            {!isHardwareStore && !formData.isKit && (
+              <div>
+                <label className={labelCls}>Se vende por</label>
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-slate-100" role="group" aria-label="Se vende por">
+                  {([['UNIT', 'Unidad'], ['KG', 'Kilo (por peso o por $)']] as const).map(([v, l]) => {
+                    const on = (formData.unit === 'KG' ? 'KG' : 'UNIT') === v;
+                    return (
+                      <button
+                        key={v} type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, unit: v }))}
+                        aria-pressed={on}
+                        className={`h-8 rounded-md text-[13px] font-semibold cursor-pointer transition-colors ${on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      >{l}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {!isHardwareStore && formData.unit === 'KG' && formData.presentationType !== 'PACK' && !formData.isKit && (
+              <BulkWeightCalc
+                weightKg={parseFloat(formData.pieceSize as any) || 0}
+                onWeight={(kg) => setFormData(prev => ({ ...prev, pieceSize: kg as any }))}
+                costPerKg={parseFloat(formData.costPrice as any) || 0}
+                salePerKg={parseFloat(formData.salePrice as any) || 0}
+                onCost={(perKg) => handleCostChange(perKg)}
+                onSale={(perKg) => handleSaleChange(perKg)}
+                inputCls={inputCls}
+                labelCls={labelCls}
+                moneyPrefix={moneyPrefix}
+              />
+            )}
             <Collapsible
               icon={Truck}
               title="Compra al proveedor"
@@ -1613,18 +1656,6 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                 </div>
               </div>
             ) : null}
-
-            {formData.unit === 'KG' && formData.presentationType !== 'PACK' && !(kitCost > 0) && (
-              <BulkWeightCalc
-                costPerKg={parseFloat(formData.costPrice as any) || 0}
-                salePerKg={parseFloat(formData.salePrice as any) || 0}
-                onCost={(perKg) => handleCostChange(perKg)}
-                onSale={(perKg) => handleSaleChange(perKg)}
-                inputCls={inputCls}
-                labelCls={labelCls}
-                moneyPrefix={moneyPrefix}
-              />
-            )}
 
             <div className="grid grid-cols-2 gap-3">
               {formData.presentationType !== 'PACK' && (
@@ -2145,16 +2176,6 @@ export default function ProductModal({ onClose, onSuccess, product, onPacksChang
                       <option value="KG">Kilogramo (kg) - Clavos/Áridos</option>
                       <option value="L">Litro (L) - Pinturas/Solventes</option>
                       <option value="PACK">Pack / Rollo (pack)</option>
-                    </select>
-                  </div>
-                )}
-                {!isHardwareStore && (
-                  // Fiambrería, verdulería, carnicería: el kilo sin prender "Medidas y fraccionado"
-                  <div>
-                    <label className="text-[12px] font-semibold text-slate-700 mb-1 block">Se vende por</label>
-                    <select value={formData.unit === 'KG' ? 'KG' : 'UNIT'} onChange={e => setFormData({ ...formData, unit: e.target.value })} className={selectCls}>
-                      <option value="UNIT">Unidad</option>
-                      <option value="KG">Kilo (por peso o por $)</option>
                     </select>
                   </div>
                 )}

@@ -51,7 +51,7 @@ export const NOVEDADES: VersionNovedades[] = [
       {
         tipo: 'mejora',
         titulo: 'Productos por kilo que vienen en bolsa',
-        detalle: 'Al cargar algo que se vende por kilo, poné lo que pesa la bolsa o el bulto (por ejemplo, gomitas de 900 g) y lo que te costó: el precio por kilo se calcula solo.',
+        detalle: 'Al cargar algo que se vende por kilo, elegí "Kilo" arriba de los precios y poné lo que pesa la bolsa o la pieza (por ejemplo, gomitas de 900 g) y lo que te costó: el precio por kilo se calcula solo y queda guardado para la próxima.',
       },
       {
         tipo: 'nuevo',
